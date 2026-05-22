@@ -244,10 +244,10 @@ export function VaultPanel() {
 
   useEffect(() => {
     if (secrets.length === 0) return undefined;
-    const intervalId = window.setInterval(() => {
+    const intervalId = globalThis.setInterval(() => {
       void refreshStatuses();
     }, 8000);
-    return () => window.clearInterval(intervalId);
+    return () => globalThis.clearInterval(intervalId);
   }, [refreshStatuses, secrets.length]);
 
   useEffect(() => {

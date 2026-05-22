@@ -118,8 +118,8 @@ export function AssetGrid({
       }
     };
 
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    globalThis.addEventListener("keydown", handler);
+    return () => globalThis.removeEventListener("keydown", handler);
   }, [assets, selectionActive, selectedAssetIds.size, setSelectedAssetIds, onLastClickIdxChange]);
 
   // Init viewMode from localStorage after mount (avoids SSR mismatch)
@@ -275,7 +275,7 @@ export function AssetGrid({
   }, [setSelectedAssetIds, onLastClickIdxChange]);
 
   const handleBatchDelete = useCallback(async () => {
-    if (!window.confirm(`Delete ${selectedAssetIds.size} file(s)? This cannot be undone.`)) return;
+    if (!globalThis.confirm(`Delete ${selectedAssetIds.size} file(s)? This cannot be undone.`)) return;
     const results = await Promise.allSettled(
       Array.from(selectedAssetIds).map(async (id) => {
         const res = await fetch(`/media/api/assets/${id}`, { method: "DELETE", credentials: "include" });

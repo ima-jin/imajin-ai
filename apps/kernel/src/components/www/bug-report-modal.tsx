@@ -95,8 +95,8 @@ export function BugReportModal({ onClose }: Props) {
           type,
           description: description.trim(),
           screenshotUrl,
-          pageUrl: window.location.href,
-          viewport: `${window.innerWidth}x${window.innerHeight}`,
+          pageUrl: globalThis.location.href,
+          viewport: `${globalThis.innerWidth}x${globalThis.innerHeight}`,
         }),
       });
       if (!res.ok) {

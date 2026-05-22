@@ -107,7 +107,7 @@ export default function ConversationsPage() {
       const res = await fetch('/chat/api/conversations');
 
       if (res.status === 401) {
-        window.location.reload();
+        globalThis.location.reload();
         return;
       }
       if (!res.ok) throw new Error('Failed to load conversations');

@@ -90,8 +90,8 @@ export function TicketsGate({ children, surveysRequired, initialCompleted, requi
       }
     };
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    globalThis.addEventListener('message', handleMessage);
+    return () => globalThis.removeEventListener('message', handleMessage);
   }, [surveysRequired, completed, requiredSurveyIds]);
 
   if (!surveysRequired || completed) {

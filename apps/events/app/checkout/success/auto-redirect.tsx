@@ -17,9 +17,9 @@ export function AutoRedirect({ href, seconds }: Props) {
       setCountdown(prev => {
         if (prev <= 1) {
           clearInterval(timer);
-          // Use window.location for hash navigation so the browser scrolls
+          // Use globalThis.location for hash navigation so the browser scrolls
           // to the anchor naturally (router.push doesn't scroll to hash)
-          window.location.href = href;
+          globalThis.location.href = href;
           return 0;
         }
         return prev - 1;

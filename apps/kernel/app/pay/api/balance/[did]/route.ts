@@ -54,8 +54,8 @@ export async function GET(
       .where(eq(balances.did, decoded))
       .limit(1);
 
-    const cashAmount = row ? parseFloat(row.cashAmount) : 0;
-    const creditAmount = row ? parseFloat(row.creditAmount) : 0;
+    const cashAmount = row ? Number.parseFloat(row.cashAmount) : 0;
+    const creditAmount = row ? Number.parseFloat(row.creditAmount) : 0;
 
     return NextResponse.json(
       {

@@ -89,7 +89,7 @@ export default function EventCreateForm({ organizerDid }: Props) {
           courseSlug: courseSlug || null,
           eventType,
           ...(eventType === 'campaign' && {
-            targetAmount: Math.round(parseFloat(targetAmount) * 100),
+            targetAmount: Math.round(Number.parseFloat(targetAmount) * 100),
             deadline: campaignDeadline ? new Date(campaignDeadline).toISOString() : null,
           }),
           tickets: eventType === 'event' ? tiers.filter(t => t.name).map(t => ({
@@ -363,7 +363,7 @@ export default function EventCreateForm({ organizerDid }: Props) {
                       min="0"
                       step="0.01"
                       value={tier.price}
-                      onChange={(e) => updateTier(index, 'price', parseFloat(e.target.value) || 0)}
+                      onChange={(e) => updateTier(index, 'price', Number.parseFloat(e.target.value) || 0)}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                     />
                   </div>

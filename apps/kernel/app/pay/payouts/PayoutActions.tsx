@@ -17,7 +17,7 @@ export function PayoutActions({ status, did }: PayoutActionsProps) {
 
     setLoading(true);
     try {
-      const currentUrl = window.location.href;
+      const currentUrl = globalThis.location.href;
 
       const response = await fetch('/pay/api/connect/onboard', {
         method: 'POST',
@@ -37,7 +37,7 @@ export function PayoutActions({ status, did }: PayoutActionsProps) {
       const data = await response.json();
 
       // Redirect to Stripe onboarding
-      window.location.href = data.onboardingUrl;
+      globalThis.location.href = data.onboardingUrl;
     } catch (error) {
       console.error('Error starting onboarding:', error);
       toast.error('Failed to start onboarding process. Please try again.');
@@ -61,7 +61,7 @@ export function PayoutActions({ status, did }: PayoutActionsProps) {
       const data = await response.json();
 
       // Open Stripe dashboard in new tab
-      window.open(data.url, '_blank', 'noopener,noreferrer');
+      globalThis.open(data.url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       console.error('Error opening dashboard:', error);
       toast.error('Failed to open dashboard. Please try again.');

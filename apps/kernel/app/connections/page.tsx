@@ -133,7 +133,7 @@ export default function ConnectionsPage() {
   const [sortAsc, setSortAsc] = useState(false); // date defaults descending (newest first)
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(globalThis.location.search);
     const tab = params.get('tab');
     if (tab === 'groups') setActiveTab('groups');
     else if (tab === 'invitations') setActiveTab('invitations');
@@ -185,7 +185,7 @@ export default function ConnectionsPage() {
         setNewGroupDesc('');
         setShowCreateGroup(false);
         mutatePods();
-        window.location.href = `/connections/pods/${data.pod.id}`;
+        globalThis.location.href = `/connections/pods/${data.pod.id}`;
       }
     } catch {} finally {
       setCreatingGroup(false);
@@ -332,11 +332,11 @@ export default function ConnectionsPage() {
               {sortedConnections.map((conn) => (
                 <div
                   key={conn.did}
-                  onClick={() => window.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`}
+                  onClick={() => globalThis.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      window.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`;
+                      globalThis.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`;
                     }
                   }}
                   role="button"

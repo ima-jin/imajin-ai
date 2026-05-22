@@ -17,7 +17,7 @@ export default function SettingsPage() {
     apiFetch('/api/seller/settings', { credentials: 'include' })
       .then(async (res) => {
         if (res.status === 401) {
-          window.location.href = `${authUrl}/login?next=${encodeURIComponent(window.location.href)}`;
+          globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(globalThis.location.href)}`;
           return;
         }
         if (!res.ok) throw new Error('Failed to load settings');

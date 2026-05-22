@@ -59,7 +59,7 @@ export function EventStatusControls({ eventId, currentStatus }: Props) {
         cancelled: 'Are you sure you want to cancel this event? This cannot be undone.',
         completed: 'Are you sure you want to mark this event as completed? This cannot be undone.',
       };
-      const confirmed = window.confirm(messages[newStatus] || 'Are you sure?');
+      const confirmed = globalThis.confirm(messages[newStatus] || 'Are you sure?');
       if (!confirmed) return;
     }
 

@@ -23,8 +23,8 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
   }
 
   const { searchParams } = new URL(request.url);
-  const lat = searchParams.get('lat') ? parseFloat(searchParams.get('lat')!) : null;
-  const lng = searchParams.get('lng') ? parseFloat(searchParams.get('lng')!) : null;
+  const lat = searchParams.get('lat') ? Number.parseFloat(searchParams.get('lat')!) : null;
+  const lng = searchParams.get('lng') ? Number.parseFloat(searchParams.get('lng')!) : null;
 
   try {
     const rows = await db

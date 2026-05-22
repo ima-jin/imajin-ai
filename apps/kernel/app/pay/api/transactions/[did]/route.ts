@@ -86,7 +86,7 @@ export async function GET(
       type: tx.type,
       from_did: tx.fromDid,
       to_did: tx.toDid,
-      amount: parseFloat(tx.amount),
+      amount: Number.parseFloat(tx.amount),
       currency: tx.currency,
       status: tx.status,
       stripe_id: tx.stripeId,

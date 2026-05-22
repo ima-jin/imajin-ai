@@ -14,7 +14,7 @@ interface CommunityTabsProps {
 export function CommunityTabs({ tabs, activeTab, onTabChange, isMember }: CommunityTabsProps) {
   // Read initial tab from URL hash on mount
   useEffect(() => {
-    const hash = window.location.hash.slice(1) as CommunityTab;
+    const hash = globalThis.location.hash.slice(1) as CommunityTab;
     if (hash && tabs.some(t => t.id === hash)) {
       if (tabs.find(t => t.id === hash)?.memberOnly && !isMember) return;
       onTabChange(hash);
@@ -23,7 +23,7 @@ export function CommunityTabs({ tabs, activeTab, onTabChange, isMember }: Commun
 
   // Update hash when tab changes
   const handleTabChange = (tab: CommunityTab) => {
-    window.history.replaceState(null, '', `#${tab}`);
+    globalThis.history.replaceState(null, '', `#${tab}`);
     onTabChange(tab);
   };
 

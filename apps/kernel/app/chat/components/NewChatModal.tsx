@@ -94,7 +94,7 @@ export function NewChatModal({ onClose }: { onClose: () => void }) {
       // Extract redirect location or fall back to derived DID path
       const location = res.headers.get('Location');
       if (location) {
-        const url = new URL(location, window.location.origin);
+        const url = new URL(location, globalThis.location.origin);
         router.push(url.pathname);
       } else {
         router.push(`/chat/conversations/${conversationPath(did)}`);

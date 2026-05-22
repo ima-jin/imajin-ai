@@ -43,7 +43,7 @@ export default function IdentitySwitcher({
           localStorage.removeItem('imajin:acting-as');
           document.cookie = 'x-acting-as=; path=/; max-age=0';
         }
-        window.location.reload();
+        globalThis.location.reload();
       }
     } catch {
       // ignore network errors

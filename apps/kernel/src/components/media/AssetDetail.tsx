@@ -167,7 +167,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   };
 
   const handleShare = () => {
-    const url = `${window.location.origin}/media/api/assets/${asset.id}`;
+    const url = `${globalThis.location.origin}/media/api/assets/${asset.id}`;
     navigator.clipboard.writeText(url).catch(() => {});
     setShareLabel("Copied!");
     setTimeout(() => setShareLabel("Copy URL"), 2000);

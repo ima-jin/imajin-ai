@@ -372,12 +372,12 @@ export default function BumpConnect({ onClose }: Props) {
     };
 
     deviceMotionHandler.current = handler;
-    window.addEventListener('devicemotion', handler);
+    globalThis.addEventListener('devicemotion', handler);
   }
 
   function stopAccelerometer() {
     if (deviceMotionHandler.current) {
-      window.removeEventListener('devicemotion', deviceMotionHandler.current);
+      globalThis.removeEventListener('devicemotion', deviceMotionHandler.current);
       deviceMotionHandler.current = null;
     }
   }

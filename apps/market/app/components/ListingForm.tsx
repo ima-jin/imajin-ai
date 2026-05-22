@@ -93,7 +93,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
       return;
     }
 
-    const priceNum = parseFloat(priceDisplay);
+    const priceNum = Number.parseFloat(priceDisplay);
     if (!priceDisplay || isNaN(priceNum) || priceNum <= 0) {
       setValidationError('Price must be greater than 0.');
       return;

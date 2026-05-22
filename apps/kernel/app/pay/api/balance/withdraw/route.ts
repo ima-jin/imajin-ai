@@ -87,7 +87,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       .where(eq(balances.did, did))
       .limit(1);
 
-    const cashAmount = balance ? parseFloat(balance.cashAmount) : 0;
+    const cashAmount = balance ? Number.parseFloat(balance.cashAmount) : 0;
     // Convert cents to dollars for comparison (balance is stored in dollars)
     const withdrawalDollars = amount / 100;
 

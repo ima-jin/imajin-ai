@@ -135,7 +135,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
     try {
       const res = await fetch(`/auth/api/groups/${id}`, { method: 'DELETE' });
       if (res.ok) {
-        window.location.href = '/connections?tab=groups';
+        globalThis.location.href = '/connections?tab=groups';
       } else {
         toast.error('Failed to delete group');
       }
@@ -316,7 +316,7 @@ export default function PodDetailPage({ params }: { params: { id: string } }) {
                 type="button"
                 className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg shrink-0 cursor-pointer"
                 onClick={() => {
-                  if (member.handle) window.open(`${PROFILE_URL}/${member.handle}`, '_blank');
+                  if (member.handle) globalThis.open(`${PROFILE_URL}/${member.handle}`, '_blank');
                 }}
                 aria-label={`Open profile for ${member.handle ? `@${member.handle}` : member.name || 'member'}`}
               >

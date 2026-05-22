@@ -122,9 +122,9 @@ export default function CourseDetailPage() {
   // Auto-enroll after onboard email verification redirect
   useEffect(() => {
     if (!course || course.enrollment || enrolling) return;
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(globalThis.location.search);
     if (params.get('enroll') === '1') {
-      window.history.replaceState({}, '', `/course/${slug}`);
+      globalThis.history.replaceState({}, '', `/course/${slug}`);
       handleEnroll();
     }
   }, [course]);
@@ -147,8 +147,8 @@ export default function CourseDetailPage() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          successUrl: `${window.location.origin}/course/${slug}`,
-          cancelUrl: `${window.location.origin}/course/${slug}`,
+          successUrl: `${globalThis.location.origin}/course/${slug}`,
+          cancelUrl: `${globalThis.location.origin}/course/${slug}`,
         }),
       });
 
@@ -160,13 +160,13 @@ export default function CourseDetailPage() {
 
       const data = await res.json();
       if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+        globalThis.location.href = data.checkoutUrl;
       } else if (isDeck) {
         // Free deck enrollment — go straight to presentation
         router.push(`/course/${slug}/present`);
       } else {
         // Free enrollment — reload
-        window.location.reload();
+        globalThis.location.reload();
       }
     } catch (e) {
       toast.error('Enrollment failed');
@@ -274,7 +274,7 @@ export default function CourseDetailPage() {
             ) : (
               <OnboardGate
                 action={isDeck ? `view "${course.title}"` : `enroll in "${course.title}"`}
-                redirectUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/course/${slug}?enroll=1`}
+                redirectUrl={`${typeof window !== 'undefined' ? globalThis.location.origin : ''}/course/${slug}?enroll=1`}
                 onIdentity={() => handleEnroll()}
                 authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
               >

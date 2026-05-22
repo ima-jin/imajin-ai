@@ -242,7 +242,7 @@ export async function GET(
     const totalRevenue = sales.reduce((sum, s) => sum + s.amount, 0) + orphanRevenue;
     const summary = {
       totalSales: sales.length,
-      totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+      totalRevenue: Number.parseFloat(totalRevenue.toFixed(2)),
       currency: sales[0]?.currency ?? eventRow.currency ?? 'USD',
     };
 

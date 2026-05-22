@@ -134,8 +134,8 @@ export function SurveyAccordion({
       }
     };
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    globalThis.addEventListener('message', handleMessage);
+    return () => globalThis.removeEventListener('message', handleMessage);
   }, [storageKey, ticketId, eventId, fetchStatus, onComplete]);
 
   const icon = '📋';

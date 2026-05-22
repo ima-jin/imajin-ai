@@ -86,7 +86,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
       }
 
       const { url } = await response.json();
-      window.location.href = url;
+      globalThis.location.href = url;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setStep(etransferEnabled ? 'selector' : 'button');

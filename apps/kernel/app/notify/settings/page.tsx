@@ -60,13 +60,13 @@ export default function SettingsPage() {
     fetch(`${AUTH_URL}/api/session`, { credentials: 'include' })
       .then((r) => {
         if (!r.ok) {
-          window.location.href = `${AUTH_URL}/login?next=${encodeURIComponent(window.location.href)}`;
+          globalThis.location.href = `${AUTH_URL}/login?next=${encodeURIComponent(globalThis.location.href)}`;
           return;
         }
         setAuthed(true);
       })
       .catch(() => {
-        window.location.href = `${AUTH_URL}/login?next=${encodeURIComponent(window.location.href)}`;
+        globalThis.location.href = `${AUTH_URL}/login?next=${encodeURIComponent(globalThis.location.href)}`;
       });
   }, []);
 

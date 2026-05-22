@@ -28,7 +28,7 @@ export default async function TopupSuccessPage({ searchParams }: SuccessPageProp
       .limit(1);
 
     if (tx) {
-      amount = parseFloat(tx.amount);
+      amount = Number.parseFloat(tx.amount);
     }
   }
 

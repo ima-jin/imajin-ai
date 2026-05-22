@@ -58,8 +58,8 @@ async function forwardGeocode(query: string): Promise<GeoResult[]> {
   if (!res.ok) return [];
   const data = await res.json();
   return data.map((r: { lat: string; lon: string; display_name: string }) => ({
-    lat: parseFloat(r.lat),
-    lon: parseFloat(r.lon),
+    lat: Number.parseFloat(r.lat),
+    lon: Number.parseFloat(r.lon),
     displayName: r.display_name,
   }));
 }

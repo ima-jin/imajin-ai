@@ -61,8 +61,8 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendere
         onExit();
       }
     };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
+    globalThis.addEventListener('keydown', handleKey);
+    return () => globalThis.removeEventListener('keydown', handleKey);
   }, [next, prev, goTo, onExit, slides.length]);
 
   // Hide the root layout NavBar when renderer is mounted

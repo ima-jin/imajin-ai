@@ -219,7 +219,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
           <div className="flex flex-col items-center gap-6 p-8 max-w-[90vmin]">
             <QRCodeSVG
               value={qrUrl}
-              size={Math.min(typeof window !== 'undefined' ? window.innerWidth * 0.8 : 320, typeof window !== 'undefined' ? window.innerHeight * 0.7 : 320, 512)}
+              size={Math.min(typeof window !== 'undefined' ? globalThis.innerWidth * 0.8 : 320, typeof window !== 'undefined' ? globalThis.innerHeight * 0.7 : 320, 512)}
               level="M"
               includeMargin
               bgColor="#ffffff"

@@ -119,8 +119,8 @@ export function FileEditor({ asset, isOwner }: FileEditorProps) {
         handleSave();
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => globalThis.removeEventListener("keydown", onKeyDown);
   }, [isOwner, handleSave]);
 
   const renderPreview = () => {

@@ -260,9 +260,9 @@ function RegisterPage() {
 
     const continueAfterBackup = () => {
       if (inviteCode) {
-        window.location.href = CONNECTIONS_URL;
+        globalThis.location.href = CONNECTIONS_URL;
       } else if (redirectUrl) {
-        window.location.href = redirectUrl;
+        globalThis.location.href = redirectUrl;
       } else {
         router.push('/');
       }

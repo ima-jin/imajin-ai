@@ -42,7 +42,7 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
   const [enabledServices, setEnabledServices] = useState<string[]>([]);
 
   const authBase =
-    typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_AUTH_URL ?? '');
+    typeof window !== 'undefined' ? globalThis.location.origin : (process.env.NEXT_PUBLIC_AUTH_URL ?? '');
 
   useEffect(() => {
     loadData();
@@ -72,7 +72,7 @@ export default function IdentityMembersPanel({ groupDid }: { groupDid: string })
     try {
       const profileUrl =
         typeof window !== 'undefined'
-          ? window.location.origin
+          ? globalThis.location.origin
           : (process.env.NEXT_PUBLIC_PROFILE_URL ?? '');
       const res = await fetch(
         `${profileUrl}/api/forest/${encodeURIComponent(groupDid)}/config`,

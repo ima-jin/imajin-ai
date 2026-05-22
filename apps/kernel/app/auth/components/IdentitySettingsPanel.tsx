@@ -34,7 +34,7 @@ export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }
   const [copyLabel, setCopyLabel] = useState('Copy');
 
   const authUrl =
-    typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_AUTH_URL ?? '');
+    typeof window !== 'undefined' ? globalThis.location.origin : (process.env.NEXT_PUBLIC_AUTH_URL ?? '');
   const profileUrl = buildPublicUrl('profile');
   const onboardUrl = `${authUrl}/auth/onboard?scope=${encodeURIComponent(groupDid)}`;
 

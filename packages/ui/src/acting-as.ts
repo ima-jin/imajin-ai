@@ -12,7 +12,7 @@ export function setActingAs(did: string | null): void {
     localStorage.removeItem('imajin:acting-as');
     document.cookie = 'x-acting-as=; path=/; max-age=0';
   }
-  window.dispatchEvent(new CustomEvent('imajin:acting-as-changed', { detail: { did } }));
+  globalThis.dispatchEvent(new CustomEvent('imajin:acting-as-changed', { detail: { did } }));
 }
 
 export function getActingAsHeaders(): Record<string, string> {

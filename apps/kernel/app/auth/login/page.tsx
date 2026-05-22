@@ -90,11 +90,11 @@ function LoginForm() {
         .then(session => {
           if (!session) return;
           if (nextUrl) {
-            window.location.href = nextUrl;
+            globalThis.location.href = nextUrl;
           } else if (!session.handle && !session.name) {
-            window.location.href = `/profile/edit?did=${encodeURIComponent(session.did)}`;
+            globalThis.location.href = `/profile/edit?did=${encodeURIComponent(session.did)}`;
           } else {
-            window.location.href = '/';
+            globalThis.location.href = '/';
           }
         })
         .catch(() => {});
@@ -103,7 +103,7 @@ function LoginForm() {
 
   async function handleSuccess(did: string) {
     if (nextUrl) {
-      window.location.href = nextUrl;
+      globalThis.location.href = nextUrl;
       return;
     }
     // No explicit redirect — check if identity has a profile set up
@@ -113,14 +113,14 @@ function LoginForm() {
         const session = await res.json();
         if (session?.did && !session.handle && !session.name) {
           // Bare identity with no profile — send to profile setup
-          window.location.href = `/profile/edit?did=${encodeURIComponent(session.did)}`;
+          globalThis.location.href = `/profile/edit?did=${encodeURIComponent(session.did)}`;
           return;
         }
       }
     } catch {
       // Non-fatal — fall through to homepage
     }
-    window.location.href = '/';
+    globalThis.location.href = '/';
   }
 
   function handleMfaRequired(data: MfaState) {

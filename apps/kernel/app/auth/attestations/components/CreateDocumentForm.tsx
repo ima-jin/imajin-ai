@@ -131,7 +131,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Props) {
       setSigners([]);
       setExpiry('7d');
       onCreated?.();
-      window.location.reload();
+      globalThis.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create failed');
     } finally {

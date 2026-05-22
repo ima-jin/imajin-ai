@@ -84,7 +84,7 @@ export async function GET(
       if (!services[row.service]) {
         services[row.service] = { earned: 0, spent: 0, count: 0 };
       }
-      services[row.service].earned = parseFloat(row.total);
+      services[row.service].earned = Number.parseFloat(row.total);
       services[row.service].count += row.count;
     }
 
@@ -92,7 +92,7 @@ export async function GET(
       if (!services[row.service]) {
         services[row.service] = { earned: 0, spent: 0, count: 0 };
       }
-      services[row.service].spent = parseFloat(row.total);
+      services[row.service].spent = Number.parseFloat(row.total);
       services[row.service].count += row.count;
     }
 

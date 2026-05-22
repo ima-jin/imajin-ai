@@ -18,7 +18,7 @@ export default function PresentPage() {
 
   // Read initial slide index from URL hash
   useEffect(() => {
-    const hash = window.location.hash.replace('#', '');
+    const hash = globalThis.location.hash.replace('#', '');
     if (hash) {
       const index = parseInt(hash, 10);
       if (!isNaN(index) && index >= 0) setInitialIndex(index);

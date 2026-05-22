@@ -300,7 +300,7 @@ function ErrorRateTable({ rows }: { rows: ErrorRateRow[] }) {
         </thead>
         <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
           {rows.map((r, i) => {
-            const rate = parseFloat(r.error_rate);
+            const rate = Number.parseFloat(r.error_rate);
             const rateColor =
               rate >= 10
                 ? 'text-red-600 dark:text-red-400'

@@ -162,7 +162,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
   }
 
   async function handleDecline() {
-    if (!window.confirm('Are you sure you want to decline signing this document?')) return;
+    if (!globalThis.confirm('Are you sure you want to decline signing this document?')) return;
     setLoading(true);
     setError(null);
     try {

@@ -76,8 +76,8 @@ export async function settleListingPurchase(params: SettleListingPurchaseParams)
   const fees = fairManifest?.fees || [];
   const processorFee = fees.find(f => f.role === 'processor');
   const estimatedFeeDollars = processorFee
-    ? parseFloat(((amount * processorFee.rateBps / 10000 + processorFee.fixedCents) / 100).toFixed(2))
-    : parseFloat(((amount * 370 / 10000 + 30) / 100).toFixed(2));  // fallback: 3.7% + 30¢
+    ? Number.parseFloat(((amount * processorFee.rateBps / 10000 + processorFee.fixedCents) / 100).toFixed(2))
+    : Number.parseFloat(((amount * 370 / 10000 + 30) / 100).toFixed(2));  // fallback: 3.7% + 30¢
 
   // Replace placeholder DIDs and deduct processing fee from seller
   const resolvedChain = chain.map((entry) => {
@@ -85,27 +85,27 @@ export async function settleListingPurchase(params: SettleListingPurchaseParams)
     if (did === 'BUYER_PLACEHOLDER') did = buyerDid;
     if (did === 'NODE_PLACEHOLDER') did = NODE_DID || 'did:imajin:node-unresolved';
 
-    let entryAmount = parseFloat((totalDollars * entry.share).toFixed(2));
+    let entryAmount = Number.parseFloat((totalDollars * entry.share).toFixed(2));
 
     // Seller's actual payout = (total × sellerShare) - processingFee
     // Because Stripe deducts applicationFee (which includes processing) from connected account transfer
     if (SELLER_ROLES.has(entry.role)) {
-      entryAmount = parseFloat((entryAmount - estimatedFeeDollars).toFixed(2));
+      entryAmount = Number.parseFloat((entryAmount - estimatedFeeDollars).toFixed(2));
     }
 
     return { did, amount: entryAmount, role: entry.role };
   });
 
   // Chain now sums to totalDollars - estimatedFeeDollars
-  const expectedTotal = parseFloat((totalDollars - estimatedFeeDollars).toFixed(2));
+  const expectedTotal = Number.parseFloat((totalDollars - estimatedFeeDollars).toFixed(2));
 
   // Fix rounding drift: adjust seller so chain sums to expectedTotal exactly
   const chainSum = resolvedChain.reduce((sum, e) => sum + e.amount, 0);
-  const drift = parseFloat((expectedTotal - chainSum).toFixed(2));
+  const drift = Number.parseFloat((expectedTotal - chainSum).toFixed(2));
   if (drift !== 0 && resolvedChain.length > 0) {
     const seller = resolvedChain.find(e => SELLER_ROLES.has(e.role));
     const target = seller || resolvedChain.reduce((max, e) => e.amount > max.amount ? e : max, resolvedChain[0]);
-    target.amount = parseFloat((target.amount + drift).toFixed(2));
+    target.amount = Number.parseFloat((target.amount + drift).toFixed(2));
   }
 
   const body = {
@@ -147,7 +147,7 @@ export async function settleListingPurchase(params: SettleListingPurchaseParams)
         name: fee.name,
         rateBps: fee.rateBps,
         fixedCents: fee.fixedCents,
-        amount: parseFloat(((amount * fee.rateBps / 10000 + fee.fixedCents) / 100).toFixed(2)),
+        amount: Number.parseFloat(((amount * fee.rateBps / 10000 + fee.fixedCents) / 100).toFixed(2)),
         estimated: true,
       }));
 

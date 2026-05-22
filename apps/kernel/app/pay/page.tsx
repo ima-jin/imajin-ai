@@ -38,8 +38,8 @@ export default async function Home() {
   ]);
 
   const balance = balanceRows[0];
-  const cashAmount = balance ? parseFloat(balance.cashAmount) : 0;
-  const creditAmount = balance ? parseFloat(balance.creditAmount) : 0;
+  const cashAmount = balance ? Number.parseFloat(balance.cashAmount) : 0;
+  const creditAmount = balance ? Number.parseFloat(balance.creditAmount) : 0;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -119,7 +119,7 @@ export default async function Home() {
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
             {recentTxs.map((tx) => {
               const isIncoming = tx.toDid === did;
-              const amount = parseFloat(tx.amount);
+              const amount = Number.parseFloat(tx.amount);
               const icon = SERVICE_ICONS[tx.service] || '💳';
               return (
                 <div key={tx.id} className="px-5 py-4 flex items-center gap-4">

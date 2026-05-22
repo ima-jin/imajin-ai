@@ -140,7 +140,7 @@ export default function DashboardPage() {
       const res = await apiFetch(`/api/my/listings?${params.toString()}`, { credentials: 'include' });
 
       if (res.status === 401) {
-        window.location.href = `${authUrl}/login?next=${encodeURIComponent(window.location.href)}`;
+        globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(globalThis.location.href)}`;
         return;
       }
 
