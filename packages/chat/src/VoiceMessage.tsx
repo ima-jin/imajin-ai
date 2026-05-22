@@ -18,7 +18,7 @@ function formatDuration(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn, mediaUrl = '' }: VoiceMessageProps) {
+export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn, mediaUrl = '' }: Readonly<VoiceMessageProps>) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);

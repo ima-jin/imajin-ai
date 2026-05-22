@@ -11,7 +11,7 @@ interface CommunityTabsProps {
   isMember: boolean;
 }
 
-export function CommunityTabs({ tabs, activeTab, onTabChange, isMember }: CommunityTabsProps) {
+export function CommunityTabs({ tabs, activeTab, onTabChange, isMember }: Readonly<CommunityTabsProps>) {
   // Read initial tab from URL hash on mount
   useEffect(() => {
     const hash = globalThis.location.hash.slice(1) as CommunityTab;

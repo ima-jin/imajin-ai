@@ -29,7 +29,7 @@ interface SlideRendererProps {
   onExit: () => void;
 }
 
-export function SlideRenderer({ slides, initialIndex = 0, onExit }: SlideRendererProps) {
+export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<SlideRendererProps>) {
   const [current, setCurrent] = useState(Math.max(0, Math.min(initialIndex, slides.length - 1)));
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);

@@ -20,7 +20,7 @@ interface PageProps {
   params: Promise<{ handle: string }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: Readonly<PageProps>): Promise<Metadata> {
   const { handle } = await params;
   const profile = await getProfile(handle);
 
@@ -66,7 +66,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function ProfilePage({ params }: PageProps) {
+export default async function ProfilePage({ params }: Readonly<PageProps>) {
   const { handle } = await params;
   const profile = await getProfile(handle);
 

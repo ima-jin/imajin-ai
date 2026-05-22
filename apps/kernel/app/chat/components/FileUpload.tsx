@@ -17,7 +17,7 @@ export function FileUpload({
   conversationId,
   onUploadComplete,
   onUploadError,
-}: FileUploadProps) {
+}: Readonly<FileUploadProps>) {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 

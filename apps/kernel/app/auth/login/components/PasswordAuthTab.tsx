@@ -75,7 +75,7 @@ interface StoredKeyData {
   keyDerivation: string;
 }
 
-export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: PasswordAuthTabProps) {
+export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readonly<PasswordAuthTabProps>) {
   const [step, setStep] = useState<'identifier' | 'password'>('identifier');
   const [handle, setHandle] = useState('');
   const [password, setPassword] = useState('');

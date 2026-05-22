@@ -81,7 +81,7 @@ function MiniCard({
 export default function ProfileListingsWidget({
   sellerDid,
   marketServiceUrl,
-}: ProfileListingsWidgetProps) {
+}: Readonly<ProfileListingsWidgetProps>) {
   const [listings, setListings] = useState<ProfileListing[]>([]);
   const [enabled, setEnabled] = useState(false);
   const [loaded, setLoaded] = useState(false);

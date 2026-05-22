@@ -2,7 +2,7 @@ interface BusinessDetailsProps {
   metadata?: Record<string, unknown>;
 }
 
-export function BusinessDetails({ metadata }: BusinessDetailsProps) {
+export function BusinessDetails({ metadata }: Readonly<BusinessDetailsProps>) {
   if (!metadata) return null;
 
   const location = metadata.location as string | undefined;

@@ -26,7 +26,7 @@ interface TipFormProps {
   sellerConnected?: boolean;
 }
 
-export default function TipForm({ page, primaryColor, sellerConnected = true }: TipFormProps) {
+export default function TipForm({ page, primaryColor, sellerConnected = true }: Readonly<TipFormProps>) {
   const { toast } = useToast();
   const [selectedAmount, setSelectedAmount] = useState<number | null>(page.presets?.[1] || 500);
   const [customAmount, setCustomAmount] = useState('');

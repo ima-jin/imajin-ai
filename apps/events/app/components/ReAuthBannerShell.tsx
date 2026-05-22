@@ -6,7 +6,7 @@ interface ReAuthBannerShellProps {
   children: React.ReactNode;
 }
 
-export function ReAuthBannerShell({ children }: ReAuthBannerShellProps) {
+export function ReAuthBannerShell({ children }: Readonly<ReAuthBannerShellProps>) {
   const [dismissed, setDismissed] = useState(false);
 
   if (dismissed) return null;

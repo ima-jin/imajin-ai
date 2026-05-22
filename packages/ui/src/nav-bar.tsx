@@ -170,7 +170,7 @@ export function NavBar({
   unreadMessages = 0,
   serviceUrls,
   children,
-}: NavBarProps) {
+}: Readonly<NavBarProps>) {
   // Embed mode: skip NavBar when ?embed=hub is present
   const [isEmbed, setIsEmbed] = useState(false);
   useEffect(() => {

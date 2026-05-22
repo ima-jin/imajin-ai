@@ -591,7 +591,7 @@ export function FairEditor({
   sections: sectionsProp,
   template,
   resolveProfile,
-}: FairEditorProps) {
+}: Readonly<FairEditorProps>) {
   // Derive active sections: explicit prop > template config > defaults
   const sections: NonNullable<FairEditorProps['sections']> = sectionsProp
     ?? (template

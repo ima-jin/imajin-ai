@@ -5,7 +5,7 @@ export interface MarkdownContentProps {
   content: string;
 }
 
-export function MarkdownContent({ content }: MarkdownContentProps) {
+export function MarkdownContent({ content }: Readonly<MarkdownContentProps>) {
   return (
     <div className="prose dark:prose-invert max-w-none">
       <ReactMarkdown

@@ -8,7 +8,7 @@ interface PageProps {
   params: { handle: string };
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: Readonly<PageProps>): Promise<Metadata> {
   const page = await db.query.coffeePages.findFirst({
     where: (pages, { eq }) => eq(pages.handle, params.handle),
   });
@@ -48,7 +48,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function CoffeePage({ params }: PageProps) {
+export default async function CoffeePage({ params }: Readonly<PageProps>) {
   // Skip static file requests that leak through
   if (params.handle.includes('.') || params.handle === 'favicon') {
     notFound();

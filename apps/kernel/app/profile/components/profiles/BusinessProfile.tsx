@@ -8,7 +8,7 @@ import { StubActions } from '../StubActions';
 import { StubGallery } from '../StubGallery';
 import type { ProfileViewProps } from '../../lib/types';
 
-export async function BusinessProfile({ profile, identity, viewer, counts, links }: ProfileViewProps) {
+export async function BusinessProfile({ profile, identity, viewer, counts, links }: Readonly<ProfileViewProps>) {
   const isUnclaimed = !profile.claimStatus || profile.claimStatus === 'unclaimed';
   const viewerRole = viewer.viewerDid && !viewer.isSelf
     ? await getViewerMembership(profile.did, viewer.viewerDid)

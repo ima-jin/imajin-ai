@@ -37,7 +37,7 @@ function formatEventDate(startDate: string, endDate: string | null): string {
   return `${startStr} – ${end.toLocaleDateString('en-US', opts)}`;
 }
 
-export function UpcomingEvents({ did, eventsBaseUrl, viewerDid }: UpcomingEventsProps) {
+export function UpcomingEvents({ did, eventsBaseUrl, viewerDid }: Readonly<UpcomingEventsProps>) {
   const [events, setEvents] = useState<AttendingEvent[] | null>(null);
 
   const eventsBase = eventsBaseUrl || process.env.NEXT_PUBLIC_EVENTS_URL || '/events';

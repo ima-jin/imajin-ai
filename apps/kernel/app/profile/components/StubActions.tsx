@@ -14,7 +14,7 @@ export function StubActions({
   claimStatus,
   isMaintainer,
   viewerDid,
-}: StubActionsProps) {
+}: Readonly<StubActionsProps>) {
   const isUnclaimed = !claimStatus || claimStatus === 'unclaimed';
 
   if (!isUnclaimed && !isMaintainer) return null;

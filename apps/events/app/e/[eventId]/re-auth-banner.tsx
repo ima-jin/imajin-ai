@@ -5,7 +5,7 @@ interface ReAuthBannerProps {
   eventId: string;
 }
 
-export function ReAuthBanner({ eventId }: ReAuthBannerProps) {
+export function ReAuthBanner({ eventId }: Readonly<ReAuthBannerProps>) {
 
   return (
     <ReAuthBannerShell>

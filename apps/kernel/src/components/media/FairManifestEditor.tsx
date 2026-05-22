@@ -43,7 +43,7 @@ interface SectionProps {
   defaultOpen?: boolean;
 }
 
-function Section({ title, error, children, defaultOpen = false }: SectionProps) {
+function Section({ title, error, children, defaultOpen = false }: Readonly<SectionProps>) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="bg-[#252525] rounded-xl overflow-hidden">
@@ -270,7 +270,7 @@ export function FairManifestEditor({
   currentUserDid,
   connectionsUrl = CONNECTIONS_API_URL,
   resolveProfile: resolveProfileProp = resolveProfile,
-}: FairManifestEditorProps) {
+}: Readonly<FairManifestEditorProps>) {
   const [local, setLocal] = useState<FairManifestV1_1>(manifest);
   const [validation, setValidation] = useState<{ ok: boolean; errors: string[] }>({
     ok: true,

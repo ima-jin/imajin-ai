@@ -23,7 +23,7 @@ export default function LinkButton({
   buttonColor,
   buttonTextColor,
   borderRadius
-}: LinkButtonProps) {
+}: Readonly<LinkButtonProps>) {
 
   const handleClick = async () => {
     // Record click (fire and forget)

@@ -120,7 +120,7 @@ interface KeyAuthTabProps {
   onSuccess: (did: string) => void;
 }
 
-export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: KeyAuthTabProps) {
+export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readonly<KeyAuthTabProps>) {
   const [method, setMethod] = useState<ImportMethod>('file');
   const [privateKeyHex, setPrivateKeyHex] = useState('');
   const [keypairError, setKeypairError] = useState('');

@@ -20,7 +20,7 @@ export function AssetCard({
   thumbPath,
   createdAt,
   onClick,
-}: AssetCardProps) {
+}: Readonly<AssetCardProps>) {
   const sizeLabel = sizeBytes < 1024 * 1024
     ? `${(sizeBytes / 1024).toFixed(1)} KB`
     : `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;

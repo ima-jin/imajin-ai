@@ -22,7 +22,7 @@ export async function MemberList({
   grouped = false,
   showCount = false,
   title = 'Members',
-}: MemberListProps) {
+}: Readonly<MemberListProps>) {
   const allMembers = await getMembersByRole(identityDid);
   const members = roleFilter
     ? allMembers.filter((m) => m.role === roleFilter)

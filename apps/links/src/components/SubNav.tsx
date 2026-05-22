@@ -7,7 +7,7 @@ interface SubNavProps {
   isAuthenticated: boolean;
 }
 
-export function SubNav({ isAuthenticated }: SubNavProps) {
+export function SubNav({ isAuthenticated }: Readonly<SubNavProps>) {
   const pathname = usePathname();
 
   // Don't show on public pages (handle pages)

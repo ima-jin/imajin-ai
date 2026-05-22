@@ -7,7 +7,7 @@ interface ServiceLinksProps {
   viewerDid: string | null;
 }
 
-export function ServiceLinks({ profile, viewerDid }: ServiceLinksProps) {
+export function ServiceLinks({ profile, viewerDid }: Readonly<ServiceLinksProps>) {
   return (
     <div className="flex justify-center gap-3 mb-6 flex-wrap">
       <AskButton

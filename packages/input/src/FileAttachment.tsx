@@ -41,7 +41,7 @@ export function FileAttachment({
   maxSize = DEFAULT_MAX_SIZE,
   disabled = false,
   renderTrigger,
-}: FileAttachmentProps) {
+}: Readonly<FileAttachmentProps>) {
   const [attachment, setAttachment] = useState<FileAttachmentData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);

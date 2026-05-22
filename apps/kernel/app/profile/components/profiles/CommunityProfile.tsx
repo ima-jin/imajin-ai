@@ -18,7 +18,7 @@ import type { CommunityTab } from '../CommunityTabs';
 
 async function resolveCanJoin(
   profileDid: string,
-  viewer: ProfileViewProps['viewer'],
+  viewer: Readonly<ProfileViewProps>['viewer'],
   viewerMemberRole: string | null,
   forestConfig: Awaited<ReturnType<typeof getForestConfig>>
 ): Promise<{ canJoin: boolean; joinVisibility: 'open' | 'network' | 'invite' }> {
@@ -45,7 +45,7 @@ async function resolveCanJoin(
   return { canJoin: true, joinVisibility };
 }
 
-export async function CommunityProfile({ profile, identity, viewer, links }: ProfileViewProps) {
+export async function CommunityProfile({ profile, identity, viewer, links }: Readonly<ProfileViewProps>) {
   const [forestConfig, viewerMemberRole] = await Promise.all([
     getForestConfig(profile.did),
     viewer.viewerDid && !viewer.isSelf

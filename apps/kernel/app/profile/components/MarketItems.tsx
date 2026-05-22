@@ -23,7 +23,7 @@ function formatPrice(amount: number, currency: string) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(value);
 }
 
-export function MarketItems({ did, handle, marketBaseUrl }: MarketItemsProps) {
+export function MarketItems({ did, handle, marketBaseUrl }: Readonly<MarketItemsProps>) {
   const [listings, setListings] = useState<Listing[] | null>(null);
   const [loading, setLoading] = useState(true);
 

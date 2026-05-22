@@ -11,7 +11,7 @@ interface NameDisplaySelectorProps {
   onChange?: (pref: DisplayPref) => void;
 }
 
-export function NameDisplaySelector({ policy, storageKey, onChange }: NameDisplaySelectorProps) {
+export function NameDisplaySelector({ policy, storageKey, onChange }: Readonly<NameDisplaySelectorProps>) {
   const [pref, setPref] = useState<DisplayPref>('handle');
 
   useEffect(() => {

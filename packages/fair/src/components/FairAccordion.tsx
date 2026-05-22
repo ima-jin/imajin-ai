@@ -95,7 +95,7 @@ interface FairAccordionProps {
   viewerHandle?: string;
 }
 
-export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, viewerHandle }: FairAccordionProps) {
+export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, viewerHandle }: Readonly<FairAccordionProps>) {
   const [open, setOpen] = useState(false);
 
   if (!manifest) return null;

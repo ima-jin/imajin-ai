@@ -15,7 +15,7 @@ interface MessageMediaProps {
   };
 }
 
-export function MessageMedia({ mediaType, mediaPath, mediaMeta }: MessageMediaProps) {
+export function MessageMedia({ mediaType, mediaPath, mediaMeta }: Readonly<MessageMediaProps>) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   if (mediaType === 'image') {

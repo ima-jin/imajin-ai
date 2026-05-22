@@ -2,7 +2,7 @@ import React from 'react';
 import { AssetCard, AssetCardProps } from './AssetCard';
 
 export interface MediaBrowserProps {
-  assets: AssetCardProps[];
+  assets: Readonly<AssetCardProps>[];
   onSelect?: (id: string) => void;
   loading?: boolean;
   emptyMessage?: string;
@@ -13,7 +13,7 @@ export function MediaBrowser({
   onSelect,
   loading = false,
   emptyMessage = 'No media yet.',
-}: MediaBrowserProps) {
+}: Readonly<MediaBrowserProps>) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-gray-500">

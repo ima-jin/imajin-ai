@@ -36,7 +36,7 @@ interface FileEditorProps {
   isOwner: boolean;
 }
 
-export function FileEditor({ asset, isOwner }: FileEditorProps) {
+export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

@@ -59,7 +59,7 @@ function scopeIcon(scope: string): string {
   return '👤';
 }
 
-export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', inline = false, variant = 'list', authUrl, enabledServices }: AppLauncherProps) {
+export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', inline = false, variant = 'list', authUrl, enabledServices }: Readonly<AppLauncherProps>) {
   const [services, setServices] = useState<LauncherService[]>([]);
   const [showPanel, setShowPanel] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);

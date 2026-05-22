@@ -31,7 +31,7 @@ function clientSort(assets: Asset[], sort: SortKey, order: "asc" | "desc"): Asse
   return order === "desc" ? sorted.reverse() : sorted;
 }
 
-export function MediaManager({ session, search = '' }: MediaManagerProps) {
+export function MediaManager({ session, search = '' }: Readonly<MediaManagerProps>) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [allAssets, setAllAssets] = useState<Asset[]>([]);

@@ -13,7 +13,7 @@ interface VoiceRecorderProps {
 
 const WAVEFORM_BARS = 20;
 
-export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart, disabled }: VoiceRecorderProps) {
+export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart, disabled }: Readonly<VoiceRecorderProps>) {
   const [state, setState] = useState<RecordingState>('idle');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [waveform, setWaveform] = useState<number[]>(Array(WAVEFORM_BARS).fill(0));

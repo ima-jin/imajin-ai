@@ -528,7 +528,7 @@ function ListingThumbnail({ images }: { images: string[] | null }) {
   );
 }
 
-function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMarkUnavailable, onRemove }: ListingActionProps) {
+function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMarkUnavailable, onRemove }: Readonly<ListingActionProps>) {
   const isActive = listing.status === 'active';
   const isPaused = listing.status === 'paused';
   const canToggle = isActive || isPaused;
@@ -595,7 +595,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
   );
 }
 
-function ListingRow(props: ListingActionProps) {
+function ListingRow(props: Readonly<ListingActionProps>) {
   const { listing } = props;
   return (
     <tr className="hover:bg-gray-800/30 transition-colors">
@@ -639,7 +639,7 @@ function ListingRow(props: ListingActionProps) {
   );
 }
 
-function MobileListingCard(props: ListingActionProps) {
+function MobileListingCard(props: Readonly<ListingActionProps>) {
   const { listing } = props;
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">

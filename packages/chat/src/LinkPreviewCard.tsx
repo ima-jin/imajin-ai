@@ -16,7 +16,7 @@ export function LinkPreviewCard({
   image,
   favicon,
   siteName,
-}: LinkPreviewCardProps) {
+}: Readonly<LinkPreviewCardProps>) {
   return (
     <a
       href={url}

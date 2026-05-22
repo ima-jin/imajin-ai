@@ -8,7 +8,7 @@ interface EventChatButtonProps {
   chatUrl?: string;
 }
 
-export function EventChatButton({ eventId, chatUrl }: EventChatButtonProps) {
+export function EventChatButton({ eventId, chatUrl }: Readonly<EventChatButtonProps>) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 

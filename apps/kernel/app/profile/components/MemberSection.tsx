@@ -11,7 +11,7 @@ interface MemberSectionProps {
   children: React.ReactNode;
 }
 
-export function MemberSection({ memberCount, topMembers, children }: MemberSectionProps) {
+export function MemberSection({ memberCount, topMembers, children }: Readonly<MemberSectionProps>) {
   const [expanded, setExpanded] = useState(false);
 
   return (

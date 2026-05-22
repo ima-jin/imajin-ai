@@ -272,7 +272,7 @@ export function DidShareListEditor({
   showFixed = false,
   connectionsUrl,
   resolveProfile,
-}: DidShareListEditorProps) {
+}: Readonly<DidShareListEditorProps>) {
   const [resolvedCache, setResolvedCache] = useState<Record<string, ResolvedProfile | null>>({});
 
   const totalShare = useMemo(

@@ -220,7 +220,7 @@ function ProfileCell({ buyerDid, buyerName, buyerHandle, buyerAvatar, buyerEmail
   );
 }
 
-export function SalesTab({ eventId }: SalesTabProps) {
+export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
   const { toast } = useToast();
   const [data, setData] = useState<SalesData | null>(null);
   const [loading, setLoading] = useState(true);

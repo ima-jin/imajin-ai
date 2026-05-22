@@ -151,7 +151,7 @@ function ProfileCell({ ownerDid, profile, paymentMethod, paymentId }: {
 
 type FilterKey = 'type' | 'status' | null;
 
-export function GuestList({ eventId, isOwner, summary, autoExpand }: GuestListProps) {
+export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<GuestListProps>) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(autoExpand ?? false);
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -972,7 +972,7 @@ function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmai
   );
 }
 
-function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCancelRequest, onMarkSent, markSentLoading }: ActionsCellProps) {
+function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCancelRequest, onMarkSent, markSentLoading }: Readonly<ActionsCellProps>) {
   const isValid = guest.status === 'valid';
   const isHeld = guest.status === 'held';
   const isAvailable = guest.status === 'available';

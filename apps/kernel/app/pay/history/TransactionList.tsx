@@ -303,7 +303,7 @@ function BatchGroupRow({
   );
 }
 
-export default function TransactionList({ displayEntries, sessionId }: TransactionListProps) {
+export default function TransactionList({ displayEntries, sessionId }: Readonly<TransactionListProps>) {
   const [showGross, setShowGross] = useState(false);
 
   const hasBatched = displayEntries.some((e) => e.kind === 'batch');

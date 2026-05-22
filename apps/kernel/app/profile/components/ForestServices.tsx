@@ -6,7 +6,7 @@ interface ForestServicesProps {
   handle?: string;
 }
 
-export function ForestServices({ enabledServices, handle }: ForestServicesProps) {
+export function ForestServices({ enabledServices, handle }: Readonly<ForestServicesProps>) {
   if (!enabledServices || enabledServices.length === 0) return null;
 
   const services = enabledServices

@@ -22,7 +22,7 @@ interface PresenceChatProps {
   onClose: () => void;
 }
 
-export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: PresenceChatProps) {
+export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: Readonly<PresenceChatProps>) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);

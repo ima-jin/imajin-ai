@@ -37,7 +37,7 @@ export interface ChatMarkdownProps {
   isOwn: boolean;
 }
 
-export function ChatMarkdown({ content, isOwn }: ChatMarkdownProps) {
+export function ChatMarkdown({ content, isOwn }: Readonly<ChatMarkdownProps>) {
   // Color scheme: own bubbles have white text, received have default dark/light text
   const textColor = isOwn ? 'text-white' : 'text-gray-900 dark:text-gray-100';
   const mutedColor = isOwn ? 'text-white/70' : 'text-gray-500 dark:text-gray-400';

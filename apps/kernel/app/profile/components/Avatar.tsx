@@ -22,7 +22,7 @@ const sizeMap: Record<AvatarSize, string> = {
  * Circular with amber border for images
  * Gradient background for emoji/placeholder
  */
-export function Avatar({ avatar, displayName, size = 'md', className = '' }: AvatarProps) {
+export function Avatar({ avatar, displayName, size = 'md', className = '' }: Readonly<AvatarProps>) {
   const sizeClasses = sizeMap[size];
 
   // Check if avatar is an image URL (including blob: for previews)

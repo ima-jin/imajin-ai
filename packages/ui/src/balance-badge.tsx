@@ -28,7 +28,7 @@ interface BalanceData {
  * - Only shows if balance > 0
  * - Fetches balance from pay service
  */
-export function BalanceBadge({ did, payUrl, authToken, className = '' }: BalanceBadgeProps) {
+export function BalanceBadge({ did, payUrl, authToken, className = '' }: Readonly<BalanceBadgeProps>) {
   const [balance, setBalance] = useState<BalanceData | null>(null);
   const [loading, setLoading] = useState(false);
 

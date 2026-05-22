@@ -8,7 +8,7 @@ interface SuccessPageProps {
   searchParams: { session_id?: string };
 }
 
-export default async function TopupSuccessPage({ searchParams }: SuccessPageProps) {
+export default async function TopupSuccessPage({ searchParams }: Readonly<SuccessPageProps>) {
   const session = await getSession();
 
   if (!session) {

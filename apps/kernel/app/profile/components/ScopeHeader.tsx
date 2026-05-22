@@ -8,7 +8,7 @@ interface ScopeHeaderProps {
   identity: IdentityInfo;
 }
 
-export function ScopeHeader({ profile, identity }: ScopeHeaderProps) {
+export function ScopeHeader({ profile, identity }: Readonly<ScopeHeaderProps>) {
   const typeLabel = getScopeLabel(identity.scope, identity.subtype);
   const isSoftDID = !isVerifiedTier(identity.tier);
 

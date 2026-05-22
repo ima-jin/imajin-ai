@@ -21,7 +21,7 @@ interface PayoutSetupBannerProps {
 export function PayoutSetupBanner({
   message = "Set up payouts to receive funds",
   did
-}: PayoutSetupBannerProps) {
+}: Readonly<PayoutSetupBannerProps>) {
   const [shouldShow, setShouldShow] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [loading, setLoading] = useState(true);

@@ -8,7 +8,7 @@ interface LocationMessageProps {
   isOwn: boolean;
 }
 
-export function LocationMessage({ lat, lng, label, isOwn }: LocationMessageProps) {
+export function LocationMessage({ lat, lng, label, isOwn }: Readonly<LocationMessageProps>) {
   const mapsUrl = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}&zoom=15`;
   const displayLabel = label || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 

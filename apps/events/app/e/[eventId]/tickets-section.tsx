@@ -779,7 +779,7 @@ interface UnifiedBarProps {
   buyerBalance?: number | null;
 }
 
-function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [], onJumpToMyTickets, clearCart, buyerBalance = null }: UnifiedBarProps & { userOrders?: UserOrder[]; clearCart?: () => void }) {
+function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formattedTotal, etransferEnabled, sessionEmail, sessionContactEmail, onError, mixedCurrency = false, cartCurrencies = [], userOrders = [], onJumpToMyTickets, clearCart, buyerBalance = null }: Readonly<UnifiedBarProps> & { userOrders?: UserOrder[]; clearCart?: () => void }) {
   // Issue #11: count tickets needing registration across all user orders
   const pendingRegistrations = userOrders.flatMap(o =>
     o.tickets.filter(t => t.registrationStatus === 'pending' && t.ticketType?.registrationFormId)

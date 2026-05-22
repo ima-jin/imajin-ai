@@ -39,7 +39,7 @@ export function PayoutSetupBanner({
   ownerHandle,
   ownerName,
   ownerRole = 'Event creator',
-}: PayoutSetupBannerProps) {
+}: Readonly<PayoutSetupBannerProps>) {
   const [shouldShow, setShouldShow] = useState(false);
   const [loading, setLoading] = useState(true);
 

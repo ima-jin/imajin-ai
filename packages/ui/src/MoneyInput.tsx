@@ -38,7 +38,7 @@ export function MoneyInput({
   readOnly = false,
   className = '',
   currencies = DEFAULT_CURRENCIES,
-}: MoneyInputProps) {
+}: Readonly<MoneyInputProps>) {
   const symbol = value ? (CURRENCY_SYMBOLS[value.currency] ?? value.currency) : '$';
 
   const formattedPreview = useMemo(() => {

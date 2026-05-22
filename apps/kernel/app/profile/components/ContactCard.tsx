@@ -3,7 +3,7 @@ interface ContactCardProps {
   phone?: string;
 }
 
-export function ContactCard({ contactEmail, phone }: ContactCardProps) {
+export function ContactCard({ contactEmail, phone }: Readonly<ContactCardProps>) {
   if (!contactEmail && !phone) return null;
 
   return (

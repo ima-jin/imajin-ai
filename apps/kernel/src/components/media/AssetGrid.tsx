@@ -50,7 +50,7 @@ export function AssetGrid({
   onUploaded,
   onSelectedAssetIdsChange,
   onMoveFolderIdChange,
-}: AssetGridProps) {
+}: Readonly<AssetGridProps>) {
   const [dragging, setDragging] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("large-grid");
   const [internalSelectedAssetIds, setInternalSelectedAssetIds] = useState<Set<string>>(new Set());

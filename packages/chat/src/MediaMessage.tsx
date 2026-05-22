@@ -31,7 +31,7 @@ function getFileIcon(mimeType: string): string {
   return '📎';
 }
 
-export function MediaMessage({ assetId, filename, mimeType, size, width, height, caption, isOwn, mediaUrl = '' }: MediaMessageProps) {
+export function MediaMessage({ assetId, filename, mimeType, size, width, height, caption, isOwn, mediaUrl = '' }: Readonly<MediaMessageProps>) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const thumbUrl = `${mediaUrl}/api/assets/${assetId}?w=400`;

@@ -128,7 +128,7 @@ function formatDate(d: Date | string | null): string {
   });
 }
 
-export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, onMoved }: AssetDetailProps) {
+export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, onMoved }: Readonly<AssetDetailProps>) {
   const isOwner = !!currentDid && currentDid === asset.ownerDid;
   const showFileEditor = isTextAsset(asset);
   const [editingFair, setEditingFair] = useState(false);

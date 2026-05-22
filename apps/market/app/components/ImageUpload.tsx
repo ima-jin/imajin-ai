@@ -18,7 +18,7 @@ interface PendingUpload {
   previewUrl: string;
 }
 
-export function ImageUpload({ images, onChange }: ImageUploadProps) {
+export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState('');
   const [pending, setPending] = useState<PendingUpload[]>([]);

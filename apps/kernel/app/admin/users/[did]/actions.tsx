@@ -9,7 +9,7 @@ interface UserActionsProps {
   isSuspended: boolean;
 }
 
-export default function UserActions({ did, currentTier, isSuspended }: UserActionsProps) {
+export default function UserActions({ did, currentTier, isSuspended }: Readonly<UserActionsProps>) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

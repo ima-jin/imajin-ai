@@ -85,7 +85,7 @@ export function Chat({
   displayPrefStorageKey,
   onDisplayPrefChange,
   resolveDisplayName,
-}: ChatProps) {
+}: Readonly<ChatProps>) {
   const access = useChatAccess(did);
   const { messages, hasMore, loadMore, isLoading, pushMessage, updateMessage, removeMessage, addReactionToMessage, removeReactionFromMessage } = useChatMessages(did);
   const { sendMessage, addReaction, removeReaction, editMessage, deleteMessage, markRead, isSending } =

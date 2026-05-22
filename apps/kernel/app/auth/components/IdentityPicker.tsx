@@ -24,7 +24,7 @@ export default function IdentityPicker({
   placeholder = 'Search by handle or name…',
   excludeDids = [],
   className = '',
-}: IdentityPickerProps) {
+}: Readonly<IdentityPickerProps>) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<IdentityResult[]>([]);
   const [loading, setLoading] = useState(false);

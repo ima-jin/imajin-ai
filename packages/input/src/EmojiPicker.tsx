@@ -9,7 +9,7 @@ interface EmojiPickerProps {
   theme?: 'light' | 'dark' | 'auto';
 }
 
-export function EmojiPicker({ onSelect, onClose, theme = 'dark' }: EmojiPickerProps) {
+export function EmojiPicker({ onSelect, onClose, theme = 'dark' }: Readonly<EmojiPickerProps>) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Close on click outside

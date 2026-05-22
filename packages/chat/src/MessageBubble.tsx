@@ -267,7 +267,7 @@ export function MessageBubble({
   replyToSenderName,
   onScrollToMessage,
   mediaUrl = '',
-}: MessageBubbleProps) {
+}: Readonly<MessageBubbleProps>) {
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

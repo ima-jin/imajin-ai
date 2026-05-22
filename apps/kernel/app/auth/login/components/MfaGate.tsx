@@ -11,7 +11,7 @@ interface MfaGateProps {
   onCancel: () => void;
 }
 
-export default function MfaGate({ methods, challengeToken, did, nextUrl, onSuccess, onCancel }: MfaGateProps) {
+export default function MfaGate({ methods, challengeToken, did, nextUrl, onSuccess, onCancel }: Readonly<MfaGateProps>) {
   const [selectedMethod, setSelectedMethod] = useState<string>(methods[0] || 'totp');
   const [code, setCode] = useState('');
   const [trustDevice, setTrustDevice] = useState(false);

@@ -25,7 +25,7 @@ export interface MarkdownEditorProps {
   maxLength?: number;
 }
 
-export function MarkdownEditor({ value, onChange, placeholder, maxLength }: MarkdownEditorProps) {
+export function MarkdownEditor({ value, onChange, placeholder, maxLength }: Readonly<MarkdownEditorProps>) {
   const handleChange = (md: string) => {
     if (maxLength !== undefined && md.length > maxLength) return;
     onChange(md);

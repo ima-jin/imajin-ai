@@ -18,7 +18,7 @@ interface MessageComposerProps {
   tiers: TicketType[];
 }
 
-export function MessageComposer({ eventId, recipientCount: initialCount, tiers }: MessageComposerProps) {
+export function MessageComposer({ eventId, recipientCount: initialCount, tiers }: Readonly<MessageComposerProps>) {
   const [subject, setSubject] = useState('');
   const [markdown, setMarkdown] = useState('');
   const [preview, setPreview] = useState(false);

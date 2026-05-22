@@ -66,7 +66,7 @@ export function FairBadge({ access }: { access: string }) {
   );
 }
 
-function AssetCard({ asset, selected, checked, compact, selectionActive, onSelect, onCheck, onLongPress }: AssetCardProps) {
+function AssetCard({ asset, selected, checked, compact, selectionActive, onSelect, onCheck, onLongPress }: Readonly<AssetCardProps>) {
   const isImage = asset.mimeType.startsWith("image/");
   const fairAccess = getFairAccess(asset.fairManifest);
   const longPress = useLongPress(() => {

@@ -8,7 +8,7 @@ interface PayoutActionsProps {
   did: string;
 }
 
-export function PayoutActions({ status, did }: PayoutActionsProps) {
+export function PayoutActions({ status, did }: Readonly<PayoutActionsProps>) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 

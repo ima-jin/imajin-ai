@@ -7,7 +7,7 @@ interface FollowButtonProps {
   initialFollowing: boolean;
 }
 
-export function FollowButton({ targetDid, initialFollowing }: FollowButtonProps) {
+export function FollowButton({ targetDid, initialFollowing }: Readonly<FollowButtonProps>) {
   const [following, setFollowing] = useState(initialFollowing);
   const [loading, setLoading] = useState(false);
 

@@ -19,7 +19,7 @@ interface CohostManagerProps {
   ownerDid?: string;
 }
 
-export function CohostManager({ eventId, isOwner, ownerDid }: CohostManagerProps) {
+export function CohostManager({ eventId, isOwner, ownerDid }: Readonly<CohostManagerProps>) {
   const [cohosts, setCohosts] = useState<Cohost[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);

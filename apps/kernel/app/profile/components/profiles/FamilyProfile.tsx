@@ -4,7 +4,7 @@ import { ScopeHeader } from '../ScopeHeader';
 import { MemberList } from '../MemberList';
 import type { ProfileViewProps } from '../../lib/types';
 
-export async function FamilyProfile({ profile, identity, viewer }: ProfileViewProps) {
+export async function FamilyProfile({ profile, identity, viewer }: Readonly<ProfileViewProps>) {
   const members = await getMembersByRole(profile.did);
   const isMember = viewer.viewerDid
     ? members.some((m) => m.did === viewer.viewerDid)
