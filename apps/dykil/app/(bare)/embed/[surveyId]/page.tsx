@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { apiFetch, apiUrl } from '@imajin/config';
 import { Model } from 'survey-core';
@@ -109,16 +109,33 @@ export default function SurveyEmbedPage() {
   const [savedAnswers, setSavedAnswers] = useState<Record<string, any> | null>(null);
   const surveyModelRef = useRef<Model | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const getParentOrigin = useCallback(() => {
+    const explicitOrigin = searchParams.get('parentOrigin');
+    if (explicitOrigin) return explicitOrigin;
+
+    if (typeof document !== 'undefined' && document.referrer) {
+      try {
+        return new URL(document.referrer).origin;
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
+  }, [searchParams]);
 
   // Send height updates to parent iframe
   useEffect(() => {
     const sendHeight = () => {
       if (containerRef.current && window.parent) {
         const height = containerRef.current.scrollHeight;
-        window.parent.postMessage(
-          { type: 'survey-height', height },
-          '*'
-        );
+        const targetOrigin = getParentOrigin();
+        if (targetOrigin) {
+          window.parent.postMessage(
+            { type: 'survey-height', height },
+            targetOrigin
+          );
+        }
       }
     };
 
@@ -132,7 +149,7 @@ export default function SurveyEmbedPage() {
     }
 
     return () => resizeObserver.disconnect();
-  }, [loading, submitted, surveyData]);
+  }, [loading, submitted, surveyData, getParentOrigin]);
 
   useEffect(() => {
     fetchSurvey();
@@ -216,7 +233,10 @@ export default function SurveyEmbedPage() {
               surveyModelRef.current = model;
               setSurveyModel(model);
               // Notify parent that survey is already done
-              window.parent.postMessage({ type: 'survey-completed', surveyId }, '*');
+              const targetOrigin = getParentOrigin();
+              if (targetOrigin) {
+                window.parent.postMessage({ type: 'survey-completed', surveyId }, targetOrigin);
+              }
               return;
             }
           }
@@ -287,10 +307,13 @@ export default function SurveyEmbedPage() {
     // Now that the response is durable in dykil.survey_responses, tell the
     // parent. The parent's onComplete → POST /api/register/[ticketId] will
     // find the row and flip the ticket to 'complete' without racing.
-    window.parent.postMessage(
-      { type: 'survey-completed', surveyId, answers: data },
-      '*'
-    );
+    const targetOrigin = getParentOrigin();
+    if (targetOrigin) {
+      window.parent.postMessage(
+        { type: 'survey-completed', surveyId, answers: data },
+        targetOrigin
+      );
+    }
   };
 
   if (loading) {

@@ -14,13 +14,13 @@ async function sha256hex(input: string): Promise<string> {
 }
 
 async function dmDid(did1: string, did2: string): Promise<string> {
-  const sorted = [did1, did2].sort();
+  const sorted = [did1, did2].sort((a, b) => a.localeCompare(b));
   const hash = (await sha256hex(sorted.join(':'))).slice(0, 16);
   return `did:imajin:dm:${hash}`;
 }
 
 async function groupDid(members: string[]): Promise<string> {
-  const sorted = [...members].sort();
+  const sorted = [...members].sort((a, b) => a.localeCompare(b));
   const hash = (await sha256hex(sorted.join(':'))).slice(0, 16);
   return `did:imajin:group:${hash}`;
 }

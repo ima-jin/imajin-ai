@@ -13,7 +13,7 @@ export function useDidNames(dids: string[]): Record<string, string> {
   const { chatUrl, connectionsUrl } = useChatConfig();
 
   const didsKey = useMemo(() => {
-    const sorted = Array.from(new Set(dids)).sort();
+    const sorted = Array.from(new Set(dids)).sort((a, b) => a.localeCompare(b));
     return sorted.join(',');
   }, [dids]);
 

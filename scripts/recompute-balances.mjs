@@ -167,7 +167,7 @@ try {
   console.log('DID                                                              | Current Cash | Computed Cash | Current MJN | Computed MJN | Diff?');
   console.log('-'.repeat(130));
 
-  for (const did of [...allDids].sort()) {
+  for (const did of [...allDids].sort((a, b) => a.localeCompare(b))) {
     const computed = balances[did] || { cash: 0, credit: 0 };
     const current = currentMap[did] || { cash: 0, credit: 0 };
 
