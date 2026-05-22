@@ -3,7 +3,7 @@ import { corsHeaders, corsOptions } from '@imajin/config';
 import { nanoid } from 'nanoid';
 import { withLogger } from '@imajin/logger';
 import { db } from '@/src/db';
-import { notifications, preferences } from '@/src/db';
+import { notifications, preferences, identities, profiles } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { getTemplate } from '@/src/lib/notify/templates';
 import { sendEmail } from '@imajin/email';
@@ -78,9 +78,26 @@ export const POST = withLogger('kernel', async (request, { log }) => {
 
   // Send email if enabled and template has email config
   if (emailEnabled && template?.email) {
-    // We need the recipient's email — for now, use `to` if it looks like an email,
-    // otherwise skip (the profile service would need to resolve this)
-    const recipientEmail = (data as any).email as string | undefined;
+    // Resolve recipient email: payload > identity contact_email
+    let recipientEmail = (data as any).email as string | undefined;
+    if (!recipientEmail && to.startsWith('did:')) {
+      // Check profile first (set from connection invite / register — primary identity)
+      const [profile] = await db
+        .select({ contactEmail: profiles.contactEmail })
+        .from(profiles)
+        .where(eq(profiles.did, to))
+        .limit(1);
+      recipientEmail = profile?.contactEmail || undefined;
+      // Fall back to auth.identities (set from Stripe/ticket purchases)
+      if (!recipientEmail) {
+        const [identity] = await db
+          .select({ contactEmail: identities.contactEmail })
+          .from(identities)
+          .where(eq(identities.id, to))
+          .limit(1);
+        recipientEmail = identity?.contactEmail || undefined;
+      }
+    }
     if (recipientEmail) {
       try {
         await sendEmail({
