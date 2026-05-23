@@ -100,7 +100,7 @@ function MarketPageContent() {
           <div>
             <h1 className="text-3xl font-bold mb-2">Browse Listings</h1>
             <p className="text-gray-500 dark:text-gray-400">
-              Local commerce with trust.{total > 0 && ` ${total} listing${total !== 1 ? 's' : ''} available.`}
+              Local commerce with trust.{total > 0 && ` ${total} listing${total === 1 ? '' : 's'} available.`}
             </p>
           </div>
           <Link
@@ -168,7 +168,7 @@ function MarketPageContent() {
           if (loading) return (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden animate-pulse">
+              <div key={`skeleton-${i}`} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden animate-pulse">
                 <div className="aspect-video bg-gray-200 dark:bg-gray-800" />
                 <div className="p-4 space-y-2">
                   <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-3/4" />

@@ -101,10 +101,10 @@ let verifyKeyPromise: Promise<import('jose').KeyLike> | null = null;
 function getVerifyKey(): Promise<import('jose').KeyLike> {
   if (!verifyKeyPromise) {
     const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
-    if (!privateKeyHex) {
-      verifyKeyPromise = Promise.reject(new Error('AUTH_PRIVATE_KEY not configured'));
-    } else {
+    if (privateKeyHex) {
       verifyKeyPromise = loadVerifyKey(privateKeyHex);
+    } else {
+      verifyKeyPromise = Promise.reject(new Error('AUTH_PRIVATE_KEY not configured'));
     }
   }
   return verifyKeyPromise;

@@ -80,11 +80,11 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
           endsAt: endDateTime ? new Date(endDateTime).toISOString() : null,
           locationType,
           isVirtual: locationType !== 'physical',
-          virtualUrl: locationType !== 'physical' ? virtualUrl : null,
-          venue: locationType !== 'virtual' ? venue : null,
-          address: locationType !== 'virtual' ? address : null,
-          city: locationType !== 'virtual' ? city : null,
-          country: locationType !== 'virtual' ? country : null,
+          virtualUrl: locationType === 'physical'  ? null : virtualUrl,
+          venue: locationType === 'virtual'  ? null : venue,
+          address: locationType === 'virtual'  ? null : address,
+          city: locationType === 'virtual'  ? null : city,
+          country: locationType === 'virtual'  ? null : country,
           imageUrl: coverImageUrl || null,
           courseSlug: courseSlug || null,
           eventType,
@@ -357,7 +357,7 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
           </div>
 
           {tiers.map((tier, index) => (
-            <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
+            <div key={tier.name || `tier-${index}`} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
               <div className="flex justify-between items-start">
                 <div className="flex-1 grid grid-cols-2 gap-3">
                   <div>

@@ -183,7 +183,7 @@ export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
               mode === "edit"
                 ? "bg-orange-500 text-white"
                 : "bg-zinc-800 text-gray-400 hover:text-gray-200"
-            } ${!isOwner ? "hidden" : ""}`}
+            } ${isOwner  ? "" : "hidden"}`}
           >
             Edit
           </button>

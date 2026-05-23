@@ -148,8 +148,8 @@ export function buildPublicUrl(
     if (explicit) return explicit;
   }
 
-  const p = servicePrefix ?? (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_SERVICE_PREFIX : undefined) ?? "https://";
-  const d = domain ?? (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_DOMAIN : undefined) ?? "imajin.ai";
+  const p = servicePrefix ?? (typeof process === "undefined"  ? undefined : process.env.NEXT_PUBLIC_SERVICE_PREFIX) ?? "https://";
+  const d = domain ?? (typeof process === "undefined"  ? undefined : process.env.NEXT_PUBLIC_DOMAIN) ?? "imajin.ai";
 
   // Localhost detection
   if (p.includes("localhost") || d.includes("localhost")) {

@@ -334,7 +334,7 @@ export function DidShareListEditor({
   return (
     <div className={`space-y-3 ${className}`}>
       {value.map((entry, i) => (
-        <div key={i} className="bg-[#252525] rounded-lg p-3 space-y-2">
+        <div key={`${entry.role}-${entry.did || 'pending'}-${entry.share}`} className="bg-[#252525] rounded-lg p-3 space-y-2">
           <div className="flex items-center gap-2">
             {entry.did ? (
               <ResolvedDidChip

@@ -81,8 +81,8 @@ export default function StudentsPage() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Enrolled Students</h1>
           <div className="flex gap-4 text-sm text-gray-500">
-            <span>{data.totalStudents} student{data.totalStudents !== 1 ? 's' : ''}</span>
-            <span>{data.totalLessons} lesson{data.totalLessons !== 1 ? 's' : ''}</span>
+            <span>{data.totalStudents} student{data.totalStudents === 1  ? '' : 's'}</span>
+            <span>{data.totalLessons} lesson{data.totalLessons === 1  ? '' : 's'}</span>
           </div>
         </div>
 
@@ -104,7 +104,7 @@ export default function StudentsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
                 {data.students.map((student, i) => (
-                  <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <tr key={student.studentDid} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className="px-5 py-3">
                       <div>
                         {student.displayName && (

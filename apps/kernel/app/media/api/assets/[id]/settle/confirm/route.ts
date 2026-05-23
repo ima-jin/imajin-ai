@@ -27,10 +27,10 @@ let signKeyPromise: Promise<import("jose").KeyLike> | null = null;
 function getSignKey(): Promise<import("jose").KeyLike> {
   if (!signKeyPromise) {
     const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
-    if (!privateKeyHex) {
-      signKeyPromise = Promise.reject(new Error("AUTH_PRIVATE_KEY not configured"));
-    } else {
+    if (privateKeyHex) {
       signKeyPromise = loadSigningKey(privateKeyHex);
+    } else {
+      signKeyPromise = Promise.reject(new Error("AUTH_PRIVATE_KEY not configured"));
     }
   }
   return signKeyPromise;

@@ -133,6 +133,8 @@ export default async function AdminSubscribersPage({
     return `/admin/subscribers?${new URLSearchParams(p).toString()}`;
   }
 
+  const exportQuery = listSlug ? `?list=${listSlug}` : '';
+
   return (
     <div className="p-6 lg:p-8 max-w-6xl">
       <div className="mb-6 flex items-start justify-between">
@@ -143,7 +145,7 @@ export default async function AdminSubscribersPage({
           </p>
         </div>
         <a
-          href={`/api/admin/subscribers/export${listSlug ? `?list=${listSlug}` : ''}`}
+          href={`/api/admin/subscribers/export${exportQuery}`}
           className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
         >
           Export CSV
@@ -250,7 +252,7 @@ export default async function AdminSubscribersPage({
           </Link>
         )}
         <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
-          {total.toLocaleString()} subscriber{total !== 1 ? 's' : ''}
+          {total.toLocaleString()} subscriber{total === 1  ? '' : 's'}
         </span>
       </form>
 

@@ -54,7 +54,8 @@ export default function TopupPage() {
         if (!res.ok) {
           const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
           const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
-          globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(`${payUrl}/topup`)}`;
+          const topupUrl = `${payUrl}/topup`;
+          globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(topupUrl)}`;
           return;
         }
         setSessionChecked(true);
@@ -254,9 +255,9 @@ export default function TopupPage() {
               <button
                 onClick={() => setAbsorbFees(false)}
                 className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
-                  !absorbFees
-                    ? 'bg-zinc-700 text-white'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                  absorbFees
+                    ? 'text-zinc-500 hover:text-zinc-300'
+                    : 'bg-zinc-700 text-white'
                 }`}
               >
                 Me

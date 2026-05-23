@@ -112,7 +112,7 @@ export default function SettingsPage() {
   if (!authed || loading) {
     return (
       <div className="max-w-2xl mx-auto py-8">
-        <p className="text-zinc-400">{!authed ? 'Checking session...' : 'Loading preferences...'}</p>
+        <p className="text-zinc-400">{authed  ? 'Loading preferences...' : 'Checking session...'}</p>
       </div>
     );
   }

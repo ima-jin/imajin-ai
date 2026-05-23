@@ -88,7 +88,7 @@ export function LandingGrid() {
   useEffect(() => {
     const registryUrl = buildPublicUrl('registry');
     const authUrl = buildPublicUrl('auth');
-    const actingAs = typeof localStorage !== 'undefined' ? localStorage.getItem('imajin:acting-as') : null;
+    const actingAs = typeof localStorage === 'undefined'  ? null : localStorage.getItem('imajin:acting-as');
 
     const requests: Promise<unknown>[] = [
       fetch(`${registryUrl}/api/specs`).then((r) => r.ok ? r.json() : null),

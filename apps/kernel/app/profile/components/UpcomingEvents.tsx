@@ -46,7 +46,7 @@ export function UpcomingEvents({ did, eventsBaseUrl, viewerDid }: Readonly<Upcom
     const url = new URL(`${eventsBase}/api/attending/${encodeURIComponent(did)}`);
     if (viewerDid) url.searchParams.set('viewer_did', viewerDid);
 
-    fetch(url.toString())
+    void fetch(url.toString())
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => setEvents(Array.isArray(data) ? data : []))
       .catch(() => setEvents([]));

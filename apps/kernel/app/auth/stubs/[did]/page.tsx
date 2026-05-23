@@ -591,7 +591,7 @@ export default function EditStubPage() {
                   <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-zinc-900 border border-gray-700 rounded-lg overflow-hidden shadow-xl max-h-48 overflow-y-auto">
                     {suggestions.map((s, i) => (
                       <button
-                        key={i}
+                        key={`${s.lat}-${s.lon}`}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => selectSuggestion(s)}

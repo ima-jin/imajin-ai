@@ -39,7 +39,6 @@ interface Course {
 
 export default function CourseEditorPage() {
   const params = useParams();
-  const router = useRouter();
   const { toast } = useToast();
   const slug = params.slug as string;
 

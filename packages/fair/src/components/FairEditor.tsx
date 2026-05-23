@@ -440,7 +440,7 @@ function AccessSection({
         <div className="space-y-2">
           <p className="text-xs text-gray-500">Allowed DIDs</p>
           {(access.allowedDids ?? []).map((did, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={did} className="flex items-center gap-2">
               <span className="flex-1 text-xs text-gray-400 truncate">{did}</span>
               {!readOnly && (
                 <button

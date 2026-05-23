@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     // Verify signature
     // The signature should be over the challenge string directly
-    const { verify } = await import('@imajin/auth');
+    await import('@imajin/auth');
     
     // For challenge-response, we verify a raw signature over the challenge string
     // Not a full SignedMessage - just signature(challenge, privateKey)
@@ -137,8 +137,6 @@ async function verifyRawSignature(
   publicKeyHex: string
 ): Promise<boolean> {
   try {
-    // Import the low-level verify function
-    const { verify } = await import('@noble/ed25519');
     const { sha512 } = await import('@noble/hashes/sha2.js');
     const ed = await import('@noble/ed25519');
     

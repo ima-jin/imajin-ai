@@ -41,13 +41,13 @@ export function NotificationBell() {
   const panelRef = useRef<HTMLDivElement>(null);
 
   const handleOpen = useCallback(async () => {
-    if (!open) {
+    if (open) {
+      setOpen(false);
+    } else {
       setOpen(true);
       setLoading(true);
       await refresh();
       setLoading(false);
-    } else {
-      setOpen(false);
     }
   }, [open, refresh]);
 
@@ -70,6 +70,7 @@ export function NotificationBell() {
   }, [open]);
 
   const hasUnread = notifications.some(n => !n.read);
+  const unreadSuffix = unreadCount > 0 ? `, ${unreadCount} unread` : '';
 
   return (
     <div className="relative" ref={panelRef}>
@@ -79,7 +80,7 @@ export function NotificationBell() {
           open ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
         }`}
         title="Notifications"
-        aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+        aria-label={`Notifications${unreadSuffix}`}
         aria-expanded={open}
       >
         <BellIcon className="w-5 h-5 text-gray-600 dark:text-gray-300" />
@@ -116,7 +117,7 @@ export function NotificationBell() {
                   key={notification.id}
                   onClick={() => markAsRead(notification.id)}
                   className={`w-full text-left px-4 py-3 border-b border-gray-800 last:border-0 hover:bg-gray-800 transition flex items-start gap-3 ${
-                    !notification.read ? 'bg-gray-800/50' : ''
+                    notification.read  ? '' : 'bg-gray-800/50'
                   }`}
                 >
                   {/* Unread dot — space always reserved so text aligns */}

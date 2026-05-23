@@ -194,7 +194,7 @@ export function ImajinInput({
 
     const startTime = Date.now();
 
-    fetch(transcribeUrl, { method: 'POST', body: formData, credentials: 'include' })
+    void fetch(transcribeUrl, { method: 'POST', body: formData, credentials: 'include' })
       .then((res) => (res.ok ? res.json() : Promise.reject('Transcription failed')))
       .then((data) => {
         // Add client-side round trip time if server didn't include it

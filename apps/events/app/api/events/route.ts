@@ -171,7 +171,7 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       courseSlug: courseSlug || null,
       emtEmail: emtEmail || null,
       nameDisplayPolicy: nameDisplayPolicy || 'attendee_choice',
-      chatEnabled: chatEnabled !== undefined ? chatEnabled : true,
+      chatEnabled: chatEnabled === undefined  ? true : chatEnabled,
       eventType: eventType || 'event',
       targetAmount: eventType === 'campaign' ? targetAmount : null,
       deadline: eventType === 'campaign' && deadline ? new Date(deadline) : null,

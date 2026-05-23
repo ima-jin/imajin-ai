@@ -150,12 +150,12 @@ export const POST = withLogger('events', async (request, { log }) => {
           isVirtual: event.isVirtual ?? false,
           venue: event.venue ?? undefined,
           price:
-            ticket.pricePaid != null
-              ? new Intl.NumberFormat('en-US', {
+            ticket.pricePaid == null
+              ? 'Included'
+              : new Intl.NumberFormat('en-US', {
                   style: 'currency',
                   currency: ticket.currency || 'USD',
-                }).format(ticket.pricePaid / 100)
-              : 'Included',
+                }).format(ticket.pricePaid / 100),
           magicLink: eventUrl(EVENTS_URL, event.id),
           eventImageUrl,
           eventUrl: eventUrl(EVENTS_URL, event.id),

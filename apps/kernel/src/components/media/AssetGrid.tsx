@@ -342,8 +342,9 @@ export function AssetGrid({
   }, [selectedAssetIds, moveFolderId, onUploaded, setSelectedAssetIds, setMoveFolderId]);
 
   return (
-    <div
+    <section
       className="flex flex-col h-full w-full relative"
+      aria-label="Asset grid"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -513,7 +514,7 @@ export function AssetGrid({
           if (loading) return (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="bg-[#252525] rounded-xl overflow-hidden animate-pulse">
+                <div key={`skeleton-${i}`} className="bg-[#252525] rounded-xl overflow-hidden animate-pulse">
                   <div className="aspect-square bg-[#2a2a2a]" />
                   <div className="p-2 space-y-1">
                     <div className="h-2 bg-[#2a2a2a] rounded w-3/4" />
@@ -639,6 +640,6 @@ export function AssetGrid({
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

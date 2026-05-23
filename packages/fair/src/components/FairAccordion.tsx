@@ -98,30 +98,27 @@ interface FairAccordionProps {
 export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, viewerHandle }: Readonly<FairAccordionProps>) {
   const [open, setOpen] = useState(false);
 
-  if (!manifest) return null;
-
-  // Attribution: creative credit (separate from chain)
-  const rawAttribution = manifest.attribution ?? [];
-  const attribution = normalizeShares(rawAttribution);
-
-  // Chain: revenue split
-  const rawChain = manifest.chain ?? [];
-  // Resolve placeholders for display
+  // Compute allDids safely even when manifest is null (hooks must not be called conditionally)
   const resolvePlaceholder = (did: string): string => {
     if (did === 'NODE_PLACEHOLDER') return nodeDid || did;
     if (did === 'BUYER_PLACEHOLDER') return viewerDid || did;
     return did;
   };
+  const rawAttribution = manifest?.attribution ?? [];
+  const rawChain = manifest?.chain ?? [];
   const resolvedChain = rawChain.map(e => ({ ...e, did: resolvePlaceholder(e.did) }));
+  const attribution = normalizeShares(rawAttribution);
   const chain = normalizeShares(resolvedChain);
-  const hasContent = attribution.length > 0 || chain.length > 0;
-
 
   const allDids = [
     ...attribution.map(e => e.did),
     ...chain.map(e => e.did),
   ].filter((d): d is string => !!d && d !== 'NODE_PLACEHOLDER' && d !== 'BUYER_PLACEHOLDER');
   const didNames = useDidNames(allDids, resolveProfile);
+
+  if (!manifest) return null;
+
+  const hasContent = attribution.length > 0 || chain.length > 0;
 
   // Show nothing if both are empty
   if (!hasContent) return null;
@@ -167,7 +164,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
               <div className="space-y-2">
                 {attribution.map((entry, i) => (
                   <div
-                    key={i}
+                    key={`${entry.role}-${entry.did ?? ''}`}
                     className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
                   >
                     <div className="flex items-center gap-2">
@@ -202,7 +199,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
               <div className="space-y-2">
                 {chain.map((entry, i) => (
                   <div
-                    key={i}
+                    key={`${entry.role}-${entry.did ?? ''}`}
                     className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
                   >
                     <div className="flex items-center gap-2">
@@ -239,7 +236,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
               <div className="space-y-2">
                 {manifest.fees.map((fee: FairFee, i: number) => (
                   <div
-                    key={i}
+                    key={fee.name}
                     className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
                   >
                     <div className="flex items-center gap-2">
@@ -270,7 +267,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
               <div className="space-y-2">
                 {manifest.distributions.map((entry, i) => (
                   <div
-                    key={i}
+                    key={entry.role}
                     className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
                   >
                     <div className="flex items-center gap-2">

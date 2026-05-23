@@ -98,7 +98,7 @@ export class VaultEntryService {
         const previousCid = this.getLatestEntry(vault.entries, entry.field)?.cid ?? entry.previousCid;
         const persistedEntry: VaultEntry = {
             ...entry,
-            ...(previousCid !== undefined ? { previousCid } : {})
+            ...(previousCid === undefined  ? {} : { previousCid })
         };
         vault.entries.push(persistedEntry);
         await this.repository.save(vault);

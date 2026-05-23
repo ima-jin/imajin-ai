@@ -44,7 +44,6 @@ export async function POST(request: NextRequest) {
 
         // Resolve page info for emails and settlement
         let recipientDid = to_did;
-        let handle = pageHandle;
         let pageTitle: string | undefined;
         if (pageId) {
           const page = await db.query.coffeePages.findFirst({
@@ -52,7 +51,6 @@ export async function POST(request: NextRequest) {
           });
           if (page) {
             recipientDid = recipientDid || page.did;
-            handle = handle || page.handle;
             pageTitle = page.title || page.handle;
           }
         }

@@ -157,11 +157,12 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
   }
 
   if (!isLoggedIn) {
+    const connectionsOrigin = `${SERVICE_PREFIX}connections.${DOMAIN}`;
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
         <h1 className="text-2xl font-bold mb-4">Sign in required</h1>
         <a
-          href={`${PROFILE_URL}/login?next=${encodeURIComponent(`${SERVICE_PREFIX}connections.${DOMAIN}`)}`}
+          href={`${PROFILE_URL}/login?next=${encodeURIComponent(connectionsOrigin)}`}
           className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition"
         >
           Sign In
@@ -243,7 +244,7 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
                 <p className="text-gray-400 text-sm mb-2">{pod.description}</p>
               )}
               <p className="text-gray-500 text-xs">
-                {pod.memberCount} member{pod.memberCount !== 1 ? 's' : ''} · Created {new Date(pod.createdAt).toLocaleDateString()}
+                {pod.memberCount} member{pod.memberCount === 1  ? '' : 's'} · Created {new Date(pod.createdAt).toLocaleDateString()}
               </p>
             </div>
             {isOwner && !isReadOnly && (
@@ -307,7 +308,9 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
 
         {/* Member list */}
         <div className="space-y-2">
-          {members.map((member) => (
+          {members.map((member) => {
+            const profileLabel = member.handle ? `@${member.handle}` : member.name || 'member';
+            return (
             <div
               key={member.did}
               className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-lg"
@@ -318,7 +321,7 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
                 onClick={() => {
                   if (member.handle) globalThis.open(`${PROFILE_URL}/${member.handle}`, '_blank');
                 }}
-                aria-label={`Open profile for ${member.handle ? `@${member.handle}` : member.name || 'member'}`}
+                aria-label={`Open profile for ${profileLabel}`}
               >
                 👤
               </button>
@@ -351,7 +354,8 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
                 </button>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

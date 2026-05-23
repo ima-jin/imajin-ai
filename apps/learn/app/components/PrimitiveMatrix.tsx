@@ -33,7 +33,7 @@ export function PrimitiveMatrix({ active, compact }: Readonly<PrimitiveMatrixPro
         <div /> {/* empty corner */}
         {COLS.map((col, ci) => (
           <div
-            key={ci}
+            key={col}
             className={`flex justify-center h-20 transition-colors duration-500 ${
               showAll || (active || []).some(([, c]) => c === ci) ? 'text-white/60' : 'text-white/20'
             }`}
@@ -53,7 +53,7 @@ export function PrimitiveMatrix({ active, compact }: Readonly<PrimitiveMatrixPro
         const rowActive = showAll || (active || []).some(([r]) => r === ri);
         return (
           <div
-            key={ri}
+            key={row}
             className="grid gap-1 mb-1"
             style={{ gridTemplateColumns: `80px repeat(${COLS.length}, 1fr)` }}
           >
@@ -66,13 +66,13 @@ export function PrimitiveMatrix({ active, compact }: Readonly<PrimitiveMatrixPro
             </div>
 
             {/* Cells */}
-            {COLS.map((_, ci) => {
+            {COLS.map((col, ci) => {
               const key = `${ri},${ci}`;
               const isActive = showAll || activeSet.has(key);
 
               return (
                 <div
-                  key={ci}
+                  key={`${row}-${col}`}
                   className={`aspect-square rounded-sm flex items-center justify-center transition-all duration-700 ${
                     isActive && rendered
                       ? 'bg-amber-500/80 shadow-[0_0_12px_rgba(245,158,11,0.4)]'

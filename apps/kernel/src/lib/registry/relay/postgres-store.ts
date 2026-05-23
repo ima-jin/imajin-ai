@@ -254,9 +254,9 @@ export class PostgresRelayStore implements RelayStore {
       .orderBy(relayOperationLog.seq)
       .limit(params.limit);
 
-    const rows = cursorSeq !== null
-      ? await query.where(gt(relayOperationLog.seq, cursorSeq))
-      : await query;
+    const rows = cursorSeq === null
+      ? await query
+      : await query.where(gt(relayOperationLog.seq, cursorSeq));
 
     const entries: LogEntry[] = rows.map((row) => ({
       cid: row.cid,

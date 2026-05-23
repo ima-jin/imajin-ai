@@ -9,7 +9,7 @@ set -e
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 APPS=("$@")
-if [ ${#APPS[@]} -eq 0 ]; then
+if [[ ${#APPS[@]} -eq 0 ]]; then
   for config in "$BASE_DIR"/apps/*/drizzle.config.ts; do
     app="$(basename "$(dirname "$config")")"
     APPS+=("$app")
@@ -22,7 +22,7 @@ UNCHANGED=()
 for app in "${APPS[@]}"; do
   APP_DIR="$BASE_DIR/apps/$app"
 
-  if [ ! -f "$APP_DIR/drizzle.config.ts" ]; then
+  if [[ ! -f "$APP_DIR/drizzle.config.ts" ]]; then
     echo "⚠️  $app — no drizzle.config.ts, skipping"
     continue
   fi
@@ -32,13 +32,13 @@ for app in "${APPS[@]}"; do
   cd "$APP_DIR"
 
   # Load DATABASE_URL from .env.local
-  if [ -f .env.local ]; then
+  if [[ -f .env.local ]]; then
     _raw="$(grep '^DATABASE_URL=' .env.local | head -1 | cut -d= -f2-)"
     export DATABASE_URL="${_raw%\"}"
     DATABASE_URL="${DATABASE_URL#\"}"
   fi
 
-  if [ -z "$DATABASE_URL" ]; then
+  if [[ -z "$DATABASE_URL" ]]; then
     echo "⚠️  $app — DATABASE_URL not set, skipping"
     cd "$BASE_DIR"
     continue
@@ -52,7 +52,7 @@ for app in "${APPS[@]}"; do
   # Count SQL files after
   after=$(ls drizzle/*.sql 2>/dev/null | wc -l)
 
-  if [ "$after" -gt "$before" ]; then
+  if [[ "$after" -gt "$before" ]]; then
     CHANGED+=("$app")
     echo "📝 $app — new migration generated"
   else

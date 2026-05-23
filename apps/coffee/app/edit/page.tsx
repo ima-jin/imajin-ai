@@ -405,9 +405,9 @@ export default function EditPage() {
                   type="button"
                   onClick={() => setShowThankYouPreview(false)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                    !showThankYouPreview
-                      ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
-                      : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                    showThankYouPreview
+                      ? 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                      : 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
                   }`}
                 >
                   Edit

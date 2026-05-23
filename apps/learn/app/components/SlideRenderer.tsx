@@ -169,7 +169,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
             {meta?.items && (
               <div className={`space-y-6 mt-6 ${isCenter ? 'text-left max-w-2xl mx-auto' : ''}`}>
                 {meta.items.map((item, i) => (
-                  <div key={i} className="flex gap-4 text-lg md:text-xl">
+                  <div key={item} className="flex gap-4 text-lg md:text-xl">
                     <span className="text-white/30 font-mono shrink-0">{i + 1}</span>
                     <span className="text-white/80">{item}</span>
                   </div>
@@ -182,7 +182,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
               <div className="border border-white/10 rounded-lg p-6 mt-8">
                 {meta.stats.map((stat, i) => (
                   <div
-                    key={i}
+                    key={stat.label}
                     className="flex justify-between border-b border-white/10 py-3 last:border-0 gap-4"
                   >
                     <span className="text-white/50">{stat.label}</span>
@@ -197,18 +197,18 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
               <div className="border border-white/10 rounded-lg p-6 mt-8">
                 <div className="flex justify-between py-2 border-b border-white/20 text-sm text-white/40 uppercase tracking-wider">
                   {meta.compare.headers.map((h, i) => (
-                    <span key={i} className={`flex-1 ${i > 0 ? 'text-right' : ''}`}>{h}</span>
+                    <span key={h} className={`flex-1 ${i > 0 ? 'text-right' : ''}`}>{h}</span>
                   ))}
                 </div>
                 {meta.compare.rows.map((row, i) => (
                   <div
-                    key={i}
+                    key={row.cells[0]}
                     className={`flex justify-between py-3 border-b border-white/10 last:border-0 ${
                       row.highlight ? 'text-white font-medium' : 'text-white/60'
                     }`}
                   >
                     {row.cells.map((cell, j) => (
-                      <span key={j} className={`flex-1 ${j > 0 ? 'text-right' : ''}`}>{cell}</span>
+                      <span key={cell} className={`flex-1 ${j > 0 ? 'text-right' : ''}`}>{cell}</span>
                     ))}
                   </div>
                 ))}
@@ -223,7 +223,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
                     <tr className="border-b border-white/20">
                       {meta.table.headers.map((h, i) => (
                         <th
-                          key={i}
+                          key={h}
                           className="py-2 text-left text-white/40 uppercase tracking-wider text-xs pr-6 font-normal"
                         >
                           {h}
@@ -233,9 +233,9 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
                   </thead>
                   <tbody>
                     {meta.table.rows.map((row, i) => (
-                      <tr key={i} className="border-b border-white/10 last:border-0">
+                      <tr key={row[0]} className="border-b border-white/10 last:border-0">
                         {row.map((cell, j) => (
-                          <td key={j} className={`py-3 pr-6 ${j === 0 ? 'text-white font-mono' : 'text-white/50'}`}>
+                          <td key={cell} className={`py-3 pr-6 ${j === 0 ? 'text-white font-mono' : 'text-white/50'}`}>
                             {cell}
                           </td>
                         ))}
@@ -279,9 +279,9 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
         </button>
 
         <div className="flex items-center gap-1.5">
-          {slides.map((_, i) => (
+          {slides.map((s, i) => (
             <button
-              key={i}
+              key={s.title}
               onClick={() => goTo(i)}
               className={`w-2 h-2 rounded-full transition-colors ${
                 i === current ? 'bg-white/80' : 'bg-white/25 hover:bg-white/50'

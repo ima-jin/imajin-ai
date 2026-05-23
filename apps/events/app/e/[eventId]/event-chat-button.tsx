@@ -12,9 +12,9 @@ export function EventChatButton({ eventId, chatUrl }: Readonly<EventChatButtonPr
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const baseChatUrl = chatUrl || (typeof window !== 'undefined'
-    ? `${globalThis.location.protocol}//${globalThis.location.hostname.replaceAll('events', 'chat')}`
-    : 'https://chat.imajin.ai');
+  const baseChatUrl = chatUrl || (typeof window === 'undefined'
+    ? 'https://chat.imajin.ai'
+    : `${globalThis.location.protocol}//${globalThis.location.hostname.replaceAll('events', 'chat')}`);
 
   useEffect(() => {
     async function checkAccess() {

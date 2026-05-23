@@ -16,7 +16,7 @@ const WAVEFORM_BARS = 20;
 export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart, disabled }: Readonly<VoiceRecorderProps>) {
   const [state, setState] = useState<RecordingState>('idle');
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [waveform, setWaveform] = useState<number[]>(Array(WAVEFORM_BARS).fill(0));
+  const [waveform, setWaveform] = useState<number[]>(Array.from<number>({ length: WAVEFORM_BARS }, () => 0));
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -49,7 +49,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
         streamRef.current = null;
         setState('idle');
         setElapsedMs(0);
-        setWaveform(Array(WAVEFORM_BARS).fill(0));
+        setWaveform(Array.from<number>({ length: WAVEFORM_BARS }, () => 0));
         onCancel();
       } else {
         recorder.stop();
@@ -87,7 +87,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
         const durationMs = Date.now() - startTimeRef.current;
         const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
         setState('processing');
-        setWaveform(Array(WAVEFORM_BARS).fill(0));
+        setWaveform(Array.from<number>({ length: WAVEFORM_BARS }, () => 0));
         onRecordingComplete(blob, durationMs);
       };
 
@@ -172,7 +172,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
       <div className="flex items-center gap-px flex-1 h-8">
         {waveform.map((val, i) => (
           <div
-            key={i}
+            key={`bar-${i}`}
             className="flex-1 bg-orange-500 dark:bg-orange-400 rounded-full transition-all duration-75"
             style={{ height: `${Math.max(4, val * 32)}px` }}
           />

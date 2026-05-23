@@ -103,6 +103,7 @@ export default function SettingsPage() {
                   id="show-market-items"
                   role="switch"
                   aria-checked={showMarketItems}
+                  aria-label="Show listings on my profile"
                   disabled={saving}
                   onClick={() => handleToggle(!showMarketItems)}
                   className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 disabled:opacity-50 ${

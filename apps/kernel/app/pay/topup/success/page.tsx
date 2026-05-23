@@ -14,7 +14,8 @@ export default async function TopupSuccessPage({ searchParams }: Readonly<Succes
   if (!session) {
     const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
     const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
-    redirect(`${authUrl}/login?next=${encodeURIComponent(`${payUrl}/topup/success`)}`);
+    const successUrl = `${payUrl}/topup/success`;
+    redirect(`${authUrl}/login?next=${encodeURIComponent(successUrl)}`);
   }
 
   const { session_id: stripeSessionId } = searchParams;
@@ -38,9 +39,9 @@ export default async function TopupSuccessPage({ searchParams }: Readonly<Succes
         <div className="text-6xl mb-4">✅</div>
         <h1 className="text-3xl font-bold text-white">Funds Added!</h1>
         <p className="text-zinc-400">
-          {amount !== null
-            ? `$${amount.toFixed(2)} CAD has been credited to your MJNx balance.`
-            : 'Your top-up has been processed successfully.'}
+          {amount === null
+            ? 'Your top-up has been processed successfully.'
+            : `$${amount.toFixed(2)} CAD has been credited to your MJNx balance.`}
         </p>
       </div>
 

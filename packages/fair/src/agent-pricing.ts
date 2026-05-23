@@ -94,9 +94,7 @@ export function validateAgentPricingManifest(
     errors.push('pricing must be an object');
   }
 
-  if (!Array.isArray(m.fees)) {
-    errors.push('fees must be an array');
-  } else {
+  if (Array.isArray(m.fees)) {
     const validRoles = ['protocol', 'node', 'buyer_credit', 'scope'];
     for (let i = 0; i < m.fees.length; i++) {
       const fee = m.fees[i] as Record<string, unknown>;
@@ -110,6 +108,8 @@ export function validateAgentPricingManifest(
         errors.push(`fees[${i}].rateBps must be a number between 0 and 10000`);
       }
     }
+  } else {
+    errors.push('fees must be an array');
   }
 
   return { valid: errors.length === 0, errors };

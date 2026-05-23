@@ -46,7 +46,7 @@ export function ActorProfile({ profile, identity, viewer, counts, links }: Reado
           <div className="mb-6 space-y-2">
             {links.map((link, i) => (
               <a
-                key={i}
+                key={link.url}
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"

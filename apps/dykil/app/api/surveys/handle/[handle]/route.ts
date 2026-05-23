@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // In production, you should have a profiles service or table
     // that maps handles to DIDs
 
-    const allSurveys = await db.query.surveys.findMany({
+    await db.query.surveys.findMany({
       where: (surveys, { eq }) => eq(surveys.status, 'published'),
       orderBy: (surveys, { desc }) => [desc(surveys.createdAt)],
     });
