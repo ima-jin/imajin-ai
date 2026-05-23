@@ -78,10 +78,17 @@ function writeAppLog(entry: {
     });
 }
 
+function formatErrorMessage(source: unknown): string | undefined {
+  if (!source) return undefined;
+  if (source instanceof Error) return source.message;
+  if (typeof source === 'string') return source;
+  return JSON.stringify(source);
+}
+
 function wrapPino(instance: pino.Logger): Logger {
   function persist(level: string, ctx: LogContext, message: string) {
     const { service, correlationId, did, method, path, err, error, ...rest } = ctx;
-    const errorMessage = err ? String(err) : error ? String(error) : undefined;
+    const errorMessage = formatErrorMessage(err ?? error);
     writeAppLog({
       service: service || 'unknown',
       level,

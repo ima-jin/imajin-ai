@@ -383,7 +383,7 @@ export default function TopupPage() {
               disabled={loading}
               className="flex-1 px-4 py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-medium rounded-xl transition-colors"
             >
-              {loading ? 'Processing...' : method === 'stripe' ? 'Pay with Stripe →' : 'Confirm e-Transfer →'}
+              {(() => { if (loading) { return 'Processing...'; } if (method === 'stripe') { return 'Pay with Stripe →'; } return 'Confirm e-Transfer →'; })()}
             </button>
           </div>
         </div>

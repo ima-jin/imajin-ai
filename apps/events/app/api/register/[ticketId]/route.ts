@@ -95,11 +95,10 @@ export const POST = withLogger('events', async (request, { log }) => {
 
     if (event && attendeeEmail) {
       const eventDate = new Date(event.startsAt);
-      const eventImageUrl = event.imageUrl
-        ? event.imageUrl.startsWith('http')
-          ? event.imageUrl
-          : `${EVENTS_URL}${event.imageUrl}`
-        : undefined;
+      let eventImageUrl: string | undefined;
+      if (event.imageUrl) {
+        eventImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
+      }
 
       qrCodeDataUri = await generateQRCode(ticket.id);
 

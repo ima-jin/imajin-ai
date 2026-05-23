@@ -327,7 +327,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Listings */}
-        {loading ? (
+        {(() => {
+          if (loading) return (
           <div className="space-y-2">
             {[0, 1, 2, 3].map((i) => (
               <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-4 animate-pulse flex gap-4">
@@ -339,7 +340,8 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-        ) : error ? (
+          );
+          if (error) return (
           <div className="text-center py-16">
             <p className="text-red-400 mb-4">{error}</p>
             <button
@@ -349,7 +351,8 @@ export default function DashboardPage() {
               Retry
             </button>
           </div>
-        ) : listings.length === 0 ? (
+          );
+          if (listings.length === 0) return (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">🏪</div>
             <p className="text-lg font-medium text-gray-200 mb-2">
@@ -366,7 +369,8 @@ export default function DashboardPage() {
               </Link>
             )}
           </div>
-        ) : (
+          );
+          return (
           <>
             {/* Desktop table */}
             <div className="hidden md:block bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -458,10 +462,11 @@ export default function DashboardPage() {
                 >
                   Next →
                 </button>
-              </div>
+            </div>
             )}
           </>
-        )}
+          );
+        })()}
       </div>
 
       {/* Confirmation modal */}

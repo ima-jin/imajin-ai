@@ -562,11 +562,10 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
           {/* Node list */}
           <div className="mb-6">
             <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Select a node</p>
-            {loadingNodes ? (
-              <div className="text-gray-500 text-sm py-4">Finding nearby nodes...</div>
-            ) : nodes.length === 0 ? (
-              <div className="text-gray-500 text-sm py-4">No nodes found nearby.</div>
-            ) : (
+            {(() => {
+              if (loadingNodes) return <div className="text-gray-500 text-sm py-4">Finding nearby nodes...</div>;
+              if (nodes.length === 0) return <div className="text-gray-500 text-sm py-4">No nodes found nearby.</div>;
+              return (
               <div className="space-y-2">
                 {nodes.map((node) => (
                   <button
@@ -588,7 +587,8 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
                   </button>
                 ))}
               </div>
-            )}
+            );
+            })()}
           </div>
 
           {/* Expiry */}
@@ -660,7 +660,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
             {state === 'active' && (
               <div className="mt-6 text-gray-300 text-xs font-mono space-y-0.5 bg-black/80 p-3 rounded-lg">
                 <p>mag: <span className={debugMag > 15 ? 'text-green-400 font-bold' : ''}>{debugMag} m/s²</span> (threshold: {debugRaw.startsWith('a:null') || debugRaw.includes('a:undefined') ? '20' : '15'})</p>
-                <p>motion: {debugHasMotion === null ? 'waiting…' : debugHasMotion ? '✓' : '✗ no events'}</p>
+                <p>motion: {(() => { if (debugHasMotion === null) { return 'waiting…'; } if (debugHasMotion) { return '✓'; } return '✗ no events'; })()}</p>
                 <p>peak: <span className="text-amber-400">{debugPeak} m/s²</span></p>
                 <p className="break-all text-gray-500">{debugRaw}</p>
                 {debugEvent && <p className="break-all text-cyan-400">{debugEvent}</p>}

@@ -405,7 +405,11 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                 disabled={fairSaving}
                 className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-semibold rounded-lg transition"
               >
-                {fairSaving ? 'Saving...' : fairSaved ? 'Saved!' : 'Save .fair'}
+                {(() => {
+                  if (fairSaving) return 'Saving...';
+                  if (fairSaved) return 'Saved!';
+                  return 'Save .fair';
+                })()}
               </button>
             </>
           ) : (
@@ -760,11 +764,10 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                   <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">
                     Registration Form <span className="text-red-500">*</span>
                   </label>
-                  {loadingSurveys ? (
-                    <p className="text-xs text-gray-400">Loading forms…</p>
-                  ) : surveys.length === 0 ? (
-                    <p className="text-xs text-gray-400">No forms found. Create one in Dykil first.</p>
-                  ) : (
+                  {(() => {
+                    if (loadingSurveys) return <p className="text-xs text-gray-400">Loading forms…</p>;
+                    if (surveys.length === 0) return <p className="text-xs text-gray-400">No forms found. Create one in Dykil first.</p>;
+                    return (
                     <select
                       value={tier.registrationFormId}
                       onChange={(e) => updateTier(index, 'registrationFormId', e.target.value)}
@@ -779,7 +782,8 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                         </option>
                       ))}
                     </select>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -832,11 +836,10 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         </p>
 
         <div className="space-y-4">
-          {loadingSurveys ? (
-            <p className="text-sm text-gray-500">Loading surveys...</p>
-          ) : surveys.length === 0 ? (
-            <p className="text-sm text-gray-500">No surveys found. Create one first.</p>
-          ) : (
+          {(() => {
+            if (loadingSurveys) return <p className="text-sm text-gray-500">Loading surveys...</p>;
+            if (surveys.length === 0) return <p className="text-sm text-gray-500">No surveys found. Create one first.</p>;
+            return (
             <>
               {linkedSurveys.map((linked, index) => (
                 <div key={`${linked.id}-${index}`} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3">
@@ -859,7 +862,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                     </select>
                     <button
                       type="button"
-                      onClick={() => setLinkedSurveys(linkedSurveys.filter((_, i) => i !== index))}
+                      onClick={() => { const idx = index; setLinkedSurveys(prev => prev.filter((_, i) => i !== idx)); }}
                       className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
                       title="Remove survey"
                     >
@@ -929,7 +932,8 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                 </button>
               )}
             </>
-          )}
+            );
+          })()}
         </div>
       </div>
 

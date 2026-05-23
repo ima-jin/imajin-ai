@@ -455,7 +455,7 @@ export default function LogsClient() {
                         <React.Fragment key={row.id}>
                           <tr
                             onClick={() => hasDetails && toggleRow(row.id)}
-                            className={`hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors ${hasDetails ? 'cursor-pointer' : ''} ${isError ? 'bg-red-50/40 dark:bg-red-900/10' : isWarn ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''}`}
+                            className={`hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors ${hasDetails ? 'cursor-pointer' : ''} ${(() => { if (isError) { return 'bg-red-50/40 dark:bg-red-900/10'; } if (isWarn) { return 'bg-amber-50/40 dark:bg-amber-900/10'; } return ''; })()}`}
                           >
                             <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap font-mono">
                               {formatTs(row.created_at)}

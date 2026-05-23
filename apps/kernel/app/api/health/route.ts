@@ -83,7 +83,7 @@ export async function GET() {
   const anyDown = checks.some(c => c.status === 'down');
 
   return NextResponse.json({
-    status: anyDown ? 'degraded' : allUp ? 'operational' : 'degraded',
+    status: (() => { if (anyDown) { return 'degraded'; } if (allUp) { return 'operational'; } return 'degraded'; })(),
     version: process.env.NEXT_PUBLIC_VERSION || '0.0.0',
     build: process.env.NEXT_PUBLIC_BUILD_HASH || 'dev',
     timestamp: new Date().toISOString(),

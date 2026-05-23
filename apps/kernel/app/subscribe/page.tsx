@@ -28,11 +28,11 @@ function SubscribeContent() {
       if (res.ok) {
         setStatus('success');
         setMessage(
-          data.status === 'pending_verification'
-            ? 'Check your inbox to confirm your email.'
-            : data.status === 'already_subscribed'
-            ? "You're already on the list!"
-            : data.message || "You're on the list!"
+          (() => {
+            if (data.status === 'pending_verification') return 'Check your inbox to confirm your email.';
+            if (data.status === 'already_subscribed') return "You're already on the list!";
+            return data.message || "You're on the list!";
+          })()
         );
         setEmail('');
       } else {

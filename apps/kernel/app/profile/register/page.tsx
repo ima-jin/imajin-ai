@@ -465,19 +465,16 @@ function RegisterPage() {
                 className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
               />
             </div>
-            {handleStatus !== 'idle' && handle.length >= 3 && (
-              <p className={`text-xs mt-1 flex items-center gap-1 ${
-                handleStatus === 'checking' ? 'text-gray-400' :
-                handleStatus === 'available' ? 'text-green-400' :
-                'text-red-400'
-              }`}>
+            {handleStatus !== 'idle' && handle.length >= 3 && (() => {
+                const statusColor: Record<string, string> = { checking: 'text-gray-400', available: 'text-green-400' };
+                return <p className={`text-xs mt-1 flex items-center gap-1 ${statusColor[handleStatus] ?? 'text-red-400'}`}>
                 {handleStatus === 'checking' && '⏳ Checking...'}
                 {handleStatus === 'available' && '✅ Available'}
                 {handleStatus === 'taken' && '❌ Taken'}
                 {handleStatus === 'invalid' && `❌ ${handleMessage}`}
                 {(handleStatus === 'available' || handleStatus === 'taken') && ` - ${handleMessage}`}
-              </p>
-            )}
+              </p>;
+            })()}
             {(handleStatus === 'idle' || handle.length < 3) && (
               <p className="text-xs text-gray-500 mt-1">3-30 chars, lowercase, alphanumeric + hyphens</p>
             )}

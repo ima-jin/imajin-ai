@@ -5,6 +5,8 @@ import { useCallback, useRef } from 'react';
 
 const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'CHF', 'AUD', 'JPY', 'ZAR'];
 
+const TIER_LABELS: Record<string, string> = { all: 'All', direct: 'Direct', protected: 'Protected' };
+
 export default function SearchFilters() {
   const router = useRouter();
   const pathname = usePathname();
@@ -92,7 +94,7 @@ export default function SearchFilters() {
                   : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
               }`}
             >
-              {t === 'all' ? 'All' : t === 'direct' ? 'Direct' : 'Protected'}
+              {TIER_LABELS[t] ?? t}
             </button>
           );
         })}

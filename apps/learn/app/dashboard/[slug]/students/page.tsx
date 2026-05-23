@@ -142,15 +142,17 @@ export default function StudentsPage() {
                       </div>
                     </td>
                     <td className="px-5 py-3 text-right">
-                      {student.completedAt ? (
+                      {(() => {
+                        if (student.completedAt) return (
                         <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">
                           ✓ Complete
                         </span>
-                      ) : student.progress.completed > 0 ? (
+                        );
+                        if (student.progress.completed > 0) return (
                         <span className="text-amber-500 text-xs font-medium">In progress</span>
-                      ) : (
-                        <span className="text-gray-400 text-xs">Enrolled</span>
-                      )}
+                        );
+                        return <span className="text-gray-400 text-xs">Enrolled</span>;
+                      })()}
                     </td>
                   </tr>
                 ))}

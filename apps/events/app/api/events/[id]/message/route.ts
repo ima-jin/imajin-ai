@@ -216,9 +216,10 @@ export async function POST(
         markdown,
         eventContext: {
           title: event.title,
-          imageUrl: event.image_url
-            ? (event.image_url.startsWith('http') ? event.image_url : `${EVENTS_URL}${event.image_url}`)
-            : null,
+          imageUrl: (() => {
+            if (!event.image_url) return null;
+            return event.image_url.startsWith('http') ? event.image_url : `${EVENTS_URL}${event.image_url}`;
+          })(),
           eventUrl: eventUrl(EVENTS_URL, id),
         },
         ...(organizerEmail ? { replyTo: organizerEmail } : {}),

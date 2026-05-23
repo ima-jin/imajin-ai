@@ -57,11 +57,14 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     }
 
     // Normalize to cart: accept items[] or legacy ticketTypeId+quantity
-    const rawItems: CheckoutCartItem[] = body.items && body.items.length > 0
-      ? body.items
-      : body.ticketTypeId
-      ? [{ ticketTypeId: body.ticketTypeId, quantity: body.quantity ?? 1 }]
-      : [];
+    let rawItems: CheckoutCartItem[];
+    if (body.items && body.items.length > 0) {
+      rawItems = body.items;
+    } else if (body.ticketTypeId) {
+      rawItems = [{ ticketTypeId: body.ticketTypeId, quantity: body.quantity ?? 1 }];
+    } else {
+      rawItems = [];
+    }
 
     if (rawItems.length === 0) {
       return NextResponse.json(

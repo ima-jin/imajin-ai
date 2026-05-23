@@ -79,7 +79,11 @@ function OnboardContent() {
   const scopeName = scopeProfile?.name || scopeProfile?.handle || (scope ? scope.slice(0, 20) : null);
 
   // Default redirect: community profile page when joining via scope link
-  const effectiveRedirect = redirect || (scopeProfile?.handle ? `${buildPublicUrl('profile')}/${scopeProfile.handle}` : scope ? `${buildPublicUrl('profile')}/${encodeURIComponent(scope)}` : '');
+  const effectiveRedirect = redirect || (() => {
+    if (scopeProfile?.handle) return `${buildPublicUrl('profile')}/${scopeProfile.handle}`;
+    if (scope) return `${buildPublicUrl('profile')}/${encodeURIComponent(scope)}`;
+    return '';
+  })();
 
   // ── Email flow ──────────────────────────────────────────────────────────
 
@@ -207,7 +211,13 @@ function OnboardContent() {
   // ── Render ──────────────────────────────────────────────────────────────
 
   // Build a next URL that returns to this onboard page (with scope) after login
-  const onboardPath = `/auth/onboard${scope ? `?scope=${encodeURIComponent(scope)}${redirect ? `&redirect=${encodeURIComponent(redirect)}` : ''}` : redirect ? `?redirect=${encodeURIComponent(redirect)}` : ''}`;
+  const onboardQuery = (() => {
+    const redirectParam = redirect ? `&redirect=${encodeURIComponent(redirect)}` : '';
+    if (scope) return `?scope=${encodeURIComponent(scope)}${redirectParam}`;
+    if (redirect) return `?redirect=${encodeURIComponent(redirect)}`;
+    return '';
+  })();
+  const onboardPath = `/auth/onboard${onboardQuery}`;
   const loginNext = redirect || scope ? onboardPath : '';
   const loginUrl = `/auth/login${loginNext ? `?next=${encodeURIComponent(loginNext)}` : ''}`;
 
@@ -217,15 +227,16 @@ function OnboardContent() {
 
         {/* Scope header */}
         <div className="text-center space-y-3">
-          {scopeLoading ? (
-            <div className="w-16 h-16 rounded-full bg-gray-800 mx-auto animate-pulse" />
-          ) : scopeProfile?.avatarUrl ? (
-            <img src={scopeProfile.avatarUrl} alt="" className="w-16 h-16 rounded-full mx-auto object-cover border border-gray-700" />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-gray-800 mx-auto flex items-center justify-center text-2xl">
-              {scopeProfile?.scope === 'business' ? '🏢' : scopeProfile?.scope === 'family' ? '👨‍👩‍👦' : '🏛️'}
-            </div>
-          )}
+          {(() => {
+            if (scopeLoading) return <div className="w-16 h-16 rounded-full bg-gray-800 mx-auto animate-pulse" />;
+            if (scopeProfile?.avatarUrl) return <img src={scopeProfile.avatarUrl} alt="" className="w-16 h-16 rounded-full mx-auto object-cover border border-gray-700" />;
+            const scopeIcon: Record<string, string> = { business: '🏢', family: '👨‍👩‍👦' };
+            return (
+              <div className="w-16 h-16 rounded-full bg-gray-800 mx-auto flex items-center justify-center text-2xl">
+                {scopeIcon[scopeProfile?.scope ?? ''] ?? '🏛️'}
+              </div>
+            );
+          })()}
           <div>
             <h1 className="text-xl font-bold text-white">
               {scopeName ? `Join ${scopeName}` : 'Get started'}

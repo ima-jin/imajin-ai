@@ -284,12 +284,11 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
           className="w-full py-4 rounded-xl text-white font-semibold text-lg transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ backgroundColor: primaryColor }}
         >
-          {isLoading
-            ? 'Processing...'
-            : isRecurring
-              ? `☕ Support with ${formatAmount(getAmount())}/month`
-              : `☕ Send ${formatAmount(getAmount())}`
-          }
+          {(() => {
+            if (isLoading) return 'Processing...';
+            if (isRecurring) return `☕ Support with ${formatAmount(getAmount())}/month`;
+            return `☕ Send ${formatAmount(getAmount())}`;
+          })()}
         </button>
       )}
     </form>

@@ -384,7 +384,7 @@ export function AssetGrid({
             }`}
           >
             {s}
-            {sort === s ? (order === "asc" ? " ↑" : " ↓") : ""}
+            {sort === s && (order === "asc" ? " ↑" : " ↓")}
           </button>
         ))}
 
@@ -509,62 +509,67 @@ export function AssetGrid({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-            {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="bg-[#252525] rounded-xl overflow-hidden animate-pulse">
-                <div className="aspect-square bg-[#2a2a2a]" />
-                <div className="p-2 space-y-1">
-                  <div className="h-2 bg-[#2a2a2a] rounded w-3/4" />
-                  <div className="h-2 bg-[#2a2a2a] rounded w-1/2" />
+        {(() => {
+          if (loading) return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className="bg-[#252525] rounded-xl overflow-hidden animate-pulse">
+                  <div className="aspect-square bg-[#2a2a2a]" />
+                  <div className="p-2 space-y-1">
+                    <div className="h-2 bg-[#2a2a2a] rounded w-3/4" />
+                    <div className="h-2 bg-[#2a2a2a] rounded w-1/2" />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : assets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center py-16 min-h-[300px]">
-            <span className="text-6xl mb-4">📂</span>
-            <p className="text-gray-400 text-lg font-medium mb-1">No media yet</p>
-            <p className="text-gray-600 text-sm mb-6">Upload your first file.</p>
-            <button
-              onClick={() => uploadRef.current?.openPicker()}
-              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition-colors"
-            >
-              Upload your first file
-            </button>
-          </div>
-        ) : viewMode === "large-grid" ? (
-          <div ref={gridRef} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-            {assets.map((asset, idx) => (
-              <AssetCard
-                key={asset.id}
-                asset={asset}
-                selected={asset.id === selectedAssetId}
-                checked={selectedAssetIds.has(asset.id)}
-                selectionActive={selectionActive}
-                onSelect={(e) => handleCardClick(e, asset, idx)}
-                onCheck={(e) => handleCheckClick(e, asset.id, idx)}
-                onLongPress={() => handleLongPress(asset.id, idx)}
-              />
-            ))}
-          </div>
-        ) : viewMode === "small-grid" ? (
-          <div ref={gridRef} className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
-            {assets.map((asset, idx) => (
-              <AssetCard
-                key={asset.id}
-                asset={asset}
-                selected={asset.id === selectedAssetId}
-                checked={selectedAssetIds.has(asset.id)}
-                compact
-                selectionActive={selectionActive}
-                onSelect={(e) => handleCardClick(e, asset, idx)}
-                onCheck={(e) => handleCheckClick(e, asset.id, idx)}
-                onLongPress={() => handleLongPress(asset.id, idx)}
-              />
-            ))}
-          </div>
-        ) : (
+              ))}
+            </div>
+          );
+          if (assets.length === 0) return (
+            <div className="flex flex-col items-center justify-center h-full text-center py-16 min-h-[300px]">
+              <span className="text-6xl mb-4">📂</span>
+              <p className="text-gray-400 text-lg font-medium mb-1">No media yet</p>
+              <p className="text-gray-600 text-sm mb-6">Upload your first file.</p>
+              <button
+                onClick={() => uploadRef.current?.openPicker()}
+                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition-colors"
+              >
+                Upload your first file
+              </button>
+            </div>
+          );
+          if (viewMode === "large-grid") return (
+            <div ref={gridRef} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              {assets.map((asset, idx) => (
+                <AssetCard
+                  key={asset.id}
+                  asset={asset}
+                  selected={asset.id === selectedAssetId}
+                  checked={selectedAssetIds.has(asset.id)}
+                  selectionActive={selectionActive}
+                  onSelect={(e) => handleCardClick(e, asset, idx)}
+                  onCheck={(e) => handleCheckClick(e, asset.id, idx)}
+                  onLongPress={() => handleLongPress(asset.id, idx)}
+                />
+              ))}
+            </div>
+          );
+          if (viewMode === "small-grid") return (
+            <div ref={gridRef} className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
+              {assets.map((asset, idx) => (
+                <AssetCard
+                  key={asset.id}
+                  asset={asset}
+                  selected={asset.id === selectedAssetId}
+                  checked={selectedAssetIds.has(asset.id)}
+                  compact
+                  selectionActive={selectionActive}
+                  onSelect={(e) => handleCardClick(e, asset, idx)}
+                  onCheck={(e) => handleCheckClick(e, asset.id, idx)}
+                  onLongPress={() => handleLongPress(asset.id, idx)}
+                />
+              ))}
+            </div>
+          );
+          return (
           <div className="flex flex-col gap-0.5">
             {assets.map((asset, idx) => {
               const fairAccess = getFairAccess(asset.fairManifest);
@@ -621,7 +626,8 @@ export function AssetGrid({
               );
             })}
           </div>
-        )}
+        );
+        })()}
       </div>
 
       {/* Drag-over overlay */}

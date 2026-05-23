@@ -301,12 +301,11 @@ function ErrorRateTable({ rows }: Readonly<{ rows: ErrorRateRow[] }>) {
         <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
           {rows.map((r, i) => {
             const rate = Number.parseFloat(r.error_rate);
-            const rateColor =
-              rate >= 10
-                ? 'text-red-600 dark:text-red-400'
-                : rate >= 1
-                ? 'text-amber-600 dark:text-amber-400'
-                : 'text-green-600 dark:text-green-400';
+            const rateColor = (() => {
+              if (rate >= 10) return 'text-red-600 dark:text-red-400';
+              if (rate >= 1) return 'text-amber-600 dark:text-amber-400';
+              return 'text-green-600 dark:text-green-400';
+            })();
             return (
               <tr key={i}>
                 <td className="py-2 pr-4">
@@ -385,11 +384,11 @@ function RecentErrorsTable({ rows }: Readonly<{ rows: RecentError[] }>) {
 function StatusBadge({ status }: Readonly<{ status: number }>) {
   const isError = status >= 500;
   const isClientError = status >= 400 && status < 500;
-  const cls = isError
-    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-    : isClientError
-    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-    : 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400';
+  const cls = (() => {
+    if (isError) return 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400';
+    if (isClientError) return 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400';
+    return 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400';
+  })();
   return (
     <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-mono font-medium ${cls}`}>
       {status}

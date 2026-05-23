@@ -272,19 +272,19 @@ export function MessageBubble({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const text =
-    typeof message.content === 'object' && (message.content as any)?.text
-      ? (message.content as any).text
-      : typeof message.content === 'string'
-        ? message.content
-        : '';
+  const text = (() => {
+    if (typeof message.content === 'object' && (message.content as any)?.text) return (message.content as any).text;
+    if (typeof message.content === 'string') return message.content;
+    return '';
+  })();
 
-  const replyToText =
-    replyToMessage && typeof replyToMessage.content === 'object' && (replyToMessage.content as any)?.text
-      ? (replyToMessage.content as any).text
-      : replyToMessage && typeof replyToMessage.content === 'string'
-        ? replyToMessage.content
-        : '';
+  const replyToText = (() => {
+    if (replyToMessage && typeof replyToMessage.content === 'object' && (replyToMessage.content as any)?.text) {
+      return (replyToMessage.content as any).text;
+    }
+    if (replyToMessage && typeof replyToMessage.content === 'string') return replyToMessage.content;
+    return '';
+  })();
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();

@@ -17,9 +17,14 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
     ? appendUnsubscribeFooter(options.html, options.unsubscribeUrl)
     : options.html;
 
-  const textBody = options.text
-    ? (options.unsubscribeUrl ? `${options.text}\n\n---\nTo unsubscribe: ${options.unsubscribeUrl}\n${PHYSICAL_ADDRESS}` : options.text)
-    : stripHtml(htmlBody);
+  let textBody: string;
+  if (options.text) {
+    textBody = options.unsubscribeUrl
+      ? `${options.text}\n\n---\nTo unsubscribe: ${options.unsubscribeUrl}\n${PHYSICAL_ADDRESS}`
+      : options.text;
+  } else {
+    textBody = stripHtml(htmlBody);
+  }
 
   return provider.send({
     ...options,

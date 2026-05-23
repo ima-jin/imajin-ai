@@ -415,7 +415,11 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
         disabled={loading}
         className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-semibold rounded-lg transition"
       >
-        {loading ? 'Creating...' : eventType === 'campaign' ? 'Create Campaign' : 'Create Event'}
+        {(() => {
+          if (loading) return 'Creating...';
+          if (eventType === 'campaign') return 'Create Campaign';
+          return 'Create Event';
+        })()}
       </button>
     </form>
   );

@@ -76,7 +76,8 @@ export function getService(name: string): ServiceDefinition | undefined {
 /** Get the port for a service in a given environment */
 export function getPort(name: string, env: "dev" | "prod" = "dev"): number | undefined {
   const svc = getService(name);
-  return svc ? (env === "prod" ? svc.prodPort : svc.devPort) : undefined;
+  if (!svc) return undefined;
+  return env === "prod" ? svc.prodPort : svc.devPort;
 }
 
 /** Get internal URL for a service (server-side calls) */

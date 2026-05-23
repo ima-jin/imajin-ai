@@ -160,9 +160,10 @@ export async function confirmHeldTickets(
         const formattedEventTime = eventDate.toLocaleTimeString('en-US', {
           hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
         });
-        const eventImageUrl = event.imageUrl
-          ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
-          : undefined;
+        let eventImageUrl: string | undefined;
+        if (event.imageUrl) {
+          eventImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
+        }
 
         // Split tickets by their actual registration state, not by ticket-type
         // policy. A reg-required ticket that's already 'complete' is just as
@@ -214,9 +215,12 @@ export async function confirmHeldTickets(
         // Registration CTA goes through the magic link so users land
         // authenticated. Falls back to the naked register URL if token
         // creation failed.
-        const registrationUrl = anyPendingRegistration
-          ? (onboardToken ? magicLink : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id))
-          : eventMyTicketsUrl(EVENTS_URL, event.id);
+        let registrationUrl: string;
+        if (anyPendingRegistration) {
+          registrationUrl = onboardToken ? magicLink : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id);
+        } else {
+          registrationUrl = eventMyTicketsUrl(EVENTS_URL, event.id);
+        }
 
         // 1. Purchase receipt (always)
         publish('ticket.receipt', {

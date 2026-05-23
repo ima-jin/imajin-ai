@@ -192,16 +192,17 @@ export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
         )}
 
         <div className="flex-1 overflow-y-auto">
-          {isLoading ? (
-            <div className="py-8 text-center text-gray-500 text-sm">Loading connections…</div>
-          ) : connections.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-gray-500 text-sm mb-3">No connections yet.</p>
-              <a href={CONNECTIONS_URL} className="text-orange-500 hover:underline text-sm">
-                Send an invite →
-              </a>
-            </div>
-          ) : tab === 'dm' ? (
+          {(() => {
+            if (isLoading) return <div className="py-8 text-center text-gray-500 text-sm">Loading connections…</div>;
+            if (connections.length === 0) return (
+              <div className="py-8 text-center">
+                <p className="text-gray-500 text-sm mb-3">No connections yet.</p>
+                <a href={CONNECTIONS_URL} className="text-orange-500 hover:underline text-sm">
+                  Send an invite →
+                </a>
+              </div>
+            );
+            if (tab === 'dm') return (
             <div className="space-y-1">
               {connections.map((conn: Connection) => (
                 <button
@@ -222,7 +223,8 @@ export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
                 </button>
               ))}
             </div>
-          ) : (
+          );
+          return (
             /* Group tab */
             <div>
               <div className="mb-3">
@@ -268,7 +270,8 @@ export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
                 </button>
               </div>
             </div>
-          )}
+          );
+          })()}
         </div>
       </div>
     </div>

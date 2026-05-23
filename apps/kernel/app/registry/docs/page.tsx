@@ -111,14 +111,16 @@ function SpecViewer({ spec }: Readonly<{ spec: any }>) {
             <div key={`${method}-${path}`}
               className="bg-black/50 border border-gray-800 rounded-xl p-5 mb-3">
               <div className="flex items-start gap-3 mb-2">
-                <span className={`px-2.5 py-1 rounded text-xs font-bold uppercase ${
-                  method === 'get' ? 'bg-blue-500/20 text-blue-400' :
-                  method === 'post' ? 'bg-green-500/20 text-green-400' :
-                  method === 'put' ? 'bg-yellow-500/20 text-yellow-400' :
-                  method === 'patch' ? 'bg-orange-500/20 text-orange-400' :
-                  method === 'delete' ? 'bg-red-500/20 text-red-400' :
-                  'bg-gray-500/20 text-gray-400'
-                }`}>{method}</span>
+                {(() => {
+                  const methodColors: Record<string, string> = {
+                    get: 'bg-blue-500/20 text-blue-400',
+                    post: 'bg-green-500/20 text-green-400',
+                    put: 'bg-yellow-500/20 text-yellow-400',
+                    patch: 'bg-orange-500/20 text-orange-400',
+                    delete: 'bg-red-500/20 text-red-400',
+                  };
+                  return <span className={`px-2.5 py-1 rounded text-xs font-bold uppercase ${methodColors[method] ?? 'bg-gray-500/20 text-gray-400'}`}>{method}</span>;
+                })()}
                 <code className="text-sm font-mono text-gray-200">{path}</code>
               </div>
               {details.summary && <p className="text-gray-300 text-sm mb-2">{details.summary}</p>}
@@ -144,16 +146,19 @@ function SpecViewer({ spec }: Readonly<{ spec: any }>) {
                 <div className="mt-3">
                   <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Responses</p>
                   <div className="flex flex-wrap gap-2">
-                    {Object.entries(details.responses).map(([code, resp]: [string, any]) => (
-                      <span key={code} className={`text-xs px-2 py-0.5 rounded ${
-                        code.startsWith('2') ? 'bg-green-500/10 text-green-400' :
-                        code.startsWith('4') ? 'bg-yellow-500/10 text-yellow-400' :
-                        code.startsWith('5') ? 'bg-red-500/10 text-red-400' :
-                        'bg-gray-500/10 text-gray-400'
-                      }`} title={typeof resp === 'string' ? resp : resp.description}>
-                        {code} {typeof resp === 'string' ? resp : resp.description}
-                      </span>
-                    ))}
+                    {Object.entries(details.responses).map(([code, resp]: [string, any]) => {
+                      const codeColorMap: Record<string, string> = {
+                        '2': 'bg-green-500/10 text-green-400',
+                        '4': 'bg-yellow-500/10 text-yellow-400',
+                        '5': 'bg-red-500/10 text-red-400',
+                      };
+                      const codeColor = codeColorMap[code[0]] ?? 'bg-gray-500/10 text-gray-400';
+                      return (
+                        <span key={code} className={`text-xs px-2 py-0.5 rounded ${codeColor}`} title={typeof resp === 'string' ? resp : resp.description}>
+                          {code} {typeof resp === 'string' ? resp : resp.description}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -129,10 +129,8 @@ function useAutoIdentity(servicePrefix: string, domain: string, overrides?: Serv
                 onRegister: () => { globalThis.location.href = `${authUrl}/register`; },
               });
             },
-            onViewProfile: data.handle
-              ? () => { globalThis.location.href = `${profileUrl}/${data.handle}`; }
-              : data.did
-              ? () => { globalThis.location.href = `${profileUrl}/${data.did}`; }
+            onViewProfile: (data.handle ?? data.did)
+              ? () => { globalThis.location.href = `${profileUrl}/${data.handle ?? data.did}`; }
               : undefined,
             onEditProfile: () => { globalThis.location.href = `${profileUrl}/edit`; },
             onLogin: () => { globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(globalThis.location.href)}`; },
@@ -347,7 +345,8 @@ export function NavBar({
 
         {/* Right - Auth Section */}
         <div className="flex items-center gap-2">
-          {identity?.isLoggedIn && identity?.tier === 'soft' ? (
+          {(() => {
+            if (identity?.isLoggedIn && identity?.tier === 'soft') return (
             /* Soft DID — just a logout button, no dropdown */
             <button
               onClick={() => identity.onLogout?.()}
@@ -355,7 +354,8 @@ export function NavBar({
             >
               Logout
             </button>
-          ) : identity?.isLoggedIn ? (
+          );
+            if (identity?.isLoggedIn) return (
             <div className="flex items-center gap-2">
               {(cashBalance !== null && cashBalance > 0) && (
                 <a
@@ -388,13 +388,12 @@ export function NavBar({
                     </span>
                   )}
                   <span className="text-sm font-medium leading-none">
-                    {activeIdentityData
-                      ? (activeIdentityData.name || activeIdentityData.handle || 'Identity')
-                      : identity.handle
-                      ? `@${identity.handle}`
-                      : identity.name
-                      ? identity.name
-                      : identity.did?.slice(0, 12) + '...'}
+                    {(() => {
+                      if (activeIdentityData) return activeIdentityData.name || activeIdentityData.handle || 'Identity';
+                      if (identity.handle) return `@${identity.handle}`;
+                      if (identity.name) return identity.name;
+                      return identity.did?.slice(0, 12) + '...';
+                    })()}
                   </span>
                 </span>
               </button>
@@ -555,7 +554,8 @@ export function NavBar({
               )}
             </div>
             </div>
-          ) : identity ? (
+          );
+            if (identity) return (
             <>
               {identity.onLogin && (
                 <button
@@ -566,7 +566,9 @@ export function NavBar({
                 </button>
               )}
             </>
-          ) : null}
+          );
+            return null;
+          })()}
         </div>
       </div>
 

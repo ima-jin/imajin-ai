@@ -33,10 +33,8 @@ export async function POST(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const typeLabel = report.type === 'suggestion' ? 'Suggestion'
-    : report.type === 'question' ? 'Question'
-    : report.type === 'other' ? 'Feedback'
-    : 'Bug Report';
+  const typeLabelMap: Record<string, string> = { suggestion: 'Suggestion', question: 'Question', other: 'Feedback' };
+  const typeLabel = typeLabelMap[report.type] ?? 'Bug Report';
   const title = `[${typeLabel}] ${report.description.slice(0, 80)}`;
   const ghLabel = report.type === 'suggestion' ? 'enhancement' : 'bug';
 

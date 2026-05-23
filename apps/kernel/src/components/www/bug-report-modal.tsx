@@ -256,11 +256,7 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
                 disabled={busy || !description.trim()}
                 className="px-5 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {status === 'uploading'
-                  ? 'Uploading...'
-                  : status === 'submitting'
-                  ? 'Submitting...'
-                  : 'Submit'}
+                {(() => { if (status === 'uploading') { return 'Uploading...'; } if (status === 'submitting') { return 'Submitting...'; } return 'Submit'; })()}
               </button>
             </div>
           </form>

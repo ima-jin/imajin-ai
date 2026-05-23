@@ -234,14 +234,21 @@ export default function CourseDetailPage() {
                 ▶ Present
               </Link>
             )}
-            {course.isCreator ? (
+            {(() => {
+              const enrollButtonText = (() => {
+                if (enrolling) return 'Loading...';
+                if (course.price === 0) return isDeck ? '▶ View Presentation' : 'Start Learning — Free';
+                return `Enroll — $${(course.price / 100).toFixed(2)}`;
+              })();
+              if (course.isCreator) return (
               <Link
                 href={`/dashboard/${course.slug}`}
                 className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium"
               >
                 Edit Course
               </Link>
-            ) : course.enrollment ? (
+              );
+              if (course.enrollment) return (
               <Link
                 href={isDeck ? `/course/${course.slug}/present` : `/course/${course.slug}/${course.modules[0]?.lessons[0]?.id || ''}`}
                 className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
@@ -257,21 +264,22 @@ export default function CourseDetailPage() {
                   </>
                 )}
               </Link>
-            ) : course.price > 0 && !sellerConnected ? (
+              );
+              if (course.price > 0 && !sellerConnected) return (
               <p className="text-sm text-gray-500 italic px-1">
                 Payments not yet available
               </p>
-            ) : course.isAuthenticated ? (
+              );
+              if (course.isAuthenticated) return (
               <button
                 onClick={handleEnroll}
                 disabled={enrolling}
                 className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
               >
-                {enrolling ? 'Loading...' : course.price === 0
-                  ? (isDeck ? '▶ View Presentation' : 'Start Learning — Free')
-                  : `Enroll — $${(course.price / 100).toFixed(2)}`}
+                {enrollButtonText}
               </button>
-            ) : (
+              );
+              return (
               <OnboardGate
                 action={isDeck ? `view "${course.title}"` : `enroll in "${course.title}"`}
                 redirectUrl={`${typeof window !== 'undefined' ? globalThis.location.origin : ''}/course/${slug}?enroll=1`}
@@ -282,12 +290,11 @@ export default function CourseDetailPage() {
                   disabled={enrolling}
                   className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
                 >
-                  {enrolling ? 'Loading...' : course.price === 0
-                    ? (isDeck ? '▶ View Presentation' : 'Start Learning — Free')
-                    : `Enroll — $${(course.price / 100).toFixed(2)}`}
+                  {enrollButtonText}
                 </button>
               </OnboardGate>
-            )}
+              );
+            })()}
           </div>
         </div>
 

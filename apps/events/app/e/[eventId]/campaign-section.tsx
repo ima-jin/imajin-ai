@@ -291,11 +291,11 @@ export function CampaignSection({ eventId, eventTitle, isAuthenticated }: Readon
             disabled={pledging || (!selectedAmount && !customAmount)}
             className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-semibold rounded-lg transition"
           >
-            {pledging
-              ? 'Processing...'
-              : selectedAmount || customAmount
-              ? `Pledge $${selectedAmount || customAmount}`
-              : 'Back this Campaign'}
+            {(() => {
+              if (pledging) return 'Processing...';
+              if (selectedAmount || customAmount) return `Pledge $${selectedAmount || customAmount}`;
+              return 'Back this Campaign';
+            })()}
           </button>
 
           {!isAuthenticated && (

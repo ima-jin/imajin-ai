@@ -427,7 +427,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
                     disabled={transcribing}
                     className="px-3 py-1.5 text-xs bg-[#252525] border border-gray-700 text-gray-300 rounded-lg hover:border-gray-500 transition-colors disabled:opacity-50"
                   >
-                    {transcribing ? "Transcribing…" : transcript ? "Re-transcribe" : "Transcribe"}
+                    {(() => { if (transcribing) { return "Transcribing…"; } if (transcript) { return "Re-transcribe"; } return "Transcribe"; })()}
                   </button>
                 )}
               </>
@@ -526,8 +526,13 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
             )}
           </div>
 
-          {fairManifest ? (
-            isV1_1 ? (
+          {(() => {
+            if (!fairManifest) return (
+              <div className="bg-[#252525] rounded-xl p-3 text-xs text-gray-500 italic">
+                No .fair manifest.
+              </div>
+            );
+            if (isV1_1) return (
               <FairManifestEditor
                 manifest={fairManifest as FairManifestV1_1}
                 mimeType={asset.mimeType}
@@ -536,19 +541,16 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
                 readOnly={readOnlyEditor}
                 currentUserDid={currentDid}
               />
-            ) : (
+            );
+            return (
               <FairEditor
                 resolveProfile={resolveProfile}
                 manifest={fairManifest}
                 readOnly={true}
                 sections={["attribution", "access", "transfer"]}
               />
-            )
-          ) : (
-            <div className="bg-[#252525] rounded-xl p-3 text-xs text-gray-500 italic">
-              No .fair manifest.
-            </div>
-          )}
+            );
+          })()}
 
           {/* v1.0 → v1.1 upgrade button */}
           {fairManifest && !isV1_1 && isOwner && (
