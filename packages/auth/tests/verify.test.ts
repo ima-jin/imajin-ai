@@ -7,9 +7,8 @@ import { SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '../src/constants';
 const keypair = generateKeypair();
 const identity = { id: 'did:imajin:test', type: 'human' as const };
 
-function makeSignedMessage(payload: unknown = { test: true }) {
-  return signSync(payload, keypair.privateKey, identity);
-}
+const makeSignedMessage = (payload: unknown = { test: true }) =>
+  signSync(payload, keypair.privateKey, identity);
 
 afterEach(() => {
   vi.restoreAllMocks();

@@ -473,12 +473,13 @@ export default function ListingDetail() {
                   <button
                     key={i}
                     onClick={() => setActiveImage(i)}
+                    aria-label={`Select image ${i + 1}`}
                     className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition ${
                       i === activeImage ? 'border-orange-500' : 'border-transparent opacity-60 hover:opacity-100'
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={src} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
+                    <img src={src} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>

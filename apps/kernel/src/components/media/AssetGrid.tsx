@@ -344,6 +344,8 @@ export function AssetGrid({
   return (
     <div
       className="flex flex-col h-full w-full relative"
+      role="region"
+      aria-label="Asset grid"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}

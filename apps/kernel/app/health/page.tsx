@@ -171,7 +171,7 @@ export default function HealthPage() {
 
         {loading && !health && (
           <div className="space-y-3">
-            {[...Array(14)].map((_, i) => (
+            {Array.from({ length: 14 }, (_, i) => (
               <div key={i} className="h-20 bg-gray-900 rounded-lg animate-pulse" />
             ))}
           </div>

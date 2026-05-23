@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
     const metadata: Record<string, string | number> = {};
     if (location) metadata.location = String(location).slice(0, 200);
     if (category) metadata.category = String(category).slice(0, 100);
-    if (typeof lat === 'number' && typeof lon === 'number' && isFinite(lat) && isFinite(lon)) {
+    if (typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon)) {
       metadata.lat = Math.round(lat * 1e6) / 1e6;  // ~11cm precision
       metadata.lon = Math.round(lon * 1e6) / 1e6;
     }

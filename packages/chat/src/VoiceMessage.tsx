@@ -72,6 +72,11 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
   };
 
   useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) audio.src = audioSrc;
+  }, [audioSrc]);
+
+  useEffect(() => {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
@@ -87,7 +92,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
 
   return (
     <div className="min-w-[200px] max-w-[280px]">
-      <audio ref={audioRef} src={audioSrc} onEnded={handleEnded} preload="metadata" />
+      <audio ref={audioRef} onEnded={handleEnded} preload="metadata" aria-label="Voice message" />
 
       {/* Player row */}
       <div className="flex items-center gap-2">
@@ -115,6 +120,9 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
               role="slider"
               tabIndex={0}
               aria-label="Audio progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress * 100)}
               className="relative h-8 flex items-center gap-px cursor-pointer"
               onClick={handleProgressClick}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') (e.currentTarget as HTMLDivElement).click(); }}
@@ -140,6 +148,9 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
               role="slider"
               tabIndex={0}
               aria-label="Audio progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress * 100)}
               className={`h-1.5 rounded-full cursor-pointer ${progressBg}`}
               onClick={handleProgressClick}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') (e.currentTarget as HTMLDivElement).click(); }}

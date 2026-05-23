@@ -223,6 +223,7 @@ export default function LessonViewerPage() {
             <div className="aspect-video mb-6 bg-black rounded-lg overflow-hidden">
               <iframe
                 src={lesson.metadata.videoUrl}
+                title={lesson.title || 'Video'}
                 className="w-full h-full"
                 allowFullScreen
               />
