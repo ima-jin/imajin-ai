@@ -16,13 +16,8 @@ interface Props {
   params: { eventId: string };
 }
 
-<<<<<<< HEAD
 export default async function AdminPage({ params }: Readonly<Props>) {
   const { eventId } = params as unknown as { eventId: string };
-=======
-export default async function AdminPage({ params }: Props) {
-  const { eventId } = params;
->>>>>>> 5a28afea (fix(sonar): remove redundant casts and non-null assertions (S4325))
 
   // Fetch event
   const [event] = await db
