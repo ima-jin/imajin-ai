@@ -298,24 +298,42 @@ export default function ConnectionsPage() {
             </p>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-0.5">
-                <button
-                  onClick={() => { if (sortMode === 'date') setSortAsc(!sortAsc); else { setSortMode('date'); setSortAsc(false); } }}
-                  className={`px-2 py-1 text-xs rounded transition ${
-                    sortMode === 'date' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                  title={sortMode === 'date' ? (sortAsc ? 'Oldest first' : 'Newest first') : 'Sort by date'}
-                >
-                  🕐 {sortMode === 'date' ? (sortAsc ? '↑' : '↓') : ''}
-                </button>
-                <button
-                  onClick={() => { if (sortMode === 'alpha') setSortAsc(!sortAsc); else { setSortMode('alpha'); setSortAsc(true); } }}
-                  className={`px-2 py-1 text-xs rounded transition ${
-                    sortMode === 'alpha' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
-                  }`}
-                  title={sortMode === 'alpha' ? (sortAsc ? 'A → Z' : 'Z → A') : 'Sort by name'}
-                >
-                  Aa {sortMode === 'alpha' ? (sortAsc ? '↑' : '↓') : ''}
-                </button>
+                {(() => {
+                  const dateSortTitle = sortMode === 'date'
+                    ? (sortAsc ? 'Oldest first' : 'Newest first')
+                    : 'Sort by date';
+                  const dateSortArrow = sortMode === 'date'
+                    ? (sortAsc ? '↑' : '↓')
+                    : '';
+                  const alphaSortTitle = sortMode === 'alpha'
+                    ? (sortAsc ? 'A → Z' : 'Z → A')
+                    : 'Sort by name';
+                  const alphaSortArrow = sortMode === 'alpha'
+                    ? (sortAsc ? '↑' : '↓')
+                    : '';
+                  return (
+                    <>
+                      <button
+                        onClick={() => { if (sortMode === 'date') setSortAsc(!sortAsc); else { setSortMode('date'); setSortAsc(false); } }}
+                        className={`px-2 py-1 text-xs rounded transition ${
+                          sortMode === 'date' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                        title={dateSortTitle}
+                      >
+                        🕐 {dateSortArrow}
+                      </button>
+                      <button
+                        onClick={() => { if (sortMode === 'alpha') setSortAsc(!sortAsc); else { setSortMode('alpha'); setSortAsc(true); } }}
+                        className={`px-2 py-1 text-xs rounded transition ${
+                          sortMode === 'alpha' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                        title={alphaSortTitle}
+                      >
+                        Aa {alphaSortArrow}
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
               <button
                 onClick={() => setActiveTab('invitations')}
@@ -431,7 +449,7 @@ export default function ConnectionsPage() {
                       : 'bg-white/10 text-gray-400 hover:text-white'
                   }`}
                 >
-                  {f === 'all' ? 'All' : f === 'mine' ? 'My Groups' : 'Event Groups'}
+                  {{ all: 'All', mine: 'My Groups', event: 'Event Groups' }[f]}
                 </button>
               ))}
             </div>
@@ -516,11 +534,7 @@ export default function ConnectionsPage() {
             <div className="text-center py-12 bg-white/5 border border-white/10 rounded-lg">
               <div className="text-4xl mb-3">👥</div>
               <p className="text-gray-400">
-                {groupFilter === 'all'
-                  ? 'No groups yet. Create one to get started!'
-                  : groupFilter === 'mine'
-                  ? "You haven't created any groups yet."
-                  : 'No event groups found.'}
+                {{ all: 'No groups yet. Create one to get started!', mine: "You haven't created any groups yet.", event: 'No event groups found.' }[groupFilter]}
               </p>
             </div>
           )}

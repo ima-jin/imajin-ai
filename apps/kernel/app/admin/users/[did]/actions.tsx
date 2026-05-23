@@ -96,13 +96,10 @@ export default function UserActions({ did, currentTier, isSuspended }: Readonly<
               : 'bg-red-600 hover:bg-red-700 text-white border border-transparent'
           }`}
         >
-          {loading === 'suspend'
-            ? isSuspended
-              ? 'Unsuspending…'
-              : 'Suspending…'
-            : isSuspended
-            ? 'Unsuspend'
-            : 'Suspend'}
+          {(() => {
+            if (loading === 'suspend') return isSuspended ? 'Unsuspending…' : 'Suspending…';
+            return isSuspended ? 'Unsuspend' : 'Suspend';
+          })()}
         </button>
       </div>
     </div>

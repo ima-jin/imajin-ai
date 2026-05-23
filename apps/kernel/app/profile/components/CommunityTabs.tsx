@@ -36,13 +36,11 @@ export function CommunityTabs({ tabs, activeTab, onTabChange, isMember }: Readon
             key={tab.id}
             onClick={() => !disabled && handleTabChange(tab.id)}
             disabled={disabled}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${
-              activeTab === tab.id
-                ? 'border-orange-500 text-orange-400'
-                : disabled
-                ? 'border-transparent text-zinc-600 cursor-not-allowed'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:border-zinc-600'
-            }`}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors border-b-2 ${(() => {
+              if (activeTab === tab.id) return 'border-orange-500 text-orange-400';
+              if (disabled) return 'border-transparent text-zinc-600 cursor-not-allowed';
+              return 'border-transparent text-zinc-400 hover:text-zinc-200 hover:border-zinc-600';
+            })()}`}
             title={disabled ? 'Join to access' : undefined}
           >
             <span>{tab.icon}</span>

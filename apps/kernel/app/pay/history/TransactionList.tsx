@@ -51,12 +51,11 @@ function fmtDate(iso: string | null) {
 }
 
 function StatusBadge({ status }: Readonly<{ status: string }>) {
-  const cls =
-    status === 'completed'
-      ? 'bg-green-900/30 text-green-400 border-green-800'
-      : status === 'failed'
-        ? 'bg-red-900/30 text-red-400 border-red-800'
-        : 'bg-zinc-800 text-zinc-400 border-zinc-700';
+  const statusStyles: Record<string, string> = {
+    completed: 'bg-green-900/30 text-green-400 border-green-800',
+    failed: 'bg-red-900/30 text-red-400 border-red-800',
+  };
+  const cls = statusStyles[status] ?? 'bg-zinc-800 text-zinc-400 border-zinc-700';
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full border ${cls}`}>{status}</span>
   );
@@ -108,16 +107,15 @@ function StandaloneRow({ tx, sessionId }: Readonly<{ tx: SerializedTx; sessionId
         </div>
         <div className="text-right shrink-0 flex items-center gap-3">
           <div>
-            <div
-              className={`text-base font-semibold ${
-                tx.currency === 'MJN'
-                  ? 'text-amber-400'
-                  : isIncoming ? 'text-green-400' : 'text-red-400'
-              }`}
-            >
-              {isIncoming ? '+' : '-'}
-              {fmt(amount, tx.currency)}
-            </div>
+            {(() => {
+              const amountColor = tx.currency === 'MJN' ? 'text-amber-400' : isIncoming ? 'text-green-400' : 'text-red-400';
+              return (
+                <div className={`text-base font-semibold ${amountColor}`}>
+                  {isIncoming ? '+' : '-'}
+                  {fmt(amount, tx.currency)}
+                </div>
+              );
+            })()}
             <div className="text-xs text-zinc-600">{tx.source}</div>
           </div>
           {(hasChain || !!tx.metadata) && <ChevronIcon />}
@@ -207,11 +205,11 @@ function BatchGroupRow({
     return e.createdAt < min ? e.createdAt : min;
   }, null);
 
-  const overallStatus = entries.every((e) => e.status === 'completed')
-    ? 'completed'
-    : entries.some((e) => e.status === 'failed')
-      ? 'failed'
-      : entries[0].status;
+  const overallStatus = (() => {
+    if (entries.every((e) => e.status === 'completed')) return 'completed';
+    if (entries.some((e) => e.status === 'failed')) return 'failed';
+    return entries[0].status;
+  })();
 
   return (
     <details className="group">
@@ -239,16 +237,13 @@ function BatchGroupRow({
         </div>
         <div className="text-right shrink-0 flex items-center gap-3">
           <div>
-            <div
-              className={`text-base font-semibold ${
-                userEntry.currency === 'MJN'
-                  ? 'text-amber-400'
-                  : isIncoming ? 'text-green-400' : 'text-red-400'
-              }`}
-            >
+            {(() => {
+              const amountColor = userEntry.currency === 'MJN' ? 'text-amber-400' : isIncoming ? 'text-green-400' : 'text-red-400';
+              return <div className={`text-base font-semibold ${amountColor}`}>
               {isIncoming ? '+' : '-'}
               {fmt(displayAmount, userEntry.currency)}
-            </div>
+            </div>;
+            })()}
             <div className="text-xs text-zinc-600">{userEntry.source}</div>
           </div>
           <ChevronIcon />

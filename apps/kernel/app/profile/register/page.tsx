@@ -466,11 +466,9 @@ function RegisterPage() {
               />
             </div>
             {handleStatus !== 'idle' && handle.length >= 3 && (
-              <p className={`text-xs mt-1 flex items-center gap-1 ${
-                handleStatus === 'checking' ? 'text-gray-400' :
-                handleStatus === 'available' ? 'text-green-400' :
-                'text-red-400'
-              }`}>
+              {(() => {
+                const statusColor: Record<string, string> = { checking: 'text-gray-400', available: 'text-green-400' };
+                return <p className={`text-xs mt-1 flex items-center gap-1 ${statusColor[handleStatus] ?? 'text-red-400'}`}>
                 {handleStatus === 'checking' && '⏳ Checking...'}
                 {handleStatus === 'available' && '✅ Available'}
                 {handleStatus === 'taken' && '❌ Taken'}

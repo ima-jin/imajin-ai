@@ -107,13 +107,7 @@ export default async function TracePage({
                         <StatusBadge status={step.status} />
                         {step.duration_ms !== null && (
                           <span
-                            className={`text-xs font-medium tabular-nums ml-auto ${
-                              step.duration_ms >= 1000
-                                ? 'text-red-600 dark:text-red-400'
-                                : step.duration_ms >= 500
-                                ? 'text-amber-600 dark:text-amber-400'
-                                : 'text-gray-500 dark:text-gray-400'
-                            }`}
+                            className={`text-xs font-medium tabular-nums ml-auto ${(() => { if (step.duration_ms >= 1000) return 'text-red-600 dark:text-red-400'; if (step.duration_ms >= 500) return 'text-amber-600 dark:text-amber-400'; return 'text-gray-500 dark:text-gray-400'; })()}`}
                           >
                             {step.duration_ms}ms
                           </span>
@@ -158,11 +152,11 @@ export default async function TracePage({
 function StatusBadge({ status }: Readonly<{ status: number }>) {
   const isError = status >= 500;
   const isClientError = status >= 400 && status < 500;
-  const cls = isError
-    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-    : isClientError
-    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-    : 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400';
+  const cls = (() => {
+    if (isError) return 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400';
+    if (isClientError) return 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400';
+    return 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400';
+  })();
   return (
     <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-mono font-medium ${cls}`}>
       {status}

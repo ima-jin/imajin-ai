@@ -75,13 +75,11 @@ function AssetCard({ asset, selected, checked, compact, selectionActive, onSelec
 
   return (
     <div
-      className={`group relative bg-[#252525] rounded-xl overflow-hidden cursor-pointer border-2 transition-all duration-150 ${
-        selected || checked
-          ? "border-orange-500 shadow-lg shadow-orange-500/20"
-          : selectionActive
-          ? "border-transparent hover:border-gray-500 opacity-90 hover:opacity-100"
-          : "border-transparent hover:border-gray-600"
-      }`}
+      className={`group relative bg-[#252525] rounded-xl overflow-hidden cursor-pointer border-2 transition-all duration-150 ${(() => {
+        if (selected || checked) return "border-orange-500 shadow-lg shadow-orange-500/20";
+        if (selectionActive) return "border-transparent hover:border-gray-500 opacity-90 hover:opacity-100";
+        return "border-transparent hover:border-gray-600";
+      })()}`}
       onClick={onSelect}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {

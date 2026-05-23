@@ -169,15 +169,12 @@ export default function ConversationsPage() {
   const allConversations = useMemo((): DisplayConversation[] => {
     return conversations.map((conv) => {
       const name = displayName(conv);
-      const subtitle =
-        conv.lastMessagePreview ||
-        (conv.type === 'dm'
-          ? conv.otherParticipant?.handle
-            ? `@${conv.otherParticipant.handle}`
-            : 'Direct message'
-          : conv.type === 'event'
-          ? 'Event chat'
-          : 'Group chat');
+      const typeSubtitle = (() => {
+        if (conv.type === 'dm') return conv.otherParticipant?.handle ? `@${conv.otherParticipant.handle}` : 'Direct message';
+        if (conv.type === 'event') return 'Event chat';
+        return 'Group chat';
+      })();
+      const subtitle = conv.lastMessagePreview || typeSubtitle;
 
       return {
         key: conv.did,
@@ -239,9 +236,9 @@ export default function ConversationsPage() {
       )}
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
-        {loadingConvs ? (
-          <div className="p-8 text-center text-gray-500">Loading conversations...</div>
-        ) : filteredConversations.length === 0 ? (
+      {(() => {
+        if (loadingConvs) return <div className="p-8 text-center text-gray-500">Loading conversations...</div>;
+        if (filteredConversations.length === 0) return (
           <div className="p-8 text-center text-gray-500">
             {debouncedSearch ? (
               <p>No conversations match &ldquo;{debouncedSearch}&rdquo;.</p>
@@ -257,7 +254,8 @@ export default function ConversationsPage() {
               </>
             )}
           </div>
-        ) : (
+        );
+        return (
           <div className="divide-y divide-gray-100 dark:divide-gray-700">
             {filteredConversations.map((conv) => (
               <ConversationRow
@@ -267,7 +265,8 @@ export default function ConversationsPage() {
               />
             ))}
           </div>
-        )}
+        );
+      })()}
       </div>
 
       <p className="text-center text-sm text-gray-500 mt-6">
@@ -290,13 +289,17 @@ function ConversationRow({
   const isEvent = conv.type === 'event';
   const isDm = conv.type === 'dm';
 
-  const iconBg = isGroup
-    ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600'
-    : isEvent
-    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600'
-    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300';
+  const iconBg = (() => {
+    if (isGroup) return 'bg-orange-100 dark:bg-orange-900/30 text-orange-600';
+    if (isEvent) return 'bg-blue-100 dark:bg-blue-900/30 text-blue-600';
+    return 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300';
+  })();
 
-  const icon = isGroup ? '👥' : isEvent ? '📅' : '💬';
+  const icon = (() => {
+    if (isGroup) return '👥';
+    if (isEvent) return '📅';
+    return '💬';
+  })();
   const isOnline = isDm && conv.otherParticipantDid
     ? onlineStatus[conv.otherParticipantDid] === true
     : false;

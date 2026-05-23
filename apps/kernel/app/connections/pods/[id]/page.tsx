@@ -327,15 +327,12 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
                   <span className="font-medium text-white text-sm truncate">
                     {member.name || (member.handle ? `@${member.handle}` : member.did.slice(0, 24) + '...')}
                   </span>
-                  <span className={`px-1.5 py-0.5 text-xs rounded font-medium shrink-0 ${
-                    member.role === 'owner'
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : member.role === 'admin'
-                      ? 'bg-blue-500/20 text-blue-300'
-                      : 'bg-white/10 text-gray-400'
-                  }`}>
+                  {(() => {
+                    const roleColors: Record<string, string> = { owner: 'bg-amber-500/20 text-amber-300', admin: 'bg-blue-500/20 text-blue-300' };
+                    return <span className={`px-1.5 py-0.5 text-xs rounded font-medium shrink-0 ${roleColors[member.role] ?? 'bg-white/10 text-gray-400'}`}>
                     {member.role}
-                  </span>
+                  </span>;
+                  })()}
                 </div>
                 {member.handle && member.name && (
                   <div className="text-gray-400 text-xs">@{member.handle}</div>
