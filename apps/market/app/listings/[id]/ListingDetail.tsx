@@ -358,10 +358,6 @@ export default function ListingDetail() {
   const tierLabel = TIER_LABEL_MAP[listing.sellerTier] ?? 'Direct';
   const tierColor = TIER_COLOR_MAP[listing.sellerTier] ?? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
 
-  const showContactSection =
-    listing.sellerTier === 'public_offplatform' ||
-    (isOnplatform && listing.showContactInfo && listing.contactInfo);
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
       <div className="container mx-auto px-4 py-8 max-w-4xl">

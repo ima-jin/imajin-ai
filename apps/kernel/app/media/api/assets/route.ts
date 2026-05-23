@@ -394,7 +394,6 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   let ownerDid: string;
-  let uploadedBy: string | undefined;
   let isAgentQuery = false;
   if (bearerToken && internalApiKey && bearerToken === internalApiKey) {
     const ownerDidHeader = request.headers.get("X-Owner-DID");
@@ -402,8 +401,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "X-Owner-DID header required" }, { status: 400, headers: cors });
     }
     ownerDid = ownerDidHeader;
-    // NEW: capture uploaded-by from internal caller
-    uploadedBy = request.headers.get("X-Uploaded-By") || ownerDidHeader;
   } else {
     const authResult = await requireAuth(request);
     if ("error" in authResult) {
@@ -423,7 +420,6 @@ export async function GET(request: NextRequest) {
 
   const search = searchParams.get("search");      // filename search
   const type = searchParams.get("type");          // e.g. "image"
-  const sort = searchParams.get("sort") || "created";
   const order = searchParams.get("order") || "desc";
   const limit = Math.min(Number.parseInt(searchParams.get("limit") || "50", 10), 200);
   const offset = Number.parseInt(searchParams.get("offset") || "0", 10);
