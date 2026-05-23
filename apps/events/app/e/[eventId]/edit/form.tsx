@@ -322,7 +322,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
   }
 
   const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
-  const linkedSurveyIds = linkedSurveys.map((linkedSurvey) => linkedSurvey.id);
+  const linkedSurveyIds = new Set(linkedSurveys.map((linkedSurvey) => linkedSurvey.id));
 
   return (
     <div className="space-y-6">
@@ -916,11 +916,11 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                 </div>
               ))}
 
-              {surveys.filter((s) => !linkedSurveyIds.includes(s.id)).length > 0 && (
+              {surveys.some((s) => !linkedSurveyIds.has(s.id)) && (
                 <button
                   type="button"
                   onClick={() => {
-                    const available = surveys.find((s) => !linkedSurveyIds.includes(s.id));
+                    const available = surveys.find((s) => !linkedSurveyIds.has(s.id));
                     if (available) setLinkedSurveys([...linkedSurveys, { id: available.id, visibility: 'always', paywall: false, requiredForTickets: false }]);
                   }}
                   className="text-sm text-orange-500 hover:text-orange-600 font-medium"
