@@ -107,7 +107,7 @@ export default async function TracePage({
                         <StatusBadge status={step.status} />
                         {step.duration_ms !== null && (
                           <span
-                            className={`text-xs font-medium tabular-nums ml-auto ${(() => { if (step.duration_ms >= 1000) return 'text-red-600 dark:text-red-400'; if (step.duration_ms >= 500) return 'text-amber-600 dark:text-amber-400'; return 'text-gray-500 dark:text-gray-400'; })()}`}
+                            className={`text-xs font-medium tabular-nums ml-auto ${(() => { if (step.duration_ms >= 1000) { return 'text-red-600 dark:text-red-400'; } if (step.duration_ms >= 500) { return 'text-amber-600 dark:text-amber-400'; } return 'text-gray-500 dark:text-gray-400'; })()}`}
                           >
                             {step.duration_ms}ms
                           </span>

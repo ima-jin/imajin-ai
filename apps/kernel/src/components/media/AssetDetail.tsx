@@ -427,7 +427,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
                     disabled={transcribing}
                     className="px-3 py-1.5 text-xs bg-[#252525] border border-gray-700 text-gray-300 rounded-lg hover:border-gray-500 transition-colors disabled:opacity-50"
                   >
-                    {(() => { if (transcribing) return "Transcribing…"; if (transcript) return "Re-transcribe"; return "Transcribe"; })()}
+                    {(() => { if (transcribing) { return "Transcribing…"; } if (transcript) { return "Re-transcribe"; } return "Transcribe"; })()}
                   </button>
                 )}
               </>

@@ -87,7 +87,7 @@ export default async function AttestationList({ sessionDid, searchParams, exclud
   const issuedByMe = eq(attestations.issuerDid, sessionDid);
   const aboutMe = eq(attestations.subjectDid, sessionDid);
   const roleCondition =
-    (() => { if (role === 'issued') return issuedByMe; if (role === 'subject') return aboutMe; return or(issuedByMe, aboutMe)!; })();
+    (() => { if (role === 'issued') { return issuedByMe; } if (role === 'subject') { return aboutMe; } return or(issuedByMe, aboutMe)!; })();
 
   const conditions = [roleCondition, isNull(attestations.revokedAt)];
   if (typeFilter) conditions.push(eq(attestations.type, typeFilter));

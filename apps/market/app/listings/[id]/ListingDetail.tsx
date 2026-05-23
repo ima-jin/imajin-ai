@@ -582,7 +582,7 @@ export default function ListingDetail() {
                       disabled={buyLoading}
                       className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {(() => { if (buyLoading) return 'Processing…'; return isRental ? 'Rent Now' : 'Buy Now'; })()}
+                      {(() => { if (buyLoading) { return 'Processing…'; } return isRental ? 'Rent Now' : 'Buy Now'; })()}
                     </button>
                     {buyError && (
                       <p className="text-sm text-red-500">{buyError}</p>
@@ -605,7 +605,7 @@ export default function ListingDetail() {
                     disabled={buyLoading}
                     className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {(() => { if (buyLoading) return 'Processing…'; return isRental ? 'Rent Now' : 'Buy Now'; })()}
+                    {(() => { if (buyLoading) { return 'Processing…'; } return isRental ? 'Rent Now' : 'Buy Now'; })()}
                   </button>
                   {buyError && (
                     <p className="text-sm text-red-500">{buyError}</p>

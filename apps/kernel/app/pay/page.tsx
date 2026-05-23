@@ -47,7 +47,7 @@ export default async function Home() {
       <div>
         <h1 className="text-3xl font-bold text-white">Payment Dashboard</h1>
         <p className="text-zinc-400 mt-1">
-          {(() => { if (session.actingAs) return `Scope: ${session.actingAs.slice(-8)}`; if (session.handle) return `@${session.handle}`; return session.name || session.id; })()}
+          {(() => { if (session.actingAs) { return `Scope: ${session.actingAs.slice(-8)}`; } if (session.handle) { return `@${session.handle}`; } return session.name || session.id; })()}
         </p>
       </div>
 
@@ -141,7 +141,7 @@ export default async function Home() {
                     </div>
                   </div>
                   <div
-                    className={`text-base font-semibold shrink-0 ${(() => { if (tx.currency === 'MJN') return 'text-amber-400'; if (isIncoming) return 'text-green-400'; return 'text-red-400'; })()}`}
+                    className={`text-base font-semibold shrink-0 ${(() => { if (tx.currency === 'MJN') { return 'text-amber-400'; } if (isIncoming) { return 'text-green-400'; } return 'text-red-400'; })()}`}
                   >
                     {isIncoming ? '+' : '-'}
                     {tx.currency === 'MJN'

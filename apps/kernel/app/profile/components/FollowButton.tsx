@@ -39,7 +39,7 @@ export function FollowButton({ targetDid, initialFollowing }: Readonly<FollowBut
           : 'bg-[#F59E0B]/10 border-[#F59E0B]/30 text-[#F59E0B] hover:bg-[#F59E0B]/20'
       }`}
     >
-      {(() => { if (loading) return '...'; if (following) return 'Following'; return 'Follow'; })()}
+      {(() => { if (loading) { return '...'; } if (following) { return 'Following'; } return 'Follow'; })()}
     </button>
   );
 }

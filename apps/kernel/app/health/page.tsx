@@ -120,7 +120,7 @@ export default function HealthPage() {
 
           {/* Overall status banner */}
           {(() => {
-            const bannerCls = (() => { if (loading) return 'bg-gray-800'; if (allUp) return 'bg-green-900/30 border border-green-800'; return 'bg-yellow-900/30 border border-yellow-800'; })();
+            const bannerCls = (() => { if (loading) { return 'bg-gray-800'; } if (allUp) { return 'bg-green-900/30 border border-green-800'; } return 'bg-yellow-900/30 border border-yellow-800'; })();
             return <div className={`rounded-lg p-6 ${bannerCls}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -130,7 +130,7 @@ export default function HealthPage() {
                   <div className={`w-3 h-3 rounded-full ${allUp ? 'bg-green-500' : 'bg-yellow-500'}`} />
                 )}
                 <span className="text-xl font-medium">
-                  {(() => { if (loading) return 'Checking...'; if (allUp) return 'All Systems Operational'; return 'Some Systems Degraded'; })()}
+                  {(() => { if (loading) { return 'Checking...'; } if (allUp) { return 'All Systems Operational'; } return 'Some Systems Degraded'; })()}
                 </span>
               </div>
               <button
