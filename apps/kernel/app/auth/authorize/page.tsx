@@ -177,6 +177,7 @@ function AuthorizeForm() {
                     checked={enabled}
                     onChange={e => setEnabledScopes(prev => ({ ...prev, [scope]: e.target.checked }))}
                     className="ml-3 w-4 h-4 accent-[#F59E0B] cursor-pointer"
+                    aria-label={scope}
                   />
                 </label>
               ))}

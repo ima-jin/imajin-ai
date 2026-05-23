@@ -146,6 +146,7 @@ export function FileAttachment({
         onChange={handleFileSelect}
         disabled={disabled}
         className="sr-only"
+        tabIndex={-1}
       />
       {renderTrigger ? (
         renderTrigger(openPicker)
@@ -156,6 +157,7 @@ export function FileAttachment({
             disabled ? 'opacity-40 cursor-not-allowed' : ''
           } ${isDragging ? 'text-orange-400' : ''}`}
           title="Attach file"
+          aria-label="Attach file"
           tabIndex={0}
           onClick={openPicker}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPicker(); }}

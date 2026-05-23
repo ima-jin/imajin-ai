@@ -70,7 +70,7 @@ function SellerPageContent() {
             </h1>
             {!loading && !error && (
               <p className="text-gray-500 dark:text-gray-400 mt-1">
-                {listings.length} active listing{listings.length !== 1 ? 's' : ''}
+                {listings.length} active listing{listings.length === 1  ? '' : 's'}
               </p>
             )}
           </div>

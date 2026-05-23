@@ -279,7 +279,7 @@ export default function ListingDetail() {
             This listing is only available to verified members.
           </p>
           <a
-            href={`${authUrl}/login?next=${encodeURIComponent(typeof window !== 'undefined' ? globalThis.location.href : '')}`}
+            href={`${authUrl}/login?next=${encodeURIComponent(typeof window === 'undefined' ? '' : globalThis.location.href)}`}
             className="inline-block px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition"
           >
             Sign in to view
@@ -469,12 +469,13 @@ export default function ListingDetail() {
                   <button
                     key={src}
                     onClick={() => setActiveImage(i)}
+                    aria-label={`Select image ${i + 1}`}
                     className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition ${
                       i === activeImage ? 'border-orange-500' : 'border-transparent opacity-60 hover:opacity-100'
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={src} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />
+                    <img src={src} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>

@@ -36,7 +36,7 @@ export async function GET(
       return NextResponse.json({
         tiers: tiers.map(t => ({
           ...t,
-          available: t.quantity !== null ? t.quantity - (t.sold || 0) : null,
+          available: t.quantity === null  ? null : t.quantity - (t.sold || 0),
         })),
       }, { headers: cors });
     } catch (error) {
@@ -55,7 +55,7 @@ export async function GET(
     return NextResponse.json({
       tiers: tiers.map(t => ({
         ...t,
-        available: t.quantity !== null ? t.quantity - (t.sold || 0) : null,
+        available: t.quantity === null  ? null : t.quantity - (t.sold || 0),
       })),
     });
   } catch (error) {
@@ -273,7 +273,7 @@ export async function PUT(
     return NextResponse.json({
       tier: {
         ...updated,
-        available: updated.quantity !== null ? updated.quantity - (updated.sold || 0) : null,
+        available: updated.quantity === null  ? null : updated.quantity - (updated.sold || 0),
       },
     });
 

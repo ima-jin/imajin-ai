@@ -41,13 +41,13 @@ export function NotificationBell() {
   const panelRef = useRef<HTMLDivElement>(null);
 
   const handleOpen = useCallback(async () => {
-    if (!open) {
+    if (open) {
+      setOpen(false);
+    } else {
       setOpen(true);
       setLoading(true);
       await refresh();
       setLoading(false);
-    } else {
-      setOpen(false);
     }
   }, [open, refresh]);
 
@@ -117,7 +117,7 @@ export function NotificationBell() {
                   key={notification.id}
                   onClick={() => markAsRead(notification.id)}
                   className={`w-full text-left px-4 py-3 border-b border-gray-800 last:border-0 hover:bg-gray-800 transition flex items-start gap-3 ${
-                    !notification.read ? 'bg-gray-800/50' : ''
+                    notification.read  ? '' : 'bg-gray-800/50'
                   }`}
                 >
                   {/* Unread dot — space always reserved so text aligns */}

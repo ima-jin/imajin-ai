@@ -163,7 +163,7 @@ export async function validateCart(
       if (tt.quantity !== null) {
         const available = tt.quantity - (tt.sold ?? 0);
         if (available < item.quantity) {
-          const suffix = available !== 1 ? 's' : '';
+          const suffix = available === 1  ? '' : 's';
           throw new CheckoutValidationError(
             `Only ${available} ${tt.name} ticket${suffix} available`,
             availabilityStatusCode,

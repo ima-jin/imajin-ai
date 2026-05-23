@@ -22,7 +22,7 @@ export default async function AdminEventsPage() {
         <div>
           <h1 className="text-3xl font-bold">Admin — Events</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            {allEvents.length} event{allEvents.length !== 1 ? 's' : ''} on the network
+            {allEvents.length} event{allEvents.length === 1  ? '' : 's'} on the network
           </p>
         </div>
         <a

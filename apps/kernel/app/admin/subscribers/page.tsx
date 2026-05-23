@@ -252,7 +252,7 @@ export default async function AdminSubscribersPage({
           </Link>
         )}
         <span className="ml-auto text-sm text-gray-500 dark:text-gray-400">
-          {total.toLocaleString()} subscriber{total !== 1 ? 's' : ''}
+          {total.toLocaleString()} subscriber{total === 1  ? '' : 's'}
         </span>
       </form>
 

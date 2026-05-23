@@ -50,7 +50,7 @@ export async function GET(
             AND member_did != ${effectiveDid}
           LIMIT 1
         `);
-        const otherDid = members[0]?.member_did || (conversation.createdBy !== effectiveDid ? conversation.createdBy : null);
+        const otherDid = members[0]?.member_did || (conversation.createdBy === effectiveDid  ? null : conversation.createdBy);
         if (otherDid) {
           const profile = await db.query.profiles.findFirst({
             where: eq(profiles.did, otherDid),
@@ -102,14 +102,7 @@ export async function PATCH(
       where: eq(conversationsV2.did, conversationDid),
     });
 
-    if (!conv) {
-      // Auto-create if it doesn't exist yet
-      await db.insert(conversationsV2).values({
-        did: conversationDid,
-        name: name || null,
-        createdBy: effectiveDid,
-      }).onConflictDoNothing();
-    } else {
+    if (conv) {
       if (conv.createdBy !== effectiveDid) {
         return errorResponse('Only the creator can update the name', 403);
       }
@@ -117,6 +110,13 @@ export async function PATCH(
         .update(conversationsV2)
         .set({ name: name || null, updatedAt: new Date() })
         .where(eq(conversationsV2.did, conversationDid));
+    } else {
+      // Auto-create if it doesn't exist yet
+      await db.insert(conversationsV2).values({
+        did: conversationDid,
+        name: name || null,
+        createdBy: effectiveDid,
+      }).onConflictDoNothing();
     }
 
     return jsonResponse({ ok: true });

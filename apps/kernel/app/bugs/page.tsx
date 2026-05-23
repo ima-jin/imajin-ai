@@ -155,7 +155,7 @@ export default async function BugsPage({ searchParams }: Readonly<PageProps>) {
         <div>
           <h1 className="text-2xl font-bold text-gray-100 mb-1">Bug Reports</h1>
           <p className="text-sm text-gray-500">
-            {allReports.length} report{allReports.length !== 1 ? 's' : ''}{filter !== 'all' ? ` (${filter})` : ''}
+            {allReports.length} report{allReports.length === 1  ? '' : 's'}{filter !== 'all' ? ` (${filter})` : ''}
           </p>
         </div>
         <BugReporterOpenButton />
@@ -204,7 +204,7 @@ export default async function BugsPage({ searchParams }: Readonly<PageProps>) {
         <h2 className="text-lg font-semibold text-gray-200 mb-4">All Reported Issues</h2>
         {otherReports.length === 0 ? (
           <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-8 text-center">
-            <p className="text-gray-500">No {filter !== 'all' ? filter : 'other'} reports from others.</p>
+            <p className="text-gray-500">No {filter === 'all'  ? 'other' : filter} reports from others.</p>
           </div>
         ) : (
           <ul className="space-y-4">

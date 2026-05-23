@@ -98,13 +98,7 @@ export default async function TelemetryPage() {
         </p>
       </div>
 
-      {!data ? (
-        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-8 text-center">
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
-            No telemetry data. Set <code className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">ENABLE_REQUEST_LOG=true</code> to start collecting.
-          </p>
-        </div>
-      ) : (
+      {data ? (
         <div className="space-y-8">
           {/* Request Volume Chart */}
           <Section title="Request Volume (24h)">
@@ -140,6 +134,12 @@ export default async function TelemetryPage() {
           >
             <RecentErrorsTable rows={errorsData?.rows ?? []} />
           </Section>
+        </div>
+      ) : (
+        <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-8 text-center">
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
+            No telemetry data. Set <code className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">ENABLE_REQUEST_LOG=true</code> to start collecting.
+          </p>
         </div>
       )}
     </div>

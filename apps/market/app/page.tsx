@@ -100,7 +100,7 @@ function MarketPageContent() {
           <div>
             <h1 className="text-3xl font-bold mb-2">Browse Listings</h1>
             <p className="text-gray-500 dark:text-gray-400">
-              Local commerce with trust.{total > 0 && ` ${total} listing${total !== 1 ? 's' : ''} available.`}
+              Local commerce with trust.{total > 0 && ` ${total} listing${total === 1 ? '' : 's'} available.`}
             </p>
           </div>
           <Link

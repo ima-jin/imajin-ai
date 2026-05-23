@@ -39,9 +39,9 @@ export default async function TopupSuccessPage({ searchParams }: Readonly<Succes
         <div className="text-6xl mb-4">✅</div>
         <h1 className="text-3xl font-bold text-white">Funds Added!</h1>
         <p className="text-zinc-400">
-          {amount !== null
-            ? `$${amount.toFixed(2)} CAD has been credited to your MJNx balance.`
-            : 'Your top-up has been processed successfully.'}
+          {amount === null
+            ? 'Your top-up has been processed successfully.'
+            : `$${amount.toFixed(2)} CAD has been credited to your MJNx balance.`}
         </p>
       </div>
 

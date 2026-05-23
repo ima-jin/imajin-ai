@@ -353,7 +353,7 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
           <div className="flex items-center gap-2">
             <span className="text-amber-600 dark:text-amber-400 text-lg">⚠️</span>
             <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-              {totalOrphans} transaction{totalOrphans !== 1 ? 's' : ''} need attention
+              {totalOrphans} transaction{totalOrphans === 1  ? '' : 's'} need attention
             </p>
           </div>
           <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">

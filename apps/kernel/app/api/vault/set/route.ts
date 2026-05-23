@@ -80,8 +80,8 @@ export async function POST(request: NextRequest) {
       keyId,
       signature,
       timestamp,
-      ...(previousCid !== undefined ? { previousCid } : {}),
-      ...(deleted !== undefined ? { deleted } : {}),
+      ...(previousCid === undefined  ? {} : { previousCid }),
+      ...(deleted === undefined  ? {} : { deleted }),
     };
 
     await assertEntryIntegrity(entry, vaultAdapters);

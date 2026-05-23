@@ -180,11 +180,11 @@ export async function requireAuth(
       const chainRes = await fetch(
         `${getAuthUrl()}/api/identity/${encodeURIComponent(result.identity.id)}/verify`
       );
-      if (!chainRes.ok) {
-        result.identity.chainVerified = false;
-      } else {
+      if (chainRes.ok) {
         const chainData = await chainRes.json();
         result.identity.chainVerified = chainData.chain?.valid ?? false;
+      } else {
+        result.identity.chainVerified = false;
       }
     } catch (err) {
       log.error({ err: String(err) }, "[AUTH] Chain verification failed");

@@ -63,15 +63,15 @@ export function buildFairManifest(params: {
   const protocolShare = bpsToShare(PROTOCOL_FEE_BPS);
 
   // Node fee: clamped to operator bounds
-  const nodeFeeBps = params.nodeFeeBps != null
-    ? clamp(params.nodeFeeBps, NODE_FEE_MIN_BPS, NODE_FEE_MAX_BPS)
-    : NODE_FEE_DEFAULT_BPS;
+  const nodeFeeBps = params.nodeFeeBps == null
+    ? NODE_FEE_DEFAULT_BPS
+    : clamp(params.nodeFeeBps, NODE_FEE_MIN_BPS, NODE_FEE_MAX_BPS);
   const nodeShare = bpsToShare(nodeFeeBps);
 
   // Buyer credit: clamped to operator bounds
-  const buyerCreditBps = params.buyerCreditBps != null
-    ? clamp(params.buyerCreditBps, BUYER_CREDIT_MIN_BPS, BUYER_CREDIT_MAX_BPS)
-    : BUYER_CREDIT_DEFAULT_BPS;
+  const buyerCreditBps = params.buyerCreditBps == null
+    ? BUYER_CREDIT_DEFAULT_BPS
+    : clamp(params.buyerCreditBps, BUYER_CREDIT_MIN_BPS, BUYER_CREDIT_MAX_BPS);
   const buyerCreditShare = bpsToShare(buyerCreditBps);
 
   // Scope fee: only when scopeDid AND scopeFeeBps are both provided

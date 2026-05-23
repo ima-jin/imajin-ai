@@ -81,8 +81,8 @@ export default function StudentsPage() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Enrolled Students</h1>
           <div className="flex gap-4 text-sm text-gray-500">
-            <span>{data.totalStudents} student{data.totalStudents !== 1 ? 's' : ''}</span>
-            <span>{data.totalLessons} lesson{data.totalLessons !== 1 ? 's' : ''}</span>
+            <span>{data.totalStudents} student{data.totalStudents === 1  ? '' : 's'}</span>
+            <span>{data.totalLessons} lesson{data.totalLessons === 1  ? '' : 's'}</span>
           </div>
         </div>
 

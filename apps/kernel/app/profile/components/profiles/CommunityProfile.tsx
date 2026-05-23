@@ -188,7 +188,7 @@ export async function CommunityProfile({ profile, identity, viewer, links }: Rea
             {memberCount > 0 && (
               <div className="flex items-center justify-center gap-3 mb-2">
                 <span className="text-sm text-gray-400">
-                  {memberCount} member{memberCount !== 1 ? 's' : ''}
+                  {memberCount} member{memberCount === 1  ? '' : 's'}
                 </span>
                 {topMembers.length > 0 && (
                   <div className="flex items-center -space-x-2">

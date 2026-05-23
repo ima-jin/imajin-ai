@@ -99,13 +99,13 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
 
       const data = await res.json();
 
-      if (!res.ok) {
-        setError(data.error || 'Failed to send message');
-      } else {
+      if (res.ok) {
         setResult(data);
         setSubject('');
         setMarkdown('');
         setPreview(false);
+      } else {
+        setError(data.error || 'Failed to send message');
       }
     } catch {
       setError('Network error — please try again');
@@ -127,7 +127,7 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
         <h2 className="text-xl font-semibold">Message Attendees</h2>
         <span className="ml-auto text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
           {countLoading && <span className="text-xs">Updating…</span>}
-          {recipientCount} recipient{recipientCount !== 1 ? 's' : ''}
+          {recipientCount} recipient{recipientCount === 1  ? '' : 's'}
         </span>
       </div>
 
@@ -258,7 +258,7 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
             disabled={!canSend}
             className="px-5 py-2 rounded-md bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors"
           >
-            {sending ? 'Sending…' : `Send to ${recipientCount} attendee${recipientCount !== 1 ? 's' : ''}`}
+            {sending ? 'Sending…' : `Send to ${recipientCount} attendee${recipientCount === 1 ? '' : 's'}`}
             {/* Note: the inner pluralization ternary (recipientCount !== 1) is inside a template literal within one branch — not a nested ternary */}
           </button>
         </div>
@@ -271,7 +271,7 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
             <h3 className="text-lg font-semibold mb-2">Send this message?</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
               This will send <strong>&ldquo;{subject}&rdquo;</strong> to{' '}
-              <strong>{recipientCount} attendee{recipientCount !== 1 ? 's' : ''}</strong>. This cannot be undone.
+              <strong>{recipientCount} attendee{recipientCount === 1  ? '' : 's'}</strong>. This cannot be undone.
             </p>
             <div className="flex gap-3 justify-end">
               <button

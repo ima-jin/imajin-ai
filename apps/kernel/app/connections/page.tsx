@@ -294,7 +294,7 @@ export default function ConnectionsPage() {
         <>
           <div className="flex items-center justify-between mb-8">
             <p className="text-gray-400 text-sm">
-              {connections.length} connection{connections.length !== 1 ? 's' : ''}
+              {connections.length} connection{connections.length === 1  ? '' : 's'}
             </p>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-0.5">
@@ -523,7 +523,7 @@ export default function ConnectionsPage() {
                       <div className="text-gray-400 text-xs truncate mb-0.5">{pod.description}</div>
                     )}
                     <div className="text-gray-500 text-xs">
-                      {pod.memberCount} member{pod.memberCount !== 1 ? 's' : ''} · {new Date(pod.createdAt).toLocaleDateString()}
+                      {pod.memberCount} member{pod.memberCount === 1  ? '' : 's'} · {new Date(pod.createdAt).toLocaleDateString()}
                     </div>
                   </div>
                   <div className="text-gray-600 shrink-0">›</div>

@@ -315,7 +315,7 @@ export default function TransactionList({ displayEntries, sessionId }: Readonly<
             <button
               onClick={() => setShowGross(false)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                !showGross ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:text-zinc-300'
+                showGross  ? 'text-zinc-400 hover:text-zinc-300' : 'bg-orange-500 text-white'
               }`}
             >
               Net

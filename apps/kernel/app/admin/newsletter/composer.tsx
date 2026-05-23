@@ -61,8 +61,8 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
         }),
       });
       const data = await res.json();
-      if (!res.ok) setError(data.error ?? 'Test send failed');
-      else setResult({ sent: true, recipientCount: 1 });
+      if (res.ok) setResult({ sent: true, recipientCount: 1 });
+      else setError(data.error ?? 'Test send failed');
     } finally {
       setSendingTest(false);
     }
@@ -84,8 +84,8 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
         }),
       });
       const data = await res.json();
-      if (!res.ok) setError(data.error ?? 'Send failed');
-      else setResult({ sent: data.sent, recipientCount: data.recipientCount });
+      if (res.ok) setResult({ sent: data.sent, recipientCount: data.recipientCount });
+      else setError(data.error ?? 'Send failed');
     } finally {
       setSending(false);
       setConfirm(false);
@@ -205,7 +205,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
               </div>
             ) : (
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Send to all {initialConnectionCount.toLocaleString()} connection{initialConnectionCount !== 1 ? 's' : ''} with a contact email.
+                Send to all {initialConnectionCount.toLocaleString()} connection{initialConnectionCount === 1  ? '' : 's'} with a contact email.
               </p>
             )}
 
@@ -263,7 +263,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Confirm Send</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
               This will send <strong>"{subject}"</strong> to{' '}
-              <strong>{recipientCount.toLocaleString()} recipient{recipientCount !== 1 ? 's' : ''}</strong>.
+              <strong>{recipientCount.toLocaleString()} recipient{recipientCount === 1  ? '' : 's'}</strong>.
               This cannot be undone.
             </p>
             <div className="flex gap-2 justify-end">

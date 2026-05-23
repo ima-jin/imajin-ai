@@ -86,14 +86,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   }
 
   try {
-    if (!existing) {
-      await db.insert(identityMembers).values({
-        identityDid: scopeDid,
-        memberDid: session.did,
-        role: 'member',
-        addedBy: scopeDid,
-      });
-    } else {
+    if (existing) {
       // Re-add previously removed member
       await db.update(identityMembers)
         .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedAt: new Date() })
@@ -101,6 +94,13 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
           eq(identityMembers.identityDid, scopeDid),
           eq(identityMembers.memberDid, session.did)
         ));
+    } else {
+      await db.insert(identityMembers).values({
+        identityDid: scopeDid,
+        memberDid: session.did,
+        role: 'member',
+        addedBy: scopeDid,
+      });
     }
 
     publish('identity.member_added', {

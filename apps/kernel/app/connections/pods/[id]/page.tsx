@@ -244,7 +244,7 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
                 <p className="text-gray-400 text-sm mb-2">{pod.description}</p>
               )}
               <p className="text-gray-500 text-xs">
-                {pod.memberCount} member{pod.memberCount !== 1 ? 's' : ''} · Created {new Date(pod.createdAt).toLocaleDateString()}
+                {pod.memberCount} member{pod.memberCount === 1  ? '' : 's'} · Created {new Date(pod.createdAt).toLocaleDateString()}
               </p>
             </div>
             {isOwner && !isReadOnly && (
