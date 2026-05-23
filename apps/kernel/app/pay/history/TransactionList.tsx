@@ -108,7 +108,9 @@ function StandaloneRow({ tx, sessionId }: Readonly<{ tx: SerializedTx; sessionId
         <div className="text-right shrink-0 flex items-center gap-3">
           <div>
             {(() => {
-              const amountColor = tx.currency === 'MJN' ? 'text-amber-400' : isIncoming ? 'text-green-400' : 'text-red-400';
+              let amountColor = 'text-red-400';
+              if (tx.currency === 'MJN') { amountColor = 'text-amber-400'; }
+              else if (isIncoming) { amountColor = 'text-green-400'; }
               return (
                 <div className={`text-base font-semibold ${amountColor}`}>
                   {isIncoming ? '+' : '-'}
@@ -238,7 +240,9 @@ function BatchGroupRow({
         <div className="text-right shrink-0 flex items-center gap-3">
           <div>
             {(() => {
-              const amountColor = userEntry.currency === 'MJN' ? 'text-amber-400' : isIncoming ? 'text-green-400' : 'text-red-400';
+              let amountColor = 'text-red-400';
+              if (userEntry.currency === 'MJN') { amountColor = 'text-amber-400'; }
+              else if (isIncoming) { amountColor = 'text-green-400'; }
               return <div className={`text-base font-semibold ${amountColor}`}>
               {isIncoming ? '+' : '-'}
               {fmt(displayAmount, userEntry.currency)}

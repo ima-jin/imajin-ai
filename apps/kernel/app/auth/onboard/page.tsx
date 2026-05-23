@@ -212,7 +212,8 @@ function OnboardContent() {
 
   // Build a next URL that returns to this onboard page (with scope) after login
   const onboardQuery = (() => {
-    if (scope) return `?scope=${encodeURIComponent(scope)}${redirect ? `&redirect=${encodeURIComponent(redirect)}` : ''}`;
+    const redirectParam = redirect ? `&redirect=${encodeURIComponent(redirect)}` : '';
+    if (scope) return `?scope=${encodeURIComponent(scope)}${redirectParam}`;
     if (redirect) return `?redirect=${encodeURIComponent(redirect)}`;
     return '';
   })();

@@ -299,18 +299,18 @@ export default function ConnectionsPage() {
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-0.5">
                 {(() => {
-                  const dateSortTitle = sortMode === 'date'
-                    ? (sortAsc ? 'Oldest first' : 'Newest first')
-                    : 'Sort by date';
-                  const dateSortArrow = sortMode === 'date'
-                    ? (sortAsc ? '↑' : '↓')
-                    : '';
-                  const alphaSortTitle = sortMode === 'alpha'
-                    ? (sortAsc ? 'A → Z' : 'Z → A')
-                    : 'Sort by name';
-                  const alphaSortArrow = sortMode === 'alpha'
-                    ? (sortAsc ? '↑' : '↓')
-                    : '';
+                  let dateSortTitle = 'Sort by date';
+                  let dateSortArrow = '';
+                  if (sortMode === 'date') {
+                    dateSortTitle = sortAsc ? 'Oldest first' : 'Newest first';
+                    dateSortArrow = sortAsc ? '↑' : '↓';
+                  }
+                  let alphaSortTitle = 'Sort by name';
+                  let alphaSortArrow = '';
+                  if (sortMode === 'alpha') {
+                    alphaSortTitle = sortAsc ? 'A → Z' : 'Z → A';
+                    alphaSortArrow = sortAsc ? '↑' : '↓';
+                  }
                   return (
                     <>
                       <button

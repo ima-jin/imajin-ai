@@ -384,7 +384,7 @@ export function AssetGrid({
             }`}
           >
             {s}
-            {sort !== s ? "" : order === "asc" ? " ↑" : " ↓"}
+            {sort === s && (order === "asc" ? " ↑" : " ↓")}
           </button>
         ))}
 

@@ -109,10 +109,10 @@ function FolderRow({
               onToggle(node.id);
             }
           }}
-          aria-label={!hasChildren ? "No child folders" : isExpanded ? "Collapse folder" : "Expand folder"}
+          aria-label={hasChildren ? (isExpanded ? "Collapse folder" : "Expand folder") : "No child folders"}
           disabled={!hasChildren}
         >
-          {!hasChildren ? null : isExpanded ? "▼" : "▶"}
+          {hasChildren && (isExpanded ? "▼" : "▶")}
         </button>
         <span className="text-sm shrink-0">{icon}</span>
         <span className="text-sm truncate flex-1">{node.name}</span>

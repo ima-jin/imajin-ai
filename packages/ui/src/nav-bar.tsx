@@ -129,12 +129,9 @@ function useAutoIdentity(servicePrefix: string, domain: string, overrides?: Serv
                 onRegister: () => { globalThis.location.href = `${authUrl}/register`; },
               });
             },
-            onViewProfile: (() => {
-              const viewProfileId = data.handle ?? data.did;
-              return viewProfileId
-                ? () => { globalThis.location.href = `${profileUrl}/${viewProfileId}`; }
-                : undefined;
-            })(),
+            onViewProfile: (data.handle ?? data.did)
+              ? () => { globalThis.location.href = `${profileUrl}/${data.handle ?? data.did}`; }
+              : undefined,
             onEditProfile: () => { globalThis.location.href = `${profileUrl}/edit`; },
             onLogin: () => { globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(globalThis.location.href)}`; },
             onRegister: () => { globalThis.location.href = `${authUrl}/register`; },

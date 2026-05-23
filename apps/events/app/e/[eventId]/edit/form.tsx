@@ -862,7 +862,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                     </select>
                     <button
                       type="button"
-                      onClick={() => setLinkedSurveys(linkedSurveys.filter((_, i) => i !== index))}
+                      onClick={() => { const idx = index; setLinkedSurveys(prev => prev.filter((_, i) => i !== idx)); }}
                       className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
                       title="Remove survey"
                     >
