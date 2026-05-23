@@ -92,6 +92,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
 
   return (
     <div className="min-w-[200px] max-w-[280px]">
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption -- voice messages use visible transcript below */}
       <audio ref={audioRef} onEnded={handleEnded} preload="metadata" aria-label="Voice message" />
 
       {/* Player row */}

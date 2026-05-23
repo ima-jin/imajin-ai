@@ -350,7 +350,6 @@ export function FolderTree({
         >
           <div
             className="bg-[#2a2a2a] border border-white/10 rounded-lg shadow-xl p-4 w-72"
-            role="dialog"
             aria-label="Rename folder"
             onMouseDown={(e) => e.stopPropagation()}
           >

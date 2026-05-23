@@ -342,9 +342,8 @@ export function AssetGrid({
   }, [selectedAssetIds, moveFolderId, onUploaded, setSelectedAssetIds, setMoveFolderId]);
 
   return (
-    <div
+    <section
       className="flex flex-col h-full w-full relative"
-      role="region"
       aria-label="Asset grid"
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
@@ -641,6 +640,6 @@ export function AssetGrid({
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }

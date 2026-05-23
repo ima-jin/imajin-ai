@@ -77,7 +77,7 @@ function NicknameEditor({
 
   if (editing) {
     return (
-      <div className="flex items-center gap-1" role="presentation" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
           value={value}

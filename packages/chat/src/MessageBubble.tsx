@@ -346,7 +346,6 @@ export function MessageBubble({
     <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
       <div className="max-w-[90%]">
         <div
-          role="presentation"
           onContextMenu={handleContextMenu}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
