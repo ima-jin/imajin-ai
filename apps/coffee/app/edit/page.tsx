@@ -197,12 +197,13 @@ export default function EditPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Handle */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-            <label className="block text-sm font-medium mb-2">
+            <label htmlFor="coffee-handle" className="block text-sm font-medium mb-2">
               Handle *
             </label>
             <div className="flex items-center gap-2">
               <span className="text-gray-500">coffee.imajin.ai/</span>
               <input
+                id="coffee-handle"
                 type="text"
                 value={handle}
                 onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
@@ -220,10 +221,11 @@ export default function EditPage() {
           {/* Title & Bio */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label htmlFor="coffee-title" className="block text-sm font-medium mb-2">
                 Title *
               </label>
               <input
+                id="coffee-title"
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -234,10 +236,11 @@ export default function EditPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label htmlFor="coffee-bio" className="block text-sm font-medium mb-2">
                 Bio
               </label>
               <textarea
+                id="coffee-bio"
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 rows={3}
@@ -249,9 +252,9 @@ export default function EditPage() {
 
           {/* Avatar */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-            <label className="block text-sm font-medium mb-2">
+            <span className="block text-sm font-medium mb-2">
               Avatar
-            </label>
+            </span>
             <div className="flex items-center gap-4">
               <div className="text-6xl">{avatar}</div>
               <div className="flex-1">
@@ -288,8 +291,9 @@ export default function EditPage() {
             <h3 className="font-medium">Theme</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm mb-2">Primary Color</label>
+                <label htmlFor="coffee-primary-color" className="block text-sm mb-2">Primary Color</label>
                 <input
+                  id="coffee-primary-color"
                   type="color"
                   value={primaryColor}
                   onChange={(e) => setPrimaryColor(e.target.value)}
@@ -297,8 +301,9 @@ export default function EditPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm mb-2">Background Color</label>
+                <label htmlFor="coffee-bg-color" className="block text-sm mb-2">Background Color</label>
                 <input
+                  id="coffee-bg-color"
                   type="color"
                   value={backgroundColor}
                   onChange={(e) => setBackgroundColor(e.target.value)}
@@ -310,10 +315,11 @@ export default function EditPage() {
 
           {/* Presets */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-            <label className="block text-sm font-medium mb-2">
+            <label htmlFor="coffee-presets" className="block text-sm font-medium mb-2">
               Preset Amounts (cents, comma-separated) *
             </label>
             <input
+              id="coffee-presets"
               type="text"
               value={presets}
               onChange={(e) => setPresets(e.target.value)}
