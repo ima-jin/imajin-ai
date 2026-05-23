@@ -236,7 +236,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
             </span>
             <div className="space-y-1.5">
               {Object.entries(SCOPES).map(([scope, label]) => (
-                <label key={scope} htmlFor={`edit-app-scope-${scope}`} className="flex items-center gap-3 cursor-pointer">
+                <label key={scope} htmlFor={`edit-app-scope-${scope}`} aria-label={label} className="flex items-center gap-3 cursor-pointer">
                   <input
                     id={`edit-app-scope-${scope}`}
                     type="checkbox"

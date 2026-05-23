@@ -251,7 +251,7 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
           </span>
           <div className="space-y-1.5">
             {Object.entries(SCOPES).map(([scope, label]) => (
-              <label key={scope} htmlFor={`register-app-scope-${scope}`} className="flex items-center gap-3 cursor-pointer group">
+              <label key={scope} htmlFor={`register-app-scope-${scope}`} aria-label={label} className="flex items-center gap-3 cursor-pointer group">
                 <input
                   id={`register-app-scope-${scope}`}
                   type="checkbox"

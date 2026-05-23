@@ -621,7 +621,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
           Control who can purchase tickets to this event.
         </p>
         <div className="space-y-3">
-          <label htmlFor="edit-access-public" className="flex items-start gap-3 cursor-pointer">
+          <label htmlFor="edit-access-public" aria-label="Public" className="flex items-start gap-3 cursor-pointer">
             <input
               id="edit-access-public"
               type="radio"
@@ -636,7 +636,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
               <div className="text-sm text-gray-500 dark:text-gray-400">Anyone can discover and buy tickets.</div>
             </div>
           </label>
-          <label htmlFor="edit-access-invite" className="flex items-start gap-3 cursor-pointer">
+          <label htmlFor="edit-access-invite" aria-label="Invite Only" className="flex items-start gap-3 cursor-pointer">
             <input
               id="edit-access-invite"
               type="radio"
@@ -992,7 +992,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
             { value: 'handle', label: 'Handle only', description: 'Show @handle, no real name' },
             { value: 'anonymous', label: 'Anonymous', description: 'Show "Attendee" — no names visible' },
           ] as const).map((option) => (
-            <label key={option.value} htmlFor={`edit-name-display-${option.value}`} className="flex items-start gap-3 cursor-pointer group">
+            <label key={option.value} htmlFor={`edit-name-display-${option.value}`} aria-label={option.label} className="flex items-start gap-3 cursor-pointer group">
               <input
                 id={`edit-name-display-${option.value}`}
                 type="radio"
