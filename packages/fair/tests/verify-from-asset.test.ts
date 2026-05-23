@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { verifyManifestFromAsset } from '@imajin/fair';
-import { signManifest, canonicalize } from '@imajin/fair';
+import { verifyManifestFromAsset, signManifest, canonicalize } from '@imajin/fair';
 import { sha256 } from '@noble/hashes/sha256';
-import { bytesToHex } from '@noble/hashes/utils';
+import { bytesToHex, concatBytes } from '@noble/hashes/utils';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha512';
-import { concatBytes } from '@noble/hashes/utils';
 
 // Enable sync sha512 for ed25519 key generation
 ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(concatBytes(...m));

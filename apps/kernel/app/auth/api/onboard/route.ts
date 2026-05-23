@@ -8,8 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/src/db';
-import { onboardTokens, credentials, identities } from '@/src/db';
+import { db, onboardTokens, credentials, identities } from '@/src/db';
 import { sendEmail } from '@imajin/email';
 import { getClient } from '@imajin/db';
 import { eq, and } from 'drizzle-orm';

@@ -3,10 +3,9 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { normalizeHandleInput } from '@imajin/config';
+import { normalizeHandleInput, buildPublicUrl } from '@imajin/config';
 import Link from 'next/link';
 
-import { buildPublicUrl } from '@imajin/config';
 
 const CONNECTIONS_URL = buildPublicUrl('connections');
 

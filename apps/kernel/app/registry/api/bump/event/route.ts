@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { requireAuth } from '@imajin/auth';
-import { db, bumpSessions, bumpEvents, bumpMatches, connections } from '@/src/db';
+import { db, bumpSessions, bumpEvents, bumpMatches, connections, profiles } from '@/src/db';
 import { and, eq, ne, gt, gte, lte, or, isNull, desc } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import {
@@ -11,7 +11,6 @@ import {
   BUMP_LOCATION_RADIUS_M,
 } from '@/src/lib/registry/bump-correlation';
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
-import { profiles } from '@/src/db';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 

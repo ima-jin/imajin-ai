@@ -6,8 +6,7 @@ export const dynamic = "force-dynamic";
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/src/db';
-import { onboardTokens, identities, credentials, identityMembers } from '@/src/db';
+import { db, onboardTokens, identities, credentials, identityMembers } from '@/src/db';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
 import { publish } from '@imajin/bus';

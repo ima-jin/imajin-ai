@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { nanoid } from "nanoid";
 import { db, assets, folders, assetFolders, identities } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
+import { requireAuth, hexToBytes } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and, sql } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
@@ -12,7 +12,6 @@ import { rateLimit, getClientIP } from "@/src/lib/kernel/rate-limit";
 import { createLogger } from "@imajin/logger";
 import { getDefaultManifest, signManifest, canonicalize } from "@imajin/fair";
 import { publishContentEvent } from "@imajin/dfos";
-import { hexToBytes } from "@imajin/auth";
 
 const log = createLogger("kernel");
 

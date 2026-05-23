@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { apiFetch } from '@imajin/config';
+import { apiFetch, buildPublicUrl } from '@imajin/config';
 import PriceDisplay from '../components/PriceDisplay';
 import { resolveMediaRef } from '@imajin/media';
-import { buildPublicUrl } from '@imajin/config';
 import { PayoutSetupBanner } from '@imajin/ui';
 
 const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';

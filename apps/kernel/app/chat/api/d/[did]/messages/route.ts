@@ -5,15 +5,13 @@ import { eq, and, desc, lt, ne, isNull, inArray } from 'drizzle-orm';
 
 const log = createLogger('kernel');
 import { db, conversationsV2, conversationMembers, messagesV2, messageReactionsV2, identities } from '@/src/db';
-import { requireAuth, isVerifiedTier } from '@imajin/auth';
+import { requireAuth, isVerifiedTier, canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
 import { unfurlLinks } from '@/src/lib/chat/unfurl';
-import { canonicalize } from '@imajin/auth';
 
 import { checkAccess } from '@/src/lib/kernel/access';
-import { crypto as authCrypto } from '@imajin/auth';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 import { verifyChain } from '@imajin/dfos';
 import { processMentions } from '@/src/lib/chat/mentions';

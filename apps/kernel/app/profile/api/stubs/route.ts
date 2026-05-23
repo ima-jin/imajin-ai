@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, storedKeys, identityMembers, profiles } from '@/src/db';
 import { eq, and, isNull, count } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
-import { generateKeypair } from '@imajin/auth';
+import { requireAuth, generateKeypair } from '@imajin/auth';
 import { didFromPublicKey, encryptPrivateKey } from '@/src/lib/auth/crypto';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';

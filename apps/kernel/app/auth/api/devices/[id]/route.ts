@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/src/db';
-import { devices } from '@/src/db';
+import { db, devices } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { corsHeaders } from '@imajin/config';

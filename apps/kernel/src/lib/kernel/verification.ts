@@ -1,5 +1,4 @@
-import { db } from '@/src/db';
-import { identities, attestations, connections } from '@/src/db';
+import { db, identities, attestations, connections } from '@/src/db';
 import { emitAttestation } from '@imajin/auth';
 import { eq, or, and, isNull, count } from 'drizzle-orm';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';

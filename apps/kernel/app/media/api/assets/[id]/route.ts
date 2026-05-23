@@ -5,9 +5,8 @@ import { createHash } from "node:crypto";
 import { db, assets, settlements, accessLog } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq, and, sql } from "drizzle-orm";
-import type { FairManifest } from "@imajin/fair";
+import type { FairManifest, FairAction } from "@imajin/fair";
 import { isFairManifestV1_1, build402Response, verifyReceipt, loadVerifyKey, canonicalize } from "@imajin/fair";
-import type { FairAction } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 
 const log = createLogger("kernel");

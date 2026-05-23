@@ -9,8 +9,7 @@ export const dynamic = "force-dynamic";
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/src/db';
-import { identities } from '@/src/db';
+import { db, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';

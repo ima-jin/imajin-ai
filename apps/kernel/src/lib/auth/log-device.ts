@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
-import { db } from '@/src/db';
-import { devices } from '@/src/db';
+import { db, devices } from '@/src/db';
 import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
