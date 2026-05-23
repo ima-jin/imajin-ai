@@ -32,7 +32,7 @@ export async function POST(
 
     // Require authenticated session for this DID
     const session = await requireAuth(request);
-    if (!session || session.sub !== decodedDid) {
+    if (session?.sub !== decodedDid) {
       return NextResponse.json(
         { error: 'Unauthorized — must be authenticated as this identity' },
         { status: 401, headers: cors }

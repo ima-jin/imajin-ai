@@ -29,7 +29,7 @@ export async function GET(
 
     // Require auth — you can only see your own keys
     const session = await requireAuth(request);
-    if (!session || session.sub !== decodedDid) {
+    if (session?.sub !== decodedDid) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401, headers: cors }
@@ -89,7 +89,7 @@ export async function POST(
 
     // Require authenticated session
     const session = await requireAuth(request);
-    if (!session || session.sub !== decodedDid) {
+    if (session?.sub !== decodedDid) {
       return NextResponse.json(
         { error: 'Unauthorized — must be authenticated as this identity' },
         { status: 401, headers: cors }

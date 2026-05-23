@@ -159,7 +159,7 @@ export function useChatWebSocket(did: string): UseChatWebSocketResult {
   // Re-subscribe when did changes while connected
   useEffect(() => {
     const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'subscribe', did }));
     }
     setTypingUsers(new Map());
@@ -167,14 +167,14 @@ export function useChatWebSocket(did: string): UseChatWebSocketResult {
 
   const sendTyping = useCallback(() => {
     const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'typing', did: didRef.current }));
     }
   }, []);
 
   const stopTyping = useCallback(() => {
     const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'stop_typing', did: didRef.current }));
     }
   }, []);

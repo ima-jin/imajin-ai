@@ -385,7 +385,7 @@ export function Chat({
 
         {messages.map((msg, idx) => {
           const prevMsg = idx > 0 ? messages[idx - 1] : null;
-          const showSenderLabel = !prevMsg || prevMsg.senderDid !== msg.senderDid;
+          const showSenderLabel = prevMsg?.senderDid !== msg.senderDid;
           const replyToMsg = msg.replyTo ? messageById.get(msg.replyTo) : undefined;
           const replyToSenderName = getReplyToName(replyToMsg);
 

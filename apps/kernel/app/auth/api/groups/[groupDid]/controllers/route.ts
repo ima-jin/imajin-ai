@@ -81,7 +81,7 @@ export async function POST(
       return NextResponse.json({ error: 'Already a controller' }, { status: 409 });
     }
 
-    if (existing && existing.removedAt) {
+    if (existing?.removedAt) {
       // Reactivate
       await db
         .update(identityMembers)

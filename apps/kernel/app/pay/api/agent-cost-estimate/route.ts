@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       where: eq(profiles.did, body.agentDid),
     });
 
-    if (!profile || !profile.agentPricing || Object.keys(profile.agentPricing).length === 0) {
+    if (!profile?.agentPricing || Object.keys(profile.agentPricing).length === 0) {
       // Agent has no pricing — free to interact
       return NextResponse.json({
         baseCost: 0,

@@ -162,7 +162,7 @@ export default function ConversationsPage() {
   }, [lastMessage, fetchConversations]);
 
   useEffect(() => {
-    if (!lastMessage || lastMessage.type !== 'user_presence') return;
+    if (lastMessage?.type !== 'user_presence') return;
     setOnlineStatus((prev) => ({ ...prev, [lastMessage.did]: lastMessage.online }));
   }, [lastMessage]);
 

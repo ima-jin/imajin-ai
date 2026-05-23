@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
         .where(eq(invites.code, inviteCode))
         .limit(1);
 
-      if (invite && invite.status === 'pending' && invite.usedCount < invite.maxUses) {
+      if (invite?.status === 'pending' && invite.usedCount < invite.maxUses) {
         inviteData = { fromDid: invite.fromDid, fromHandle: invite.fromHandle ?? undefined };
       } else if (!inviteGateDisabled) {
         // Only reject invalid invites when the gate is enforced

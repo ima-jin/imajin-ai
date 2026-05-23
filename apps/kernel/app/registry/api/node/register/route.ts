@@ -36,7 +36,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
     const { attestation, chainLog } = body as { attestation: NodeAttestation; chainLog?: string[] };
 
     // 1. Validate attestation structure
-    if (!attestation || !attestation.nodeId || !attestation.publicKey || 
+    if (!attestation?.nodeId || !attestation.publicKey || 
         !attestation.buildHash || !attestation.hostname || !attestation.signature) {
       return NextResponse.json(
         { status: 'rejected', error: 'Invalid attestation structure' },

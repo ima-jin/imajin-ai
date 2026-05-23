@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: Readonly<PageProps>): Promise
     where: (pages, { eq }) => eq(pages.handle, params.handle),
   });
 
-  if (!page || !page.isPublic) {
+  if (!page?.isPublic) {
     return { title: 'Coffee | Imajin' };
   }
 
@@ -58,7 +58,7 @@ export default async function CoffeePage({ params }: Readonly<PageProps>) {
     where: (pages, { eq }) => eq(pages.handle, params.handle),
   });
 
-  if (!page || !page.isPublic) {
+  if (!page?.isPublic) {
     notFound();
   }
 

@@ -86,7 +86,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
         where: eq(subscriptions.contactId, contact.id),
       });
 
-      if (existingSub && existingSub.status === 'subscribed') {
+      if (existingSub?.status === 'subscribed') {
         if (contact.isVerified) {
           return NextResponse.json({
             success: true,

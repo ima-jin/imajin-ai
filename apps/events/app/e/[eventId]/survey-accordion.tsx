@@ -81,7 +81,7 @@ export function SurveyAccordion({
       // survey. Comparing event.source to the iframe's contentWindow is
       // strictly more secure than origin-string-matching anyway.
       const iframe = iframeRef.current;
-      if (!iframe || event.source !== iframe.contentWindow) return;
+      if (event.source !== iframe?.contentWindow) return;
 
       if (event.data.type === 'survey-height') {
         setIframeHeight(event.data.height + 40); // Add some padding

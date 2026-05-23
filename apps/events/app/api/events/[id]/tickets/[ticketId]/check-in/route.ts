@@ -30,7 +30,7 @@ async function triggerHardEligibilityCheck(did: string): Promise<void> {
   const [identity] = await sql`
     SELECT tier, handle_claimed_at FROM auth.identities WHERE id = ${did} LIMIT 1
   `;
-  if (!identity || identity.tier !== 'preliminary') return;
+  if (identity?.tier !== 'preliminary') return;
   if (!identity.handle_claimed_at) return;
 
   const fourWeeksAgo = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000);

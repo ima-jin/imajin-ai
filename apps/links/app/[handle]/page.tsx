@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: Readonly<PageProps>): Promise
     where: eq(linkPages.handle, params.handle),
   });
 
-  if (!page || !page.isPublic) {
+  if (!page?.isPublic) {
     return { title: 'Links | Imajin' };
   }
 
@@ -63,7 +63,7 @@ export default async function LinksPage({ params }: Readonly<PageProps>) {
     where: eq(linkPages.handle, params.handle),
   });
 
-  if (!page || !page.isPublic) {
+  if (!page?.isPublic) {
     notFound();
   }
 

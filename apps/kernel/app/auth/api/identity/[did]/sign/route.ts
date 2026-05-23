@@ -67,7 +67,7 @@ export async function POST(
 
   if (!isInternalRequest) {
     const parsedPayload = parseDocumentSigningPayload(body.payload);
-    if (!parsedPayload || parsedPayload.did !== decodedDid) {
+    if (parsedPayload?.did !== decodedDid) {
       return NextResponse.json({ error: 'payload must include matching did and document_hash' }, { status: 400 });
     }
   }

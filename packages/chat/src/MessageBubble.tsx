@@ -194,7 +194,7 @@ function AgentMetaFooter({ meta }: Readonly<{ meta: MessageMeta }>) {
               </span>
             </div>
           )}
-          {meta.cache !== undefined && meta.cache.hitPct !== undefined && (
+          {meta.cache?.hitPct !== undefined && (
             <span>cache hit {meta.cache.hitPct}%</span>
           )}
         </div>

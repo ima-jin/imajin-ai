@@ -59,7 +59,7 @@ export function createCallbackHandler(config: ImajinAuthConfig) {
 
     // Resolve relative avatar URLs against the kernel
     let avatar = profileData.avatar;
-    if (avatar && avatar.startsWith('/')) {
+    if (avatar?.startsWith('/')) {
       avatar = `${config.authUrl}${avatar}`;
     }
 
