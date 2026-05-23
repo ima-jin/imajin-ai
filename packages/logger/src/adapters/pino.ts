@@ -81,7 +81,8 @@ function writeAppLog(entry: {
 function wrapPino(instance: pino.Logger): Logger {
   function persist(level: string, ctx: LogContext, message: string) {
     const { service, correlationId, did, method, path, err, error, ...rest } = ctx;
-    const errorMessage = err ? String(err) : error ? String(error) : undefined;
+    const errorSource = err ?? error;
+    const errorMessage = errorSource ? String(errorSource) : undefined;
     writeAppLog({
       service: service || 'unknown',
       level,

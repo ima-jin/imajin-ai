@@ -419,13 +419,11 @@ export function DidShareListEditor({
 
       <div className="flex items-center justify-between text-xs">
         <span
-          className={
-            isValid
-              ? 'text-gray-500'
-              : isOver
-                ? 'text-red-400 font-medium'
-                : 'text-orange-400 font-medium'
-          }
+          className={(() => {
+            if (isValid) return 'text-gray-500';
+            if (isOver) return 'text-red-400 font-medium';
+            return 'text-orange-400 font-medium';
+          })()}
         >
           Total: {(totalShare * 100).toFixed(1)}%
           {!isValid && (

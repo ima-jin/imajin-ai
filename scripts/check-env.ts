@@ -201,9 +201,11 @@ function printResult(result: ServiceResult, env: "dev" | "prod"): void {
     return;
   }
 
+  const errorSuffix = errors > 1 ? "s" : "";
+  const warningSuffix = warnings > 1 ? "s" : "";
   const summary = [
-    errors > 0 ? red(`${errors} error${errors > 1 ? "s" : ""}`) : null,
-    warnings > 0 ? yellow(`${warnings} warning${warnings > 1 ? "s" : ""}`) : null,
+    errors > 0 ? red(`${errors} error${errorSuffix}`) : null,
+    warnings > 0 ? yellow(`${warnings} warning${warningSuffix}`) : null,
   ].filter(Boolean).join(", ");
 
   console.log(`  ${errors > 0 ? sym.err : sym.warn}  ${label} ${portLabel}  ${summary}`);

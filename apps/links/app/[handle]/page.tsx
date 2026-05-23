@@ -23,9 +23,10 @@ export async function generateMetadata({ params }: Readonly<PageProps>): Promise
   const description = page.bio || 'Sovereign link-in-bio page on the Imajin network';
   const url = `${buildPublicUrl('links')}/${page.handle}`;
   const avatarIsImage = page.avatar && (page.avatar.startsWith('http') || page.avatar.startsWith('/'));
-  const ogImage = avatarIsImage
-    ? (page.avatar!.startsWith('http') ? page.avatar! : `${buildPublicUrl('links')}${page.avatar}`)
-    : null;
+  let ogImage: string | null = null;
+  if (avatarIsImage) {
+    ogImage = page.avatar!.startsWith('http') ? page.avatar! : `${buildPublicUrl('links')}${page.avatar}`;
+  }
 
   return {
     title,

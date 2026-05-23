@@ -372,15 +372,14 @@ export default function ResultsPage() {
                             {field.title}
                           </div>
                           <div className="mt-1">
-                            {answer === undefined || answer === null || answer === '' ? (
-                              <span className="text-gray-400 text-sm italic">No answer</span>
-                            ) : field.type === 'boolean' ? (
-                              <span>{answer ? 'Yes' : 'No'}</span>
-                            ) : Array.isArray(answer) ? (
-                              <span>{answer.join(', ')}</span>
-                            ) : (
-                              <span>{String(answer)}</span>
-                            )}
+                            {(() => {
+                              if (answer === undefined || answer === null || answer === '') {
+                                return <span className="text-gray-400 text-sm italic">No answer</span>;
+                              }
+                              if (field.type === 'boolean') return <span>{answer ? 'Yes' : 'No'}</span>;
+                              if (Array.isArray(answer)) return <span>{answer.join(', ')}</span>;
+                              return <span>{String(answer)}</span>;
+                            })()}
                           </div>
                         </div>
                       );

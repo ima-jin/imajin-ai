@@ -91,21 +91,25 @@ export function MentionPicker({
                   isHighlighted ? 'bg-gray-800/80' : 'hover:bg-gray-800/50'
                 }`}
               >
-                {isEveryoneRow ? (
+                {(() => {
+                  if (isEveryoneRow) return (
                   <div className="w-8 h-8 rounded-full bg-red-900/30 flex items-center justify-center text-sm shrink-0 border border-red-900/50">
                     🔔
                   </div>
-                ) : avatarSrc ? (
+                  );
+                  if (avatarSrc) return (
                   <img
                     src={avatarSrc}
                     alt=""
                     className="w-8 h-8 rounded-full object-cover border border-gray-800 shrink-0"
                   />
-                ) : (
+                  );
+                  return (
                   <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-xs text-gray-500 shrink-0">
                     {result.name?.[0]?.toUpperCase() ?? '?'}
                   </div>
-                )}
+                  );
+                })()}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium truncate">

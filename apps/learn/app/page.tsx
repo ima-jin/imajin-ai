@@ -72,9 +72,11 @@ export default function DiscoveryPage() {
           </div>
 
           {/* Course Grid */}
-          {loading ? (
+          {(() => {
+            if (loading) return (
             <div className="text-center py-12 text-gray-500">Loading courses...</div>
-          ) : filtered.length === 0 ? (
+            );
+            if (filtered.length === 0) return (
             <div className="text-center py-12">
               <p className="text-gray-500 mb-4">
                 {search ? 'No courses match your search.' : 'No courses available yet.'}
@@ -83,7 +85,8 @@ export default function DiscoveryPage() {
                 Are you a creator? <Link href="/dashboard" className="text-amber-500 hover:underline">Create your first course</Link>
               </p>
             </div>
-          ) : (
+            );
+            return (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {filtered.map(course => (
                 <Link
@@ -126,7 +129,8 @@ export default function DiscoveryPage() {
                 </Link>
               ))}
             </div>
-          )}
+          );
+          })()}
         </div>
       </div>
       <ImajinFooter />

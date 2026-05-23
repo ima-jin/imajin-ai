@@ -590,13 +590,15 @@ function CreateSurveyContent() {
                   </p>
                 )}
 
-                {survey.fields.elements.length === 0 ? (
+                {(() => {
+                  if (survey.fields.elements.length === 0) return (
                   <div className="text-center py-12 text-gray-500 text-sm">
                     Preview will appear here as you add questions
                   </div>
-                ) : previewModel ? (
-                  <Survey model={previewModel} />
-                ) : null}
+                  );
+                  if (previewModel) return <Survey model={previewModel} />;
+                  return null;
+                })()}
               </div>
             </div>
           </div>

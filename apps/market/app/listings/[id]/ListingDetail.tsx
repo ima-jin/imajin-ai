@@ -347,18 +347,16 @@ export default function ListingDetail() {
   const isRental = listing.type === 'rental';
   const isOnplatform = listing.sellerTier === 'public_onplatform' || listing.sellerTier === 'trust_gated';
 
-  const tierLabel =
-    listing.sellerTier === 'public_onplatform'
-      ? 'Protected'
-      : listing.sellerTier === 'trust_gated'
-      ? 'Trusted'
-      : 'Direct';
-  const tierColor =
-    listing.sellerTier === 'public_onplatform'
-      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-      : listing.sellerTier === 'trust_gated'
-      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
-      : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
+  const TIER_LABEL_MAP: Record<string, string> = {
+    public_onplatform: 'Protected',
+    trust_gated: 'Trusted',
+  };
+  const TIER_COLOR_MAP: Record<string, string> = {
+    public_onplatform: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    trust_gated: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+  };
+  const tierLabel = TIER_LABEL_MAP[listing.sellerTier] ?? 'Direct';
+  const tierColor = TIER_COLOR_MAP[listing.sellerTier] ?? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300';
 
   const showContactSection =
     listing.sellerTier === 'public_offplatform' ||
@@ -584,7 +582,7 @@ export default function ListingDetail() {
                       disabled={buyLoading}
                       className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      {buyLoading ? 'Processing…' : isRental ? 'Rent Now' : 'Buy Now'}
+                      {(() => { if (buyLoading) return 'Processing…'; return isRental ? 'Rent Now' : 'Buy Now'; })()}
                     </button>
                     {buyError && (
                       <p className="text-sm text-red-500">{buyError}</p>
@@ -607,7 +605,7 @@ export default function ListingDetail() {
                     disabled={buyLoading}
                     className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {buyLoading ? 'Processing…' : isRental ? 'Rent Now' : 'Buy Now'}
+                    {(() => { if (buyLoading) return 'Processing…'; return isRental ? 'Rent Now' : 'Buy Now'; })()}
                   </button>
                   {buyError && (
                     <p className="text-sm text-red-500">{buyError}</p>

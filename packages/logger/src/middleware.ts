@@ -34,7 +34,10 @@ function writeRequestLog(entry: {
     .then(({ getClient }) => {
       const sql = getClient();
       const id = `req_${nanoid(16)}`;
-      const level = entry.status >= 500 ? 'error' : entry.status >= 400 ? 'warn' : 'info';
+      let level: string;
+      if (entry.status >= 500) level = 'error';
+      else if (entry.status >= 400) level = 'warn';
+      else level = 'info';
       const message = entry.errorMessage || `${entry.method} ${entry.path} → ${entry.status}`;
       return sql`
         INSERT INTO registry.logs
