@@ -332,7 +332,7 @@ export default function EventsClient() {
                       <tr
                         key={row.id}
                         onClick={() => hasPayload && toggleRow(row.id)}
-                        className={`hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors ${hasPayload ? 'cursor-pointer' : ''} ${row.status !== 'success' ? 'bg-red-50/40 dark:bg-red-900/10' : ''}`}
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors ${hasPayload ? 'cursor-pointer' : ''} ${row.status === 'success' ? '' : 'bg-red-50/40 dark:bg-red-900/10'}`}
                       >
                         <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap font-mono">
                           {formatTs(row.created_at)}

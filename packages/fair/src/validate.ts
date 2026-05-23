@@ -104,12 +104,12 @@ function validateV1_1(manifest: Record<string, unknown>): string[] {
       }
     }
     if (access.allowedDids !== undefined) {
-      if (!Array.isArray(access.allowedDids)) {
-        errors.push("access.allowedDids must be an array");
-      } else {
+      if (Array.isArray(access.allowedDids)) {
         for (const did of access.allowedDids) {
           if (typeof did !== "string" || !did) errors.push("each allowedDid must be a non-empty string");
         }
+      } else {
+        errors.push("access.allowedDids must be an array");
       }
     }
   } else {
@@ -171,15 +171,15 @@ function validateV1_1(manifest: Record<string, unknown>): string[] {
         errors.push("settlement.endpoint must be a string when present");
       }
       if (settlement.schemes !== undefined) {
-        if (!Array.isArray(settlement.schemes)) {
-          errors.push("settlement.schemes must be an array when present");
-        } else {
+        if (Array.isArray(settlement.schemes)) {
           const validSchemes = new Set(["x402", "stripe-link", "mjnx-direct", "solana-pay", "lightning"]);
           for (const s of settlement.schemes) {
             if (typeof s !== "string" || !validSchemes.has(s)) {
               errors.push(`settlement.schemes contains invalid scheme: ${s}`);
             }
           }
+        } else {
+          errors.push("settlement.schemes must be an array when present");
         }
       }
       if (settlement.fallback !== undefined) {
@@ -230,12 +230,12 @@ function validateV1_0(manifest: Record<string, unknown>): string[] {
       }
     }
     if (access.allowedDids !== undefined) {
-      if (!Array.isArray(access.allowedDids)) {
-        errors.push("access.allowedDids must be an array");
-      } else {
+      if (Array.isArray(access.allowedDids)) {
         for (const did of access.allowedDids) {
           if (typeof did !== "string" || !did) errors.push("each allowedDid must be a non-empty string");
         }
+      } else {
+        errors.push("access.allowedDids must be an array");
       }
     }
   } else {
@@ -243,9 +243,7 @@ function validateV1_0(manifest: Record<string, unknown>): string[] {
   }
 
   // Attribution validation
-  if (!Array.isArray(manifest.attribution)) {
-    errors.push("attribution must be an array");
-  } else {
+  if (Array.isArray(manifest.attribution)) {
     let shareSum = 0;
     for (let i = 0; i < manifest.attribution.length; i++) {
       const entry = manifest.attribution[i] as Record<string, unknown>;
@@ -264,6 +262,8 @@ function validateV1_0(manifest: Record<string, unknown>): string[] {
     if (shareSum > 1.0001) {
       errors.push(`attribution shares sum to ${shareSum.toFixed(4)}, must not exceed 1.0`);
     }
+  } else {
+    errors.push("attribution must be an array");
   }
 
   // Transfer validation (optional)

@@ -254,9 +254,9 @@ export default function TopupPage() {
               <button
                 onClick={() => setAbsorbFees(false)}
                 className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
-                  !absorbFees
-                    ? 'bg-zinc-700 text-white'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                  absorbFees
+                    ? 'text-zinc-500 hover:text-zinc-300'
+                    : 'bg-zinc-700 text-white'
                 }`}
               >
                 Me

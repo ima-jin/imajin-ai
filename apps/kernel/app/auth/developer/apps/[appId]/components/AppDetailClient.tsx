@@ -380,14 +380,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
             Revoking this app will immediately invalidate all active sessions and prevent any new authorizations.
           </p>
 
-          {!showRevoke ? (
-            <button
-              onClick={() => setShowRevoke(true)}
-              className="px-4 py-2 border border-red-900/60 text-red-400 hover:bg-red-900/20 rounded-lg text-sm transition-colors"
-            >
-              Revoke App
-            </button>
-          ) : (
+          {showRevoke ? (
             <div className="space-y-3">
               <p className="text-sm text-red-300">
                 Are you sure you want to revoke <strong>{app.name}</strong>? This cannot be undone.
@@ -413,6 +406,13 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
                 </button>
               </div>
             </div>
+          ) : (
+            <button
+              onClick={() => setShowRevoke(true)}
+              className="px-4 py-2 border border-red-900/60 text-red-400 hover:bg-red-900/20 rounded-lg text-sm transition-colors"
+            >
+              Revoke App
+            </button>
           )}
         </div>
       )}

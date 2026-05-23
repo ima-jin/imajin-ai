@@ -116,9 +116,9 @@ export default function TipForm({ page, primaryColor, sellerConnected = true }: 
             type="button"
             onClick={() => setIsRecurring(false)}
             className={`px-6 py-2 rounded-lg font-medium transition ${
-              !isRecurring
-                ? 'bg-white shadow text-gray-900'
-                : 'text-gray-500'
+              isRecurring
+                ? 'text-gray-500'
+                : 'bg-white shadow text-gray-900'
             }`}
           >
             One-time

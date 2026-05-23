@@ -165,7 +165,10 @@ export async function POST(request: NextRequest) {
     let signatureVerified = false;
 
     if (!funded) {
-      if (fair_manifest.signature !== undefined) {
+      if (fair_manifest.signature === undefined) {
+        // Unsigned manifest — allow but warn (transitional period)
+        log.warn({ fromDid: from_did, service }, 'Settlement received unsigned fair_manifest');
+      } else {
         const resolver = createDbResolver(db, identities);
         const wrappedResolver = async (did: string): Promise<string> => {
           const identity = await resolver(did);
@@ -183,9 +186,6 @@ export async function POST(request: NextRequest) {
             { status: 400, headers: cors }
           );
         }
-      } else {
-        // Unsigned manifest — allow but warn (transitional period)
-        log.warn({ fromDid: from_did, service }, 'Settlement received unsigned fair_manifest');
       }
     }
 

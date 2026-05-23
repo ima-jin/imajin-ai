@@ -41,13 +41,13 @@ export function NotificationBell() {
   const panelRef = useRef<HTMLDivElement>(null);
 
   const handleOpen = useCallback(async () => {
-    if (!open) {
+    if (open) {
+      setOpen(false);
+    } else {
       setOpen(true);
       setLoading(true);
       await refresh();
       setLoading(false);
-    } else {
-      setOpen(false);
     }
   }, [open, refresh]);
 

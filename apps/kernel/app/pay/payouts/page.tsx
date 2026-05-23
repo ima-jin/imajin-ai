@@ -68,21 +68,29 @@ export default async function PayoutsPage() {
 
       {/* Payout Status Card */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-        {!status ? (
-          // State A - Not connected
-          <div className="text-center space-y-4">
-            <div>
-              <h2 className="text-xl font-semibold text-white mb-2">Set up payouts</h2>
-              <p className="text-zinc-400 max-w-2xl mx-auto">
-                Connect your bank account to receive payouts from events, tips, and sales.
+        {status ? (
+          status.onboardingComplete ? (
+          // State C - Connected
+          <div className="space-y-6">
+            <div className="text-center">
+              <div className="text-green-400 text-4xl mb-3">✅</div>
+              <h2 className="text-xl font-semibold text-white mb-2">Payouts enabled</h2>
+              <p className="text-zinc-400">
+                Default currency: {status.defaultCurrency}
               </p>
             </div>
-            <PayoutActions
-              status="not_connected"
-              did={did}
-            />
+
+            <div className="text-center">
+              <PayoutActions
+                status="connected"
+                did={did}
+              />
+              <p className="text-xs text-zinc-500 mt-3">
+                View payout schedule, bank details, and transaction history in the Stripe Dashboard
+              </p>
+            </div>
           </div>
-        ) : !status.onboardingComplete ? (
+        ) : (
           // State B - Onboarding incomplete
           <div className="space-y-6">
             <div>
@@ -125,26 +133,20 @@ export default async function PayoutsPage() {
               did={did}
             />
           </div>
+        )
         ) : (
-          // State C - Connected
-          <div className="space-y-6">
-            <div className="text-center">
-              <div className="text-green-400 text-4xl mb-3">✅</div>
-              <h2 className="text-xl font-semibold text-white mb-2">Payouts enabled</h2>
-              <p className="text-zinc-400">
-                Default currency: {status.defaultCurrency}
+          // State A - Not connected
+          <div className="text-center space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold text-white mb-2">Set up payouts</h2>
+              <p className="text-zinc-400 max-w-2xl mx-auto">
+                Connect your bank account to receive payouts from events, tips, and sales.
               </p>
             </div>
-
-            <div className="text-center">
-              <PayoutActions
-                status="connected"
-                did={did}
-              />
-              <p className="text-xs text-zinc-500 mt-3">
-                View payout schedule, bank details, and transaction history in the Stripe Dashboard
-              </p>
-            </div>
+            <PayoutActions
+              status="not_connected"
+              did={did}
+            />
           </div>
         )}
       </div>

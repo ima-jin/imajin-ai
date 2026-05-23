@@ -279,7 +279,7 @@ export default function ListingDetail() {
             This listing is only available to verified members.
           </p>
           <a
-            href={`${authUrl}/login?next=${encodeURIComponent(typeof window !== 'undefined' ? globalThis.location.href : '')}`}
+            href={`${authUrl}/login?next=${encodeURIComponent(typeof window === 'undefined' ? '' : globalThis.location.href)}`}
             className="inline-block px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition"
           >
             Sign in to view

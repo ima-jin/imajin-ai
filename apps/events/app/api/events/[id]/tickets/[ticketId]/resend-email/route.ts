@@ -171,12 +171,12 @@ export async function POST(
     } else {
       const qrCodeDataUri = await generateQRCode(ticket.id);
       const formattedPrice =
-        ticket.pricePaid !== null
-          ? new Intl.NumberFormat('en-US', {
+        ticket.pricePaid === null
+          ? 'Free'
+          : new Intl.NumberFormat('en-US', {
               style: 'currency',
               currency: (ticket.currency || 'USD').toUpperCase(),
-            }).format(ticket.pricePaid / 100)
-          : 'Free';
+            }).format(ticket.pricePaid / 100);
 
       publish('ticket.confirmed', {
         issuer: did,

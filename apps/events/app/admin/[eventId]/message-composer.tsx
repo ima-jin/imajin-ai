@@ -99,13 +99,13 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
 
       const data = await res.json();
 
-      if (!res.ok) {
-        setError(data.error || 'Failed to send message');
-      } else {
+      if (res.ok) {
         setResult(data);
         setSubject('');
         setMarkdown('');
         setPreview(false);
+      } else {
+        setError(data.error || 'Failed to send message');
       }
     } catch {
       setError('Network error — please try again');
@@ -258,7 +258,7 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
             disabled={!canSend}
             className="px-5 py-2 rounded-md bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors"
           >
-            {sending ? 'Sending…' : `Send to ${recipientCount} attendee${recipientCount !== 1 ? 's' : ''}`}
+            {sending ? 'Sending…' : `Send to ${recipientCount} attendee${recipientCount === 1 ? '' : 's'}`}
             {/* Note: the inner pluralization ternary (recipientCount !== 1) is inside a template literal within one branch — not a nested ternary */}
           </button>
         </div>

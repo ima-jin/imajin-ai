@@ -294,10 +294,10 @@ function CreateSurveyContent() {
     }
 
     const newElements = [...survey.fields.elements];
-    if (editingFieldIndex !== null) {
-      newElements[editingFieldIndex] = fieldForm;
-    } else {
+    if (editingFieldIndex === null) {
       newElements.push(fieldForm);
+    } else {
+      newElements[editingFieldIndex] = fieldForm;
     }
 
     setSurvey({ ...survey, fields: { elements: newElements } });

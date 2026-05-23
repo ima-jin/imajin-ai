@@ -59,11 +59,11 @@ export const mjnReactor: ReactorHandler = async (event, config) => {
         }),
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        log.info({ amount, targetDid: targetDid.slice(0, 24), attestationType, reason: rule.reason }, '[mjn] MJN credited');
+      } else {
         const text = await response.text().catch(() => '');
         log.error({ status: response.status, text, targetDid, attestationType }, '[mjn] Emission credit failed');
-      } else {
-        log.info({ amount, targetDid: targetDid.slice(0, 24), attestationType, reason: rule.reason }, '[mjn] MJN credited');
       }
     } catch (err) {
       log.error({ err: String(err), targetDid, attestationType }, '[mjn] Emission request error');
