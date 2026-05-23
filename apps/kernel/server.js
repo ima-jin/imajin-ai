@@ -3,8 +3,8 @@ const envPath = require('node:path').join(__dirname, '.env.local');
 const envUtils = require('../../scripts/env-utils.js');
 envUtils.loadEnvFileIntoProcessEnv(envPath);
 
-const { createServer } = require('http');
-const { parse } = require('url');
+const { createServer } = require('node:http');
+const { parse } = require('node:url');
 const next = require('next');
 const { setupWebSocket, setupBroadcastRoute } = require('./ws-server');
 

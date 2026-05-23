@@ -9,9 +9,9 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { createRequire } from 'module';
+import { createRequire } from 'node:module';
 import envUtils from './env-utils.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
