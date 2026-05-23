@@ -336,7 +336,7 @@ export default function ResultsPage() {
                       ) : (
                         (agg.textResponses || []).map((response, i) => (
                           <div
-                            key={i}
+                            key={response}
                             className="p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700"
                           >
                             <p className="text-sm whitespace-pre-wrap">{response}</p>

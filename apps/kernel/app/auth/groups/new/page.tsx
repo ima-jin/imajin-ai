@@ -408,10 +408,10 @@ function NewGroupForm() {
 
                   {showSuggestions && suggestions.length > 0 && (
                     <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-zinc-900 border border-gray-700 rounded-lg overflow-hidden shadow-xl max-h-48 overflow-y-auto">
-                      {suggestions.map((s, i) => (
-                        <button
-                          key={i}
-                          type="button"
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={`${s.lat}-${s.lon}`}
+                        type="button"
                           onMouseDown={e => e.preventDefault()}
                           onClick={() => selectSuggestion(s)}
                           className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors border-b border-gray-800 last:border-0"

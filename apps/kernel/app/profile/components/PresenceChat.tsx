@@ -230,7 +230,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: R
           <div className="border-t border-gray-800 bg-gray-900/80 max-h-[200px] overflow-y-auto px-4 py-2">
             <p className="text-gray-500 text-xs font-mono mb-1">Tool Activity</p>
             {toolEvents.map((evt, i) => (
-              <div key={i} className="text-xs font-mono mb-2">
+              <div key={`${evt.type}-${evt.name}-${JSON.stringify(evt.data).slice(0, 80)}`} className="text-xs font-mono mb-2">
                 <span className={evt.type === 'tool_call' ? 'text-blue-400' : 'text-green-400'}>
                   {evt.type === 'tool_call' ? '→' : '←'} {evt.name}
                 </span>

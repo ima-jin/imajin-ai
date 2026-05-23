@@ -134,7 +134,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
                 const height = Math.max(3, Math.round(amp * 28));
                 return (
                   <div
-                    key={i}
+                    key={`bar-${i}`}
                     className={`w-[2px] rounded-full transition-colors ${(() => {
                       if (filled) return isOwn ? 'bg-white' : 'bg-orange-500';
                       return isOwn ? 'bg-white/30' : 'bg-gray-300 dark:bg-gray-600';

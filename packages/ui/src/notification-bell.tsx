@@ -70,6 +70,7 @@ export function NotificationBell() {
   }, [open]);
 
   const hasUnread = notifications.some(n => !n.read);
+  const unreadSuffix = unreadCount > 0 ? `, ${unreadCount} unread` : '';
 
   return (
     <div className="relative" ref={panelRef}>
@@ -79,7 +80,7 @@ export function NotificationBell() {
           open ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
         }`}
         title="Notifications"
-        aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+        aria-label={`Notifications${unreadSuffix}`}
         aria-expanded={open}
       >
         <BellIcon className="w-5 h-5 text-gray-600 dark:text-gray-300" />

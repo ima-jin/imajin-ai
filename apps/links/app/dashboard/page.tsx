@@ -194,7 +194,7 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {stats.topReferrers.map((ref, idx) => (
-                  <div key={idx} className="flex items-center justify-between">
+                  <div key={ref.referrer || 'direct'} className="flex items-center justify-between">
                     <span className="text-sm font-medium truncate">
                       {ref.referrer || 'Direct'}
                     </span>

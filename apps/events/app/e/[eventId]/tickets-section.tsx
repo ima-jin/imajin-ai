@@ -468,7 +468,7 @@ function TicketFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement
         <div className="mt-3 space-y-2">
           {settlement.chain.map((entry, i) => (
             <div
-              key={i}
+              key={`${entry.role}-${entry.did}`}
               className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-900/60 rounded-lg text-sm"
             >
               <div className="flex items-center gap-2">
@@ -483,7 +483,7 @@ function TicketFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement
           ))}
           {settlement.fees && settlement.fees.length > 0 && settlement.fees.map((fee, i) => (
             <div
-              key={`fee-${i}`}
+              key={`fee-${fee.name}`}
               className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-900/60 rounded-lg text-sm"
             >
               <div className="flex items-center gap-2">
@@ -640,7 +640,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
                 {Array.isArray(ticket.perks) && ticket.perks.length > 0 && (
                   <ul className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
                     {ticket.perks.map((perk, i) => (
-                      <li key={i} className="flex items-start gap-2">
+                      <li key={String(perk)} className="flex items-start gap-2">
                         <span className="text-orange-500 mt-0.5">✓</span>
                         <span>{String(perk)}</span>
                       </li>
@@ -1005,7 +1005,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         setStep('idle');
         return;
       }
-      const data = await res.json();
+      await res.json();
       // Balance checkout is instant — go straight to success
       router.push(`/checkout/success?event=${eventId}`);
       router.refresh();

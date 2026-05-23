@@ -164,7 +164,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
               <div className="space-y-2">
                 {attribution.map((entry, i) => (
                   <div
-                    key={i}
+                    key={`${entry.role}-${entry.did ?? ''}`}
                     className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
                   >
                     <div className="flex items-center gap-2">
@@ -199,7 +199,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
               <div className="space-y-2">
                 {chain.map((entry, i) => (
                   <div
-                    key={i}
+                    key={`${entry.role}-${entry.did ?? ''}`}
                     className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
                   >
                     <div className="flex items-center gap-2">
@@ -236,7 +236,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
               <div className="space-y-2">
                 {manifest.fees.map((fee: FairFee, i: number) => (
                   <div
-                    key={i}
+                    key={fee.name}
                     className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
                   >
                     <div className="flex items-center gap-2">
@@ -267,7 +267,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
               <div className="space-y-2">
                 {manifest.distributions.map((entry, i) => (
                   <div
-                    key={i}
+                    key={entry.role}
                     className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
                   >
                     <div className="flex items-center gap-2">

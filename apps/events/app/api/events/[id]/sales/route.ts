@@ -240,11 +240,6 @@ export async function GET(
     // Summary — include orphan revenue
     const orphanRevenue = orphans.reduce((sum: number, o: any) => sum + (o.pricePaid ?? 0), 0) / 100;
     const totalRevenue = sales.reduce((sum, s) => sum + s.amount, 0) + orphanRevenue;
-    const summary = {
-      totalSales: sales.length,
-      totalRevenue: Number.parseFloat(totalRevenue.toFixed(2)),
-      currency: sales[0]?.currency ?? eventRow.currency ?? 'USD',
-    };
 
     // Export format?
     const url = new URL(request.url);

@@ -189,7 +189,7 @@ export default function LessonViewerPage() {
                 {lesson.metadata?.items && (
                   <div className="mt-4 space-y-3">
                     {lesson.metadata.items.map((item: string, i: number) => (
-                      <div key={i} className="flex gap-3 text-white/70">
+                      <div key={item} className="flex gap-3 text-white/70">
                         <span className="text-white/30 font-mono shrink-0">{i + 1}</span>
                         <span>{item}</span>
                       </div>
@@ -199,7 +199,7 @@ export default function LessonViewerPage() {
                 {lesson.metadata?.stats && (
                   <div className="mt-4 border border-white/10 rounded-lg p-4">
                     {lesson.metadata.stats.map((s: { label: string; value: string }, i: number) => (
-                      <div key={i} className="flex justify-between border-b border-white/10 py-2 last:border-0 text-sm">
+                      <div key={s.label} className="flex justify-between border-b border-white/10 py-2 last:border-0 text-sm">
                         <span className="text-white/40">{s.label}</span>
                         <span className="text-white/80">{s.value}</span>
                       </div>

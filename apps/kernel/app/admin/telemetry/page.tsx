@@ -190,7 +190,7 @@ function VolumeChart({ rows }: Readonly<{ rows: VolumeRow[] }>) {
         {hours.map((h, i) => {
           const pct = Math.round((h.count / maxCount) * 100);
           return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
+            <div key={h.label} className="flex-1 flex flex-col items-center gap-1 group">
               <div className="relative flex-1 w-full flex items-end">
                 <div
                   className="w-full bg-blue-500 dark:bg-blue-400 rounded-t transition-all"
@@ -224,7 +224,7 @@ function SlowestTable({ rows }: Readonly<{ rows: SlowestRow[] }>) {
         </thead>
         <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
           {rows.map((r, i) => (
-            <tr key={i}>
+            <tr key={`${r.method}-${r.path}`}>
               <td className="py-2 pr-4">
                 <span className="text-xs font-mono text-gray-500 dark:text-gray-400 mr-2">
                   {r.method}
@@ -264,7 +264,7 @@ function LatencyTable({ rows }: Readonly<{ rows: LatencyRow[] }>) {
         </thead>
         <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
           {rows.map((r, i) => (
-            <tr key={i}>
+            <tr key={`${r.method}-${r.path}`}>
               <td className="py-2 pr-4">
                 <span className="text-xs font-mono text-gray-500 dark:text-gray-400 mr-2">
                   {r.method}
@@ -307,7 +307,7 @@ function ErrorRateTable({ rows }: Readonly<{ rows: ErrorRateRow[] }>) {
               return 'text-green-600 dark:text-green-400';
             })();
             return (
-              <tr key={i}>
+              <tr key={`${r.method}-${r.path}`}>
                 <td className="py-2 pr-4">
                   <span className="text-xs font-mono text-gray-500 dark:text-gray-400 mr-2">
                     {r.method}

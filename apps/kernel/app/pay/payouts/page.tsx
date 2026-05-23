@@ -48,7 +48,8 @@ export default async function PayoutsPage() {
   if (!session) {
     const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
     const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
-    redirect(`${authUrl}/login?next=${encodeURIComponent(`${payUrl}/payouts`)}`);
+    const payoutsUrl = `${payUrl}/payouts`;
+    redirect(`${authUrl}/login?next=${encodeURIComponent(payoutsUrl)}`);
   }
 
   const did = session.actingAs || session.id;

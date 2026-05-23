@@ -14,7 +14,8 @@ export default async function TopupSuccessPage({ searchParams }: Readonly<Succes
   if (!session) {
     const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
     const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
-    redirect(`${authUrl}/login?next=${encodeURIComponent(`${payUrl}/topup/success`)}`);
+    const successUrl = `${payUrl}/topup/success`;
+    redirect(`${authUrl}/login?next=${encodeURIComponent(successUrl)}`);
   }
 
   const { session_id: stripeSessionId } = searchParams;

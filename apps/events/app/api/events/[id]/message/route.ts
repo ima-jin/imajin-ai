@@ -33,8 +33,6 @@ async function checkAuth(request: NextRequest, eventId: string) {
 }
 
 async function queryRecipients(eventId: string, filter?: MessageFilter) {
-  const baseWhere = sql`event_id = ${eventId} AND status IN ('valid', 'used') AND owner_did IS NOT NULL`;
-
   if (filter) {
     switch (filter.type) {
       case 'ticket_type':

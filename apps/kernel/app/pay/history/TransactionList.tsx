@@ -142,7 +142,7 @@ function StandaloneRow({ tx, sessionId }: Readonly<{ tx: SerializedTx; sessionId
             <div className="space-y-1">
               {manifest.chain!.map((entry, i) => (
                 <div
-                  key={i}
+                  key={`${entry.role}-${entry.did}`}
                   className="flex items-center gap-3 text-xs bg-black/40 border border-zinc-800 rounded-lg px-3 py-2"
                 >
                   <span className="text-zinc-600 w-20 shrink-0">{entry.role}</span>

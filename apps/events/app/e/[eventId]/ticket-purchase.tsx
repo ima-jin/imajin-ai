@@ -53,10 +53,6 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
     ? null
     : ticket.quantity - (ticket.sold ?? 0);
 
-  const available = availableCount === null
-    ? 'Unlimited'
-    : `${availableCount} left`;
-
   const soldOut = ticket.quantity !== null && (ticket.sold ?? 0) >= ticket.quantity;
 
   // Effective max: per-type override > prop > default 10, capped at 20

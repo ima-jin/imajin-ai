@@ -55,11 +55,12 @@ export default async function AuthPage() {
   ]);
 
   if (!profile) {
+    const editQuery = actingAs ? `?did=${encodeURIComponent(actingAs)}` : '';
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
         <p className="text-zinc-400 text-sm">No profile found for this identity.</p>
         <Link
-          href={`/profile/edit${actingAs ? `?did=${encodeURIComponent(actingAs)}` : ''}`}
+          href={`/profile/edit${editQuery}`}
           className="inline-block mt-3 text-sm text-amber-400 hover:text-amber-300 transition-colors"
         >
           Create profile →

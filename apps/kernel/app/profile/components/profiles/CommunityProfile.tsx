@@ -96,7 +96,7 @@ export async function CommunityProfile({ profile, identity, viewer, links }: Rea
         <div className="space-y-2">
           {links.map((link, i) => (
             <a
-              key={i}
+              key={link.url}
               href={link.url}
               target="_blank"
               rel="noopener noreferrer"

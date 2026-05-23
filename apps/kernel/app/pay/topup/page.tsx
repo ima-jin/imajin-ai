@@ -54,7 +54,8 @@ export default function TopupPage() {
         if (!res.ok) {
           const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
           const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
-          globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(`${payUrl}/topup`)}`;
+          const topupUrl = `${payUrl}/topup`;
+          globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(topupUrl)}`;
           return;
         }
         setSessionChecked(true);

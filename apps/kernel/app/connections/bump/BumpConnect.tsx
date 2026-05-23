@@ -567,7 +567,11 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
               if (nodes.length === 0) return <div className="text-gray-500 text-sm py-4">No nodes found nearby.</div>;
               return (
               <div className="space-y-2">
-                {nodes.map((node) => (
+                {nodes.map((node) => {
+                  const distanceLabel = node.distanceM < 1000
+                    ? `${Math.round(node.distanceM)}m`
+                    : `${(node.distanceM / 1000).toFixed(1)}km`;
+                  return (
                   <button
                     key={node.id}
                     onClick={() => setSelectedNode(node)}
@@ -580,12 +584,11 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
                     <div className="font-medium">{node.name}</div>
                     <div className="text-xs text-gray-500 mt-0.5">
                       {node.type}
-                      {node.distanceM != null && ` · ${node.distanceM < 1000
-                        ? `${Math.round(node.distanceM)}m`
-                        : `${(node.distanceM / 1000).toFixed(1)}km`} away`}
+                      {node.distanceM != null && ` · ${distanceLabel} away`}
                     </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             );
             })()}
