@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { challengeToken, method, code, trustDevice } = body;
+    const { challengeToken, method, code } = body;
 
     if (!challengeToken || !method || !code) {
       return NextResponse.json(

@@ -871,7 +871,6 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
   const [showFallbackHint, setShowFallbackHint] = useState(false);
 
   const first = cartItems[0];
-  const multiType = cartItems.length > 1;
 
   async function startStripe() {
     if (!first) return;

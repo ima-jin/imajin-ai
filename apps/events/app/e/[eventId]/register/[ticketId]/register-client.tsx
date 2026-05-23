@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@imajin/config';
 import { SurveyAccordion } from '../../survey-accordion';
@@ -16,7 +15,6 @@ export default function RegisterClient({ ticketId, eventId, registrationFormId }
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
-  const router = useRouter();
 
   async function handleRegistrationComplete() {
     setIsRetrying(true);

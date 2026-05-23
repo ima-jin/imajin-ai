@@ -98,7 +98,6 @@ export default function SurveyEmbedPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const { surveyId } = params;
-  const respondentDid = searchParams.get('respondentDid');
   const ticketId = searchParams.get('ticketId');
 
   const [loading, setLoading] = useState(true);

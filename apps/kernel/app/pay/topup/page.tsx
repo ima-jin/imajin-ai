@@ -33,7 +33,6 @@ type Step = 1 | 2 | 3;
 type Method = 'stripe' | 'emt';
 
 export default function TopupPage() {
-  const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [amount, setAmount] = useState<number>(50);
   const [customAmount, setCustomAmount] = useState<string>('');

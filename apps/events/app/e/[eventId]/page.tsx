@@ -494,9 +494,6 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
   
   // Calculate lowest price for sticky bar
   const lowestPrice = ticketTypesList.length > 0 ? Math.min(...ticketTypesList.map(t => t.price)) : null;
-  const lowestPriceText = lowestPrice !== null
-    ? lowestPrice === 0 ? 'Free' : `From CA\$${(lowestPrice / 100).toFixed(2)}`
-    : '';
 
   return (
     <>

@@ -54,7 +54,6 @@ export function ChatMarkdown({ content, isOwn }: Readonly<ChatMarkdownProps>) {
     ? 'border-white/40'
     : 'border-orange-500';
   const strongColor = isOwn ? 'text-white' : 'text-gray-900 dark:text-white';
-  const mentionColor = 'text-amber-400 font-medium';
 
   return (
     <div className={`text-sm ${textColor} max-w-none`}>

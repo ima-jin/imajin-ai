@@ -79,7 +79,6 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
 
   const displayTime = currentTime > 0 ? formatDuration(currentTime * 1000) : formatDuration(durationMs);
 
-  const accentColor = isOwn ? 'bg-white/30' : 'bg-orange-500';
   const progressBg = isOwn ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-600';
   const buttonColor = isOwn ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white';
   const timeColor = isOwn ? 'text-white/70' : 'text-gray-500 dark:text-gray-400';

@@ -21,7 +21,7 @@ export default function SurveyResponsePage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
-  const { handle, surveyId } = params;
+  const { surveyId } = params;
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);

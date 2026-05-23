@@ -68,7 +68,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
 
     // 4. Verify signature
     const { signature, ...attestationWithoutSig } = attestation;
-    const canonical = canonicalize(attestationWithoutSig);
+    canonicalize(attestationWithoutSig);
     const signatureValid = await verify(
       { 
         from: attestation.nodeId, 
@@ -150,7 +150,6 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
 
     const now = Date.now();
     const expiresAt = new Date(now + NODE_REGISTRATION_TTL);
-    const graceExpiresAt = new Date(now + NODE_REGISTRATION_TTL + NODE_GRACE_PERIOD);
 
     if (existingNode) {
       // Renewal - same node, maybe different hostname
@@ -229,10 +228,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
     }
 
     // 8. Provision subdomain
-    let recordId: string;
     try {
-      const result = await provisionSubdomain(attestation.hostname, attestation.nodeId);
-      recordId = result.recordId;
+      await provisionSubdomain(attestation.hostname, attestation.nodeId);
     } catch (error) {
       log.error({ err: String(error) }, 'Failed to provision subdomain');
       return NextResponse.json(

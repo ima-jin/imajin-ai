@@ -116,7 +116,6 @@ function DistributionRightEditor({
   const hasPrice = canHavePrice && !!right?.price && right.price.amount > 0;
   const showSplits = mode === 'allow-with-share';
   const showQuote = mode === 'quote-with-attribution';
-  const showSampling = showQuote; // for audio
 
   return (
     <div className="space-y-2">

@@ -224,7 +224,6 @@ function renderSignature(manifest: FairManifest): string {
   const sig = manifest.signature;
   if (!sig) return "";
 
-  const isV11 = isFairManifestV1_1(manifest);
   const sigAny = sig as unknown as Record<string, unknown>;
   const signer = (sigAny.signer ?? sigAny.publicKeyRef ?? "") as string;
   const signedAt = (sigAny.signedAt ?? undefined) as string | undefined;
