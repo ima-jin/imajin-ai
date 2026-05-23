@@ -9,7 +9,7 @@ interface Props {
   session: Identity;
 }
 
-export function MediaPageClient({ session }: Props) {
+export function MediaPageClient({ session }: Readonly<Props>) {
   const [search, setSearch] = useState('');
 
   return (

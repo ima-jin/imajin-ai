@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 import { db, folders, assetFolders } from "@/src/db";
 import { requireAuth } from "@imajin/auth";

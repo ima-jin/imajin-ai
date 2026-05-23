@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function AuthorArticlesPage({ params }: Props) {
+export default async function AuthorArticlesPage({ params }: Readonly<Props>) {
   const { handle } = await params;
   const author = await resolveHandle(handle);
 

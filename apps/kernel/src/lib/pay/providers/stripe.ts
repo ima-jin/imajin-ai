@@ -27,8 +27,6 @@ import type {
   SubscriptionResult,
   PaymentStatus,
   Recipient,
-  isStripeRecipient,
-  isDIDRecipient,
 } from '../types';
 
 export class StripeProvider implements PaymentProvider {

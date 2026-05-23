@@ -77,7 +77,7 @@ const CHAT_URL = buildPublicUrl('chat');
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function BumpConnect({ onClose }: Props) {
+export default function BumpConnect({ onClose }: Readonly<Props>) {
   const [state, setState] = useState<BumpState>('selecting');
 
   // Selecting state
@@ -323,7 +323,7 @@ export default function BumpConnect({ onClose }: Props) {
     const handler = (e: DeviceMotionEvent) => {
       if (!debugHasMotion) setDebugHasMotion(true);
       const hasAccel = !!(e.acceleration?.x || e.acceleration?.y || e.acceleration?.z);
-      const acc = hasAccel ? e.acceleration! : e.accelerationIncludingGravity;
+      const acc = hasAccel ? e.acceleration : e.accelerationIncludingGravity;
       const rot = e.rotationRate;
 
       const ax = acc?.x ?? 0;

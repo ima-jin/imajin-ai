@@ -1,8 +1,7 @@
 import { SESSION_COOKIE_NAME } from "@imajin/config";
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
-import { db, profiles } from '@/src/db';
-import { or, eq } from 'drizzle-orm';
+import { db } from '@/src/db';
 import { withLogger } from '@imajin/logger';
 
 /**

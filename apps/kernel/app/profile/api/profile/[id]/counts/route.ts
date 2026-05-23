@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db, follows, profiles } from '@/src/db';
+import { db, follows } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { eq, count } from 'drizzle-orm';

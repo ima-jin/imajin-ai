@@ -1,5 +1,5 @@
 import type { VaultEntry } from '@imajin/vault-core';
-import { registerReactor, type BusEvent, type BusEventMap, type ReactorHandler } from '@imajin/bus';
+import { registerReactor, type BusEvent, type ReactorHandler } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { vaultService } from '@/src/lib/vault';
 
@@ -59,7 +59,7 @@ function extractFieldFromEventPayload(event: BusEvent): string | null {
     return null;
   }
 
-  const payload = event.payload as BusEventMap['vault.secret.updated'] | BusEventMap['vault.secret.rotated'] | undefined;
+  const payload = event.payload;
   if (!payload || typeof payload.field !== 'string' || payload.field.length === 0) {
     return null;
   }

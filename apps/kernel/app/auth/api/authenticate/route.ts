@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, challenges, tokens } from '@/src/db';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
-import { verify as verifySignature, hexToBytes, stringToBytes, TOKEN_TTL } from '@imajin/auth';
+import { verify as hexToBytes, TOKEN_TTL } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');

@@ -15,7 +15,7 @@ type Status =
   | 'error'
   | 'hard-did';
 
-export function MagicLinkButton({ eventId }: { eventId: string }) {
+export function MagicLinkButton({ eventId }: Readonly<{ eventId: string }>) {
   const [showForm, setShowForm] = useState(false);
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<Status>('idle');

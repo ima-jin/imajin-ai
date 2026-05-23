@@ -33,10 +33,10 @@ type GroupFilter = 'all' | 'mine' | 'event';
 function NicknameEditor({
   conn,
   onSave,
-}: {
+}: Readonly<{
   conn: Connection;
   onSave: (did: string, nickname: string | null) => void;
-}) {
+}>) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(conn.nickname ?? '');
   const inputRef = useRef<HTMLInputElement>(null);

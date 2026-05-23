@@ -87,7 +87,7 @@ function getDocumentTitle(payload: unknown): string {
   return 'Untitled Document';
 }
 
-export default function DocumentSigningCard({ attestation, signatures, sessionDid, defaultExpanded = false }: Props) {
+export default function DocumentSigningCard({ attestation, signatures, sessionDid, defaultExpanded = false }: Readonly<Props>) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -30,7 +30,7 @@ async function getTicketTypes(eventId: string) {
     .orderBy(ticketTypes.sortOrder);
 }
 
-export default async function EditEventPage({ params }: Props) {
+export default async function EditEventPage({ params }: Readonly<Props>) {
   const session = await getSession();
   const { eventId } = await params;
 

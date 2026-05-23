@@ -32,7 +32,7 @@ const STATUS_TEXT: Record<string, string> = {
   degraded: 'Degraded',
 };
 
-function ServiceRow({ service }: { service: ServiceCheck }) {
+function ServiceRow({ service }: Readonly<{ service: ServiceCheck }>) {
   return (
     <div className="flex items-center justify-between p-4 bg-gray-900 rounded-lg border border-gray-800">
       <div className="flex items-center gap-4">

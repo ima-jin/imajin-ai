@@ -11,7 +11,7 @@ export function ForestServices({ enabledServices, handle }: Readonly<ForestServi
 
   const services = enabledServices
     .map((name) => SERVICES.find((s) => s.name === name))
-    .filter(Boolean) as typeof SERVICES[number][];
+    .filter(Boolean);
 
   if (services.length === 0) return null;
 

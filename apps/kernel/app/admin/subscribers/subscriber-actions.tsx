@@ -9,7 +9,7 @@ interface Props {
   isVerified: boolean;
 }
 
-export default function SubscriberActions({ id, email, isVerified }: Props) {
+export default function SubscriberActions({ id, email, isVerified }: Readonly<Props>) {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
   const [resending, setResending] = useState(false);

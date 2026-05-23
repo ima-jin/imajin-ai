@@ -48,7 +48,7 @@ function displayName(conn: Connection): string {
   return conn.did.slice(0, 24) + '...';
 }
 
-export function NewChatModal({ onClose }: { onClose: () => void }) {
+export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
   const router = useRouter();
   const { identity } = useIdentity();
   const [tab, setTab] = useState<'dm' | 'group'>('dm');

@@ -12,8 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets, settlements } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
-import { canonicalize } from "@imajin/auth";
+import { requireAuth, canonicalize } from "@imajin/auth";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { isFairManifestV1_1 } from "@imajin/fair";
 import type { FairManifestV1_1 } from "@imajin/fair";

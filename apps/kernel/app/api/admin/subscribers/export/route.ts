@@ -52,7 +52,7 @@ export const GET = withLogger('kernel', async (req: NextRequest) => {
       r.status,
       r.subscribed_at ? new Date(r.subscribed_at as string).toISOString() : '',
       r.list_slug,
-      `"${String(r.list_name).replace(/"/g, '""')}"`,
+      `"${String(r.list_name).replaceAll('"', '""')}"`,
     ];
     return fields.join(',');
   });

@@ -1,5 +1,4 @@
 import {
-  pgTable,
   text,
   timestamp,
   jsonb,

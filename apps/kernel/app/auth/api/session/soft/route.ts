@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
-import { db } from '@/src/db';
+import { db, identities, credentials } from '@/src/db';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
-import { identities, credentials } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { corsHeaders } from '@imajin/config';

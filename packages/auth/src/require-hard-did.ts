@@ -1,4 +1,4 @@
-import type { Identity, AuthResult, AuthError } from "./types";
+import type { AuthResult, AuthError } from "./types";
 import { requireAuth } from "./require-auth";
 
 /**

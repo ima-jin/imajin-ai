@@ -18,7 +18,7 @@ import { join } from 'node:path';
 const CREATOR_DID = process.env.CREATOR_DID || 'did:imajin:ryan';
 
 function generateId(prefix: string): string {
-  const random = crypto.randomUUID().replace(/-/g, '').substring(0, 13);
+  const random = crypto.randomUUID().replaceAll('-', '').substring(0, 13);
   const timestamp = Date.now().toString(36);
   return `${prefix}_${timestamp}${random}`;
 }
@@ -145,7 +145,7 @@ async function seed() {
       durationMinutes: 10,
     },
     ...exerciseFiles.map((file, i) => ({
-      title: `Exercise ${i + 1}: ${file.replace(/^\d+-/, '').replaceAll('.md', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`,
+      title: `Exercise ${i + 1}: ${file.replace(/^\d+-/, '').replaceAll('.md', '').replaceAll('-', ' ').replace(/\b\w/g, c => c.toUpperCase())}`,
       contentType: 'exercise',
       content: readExercise(file),
       durationMinutes: 15,

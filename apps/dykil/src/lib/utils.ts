@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 export { corsHeaders, corsOptions } from '@imajin/config';
 
 export function jsonResponse(data: any, status = 200, headers?: Record<string, string>) {
@@ -11,6 +11,6 @@ export function errorResponse(message: string, status = 400, headers?: Record<st
 
 export function generateId(prefix: string): string {
   const timestamp = Date.now().toString(36);
-  const random = crypto.randomUUID().replace(/-/g, '').substring(0, 8);
+  const random = crypto.randomUUID().replaceAll('-', '').substring(0, 8);
   return `${prefix}_${timestamp}${random}`;
 }

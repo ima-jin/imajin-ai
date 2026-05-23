@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, profiles } from '@/src/db';
+import { db } from '@/src/db';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { eq, or } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { isValidAgentPricingManifest } from '@imajin/fair';
 

@@ -8,9 +8,9 @@ import AppDetailClient from './components/AppDetailClient';
 
 export default async function AppDetailPage({
   params,
-}: {
+}: Readonly<{
   params: { appId: string };
-}) {
+}>) {
   const cookieConfig = getSessionCookieOptions();
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(cookieConfig.name)?.value;

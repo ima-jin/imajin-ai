@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, primaryKey, serial, uniqueIndex } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, index, primaryKey, serial, uniqueIndex } from 'drizzle-orm/pg-core';
 import { chatSchema } from './chat';
 
 /**

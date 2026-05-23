@@ -5,7 +5,7 @@
  * Handles both authenticated users (hard DID) and anonymous users (soft DID via email).
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withLogger, createLogger } from '@imajin/logger';
 
 const log = createLogger('events');

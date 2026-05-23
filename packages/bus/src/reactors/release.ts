@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
-import type { BrokerPipelineState, BrokerRelease, BrokerReactor } from '../types';
+import type { BrokerRelease, BrokerReactor } from '../types';
 
 const log = createLogger('bus:broker:release');
 

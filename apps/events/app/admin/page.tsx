@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { requireAdmin } from '@imajin/auth';
 import { db, events } from '@/src/db';
 import { desc } from 'drizzle-orm';
@@ -98,7 +98,7 @@ export default async function AdminEventsPage() {
   );
 }
 
-function StatusBadge({ status }: { status: string | null }) {
+function StatusBadge({ status }: Readonly<{ status: string | null }>) {
   const color =
     status === 'published'
       ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'

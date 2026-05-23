@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server';
 import { eq, and, isNull } from 'drizzle-orm';
 import { db, invites } from '@/src/db';
 import { requireAuth } from '@imajin/auth';

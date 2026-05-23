@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('dykil');
-import { db, surveys, surveyResponses } from '@/db';
+import { db, surveyResponses } from '@/db';
 import { getSession } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } from '@/lib/utils';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 interface RouteParams {
   params: { id: string };

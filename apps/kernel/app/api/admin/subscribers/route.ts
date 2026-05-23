@@ -46,7 +46,7 @@ export const GET = withLogger('kernel', async (req: NextRequest) => {
      JOIN www.subscriptions s ON c.id = s.contact_id
      JOIN www.mailing_lists ml ON ml.id = s.mailing_list_id
      ${whereClause}`,
-    binds as string[]
+    binds
   );
   const total = Number(countRows[0]?.total ?? 0);
 
@@ -68,7 +68,7 @@ export const GET = withLogger('kernel', async (req: NextRequest) => {
      ${whereClause}
      ORDER BY s.subscribed_at DESC
      LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
-    binds as string[]
+    binds
   );
 
   return NextResponse.json({ subscribers: rows, total, page, pageSize: PAGE_SIZE });

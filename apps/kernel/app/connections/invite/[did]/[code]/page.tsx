@@ -1,4 +1,3 @@
-import { notFound } from 'next/navigation';
 import { AcceptSection } from './AcceptSection';
 
 import { buildPublicUrl } from '@imajin/config';
@@ -18,9 +17,9 @@ async function getInvite(code: string) {
 
 export default async function InvitePage({
   params,
-}: {
+}: Readonly<{
   params: { did: string; code: string };
-}) {
+}>) {
   const invite = await getInvite(params.code);
 
   if (!invite) {

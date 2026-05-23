@@ -10,7 +10,7 @@
  *          response.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { db, tickets, events, ticketTypes } from '@/src/db';
 import { eq } from 'drizzle-orm';

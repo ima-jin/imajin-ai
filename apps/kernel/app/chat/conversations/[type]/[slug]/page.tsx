@@ -38,7 +38,7 @@ interface Connection {
 
 // ─── Add member picker (inside ChatProvider context for useDidNames) ──────────
 
-function MemberName({ did, fallbackName, fallbackHandle }: { did: string; fallbackName?: string | null; fallbackHandle?: string | null }) {
+function MemberName({ did, fallbackName, fallbackHandle }: Readonly<{ did: string; fallbackName?: string | null; fallbackHandle?: string | null }>) {
   const names = useDidNames([did]);
   return <>{names[did] || fallbackName || (fallbackHandle ? `@${fallbackHandle}` : did.slice(-8))}</>;
 }
@@ -49,13 +49,13 @@ function AddMemberPicker({
   loadingConnections,
   onAdd,
   onCancel,
-}: {
+}: Readonly<{
   connections: Connection[];
   addingDid: string | null;
   loadingConnections: boolean;
   onAdd: (did: string) => void;
   onCancel: () => void;
-}) {
+}>) {
   const [search, setSearch] = useState('');
   const didNames = useDidNames(connections.map((c) => c.did));
 
@@ -117,7 +117,7 @@ function AddMemberPicker({
 
 // ─── DID-based conversation view ─────────────────────────────────────────────
 
-function DIDConversationView({ did }: { did: string }) {
+function DIDConversationView({ did }: Readonly<{ did: string }>) {
   const { identity, loading: authLoading } = useIdentity();
   const searchParams = useSearchParams();
   const router = useRouter();

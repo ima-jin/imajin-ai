@@ -63,7 +63,7 @@ function truncateDid(did: string): string {
   return `${did.slice(0, 12)}…${did.slice(-8)}`;
 }
 
-function ContactSection({ contactInfo }: { contactInfo: ContactInfo }) {
+function ContactSection({ contactInfo }: Readonly<{ contactInfo: ContactInfo }>) {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
       <p className="text-sm font-semibold">Contact Seller</p>
@@ -100,7 +100,7 @@ function ContactSection({ contactInfo }: { contactInfo: ContactInfo }) {
   );
 }
 
-function OwnerStatusBadge({ status }: { status: string }) {
+function OwnerStatusBadge({ status }: Readonly<{ status: string }>) {
   const styles: Record<string, string> = {
     active: 'bg-green-900/50 text-green-400 border-green-700/50',
     paused: 'bg-yellow-900/50 text-yellow-400 border-yellow-700/50',

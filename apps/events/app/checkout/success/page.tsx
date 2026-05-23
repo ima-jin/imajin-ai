@@ -10,7 +10,7 @@ interface Props {
 
 export const dynamic = 'force-dynamic';
 
-export default async function SuccessPage({ searchParams }: Props) {
+export default async function SuccessPage({ searchParams }: Readonly<Props>) {
   const params = await searchParams;
   const eventId = params.event;
 

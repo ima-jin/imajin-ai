@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
-import { db, profiles, follows, connections, identityMembers, forestConfig } from '@/src/db';
+import { db, profiles, follows, identityMembers, forestConfig } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { eq, count, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
@@ -42,7 +42,7 @@ export async function getProfile(handle: string): Promise<ProfileData | null> {
   const row = await db.query.profiles.findFirst({
     where: (profiles, { eq, or }) => or(eq(profiles.did, handle), eq(profiles.handle, handle)),
   });
-  return row as unknown as ProfileData | null;
+  return row ?? null;
 }
 
 export async function getProfileCounts(profileDid: string): Promise<ProfileCounts> {

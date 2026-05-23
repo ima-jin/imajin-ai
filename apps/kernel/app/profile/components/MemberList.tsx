@@ -90,7 +90,7 @@ export async function MemberList({
   );
 }
 
-function MemberRow({ member }: { member: { did: string; displayName: string; handle?: string; avatar?: string } }) {
+function MemberRow({ member }: Readonly<{ member: { did: string; displayName: string; handle?: string; avatar?: string } }>) {
   const initials = member.displayName
     .split(' ')
     .map((w) => w[0])

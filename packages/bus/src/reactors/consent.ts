@@ -1,5 +1,5 @@
 import { createLogger } from '@imajin/logger';
-import type { BrokerPipelineState, BrokerRejection, BrokerReactor } from '../types';
+import type { BrokerRejection, BrokerReactor } from '../types';
 import { resolveConsent, getDefaultRejectionReason } from '../broker-config';
 
 const log = createLogger('bus:broker:consent');

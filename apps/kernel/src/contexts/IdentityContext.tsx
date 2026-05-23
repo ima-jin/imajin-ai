@@ -27,7 +27,7 @@ export function useIdentity() {
   return useContext(IdentityContext);
 }
 
-export function IdentityProvider({ children }: { children: ReactNode }) {
+export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -16,7 +16,7 @@ interface Props {
   params: { eventId: string };
 }
 
-export default async function AdminPage({ params }: Props) {
+export default async function AdminPage({ params }: Readonly<Props>) {
   const { eventId } = params as unknown as { eventId: string };
 
   // Fetch event

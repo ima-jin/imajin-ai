@@ -31,7 +31,7 @@ interface ETransferInstructions {
 
 type Step = 'button' | 'selector' | 'loading-card' | 'etransfer-confirm' | 'loading-etransfer' | 'etransfer-done' | 'rsvp-form' | 'loading-rsvp' | 'rsvp-done';
 
-export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false, stripeDisabled = false, maxPerOrder, sessionEmail, quantity: externalQty, onQuantityChange, hideCheckoutButton = false }: Props) {
+export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etransferEnabled = false, stripeDisabled = false, maxPerOrder, sessionEmail, quantity: externalQty, onQuantityChange, hideCheckoutButton = false }: Readonly<Props>) {
   const router = useRouter();
   const [step, setStep] = useState<Step>('button');
   const [error, setError] = useState<string | null>(null);
@@ -475,13 +475,13 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
   );
 }
 
-function QuantityStepper({ quantity, setQuantity, max, price, currency }: {
+function QuantityStepper({ quantity, setQuantity, max, price, currency }: Readonly<{
   quantity: number;
   setQuantity: (q: number) => void;
   max: number;
   price: number;
   currency: string;
-}) {
+}>) {
   const total = new Intl.NumberFormat('en-CA', {
     style: 'currency',
     currency,

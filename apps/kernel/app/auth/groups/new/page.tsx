@@ -329,7 +329,7 @@ function NewGroupForm() {
                         : 'bg-zinc-900 border-gray-700 text-zinc-400 hover:border-gray-500'
                     }`}
                   >
-                    {st.replace(/_/g, ' ')}
+                    {st.replaceAll('_', ' ')}
                   </button>
                 ))}
               </div>

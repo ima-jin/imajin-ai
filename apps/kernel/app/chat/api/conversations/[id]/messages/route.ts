@@ -4,7 +4,7 @@ import { publish } from '@imajin/bus';
 import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
 
 const log = createLogger('kernel');
-import { db, conversationsV2, messagesV2, messageReactionsV2, profiles } from '@/src/db';
+import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/src/db';
 import { requireAuth, isVerifiedTier } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';

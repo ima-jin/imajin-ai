@@ -51,7 +51,7 @@ export async function PUT(
     const found = await db
       .select()
       .from(folders)
-      .where(and(inArray(folders.id, folderIds as string[]), eq(folders.ownerDid, ownerDid)));
+      .where(and(inArray(folders.id, folderIds), eq(folders.ownerDid, ownerDid)));
 
     if (found.length !== folderIds.length) {
       return NextResponse.json({ error: "One or more folders not found or unauthorized" }, { status: 404 });
@@ -62,15 +62,15 @@ export async function PUT(
     // Replace all assignments in a transaction
     await db.transaction(async (tx) => {
       await tx.delete(assetFolders).where(eq(assetFolders.assetId, id));
-      if ((folderIds as string[]).length > 0) {
+      if (folderIds.length > 0) {
         await tx.insert(assetFolders).values(
-          (folderIds as string[]).map((folderId) => ({ assetId: id, folderId }))
+          folderIds.map((folderId) => ({ assetId: id, folderId }))
         );
       }
     });
 
     // Update the direct folderId column too (UI reads this for filtering)
-    await db.update(assets).set({ folderId: folderIds.length > 0 ? (folderIds as string[])[0] : null }).where(eq(assets.id, id));
+    await db.update(assets).set({ folderId: folderIds.length > 0 ? folderIds[0] : null }).where(eq(assets.id, id));
 
     return NextResponse.json({ assetId: id, folderIds });
   } catch (err) {

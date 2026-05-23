@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { createIdentityChain, updateIdentityChain, verifyChain } from '../src/bridge';
-import { getPublicKeyBytes } from '../src/signer';
 import { encodeEd25519Multikey } from '@metalabel/dfos-protocol';
 import { bytesToHex, hexToBytes } from '@imajin/auth';
 import { ed25519 } from '@noble/curves/ed25519';

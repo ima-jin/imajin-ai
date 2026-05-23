@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { EmojiPicker } from './EmojiPicker';
 import { VoiceRecorder } from './VoiceRecorder';
 import { LocationPicker, type LocationData } from './LocationPicker';
@@ -81,7 +81,7 @@ export function ImajinInput({
   // Close attach menu on click outside
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target)) {
         setShowAttachMenu(false);
       }
     }

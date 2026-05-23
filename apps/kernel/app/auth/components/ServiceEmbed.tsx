@@ -16,7 +16,7 @@ const SERVICE_URLS: Record<string, string> = {
   media: '', // kernel service, same origin
 };
 
-export default function ServiceEmbed({ service, did }: Props) {
+export default function ServiceEmbed({ service, did }: Readonly<Props>) {
   const baseUrl = SERVICE_URLS[service] ?? '';
 
   // Kernel services (pay, media) use their own path, not /dashboard

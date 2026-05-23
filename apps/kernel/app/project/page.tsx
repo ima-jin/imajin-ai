@@ -56,7 +56,7 @@ async function getNetworkStats() {
   }
 }
 
-function StatCard({ emoji, count, max, label }: { emoji: string; count: number; max?: number | '∞'; label: string }) {
+function StatCard({ emoji, count, max, label }: Readonly<{ emoji: string; count: number; max?: number | '∞'; label: string }>) {
   const maxDisplay = max === '∞' ? '∞' : max?.toLocaleString();
   return (
     <div className="flex flex-col items-center gap-1.5">

@@ -4,8 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@imajin/ui';
-import { buildPublicUrl } from '@imajin/config';
-import { apiFetch } from '@imajin/config';
+import { buildPublicUrl, apiFetch } from '@imajin/config';
 
 interface LinkStats {
   id: string;

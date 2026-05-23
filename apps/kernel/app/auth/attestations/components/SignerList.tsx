@@ -49,7 +49,7 @@ function statusClasses(status: string): string {
   }
 }
 
-export default function SignerList({ signers, sessionDid }: Props) {
+export default function SignerList({ signers, sessionDid }: Readonly<Props>) {
   return (
     <div className="space-y-2">
       {signers.map((signer) => (

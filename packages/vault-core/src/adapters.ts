@@ -1,5 +1,5 @@
 import { type VaultIntegrityAdapters } from './verification.js';
-import { computeVaultCid, verifyVaultCid } from './cid.js';
+import { computeVaultCid } from './cid.js';
 import { deriveKeyId, verifyDidKeyBinding } from './identity.js';
 import { verifyVaultSignature } from './signature.js';
 

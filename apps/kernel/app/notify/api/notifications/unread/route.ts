@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { requireAuth } from '@imajin/auth';
-import { db } from '@/src/db';
-import { notifications } from '@/src/db';
+import { db, notifications } from '@/src/db';
 import { eq, and, count } from 'drizzle-orm';
 
 export async function OPTIONS(request: NextRequest) {

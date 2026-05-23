@@ -4,7 +4,7 @@ const log = createLogger('links');
 import { db, linkPages, links, linkClicks } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { eq, sql, desc, gte } from 'drizzle-orm';
+import { eq, sql, desc } from 'drizzle-orm';
 
 interface RouteParams {
   params: { handle: string };

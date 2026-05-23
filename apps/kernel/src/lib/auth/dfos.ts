@@ -121,7 +121,7 @@ export async function storeDfosChain(
     return false; // Already has a chain
   }
 
-  const credId = `cred_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  const credId = `cred_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
 
   // Store chain + credential
   await db.insert(identityChains).values({

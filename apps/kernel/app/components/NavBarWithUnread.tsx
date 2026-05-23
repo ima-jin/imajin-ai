@@ -19,7 +19,7 @@ const serviceUrls: ServiceUrls = {
 };
 const hasOverrides = Object.keys(serviceUrls).length > 0;
 
-export function NavBarWithUnread({ currentService = 'Home' }: { currentService?: string }) {
+export function NavBarWithUnread({ currentService = 'Home' }: Readonly<{ currentService?: string }>) {
   const { total } = useUnreadCount();
 
   return (

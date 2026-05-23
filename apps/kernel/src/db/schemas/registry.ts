@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, boolean, pgSchema, unique, real, integer } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, index, boolean, pgSchema, unique, real, integer } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const registrySchema = pgSchema('registry');

@@ -147,7 +147,7 @@ function contextBarColor(pct: number): string {
   return 'bg-emerald-500';
 }
 
-function AgentMetaFooter({ meta }: { meta: MessageMeta }) {
+function AgentMetaFooter({ meta }: Readonly<{ meta: MessageMeta }>) {
   const [expanded, setExpanded] = useState(false);
   const model = meta.model ? abbreviateModel(meta.model) : null;
 
@@ -203,7 +203,7 @@ function AgentMetaFooter({ meta }: { meta: MessageMeta }) {
   );
 }
 
-function SystemMessageLine({ content, createdAt }: { content: SystemContent; createdAt?: string }) {
+function SystemMessageLine({ content, createdAt }: Readonly<{ content: SystemContent; createdAt?: string }>) {
   const dids = [content.actorDid, ...(content.targetDid ? [content.targetDid] : [])];
   const names = useDidNames(dids);
 

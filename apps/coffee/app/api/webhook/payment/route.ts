@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('coffee');
-import { db, tips, coffeePages } from '@/db';
+import { db, tips } from '@/db';
 import { eq } from 'drizzle-orm';
 import { settleTip } from '@/lib/settle';
 import { publish } from '@imajin/bus';

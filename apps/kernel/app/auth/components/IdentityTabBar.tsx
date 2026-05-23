@@ -45,7 +45,7 @@ function serviceFromHref(href: string): string {
   return href.split('/').pop() ?? '';
 }
 
-function TabLink({ tab, pathname }: { tab: Tab; pathname: string }) {
+function TabLink({ tab, pathname }: Readonly<{ tab: Tab; pathname: string }>) {
   const isActive = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
   return (
     <Link
@@ -67,7 +67,7 @@ export default function IdentityTabBar({
   showMembers,
   showSecurity,
   enabledServices,
-}: Props) {
+}: Readonly<Props>) {
   const pathname = usePathname();
 
   const tabs = ALL_TABS.filter((tab) => {

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, integer, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, integer, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
 
 export const linksSchema = pgSchema('links');
 

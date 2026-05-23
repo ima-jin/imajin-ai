@@ -1,8 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 import { db, folders } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
-import { eq } from "drizzle-orm";
 import { withLogger } from "@imajin/logger";
 
 export const dynamic = "force-dynamic";

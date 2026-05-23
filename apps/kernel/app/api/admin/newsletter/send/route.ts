@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getClient } from '@imajin/db';
 import { sendEmail, renderBroadcastEmail } from '@imajin/email';
 import { withLogger } from '@imajin/logger';

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identityMembers, profiles } from '@/src/db';
+import { db, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';

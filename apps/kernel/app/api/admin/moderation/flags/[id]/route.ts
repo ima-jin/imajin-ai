@@ -37,7 +37,7 @@ export async function PUT(
     UPDATE registry.flags
     SET status = ${status},
         resolved_at = NOW(),
-        resolved_by = ${session.actingAs!},
+        resolved_by = ${session.actingAs},
         resolution = ${resolution ?? null}
     WHERE id = ${id}
   `;
@@ -49,7 +49,7 @@ export async function PUT(
     INSERT INTO registry.moderation_log (id, operator_did, action, target_did, target_type, target_id, reason, created_at)
     VALUES (
       ${logId},
-      ${session.actingAs!},
+      ${session.actingAs},
       ${action},
       ${flag.target_did as string},
       ${flag.target_type as string},

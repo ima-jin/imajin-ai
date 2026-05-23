@@ -16,7 +16,7 @@ async function getCreatorPage(handle: string) {
   }
 }
 
-export default async function SuccessPage({ searchParams }: Props) {
+export default async function SuccessPage({ searchParams }: Readonly<Props>) {
   const isSubscription = searchParams.type === 'subscription';
   const handle = searchParams.handle;
 

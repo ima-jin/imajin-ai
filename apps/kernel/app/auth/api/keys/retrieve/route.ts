@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verify as totpVerify } from 'otplib';
-import { db } from '@/src/db';
-import { storedKeys, mfaMethods } from '@/src/db';
+import { db, storedKeys, mfaMethods } from '@/src/db';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { decryptSecret } from '@/src/lib/auth/encrypt';

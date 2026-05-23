@@ -28,7 +28,7 @@ interface Props {
   eventId: string;
 }
 
-export function CampaignDashboard({ eventId }: Props) {
+export function CampaignDashboard({ eventId }: Readonly<Props>) {
   const [status, setStatus] = useState<CampaignStatus | null>(null);
   const [pledges, setPledges] = useState<Pledge[]>([]);
   const [loading, setLoading] = useState(true);
@@ -291,7 +291,7 @@ export function CampaignDashboard({ eventId }: Props) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: Readonly<{ status: string }>) {
   const styles: Record<string, string> = {
     pending: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300',
     confirmed: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',

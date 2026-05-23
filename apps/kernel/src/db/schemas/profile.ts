@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, integer, boolean, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, index, integer, boolean, pgSchema, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const profileSchema = pgSchema('profile');
 

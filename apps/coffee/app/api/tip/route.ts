@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('coffee');
-import { db, coffeePages, tips } from '@/db';
+import { db, tips } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import * as bus from '@imajin/bus';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';

@@ -129,7 +129,7 @@ export async function verifyManifest(
   manifestOrSigned: FairManifest | SignedFairManifest,
   resolver: ((did: string) => Promise<string>) | ((did: string) => Promise<Uint8Array>),
 ): Promise<{ valid: boolean; error?: string } | { ok: boolean; reason?: string }> {
-  const manifest = manifestOrSigned as FairManifest;
+  const manifest = manifestOrSigned;
   const sig = manifest.signature;
 
   if (!sig) {
@@ -139,7 +139,7 @@ export async function verifyManifest(
   // v1.1 signature has 'alg' field
   if ('alg' in sig) {
     const signed = manifestOrSigned as SignedFairManifest;
-    const v1_1Sig = sig as Signature;
+    const v1_1Sig = sig;
     if (v1_1Sig.alg !== 'ed25519') {
       return { ok: false, reason: `Unsupported algorithm: ${v1_1Sig.alg}` };
     }
@@ -148,7 +148,7 @@ export async function verifyManifest(
       const stripped = { ...signed };
       delete (stripped as Record<string, unknown>).signature;
       delete (stripped as Record<string, unknown>).platformSignature;
-      const msg = new TextEncoder().encode(canonicalizeForSigning(stripped as FairManifest));
+      const msg = new TextEncoder().encode(canonicalizeForSigning(stripped));
       const valid = await ed.verifyAsync(base64urlToBytes(v1_1Sig.value), msg, publicKey);
       return valid ? { ok: true } : { ok: false, reason: 'Signature verification failed' };
     } catch (err) {
@@ -157,7 +157,7 @@ export async function verifyManifest(
   }
 
   // v1.0 path
-  const v1_0Sig = sig as FairSignature;
+  const v1_0Sig = sig;
   try {
     const publicKeyHex = await (resolver as (did: string) => Promise<string>)(v1_0Sig.publicKeyRef);
     const valid = await ed.verifyAsync(

@@ -17,7 +17,7 @@ const STATUS_STYLES: Record<string, string> = {
   duplicate: 'bg-yellow-900 text-yellow-300',
 };
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: Readonly<{ status: string }>) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-gray-700 text-gray-300'}`}>
       {status}

@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';

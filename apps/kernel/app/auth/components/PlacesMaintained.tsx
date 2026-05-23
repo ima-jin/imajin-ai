@@ -14,7 +14,7 @@ interface PlaceRow {
   metadata: { category?: string } | null;
 }
 
-export default async function PlacesMaintained({ sessionDid }: Props) {
+export default async function PlacesMaintained({ sessionDid }: Readonly<Props>) {
   let rows: PlaceRow[] = [];
 
   try {

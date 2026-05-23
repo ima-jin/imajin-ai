@@ -32,9 +32,9 @@ async function fetchTrace(correlationId: string): Promise<{ steps: TraceStep[] }
 
 export default async function TracePage({
   params,
-}: {
+}: Readonly<{
   params: { correlationId: string };
-}) {
+}>) {
   const session = await getSession();
   if (!session?.actingAs) redirect('/');
 
@@ -155,7 +155,7 @@ export default async function TracePage({
   );
 }
 
-function StatusBadge({ status }: { status: number }) {
+function StatusBadge({ status }: Readonly<{ status: number }>) {
   const isError = status >= 500;
   const isClientError = status >= 400 && status < 500;
   const cls = isError

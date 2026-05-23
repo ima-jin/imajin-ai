@@ -50,7 +50,7 @@ function fmtDate(iso: string | null) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: Readonly<{ status: string }>) {
   const cls =
     status === 'completed'
       ? 'bg-green-900/30 text-green-400 border-green-800'
@@ -76,7 +76,7 @@ function ChevronIcon() {
   );
 }
 
-function StandaloneRow({ tx, sessionId }: { tx: SerializedTx; sessionId: string }) {
+function StandaloneRow({ tx, sessionId }: Readonly<{ tx: SerializedTx; sessionId: string }>) {
   const isIncoming = tx.toDid === sessionId;
   const amount = Number.parseFloat(tx.amount);
   const icon = SERVICE_ICONS[tx.service] || '💳';
@@ -92,7 +92,7 @@ function StandaloneRow({ tx, sessionId }: { tx: SerializedTx; sessionId: string 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-white capitalize">
-              {tx.type.replace(/_/g, ' ')}
+              {tx.type.replaceAll('_', ' ')}
             </span>
             <span className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-zinc-400">
               {tx.service}
@@ -140,7 +140,7 @@ function StandaloneRow({ tx, sessionId }: { tx: SerializedTx; sessionId: string 
           <div>
             <div className="text-xs font-medium text-zinc-400 mb-2">.fair attribution chain</div>
             <div className="space-y-1">
-              {manifest!.chain!.map((entry, i) => (
+              {manifest.chain!.map((entry, i) => (
                 <div
                   key={i}
                   className="flex items-center gap-3 text-xs bg-black/40 border border-zinc-800 rounded-lg px-3 py-2"
@@ -162,7 +162,7 @@ function StandaloneRow({ tx, sessionId }: { tx: SerializedTx; sessionId: string 
           </div>
         )}
 
-        {!!tx.metadata && Object.keys(tx.metadata as object).length > 0 && (
+        {!!tx.metadata && Object.keys(tx.metadata).length > 0 && (
           <div>
             <div className="text-xs font-medium text-zinc-400 mb-2">Metadata</div>
             <pre className="text-xs font-mono bg-black/40 border border-zinc-800 rounded-lg p-3 text-zinc-500 overflow-auto whitespace-pre-wrap">
@@ -179,11 +179,11 @@ function BatchGroupRow({
   entries,
   sessionId,
   showGross,
-}: {
+}: Readonly<{
   entries: SerializedTx[];
   sessionId: string;
   showGross: boolean;
-}) {
+}>) {
   const userEntry = entries.find((e) => e.toDid === sessionId) ?? entries[0];
   const icon = SERVICE_ICONS[userEntry.service] || '💳';
 
@@ -220,7 +220,7 @@ function BatchGroupRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-white capitalize">
-              {userEntry.type.replace(/_/g, ' ')}
+              {userEntry.type.replaceAll('_', ' ')}
             </span>
             <span className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-zinc-400">
               {userEntry.service}
@@ -268,7 +268,7 @@ function BatchGroupRow({
                   className="flex items-center gap-3 text-xs bg-black/40 border border-zinc-800 rounded-lg px-3 py-2"
                 >
                   <span className="text-zinc-600 w-24 shrink-0 capitalize">
-                    {e.type.replace(/_/g, ' ')}
+                    {e.type.replaceAll('_', ' ')}
                   </span>
                   <span
                     className={`font-mono flex-1 truncate ${isUser ? 'text-orange-400' : 'text-zinc-400'}`}
@@ -290,7 +290,7 @@ function BatchGroupRow({
           </div>
         </div>
 
-        {!!userEntry.metadata && Object.keys(userEntry.metadata as object).length > 0 && (
+        {!!userEntry.metadata && Object.keys(userEntry.metadata).length > 0 && (
           <div>
             <div className="text-xs font-medium text-zinc-400 mb-2">Metadata</div>
             <pre className="text-xs font-mono bg-black/40 border border-zinc-800 rounded-lg p-3 text-zinc-500 overflow-auto whitespace-pre-wrap">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 interface MailingList {
   id: string;
@@ -22,7 +22,7 @@ interface Props {
   }>;
 }
 
-export default function NewsletterComposer({ initialLists, initialConnectionCount, recentSends }: Props) {
+export default function NewsletterComposer({ initialLists, initialConnectionCount, recentSends }: Readonly<Props>) {
   const [subject, setSubject] = useState('');
   const [replyTo, setReplyTo] = useState('');
   const [markdown, setMarkdown] = useState('');
@@ -96,7 +96,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
     return md
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/\n/g, '<br/>');
+      .replaceAll('\n', '<br/>');
   }
 
   const canSend = subject.trim().length > 0 && markdown.trim().length > 0 && recipientCount > 0;

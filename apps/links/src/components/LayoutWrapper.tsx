@@ -1,3 +1,3 @@
-export async function LayoutWrapper({ children }: { children: React.ReactNode }) {
+export async function LayoutWrapper({ children }: Readonly<{ children: React.ReactNode }>) {
   return <>{children}</>;
 }

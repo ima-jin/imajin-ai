@@ -68,10 +68,10 @@ export default async function AdminServicesPage() {
 function ServiceSection({
   title,
   services,
-}: {
+}: Readonly<{
   title: string;
   services: ServiceHealth[];
-}) {
+}>) {
   if (services.length === 0) return null;
 
   const healthyCount = services.filter((s) => s.status === 'healthy').length;
@@ -96,7 +96,7 @@ function ServiceSection({
   );
 }
 
-function ServiceCard({ service }: { service: ServiceHealth }) {
+function ServiceCard({ service }: Readonly<{ service: ServiceHealth }>) {
   const statusConfig = {
     healthy: {
       indicator: '🟢',

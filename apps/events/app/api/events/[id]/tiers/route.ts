@@ -3,7 +3,7 @@ import { createLogger } from '@imajin/logger';
 import { revalidatePath } from 'next/cache';
 
 const log = createLogger('events');
-import { db, events, ticketTypes } from '@/src/db';
+import { db, ticketTypes } from '@/src/db';
 import { requireAuth, requireAppAuth } from '@imajin/auth';
 import { corsHeaders } from '@imajin/config';
 import { isEventOrganizer } from '@/src/lib/organizer';

@@ -13,7 +13,7 @@ interface Session {
   handle?: string;
 }
 
-export function AcceptSection({ loginUrl, code, connectionsUrl }: Props) {
+export function AcceptSection({ loginUrl, code, connectionsUrl }: Readonly<Props>) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);

@@ -24,7 +24,7 @@ async function checkSurveyCompletion(surveyId: string): Promise<boolean> {
   return false;
 }
 
-export function TicketsGate({ children, surveysRequired, initialCompleted, requiredSurveyIds }: Props) {
+export function TicketsGate({ children, surveysRequired, initialCompleted, requiredSurveyIds }: Readonly<Props>) {
   const [completed, setCompleted] = useState(initialCompleted);
   const [checking, setChecking] = useState(false);
 

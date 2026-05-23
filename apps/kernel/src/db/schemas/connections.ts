@@ -1,4 +1,4 @@
-import { pgTable, pgSchema, index, text, timestamp, unique, integer, foreignKey, primaryKey } from "drizzle-orm/pg-core";
+import { pgSchema, index, text, timestamp, unique, integer, foreignKey, primaryKey } from "drizzle-orm/pg-core";
 
 export const connectionsSchema = pgSchema("connections");
 

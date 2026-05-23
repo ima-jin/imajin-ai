@@ -61,7 +61,7 @@ function statusBadge(status: string) {
   );
 }
 
-export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pending: number, remaining: number | null) => void }) {
+export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpdate?: (pending: number, remaining: number | null) => void }>) {
   const { toast } = useToast();
   const [invitedBy, setInvitedBy] = useState<InvitedBy | null | 'loading'>('loading');
   const [sentInvites, setSentInvites] = useState<SentInvite[]>([]);
@@ -499,14 +499,14 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                     {row.type === 'link' && (
                       <>
                         <button
-                          onClick={() => setQrUrl(row.url!)}
+                      onClick={() => setQrUrl(row.url)}
                           className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
                           title="Show QR code"
                         >
                           QR
                         </button>
                         <button
-                          onClick={() => copyLink(row.url!, row.code!)}
+                      onClick={() => copyLink(row.url, row.code)}
                           className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
                         >
                           {copiedCode === row.code ? '✓' : 'Copy'}
@@ -514,7 +514,7 @@ export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pen
                       </>
                     )}
                     <button
-                      onClick={() => deleteInvite(row.code!)}
+                      onClick={() => deleteInvite(row.code)}
                       className="px-2.5 py-1 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded transition shrink-0"
                     >
                       {row.type === 'email' ? 'Revoke' : 'Delete'}

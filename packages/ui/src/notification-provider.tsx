@@ -30,7 +30,7 @@ const emptyValue: NotificationContextValue = {
   refresh: async () => {},
 };
 
-export function NotificationProvider({ children }: { children: React.ReactNode }) {
+export function NotificationProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const notifyUrl = process.env.NEXT_PUBLIC_NOTIFY_URL;
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);

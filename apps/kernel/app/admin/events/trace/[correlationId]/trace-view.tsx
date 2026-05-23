@@ -37,7 +37,7 @@ function formatTs(ts: string) {
   return new Date(ts).toLocaleTimeString(undefined, { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
 }
 
-export default function TraceView({ events, correlationId }: { events: SystemEvent[]; correlationId: string }) {
+export default function TraceView({ events, correlationId }: Readonly<{ events: SystemEvent[]; correlationId: string }>) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   function toggle(id: string) {

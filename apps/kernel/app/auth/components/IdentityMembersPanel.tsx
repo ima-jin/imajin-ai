@@ -29,7 +29,7 @@ const SELECTABLE_SERVICES = SERVICES.filter(
     s.category !== 'kernel'
 );
 
-export default function IdentityMembersPanel({ groupDid }: { groupDid: string }) {
+export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: string }>) {
   const [loading, setLoading] = useState(true);
   const [controllers, setControllers] = useState<Controller[]>([]);
   const [addDid, setAddDid] = useState('');

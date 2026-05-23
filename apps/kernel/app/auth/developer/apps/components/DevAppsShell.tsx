@@ -24,7 +24,7 @@ interface Props {
   apps: App[];
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text }: Readonly<{ text: string }>) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -44,7 +44,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function SuccessBanner({ app, onDismiss }: { app: RegisteredApp; onDismiss: () => void }) {
+function SuccessBanner({ app, onDismiss }: Readonly<{ app: RegisteredApp; onDismiss: () => void }>) {
   return (
     <div className="bg-green-900/20 border border-green-800/40 rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -75,9 +75,9 @@ function SuccessBanner({ app, onDismiss }: { app: RegisteredApp; onDismiss: () =
   );
 }
 
-function AppCard({ app }: { app: App }) {
+function AppCard({ app }: Readonly<{ app: App }>) {
   const createdAt = app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '—';
-  const scopes = (app.requestedScopes ?? []) as string[];
+  const scopes = app.requestedScopes ?? [];
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors">
@@ -129,7 +129,7 @@ function AppCard({ app }: { app: App }) {
   );
 }
 
-export default function DevAppsShell({ apps: initialApps }: Props) {
+export default function DevAppsShell({ apps: initialApps }: Readonly<Props>) {
   const [apps, setApps] = useState<App[]>(initialApps);
   const [showForm, setShowForm] = useState(false);
   const [newApp, setNewApp] = useState<RegisteredApp | null>(null);

@@ -7,7 +7,7 @@ interface Props {
   hash: string;
 }
 
-export default function DocumentViewer({ assetId, mimeType, filename, hash }: Props) {
+export default function DocumentViewer({ assetId, mimeType, filename, hash }: Readonly<Props>) {
   const baseUrl = typeof window !== 'undefined'
     ? `${globalThis.location.origin}/media/api/assets/${assetId}`
     : `/media/api/assets/${assetId}`;

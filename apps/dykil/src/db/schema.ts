@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, index, pgSchema, boolean } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, index, pgSchema } from 'drizzle-orm/pg-core';
 
 export const dykil_schema = pgSchema('dykil');
 

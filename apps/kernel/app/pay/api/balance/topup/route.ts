@@ -16,7 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances, transactions } from '@/src/db';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';

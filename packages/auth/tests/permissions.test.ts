@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { requiredTier, hasTier } from '../src/permissions';
-import type { Action, Tier } from '../src/permissions';
+import type { Tier } from '../src/permissions';
 
 describe('requiredTier', () => {
   it('soft actions: buy_ticket, view_tickets, event_lobby_chat', () => {

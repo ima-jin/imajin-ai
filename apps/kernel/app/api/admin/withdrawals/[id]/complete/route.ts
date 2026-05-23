@@ -5,8 +5,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, withdrawalRequests, transactions } from '@/src/db';
-import { eq, and, sql } from 'drizzle-orm';
+import { db, withdrawalRequests } from '@/src/db';
+import { eq, sql } from 'drizzle-orm';
 import { requireAdmin } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 

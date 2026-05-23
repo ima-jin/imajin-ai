@@ -1,4 +1,4 @@
-import type { FairManifestV1_1, FairDistributionRight, Money } from './types';
+import type { FairManifestV1_1, Money } from './types';
 import {
   PROTOCOL_FEE_BPS,
   PROTOCOL_DID,

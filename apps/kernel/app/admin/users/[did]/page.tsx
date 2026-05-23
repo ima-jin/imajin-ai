@@ -7,9 +7,9 @@ const sql = getClient();
 
 export default async function AdminUserDetailPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ did: string }>;
-}) {
+}>) {
   const { did } = await params;
   const decodedDid = decodeURIComponent(did);
 
@@ -374,11 +374,11 @@ function Row({
   label,
   value,
   mono,
-}: {
+}: Readonly<{
   label: string;
   value: string | null | undefined;
   mono?: boolean;
-}) {
+}>) {
   return (
     <div className="flex gap-2">
       <span className="text-gray-500 dark:text-gray-400 w-28 shrink-0">{label}</span>
@@ -389,7 +389,7 @@ function Row({
   );
 }
 
-function TierBadge({ tier }: { tier: string }) {
+function TierBadge({ tier }: Readonly<{ tier: string }>) {
   const styles: Record<string, string> = {
     soft: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
     preliminary: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400',
@@ -404,7 +404,7 @@ function TierBadge({ tier }: { tier: string }) {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: Readonly<{ status: string }>) {
   const styles: Record<string, string> = {
     completed: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400',
     pending: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400',

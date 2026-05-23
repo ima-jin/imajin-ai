@@ -150,11 +150,11 @@ function Section({
   title,
   children,
   action,
-}: {
+}: Readonly<{
   title: string;
   children: React.ReactNode;
   action?: React.ReactNode;
-}) {
+}>) {
   return (
     <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700">
       <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
@@ -166,7 +166,7 @@ function Section({
   );
 }
 
-function VolumeChart({ rows }: { rows: VolumeRow[] }) {
+function VolumeChart({ rows }: Readonly<{ rows: VolumeRow[] }>) {
   if (rows.length === 0) {
     return <p className="text-sm text-gray-400">No data</p>;
   }
@@ -209,7 +209,7 @@ function VolumeChart({ rows }: { rows: VolumeRow[] }) {
   );
 }
 
-function SlowestTable({ rows }: { rows: SlowestRow[] }) {
+function SlowestTable({ rows }: Readonly<{ rows: SlowestRow[] }>) {
   if (rows.length === 0) return <p className="text-sm text-gray-400">No data</p>;
   return (
     <div className="overflow-x-auto">
@@ -248,7 +248,7 @@ function SlowestTable({ rows }: { rows: SlowestRow[] }) {
   );
 }
 
-function LatencyTable({ rows }: { rows: LatencyRow[] }) {
+function LatencyTable({ rows }: Readonly<{ rows: LatencyRow[] }>) {
   if (rows.length === 0) return <p className="text-sm text-gray-400">No data</p>;
   return (
     <div className="overflow-x-auto">
@@ -285,7 +285,7 @@ function LatencyTable({ rows }: { rows: LatencyRow[] }) {
   );
 }
 
-function ErrorRateTable({ rows }: { rows: ErrorRateRow[] }) {
+function ErrorRateTable({ rows }: Readonly<{ rows: ErrorRateRow[] }>) {
   if (rows.length === 0) return <p className="text-sm text-gray-400">No data</p>;
   return (
     <div className="overflow-x-auto">
@@ -333,7 +333,7 @@ function ErrorRateTable({ rows }: { rows: ErrorRateRow[] }) {
   );
 }
 
-function RecentErrorsTable({ rows }: { rows: RecentError[] }) {
+function RecentErrorsTable({ rows }: Readonly<{ rows: RecentError[] }>) {
   if (rows.length === 0) return <p className="text-sm text-gray-400">No recent errors</p>;
   return (
     <div className="overflow-x-auto">
@@ -382,7 +382,7 @@ function RecentErrorsTable({ rows }: { rows: RecentError[] }) {
   );
 }
 
-function StatusBadge({ status }: { status: number }) {
+function StatusBadge({ status }: Readonly<{ status: number }>) {
   const isError = status >= 500;
   const isClientError = status >= 400 && status < 500;
   const cls = isError

@@ -17,7 +17,7 @@ interface TicketTier {
   description: string;
 }
 
-export default function EventCreateForm({ organizerDid }: Props) {
+export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

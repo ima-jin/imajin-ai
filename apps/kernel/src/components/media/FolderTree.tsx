@@ -197,7 +197,7 @@ export function FolderTree({
   useEffect(() => {
     if (!contextMenu) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
         closeMenu();
       }
     };

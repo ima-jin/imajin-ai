@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, integer, numeric, boolean, index, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, integer, numeric, boolean, index, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
 
 export const paySchema = pgSchema('pay');
 

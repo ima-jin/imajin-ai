@@ -5,10 +5,8 @@ import { createHash } from "node:crypto";
 import { db, assets, settlements, accessLog } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq, and, sql } from "drizzle-orm";
-import { createReadStream } from "node:fs";
-import type { FairManifest } from "@imajin/fair";
+import type { FairManifest, FairAction } from "@imajin/fair";
 import { isFairManifestV1_1, build402Response, verifyReceipt, loadVerifyKey, canonicalize } from "@imajin/fair";
-import type { FairAction } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 
 const log = createLogger("kernel");
@@ -230,7 +228,7 @@ export async function GET(
         const publicBase = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
         const baseUrl = `${publicBase}/media/api/assets`;
         const resp = build402Response({
-          manifest: manifest as import("@imajin/fair").FairManifestV1_1,
+          manifest: manifest,
           assetId: id,
           action,
           supportedSchemes: ['mjnx-direct'],
@@ -355,7 +353,7 @@ export async function GET(
 
   // 5a. Video quality variant serving (?quality=720p etc.)
   if (qualityParam && asset.mimeType.startsWith("video/") && (VIDEO_QUALITIES as readonly string[]).includes(qualityParam)) {
-    const quality = qualityParam as VideoQuality;
+    const quality = qualityParam;
 
     if (await variantExists(asset.storagePath, quality)) {
       const variantPath = getVariantPath(asset.storagePath, quality);
@@ -410,9 +408,9 @@ export async function GET(
       const processed = await remark().use(remarkGfm).use(remarkHtml, { sanitize: false }).process(bodyClean);
       const articleHtml = processed.toString();
 
-      const escapedTitle = (fm.title as string).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const escapedSubtitle = fm.subtitle ? (fm.subtitle as string).replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
-      const escapedDesc = fm.description ? (fm.description as string).replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+      const escapedTitle = (fm.title as string).replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+      const escapedSubtitle = fm.subtitle ? (fm.subtitle as string).replaceAll('<', '&lt;').replaceAll('>', '&gt;') : "";
+      const escapedDesc = fm.description ? (fm.description as string).replaceAll('<', '&lt;').replaceAll('>', '&gt;') : "";
       const author = fm.author || "";
       const date = fm.date
         ? new Date(fm.date as string).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })

@@ -3,12 +3,11 @@ import { cookies } from 'next/headers';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('events');
-import { SESSION_COOKIE_NAME } from '@imajin/config';
+import { SESSION_COOKIE_NAME, eventPath } from '@imajin/config';
 import { db, events } from '@/src/db';
 import { desc, eq, or, and, ne, isNull, inArray } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { getLocationType } from '@/src/lib/location';
-import { eventPath } from '@imajin/config';
 
 /** Strip markdown syntax to get clean plaintext for excerpts */
 function stripMarkdown(text: string): string {
@@ -16,10 +15,10 @@ function stripMarkdown(text: string): string {
   let out = withoutLinksAndImages;
   for (const marker of ['*', '_', '~', '`', '#', '>']) out = out.split(marker).join('');
   return out
-    .replace(/\r\n/g, '\n')
+    .replaceAll('\r\n', '\n')
     .replace(/\n{2,}/g, ' · ')
-    .replace(/\n/g, ' ')
-    .replace(/\t/g, ' ')
+    .replaceAll('\n', ' ')
+    .replaceAll('\t', ' ')
     .replace(/ {2,}/g, ' ')
     .trim();
 }

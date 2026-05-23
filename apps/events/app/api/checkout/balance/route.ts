@@ -10,7 +10,7 @@ import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { requireAuth } from '@imajin/auth';
 import { db, events, eventInvites } from '@/src/db';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { publish } from '@imajin/bus';
 import { getClient } from '@imajin/db';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';

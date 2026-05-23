@@ -8,9 +8,9 @@ export const metadata: Metadata = buildServiceMetadata('Links', 'Sovereign link-
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   const { servicePrefix, domain } = getServiceRuntimeEnv();
 
   return (

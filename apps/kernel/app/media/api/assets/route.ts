@@ -4,15 +4,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { nanoid } from "nanoid";
 import { db, assets, folders, assetFolders, identities } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
+import { requireAuth, hexToBytes } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
 import { rateLimit, getClientIP } from "@/src/lib/kernel/rate-limit";
 import { createLogger } from "@imajin/logger";
 import { getDefaultManifest, signManifest, canonicalize } from "@imajin/fair";
 import { publishContentEvent } from "@imajin/dfos";
-import { hexToBytes } from "@imajin/auth";
 
 const log = createLogger("kernel");
 
@@ -80,7 +79,7 @@ function isAllowedMime(mime: string): boolean {
 
 /** Replace chars that are unsafe on most filesystems */
 function didToPath(did: string): string {
-  return did.replace(/:/g, "_").replace(/[^a-zA-Z0-9._@-]/g, "_");
+  return did.replaceAll(':', '_').replaceAll(/[^a-zA-Z0-9._@-]/g, '_');
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +138,7 @@ export async function POST(request: NextRequest) {
   // Extract original filename first (needed for MIME inference)
   let originalName =
     (formData.get("filename") as string | null) ??
-    (file as File).name ??
+    file.name ??
     "upload";
 
   // Rename generic audio filenames to a timestamped format (e.g. blob.webm → Audio_2026_01_01_12_00_00.webm)

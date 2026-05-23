@@ -12,7 +12,7 @@ interface Props {
   registrationFormId: string | null;
 }
 
-export default function RegisterClient({ ticketId, eventId, registrationFormId }: Props) {
+export default function RegisterClient({ ticketId, eventId, registrationFormId }: Readonly<Props>) {
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);

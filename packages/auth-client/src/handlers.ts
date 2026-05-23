@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSessionToken, sessionCookieOptions, clearCookieOptions, type SessionConfig, type SessionUser } from './session';
+import { createSessionToken, sessionCookieOptions, clearCookieOptions, type SessionConfig } from './session';
 
 export interface ImajinAuthConfig extends SessionConfig {
   /** Imajin auth/kernel base URL (e.g. https://jin.imajin.ai) */

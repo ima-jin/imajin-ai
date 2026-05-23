@@ -13,7 +13,7 @@ interface Props {
   sessionDid: string;
 }
 
-export default async function IdentityDetail({ did, sessionDid }: Props) {
+export default async function IdentityDetail({ did, sessionDid }: Readonly<Props>) {
   const [identity] = await db
     .select()
     .from(identities)
@@ -27,7 +27,7 @@ export default async function IdentityDetail({ did, sessionDid }: Props) {
     .from(connections)
     .where(
       and(
-        or(eq(connections.didA, did), eq(connections.didB, did))!,
+        or(eq(connections.didA, did), eq(connections.didB, did)),
         isNull(connections.disconnectedAt)
       )
     );
@@ -37,7 +37,7 @@ export default async function IdentityDetail({ did, sessionDid }: Props) {
     .from(attestations)
     .where(
       and(
-        or(eq(attestations.issuerDid, did), eq(attestations.subjectDid, did))!,
+        or(eq(attestations.issuerDid, did), eq(attestations.subjectDid, did)),
         isNull(attestations.revokedAt)
       )
     );

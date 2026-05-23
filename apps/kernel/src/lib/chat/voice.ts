@@ -29,11 +29,11 @@ export async function sendVoiceMessage(audioBlob: Blob): Promise<{
 
   if (!uploadRes.ok) {
     const err = await uploadRes.json().catch(() => ({}));
-    throw new Error((err as any).error || 'Voice upload failed');
+    throw new Error(err.error || 'Voice upload failed');
   }
   if (!transcribeRes.ok) {
     const err = await transcribeRes.json().catch(() => ({}));
-    throw new Error((err as any).error || 'Transcription failed');
+    throw new Error(err.error || 'Transcription failed');
   }
 
   const [uploadData, transcribeData] = await Promise.all([

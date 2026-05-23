@@ -25,7 +25,7 @@ const sql = getClient();
 function csvEscape(v: unknown): string {
   if (v == null) return '';
   const s = String(v);
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
   return s;
 }
 

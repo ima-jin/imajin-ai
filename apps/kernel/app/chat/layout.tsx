@@ -4,9 +4,9 @@ import { ToastProvider } from '@imajin/ui';
 
 export default function ChatLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <ToastProvider>
       <IdentityProvider>

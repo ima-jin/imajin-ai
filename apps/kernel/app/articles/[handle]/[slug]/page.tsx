@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { resolveHandle, getAllArticleSlugs, getArticleBySlug } from '@/src/lib/www/articles';
+import { resolveHandle, getArticleBySlug } from '@/src/lib/www/articles';
 import { ImajinFooter } from '@imajin/ui';
 
 // Articles now load from the database (media.assets), so static generation
@@ -42,7 +42,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function ArticlePage({ params }: Props) {
+export default async function ArticlePage({ params }: Readonly<Props>) {
   const { handle, slug } = await params;
   const author = await resolveHandle(handle);
   if (!author) notFound();

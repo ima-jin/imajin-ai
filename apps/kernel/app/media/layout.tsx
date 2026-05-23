@@ -18,9 +18,9 @@ export const metadata: Metadata = {
 
 export default function MediaLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <div className="h-[100dvh] flex flex-col overflow-hidden">
       {children}

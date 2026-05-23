@@ -172,7 +172,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
                   >
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                      <span className="text-sm font-medium">{ROLE_LABELS[entry.role] ?? entry.role.replace(/_/g, ' ')}</span>
+<span className="text-sm font-medium">{ROLE_LABELS[entry.role] ?? entry.role.replaceAll('_', ' ')}</span>
                       {entry.did && (
                         <span className="text-xs text-gray-500 truncate max-w-[160px]" title={entry.did}>
                           {formatDid(entry.did, didNames, viewerDid, viewerHandle)}
@@ -207,7 +207,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
                   >
                     <div className="flex items-center gap-2">
                       <div className={`w-2.5 h-2.5 rounded-full ${chainDotColor(entry.role)}`} />
-                      <span className="text-sm font-medium">{ROLE_LABELS[entry.role] ?? entry.role.replace(/_/g, ' ')}</span>
+<span className="text-sm font-medium">{ROLE_LABELS[entry.role] ?? entry.role.replaceAll('_', ' ')}</span>
                       {entry.did && (
                         <span className="text-xs text-gray-500 truncate max-w-[160px]" title={entry.did}>
                           {formatDid(entry.did, didNames, viewerDid, viewerHandle)}
@@ -275,7 +275,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
                   >
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                      <span className="text-sm font-medium">{ROLE_LABELS[entry.role] ?? entry.role.replace(/_/g, ' ')}</span>
+<span className="text-sm font-medium">{ROLE_LABELS[entry.role] ?? entry.role.replaceAll('_', ' ')}</span>
                     </div>
                     <span className="text-sm font-bold">{(entry.share * 100).toFixed(2)}%</span>
                   </div>
