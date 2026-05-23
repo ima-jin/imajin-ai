@@ -125,7 +125,7 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
 
         {/* Event Type */}
         <div>
-          <label className="block text-sm font-medium mb-2">Event Type</label>
+          <span className="block text-sm font-medium mb-2">Event Type</span>
           <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
             {(['event', 'campaign'] as const).map((type) => (
               <button
@@ -153,8 +153,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
         {eventType === 'campaign' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl">
             <div>
-              <label className="block text-sm font-medium mb-1">Funding Goal (CAD) *</label>
+              <label htmlFor="create-funding-goal" className="block text-sm font-medium mb-1">Funding Goal (CAD) *</label>
               <input
+                id="create-funding-goal"
                 type="number"
                 min="1"
                 step="0.01"
@@ -167,8 +168,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
               <p className="text-xs text-gray-500 mt-1">Minimum $1.00</p>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Deadline</label>
+              <label htmlFor="create-campaign-deadline" className="block text-sm font-medium mb-1">Deadline</label>
               <input
+                id="create-campaign-deadline"
                 type="datetime-local"
                 value={campaignDeadline}
                 onChange={(e) => setCampaignDeadline(e.target.value)}
@@ -180,8 +182,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
         )}
 
         <div>
-          <label className="block text-sm font-medium mb-1">Event Name *</label>
+          <label htmlFor="create-event-name" className="block text-sm font-medium mb-1">Event Name *</label>
           <input
+            id="create-event-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -192,8 +195,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Tagline</label>
+          <label htmlFor="create-tagline" className="block text-sm font-medium mb-1">Tagline</label>
           <input
+            id="create-tagline"
             type="text"
             value={tagline}
             onChange={(e) => setTagline(e.target.value)}
@@ -204,8 +208,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Start Date & Time *</label>
+            <label htmlFor="create-start-date" className="block text-sm font-medium mb-1">Start Date & Time *</label>
             <input
+              id="create-start-date"
               type="datetime-local"
               value={dateTime}
               onChange={(e) => setDateTime(e.target.value)}
@@ -215,8 +220,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">End Date & Time</label>
+            <label htmlFor="create-end-date" className="block text-sm font-medium mb-1">End Date & Time</label>
             <input
+              id="create-end-date"
               type="datetime-local"
               value={endDateTime}
               onChange={(e) => setEndDateTime(e.target.value)}
@@ -244,8 +250,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
 
         {locationType !== 'physical' && (
           <div>
-            <label className="block text-sm font-medium mb-1">Virtual URL</label>
+            <label htmlFor="create-virtual-url" className="block text-sm font-medium mb-1">Virtual URL</label>
             <input
+              id="create-virtual-url"
               type="url"
               value={virtualUrl}
               onChange={(e) => setVirtualUrl(e.target.value)}
@@ -258,8 +265,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
         {locationType !== 'virtual' && (
           <>
             <div>
-              <label className="block text-sm font-medium mb-1">Venue</label>
+              <label htmlFor="create-venue" className="block text-sm font-medium mb-1">Venue</label>
               <input
+                id="create-venue"
                 type="text"
                 value={venue}
                 onChange={(e) => setVenue(e.target.value)}
@@ -268,8 +276,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Address</label>
+              <label htmlFor="create-address" className="block text-sm font-medium mb-1">Address</label>
               <input
+                id="create-address"
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
@@ -279,8 +288,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">City</label>
+                <label htmlFor="create-city" className="block text-sm font-medium mb-1">City</label>
                 <input
+                  id="create-city"
                   type="text"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
@@ -289,8 +299,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Country</label>
+                <label htmlFor="create-country" className="block text-sm font-medium mb-1">Country</label>
                 <input
+                  id="create-country"
                   type="text"
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
@@ -303,8 +314,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
         )}
 
         <div>
-          <label className="block text-sm font-medium mb-1">Linked Course Slug</label>
+          <label htmlFor="create-course-slug" className="block text-sm font-medium mb-1">Linked Course Slug</label>
           <input
+            id="create-course-slug"
             type="text"
             value={courseSlug}
             onChange={(e) => setCourseSlug(e.target.value)}
@@ -319,12 +331,14 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
         />
 
         <div>
-          <label className="block text-sm font-medium mb-1">Description</label>
-          <MarkdownEditor
-            value={description}
-            onChange={setDescription}
-            placeholder="Tell people what your event is about..."
-          />
+          <label className="block">
+            <span className="text-sm font-medium block mb-1">Description</span>
+            <MarkdownEditor
+              value={description}
+              onChange={setDescription}
+              placeholder="Tell people what your event is about..."
+            />
+          </label>
         </div>
       </div>
 
@@ -347,8 +361,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
               <div className="flex justify-between items-start">
                 <div className="flex-1 grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium mb-1">Tier Name</label>
+                    <label htmlFor={`create-tier-name-${index}`} className="block text-sm font-medium mb-1">Tier Name</label>
                     <input
+                      id={`create-tier-name-${index}`}
                       type="text"
                       value={tier.name}
                       onChange={(e) => updateTier(index, 'name', e.target.value)}
@@ -357,8 +372,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Price (CAD)</label>
+                    <label htmlFor={`create-tier-price-${index}`} className="block text-sm font-medium mb-1">Price (CAD)</label>
                     <input
+                      id={`create-tier-price-${index}`}
                       type="number"
                       min="0"
                       step="0.01"
@@ -368,8 +384,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Quantity (blank = unlimited)</label>
+                    <label htmlFor={`create-tier-quantity-${index}`} className="block text-sm font-medium mb-1">Quantity (blank = unlimited)</label>
                     <input
+                      id={`create-tier-quantity-${index}`}
                       type="number"
                       min="1"
                       value={tier.quantity || ''}
@@ -379,8 +396,9 @@ export default function EventCreateForm({ organizerDid }: Readonly<Props>) {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">Description</label>
+                    <label htmlFor={`create-tier-description-${index}`} className="block text-sm font-medium mb-1">Description</label>
                     <input
+                      id={`create-tier-description-${index}`}
                       type="text"
                       value={tier.description}
                       onChange={(e) => updateTier(index, 'description', e.target.value)}

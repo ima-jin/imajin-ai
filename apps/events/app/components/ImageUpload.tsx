@@ -129,7 +129,7 @@ export function ImageUpload({ currentImage, onUploadComplete }: Readonly<ImageUp
 
   return (
     <div>
-      <label className="block text-sm font-medium mb-1">Cover Image</label>
+      <label htmlFor="cover-image-upload" className="block text-sm font-medium mb-1">Cover Image</label>
 
       {displayImage && (
         <div className="mb-3 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
@@ -159,6 +159,7 @@ export function ImageUpload({ currentImage, onUploadComplete }: Readonly<ImageUp
       >
         <input
           ref={fileInputRef}
+          id="cover-image-upload"
           type="file"
           accept="image/jpeg,image/png,image/gif,image/webp"
           onChange={onFileInputChange}

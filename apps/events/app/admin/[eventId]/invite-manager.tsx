@@ -137,10 +137,11 @@ export function InviteManager({ eventId, accessMode }: Readonly<Props>) {
         <form onSubmit={handleCreate} className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
           <h3 className="font-medium text-sm">New Invite Link</h3>
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+            <label htmlFor="invite-label" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
               Label (optional)
             </label>
             <input
+              id="invite-label"
               type="text"
               value={label}
               onChange={e => setLabel(e.target.value)}
@@ -150,10 +151,11 @@ export function InviteManager({ eventId, accessMode }: Readonly<Props>) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              <label htmlFor="invite-max-uses" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Max Uses (optional)
               </label>
               <input
+                id="invite-max-uses"
                 type="number"
                 min="1"
                 value={maxUses}
@@ -163,10 +165,11 @@ export function InviteManager({ eventId, accessMode }: Readonly<Props>) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              <label htmlFor="invite-expires-at" className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Expires At (optional)
               </label>
               <input
+                id="invite-expires-at"
                 type="datetime-local"
                 value={expiresAt}
                 onChange={e => setExpiresAt(e.target.value)}

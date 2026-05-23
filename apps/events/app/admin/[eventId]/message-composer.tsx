@@ -134,10 +134,11 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow space-y-4">
         {/* Recipient filter */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label htmlFor="message-recipients" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Recipients
           </label>
           <select
+            id="message-recipients"
             value={filterType}
             onChange={(e) => {
               setFilterType(e.target.value as FilterType);
@@ -180,10 +181,11 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
 
         {/* Subject */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label htmlFor="message-subject" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Subject
           </label>
           <input
+            id="message-subject"
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
