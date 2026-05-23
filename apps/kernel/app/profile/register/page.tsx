@@ -143,9 +143,9 @@ function RegisterPage() {
     const privateKey = JSON.parse(keypair).privateKey;
 
     // Try Credential Management API first
-    if ('credentials' in navigator && 'PasswordCredential' in window) {
+    if ('credentials' in navigator && 'PasswordCredential' in globalThis) {
       try {
-        const cred = new (window as any).PasswordCredential({
+        const cred = new (globalThis as any).PasswordCredential({
           id: did,
           password: privateKey,
           name: profile?.handle ? `@${profile.handle}` : 'Imajin Identity',

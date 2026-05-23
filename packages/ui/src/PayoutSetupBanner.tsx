@@ -48,7 +48,7 @@ export function PayoutSetupBanner({
 
   useEffect(() => {
     const dismissedKey = `payout-banner-dismissed-${did}`;
-    if (typeof window !== 'undefined' && localStorage.getItem(dismissedKey) === 'true') {
+    if (typeof globalThis.window !== 'undefined' && localStorage.getItem(dismissedKey) === 'true') {
       setLoading(false);
       return;
     }
