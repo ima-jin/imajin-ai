@@ -46,6 +46,7 @@ export function FileAttachment({
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputId = React.useId();
 
   const processFile = useCallback(
     (file: File) => {
@@ -138,6 +139,7 @@ export function FileAttachment({
   return (
     <div className="relative">
       <input
+        id={fileInputId}
         ref={inputRef}
         type="file"
         accept={accept}
@@ -149,6 +151,7 @@ export function FileAttachment({
         renderTrigger(openPicker)
       ) : (
         <label
+          htmlFor={fileInputId}
           className={`p-2 text-gray-500 hover:text-orange-400 transition-colors cursor-pointer inline-block ${
             disabled ? 'opacity-40 cursor-not-allowed' : ''
           } ${isDragging ? 'text-orange-400' : ''}`}

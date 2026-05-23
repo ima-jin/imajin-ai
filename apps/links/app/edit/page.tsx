@@ -366,8 +366,9 @@ export default function EditPage() {
             <h2 className="text-xl font-semibold mb-4">Edit Page</h2>
             <form onSubmit={updatePage} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Theme</label>
+                <label htmlFor="links-theme" className="block text-sm font-medium mb-2">Theme</label>
                 <select
+                  id="links-theme"
                   value={formData.theme}
                   onChange={(e) => setFormData({ ...formData, theme: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"
@@ -416,8 +417,9 @@ export default function EditPage() {
             </h3>
             <form onSubmit={editingLink ? updateLink : addLink} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-2">Title *</label>
+                <label htmlFor="link-title" className="block text-sm font-medium mb-2">Title *</label>
                 <input
+                  id="link-title"
                   type="text"
                   value={linkFormData.title}
                   onChange={(e) => setLinkFormData({ ...linkFormData, title: e.target.value })}
@@ -428,8 +430,9 @@ export default function EditPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">URL *</label>
+                <label htmlFor="link-url" className="block text-sm font-medium mb-2">URL *</label>
                 <input
+                  id="link-url"
                   type="url"
                   value={linkFormData.url}
                   onChange={(e) => setLinkFormData({ ...linkFormData, url: e.target.value })}
@@ -440,8 +443,9 @@ export default function EditPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Icon (emoji)</label>
+                <label htmlFor="link-icon" className="block text-sm font-medium mb-2">Icon (emoji)</label>
                 <input
+                  id="link-icon"
                   type="text"
                   value={linkFormData.icon}
                   onChange={(e) => setLinkFormData({ ...linkFormData, icon: e.target.value })}
@@ -451,8 +455,9 @@ export default function EditPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Visibility</label>
+                <label htmlFor="link-visibility" className="block text-sm font-medium mb-2">Visibility</label>
                 <select
+                  id="link-visibility"
                   value={linkFormData.visibility}
                   onChange={(e) => setLinkFormData({ ...linkFormData, visibility: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800"

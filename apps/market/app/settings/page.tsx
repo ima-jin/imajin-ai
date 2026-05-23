@@ -92,7 +92,7 @@ export default function SettingsPage() {
                 <div className="w-11 h-6 bg-gray-800 rounded-full" />
               </div>
             ) : (
-              <label className="flex items-center justify-between gap-4 cursor-pointer select-none">
+              <label htmlFor="show-market-items" className="flex items-center justify-between gap-4 cursor-pointer select-none">
                 <div>
                   <p className="text-sm font-medium text-gray-100">Show listings on my profile</p>
                   <p className="text-xs text-gray-400 mt-0.5">
@@ -100,6 +100,7 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <button
+                  id="show-market-items"
                   role="switch"
                   aria-checked={showMarketItems}
                   disabled={saving}

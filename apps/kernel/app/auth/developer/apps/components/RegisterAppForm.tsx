@@ -166,10 +166,11 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Name */}
         <div>
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+          <label htmlFor="register-app-name" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
             App Name <span className="text-red-400">*</span>
           </label>
           <input
+            id="register-app-name"
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
@@ -182,10 +183,11 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
 
         {/* Description */}
         <div>
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+          <label htmlFor="register-app-description" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
             Description <span className="text-zinc-600">(optional)</span>
           </label>
           <textarea
+            id="register-app-description"
             value={description}
             onChange={e => setDescription(e.target.value)}
             placeholder="What does your app do?"
@@ -197,10 +199,11 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
 
         {/* Callback URL */}
         <div>
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+          <label htmlFor="register-app-callback-url" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
             Callback URL <span className="text-red-400">*</span>
           </label>
           <input
+            id="register-app-callback-url"
             type="url"
             value={callbackUrl}
             onChange={e => setCallbackUrl(e.target.value)}
@@ -213,10 +216,11 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
 
         {/* Homepage URL */}
         <div>
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+          <label htmlFor="register-app-homepage-url" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
             Homepage URL <span className="text-zinc-600">(optional)</span>
           </label>
           <input
+            id="register-app-homepage-url"
             type="url"
             value={homepageUrl}
             onChange={e => setHomepageUrl(e.target.value)}
@@ -227,10 +231,11 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
 
         {/* Logo URL */}
         <div>
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+          <label htmlFor="register-app-logo-url" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
             Logo URL <span className="text-zinc-600">(optional)</span>
           </label>
           <input
+            id="register-app-logo-url"
             type="url"
             value={logoUrl}
             onChange={e => setLogoUrl(e.target.value)}
@@ -241,13 +246,14 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
 
         {/* Requested Scopes */}
         <div>
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+          <span className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
             Requested Scopes
-          </label>
+          </span>
           <div className="space-y-1.5">
             {Object.entries(SCOPES).map(([scope, label]) => (
-              <label key={scope} className="flex items-center gap-3 cursor-pointer group">
+              <label key={scope} htmlFor={`register-app-scope-${scope}`} aria-label={label} className="flex items-center gap-3 cursor-pointer group">
                 <input
+                  id={`register-app-scope-${scope}`}
                   type="checkbox"
                   checked={selectedScopes.includes(scope)}
                   onChange={() => toggleScope(scope)}
@@ -264,9 +270,9 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
 
         {/* Keypair option */}
         <div className="border-t border-zinc-800 pt-4">
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+          <span className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
             Identity Keypair
-          </label>
+          </span>
           <div className="space-y-2">
             <label className="flex items-center gap-3 cursor-pointer">
               <input

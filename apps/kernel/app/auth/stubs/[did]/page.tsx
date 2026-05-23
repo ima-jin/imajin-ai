@@ -438,9 +438,9 @@ export default function EditStubPage() {
 
         {/* Avatar upload */}
         <div className="mb-5">
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+          <span className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
             Avatar
-          </label>
+          </span>
           <div className="flex items-center gap-4">
             {avatar ? (
               <img
@@ -476,9 +476,9 @@ export default function EditStubPage() {
 
         {/* Banner upload */}
         <div className="mb-6">
-          <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+          <span className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
             Banner
-          </label>
+          </span>
           {banner && (
             <div
               className="w-full h-24 rounded-lg bg-cover bg-center mb-2 border border-gray-700"
@@ -508,10 +508,11 @@ export default function EditStubPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Name */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="stub-edit-name" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Name <span className="text-red-400">*</span>
             </label>
             <input
+              id="stub-edit-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -524,7 +525,7 @@ export default function EditStubPage() {
 
           {/* Category */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="stub-edit-category" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Category
             </label>
             <div className="flex flex-wrap gap-2 mb-2">
@@ -544,6 +545,7 @@ export default function EditStubPage() {
               ))}
             </div>
             <input
+              id="stub-edit-category"
               type="text"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
@@ -556,7 +558,7 @@ export default function EditStubPage() {
           {/* Location */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+              <label htmlFor="stub-edit-location" className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                 Location
               </label>
               {deviceLoc ? (
@@ -574,6 +576,7 @@ export default function EditStubPage() {
             <div className="relative flex gap-2">
               <div className="relative flex-1">
                 <input
+                  id="stub-edit-location"
                   type="text"
                   value={location}
                   onChange={(e) => handleLocationChange(e.target.value)}
@@ -640,12 +643,13 @@ export default function EditStubPage() {
 
           {/* Handle */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="stub-edit-handle" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Handle <span className="text-zinc-600">(optional)</span>
             </label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">@</span>
               <input
+                id="stub-edit-handle"
                 type="text"
                 value={handle}
                 onChange={(e) => setHandle(normalizeHandleInput(e.target.value))}
@@ -660,10 +664,11 @@ export default function EditStubPage() {
 
           {/* Bio */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="stub-edit-bio" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Bio
             </label>
             <textarea
+              id="stub-edit-bio"
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="A short description of this place…"

@@ -235,8 +235,9 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
 
           {joinVisibility === 'network' && (
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Network depth</label>
+              <label htmlFor="identity-network-depth" className="block text-sm text-gray-400 mb-2">Network depth</label>
               <select
+                id="identity-network-depth"
                 value={joinNetworkDepth}
                 onChange={(e) => setJoinNetworkDepth(Number(e.target.value))}
                 className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"

@@ -162,6 +162,7 @@ function AuthorizeForm() {
               {scopeEntries.map(([scope, enabled]) => (
                 <label
                   key={scope}
+                  htmlFor={`authorize-scope-${scope}`}
                   className="flex items-center justify-between p-3 rounded-lg bg-gray-900 border border-gray-800 cursor-pointer hover:border-gray-700 transition"
                 >
                   <div>
@@ -171,6 +172,7 @@ function AuthorizeForm() {
                     </p>
                   </div>
                   <input
+                    id={`authorize-scope-${scope}`}
                     type="checkbox"
                     checked={enabled}
                     onChange={e => setEnabledScopes(prev => ({ ...prev, [scope]: e.target.checked }))}

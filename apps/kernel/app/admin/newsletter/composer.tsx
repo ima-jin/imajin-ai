@@ -110,8 +110,9 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
         <div className="space-y-4">
           {/* Subject */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Subject</label>
+            <label htmlFor="newsletter-subject" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Subject</label>
             <input
+              id="newsletter-subject"
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
@@ -122,8 +123,9 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
 
           {/* Reply-To */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply-To (optional)</label>
+            <label htmlFor="newsletter-reply-to" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reply-To (optional)</label>
             <input
+              id="newsletter-reply-to"
               type="email"
               value={replyTo}
               onChange={(e) => setReplyTo(e.target.value)}
@@ -138,7 +140,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
           {/* Body */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Body (Markdown)</label>
+              <label htmlFor="newsletter-body" className="text-sm font-medium text-gray-700 dark:text-gray-300">Body (Markdown)</label>
               <button
                 type="button"
                 onClick={() => setPreview((v) => !v)}
@@ -154,6 +156,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
               />
             ) : (
               <textarea
+                id="newsletter-body"
                 value={markdown}
                 onChange={(e) => setMarkdown(e.target.value)}
                 rows={12}
@@ -165,7 +168,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
 
           {/* Audience */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Audience</label>
+            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Audience</span>
             <div className="flex gap-2 mb-3">
               {(['newsletter', 'connections'] as const).map((t) => (
                 <button

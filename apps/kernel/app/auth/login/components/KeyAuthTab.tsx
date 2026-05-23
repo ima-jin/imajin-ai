@@ -226,8 +226,9 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
       {method === 'paste' && (
         <form onSubmit={handlePasteImport} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Private Key (hex)</label>
+            <label htmlFor="login-private-key" className="block text-sm font-medium mb-1 text-gray-300">Private Key (hex)</label>
             <textarea
+              id="login-private-key"
               value={privateKeyHex}
               onChange={e => setPrivateKeyHex(e.target.value)}
               placeholder="64 character hex string..."

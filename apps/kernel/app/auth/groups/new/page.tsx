@@ -236,9 +236,9 @@ function NewGroupForm() {
             </div>
           ) : (
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+              <span className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
                 Type
-              </label>
+              </span>
               <div className="grid grid-cols-3 gap-2">
                 {SCOPES.map(s => (
                   <button
@@ -264,10 +264,11 @@ function NewGroupForm() {
 
           {/* Name */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="create-group-name" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Name <span className="text-red-400">*</span>
             </label>
             <input
+              id="create-group-name"
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
@@ -280,12 +281,13 @@ function NewGroupForm() {
 
           {/* Handle */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="create-group-handle" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Handle <span className="text-zinc-600">(optional)</span>
             </label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">@</span>
               <input
+                id="create-group-handle"
                 type="text"
                 value={handle}
                 onChange={e => setHandle(normalizeHandleInput(e.target.value))}
@@ -299,10 +301,11 @@ function NewGroupForm() {
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="create-group-description" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Bio / Description <span className="text-zinc-600">(optional)</span>
             </label>
             <textarea
+              id="create-group-description"
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Describe this identity"
@@ -314,9 +317,9 @@ function NewGroupForm() {
           {/* Subtype pills */}
           {subtypeOptions.length > 0 && (
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+              <span className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
                 Subtype <span className="text-zinc-600">(optional)</span>
-              </label>
+              </span>
               <div className="flex flex-wrap gap-2">
                 {subtypeOptions.map(st => (
                   <button
@@ -339,7 +342,7 @@ function NewGroupForm() {
           {/* Business: Category */}
           {scope === 'business' && (
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+              <label htmlFor="create-group-category" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
                 Category
               </label>
               <div className="flex flex-wrap gap-2 mb-2">
@@ -359,6 +362,7 @@ function NewGroupForm() {
                 ))}
               </div>
               <input
+                id="create-group-category"
                 type="text"
                 value={category}
                 onChange={e => setCategory(e.target.value)}
@@ -373,7 +377,7 @@ function NewGroupForm() {
           {needsLocation && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                <label htmlFor="create-group-location" className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                   Location
                 </label>
                 {deviceLoc ? (
@@ -391,6 +395,7 @@ function NewGroupForm() {
               <div className="relative flex gap-2">
                 <div className="relative flex-1">
                   <input
+                    id="create-group-location"
                     type="text"
                     value={location}
                     onChange={e => handleLocationChange(e.target.value)}

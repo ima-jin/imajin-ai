@@ -438,8 +438,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         <h2 className="text-xl font-semibold">Basic Info</h2>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Event Name *</label>
+          <label htmlFor="edit-event-name" className="block text-sm font-medium mb-1">Event Name *</label>
           <input
+            id="edit-event-name"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -449,17 +450,20 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Description</label>
-          <MarkdownEditor
-            value={description}
-            onChange={setDescription}
-          />
+          <label className="block">
+            <span className="text-sm font-medium block mb-1">Description</span>
+            <MarkdownEditor
+              value={description}
+              onChange={setDescription}
+            />
+          </label>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Start Date & Time *</label>
+            <label htmlFor="edit-start-date" className="block text-sm font-medium mb-1">Start Date & Time *</label>
             <input
+              id="edit-start-date"
               type="datetime-local"
               value={dateTime}
               onChange={(e) => setDateTime(e.target.value)}
@@ -469,8 +473,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">End Date & Time</label>
+            <label htmlFor="edit-end-date" className="block text-sm font-medium mb-1">End Date & Time</label>
             <input
+              id="edit-end-date"
               type="datetime-local"
               value={endDateTime}
               onChange={(e) => setEndDateTime(e.target.value)}
@@ -480,8 +485,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Timezone</label>
+          <label htmlFor="edit-timezone" className="block text-sm font-medium mb-1">Timezone</label>
           <select
+            id="edit-timezone"
             value={timezone}
             onChange={(e) => setTimezone(e.target.value)}
             className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
@@ -511,8 +517,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
 
         {locationType !== 'physical' && (
           <div>
-            <label className="block text-sm font-medium mb-1">Virtual URL</label>
+            <label htmlFor="edit-virtual-url" className="block text-sm font-medium mb-1">Virtual URL</label>
             <input
+              id="edit-virtual-url"
               type="url"
               value={virtualUrl}
               onChange={(e) => setVirtualUrl(e.target.value)}
@@ -525,8 +532,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         {locationType !== 'virtual' && (
           <>
             <div>
-              <label className="block text-sm font-medium mb-1">Venue</label>
+              <label htmlFor="edit-venue" className="block text-sm font-medium mb-1">Venue</label>
               <input
+                id="edit-venue"
                 type="text"
                 value={venue}
                 onChange={(e) => setVenue(e.target.value)}
@@ -535,8 +543,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Address</label>
+              <label htmlFor="edit-address" className="block text-sm font-medium mb-1">Address</label>
               <input
+                id="edit-address"
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
@@ -546,8 +555,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">City</label>
+                <label htmlFor="edit-city" className="block text-sm font-medium mb-1">City</label>
                 <input
+                  id="edit-city"
                   type="text"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
@@ -556,8 +566,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Country</label>
+                <label htmlFor="edit-country" className="block text-sm font-medium mb-1">Country</label>
                 <input
+                  id="edit-country"
                   type="text"
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
@@ -575,8 +586,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         />
 
         <div>
-          <label className="block text-sm font-medium mb-1">Linked Course Slug</label>
+          <label htmlFor="edit-course-slug" className="block text-sm font-medium mb-1">Linked Course Slug</label>
           <input
+            id="edit-course-slug"
             type="text"
             value={courseSlug}
             onChange={(e) => setCourseSlug(e.target.value)}
@@ -587,8 +599,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Status</label>
+          <label htmlFor="edit-status" className="block text-sm font-medium mb-1">Status</label>
           <select
+            id="edit-status"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
             className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
@@ -608,8 +621,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
           Control who can purchase tickets to this event.
         </p>
         <div className="space-y-3">
-          <label className="flex items-start gap-3 cursor-pointer">
+          <label htmlFor="edit-access-public" aria-label="Public" className="flex items-start gap-3 cursor-pointer">
             <input
+              id="edit-access-public"
               type="radio"
               name="accessMode"
               value="public"
@@ -622,8 +636,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
               <div className="text-sm text-gray-500 dark:text-gray-400">Anyone can discover and buy tickets.</div>
             </div>
           </label>
-          <label className="flex items-start gap-3 cursor-pointer">
+          <label htmlFor="edit-access-invite" aria-label="Invite Only" className="flex items-start gap-3 cursor-pointer">
             <input
+              id="edit-access-invite"
               type="radio"
               name="accessMode"
               value="invite_only"
@@ -678,8 +693,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium mb-1">Tier Name</label>
+                <label htmlFor={`edit-tier-name-${index}`} className="block text-sm font-medium mb-1">Tier Name</label>
                 <input
+                  id={`edit-tier-name-${index}`}
                   type="text"
                   value={tier.name}
                   onChange={(e) => updateTier(index, 'name', e.target.value)}
@@ -687,9 +703,10 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Price</label>
+                <label htmlFor={`edit-tier-price-${index}`} className="block text-sm font-medium mb-1">Price</label>
                 <div className="flex gap-2">
                   <input
+                    id={`edit-tier-price-${index}`}
                     type="number"
                     step="0.01"
                     min="0"
@@ -708,8 +725,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Quantity {tier.sold ? `(${tier.sold} sold)` : ''}</label>
+                <label htmlFor={`edit-tier-quantity-${index}`} className="block text-sm font-medium mb-1">Quantity {tier.sold ? `(${tier.sold} sold)` : ''}</label>
                 <input
+                  id={`edit-tier-quantity-${index}`}
                   type="number"
                   min={tier.sold || 0}
                   value={tier.quantity === null ? '' : tier.quantity}
@@ -719,8 +737,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Sold</label>
+                <label htmlFor={`edit-tier-sold-${index}`} className="block text-sm font-medium mb-1">Sold</label>
                 <input
+                  id={`edit-tier-sold-${index}`}
                   type="text"
                   value={tier.sold || 0}
                   disabled
@@ -729,8 +748,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Description</label>
+              <label htmlFor={`edit-tier-description-${index}`} className="block text-sm font-medium mb-1">Description</label>
               <input
+                id={`edit-tier-description-${index}`}
                 type="text"
                 value={tier.description}
                 onChange={(e) => updateTier(index, 'description', e.target.value)}
@@ -739,8 +759,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Perks (one per line)</label>
+              <label htmlFor={`edit-tier-perks-${index}`} className="block text-sm font-medium mb-1">Perks (one per line)</label>
               <textarea
+                id={`edit-tier-perks-${index}`}
                 value={(tier.perks || []).join('\n')}
                 onChange={(e) => updateTier(index, 'perks', e.target.value.split('\n').filter(Boolean))}
                 rows={4}
@@ -761,7 +782,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
               </label>
               {tier.requiresRegistration && (
                 <div className="mt-2">
-                  <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">
+                  <label htmlFor={`edit-tier-registration-form-${index}`} className="block text-xs font-medium mb-1 text-gray-600 dark:text-gray-400">
                     Registration Form <span className="text-red-500">*</span>
                   </label>
                   {(() => {
@@ -769,6 +790,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                     if (surveys.length === 0) return <p className="text-xs text-gray-400">No forms found. Create one in Dykil first.</p>;
                     return (
                     <select
+                      id={`edit-tier-registration-form-${index}`}
                       value={tier.registrationFormId}
                       onChange={(e) => updateTier(index, 'registrationFormId', e.target.value)}
                       required
@@ -788,9 +810,10 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
               )}
             </div>
             <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-              <label className="block text-sm font-medium mb-1">Access Code (optional)</label>
+              <label htmlFor={`edit-tier-access-code-${index}`} className="block text-sm font-medium mb-1">Access Code (optional)</label>
               <div className="flex items-center gap-2">
                 <input
+                  id={`edit-tier-access-code-${index}`}
                   type="text"
                   value={tier.accessCode || ''}
                   onChange={(e) => updateTier(index, 'accessCode', e.target.value)}
@@ -872,8 +895,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
 
                   <div className="flex items-center gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
-                      <label className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
+                      <label htmlFor={`edit-survey-visibility-${index}`} className="text-sm text-gray-600 dark:text-gray-400">Show:</label>
                       <select
+                        id={`edit-survey-visibility-${index}`}
                         value={linked.visibility}
                         onChange={(e) => {
                           const updated = [...linkedSurveys];
@@ -949,7 +973,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         {/* Chat Toggle */}
         <div className="flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700">
           <div>
-            <label className="font-medium text-sm">Event Chat</label>
+            <span className="font-medium text-sm">Event Chat</span>
             <p className="text-xs text-gray-500">Allow ticket holders to chat</p>
           </div>
           <button
@@ -968,8 +992,9 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
             { value: 'handle', label: 'Handle only', description: 'Show @handle, no real name' },
             { value: 'anonymous', label: 'Anonymous', description: 'Show "Attendee" — no names visible' },
           ] as const).map((option) => (
-            <label key={option.value} className="flex items-start gap-3 cursor-pointer group">
+            <label key={option.value} htmlFor={`edit-name-display-${option.value}`} aria-label={option.label} className="flex items-start gap-3 cursor-pointer group">
               <input
+                id={`edit-name-display-${option.value}`}
                 type="radio"
                 name="nameDisplayPolicy"
                 value={option.value}
@@ -1005,10 +1030,11 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         </label>
         {emtEnabled && (
           <div>
-            <label className="block text-sm font-medium mb-1">
+            <label htmlFor="edit-emt-email" className="block text-sm font-medium mb-1">
               e-Transfer Email <span className="text-red-500">*</span>
             </label>
             <input
+              id="edit-emt-email"
               type="email"
               value={emtEmail}
               onChange={(e) => setEmtEmail(e.target.value)}
