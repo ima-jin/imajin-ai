@@ -40,8 +40,9 @@ function FieldFormPanel({
 
       <div className="space-y-3">
         <div>
-          <label className="block text-sm font-medium mb-1">Question Text *</label>
+          <label htmlFor={`field-question-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Question Text *</label>
           <input
+            id={`field-question-${isEditing ? 'edit' : 'new'}`}
             type="text"
             value={fieldForm.title}
             onChange={(e) => setFieldForm({ ...fieldForm, title: e.target.value })}
@@ -52,8 +53,9 @@ function FieldFormPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Export Label (optional)</label>
+          <label htmlFor={`field-export-label-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Export Label (optional)</label>
           <input
+            id={`field-export-label-${isEditing ? 'edit' : 'new'}`}
             type="text"
             value={fieldForm.exportLabel || ''}
             onChange={(e) => setFieldForm({ ...fieldForm, exportLabel: e.target.value || undefined })}
@@ -75,12 +77,13 @@ function FieldFormPanel({
 
         {(fieldForm.type === 'radiogroup' || fieldForm.type === 'checkbox' || fieldForm.type === 'dropdown') && (
           <div>
-            <label className="block text-sm font-medium mb-1">Answer Choices</label>
+            <label htmlFor={`field-choice-0-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Answer Choices</label>
             {(fieldForm.choices || []).map((choice, i) => {
               const choiceText = typeof choice === 'string' ? choice : choice.text || '';
               return (
                 <div key={i} className="flex gap-2 mb-2">
                   <input
+                    id={i === 0 ? `field-choice-0-${isEditing ? 'edit' : 'new'}` : undefined}
                     type="text"
                     value={choiceText}
                     onChange={(e) => {
@@ -119,8 +122,9 @@ function FieldFormPanel({
         {fieldForm.type === 'rating' && (
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1">Min Value</label>
+              <label htmlFor={`field-rate-min-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Min Value</label>
               <input
+                id={`field-rate-min-${isEditing ? 'edit' : 'new'}`}
                 type="number"
                 value={fieldForm.rateMin || 1}
                 onChange={(e) => setFieldForm({ ...fieldForm, rateMin: Number(e.target.value) })}
@@ -128,8 +132,9 @@ function FieldFormPanel({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Max Value</label>
+              <label htmlFor={`field-rate-max-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Max Value</label>
               <input
+                id={`field-rate-max-${isEditing ? 'edit' : 'new'}`}
                 type="number"
                 value={fieldForm.rateMax || 5}
                 onChange={(e) => setFieldForm({ ...fieldForm, rateMax: Number(e.target.value) })}
@@ -141,8 +146,9 @@ function FieldFormPanel({
 
         {fieldForm.type === 'text' && (
           <div>
-            <label className="block text-sm font-medium mb-1">Input Type</label>
+            <label htmlFor={`field-input-type-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Input Type</label>
             <select
+              id={`field-input-type-${isEditing ? 'edit' : 'new'}`}
               value={fieldForm.inputType || 'text'}
               onChange={(e) => setFieldForm({ ...fieldForm, inputType: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
@@ -401,8 +407,9 @@ function CreateSurveyContent() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Title *</label>
+                  <label htmlFor="survey-title" className="block text-sm font-medium mb-2">Title *</label>
                   <input
+                    id="survey-title"
                     type="text"
                     value={survey.title}
                     onChange={(e) => setSurvey({ ...survey, title: e.target.value })}
@@ -412,8 +419,9 @@ function CreateSurveyContent() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Description</label>
+                  <label htmlFor="survey-description" className="block text-sm font-medium mb-2">Description</label>
                   <textarea
+                    id="survey-description"
                     value={survey.description}
                     onChange={(e) => setSurvey({ ...survey, description: e.target.value })}
                     placeholder="Optional description"

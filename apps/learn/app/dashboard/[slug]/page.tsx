@@ -195,16 +195,18 @@ export default function CourseEditorPage() {
           <h2 className="font-semibold text-lg mb-4">Course Settings</h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Title</label>
+              <label htmlFor="course-title" className="block text-sm font-medium mb-1">Title</label>
               <input
+                id="course-title"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Description</label>
+              <label htmlFor="course-description" className="block text-sm font-medium mb-1">Description</label>
               <textarea
+                id="course-description"
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
                 rows={3}
@@ -212,8 +214,9 @@ export default function CourseEditorPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Linked Event</label>
+              <label htmlFor="course-event-slug" className="block text-sm font-medium mb-1">Linked Event</label>
               <input
+                id="course-event-slug"
                 value={editEventSlug}
                 onChange={(e) => setEditEventSlug(e.target.value)}
                 placeholder="Event ID (e.g. jins-launch-party)"
@@ -223,8 +226,9 @@ export default function CourseEditorPage() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Price (cents)</label>
+                <label htmlFor="course-price" className="block text-sm font-medium mb-1">Price (cents)</label>
                 <input
+                  id="course-price"
                   type="number"
                   value={editPrice}
                   onChange={(e) => setEditPrice(Number.parseInt(e.target.value) || 0)}
@@ -232,8 +236,9 @@ export default function CourseEditorPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Visibility</label>
+                <label htmlFor="course-visibility" className="block text-sm font-medium mb-1">Visibility</label>
                 <select
+                  id="course-visibility"
                   value={editVisibility}
                   onChange={(e) => setEditVisibility(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
@@ -244,8 +249,9 @@ export default function CourseEditorPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Status</label>
+                <label htmlFor="course-status" className="block text-sm font-medium mb-1">Status</label>
                 <select
+                  id="course-status"
                   value={editStatus}
                   onChange={(e) => setEditStatus(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"

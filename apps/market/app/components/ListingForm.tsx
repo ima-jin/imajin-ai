@@ -318,6 +318,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
         </h2>
         <div className="space-y-3">
           <label
+            htmlFor="seller-tier-direct"
             className={`flex items-start gap-4 p-4 rounded-lg border cursor-pointer transition ${
               sellerTier === 'public_offplatform'
                 ? 'border-blue-500 bg-blue-500/10'
@@ -325,6 +326,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
             }`}
           >
             <input
+              id="seller-tier-direct"
               type="radio"
               name="sellerTier"
               value="public_offplatform"
@@ -339,6 +341,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
           </label>
 
           <label
+            htmlFor="seller-tier-protected"
             className={`flex items-start gap-4 p-4 rounded-lg border cursor-pointer transition ${
               sellerTier === 'public_onplatform'
                 ? 'border-blue-500 bg-blue-500/10'
@@ -346,6 +349,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
             }`}
           >
             <input
+              id="seller-tier-protected"
               type="radio"
               name="sellerTier"
               value="public_onplatform"
@@ -360,6 +364,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
           </label>
 
           <label
+            htmlFor="seller-tier-trusted"
             className={`flex items-start gap-4 p-4 rounded-lg border cursor-pointer transition ${
               sellerTier === 'trust_gated'
                 ? 'border-blue-500 bg-blue-500/10'
@@ -367,6 +372,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
             }`}
           >
             <input
+              id="seller-tier-trusted"
               type="radio"
               name="sellerTier"
               value="trust_gated"
