@@ -192,7 +192,7 @@ export function StubGallery({ identityDid, isMaintainer }: Readonly<StubGalleryP
           >
             {isUploading ? (
               <span className="flex items-center justify-center gap-1.5">
-                <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-[#F59E0B]" />
+                <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-[#F59E0B]" />{' '}
                 Uploading...
               </span>
             ) : (

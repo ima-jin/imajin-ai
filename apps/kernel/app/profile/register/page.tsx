@@ -332,7 +332,7 @@ function RegisterPage() {
             className="bg-black/50 rounded-lg p-4 mb-6 text-left border border-gray-800 cursor-pointer hover:border-[#F59E0B]/50 transition"
           >
             <p className="text-sm text-gray-500 mb-1 flex justify-between">
-              Your DID
+              Your DID{' '}
               <span className="text-xs">{copied ? '✅ Copied!' : '📋 Click to copy'}</span>
             </p>
             <p className="font-mono text-xs break-all text-gray-300">{profile.did}</p>
@@ -343,8 +343,8 @@ function RegisterPage() {
               🔐 Back Up Your Keys Now
             </p>
             <p className="text-xs text-gray-300 mb-3">
-              Your private key is only stored in this browser. If you clear your data or lose this device,
-              <strong> you will permanently lose access to your identity.</strong>
+              Your private key is only stored in this browser. If you clear your data or lose this device,{' '}
+              <strong>you will permanently lose access to your identity.</strong>
             </p>
             <button
               onClick={downloadKeys}

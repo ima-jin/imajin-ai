@@ -283,8 +283,8 @@ function RegisterPage() {
               ⚠️ This is your only chance to back up your key
             </p>
             <p className="text-red-700 dark:text-red-300 text-sm">
-              Your identity is controlled by a cryptographic key stored in this browser. 
-              <strong> If you lose it, your account is gone forever.</strong> There is no password reset. 
+              Your identity is controlled by a cryptographic key stored in this browser.{' '}
+              <strong>If you lose it, your account is gone forever.</strong> There is no password reset. 
               There is no recovery. No one — not even us — can restore it.
             </p>
           </div>

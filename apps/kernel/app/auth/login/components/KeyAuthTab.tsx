@@ -210,7 +210,7 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
           <p className="text-gray-300 mb-2">Drag & drop your backup file</p>
           <p className="text-sm text-gray-500 mb-4">or</p>
           <label className="inline-block px-6 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition cursor-pointer font-medium">
-            Choose File
+            Choose File{' '}
             <input
               type="file"
               accept="application/json"

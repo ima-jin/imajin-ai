@@ -109,7 +109,7 @@ export const UploadZone = forwardRef<UploadZoneHandle, UploadZoneProps>(
           >
             {uploading ? (
               <>
-                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />{' '}
                 Uploading…
               </>
             ) : (
