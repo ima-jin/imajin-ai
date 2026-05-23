@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { MarkdownEditor, MarkdownContent } from '@imajin/ui';
 
 interface MailingList {
   id: string;
@@ -92,12 +93,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
     }
   }
 
-  function renderPreview(md: string): string {
-    return md
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replaceAll('\n', '<br/>');
-  }
+
 
   const canSend = subject.trim().length > 0 && markdown.trim().length > 0 && recipientCount > 0;
 
@@ -140,7 +136,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
           {/* Body */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label htmlFor="newsletter-body" className="text-sm font-medium text-gray-700 dark:text-gray-300">Body (Markdown)</label>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Body (Markdown)</span>
               <button
                 type="button"
                 onClick={() => setPreview((v) => !v)}
@@ -150,18 +146,14 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
               </button>
             </div>
             {preview ? (
-              <div
-                className="w-full min-h-48 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-3 py-2 text-sm whitespace-pre-wrap"
-                dangerouslySetInnerHTML={{ __html: renderPreview(markdown) }}
-              />
+              <div className="w-full min-h-48 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-4 py-3">
+                <MarkdownContent content={markdown} />
+              </div>
             ) : (
-              <textarea
-                id="newsletter-body"
+              <MarkdownEditor
                 value={markdown}
-                onChange={(e) => setMarkdown(e.target.value)}
-                rows={12}
-                placeholder="Write your newsletter in Markdown…&#10;&#10;**Bold**, *italic*, and paragraphs are supported."
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-500 resize-y"
+                onChange={setMarkdown}
+                placeholder="Write your newsletter in Markdown…"
               />
             )}
           </div>
@@ -205,7 +197,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
               </div>
             ) : (
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Send to all {initialConnectionCount.toLocaleString()} connection{initialConnectionCount === 1  ? '' : 's'} with a contact email.
+                Send to all {initialConnectionCount.toLocaleString()} connection{initialConnectionCount === 1 ? '' : 's'} with a contact email.
               </p>
             )}
 
@@ -263,7 +255,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Confirm Send</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
               This will send <strong>"{subject}"</strong> to{' '}
-              <strong>{recipientCount.toLocaleString()} recipient{recipientCount === 1  ? '' : 's'}</strong>.
+              <strong>{recipientCount.toLocaleString()} recipient{recipientCount === 1 ? '' : 's'}</strong>.
               This cannot be undone.
             </p>
             <div className="flex gap-2 justify-end">
