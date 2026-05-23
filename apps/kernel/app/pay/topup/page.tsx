@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
 
