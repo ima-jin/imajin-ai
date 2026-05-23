@@ -120,7 +120,7 @@ function NicknameEditor({
 }
 
 export default function ConnectionsPage() {
-  const { did, handle, isLoggedIn, loading } = useIdentity();
+  const { did, isLoggedIn, loading } = useIdentity();
   const [activeTab, setActiveTab] = useState<'connections' | 'groups' | 'invitations'>('connections');
   const [invitePending, setInvitePending] = useState(0);
   const [inviteRemaining, setInviteRemaining] = useState<number | null>(null);

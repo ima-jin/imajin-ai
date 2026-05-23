@@ -58,7 +58,6 @@ export default function NewStubPage() {
   const [resolvedLat, setResolvedLat] = useState<number | null>(null);
   const [resolvedLon, setResolvedLon] = useState<number | null>(null);
   const [geocodeSource, setGeocodeSource] = useState<'address' | 'device' | null>(null);
-  const [geocoding, setGeocoding] = useState(false);
   const [suggestions, setSuggestions] = useState<GeoResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 

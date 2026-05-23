@@ -1005,7 +1005,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         setStep('idle');
         return;
       }
-      const data = await res.json();
+      await res.json();
       // Balance checkout is instant — go straight to success
       router.push(`/checkout/success?event=${eventId}`);
       router.refresh();

@@ -96,7 +96,6 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const creatorDid = searchParams.get('creator_did');
-  const tag = searchParams.get('tag');
   const status = searchParams.get('status') || 'published';
   const limit = Math.min(Number.parseInt(searchParams.get('limit') || '20'), 100);
   const offset = Number.parseInt(searchParams.get('offset') || '0');

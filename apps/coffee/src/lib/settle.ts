@@ -23,7 +23,7 @@ interface SettleTipParams {
 }
 
 export async function settleTip(params: SettleTipParams): Promise<void> {
-  const { tipId, recipientDid, fromDid, amount, currency, stripeSessionId } = params;
+  const { tipId, recipientDid, fromDid, amount, stripeSessionId } = params;
 
   const totalDollars = amount / 100;
   const platformAmount = Number.parseFloat((totalDollars * (PLATFORM_FEE_PERCENT / 100)).toFixed(2));

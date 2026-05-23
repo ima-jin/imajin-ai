@@ -552,7 +552,7 @@ async function handlePaymentFailed(payload: PaymentWebhookPayload) {
     return;
   }
 
-  const [ticketType] = await db
+  await db
     .select()
     .from(ticketTypes)
     .where(eq(ticketTypes.id, metadata.ticketTypeId))

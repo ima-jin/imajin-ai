@@ -25,7 +25,7 @@ import { withLogger } from '@imajin/logger';
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   try {
     const body = await request.json();
-    const { buildHash, version } = body;
+    const { buildHash } = body;
 
     if (!buildHash) {
       return NextResponse.json(
