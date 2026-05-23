@@ -626,7 +626,8 @@ export function AssetGrid({
               );
             })}
           </div>
-        )}
+        );
+        })()}
       </div>
 
       {/* Drag-over overlay */}

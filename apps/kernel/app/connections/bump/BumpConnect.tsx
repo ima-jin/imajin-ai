@@ -587,7 +587,8 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
                   </button>
                 ))}
               </div>
-            )}
+            );
+            })()}
           </div>
 
           {/* Expiry */}

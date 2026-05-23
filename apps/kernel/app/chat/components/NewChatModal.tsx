@@ -223,7 +223,8 @@ export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
                 </button>
               ))}
             </div>
-          ) : (
+          );
+          return (
             /* Group tab */
             <div>
               <div className="mb-3">
@@ -269,7 +270,8 @@ export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
                 </button>
               </div>
             </div>
-          )}
+          );
+          })()}
         </div>
       </div>
     </div>

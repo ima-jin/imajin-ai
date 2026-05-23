@@ -257,7 +257,8 @@ export default function PeerManager() {
             </tbody>
           </table>
         </div>
-      )}
+      );
+      })()}
     </div>
   );
 }

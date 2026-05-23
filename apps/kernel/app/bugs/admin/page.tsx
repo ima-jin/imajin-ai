@@ -303,7 +303,8 @@ export default function AdminBugsPage() {
             );
           })}
         </ul>
-      )}
+      );
+      })()}
     </main>
   );
 }
