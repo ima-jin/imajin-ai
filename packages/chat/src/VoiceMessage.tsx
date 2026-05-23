@@ -126,11 +126,10 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
                 return (
                   <div
                     key={i}
-                    className={`w-[2px] rounded-full transition-colors ${
-                      filled
-                        ? isOwn ? 'bg-white' : 'bg-orange-500'
-                        : isOwn ? 'bg-white/30' : 'bg-gray-300 dark:bg-gray-600'
-                    }`}
+                    className={`w-[2px] rounded-full transition-colors ${(() => {
+                      if (filled) return isOwn ? 'bg-white' : 'bg-orange-500';
+                      return isOwn ? 'bg-white/30' : 'bg-gray-300 dark:bg-gray-600';
+                    })()}`}
                     style={{ height: `${height}px` }}
                   />
                 );

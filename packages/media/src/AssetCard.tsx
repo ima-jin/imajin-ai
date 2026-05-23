@@ -1,5 +1,11 @@
 import React from 'react';
 
+const ASSET_TYPE_ICON: Record<string, string> = {
+  image: '🖼️',
+  video: '🎬',
+  audio: '🎵',
+};
+
 export interface AssetCardProps {
   id: string;
   type: string;
@@ -37,7 +43,7 @@ export function AssetCard({
         <img src={thumbPath} alt={filename} className="w-full h-32 object-cover" />
       ) : (
         <div className="w-full h-32 flex items-center justify-center bg-[#111] text-gray-600 text-4xl">
-          {type === 'image' ? '🖼️' : type === 'video' ? '🎬' : type === 'audio' ? '🎵' : '📄'}
+          {ASSET_TYPE_ICON[type] ?? '📄'}
         </div>
       )}
       <div className="p-3">

@@ -107,11 +107,10 @@ export function NotificationBell() {
 
           {/* Body */}
           <div className="overflow-y-auto flex-1">
-            {loading ? (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">Loading…</div>
-            ) : notifications.length === 0 ? (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">No notifications yet</div>
-            ) : (
+            {(() => {
+              if (loading) return <div className="px-4 py-6 text-center text-sm text-gray-400">Loading…</div>;
+              if (notifications.length === 0) return <div className="px-4 py-6 text-center text-sm text-gray-400">No notifications yet</div>;
+              return (
               notifications.map(notification => (
                 <button
                   key={notification.id}
@@ -135,7 +134,8 @@ export function NotificationBell() {
                   </div>
                 </button>
               ))
-            )}
+            );
+            })()}
           </div>
         </div>
       )}

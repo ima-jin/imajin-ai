@@ -191,13 +191,11 @@ export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
                 onDragOver={(e) => onThumbDragOver(e, i)}
                 onDrop={(e) => onThumbDrop(e, i)}
                 onDragEnd={onThumbDragEnd}
-                className={`relative w-20 h-20 rounded-lg overflow-hidden border group cursor-grab active:cursor-grabbing transition ${
-                  isDragged
-                    ? 'opacity-50 border-gray-700'
-                    : isDropTarget
-                    ? 'border-blue-500 ring-2 ring-blue-500/40'
-                    : 'border-gray-700'
-                }`}
+                className={`relative w-20 h-20 rounded-lg overflow-hidden border group cursor-grab active:cursor-grabbing transition ${(() => {
+                  if (isDragged) return 'opacity-50 border-gray-700';
+                  if (isDropTarget) return 'border-blue-500 ring-2 ring-blue-500/40';
+                  return 'border-gray-700';
+                })()}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={imgUrl} alt={`Image ${i + 1}`} className="w-full h-full object-cover" />

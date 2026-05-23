@@ -114,7 +114,7 @@ export function FileAttachment({
           />
         ) : (
           <span className="text-lg">
-            {attachment.type === 'audio' ? '🎵' : attachment.type === 'video' ? '🎬' : '📄'}
+            {({ audio: '🎵', video: '🎬' } as Record<string, string>)[attachment.type] ?? '📄'}
           </span>
         )}
         <div className="flex-1 min-w-0">

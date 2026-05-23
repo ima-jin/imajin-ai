@@ -29,22 +29,24 @@ export function renderBroadcastEmail(
           </tr>`
     : '';
 
+  const headerBorderRadius = eventContext?.imageUrl ? '' : 'border-radius:8px 8px 0 0;';
   const eventHeader = eventContext
     ? `
           <!-- Event Header -->
           <tr>
-            <td style="background-color:#111111;padding:24px 32px 8px;${eventContext.imageUrl ? '' : 'border-radius:8px 8px 0 0;'}">
+            <td style="background-color:#111111;padding:24px 32px 8px;${headerBorderRadius}">
               <p style="margin:0;font-size:13px;color:#71717a;text-transform:uppercase;letter-spacing:0.5px;">Message from</p>
               <h1 style="margin:4px 0 0;font-size:24px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">${eventContext.title}</h1>
             </td>
           </tr>`
     : '';
 
+  const footerBorderRadius = eventContext?.imageUrl ? '' : 'border-radius:0 0 8px 8px;';
   const eventFooter = eventContext?.eventUrl
     ? `
           <!-- Event Link -->
           <tr>
-            <td style="background-color:#111111;padding:16px 32px 24px;${eventContext.imageUrl ? '' : 'border-radius:0 0 8px 8px;'}text-align:center;">
+            <td style="background-color:#111111;padding:16px 32px 24px;${footerBorderRadius}text-align:center;">
               <a href="${eventContext.eventUrl}" style="display:inline-block;background-color:#ffffff;color:#000000;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">View Event →</a>
             </td>
           </tr>`

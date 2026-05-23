@@ -487,7 +487,10 @@ export default function EditPage() {
               disabled={isSaving}
               className="flex-1 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSaving ? 'Saving...' : existingPage ? 'Update Page' : 'Create Page'}
+              {(() => {
+                if (isSaving) return 'Saving...';
+                return existingPage ? 'Update Page' : 'Create Page';
+              })()}
             </button>
             {existingPage && (
               <button

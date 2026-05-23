@@ -222,7 +222,7 @@ export function ImajinInput({
             <img src={attachment.preview} alt="" className="w-10 h-10 rounded-lg object-cover" />
           ) : (
             <span className="text-lg">
-              {attachment.type === 'audio' ? '🎵' : attachment.type === 'video' ? '🎬' : '📄'}
+              {({ audio: '🎵', video: '🎬' } as Record<string, string>)[attachment.type] ?? '📄'}
             </span>
           )}
           <div className="flex-1 min-w-0">

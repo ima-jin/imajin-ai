@@ -83,7 +83,8 @@ function SellerPageContent() {
         </div>
 
         {/* Results */}
-        {loading ? (
+        {(() => {
+          if (loading) return (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden animate-pulse">
@@ -95,26 +96,30 @@ function SellerPageContent() {
               </div>
             ))}
           </div>
-        ) : error ? (
+          );
+          if (error) return (
           <div className="text-center py-16">
             <p className="text-red-500 mb-4">{error}</p>
             <Link href="/" className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition">
               Back to Market
             </Link>
           </div>
-        ) : listings.length === 0 ? (
+          );
+          if (listings.length === 0) return (
           <div className="text-center py-16 text-gray-500 dark:text-gray-400">
             <div className="text-5xl mb-4">📭</div>
             <p className="text-lg font-medium mb-2">No active listings</p>
             <p className="text-sm">This seller has no active listings right now.</p>
           </div>
-        ) : (
+          );
+          return (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {listings.map((listing) => (
               <ListingCard key={listing.id} listing={listing} />
             ))}
           </div>
-        )}
+          );
+        })()}
 
       </div>
 

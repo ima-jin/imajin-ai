@@ -107,12 +107,12 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
   // Chain: revenue split
   const rawChain = manifest.chain ?? [];
   // Resolve placeholders for display
-  const resolvedChain = rawChain.map(e => ({
-    ...e,
-    did: e.did === 'NODE_PLACEHOLDER' ? (nodeDid || e.did)
-       : e.did === 'BUYER_PLACEHOLDER' ? (viewerDid || e.did)
-       : e.did,
-  }));
+  const resolvePlaceholder = (did: string): string => {
+    if (did === 'NODE_PLACEHOLDER') return nodeDid || did;
+    if (did === 'BUYER_PLACEHOLDER') return viewerDid || did;
+    return did;
+  };
+  const resolvedChain = rawChain.map(e => ({ ...e, did: resolvePlaceholder(e.did) }));
   const chain = normalizeShares(resolvedChain);
   const hasContent = attribution.length > 0 || chain.length > 0;
 
