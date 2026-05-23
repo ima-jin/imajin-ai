@@ -189,9 +189,9 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
 
             {/* Screenshot drop zone */}
             <div>
-              <label className="block text-sm text-gray-400 mb-1">
+              <span className="block text-sm text-gray-400 mb-1">
                 Screenshot <span className="text-gray-600">(optional)</span>
-              </label>
+              </span>
               <div
                 onDrop={onDrop}
                 onDragOver={onDragOver}

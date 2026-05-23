@@ -141,9 +141,10 @@ export default function SettingsPage() {
                   <div key={scope} className="flex items-center justify-between px-4 py-3">
                     <span className="text-sm text-zinc-200">{label}</span>
                     <div className="flex items-center gap-6">
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label htmlFor={`settings-inapp-${scope}`} className="flex items-center gap-2 cursor-pointer">
                         <span className="text-xs text-zinc-500">In-app</span>
                         <button
+                          id={`settings-inapp-${scope}`}
                           onClick={() => toggle(scope, 'inapp', !pref.inapp)}
                           disabled={saving === `${scope}:inapp`}
                           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
@@ -157,9 +158,10 @@ export default function SettingsPage() {
                           />
                         </button>
                       </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label htmlFor={`settings-email-${scope}`} className="flex items-center gap-2 cursor-pointer">
                         <span className="text-xs text-zinc-500">Email</span>
                         <button
+                          id={`settings-email-${scope}`}
                           onClick={() => toggle(scope, 'email', !pref.email)}
                           disabled={saving === `${scope}:email`}
                           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${

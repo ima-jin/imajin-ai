@@ -38,17 +38,19 @@ export function RotateSecretDialog({
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
           Submit a new encrypted value for <span className="font-mono">{field}</span> and publish a rotation event.
         </p>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">New value</label>
+        <label htmlFor="rotate-secret-value" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">New value</label>
         <input
+          id="rotate-secret-value"
           type="password"
           value={value}
           onChange={(event) => setValue(event.target.value)}
           className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-orange-500"
         />
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        <label htmlFor="rotate-secret-hint" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Hint <span className="text-gray-400">(optional)</span>
         </label>
         <input
+          id="rotate-secret-hint"
           value={hint}
           onChange={(event) => setHint(event.target.value)}
           className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-orange-500"

@@ -127,8 +127,9 @@ export default async function HistoryPage({
         className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-wrap gap-3 items-end"
       >
         <div className="flex-1 min-w-[150px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">Service</label>
+          <label htmlFor="history-filter-service" className="block text-xs text-zinc-500 mb-1.5">Service</label>
           <select
+            id="history-filter-service"
             name="service"
             defaultValue={service || ''}
             className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
@@ -143,8 +144,9 @@ export default async function HistoryPage({
         </div>
 
         <div className="flex-1 min-w-[120px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">Currency</label>
+          <label htmlFor="history-filter-currency" className="block text-xs text-zinc-500 mb-1.5">Currency</label>
           <select
+            id="history-filter-currency"
             name="currency"
             defaultValue={currency || ''}
             className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
@@ -156,8 +158,9 @@ export default async function HistoryPage({
         </div>
 
         <div className="flex-1 min-w-[140px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">From</label>
+          <label htmlFor="history-filter-from" className="block text-xs text-zinc-500 mb-1.5">From</label>
           <input
+            id="history-filter-from"
             type="date"
             name="from"
             defaultValue={from || ''}
@@ -166,8 +169,9 @@ export default async function HistoryPage({
         </div>
 
         <div className="flex-1 min-w-[140px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">To</label>
+          <label htmlFor="history-filter-to" className="block text-xs text-zinc-500 mb-1.5">To</label>
           <input
+            id="history-filter-to"
             type="date"
             name="to"
             defaultValue={to || ''}

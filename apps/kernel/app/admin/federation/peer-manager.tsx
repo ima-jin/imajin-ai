@@ -123,8 +123,9 @@ export default function PeerManager() {
         <form onSubmit={addPeer} className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Relay URL</label>
+              <label htmlFor="peer-relay-url" className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Relay URL</label>
               <input
+                id="peer-relay-url"
                 type="url"
                 value={newPeerUrl}
                 onChange={(e) => setNewPeerUrl(e.target.value)}
@@ -134,8 +135,9 @@ export default function PeerManager() {
               />
             </div>
             <div className="sm:w-48">
-              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Label (optional)</label>
+              <label htmlFor="peer-label" className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Label (optional)</label>
               <input
+                id="peer-label"
                 type="text"
                 value={newPeerLabel}
                 onChange={(e) => setNewPeerLabel(e.target.value)}

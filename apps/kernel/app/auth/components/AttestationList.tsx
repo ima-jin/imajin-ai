@@ -156,8 +156,9 @@ export default async function AttestationList({ sessionDid, searchParams, exclud
         className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-wrap gap-3 items-end"
       >
         <div className="flex-1 min-w-[160px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">Role</label>
+          <label htmlFor="attestation-filter-role" className="block text-xs text-zinc-500 mb-1.5">Role</label>
           <select
+            id="attestation-filter-role"
             name="role"
             defaultValue={role}
             className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
@@ -169,8 +170,9 @@ export default async function AttestationList({ sessionDid, searchParams, exclud
         </div>
 
         <div className="flex-1 min-w-[180px]">
-          <label className="block text-xs text-zinc-500 mb-1.5">Type</label>
+          <label htmlFor="attestation-filter-type" className="block text-xs text-zinc-500 mb-1.5">Type</label>
           <select
+            id="attestation-filter-type"
             name="type"
             defaultValue={typeFilter || ''}
             className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"

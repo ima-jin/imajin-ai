@@ -40,8 +40,9 @@ export function SetSecretDialog({ open, submitting, onClose, onSubmit }: Readonl
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Field</label>
+            <label htmlFor="vault-secret-field" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Field</label>
             <input
+              id="vault-secret-field"
               required
               value={field}
               onChange={(event) => setField(event.target.value)}
@@ -50,8 +51,9 @@ export function SetSecretDialog({ open, submitting, onClose, onSubmit }: Readonl
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Value</label>
+            <label htmlFor="vault-secret-value" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Value</label>
             <input
+              id="vault-secret-value"
               required
               type="password"
               value={value}
@@ -61,10 +63,11 @@ export function SetSecretDialog({ open, submitting, onClose, onSubmit }: Readonl
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="vault-secret-hint" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Hint <span className="text-gray-400">(optional)</span>
             </label>
             <input
+              id="vault-secret-hint"
               value={hint}
               onChange={(event) => setHint(event.target.value)}
               placeholder="ghp_"
