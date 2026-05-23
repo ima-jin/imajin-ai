@@ -13,7 +13,7 @@ export function EventChatButton({ eventId, chatUrl }: Readonly<EventChatButtonPr
   const [loading, setLoading] = useState(true);
 
   const baseChatUrl = chatUrl || (typeof window !== 'undefined'
-    ? `${globalThis.location.protocol}//${globalThis.location.hostname.replace('events', 'chat')}`
+    ? `${globalThis.location.protocol}//${globalThis.location.hostname.replaceAll('events', 'chat')}`
     : 'https://chat.imajin.ai');
 
   useEffect(() => {

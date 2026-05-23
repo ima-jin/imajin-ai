@@ -41,8 +41,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const limit = Math.min(Number.parseInt(searchParams.get('limit') || '50'), 100);
+    const offset = Number.parseInt(searchParams.get('offset') || '0');
     const status = searchParams.get('status'); // filter by status
 
     // Get tips

@@ -35,8 +35,8 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
   const searchParams = request.nextUrl.searchParams;
 
   const q = searchParams.get('q');
-  const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
-  const offset = parseInt(searchParams.get('offset') || '0');
+  const limit = Math.min(Number.parseInt(searchParams.get('limit') || '20'), 100);
+  const offset = Number.parseInt(searchParams.get('offset') || '0');
 
   try {
     // Build query conditions

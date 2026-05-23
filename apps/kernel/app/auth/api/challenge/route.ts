@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, challenges } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { CHALLENGE_TTL } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 

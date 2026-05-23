@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, challenges } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { generateChallenge } from '@/src/lib/auth/crypto';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { hasDfosChain } from '@/src/lib/auth/dfos';
 import { withLogger } from '@imajin/logger';

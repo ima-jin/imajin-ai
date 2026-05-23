@@ -80,7 +80,7 @@ interface Props {
 
 export default async function AttestationList({ sessionDid, searchParams, excludeDocumentTypes = false }: Props) {
   const { type: typeFilter, role = 'all' } = searchParams;
-  const page = Math.max(1, parseInt(searchParams.page || '1'));
+  const page = Math.max(1, Number.parseInt(searchParams.page || '1'));
   const offset = (page - 1) * PAGE_SIZE;
 
   // Build role condition

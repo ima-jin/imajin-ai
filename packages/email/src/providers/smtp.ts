@@ -6,7 +6,7 @@ import nodemailer from 'nodemailer';
 const log = createLogger('email:smtp');
 
 const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
+const SMTP_PORT = Number.parseInt(process.env.SMTP_PORT || '587', 10);
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
 const SMTP_FROM = process.env.SMTP_FROM || process.env.EMAIL_FROM || 'Jin <jin@imajin.ai>';

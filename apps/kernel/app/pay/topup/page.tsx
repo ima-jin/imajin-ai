@@ -75,7 +75,7 @@ export default function TopupPage() {
   const handleCustomChange = useCallback((val: string) => {
     setCustomAmount(val);
     const num = Number.parseFloat(val);
-    if (!isNaN(num) && num > 0) {
+    if (!Number.isNaN(num) && num > 0) {
       setAmount(num);
     }
     setError(null);

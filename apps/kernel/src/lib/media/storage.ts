@@ -1,4 +1,4 @@
-import path from 'path';
+import path from 'node:path';
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/mnt/media';
 

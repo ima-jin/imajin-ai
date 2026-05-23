@@ -17,8 +17,8 @@ export const GET = withLogger('kernel', async (req, { log }) => {
   const correlationId = url.searchParams.get('correlationId') || null;
   const from = url.searchParams.get('from') || null;
   const to = url.searchParams.get('to') || null;
-  const limit = Math.min(200, parseInt(url.searchParams.get('limit') || '50', 10));
-  const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+  const limit = Math.min(200, Number.parseInt(url.searchParams.get('limit') || '50', 10));
+  const offset = Number.parseInt(url.searchParams.get('offset') || '0', 10);
 
   const [countRow] = await sql`
     SELECT COUNT(*)::int AS total

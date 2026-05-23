@@ -9,7 +9,7 @@ import {
   type NodeAttestation,
 } from '@imajin/auth';
 import { provisionSubdomain, isHostnameAvailable } from '@/src/lib/registry/cloudflare';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 
@@ -96,7 +96,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       // For now, check if the last DID in the chain log has a matching identityChains record
       // whose public key matches the attestation. Degraded mode if not found.
       try {
-        const candidateDid = chainLog[chainLog.length - 1];
+        const candidateDid = chainLog.at(-1);
         const [chainRow] = await db
           .select({ did: identityChains.did, dfosDid: identityChains.dfosDid })
           .from(identityChains)

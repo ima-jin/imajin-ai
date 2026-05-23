@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
+import { writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import sharp from 'sharp';
 import { requireAuth } from '@imajin/auth';
 import { errorResponse } from '@/src/lib/kernel/utils';

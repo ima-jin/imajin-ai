@@ -12,8 +12,8 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { courses, modules, lessons } from '../src/db/schema';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const CREATOR_DID = process.env.CREATOR_DID || 'did:imajin:ryan';
 
@@ -145,7 +145,7 @@ async function seed() {
       durationMinutes: 10,
     },
     ...exerciseFiles.map((file, i) => ({
-      title: `Exercise ${i + 1}: ${file.replace(/^\d+-/, '').replace('.md', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`,
+      title: `Exercise ${i + 1}: ${file.replace(/^\d+-/, '').replaceAll('.md', '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}`,
       contentType: 'exercise',
       content: readExercise(file),
       durationMinutes: 15,

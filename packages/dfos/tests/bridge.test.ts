@@ -110,7 +110,7 @@ describe('identity chain creation', () => {
       publicKeyHex: keypair.publicKey,
     });
 
-    const id = did.replace('did:dfos:', '');
+    const id = did.replaceAll('did:dfos:', '');
     expect(id).toHaveLength(22);
     expect(id).toMatch(/^[2346789acdefhknrtvz]+$/);
   });

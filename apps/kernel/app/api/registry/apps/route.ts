@@ -86,8 +86,8 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
 // ?owner=me — filter to apps owned by the authenticated user
 export const GET = withLogger('kernel', async (request: NextRequest) => {
   const url = new URL(request.url);
-  const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
-  const offset = Math.max(parseInt(url.searchParams.get('offset') ?? '0', 10), 0);
+  const limit = Math.min(Number.parseInt(url.searchParams.get('limit') ?? '20', 10), 100);
+  const offset = Math.max(Number.parseInt(url.searchParams.get('offset') ?? '0', 10), 0);
   const owner = url.searchParams.get('owner');
 
   let ownerDid: string | null = null;

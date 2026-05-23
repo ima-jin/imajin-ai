@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 export const dynamic = "force-dynamic";
 
 let cachedSpec: string | null = null;

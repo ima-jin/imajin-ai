@@ -61,7 +61,7 @@ export function InviteManager({ eventId, accessMode }: Props) {
         credentials: 'include',
         body: JSON.stringify({
           label: label || undefined,
-          maxUses: maxUses ? parseInt(maxUses) : undefined,
+          maxUses: maxUses ? Number.parseInt(maxUses) : undefined,
           expiresAt: expiresAt || undefined,
         }),
       });

@@ -37,7 +37,7 @@ export async function GET(
       return errorResponse('Invite has expired', 410);
     }
 
-    if (invite.maxUses && parseInt(invite.usedCount) >= parseInt(invite.maxUses)) {
+    if (invite.maxUses && Number.parseInt(invite.usedCount) >= Number.parseInt(invite.maxUses)) {
       return errorResponse('Invite has reached maximum uses', 410);
     }
 
@@ -88,7 +88,7 @@ export async function POST(
       return errorResponse('Invite has expired', 410);
     }
 
-    if (invite.maxUses && parseInt(invite.usedCount) >= parseInt(invite.maxUses)) {
+    if (invite.maxUses && Number.parseInt(invite.usedCount) >= Number.parseInt(invite.maxUses)) {
       return errorResponse('Invite has reached maximum uses', 410);
     }
 
@@ -99,7 +99,7 @@ export async function POST(
     // Increment used count
     await db
       .update(invites)
-      .set({ usedCount: (parseInt(invite.usedCount) + 1).toString() })
+      .set({ usedCount: (Number.parseInt(invite.usedCount) + 1).toString() })
       .where(eq(invites.id, inviteId));
 
     // Return the conversation DID — the client should redirect there

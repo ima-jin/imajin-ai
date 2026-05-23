@@ -373,7 +373,7 @@ export default function EventCreateForm({ organizerDid }: Props) {
                       type="number"
                       min="1"
                       value={tier.quantity || ''}
-                      onChange={(e) => updateTier(index, 'quantity', e.target.value ? parseInt(e.target.value) : null)}
+                      onChange={(e) => updateTier(index, 'quantity', e.target.value ? Number.parseInt(e.target.value) : null)}
                       placeholder="Unlimited"
                       className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                     />

@@ -1,5 +1,5 @@
 import * as jose from 'jose';
-import { webcrypto } from 'crypto';
+import { webcrypto } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
 import { normalizeTier } from '@imajin/auth';
 

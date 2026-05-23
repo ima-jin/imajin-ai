@@ -19,7 +19,7 @@ import { isFairManifestV1_1 } from "@imajin/fair";
 import type { FairManifestV1_1 } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 import { nanoid } from "nanoid";
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
 
 const log = createLogger("kernel");
 

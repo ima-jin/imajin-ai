@@ -5,7 +5,7 @@ import { getIdentityByDfosDid, storeDfosChain } from '@/src/lib/auth/dfos';
 import { db, identities, credentials } from '@/src/db';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { withLogger } from '@imajin/logger';
 
@@ -87,7 +87,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       await storeDfosChain(existingByKey.id, {
         did: chainDid,
         log: chainLog,
-        headCid: chainLog[chainLog.length - 1],
+        headCid: chainLog.at(-1),
       });
 
       const token = await createSessionToken({
@@ -138,7 +138,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     await storeDfosChain(identity.id, {
       did: chainDid,
       log: chainLog,
-      headCid: chainLog[chainLog.length - 1],
+      headCid: chainLog.at(-1),
     });
 
     // 5. Create session

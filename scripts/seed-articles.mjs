@@ -10,10 +10,10 @@
  * DATABASE_URL is read from apps/kernel/.env.local or env var.
  */
 
-import { readFileSync, readdirSync, mkdirSync, writeFileSync, existsSync } from 'fs';
-import { resolve, dirname, join } from 'path';
+import { readFileSync, readdirSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'url';
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'module';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -176,7 +176,7 @@ async function main() {
   let errors = 0;
 
   for (const filename of filenames) {
-    const baseName = filename.replace('.md', '');
+    const baseName = filename.replaceAll('.md', '');
     const slug = slugMap[baseName] || baseName;
     const order = getOrderFromSlugMap(baseName);
 

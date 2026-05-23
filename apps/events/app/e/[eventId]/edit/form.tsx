@@ -322,6 +322,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
   }
 
   const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+  const linkedSurveyIds = new Set(linkedSurveys.map((linkedSurvey) => linkedSurvey.id));
 
   return (
     <div className="space-y-6">
@@ -708,7 +709,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                   type="number"
                   min={tier.sold || 0}
                   value={tier.quantity === null ? '' : tier.quantity}
-                  onChange={(e) => updateTier(index, 'quantity', e.target.value === '' ? null : parseInt(e.target.value))}
+                  onChange={(e) => updateTier(index, 'quantity', e.target.value === '' ? null : Number.parseInt(e.target.value))}
                   placeholder="Unlimited"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm focus:ring-2 focus:ring-orange-500"
                 />
@@ -915,11 +916,11 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                 </div>
               ))}
 
-              {surveys.filter(s => !linkedSurveys.some(ls => ls.id === s.id)).length > 0 && (
+              {surveys.some((s) => !linkedSurveyIds.has(s.id)) && (
                 <button
                   type="button"
                   onClick={() => {
-                    const available = surveys.find(s => !linkedSurveys.some(ls => ls.id === s.id));
+                    const available = surveys.find((s) => !linkedSurveyIds.has(s.id));
                     if (available) setLinkedSurveys([...linkedSurveys, { id: available.id, visibility: 'always', paywall: false, requiredForTickets: false }]);
                   }}
                   className="text-sm text-orange-500 hover:text-orange-600 font-medium"

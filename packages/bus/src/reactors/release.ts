@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
 import type { BrokerPipelineState, BrokerRelease, BrokerReactor } from '../types';
 

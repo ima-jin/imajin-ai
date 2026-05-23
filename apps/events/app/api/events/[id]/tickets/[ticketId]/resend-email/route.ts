@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 
 const log = createLogger('events');
 import { eq, and } from 'drizzle-orm';
@@ -21,7 +21,7 @@ function redactEmail(email: string): string {
   const local = email.slice(0, atIdx);
   const domain = email.slice(atIdx + 1);
   const redacted = local.length > 2
-    ? `${local[0]}***${local[local.length - 1]}`
+    ? `${local[0]}***${local.at(-1)}`
     : '***';
   return `${redacted}@${domain}`;
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { getClient } from '@imajin/db';
 import { corsHeaders } from '@imajin/config';
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');

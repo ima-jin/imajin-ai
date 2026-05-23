@@ -107,8 +107,8 @@ export default function EditPage() {
       // Parse presets
       const presetArray = presets
         .split(',')
-        .map(p => parseInt(p.trim()))
-        .filter(p => !isNaN(p) && p > 0);
+        .map(p => Number.parseInt(p.trim()))
+        .filter(p => !Number.isNaN(p) && p > 0);
 
       if (presetArray.length === 0) {
         setError('Please add at least one preset amount');

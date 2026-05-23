@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, profiles, connections } from '@/src/db';
 import { eq, or } from 'drizzle-orm';
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 import { withLogger } from '@imajin/logger';
 
 /**

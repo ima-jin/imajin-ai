@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
+import { readFile } from "node:fs/promises";
 import { db, assets } from "@/src/db";
 import { eq } from "drizzle-orm";
 import type { FairManifest } from "@imajin/fair";

@@ -1,5 +1,5 @@
 // Load .env.local (Node doesn't do this automatically like Next.js does)
-const envPath = require('path').join(__dirname, '.env.local');
+const envPath = require('node:path').join(__dirname, '.env.local');
 const envUtils = require('../../scripts/env-utils.js');
 envUtils.loadEnvFileIntoProcessEnv(envPath);
 
@@ -9,7 +9,7 @@ const next = require('next');
 const { setupWebSocket, setupBroadcastRoute } = require('./ws-server');
 
 const dev = process.env.NODE_ENV !== 'production';
-const port = parseInt(process.env.PORT || '3000');
+const port = Number.parseInt(process.env.PORT || '3000');
 const app = next({ dev });
 const handle = app.getRequestHandler();
 

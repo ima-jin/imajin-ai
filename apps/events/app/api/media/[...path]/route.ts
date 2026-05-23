@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { readFile } from 'fs/promises';
+import { readFile } from 'node:fs/promises';
 
 const log = createLogger('events');
-import { existsSync } from 'fs';
-import path from 'path';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
 const MEDIA_BASE = '/mnt/media';
 

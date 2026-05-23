@@ -5,7 +5,7 @@ import { db, ticketQueue, ticketTypes } from '@/src/db';
 const log = createLogger('events');
 import { requireAuth } from '@imajin/auth';
 import { eq, and, max } from 'drizzle-orm';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 
 /**
  * GET /api/events/[id]/queue - Check queue position

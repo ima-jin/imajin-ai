@@ -9,7 +9,7 @@ import {
   NODE_REGISTRATION_TTL,
   type NodeHeartbeat,
 } from '@imajin/auth';
-import { randomBytes } from 'crypto';
+import { randomBytes } from 'node:crypto';
 import { withLogger } from '@imajin/logger';
 
 /**

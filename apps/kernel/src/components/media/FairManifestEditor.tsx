@@ -211,7 +211,7 @@ function DistributionRightEditor({
               type="number"
               value={right?.quote?.maxWords ?? ''}
               onChange={(e) => {
-                const val = e.target.value ? parseInt(e.target.value) : undefined;
+                const val = e.target.value ? Number.parseInt(e.target.value) : undefined;
                 onChange({ ...right, quote: { ...right?.quote, maxWords: val } });
               }}
               readOnly={readOnly}
@@ -612,7 +612,7 @@ export function FairManifestEditor({
                     type="number"
                     value={distribution.reproduction?.quote?.maxWords ?? ''}
                     onChange={(e) => {
-                      const val = e.target.value ? parseInt(e.target.value) : undefined;
+                      const val = e.target.value ? Number.parseInt(e.target.value) : undefined;
                       update({
                         distribution: {
                           ...distribution,

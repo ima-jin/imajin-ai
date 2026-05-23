@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const q = searchParams.get('q')?.trim() ?? '';
-    const rawLimit = parseInt(searchParams.get('limit') ?? '5', 10);
+    const rawLimit = Number.parseInt(searchParams.get('limit') ?? '5', 10);
     const limit = Math.min(Math.max(rawLimit, 1), 20);
 
     if (!q || q.length < 2) {

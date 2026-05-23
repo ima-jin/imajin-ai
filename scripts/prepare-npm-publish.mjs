@@ -9,8 +9,8 @@
  * - Removes "private" flag and devDependencies
  * - Sets publishConfig for public access
  */
-import { readFileSync, writeFileSync, cpSync, existsSync, mkdirSync } from "fs";
-import { join, resolve } from "path";
+import { readFileSync, writeFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const [, , pkgDir, outDir] = process.argv;
 if (!pkgDir || !outDir) {
@@ -55,7 +55,7 @@ for (const extra of ["README.md", "LICENSE", "CHANGELOG.md"]) {
 
 // Rewrite package name: @imajin/* → @ima-jin/*
 const originalName = pkg.name;
-pkg.name = pkg.name.replace("@imajin/", "@ima-jin/");
+pkg.name = pkg.name.replaceAll("@imajin/", "@ima-jin/");
 
 // Remove private flag
 delete pkg.private;
@@ -71,16 +71,16 @@ delete pkg.devDependencies;
 
 // Rewrite exports/main/types to point to dist/ instead of src/
 if (pkg.main && pkg.main.startsWith("./src/")) {
-  pkg.main = pkg.main.replace("./src/", "./dist/").replace(".ts", ".js");
+  pkg.main = pkg.main.replaceAll("./src/", "./dist/").replaceAll(".ts", ".js");
 }
 if (pkg.types && pkg.types.startsWith("./src/")) {
-  pkg.types = pkg.types.replace("./src/", "./dist/").replace(".ts", ".d.ts");
+  pkg.types = pkg.types.replaceAll("./src/", "./dist/").replaceAll(".ts", ".d.ts");
 }
 if (pkg.exports) {
   for (const [key, value] of Object.entries(pkg.exports)) {
     if (typeof value === "string" && value.startsWith("./src/")) {
       // For tsup-built packages, provide proper ESM/CJS exports
-      const base = value.replace("./src/", "./dist/").replace(/\.tsx?$/, "");
+      const base = value.replaceAll("./src/", "./dist/").replace(/\.tsx?$/, "");
       pkg.exports[key] = {
         import: base + ".mjs",
         require: base + ".js",
@@ -93,7 +93,7 @@ if (pkg.exports) {
 if (pkg.exports) {
   const newExports = {};
   for (const [key, value] of Object.entries(pkg.exports)) {
-    const newKey = key.replace("@imajin/", "@ima-jin/");
+    const newKey = key.replaceAll("@imajin/", "@ima-jin/");
     newExports[newKey] = value;
   }
   pkg.exports = newExports;
@@ -106,7 +106,7 @@ for (const depType of ["dependencies", "peerDependencies"]) {
   for (const [dep, ver] of Object.entries(pkg[depType])) {
     if (typeof ver === "string" && ver.startsWith("workspace:")) {
       // Resolve to @ima-jin scope and actual version
-      const depLocalName = dep.replace("@imajin/", "");
+      const depLocalName = dep.replaceAll("@imajin/", "");
       try {
         const depPkg = JSON.parse(
           readFileSync(
@@ -114,7 +114,7 @@ for (const depType of ["dependencies", "peerDependencies"]) {
             "utf8"
           )
         );
-        const npmName = dep.replace("@imajin/", "@ima-jin/");
+        const npmName = dep.replaceAll("@imajin/", "@ima-jin/");
         newDeps[npmName] = "^" + depPkg.version;
         console.log(`  Rewrote dep ${dep}@${ver} → ${npmName}@^${depPkg.version}`);
       } catch {

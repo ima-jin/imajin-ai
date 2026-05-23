@@ -196,7 +196,7 @@ function EditProfileContent() {
         const timestamp = Date.now().toString();
         const signable = `${timestamp}:${payload}`;
         const msgBytes = new TextEncoder().encode(signable);
-        const privBytes = new Uint8Array(keypair.privateKey.match(/.{2}/g)!.map((b: string) => parseInt(b, 16)));
+        const privBytes = new Uint8Array(keypair.privateKey.match(/.{2}/g)!.map((b: string) => Number.parseInt(b, 16)));
         const signatureBytes = await ed.signAsync(msgBytes, privBytes);
         const signature = Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join('');
         signedHeaders['X-Signature'] = signature;

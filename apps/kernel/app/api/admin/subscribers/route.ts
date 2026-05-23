@@ -15,7 +15,7 @@ export const GET = withLogger('kernel', async (req: NextRequest) => {
   const q = searchParams.get('q')?.trim() ?? '';
   const verified = searchParams.get('verified');
   const listSlug = searchParams.get('list') ?? '';
-  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
+  const page = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10));
   const offset = (page - 1) * PAGE_SIZE;
 
   const conditions: string[] = [];

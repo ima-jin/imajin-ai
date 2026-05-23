@@ -40,7 +40,7 @@ export default async function HistoryPage({
 
   const did = session.actingAs || session.id;
   const { service, currency, from, to } = searchParams;
-  const page = Math.max(1, parseInt(searchParams.page || '1'));
+  const page = Math.max(1, Number.parseInt(searchParams.page || '1'));
   const offset = (page - 1) * PAGE_SIZE;
 
   const userTxCondition = or(

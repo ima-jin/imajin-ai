@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, unlink, rename, stat, open } from "fs/promises";
-import path from "path";
-import { createHash } from "crypto";
+import { readFile, unlink, rename, stat, open } from "node:fs/promises";
+import path from "node:path";
+import { createHash } from "node:crypto";
 import { db, assets, settlements, accessLog } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { eq, and, sql } from "drizzle-orm";
-import { createReadStream } from "fs";
+import { createReadStream } from "node:fs";
 import type { FairManifest } from "@imajin/fair";
 import { isFairManifestV1_1, build402Response, verifyReceipt, loadVerifyKey, canonicalize } from "@imajin/fair";
 import type { FairAction } from "@imajin/fair";
@@ -37,8 +37,8 @@ async function serveFileWithRange(
   if (rangeHeader) {
     const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
     if (match) {
-      const start = parseInt(match[1], 10);
-      const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+      const start = Number.parseInt(match[1], 10);
+      const end = match[2] ? Number.parseInt(match[2], 10) : fileSize - 1;
       const chunkSize = end - start + 1;
 
       const fd = await open(filePath, "r");
@@ -486,7 +486,7 @@ export async function GET(
       const sharp = (await import("sharp")).default;
       outputBuffer = await sharp(fileBuffer)
         .rotate() // auto-orient from EXIF before resize
-        .resize({ width: parseInt(widthParam, 10), withoutEnlargement: true })
+        .resize({ width: Number.parseInt(widthParam, 10), withoutEnlargement: true })
         .toBuffer();
     } catch {
       // sharp unavailable or failed — fall through with original
