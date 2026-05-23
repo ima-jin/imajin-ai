@@ -28,6 +28,7 @@ export function PromoVideo() {
     requestAnimationFrame(() => {
       const video = videoRef.current;
       if (!video) return;
+      video.src = getVideoSrc(assetId);
       video.play().catch(() => {});
     });
   }
@@ -66,13 +67,14 @@ export function PromoVideo() {
       <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
         <video
           ref={videoRef}
-          src={getVideoSrc(assetId)}
           className="w-full h-full rounded-xl object-contain bg-gray-900"
           playsInline
           controls
           autoPlay
+          muted
           preload="auto"
           onEnded={handleEnded}
+          aria-label="Imajin promotional video"
         />
       </div>
     </section>

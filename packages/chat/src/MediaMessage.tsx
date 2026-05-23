@@ -90,6 +90,7 @@ export function MediaMessage({ assetId, filename, mimeType, size, width, height,
             <img
               src={fullUrl}
               alt={filename}
+              role="presentation"
               className="max-w-full max-h-full object-contain rounded-lg"
               onMouseDown={(e) => e.stopPropagation()}
             />

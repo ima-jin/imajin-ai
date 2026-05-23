@@ -54,6 +54,7 @@ function FairEditModal({
       <div
         className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[520px] max-h-[85vh] overflow-y-auto"
         role="dialog"
+        aria-label="Edit .fair manifest"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >

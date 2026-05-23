@@ -37,7 +37,7 @@ function messageBytes(manifest: FairManifest): Uint8Array {
 
 function bytesToBase64url(bytes: Uint8Array): string {
   const bin = Array.from(bytes)
-    .map((b) => String.fromCharCode(b))
+    .map((b) => String.fromCodePoint(b))
     .join('');
   const base64 = btoa(bin);
   let out = base64.split('+').join('-').split('/').join('_');
@@ -54,7 +54,7 @@ function base64urlToBytes(b64: string): Uint8Array {
   const bin = atob(padded);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) {
-    bytes[i] = bin.charCodeAt(i);
+    bytes[i] = bin.codePointAt(i)!;
   }
   return bytes;
 }

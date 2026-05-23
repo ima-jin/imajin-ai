@@ -133,17 +133,17 @@ export default function TraceView({ events, correlationId }: Readonly<{ events: 
                   >
                     <div
                       className={`px-4 py-3 flex flex-wrap items-center gap-3 ${hasPayload ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-xl' : ''} transition-colors`}
-                      onClick={() => hasPayload && toggle(evt.id)}
-                      onKeyDown={(e) => {
-                        if (!hasPayload) return;
+                      onClick={hasPayload ? () => toggle(evt.id) : undefined}
+                      onKeyDown={hasPayload ? (e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
                           toggle(evt.id);
                         }
-                      }}
+                      } : undefined}
                       role={hasPayload ? 'button' : undefined}
-                      tabIndex={hasPayload ? 0 : undefined}
+                      tabIndex={hasPayload ? 0 : -1}
                       aria-expanded={hasPayload ? isExpanded : undefined}
+                      aria-label={hasPayload ? `Toggle ${evt.action} details` : undefined}
                     >
                       {/* Step number */}
                       <span className="text-xs font-mono text-gray-400 dark:text-gray-600 w-5 text-right shrink-0">

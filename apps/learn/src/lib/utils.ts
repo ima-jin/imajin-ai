@@ -14,7 +14,7 @@ export function slugify(text: string): string {
   let out = '';
   let previousDash = false;
   for (const ch of text.toLowerCase()) {
-    const code = ch.charCodeAt(0);
+    const code = ch.codePointAt(0)!;
     const isAlphaNum = (code >= 48 && code <= 57) || (code >= 97 && code <= 122);
     if (isAlphaNum) {
       out += ch;

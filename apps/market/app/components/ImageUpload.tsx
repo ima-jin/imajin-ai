@@ -186,6 +186,7 @@ export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
             return (
               <div
                 key={src}
+                aria-label={`Image ${i + 1}, drag to reorder`}
                 draggable
                 onDragStart={(e) => onThumbDragStart(e, i)}
                 onDragOver={(e) => onThumbDragOver(e, i)}
