@@ -24,7 +24,7 @@ NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "$BASE_REF"...HEAD 2>/dev/
 OVERRIDE=$(git log "$BASE_REF"..HEAD --format=%B 2>/dev/null \
   | grep -E '^migration-not-required:' || true)
 
-if [ -n "$CHANGED_SCHEMA" ] && [ -z "$NEW_MIGRATIONS" ] && [ -z "$OVERRIDE" ]; then
+if [[ -n "$CHANGED_SCHEMA" ]] && [[ -z "$NEW_MIGRATIONS" ]] && [[ -z "$OVERRIDE" ]]; then
   echo "❌ Schema files changed without a new migration:"
   echo "$CHANGED_SCHEMA" | sed 's/^/   /'
   NEXT=$(printf '%04d' $(( $(ls migrations/*.sql 2>/dev/null | grep -oP '\K\d{4}' | sort -n | tail -1 || echo 0) + 1 )))
