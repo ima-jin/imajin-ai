@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const UPLOAD_DIR = '/mnt/media/events';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 export const POST = withLogger('events', async (request, { log }) => {
   try {
@@ -16,7 +16,7 @@ export const POST = withLogger('events', async (request, { log }) => {
       return Response.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    if (!ALLOWED_TYPES.has(file.type)) {
       return Response.json({ error: 'Invalid file type' }, { status: 400 });
     }
 

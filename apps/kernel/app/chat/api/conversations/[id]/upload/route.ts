@@ -12,8 +12,8 @@ const log = createLogger('kernel');
 
 const UPLOAD_DIR = '/mnt/media/chat';
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
-const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-const FILE_TYPES = [
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+const FILE_TYPES = new Set([
   'application/pdf',
   'application/zip',
   'application/x-zip-compressed',
@@ -22,7 +22,7 @@ const FILE_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-];
+]);
 
 /**
  * POST /api/conversations/:id/upload - Upload media to conversation
@@ -59,8 +59,8 @@ export async function POST(
       return errorResponse('File too large. Maximum size is 25MB.', 400);
     }
 
-    const isImage = IMAGE_TYPES.includes(file.type);
-    const isFile = FILE_TYPES.includes(file.type);
+    const isImage = IMAGE_TYPES.has(file.type);
+    const isFile = FILE_TYPES.has(file.type);
 
     if (!isImage && !isFile) {
       return errorResponse('Invalid file type', 400);

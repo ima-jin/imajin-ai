@@ -37,11 +37,11 @@ function applyDarkTheme(model: Model) {
 
 /** Apply HTML allowlist handler to a SurveyJS model — allows safe formatting tags in questions */
 function applyHtmlHandler(model: Model) {
-  const allowed = ['a', 'b', 'i', 'em', 'strong', 'br', 'ul', 'ol', 'li', 'p', 'span'];
+  const allowed = new Set(['a', 'b', 'i', 'em', 'strong', 'br', 'ul', 'ol', 'li', 'p', 'span']);
   model.onTextMarkdown.add((_, options) => {
     const cleaned = options.text
       .replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/gi, (match: string, tag: string) => {
-        if (allowed.includes(tag.toLowerCase())) {
+        if (allowed.has(tag.toLowerCase())) {
           if (tag.toLowerCase() === 'a') {
             return match
               .replace(/<a\s/i, '<a target="_blank" rel="noopener noreferrer" ')

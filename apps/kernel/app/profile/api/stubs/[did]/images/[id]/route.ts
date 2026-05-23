@@ -5,7 +5,7 @@ import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-const ALLOWED_ROLES = ['maintainer', 'admin', 'owner'];
+const ALLOWED_ROLES = new Set(['maintainer', 'admin', 'owner']);
 
 interface RouteParams {
   params: Promise<{ did: string; id: string }>;
@@ -38,7 +38,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     )
     .limit(1);
 
-  if (!membership || !ALLOWED_ROLES.includes(membership.role)) {
+  if (!membership || !ALLOWED_ROLES.has(membership.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

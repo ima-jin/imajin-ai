@@ -174,17 +174,17 @@ function validateV1_1(manifest: Record<string, unknown>): string[] {
         if (!Array.isArray(settlement.schemes)) {
           errors.push("settlement.schemes must be an array when present");
         } else {
-          const validSchemes = ["x402", "stripe-link", "mjnx-direct", "solana-pay", "lightning"];
+          const validSchemes = new Set(["x402", "stripe-link", "mjnx-direct", "solana-pay", "lightning"]);
           for (const s of settlement.schemes) {
-            if (typeof s !== "string" || !validSchemes.includes(s)) {
+            if (typeof s !== "string" || !validSchemes.has(s)) {
               errors.push(`settlement.schemes contains invalid scheme: ${s}`);
             }
           }
         }
       }
       if (settlement.fallback !== undefined) {
-        const validSchemes = ["x402", "stripe-link", "mjnx-direct", "solana-pay", "lightning"];
-        if (typeof settlement.fallback !== "string" || !validSchemes.includes(settlement.fallback)) {
+        const validSchemes = new Set(["x402", "stripe-link", "mjnx-direct", "solana-pay", "lightning"]);
+        if (typeof settlement.fallback !== "string" || !validSchemes.has(settlement.fallback)) {
           errors.push("settlement.fallback must be a valid settlement scheme");
         }
       }

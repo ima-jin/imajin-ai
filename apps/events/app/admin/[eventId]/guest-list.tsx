@@ -334,7 +334,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
   // Filter logic
   // Default view shows valid + used (real tickets with verified payment).
   // Non-default statuses are revealed by clicking their pills.
-  const DEFAULT_STATUSES = ['valid', 'used'];
+  const DEFAULT_STATUSES = new Set(['valid', 'used']);
   const NON_DEFAULT_STATUSES = ['held', 'available', 'cancelled', 'refunded', 'refund_pending'];
 
   const toggleFilter = (key: FilterKey, value: string) => {
@@ -351,14 +351,14 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
     // Status pill overrides the default status filter
     if (filterKey === 'status') return g.status === filterValue;
     // Type pill still restricts to default statuses
-    if (filterKey === 'type') return g.ticketType === filterValue && DEFAULT_STATUSES.includes(g.status);
+    if (filterKey === 'type') return g.ticketType === filterValue && DEFAULT_STATUSES.has(g.status);
     // Default: only valid + used
-    return DEFAULT_STATUSES.includes(g.status);
+    return DEFAULT_STATUSES.has(g.status);
   });
 
   // Tier counts only include valid + used tickets
   const typeCounts = guests.reduce<Record<string, number>>((acc, g) => {
-    if (DEFAULT_STATUSES.includes(g.status)) {
+    if (DEFAULT_STATUSES.has(g.status)) {
       acc[g.ticketType] = (acc[g.ticketType] || 0) + 1;
     }
     return acc;
