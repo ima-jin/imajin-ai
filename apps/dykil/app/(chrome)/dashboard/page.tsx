@@ -163,7 +163,7 @@ export default function DashboardPage() {
 
                     <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-500">
                       <span>
-                        {survey._responseCount || 0} response{survey._responseCount !== 1 ? 's' : ''}
+                        {survey._responseCount || 0} response{survey._responseCount === 1  ? '' : 's'}
                       </span>
                       <span>•</span>
                       <span>

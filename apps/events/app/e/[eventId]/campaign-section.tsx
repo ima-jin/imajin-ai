@@ -200,7 +200,7 @@ export function CampaignSection({ eventId, eventTitle, isAuthenticated }: Readon
       <div className="mb-6">
         <div className="flex justify-between text-sm mb-2">
           <span className="text-gray-500 dark:text-gray-400">
-            {status.pledgeCount} backer{status.pledgeCount !== 1 ? 's' : ''}
+            {status.pledgeCount} backer{status.pledgeCount === 1  ? '' : 's'}
           </span>
           <span className="font-semibold">
             {formattedCurrent} of {formattedTarget}

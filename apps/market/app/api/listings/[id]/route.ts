@@ -155,7 +155,7 @@ export async function PATCH(
           WHERE id = 'singleton'
           LIMIT 1
         `;
-        const scopeDid = listing.sellerDid !== currentDid ? null : (identity.actingAs || null);
+        const scopeDid = listing.sellerDid === currentDid  ? (identity.actingAs || null) : null;
         let scopeFeeBps: number | null = null;
         if (scopeDid) {
           const [forestRow] = await rawSql`

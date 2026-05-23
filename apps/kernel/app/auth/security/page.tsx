@@ -59,14 +59,14 @@ async function encryptPrivateKey(privateKeyJson: string, password: string): Prom
   const ivAndCipher = new Uint8Array(iv.byteLength + ciphertext.byteLength);
   ivAndCipher.set(iv, 0);
   ivAndCipher.set(new Uint8Array(ciphertext), iv.byteLength);
-  const encryptedKey = btoa(String.fromCharCode(...ivAndCipher));
-  const salt = btoa(String.fromCharCode(...saltBytes));
+  const encryptedKey = btoa(String.fromCodePoint(...ivAndCipher));
+  const salt = btoa(String.fromCodePoint(...saltBytes));
   return { encryptedKey, salt };
 }
 
 async function decryptStoredKey(encryptedKeyB64: string, saltB64: string, password: string): Promise<string> {
   const enc = new TextEncoder();
-  const salt = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
+  const salt = Uint8Array.from(atob(saltB64), c => c.codePointAt(0)!);
   const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
   const derivedKey = await crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
@@ -75,7 +75,7 @@ async function decryptStoredKey(encryptedKeyB64: string, saltB64: string, passwo
     false,
     ['decrypt']
   );
-  const combined = Uint8Array.from(atob(encryptedKeyB64), c => c.charCodeAt(0));
+  const combined = Uint8Array.from(atob(encryptedKeyB64), c => c.codePointAt(0)!);
   const iv = combined.slice(0, 12);
   const ciphertext = combined.slice(12);
   const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, derivedKey, ciphertext);

@@ -200,7 +200,8 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
 
       {/* File import */}
       {method === 'file' && (
-        <div
+        <section
+          aria-label="File drop zone"
           onDrop={handleDrop}
           onDragOver={e => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
@@ -219,7 +220,7 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
               disabled={keypairLoading}
             />
           </label>
-        </div>
+        </section>
       )}
 
       {/* Paste key */}

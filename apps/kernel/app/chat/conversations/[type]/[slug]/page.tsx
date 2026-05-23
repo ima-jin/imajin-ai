@@ -374,9 +374,9 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
                   }}
                   title="Click to rename"
                 >
-                  {!(convName || nameParam)
-                    ? <span className="text-gray-400 italic font-normal">Untitled Group</span>
-                    : displayName}
+                  {(convName || nameParam)
+                    ? displayName
+                    : <span className="text-gray-400 italic font-normal">Untitled Group</span>}
                 </button>
               );
             }
@@ -391,7 +391,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
               onClick={() => setShowMembers(!showMembers)}
               className="text-xs text-gray-500 mt-0.5 hover:text-orange-500 transition-colors text-left"
             >
-              {memberCount ? `${memberCount} member${memberCount !== 1 ? 's' : ''}` : 'Group conversation'}
+              {memberCount ? `${memberCount} member${memberCount === 1 ? '' : 's'}` : 'Group conversation'}
             </button>
           )}
           {parsed.type === 'event' && (

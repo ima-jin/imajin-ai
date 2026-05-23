@@ -161,7 +161,7 @@ export async function POST(
 
     if (!existing) {
       const parsed = parseConversationDid(conversationDid);
-      const name = conversationName || (parsed.type !== 'unknown' ? `${parsed.type}:${parsed.slug ?? ''}` : conversationDid);
+      const name = conversationName || (parsed.type === 'unknown'  ? conversationDid : `${parsed.type}:${parsed.slug ?? ''}`);
       await db.insert(conversationsV2).values({
         did: conversationDid,
         name,

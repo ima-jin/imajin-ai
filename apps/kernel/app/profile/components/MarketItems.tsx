@@ -30,7 +30,7 @@ export function MarketItems({ did, handle, marketBaseUrl }: Readonly<MarketItems
   const marketBase = marketBaseUrl || process.env.NEXT_PUBLIC_MARKET_URL || '/market';
 
   useEffect(() => {
-    fetch(`${marketBase}/api/listings?seller_did=${encodeURIComponent(did)}&status=active&limit=8`)
+    void fetch(`${marketBase}/api/listings?seller_did=${encodeURIComponent(did)}&status=active&limit=8`)
       .then((r) => r.ok ? r.json() : Promise.reject())
       .then((data) => setListings(Array.isArray(data) ? data : (data.listings || [])))
       .catch(() => setListings([]))
@@ -42,7 +42,7 @@ export function MarketItems({ did, handle, marketBaseUrl }: Readonly<MarketItems
       <div className="mt-6">
         <div className="h-5 w-24 bg-gray-800 rounded animate-pulse mb-3" />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {[...Array(4)].map((_, i) => (
+          {Array.from({ length: 4 }, (_, i) => (
             <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden animate-pulse">
               <div className="aspect-square bg-gray-800" />
               <div className="p-2 space-y-1">

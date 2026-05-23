@@ -25,7 +25,7 @@ export function hasMarkdown(text: string): boolean {
     const dot = trimmed.indexOf('.');
     if (dot <= 0) return false;
     for (let i = 0; i < dot; i += 1) {
-      const code = trimmed.charCodeAt(i);
+      const code = trimmed.codePointAt(i)!;
       if (code < 48 || code > 57) return false;
     }
     return trimmed[dot + 1] === ' ';

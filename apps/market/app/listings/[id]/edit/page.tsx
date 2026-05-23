@@ -215,15 +215,7 @@ export default function EditListingPage() {
         {/* Delete section */}
         <div className="mt-10 pt-8 border-t border-gray-800">
           <h3 className="text-sm font-medium text-gray-400 mb-3">Danger Zone</h3>
-          {!showDeleteConfirm ? (
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              className="px-4 py-2 bg-red-900/40 border border-red-800 text-red-400 hover:bg-red-800/50 hover:text-red-300 rounded-lg text-sm font-medium transition"
-            >
-              Delete Listing
-            </button>
-          ) : (
+          {showDeleteConfirm ? (
             <div className="p-4 bg-red-900/20 border border-red-800 rounded-lg space-y-3">
               <p className="text-sm text-red-300">
                 Are you sure? This will permanently remove the listing. This cannot be undone.
@@ -246,6 +238,14 @@ export default function EditListingPage() {
                 </button>
               </div>
             </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-4 py-2 bg-red-900/40 border border-red-800 text-red-400 hover:bg-red-800/50 hover:text-red-300 rounded-lg text-sm font-medium transition"
+            >
+              Delete Listing
+            </button>
           )}
         </div>
       </div>

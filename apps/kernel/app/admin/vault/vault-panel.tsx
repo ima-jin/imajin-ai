@@ -54,7 +54,7 @@ function hexToBytes(hex: string): Uint8Array {
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
+    binary += String.fromCodePoint(byte);
   });
   return btoa(binary);
 }

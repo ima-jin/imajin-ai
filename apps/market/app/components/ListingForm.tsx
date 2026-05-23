@@ -333,6 +333,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
               checked={sellerTier === 'public_offplatform'}
               onChange={() => setSellerTier('public_offplatform')}
               className="mt-0.5 accent-blue-500"
+              aria-label="Direct Sale"
             />
             <div>
               <p className="font-medium text-gray-100">Direct Sale</p>
@@ -356,6 +357,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
               checked={sellerTier === 'public_onplatform'}
               onChange={() => setSellerTier('public_onplatform')}
               className="mt-0.5 accent-blue-500"
+              aria-label="Protected Sale"
             />
             <div>
               <p className="font-medium text-gray-100">Protected Sale</p>
@@ -379,6 +381,7 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
               checked={sellerTier === 'trust_gated'}
               onChange={() => setSellerTier('trust_gated')}
               className="mt-0.5 accent-blue-500"
+              aria-label="Trusted Sale"
             />
             <div>
               <p className="font-medium text-gray-100">Trusted Sale</p>

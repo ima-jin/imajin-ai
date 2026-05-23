@@ -49,17 +49,17 @@ export default async function AdminServicesPage() {
         <ServicesRefresh />
       </div>
 
-      {!data ? (
+      {data ? (
+        <>
+          <ServiceSection title="Kernel Services" services={kernelServices} />
+          <ServiceSection title="Userspace Services" services={userspaceServices} />
+        </>
+      ) : (
         <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-8 text-center">
           <p className="text-gray-500 dark:text-gray-400 text-sm">
             Could not fetch service health. Check admin authentication.
           </p>
         </div>
-      ) : (
-        <>
-          <ServiceSection title="Kernel Services" services={kernelServices} />
-          <ServiceSection title="Userspace Services" services={userspaceServices} />
-        </>
       )}
     </div>
   );

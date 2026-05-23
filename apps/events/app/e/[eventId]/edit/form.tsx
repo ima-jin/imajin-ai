@@ -197,11 +197,11 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
           timezone,
           locationType,
           isVirtual: locationType !== 'physical',
-          virtualUrl: locationType !== 'physical' ? virtualUrl : null,
-          venue: locationType !== 'virtual' ? venue : null,
-          address: locationType !== 'virtual' ? address : null,
-          city: locationType !== 'virtual' ? city : null,
-          country: locationType !== 'virtual' ? country : null,
+          virtualUrl: locationType === 'physical'  ? null : virtualUrl,
+          venue: locationType === 'virtual'  ? null : venue,
+          address: locationType === 'virtual'  ? null : address,
+          city: locationType === 'virtual'  ? null : city,
+          country: locationType === 'virtual'  ? null : country,
           imageUrl: imageUrl || null,
           status,
           nameDisplayPolicy,
@@ -800,7 +800,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                       {surveys.map((survey) => (
                         <option key={survey.id} value={survey.id}>
                           {survey.title}
-                          {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
+                          {survey.responseCount === undefined  ? '' : ` (${survey.responseCount} responses)`}
                         </option>
                       ))}
                     </select>
@@ -879,7 +879,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                       {surveys.map((survey) => (
                         <option key={survey.id} value={survey.id}>
                           {survey.title}
-                          {survey.responseCount !== undefined ? ` (${survey.responseCount} responses)` : ''}
+                          {survey.responseCount === undefined  ? '' : ` (${survey.responseCount} responses)`}
                         </option>
                       ))}
                     </select>

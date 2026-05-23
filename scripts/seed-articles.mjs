@@ -76,7 +76,7 @@ if (!databaseUrl) {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function didToPath(did) {
-  return did.replace(/:/g, '_').replace(/[^a-zA-Z0-9._@-]/g, '_');
+  return did.replaceAll(':', '_').replace(/[^a-zA-Z0-9._@-]/g, '_');
 }
 
 // Map essay filenames (without .md) to URL slugs and order

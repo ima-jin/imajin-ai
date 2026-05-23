@@ -8,9 +8,9 @@ interface Props {
 }
 
 export default function DocumentViewer({ assetId, mimeType, filename, hash }: Readonly<Props>) {
-  const baseUrl = typeof window !== 'undefined'
-    ? `${globalThis.location.origin}/media/api/assets/${assetId}`
-    : `/media/api/assets/${assetId}`;
+  const baseUrl = typeof window === 'undefined'
+    ? `/media/api/assets/${assetId}`
+    : `${globalThis.location.origin}/media/api/assets/${assetId}`;
 
   const isPdf = mimeType === 'application/pdf';
   const isImage = mimeType.startsWith('image/');

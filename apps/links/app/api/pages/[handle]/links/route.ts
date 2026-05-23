@@ -72,7 +72,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         url: link.url,
         icon: link.icon || null,
         thumbnail: link.thumbnail || null,
-        position: link.position !== undefined ? link.position : currentPos++,
+        position: link.position === undefined  ? currentPos++ : link.position,
         isActive: link.isActive !== false,
         visibility: link.visibility || 'public',
       });

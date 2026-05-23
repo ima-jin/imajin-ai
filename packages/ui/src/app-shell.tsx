@@ -125,7 +125,7 @@ export interface AppShellPaneProps extends React.HTMLAttributes<HTMLDivElement> 
 
 export const AppShellPane = React.forwardRef<HTMLDivElement, AppShellPaneProps>(
   function AppShellPane({ width, className = '', style, children, ...props }, ref) {
-    const widthStyle = width != null ? { width, ...style } : style;
+    const widthStyle = width == null  ? style : { width, ...style };
     return (
       <div
         ref={ref}

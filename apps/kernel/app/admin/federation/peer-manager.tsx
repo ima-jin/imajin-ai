@@ -183,7 +183,7 @@ export default function PeerManager() {
                 <tr
                   key={peer.peer_url}
                   className={`hover:bg-gray-50 dark:hover:bg-gray-700/40 ${
-                    !peer.enabled ? 'opacity-50' : ''
+                    peer.enabled  ? '' : 'opacity-50'
                   }`}
                 >
                   <td className="px-4 py-3">

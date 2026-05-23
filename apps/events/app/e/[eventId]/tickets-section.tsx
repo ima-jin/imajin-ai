@@ -732,14 +732,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
       {/* Unlock hidden tiers */}
       {hasHiddenTiers && (
         <div className="pt-4">
-          {!showUnlock ? (
-            <button
-              onClick={() => setShowUnlock(true)}
-              className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-1"
-            >
-              🔑 Have an access code?
-            </button>
-          ) : (
+          {showUnlock ? (
             <div className="flex items-start gap-2">
               <div className="flex-1">
                 <input
@@ -768,6 +761,13 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
                 Cancel
               </button>
             </div>
+          ) : (
+            <button
+              onClick={() => setShowUnlock(true)}
+              className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-1"
+            >
+              🔑 Have an access code?
+            </button>
           )}
         </div>
       )}
@@ -1161,7 +1161,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           <>
             <p className="text-sm text-gray-600 dark:text-gray-300">
               We sent a verification link to <strong className="text-gray-800 dark:text-gray-100">{verifySentTo}</strong>.
-              Click it to confirm your email and we'll reserve your {totalQty} ticket{totalQty !== 1 ? 's' : ''} automatically.
+              Click it to confirm your email and we'll reserve your {totalQty} ticket{totalQty === 1 ? '' : 's'} automatically.
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Link expires in 15 minutes. Check spam if you don't see it.
@@ -1217,7 +1217,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
             <span className="text-amber-600 dark:text-amber-400 text-lg shrink-0">⚠️</span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                You have {totalPendingCount} ticket{totalPendingCount !== 1 ? 's' : ''} that need registration before the event.
+                You have {totalPendingCount} ticket{totalPendingCount === 1  ? '' : 's'} that need registration before the event.
               </p>
               <button
                 onClick={() => {
@@ -1275,7 +1275,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
         <h3 className="font-semibold text-base">🏦 Pay by e-Transfer</h3>
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Reserves {totalQty} ticket{totalQty !== 1 ? 's' : ''} for 72 hours while you send your e-Transfer.
+          Reserves {totalQty} ticket{totalQty === 1  ? '' : 's'} for 72 hours while you send your e-Transfer.
         </p>
         {cartItems.length > 1 && (
           <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
@@ -1300,7 +1300,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={startEtransfer} disabled={!emtEmail.includes('@')} className={`px-5 py-2.5 rounded-lg font-semibold transition ${!emtEmail.includes('@') ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-orange-500 text-white hover:bg-orange-600'}`}>Reserve My Ticket</button>
+          <button onClick={startEtransfer} disabled={!emtEmail.includes('@')} className={`px-5 py-2.5 rounded-lg font-semibold transition ${emtEmail.includes('@') ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'}`}>Reserve My Ticket</button>
           <button onClick={() => setStep('idle')} className="px-3 py-2.5 text-sm text-gray-500 hover:text-gray-700">Back</button>
         </div>
       </div>
@@ -1337,7 +1337,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
             'Select tickets above'
           ) : (
             <span className="text-base font-semibold text-white">
-              {totalQty} ticket{totalQty !== 1 ? 's' : ''} · {formattedTotal}
+              {totalQty} ticket{totalQty === 1  ? '' : 's'} · {formattedTotal}
             </span>
           )}
         </div>

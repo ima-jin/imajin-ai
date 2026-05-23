@@ -68,7 +68,8 @@ export default async function PayoutsPage() {
 
       {/* Payout Status Card */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-        {!status ? (
+        {(() => {
+          if (!status) return (
           // State A - Not connected
           <div className="text-center space-y-4">
             <div>
@@ -82,50 +83,8 @@ export default async function PayoutsPage() {
               did={did}
             />
           </div>
-        ) : !status.onboardingComplete ? (
-          // State B - Onboarding incomplete
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold text-white mb-2">Complete your setup</h2>
-              <p className="text-zinc-400">
-                Your payout account needs more information to start receiving funds.
-              </p>
-            </div>
-
-            {/* Capabilities Status */}
-            <div className="grid gap-3">
-              <div className="flex items-center gap-3">
-                <span className={`text-lg ${status.chargesEnabled ? 'text-green-400' : 'text-red-400'}`}>
-                  {status.chargesEnabled ? '✅' : '❌'}
-                </span>
-                <span className="text-sm text-zinc-300">
-                  Charges enabled
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`text-lg ${status.payoutsEnabled ? 'text-green-400' : 'text-red-400'}`}>
-                  {status.payoutsEnabled ? '✅' : '❌'}
-                </span>
-                <span className="text-sm text-zinc-300">
-                  Payouts enabled
-                </span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`text-lg ${status.detailsSubmitted ? 'text-green-400' : 'text-red-400'}`}>
-                  {status.detailsSubmitted ? '✅' : '❌'}
-                </span>
-                <span className="text-sm text-zinc-300">
-                  Details submitted
-                </span>
-              </div>
-            </div>
-
-            <PayoutActions
-              status="incomplete_onboarding"
-              did={did}
-            />
-          </div>
-        ) : (
+          );
+          if (status.onboardingComplete) return (
           // State C - Connected
           <div className="space-y-6">
             <div className="text-center">
@@ -146,7 +105,41 @@ export default async function PayoutsPage() {
               </p>
             </div>
           </div>
-        )}
+        );
+          return (
+          // State B - Onboarding incomplete
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold text-white mb-2">Complete your setup</h2>
+              <p className="text-zinc-400">
+                Your payout account needs more information to start receiving funds.
+              </p>
+            </div>
+            {/* Capabilities Status */}
+            <div className="grid gap-3">
+              <div className="flex items-center gap-3">
+                <span className={`text-lg ${status.chargesEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                  {status.chargesEnabled ? '✅' : '❌'}
+                </span>
+                <span className="text-sm text-zinc-300">Charges enabled</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-lg ${status.payoutsEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                  {status.payoutsEnabled ? '✅' : '❌'}
+                </span>
+                <span className="text-sm text-zinc-300">Payouts enabled</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-lg ${status.detailsSubmitted ? 'text-green-400' : 'text-red-400'}`}>
+                  {status.detailsSubmitted ? '✅' : '❌'}
+                </span>
+                <span className="text-sm text-zinc-300">Details submitted</span>
+              </div>
+            </div>
+            <PayoutActions status="incomplete_onboarding" did={did} />
+          </div>
+          );
+        })()}
       </div>
     </div>
   );

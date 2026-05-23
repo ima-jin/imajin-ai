@@ -65,6 +65,7 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: Readonly<Messa
             <img
               src={fullUrl}
               alt={mediaMeta.originalName || 'Image'}
+              role="presentation"
               className="max-w-full max-h-full object-contain"
               onMouseDown={(e) => e.stopPropagation()}
             />
