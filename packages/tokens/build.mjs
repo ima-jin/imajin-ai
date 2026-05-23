@@ -230,7 +230,7 @@ sd.registerFormat({
         return `{\n${entries.join(',\n')}\n${' '.repeat(indent - 2)}}`;
       }
       if (typeof value === 'string') {
-        return `'${value.replace(/'/g, "\\'")}'`;
+      return `'${value.replaceAll("'", "\\'")}'`;
       }
       return String(value);
     }

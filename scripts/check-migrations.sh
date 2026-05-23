@@ -12,7 +12,7 @@ BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATIONS_DIR="$BASE_DIR/migrations"
 FAILED=0
 
-if [ ! -d "$MIGRATIONS_DIR" ]; then
+if [[ ! -d "$MIGRATIONS_DIR" ]]; then
   echo "❌ No migrations/ directory found"
   exit 1
 fi
@@ -22,7 +22,7 @@ fi
 # when this drifts.
 ORPHANS=$(find "$BASE_DIR/apps" -path '*/node_modules' -prune -o \
   \( -path '*/migrations/*.sql' -o -path '*/src/db/migrations/*.sql' \) -print 2>/dev/null)
-if [ -n "$ORPHANS" ]; then
+if [[ -n "$ORPHANS" ]]; then
   echo "❌ Orphan migration files outside root migrations/:"
   echo "$ORPHANS" | sed 's/^/   /'
   echo ""
@@ -34,7 +34,7 @@ fi
 FILES=($(ls "$MIGRATIONS_DIR"/*.sql 2>/dev/null | sort))
 COUNT=${#FILES[@]}
 
-if [ "$COUNT" -eq 0 ]; then
+if [[ "$COUNT" -eq 0 ]]; then
   echo "⚠️  No migration files found"
   exit 0
 fi
@@ -54,17 +54,17 @@ for file in "${FILES[@]}"; do
 
   # Extract number
   NUM=$(echo "$basename" | grep -oP '^\d+' | sed 's/^0*//' )
-  [ -z "$NUM" ] && NUM=0
+  [[ -z "$NUM" ]] && NUM=0
 
   # Check for gaps
   EXPECTED=$((PREV_NUM + 1))
-  if [ "$PREV_NUM" -ge 0 ] && [ "$NUM" -ne "$EXPECTED" ]; then
+  if [[ "$PREV_NUM" -ge 0 ]] && [[ "$NUM" -ne "$EXPECTED" ]]; then
     echo "⚠️  $basename: gap in numbering (expected $(printf '%04d' $EXPECTED))"
   fi
   PREV_NUM=$NUM
 
   # Check non-empty
-  if [ ! -s "$file" ]; then
+  if [[ ! -s "$file" ]]; then
     echo "❌ $basename: empty file"
     FAILED=1
     continue
@@ -73,7 +73,7 @@ for file in "${FILES[@]}"; do
   echo "✅ $basename"
 done
 
-if [ "$FAILED" -eq 1 ]; then
+if [[ "$FAILED" -eq 1 ]]; then
   echo ""
   echo "Migration file issues found!"
   exit 1

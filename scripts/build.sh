@@ -24,7 +24,7 @@ for arg in "$@"; do
 done
 
 # Auto-detect from cwd if not specified
-if [ "$ENV" = "auto" ]; then
+if [[ "$ENV" = "auto" ]]; then
   case "$(pwd)" in
     */prod/*) ENV="prod" ;;
     *)        ENV="dev" ;;
@@ -33,7 +33,7 @@ fi
 
 # Set paths based on environment
 BASE_DIR="$REPO_ROOT"
-if [ "$ENV" = "prod" ]; then
+if [[ "$ENV" = "prod" ]]; then
   PM2_PREFIX="prod-"
   LABEL="PROD"
 else
@@ -44,7 +44,7 @@ fi
 REPORT="$BASE_DIR/.build-report"
 
 # Default to www if no apps specified
-if [ ${#APPS[@]} -eq 0 ]; then
+if [[ ${#APPS[@]} -eq 0 ]]; then
   APPS=("www")
 fi
 
@@ -60,7 +60,7 @@ cd "$BASE_DIR"
 # Pre-flight: check env vars for all target apps
 echo "=== Pre-flight: checking env vars ===" | tee -a "$REPORT"
 ENV_FLAG="--env dev"
-[ "$ENV" = "prod" ] && ENV_FLAG="--env prod"
+[[ "$ENV" = "prod" ]] && ENV_FLAG="--env prod"
 
 ENV_CHECK_FAILED=false
 for app in "${APPS[@]}"; do
@@ -71,7 +71,7 @@ for app in "${APPS[@]}"; do
   set +o pipefail
 done
 
-if [ "$ENV_CHECK_FAILED" = true ]; then
+if [[ "$ENV_CHECK_FAILED" = true ]]; then
   echo "" | tee -a "$REPORT"
   echo "❌ Env check found errors. Fix missing vars before building." | tee -a "$REPORT"
   echo "   Run: npx tsx scripts/check-env.ts $ENV_FLAG ${APPS[*]}" | tee -a "$REPORT"
@@ -131,7 +131,7 @@ pm2_name() {
 }
 
 # Only restart services that built successfully
-if [ ${#SUCCEEDED[@]} -gt 0 ]; then
+if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
   RESTART_LIST=""
   for app in "${SUCCEEDED[@]}"; do
     RESTART_LIST+="$(pm2_name "$app") "
@@ -146,4 +146,4 @@ echo "✅ Succeeded: ${SUCCEEDED[*]:-none}" | tee -a "$REPORT"
 echo "❌ Failed: ${FAILED[*]:-none}" | tee -a "$REPORT"
 
 # Exit with error if anything failed
-[ ${#FAILED[@]} -eq 0 ]
+[[ ${#FAILED[@]} -eq 0 ]]
