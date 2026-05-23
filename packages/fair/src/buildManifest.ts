@@ -92,7 +92,7 @@ export function buildFairManifest(params: {
   ];
 
   if (hasScopeFee) {
-    chain.push({ did: scopeDid!, role: 'scope', share: scopeShare });
+    chain.push({ did: scopeDid, role: 'scope', share: scopeShare });
   }
 
   chain.push({ did: PLATFORM_DID, role: 'platform', share: platformShare });

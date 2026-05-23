@@ -32,7 +32,7 @@ export default async function Home() {
     db
       .select()
       .from(transactions)
-      .where(or(eq(transactions.fromDid, did), eq(transactions.toDid, did))!)
+      .where(or(eq(transactions.fromDid, did), eq(transactions.toDid, did)))
       .orderBy(desc(transactions.createdAt))
       .limit(5),
   ]);

@@ -237,8 +237,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
             expand: ['latest_charge.balance_transaction'],
           });
-          const charge = pi.latest_charge as Stripe.Charge | null;
-          const bt = charge?.balance_transaction as Stripe.BalanceTransaction | null;
+          const charge = pi.latest_charge;
+          const bt = charge?.balance_transaction;
           if (bt?.fee) {
             actualStripeFeeCents = bt.fee;
             log.info({ transactionId: tx.id, stripeFee: bt.fee, feeDetails: bt.fee_details }, '[webhook] Actual Stripe fee from balance_transaction');

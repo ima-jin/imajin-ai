@@ -95,7 +95,7 @@ export default async function ProfilePage({ params }: Readonly<PageProps>) {
     viewerDid,
     isSelf,
     isConnected: !!connected,
-    isFollowing: isFollowing as boolean,
+    isFollowing: isFollowing,
   };
 
   const props = { profile, identity, viewer, counts, links };

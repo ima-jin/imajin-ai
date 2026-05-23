@@ -595,7 +595,7 @@ export function FairEditor({
   // Derive active sections: explicit prop > template config > defaults
   const sections: NonNullable<FairEditorProps['sections']> = sectionsProp
     ?? (template
-      ? ALL_SECTIONS.filter(s => templates[template].sections[s as keyof typeof templates.media.sections])
+      ? ALL_SECTIONS.filter(s => templates[template].sections[s])
       : SECTION_DEFAULTS);
 
   const [local, setLocal] = useState<FairManifest>(() => {

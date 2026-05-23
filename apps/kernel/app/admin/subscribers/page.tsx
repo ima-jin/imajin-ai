@@ -96,7 +96,7 @@ export default async function AdminSubscribersPage({
      JOIN www.subscriptions s ON c.id = s.contact_id
      JOIN www.mailing_lists ml ON ml.id = s.mailing_list_id
      ${whereClause}`,
-    binds as string[]
+    binds
   );
   const total = Number(countRow?.total ?? 0);
 
@@ -117,7 +117,7 @@ export default async function AdminSubscribersPage({
      ${whereClause}
      ORDER BY s.subscribed_at DESC
      LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
-    binds as string[]
+    binds
   );
 
   const hasNext = rows.length === PAGE_SIZE;

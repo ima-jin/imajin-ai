@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
   await db.update(attestations)
     .set({
-      witnessJws: witnessJws as string,
+      witnessJws: witnessJws,
       attestationStatus: 'bilateral',
     })
     .where(eq(attestations.id, attestationId));

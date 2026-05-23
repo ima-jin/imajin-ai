@@ -145,7 +145,7 @@ function InlineDidPicker({
   // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
         setOpen(false);
       }
     }

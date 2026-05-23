@@ -17,7 +17,7 @@ export function NameDisplaySelector({ policy, storageKey, onChange }: Readonly<N
   useEffect(() => {
     const stored = localStorage.getItem(storageKey);
     if (stored && ['real_name', 'handle', 'anonymous'].includes(stored)) {
-      setPref(stored as DisplayPref);
+      setPref(stored);
     }
   }, [storageKey]);
 

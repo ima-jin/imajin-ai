@@ -47,7 +47,7 @@ export async function GET(
   }
 
   // Determine .fair access level
-  const manifest = asset.fairManifest as FairManifest | null;
+  const manifest = asset.fairManifest;
   const accessType = getAccessType(manifest?.access ?? "private");
 
   // Internal API key auth: allow read for public/trust-graph assets

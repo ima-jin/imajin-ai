@@ -42,7 +42,7 @@ export async function getProfile(handle: string): Promise<ProfileData | null> {
   const row = await db.query.profiles.findFirst({
     where: (profiles, { eq, or }) => or(eq(profiles.did, handle), eq(profiles.handle, handle)),
   });
-  return row as unknown as ProfileData | null;
+  return row ?? null;
 }
 
 export async function getProfileCounts(profileDid: string): Promise<ProfileCounts> {

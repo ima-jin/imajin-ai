@@ -75,7 +75,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       totals: totals.reduce((acc, t) => {
         acc[t.currency] = { total: Number(t.total), count: Number(t.count) };
         return acc;
-      }, {} as Record<string, { total: number; count: number }>),
+      }, {}),
       pagination: {
         limit,
         offset,

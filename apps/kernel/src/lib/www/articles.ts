@@ -63,7 +63,7 @@ function parseArticleMeta(row: {
   ownerDid: string;
   authorHandle?: string | null;
 }): ArticleMeta | null {
-  const article = (row.metadata as Record<string, unknown> | null)?.article as
+  const article = row.metadata?.article as
     | Record<string, unknown>
     | null;
   if (!article || typeof article !== 'object') return null;

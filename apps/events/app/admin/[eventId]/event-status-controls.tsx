@@ -47,7 +47,7 @@ interface Props {
 
 export function EventStatusControls({ eventId, currentStatus }: Readonly<Props>) {
   const router = useRouter();
-  const [status, setStatus] = useState<EventStatus>((currentStatus || 'draft') as EventStatus);
+  const [status, setStatus] = useState<EventStatus>(currentStatus || 'draft');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

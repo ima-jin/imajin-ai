@@ -39,7 +39,7 @@ export async function GET(
   }
 
   // Only serve public assets via OG route (crawlers can't auth)
-  const manifest = asset.fairManifest as FairManifest | null;
+  const manifest = asset.fairManifest;
   const access = manifest?.access;
   const isPublic = access === "public" || (typeof access === "object" && access?.type === "public");
   if (!isPublic) {

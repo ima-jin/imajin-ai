@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
   // Extract original filename first (needed for MIME inference)
   let originalName =
     (formData.get("filename") as string | null) ??
-    (file as File).name ??
+    file.name ??
     "upload";
 
   // Rename generic audio filenames to a timestamped format (e.g. blob.webm → Audio_2026_01_01_12_00_00.webm)

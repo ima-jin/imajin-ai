@@ -140,7 +140,7 @@ function StandaloneRow({ tx, sessionId }: Readonly<{ tx: SerializedTx; sessionId
           <div>
             <div className="text-xs font-medium text-zinc-400 mb-2">.fair attribution chain</div>
             <div className="space-y-1">
-              {manifest!.chain!.map((entry, i) => (
+              {manifest.chain!.map((entry, i) => (
                 <div
                   key={i}
                   className="flex items-center gap-3 text-xs bg-black/40 border border-zinc-800 rounded-lg px-3 py-2"
@@ -162,7 +162,7 @@ function StandaloneRow({ tx, sessionId }: Readonly<{ tx: SerializedTx; sessionId
           </div>
         )}
 
-        {!!tx.metadata && Object.keys(tx.metadata as object).length > 0 && (
+        {!!tx.metadata && Object.keys(tx.metadata).length > 0 && (
           <div>
             <div className="text-xs font-medium text-zinc-400 mb-2">Metadata</div>
             <pre className="text-xs font-mono bg-black/40 border border-zinc-800 rounded-lg p-3 text-zinc-500 overflow-auto whitespace-pre-wrap">
@@ -290,7 +290,7 @@ function BatchGroupRow({
           </div>
         </div>
 
-        {!!userEntry.metadata && Object.keys(userEntry.metadata as object).length > 0 && (
+        {!!userEntry.metadata && Object.keys(userEntry.metadata).length > 0 && (
           <div>
             <div className="text-xs font-medium text-zinc-400 mb-2">Metadata</div>
             <pre className="text-xs font-mono bg-black/40 border border-zinc-800 rounded-lg p-3 text-zinc-500 overflow-auto whitespace-pre-wrap">

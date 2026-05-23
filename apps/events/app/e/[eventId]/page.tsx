@@ -485,7 +485,7 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
   }) : null;
   // If end date is a different day, show the full date too
   const endIsNewDay = eventEndDate && eventEndDate.toLocaleDateString('en-US', { timeZone: eventTz }) !== eventDate.toLocaleDateString('en-US', { timeZone: eventTz });
-  const formattedEndDate = endIsNewDay ? eventEndDate!.toLocaleDateString('en-US', {
+  const formattedEndDate = endIsNewDay ? eventEndDate.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',

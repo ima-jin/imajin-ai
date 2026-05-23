@@ -113,7 +113,7 @@ function wrapPino(instance: pino.Logger): Logger {
       persist('debug', ctx, message);
     },
     child(bindings: Partial<LogContext>): Logger {
-      return wrapPino(instance.child(bindings as Record<string, unknown>));
+      return wrapPino(instance.child(bindings));
     },
   };
 }

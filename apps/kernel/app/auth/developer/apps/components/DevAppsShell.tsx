@@ -77,7 +77,7 @@ function SuccessBanner({ app, onDismiss }: Readonly<{ app: RegisteredApp; onDism
 
 function AppCard({ app }: Readonly<{ app: App }>) {
   const createdAt = app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '—';
-  const scopes = (app.requestedScopes ?? []) as string[];
+  const scopes = app.requestedScopes ?? [];
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors">

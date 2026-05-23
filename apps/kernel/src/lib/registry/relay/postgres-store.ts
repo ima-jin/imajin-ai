@@ -184,7 +184,7 @@ export class PostgresRelayStore implements RelayStore {
       );
     const row = rows[0];
     if (!row) return undefined;
-    return row.data as unknown as Uint8Array;
+    return row.data;
   }
 
   async putBlob(key: BlobKey, data: Uint8Array): Promise<void> {

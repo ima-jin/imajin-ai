@@ -228,7 +228,7 @@ export async function GET(
         const publicBase = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
         const baseUrl = `${publicBase}/media/api/assets`;
         const resp = build402Response({
-          manifest: manifest as import("@imajin/fair").FairManifestV1_1,
+          manifest: manifest,
           assetId: id,
           action,
           supportedSchemes: ['mjnx-direct'],
@@ -353,7 +353,7 @@ export async function GET(
 
   // 5a. Video quality variant serving (?quality=720p etc.)
   if (qualityParam && asset.mimeType.startsWith("video/") && (VIDEO_QUALITIES as readonly string[]).includes(qualityParam)) {
-    const quality = qualityParam as VideoQuality;
+    const quality = qualityParam;
 
     if (await variantExists(asset.storagePath, quality)) {
       const variantPath = getVariantPath(asset.storagePath, quality);

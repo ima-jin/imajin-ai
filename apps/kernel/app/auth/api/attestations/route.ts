@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
     .values({
       id,
       issuerDid: issuer_did,
-      subjectDid: subject_did as string,
+      subjectDid: subject_did,
       type: type as AttestationType,
       contextId: (context_id as string | undefined) ?? null,
       contextType: (context_type as string | undefined) ?? null,
@@ -167,10 +167,10 @@ export async function POST(request: NextRequest) {
     .returning();
 
   publish('attestation.created', {
-    issuer: issuer_did as string,
-    subject: subject_did as string,
+    issuer: issuer_did,
+    subject: subject_did,
     scope: 'auth',
-    payload: { attestationId: attestation.id, type, subjectDid: subject_did as string },
+    payload: { attestationId: attestation.id, type, subjectDid: subject_did },
   });
 
   return NextResponse.json(attestation, { status: 201, headers: cors });

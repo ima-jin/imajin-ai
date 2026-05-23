@@ -59,7 +59,7 @@ function extractFieldFromEventPayload(event: BusEvent): string | null {
     return null;
   }
 
-  const payload = event.payload as BusEventMap['vault.secret.updated'] | BusEventMap['vault.secret.rotated'] | undefined;
+  const payload = event.payload;
   if (!payload || typeof payload.field !== 'string' || payload.field.length === 0) {
     return null;
   }

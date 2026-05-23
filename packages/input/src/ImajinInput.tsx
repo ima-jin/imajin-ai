@@ -81,7 +81,7 @@ export function ImajinInput({
   // Close attach menu on click outside
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target)) {
         setShowAttachMenu(false);
       }
     }

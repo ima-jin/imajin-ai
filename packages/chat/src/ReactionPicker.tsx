@@ -15,7 +15,7 @@ export function ReactionPicker({ onSelect, onClose, position }: Readonly<Reactio
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+      if (pickerRef.current && !pickerRef.current.contains(event.target)) {
         onClose();
       }
     }

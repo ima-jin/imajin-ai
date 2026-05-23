@@ -52,7 +52,7 @@ export default async function AdminUsersPage({
      FROM auth.identities i
      LEFT JOIN profile.profiles p ON i.id = p.did
      ${whereClause}`,
-    binds as string[]
+    binds
   );
   const total = Number(countRows[0]?.total ?? 0);
 
@@ -74,7 +74,7 @@ export default async function AdminUsersPage({
      ${whereClause}
      ORDER BY i.created_at DESC
      LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
-    binds as string[]
+    binds
   );
 
   const hasNext = rows.length === PAGE_SIZE;
