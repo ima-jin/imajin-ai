@@ -156,13 +156,14 @@ export default function PeerManager() {
         </form>
       )}
 
-      {loading ? (
-        <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">Loading…</p>
-      ) : peers.length === 0 ? (
-        <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">
-          No peers configured — add a relay URL to start syncing
-        </p>
-      ) : (
+      {(() => {
+        if (loading) return <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">Loading…</p>;
+        if (peers.length === 0) return (
+          <p className="px-6 py-8 text-sm text-gray-400 dark:text-gray-500 text-center">
+            No peers configured — add a relay URL to start syncing
+          </p>
+        );
+        return (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

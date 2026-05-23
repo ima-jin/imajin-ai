@@ -141,13 +141,14 @@ export default function AdminBugsPage() {
         </div>
       )}
 
-      {loading ? (
-        <p className="text-gray-500 text-sm">Loading...</p>
-      ) : reports.length === 0 ? (
-        <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-12 text-center">
-          <p className="text-gray-500">No reports{filter !== 'all' ? ` with status "${filter}"` : ''}.</p>
-        </div>
-      ) : (
+      {(() => {
+        if (loading) return <p className="text-gray-500 text-sm">Loading...</p>;
+        if (reports.length === 0) return (
+          <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-12 text-center">
+            <p className="text-gray-500">No reports{filter !== 'all' ? ` with status "${filter}"` : ''}.</p>
+          </div>
+        );
+        return (
         <ul className="space-y-5">
           {reports.map((r) => {
             const busy = actionLoading === r.id;
@@ -157,7 +158,7 @@ export default function AdminBugsPage() {
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <StatusBadge status={r.status} />
                   <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300">
-                    {r.type === 'suggestion' ? '💡 Suggestion' : r.type === 'question' ? '❓ Question' : r.type === 'other' ? '💬 Other' : '🐛 Bug'}
+                    {{ suggestion: '💡 Suggestion', question: '❓ Question', other: '💬 Other', bug: '🐛 Bug' }[r.type] ?? '🐛 Bug'}
                   </span>
                   <span className="text-xs text-gray-500">{r.id}</span>
                   <span className="text-xs text-gray-600">{formatDate(r.createdAt)}</span>

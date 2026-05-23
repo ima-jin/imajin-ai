@@ -50,13 +50,12 @@ function ServiceRow({ service }: Readonly<{ service: ServiceCheck }>) {
         </div>
       </div>
       <div className="text-right">
-        <p className={`font-medium ${
-          service.status === 'up' ? 'text-green-400' :
-          service.status === 'down' ? 'text-red-400' :
-          'text-yellow-400'
-        }`}>
+        {(() => {
+          const statusColors: Record<string, string> = { up: 'text-green-400', down: 'text-red-400' };
+          return <p className={`font-medium ${statusColors[service.status] ?? 'text-yellow-400'}`}>
           {STATUS_TEXT[service.status]}
-        </p>
+        </p>;
+        })()}
         {service.responseTime !== null && (
           <p className="text-sm text-gray-500">{service.responseTime}ms</p>
         )}
@@ -120,11 +119,9 @@ export default function HealthPage() {
           <h1 className="text-4xl font-light tracking-tight mb-4">System Status</h1>
 
           {/* Overall status banner */}
-          <div className={`rounded-lg p-6 ${
-            loading ? 'bg-gray-800' :
-            allUp ? 'bg-green-900/30 border border-green-800' :
-            'bg-yellow-900/30 border border-yellow-800'
-          }`}>
+          {(() => {
+            const bannerCls = (() => { if (loading) return 'bg-gray-800'; if (allUp) return 'bg-green-900/30 border border-green-800'; return 'bg-yellow-900/30 border border-yellow-800'; })();
+            return <div className={`rounded-lg p-6 ${bannerCls}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 {loading ? (
@@ -133,7 +130,7 @@ export default function HealthPage() {
                   <div className={`w-3 h-3 rounded-full ${allUp ? 'bg-green-500' : 'bg-yellow-500'}`} />
                 )}
                 <span className="text-xl font-medium">
-                  {loading ? 'Checking...' : allUp ? 'All Systems Operational' : 'Some Systems Degraded'}
+                  {(() => { if (loading) return 'Checking...'; if (allUp) return 'All Systems Operational'; return 'Some Systems Degraded'; })()}
                 </span>
               </div>
               <button
@@ -149,7 +146,8 @@ export default function HealthPage() {
                 Last checked: {lastChecked.toLocaleTimeString()}
               </p>
             )}
-          </div>
+          </div>;
+          })()}
         </div>
 
         {error && (

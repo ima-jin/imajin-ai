@@ -76,12 +76,10 @@ function AddMemberPicker({
           Cancel
         </button>
       </div>
-      {loadingConnections ? (
-        <p className="text-xs text-gray-400">Loading connections…</p>
-      ) : connections.length === 0 ? (
-        <p className="text-xs text-gray-400">No connections available to add.</p>
-      ) : (
-        <>
+    {(() => {
+        if (loadingConnections) return <p className="text-xs text-gray-400">Loading connections…</p>;
+        if (connections.length === 0) return <p className="text-xs text-gray-400">No connections available to add.</p>;
+        return <>
           <input
             type="text"
             value={search}
@@ -109,8 +107,8 @@ function AddMemberPicker({
               })}
             </div>
           )}
-        </>
-      )}
+        </>;
+      })()}
     </div>
   );
 }
@@ -322,16 +320,13 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
   const mediaUrl = MEDIA_URL;
   const connectionsUrl = buildPublicUrl('connections');
 
-  const displayName =
-    convName ||
-    nameParam ||
-    (parsed.type === 'dm'
-      ? (dmPartnerName || 'Direct Message')
-      : parsed.type === 'event'
-      ? 'Event Chat'
-      : parsed.type === 'group'
-      ? 'Group Chat'
-      : 'Conversation');
+  const typeLabel = (() => {
+    if (parsed.type === 'dm') return dmPartnerName || 'Direct Message';
+    if (parsed.type === 'event') return 'Event Chat';
+    if (parsed.type === 'group') return 'Group Chat';
+    return 'Conversation';
+  })();
+  const displayName = convName || nameParam || typeLabel;
 
   if (authLoading) {
     return <div className="max-w-2xl mx-auto mt-20 text-center text-gray-500">Loading...</div>;
@@ -351,46 +346,52 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
           ← Back
         </Link>
         <div className="flex-1 min-w-0">
-          {parsed.type === 'group' && editingName ? (
-            <input
-              autoFocus
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              onBlur={handleNameSave}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); handleNameSave(); }
-                if (e.key === 'Escape') setEditingName(false);
-              }}
-              className="font-semibold bg-transparent border-b border-orange-500 outline-none w-full text-base"
-              placeholder="Untitled Group"
-            />
-          ) : (
-            parsed.type === 'group' ? (
-              <button
-                type="button"
-                className="font-semibold truncate cursor-pointer hover:text-orange-500 transition-colors text-left"
-                onClick={() => {
-                  setNameInput(convName || nameParam || '');
-                  setEditingName(true);
-                }}
-                title="Click to rename"
-              >
-                {!(convName || nameParam)
-                  ? <span className="text-gray-400 italic font-normal">Untitled Group</span>
-                  : displayName}
-              </button>
-            ) : (
+          {(() => {
+            if (parsed.type === 'group' && editingName) {
+              return (
+                <input
+                  autoFocus
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  onBlur={handleNameSave}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); handleNameSave(); }
+                    if (e.key === 'Escape') setEditingName(false);
+                  }}
+                  className="font-semibold bg-transparent border-b border-orange-500 outline-none w-full text-base"
+                  placeholder="Untitled Group"
+                />
+              );
+            }
+            if (parsed.type === 'group') {
+              return (
+                <button
+                  type="button"
+                  className="font-semibold truncate cursor-pointer hover:text-orange-500 transition-colors text-left"
+                  onClick={() => {
+                    setNameInput(convName || nameParam || '');
+                    setEditingName(true);
+                  }}
+                  title="Click to rename"
+                >
+                  {!(convName || nameParam)
+                    ? <span className="text-gray-400 italic font-normal">Untitled Group</span>
+                    : displayName}
+                </button>
+              );
+            }
+            return (
               <h1 className="font-semibold truncate">
                 {displayName}
               </h1>
-            )
-          )}
+            );
+          })()}
           {parsed.type === 'group' && (
             <button
               onClick={() => setShowMembers(!showMembers)}
               className="text-xs text-gray-500 mt-0.5 hover:text-orange-500 transition-colors text-left"
             >
-              {memberCount ? `${memberCount} member${memberCount !== 1 ? 's' : ''}` : 'Group conversation'}
+              {memberCount ? `${memberCount} member${memberCount === 1 ? '' : 's'}` : 'Group conversation'}
             </button>
           )}
           {parsed.type === 'event' && (
@@ -504,11 +505,11 @@ export default function ConversationPage() {
   // Legacy event: did:imajin:evt_xxx (type=evt_xxx, no colon separator)
   // Identity DID: did:imajin:Base58Key (type=identity, slug=Base58Key)
   // Standard: did:imajin:type:slug (dm, group, event)
-  const did = type.startsWith('evt_')
-    ? `did:imajin:${type}`
-    : type === 'identity'
-    ? `did:imajin:${slug}`
-    : `did:imajin:${type}:${slug}`;
+  const did = (() => {
+    if (type.startsWith('evt_')) return `did:imajin:${type}`;
+    if (type === 'identity') return `did:imajin:${slug}`;
+    return `did:imajin:${type}:${slug}`;
+  })();
 
   return <DIDConversationView did={did} />;
 }

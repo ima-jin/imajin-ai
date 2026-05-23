@@ -72,7 +72,7 @@ async function checkKernelService(
       // ignore parse errors
     }
 
-    const status = !res.ok ? 'down' : responseTime > 2000 ? 'degraded' : 'healthy';
+    const status = (() => { if (!res.ok) return 'down'; if (responseTime > 2000) return 'degraded'; return 'healthy'; })();
     return { name: svc.name, label: svc.label, group: 'kernel', status, responseTime, version, build, checkedAt };
   } catch {
     const responseTime = Date.now() - start;
@@ -115,7 +115,7 @@ async function checkUserspaceService(
       // ignore parse errors
     }
 
-    const status = !res.ok ? 'down' : responseTime > 2000 ? 'degraded' : 'healthy';
+    const status = (() => { if (!res.ok) return 'down'; if (responseTime > 2000) return 'degraded'; return 'healthy'; })();
     return { name: svc.name, label: svc.label, group: 'userspace', status, responseTime, version, build, checkedAt };
   } catch {
     const responseTime = Date.now() - start;

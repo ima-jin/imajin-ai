@@ -54,7 +54,7 @@ export function ConfigForm({ registrationMode, maxIdentities, maxStoragePerDidMb
             disabled={saving === 'registration_mode'}
             className="rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-4 py-2 text-sm font-medium"
           >
-            {saving === 'registration_mode' ? 'Saving…' : saved === 'registration_mode' ? 'Saved!' : 'Save'}
+            {(() => { if (saving === 'registration_mode') return 'Saving…'; if (saved === 'registration_mode') return 'Saved!'; return 'Save'; })()}
           </button>
         </div>
         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -83,7 +83,7 @@ export function ConfigForm({ registrationMode, maxIdentities, maxStoragePerDidMb
                 disabled={saving === 'max_identities'}
                 className="rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-4 py-2 text-sm font-medium"
               >
-                {saving === 'max_identities' ? 'Saving…' : saved === 'max_identities' ? 'Saved!' : 'Save'}
+                {(() => { if (saving === 'max_identities') return 'Saving…'; if (saved === 'max_identities') return 'Saved!'; return 'Save'; })()}
               </button>
             </div>
           </div>
@@ -104,7 +104,7 @@ export function ConfigForm({ registrationMode, maxIdentities, maxStoragePerDidMb
                 disabled={saving === 'max_storage_per_did_mb'}
                 className="rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-4 py-2 text-sm font-medium"
               >
-                {saving === 'max_storage_per_did_mb' ? 'Saving…' : saved === 'max_storage_per_did_mb' ? 'Saved!' : 'Save'}
+                {(() => { if (saving === 'max_storage_per_did_mb') return 'Saving…'; if (saved === 'max_storage_per_did_mb') return 'Saved!'; return 'Save'; })()}
               </button>
             </div>
           </div>

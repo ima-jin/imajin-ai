@@ -12,7 +12,7 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
   const isUnclaimed = !profile.claimStatus || profile.claimStatus === 'unclaimed';
   const viewerRole = viewer.viewerDid && !viewer.isSelf
     ? await getViewerMembership(profile.did, viewer.viewerDid)
-    : viewer.isSelf ? 'owner' : null;
+    : (viewer.isSelf ? 'owner' : null);
   const isMaintainer = viewerRole === 'maintainer' || viewerRole === 'owner' || viewerRole === 'admin';
 
   // For unclaimed stubs: show maintainers. For claimed: show owners/admins.

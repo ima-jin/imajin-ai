@@ -115,14 +115,15 @@ export default async function BugsPage({ searchParams }: Readonly<PageProps>) {
   if (!session) redirect('/');
 
   const { filter: filterParam } = await searchParams;
-  const filter = filterParam === 'closed' ? 'closed' : filterParam === 'all' ? 'all' : 'open';
+  const filterMap: Record<string, string> = { closed: 'closed', all: 'all' };
+  const filter = filterMap[filterParam ?? ''] ?? 'open';
 
   // Build status filter
-  const statusFilter = filter === 'open'
-    ? notInArray(bugReports.status, CLOSED_STATUSES)
-    : filter === 'closed'
-    ? inArray(bugReports.status, CLOSED_STATUSES)
-    : undefined;
+  const statusFilter = (() => {
+    if (filter === 'open') return notInArray(bugReports.status, CLOSED_STATUSES);
+    if (filter === 'closed') return inArray(bugReports.status, CLOSED_STATUSES);
+    return undefined;
+  })();
 
   const [myReports, allReports] = await Promise.all([
     db.select().from(bugReports).where(
@@ -172,7 +173,7 @@ export default async function BugsPage({ searchParams }: Readonly<PageProps>) {
                 : 'bg-[#1a1a1a] text-gray-400 hover:text-gray-200 border border-gray-700'
             }`}
           >
-            {f === 'open' ? '🔴 Open' : f === 'closed' ? '✅ Closed' : '📋 All'}
+            {{ open: '🔴 Open', closed: '✅ Closed', all: '📋 All' }[f]}
           </Link>
         ))}
       </div>
@@ -183,7 +184,7 @@ export default async function BugsPage({ searchParams }: Readonly<PageProps>) {
         {myReports.length === 0 ? (
           <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-8 text-center">
             <p className="text-gray-500">
-              {filter === 'open' ? "You don't have any open reports." : filter === 'closed' ? "No closed reports." : "You haven't reported anything yet."}
+              {{ open: "You don't have any open reports.", closed: "No closed reports.", all: "You haven't reported anything yet." }[filter]}
             </p>
             {filter === 'open' && (
               <p className="text-sm text-gray-600 mt-1">

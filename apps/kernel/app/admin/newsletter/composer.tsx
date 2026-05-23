@@ -219,7 +219,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
           {result && (
             <p className="text-sm text-green-600 dark:text-green-400">
               {result.sent
-                ? `Sent to ${result.recipientCount.toLocaleString()} recipient${result.recipientCount !== 1 ? 's' : ''}.`
+                ? `Sent to ${result.recipientCount.toLocaleString()} recipient${result.recipientCount === 1 ? '' : 's'}.`
                 : 'No recipients found.'}
             </p>
           )}

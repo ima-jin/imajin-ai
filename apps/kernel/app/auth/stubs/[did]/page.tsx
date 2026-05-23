@@ -455,7 +455,7 @@ export default function EditStubPage() {
             )}
             <div className="flex-1">
               <label className="cursor-pointer inline-block px-3 py-1.5 bg-zinc-900 border border-gray-700 rounded-lg text-xs text-zinc-400 hover:text-white hover:border-gray-500 transition-colors">
-                {avatarUploading ? 'Uploading…' : avatar ? 'Change avatar' : 'Upload avatar'}
+                {(() => { if (avatarUploading) return 'Uploading…'; if (avatar) return 'Change avatar'; return 'Upload avatar'; })()}
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/gif,image/webp"
@@ -486,7 +486,7 @@ export default function EditStubPage() {
             />
           )}
           <label className="cursor-pointer inline-block px-3 py-1.5 bg-zinc-900 border border-gray-700 rounded-lg text-xs text-zinc-400 hover:text-white hover:border-gray-500 transition-colors">
-            {bannerUploading ? 'Uploading…' : banner ? 'Change banner' : 'Upload banner'}
+            {(() => { if (bannerUploading) return 'Uploading…'; if (banner) return 'Change banner'; return 'Upload banner'; })()}
             <input
               type="file"
               accept="image/jpeg,image/png,image/gif,image/webp"
