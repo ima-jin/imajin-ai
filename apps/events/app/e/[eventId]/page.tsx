@@ -68,23 +68,24 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ? Math.min(...ticketsList.map(t => t.price))
     : null;
   
-  const priceText = lowestPrice !== null
-    ? lowestPrice === 0 
-      ? 'Free' 
-      : `From CA$${(lowestPrice / 100).toFixed(2)}`
-    : '';
+  let priceText = '';
+  if (lowestPrice !== null) {
+    priceText = lowestPrice === 0 ? 'Free' : `From CA$${(lowestPrice / 100).toFixed(2)}`;
+  }
   
   const description = event.description
     ? event.description.slice(0, 200) + (event.description.length > 200 ? '...' : '')
     : `Join us for ${event.title} on ${formattedDate}`;
+  // Note: inner ternary (length > 200) is inside string concatenation, not inside another ternary
   
   const baseUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
   const url = eventUrl(baseUrl, event.id);
   
   // Ensure event image is an absolute URL for OG tags (relative paths resolve to localhost in SSR)
-  const absoluteImageUrl = event.imageUrl
-    ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${baseUrl}${event.imageUrl}`)
-    : null;
+  let absoluteImageUrl: string | null = null;
+  if (event.imageUrl) {
+    absoluteImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${baseUrl}${event.imageUrl}`;
+  }
   const ogImage = absoluteImageUrl || `${baseUrl}/api/og?title=${encodeURIComponent(event.title)}&date=${encodeURIComponent(formattedDate)}&location=${encodeURIComponent(event.city || 'Virtual')}`;
   
   return {
@@ -774,42 +775,56 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
               {!session && <MagicLinkButton eventId={event.id} />}
             </div>
 
-            {!canSeeTickets ? (
-              <div className="text-center py-12">
-                <div className="text-5xl mb-4">🔒</div>
-                <p className="text-lg font-semibold mb-2">This event is invite-only</p>
-                <p className="text-gray-500 dark:text-gray-400 text-sm">
-                  You need a valid invite link to purchase tickets.
+            {(() => {
+              if (!canSeeTickets) {
+                return (
+                  <div className="text-center py-12">
+                    <div className="text-5xl mb-4">🔒</div>
+                    <p className="text-lg font-semibold mb-2">This event is invite-only</p>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">
+                      You need a valid invite link to purchase tickets.
+                    </p>
+                  </div>
+                );
+              }
+              if (canPurchaseTickets) {
+                return (
+                  <TicketsGate
+                    surveysRequired={requiredSurveyIds.length > 0}
+                    initialCompleted={surveysCompleted}
+                    requiredSurveyIds={requiredSurveyIds}
+                  >
+                    <TicketsSection
+                      eventId={event.id}
+                      eventTitle={event.title}
+                      tickets={ticketTypesList}
+                      userOrders={userOrders}
+                      hasTicket={hasTicket}
+                      inviteToken={inviteToken}
+                      etransferEnabled={etransferEnabled}
+                      isAuthenticated={!!session}
+                      sessionEmail={session?.email ?? undefined}
+                      sessionContactEmail={sessionContactEmail}
+                      sellerConnected={sellerConnected}
+                      hasHiddenTiers={hasHiddenTiers}
+                    />
+                  </TicketsGate>
+                );
+              }
+              let ticketStatusMessage: string;
+              if (status === 'cancelled') {
+                ticketStatusMessage = 'Ticket sales are closed — this event was cancelled.';
+              } else if (status === 'completed') {
+                ticketStatusMessage = 'This event has ended. Ticket sales are closed.';
+              } else {
+                ticketStatusMessage = 'Ticket sales are not currently available.';
+              }
+              return (
+                <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                  {ticketStatusMessage}
                 </p>
-              </div>
-            ) : canPurchaseTickets ? (
-              <TicketsGate
-                surveysRequired={requiredSurveyIds.length > 0}
-                initialCompleted={surveysCompleted}
-                requiredSurveyIds={requiredSurveyIds}
-              >
-                <TicketsSection
-                  eventId={event.id}
-                  eventTitle={event.title}
-                  tickets={ticketTypesList}
-                  userOrders={userOrders}
-                  hasTicket={hasTicket}
-                  inviteToken={inviteToken}
-                  etransferEnabled={etransferEnabled}
-                  isAuthenticated={!!session}
-                  sessionEmail={session?.email ?? undefined}
-                  sessionContactEmail={sessionContactEmail}
-                  sellerConnected={sellerConnected}
-                  hasHiddenTiers={hasHiddenTiers}
-                />
-              </TicketsGate>
-            ) : (
-              <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-                {status === 'cancelled' ? 'Ticket sales are closed — this event was cancelled.' :
-                 status === 'completed' ? 'This event has ended. Ticket sales are closed.' :
-                 'Ticket sales are not currently available.'}
-              </p>
-            )}
+              );
+            })()}
           </div>
         )}
       </div>

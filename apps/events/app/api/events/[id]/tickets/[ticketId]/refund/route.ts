@@ -157,9 +157,10 @@ export async function POST(
         }
 
         const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
-        const imageUrl = event.imageUrl
-          ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
-          : null;
+        let imageUrl: string | null = null;
+        if (event.imageUrl) {
+          imageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
+        }
 
         publish('ticket.refunded', {
           issuer: did,

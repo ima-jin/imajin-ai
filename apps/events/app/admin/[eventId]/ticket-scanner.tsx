@@ -75,12 +75,18 @@ export function TicketScanner({ eventId, onCheckIn, lookupGuest }: Readonly<Tick
         });
       } else {
         playTone(220, 200);
-        const msg =
-          data.error === 'already checked in' ? '❌ Already checked in'
-          : data.error === 'not valid' ? '❌ Ticket not valid'
-          : res.status === 404 ? '❌ Ticket not found'
-          : res.status === 403 ? '❌ Not authorized'
-          : '❌ Check-in failed';
+        let msg: string;
+        if (data.error === 'already checked in') {
+          msg = '❌ Already checked in';
+        } else if (data.error === 'not valid') {
+          msg = '❌ Ticket not valid';
+        } else if (res.status === 404) {
+          msg = '❌ Ticket not found';
+        } else if (res.status === 403) {
+          msg = '❌ Not authorized';
+        } else {
+          msg = '❌ Check-in failed';
+        }
         setResult({ type: 'error', message: msg });
       }
     } catch {

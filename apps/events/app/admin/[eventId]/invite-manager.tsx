@@ -197,13 +197,14 @@ export function InviteManager({ eventId, accessMode }: Readonly<Props>) {
       )}
 
       {/* Invite list */}
-      {loading ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400 py-4">Loading...</p>
-      ) : invites.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400 py-4">
-          No invite links yet. Generate one above.
-        </p>
-      ) : (
+      {(() => {
+        if (loading) return <p className="text-sm text-gray-500 dark:text-gray-400 py-4">Loading...</p>;
+        if (invites.length === 0) return (
+          <p className="text-sm text-gray-500 dark:text-gray-400 py-4">
+            No invite links yet. Generate one above.
+          </p>
+        );
+        return (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -263,7 +264,8 @@ export function InviteManager({ eventId, accessMode }: Readonly<Props>) {
             </tbody>
           </table>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

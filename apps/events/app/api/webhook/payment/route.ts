@@ -433,13 +433,17 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const magicLink = onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : undefined;
 
   // Registration CTA goes through magic link for auth; falls back to naked URL.
-  const registrationUrl = anyPendingRegistration
-    ? (onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id))
-    : eventMyTicketsUrl(EVENTS_URL, event.id);
+  let registrationUrl: string;
+  if (anyPendingRegistration) {
+    registrationUrl = onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id);
+  } else {
+    registrationUrl = eventMyTicketsUrl(EVENTS_URL, event.id);
+  }
 
-  const eventImageUrl = event.imageUrl
-    ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
-    : undefined;
+  let eventImageUrl: string | undefined;
+  if (event.imageUrl) {
+    eventImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
+  }
 
   const formattedEventDate = eventDate.toLocaleDateString('en-US', {
     weekday: 'long',

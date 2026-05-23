@@ -63,9 +63,14 @@ export async function GET(
 
     // fields can be { elements: [...] } or directly an array
     const rawFields = row.fields || {};
-    const fields: Array<{ name: string; title?: string }> =
-      Array.isArray(rawFields) ? rawFields :
-      Array.isArray(rawFields.elements) ? rawFields.elements : [];
+    let fields: Array<{ name: string; title?: string }>;
+    if (Array.isArray(rawFields)) {
+      fields = rawFields;
+    } else if (Array.isArray(rawFields.elements)) {
+      fields = rawFields.elements;
+    } else {
+      fields = [];
+    }
     const answers: Record<string, unknown> = row.answers || {};
 
     questions = fields

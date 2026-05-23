@@ -163,11 +163,14 @@ function ProfileCell({ buyerDid, buyerName, buyerHandle, buyerAvatar, buyerEmail
 }>) {
   const display = buyerName || buyerHandle || (buyerDid ? truncateId(buyerDid, 20) : '—');
   const initials = display.charAt(0).toUpperCase();
-  const profileUrl = buyerHandle
-    ? `/profile/${encodeURIComponent(buyerHandle)}`
-    : buyerDid
-    ? `/profile/${encodeURIComponent(buyerDid)}`
-    : null;
+  let profileUrl: string | null;
+  if (buyerHandle) {
+    profileUrl = `/profile/${encodeURIComponent(buyerHandle)}`;
+  } else if (buyerDid) {
+    profileUrl = `/profile/${encodeURIComponent(buyerDid)}`;
+  } else {
+    profileUrl = null;
+  }
 
   const nameContent = buyerName && (
     <p className="text-sm font-medium truncate">{buyerName}</p>

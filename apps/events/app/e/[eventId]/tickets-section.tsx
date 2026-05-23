@@ -187,14 +187,14 @@ function OrderCard({ order, eventId }: Readonly<{ order: UserOrder; eventId: str
       })
     : 'N/A';
 
-  const formattedTotal = order.totalAmount !== null && order.currency
-    ? order.totalAmount === 0
-      ? 'Free'
-      : new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: order.currency,
-        }).format(order.totalAmount / 100)
-    : 'N/A';
+  const formattedTotal = (() => {
+    if (order.totalAmount === null || !order.currency) return 'N/A';
+    if (order.totalAmount === 0) return 'Free';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: order.currency,
+    }).format(order.totalAmount / 100);
+  })();
 
   // order.ticketTypeName already encodes per-type counts for mixed orders
   // (e.g. "2× Things are great" or "1× Premium + 2× Bunkie"). Don't
@@ -258,6 +258,13 @@ function TicketQRCell({ ticket, override }: Readonly<{ ticket: OrderTicket; even
   const isPending = status === 'pending';
   const qrCode = override?.qrCode ?? ticket.qrCodeDataUri;
 
+  let statusLabel: string;
+  if (ticket.status === 'used') {
+    statusLabel = ticket.usedAt ? `Checked In · ${timeAgo(ticket.usedAt)}` : 'Checked In';
+  } else {
+    statusLabel = ticket.status;
+  }
+
   return (
     <div className="flex flex-col items-center gap-2">
       {isPending ? (
@@ -283,9 +290,7 @@ function TicketQRCell({ ticket, override }: Readonly<{ ticket: OrderTicket; even
             </div>
           </div>
           <div className="text-xs font-medium capitalize text-gray-600 dark:text-gray-400 text-center">
-            🎟️ {ticket.status === 'used'
-              ? `Checked In${ticket.usedAt ? ` · ${timeAgo(ticket.usedAt)}` : ''}`
-              : ticket.status}
+            🎟️ {statusLabel}
           </div>
         </>
       )}
@@ -426,6 +431,12 @@ const ROLE_LABELS: Record<string, string> = {
   creator: 'Creator',
 };
 
+const ROLE_DOT_COLORS: Record<string, string> = {
+  seller: 'bg-orange-500',
+  buyer_credit: 'bg-green-500',
+  platform: 'bg-blue-500',
+};
+
 function TicketFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement }>) {
   const [open, setOpen] = useState(false);
   const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -461,12 +472,7 @@ function TicketFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement
               className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-900/60 rounded-lg text-sm"
             >
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${
-                  entry.role === 'seller' ? 'bg-orange-500' :
-                  entry.role === 'buyer_credit' ? 'bg-green-500' :
-                  entry.role === 'platform' ? 'bg-blue-500' :
-                  'bg-gray-500'
-                }`} />
+                <div className={`w-2 h-2 rounded-full ${ROLE_DOT_COLORS[entry.role] ?? 'bg-gray-500'}`} />
                 <span className="font-medium">{ROLE_LABELS[entry.role] ?? entry.role}</span>
                 <span className="text-xs text-gray-400 truncate max-w-[120px]" title={entry.did}>
                   {entry.did.length > 24 ? entry.did.slice(0, 10) + '…' + entry.did.slice(-6) : entry.did}
@@ -653,43 +659,49 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
                   )}
                 </div>
 
-                {ticket.price > 0 && !sellerConnected ? (
-                  etransferEnabled ? (
+                {(() => {
+                  if (ticket.price > 0 && !sellerConnected) {
+                    if (etransferEnabled) {
+                      return (
+                        <TicketPurchase
+                          eventId={eventId}
+                          eventTitle={eventTitle}
+                          ticket={ticket}
+                          inviteToken={inviteToken}
+                          etransferEnabled={etransferEnabled}
+                          stripeDisabled={true}
+                          sessionEmail={sessionEmail}
+                          quantity={quantities[ticket.id] || 0}
+                          onQuantityChange={(q) => setQuantities(prev => ({ ...prev, [ticket.id]: q }))}
+                          hideCheckoutButton={true}
+                        />
+                      );
+                    }
+                    return (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+                        Payments not yet available
+                      </p>
+                    );
+                  }
+                  // Per-ticket UI: just the quantity stepper for paid tickets
+                  // (checkout happens via the unified cart bar below), or the
+                  // RSVP button for free tickets. Email collection is handled
+                  // inline by TicketPurchase itself when needed — never gate
+                  // the stepper, which has no side-effects.
+                  return (
                     <TicketPurchase
                       eventId={eventId}
                       eventTitle={eventTitle}
                       ticket={ticket}
                       inviteToken={inviteToken}
                       etransferEnabled={etransferEnabled}
-                      stripeDisabled={true}
                       sessionEmail={sessionEmail}
-                      quantity={quantities[ticket.id] || 0}
-                      onQuantityChange={(q) => setQuantities(prev => ({ ...prev, [ticket.id]: q }))}
-                      hideCheckoutButton={true}
+                      quantity={ticket.price > 0 ? (quantities[ticket.id] || 0) : undefined}
+                      onQuantityChange={ticket.price > 0 ? (q) => setQuantities(prev => ({ ...prev, [ticket.id]: q })) : undefined}
+                      hideCheckoutButton={ticket.price > 0}
                     />
-                  ) : (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-                      Payments not yet available
-                    </p>
-                  )
-                ) : (
-                  // Per-ticket UI: just the quantity stepper for paid tickets
-                  // (checkout happens via the unified cart bar below), or the
-                  // RSVP button for free tickets. Email collection is handled
-                  // inline by TicketPurchase itself when needed — never gate
-                  // the stepper, which has no side-effects.
-                  <TicketPurchase
-                    eventId={eventId}
-                    eventTitle={eventTitle}
-                    ticket={ticket}
-                    inviteToken={inviteToken}
-                    etransferEnabled={etransferEnabled}
-                    sessionEmail={sessionEmail}
-                    quantity={ticket.price > 0 ? (quantities[ticket.id] || 0) : undefined}
-                    onQuantityChange={ticket.price > 0 ? (q) => setQuantities(prev => ({ ...prev, [ticket.id]: q })) : undefined}
-                    hideCheckoutButton={ticket.price > 0}
-                  />
-                )}
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -1113,12 +1125,20 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
   if (step === 'emt-verify-sent') {
     const isPolling = pollStatus === 'pending' || pollStatus === 'completed';
     const isExpired = pollStatus === 'expired' || pollStatus === 'claimed' || !!pollError;
+    let verifyHeading: string;
+    if (isExpired) {
+      verifyHeading = 'Verification expired';
+    } else if (isPolling) {
+      verifyHeading = 'Waiting for verification…';
+    } else {
+      verifyHeading = 'Check your email to confirm';
+    }
     return (
       <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
         <div className="flex items-center gap-2">
           <span className="text-orange-500 text-xl">📨</span>
           <h3 className="font-semibold text-base">
-            {isExpired ? 'Verification expired' : isPolling ? 'Waiting for verification…' : 'Check your email to confirm'}
+            {verifyHeading}
           </h3>
         </div>
         {isExpired ? (
@@ -1287,6 +1307,15 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
     );
   }
 
+  let cardButtonLabel: string;
+  if (step === 'card-loading') {
+    cardButtonLabel = 'Loading…';
+  } else if (totalQty === 0) {
+    cardButtonLabel = '💳 Pay with Card';
+  } else {
+    cardButtonLabel = `💳 Pay with Card — ${formattedTotal}`;
+  }
+
   return (
     <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl">
       {/* Issue #4: email collection when no contactEmail on file */}
@@ -1322,7 +1351,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
                 : 'bg-orange-500 text-white hover:bg-orange-600'
             }`}
           >
-            {step === 'card-loading' ? 'Loading…' : totalQty === 0 ? '💳 Pay with Card' : `💳 Pay with Card — ${formattedTotal}`}
+            {cardButtonLabel}
           </button>
           {buyerBalance !== null && buyerBalance > 0 && (
             <button

@@ -74,11 +74,10 @@ export function CohostManager({ eventId, isOwner, ownerDid }: Readonly<CohostMan
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
       <h2 className="text-xl font-semibold mb-4">Co-hosts</h2>
 
-      {loading ? (
-        <p className="text-gray-500 text-sm">Loading...</p>
-      ) : cohosts.length === 0 ? (
-        <p className="text-gray-500 text-sm mb-4">No co-hosts added yet.</p>
-      ) : (
+      {(() => {
+        if (loading) return <p className="text-gray-500 text-sm">Loading...</p>;
+        if (cohosts.length === 0) return <p className="text-gray-500 text-sm mb-4">No co-hosts added yet.</p>;
+        return (
         <ul className="space-y-3 mb-6">
           {cohosts.map(cohost => (
             <li key={cohost.did} className="flex items-center gap-3">
@@ -110,7 +109,8 @@ export function CohostManager({ eventId, isOwner, ownerDid }: Readonly<CohostMan
             </li>
           ))}
         </ul>
-      )}
+        );
+      })()}
 
       {isOwner && (
         <div className="space-y-3">

@@ -136,9 +136,14 @@ export async function GET(
       `;
       for (const row of formRows) {
         const rawFields = row.fields || {};
-        const fields: Array<{ name: string; title?: string }> =
-          Array.isArray(rawFields) ? rawFields :
-          Array.isArray(rawFields.elements) ? rawFields.elements : [];
+    let fields: Array<{ name: string; title?: string }>;
+        if (Array.isArray(rawFields)) {
+          fields = rawFields;
+        } else if (Array.isArray(rawFields.elements)) {
+          fields = rawFields.elements;
+        } else {
+          fields = [];
+        }
         const mappedFields = fields.map((f: any) => ({
           name: f.name,
           title: f.title || f.name,

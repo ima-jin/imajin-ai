@@ -59,11 +59,14 @@ export const POST = withLogger('events', async (request, { log }) => {
     }
 
     // Normalize to cart (same pattern as Stripe/EMT routes)
-    const rawItems = body.items && body.items.length > 0
-      ? body.items
-      : body.ticketTypeId
-        ? [{ ticketTypeId: body.ticketTypeId, quantity: body.quantity ?? 1 }]
-        : [];
+    let rawItems: { ticketTypeId: string; quantity: number }[];
+    if (body.items && body.items.length > 0) {
+      rawItems = body.items;
+    } else if (body.ticketTypeId) {
+      rawItems = [{ ticketTypeId: body.ticketTypeId, quantity: body.quantity ?? 1 }];
+    } else {
+      rawItems = [];
+    }
 
     if (rawItems.length === 0) {
       return NextResponse.json({ error: 'items or ticketTypeId is required' }, { status: 400 });
@@ -217,9 +220,10 @@ export const POST = withLogger('events', async (request, { log }) => {
       try {
         const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
         const eventDate = new Date(event.startsAt);
-        const eventImageUrl = event.imageUrl
-          ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
-          : undefined;
+        let eventImageUrl: string | undefined;
+        if (event.imageUrl) {
+          eventImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
+        }
 
         for (const ticket of tickets) {
           const ticketType = typesById.get(ticket.ticketTypeId);

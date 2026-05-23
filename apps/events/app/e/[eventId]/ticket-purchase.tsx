@@ -242,13 +242,11 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           <button
             onClick={() => handleFreeRsvp(!!sessionEmail)}
             disabled={step === 'loading-rsvp' || !email.includes('@')}
-            className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
-              step === 'loading-rsvp'
-                ? 'bg-orange-400 text-white cursor-wait'
-                : !email.includes('@')
-                ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                : 'bg-orange-500 text-white hover:bg-orange-600'
-            }`}
+            className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${(() => {
+              if (step === 'loading-rsvp') return 'bg-orange-400 text-white cursor-wait';
+              if (!email.includes('@')) return 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed';
+              return 'bg-orange-500 text-white hover:bg-orange-600';
+            })()}`}
           >
             {step === 'loading-rsvp' ? 'Confirming...' : 'Confirm RSVP'}
           </button>
@@ -357,13 +355,11 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           <button
             onClick={handleETransfer}
             disabled={step === 'loading-etransfer' || !email.includes('@')}
-            className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
-              step === 'loading-etransfer'
-                ? 'bg-orange-400 text-white cursor-wait'
-                : !email.includes('@')
-                ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                : 'bg-orange-500 text-white hover:bg-orange-600'
-            }`}
+            className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${(() => {
+              if (step === 'loading-etransfer') return 'bg-orange-400 text-white cursor-wait';
+              if (!email.includes('@')) return 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed';
+              return 'bg-orange-500 text-white hover:bg-orange-600';
+            })()}`}
           >
             {step === 'loading-etransfer' ? 'Reserving...' : 'Reserve My Ticket'}
           </button>
@@ -450,25 +446,20 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
         <button
           onClick={handleButtonClick}
           disabled={(step as string) === 'loading-rsvp' || (!isFree && quantity === 0)}
-          className={`px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap ${
-            (step as string) === 'loading-rsvp'
-              ? 'bg-orange-400 text-white cursor-wait'
-              : (!isFree && quantity === 0)
-              ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-              : 'bg-orange-500 text-white hover:bg-orange-600'
-          }`}
+          className={`px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap ${(() => {
+            if ((step as string) === 'loading-rsvp') return 'bg-orange-400 text-white cursor-wait';
+            if (!isFree && quantity === 0) return 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed';
+            return 'bg-orange-500 text-white hover:bg-orange-600';
+          })()}`}
         >
-          {(step as string) === 'loading-rsvp'
-            ? 'Confirming...'
-            : isFree
-            ? 'RSVP'
-            : (stripeDisabled && etransferEnabled)
-            ? '🏦 Pay by e-Transfer'
-            : quantity > 1
-            ? `Get ${quantity} Tickets`
-            : quantity === 0
-            ? 'Select quantity'
-            : 'Get Ticket'}
+          {(() => {
+            if ((step as string) === 'loading-rsvp') return 'Confirming...';
+            if (isFree) return 'RSVP';
+            if (stripeDisabled && etransferEnabled) return '🏦 Pay by e-Transfer';
+            if (quantity > 1) return `Get ${quantity} Tickets`;
+            if (quantity === 0) return 'Select quantity';
+            return 'Get Ticket';
+          })()}
         </button>
       )}
     </>

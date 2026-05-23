@@ -99,10 +99,11 @@ function ProfileCell({ ownerDid, profile, paymentMethod, paymentId }: Readonly<{
   const display = profile?.name || profile?.handle || (ownerDid ? truncateDid(ownerDid) : '—');
   const initials = display.charAt(0).toUpperCase();
 
-  const paymentLabel =
-    paymentMethod === 'stripe' ? '💳 Card'
-    : paymentMethod === 'etransfer' ? '🏦 e-Transfer'
-    : null;
+  const PAYMENT_LABELS: Record<string, string> = {
+    stripe: '💳 Card',
+    etransfer: '🏦 e-Transfer',
+  };
+  const paymentLabel = (paymentMethod && PAYMENT_LABELS[paymentMethod]) ?? null;
 
   return (
     <div className="flex items-center gap-2 min-w-0">
@@ -630,28 +631,28 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
               </button>
             </div>
             <div className="overflow-y-auto flex-1">
-              {surveyLoading ? (
-                <p className="text-sm text-gray-500">Loading...</p>
-              ) : surveyQuestions.length === 0 ? (
-                <p className="text-sm text-gray-500">No survey answers recorded.</p>
-              ) : (
+              {(() => {
+                if (surveyLoading) return <p className="text-sm text-gray-500">Loading...</p>;
+                if (surveyQuestions.length === 0) return <p className="text-sm text-gray-500">No survey answers recorded.</p>;
+                return (
                 <table className="w-full text-sm">
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {surveyQuestions.map((qa, i) => (
                       <tr key={i}>
                         <td className="py-2 pr-4 font-medium text-gray-700 dark:text-gray-300 w-2/5 align-top">{qa.question}</td>
                         <td className="py-2 text-gray-600 dark:text-gray-400 break-words">
-                          {qa.answer === null || qa.answer === undefined
-                            ? <span className="text-gray-400">—</span>
-                            : typeof qa.answer === 'object'
-                              ? JSON.stringify(qa.answer)
-                              : String(qa.answer)}
+                          {(() => {
+                            if (qa.answer === null || qa.answer === undefined) return <span className="text-gray-400">—</span>;
+                            if (typeof qa.answer === 'object') return JSON.stringify(qa.answer);
+                            return String(qa.answer);
+                          })()}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              )}
+                );
+              })()}
             </div>
             <div className="mt-4 flex justify-end">
               <button
@@ -769,6 +770,12 @@ const FAIR_ROLE_LABELS: Record<string, string> = {
   creator: 'Creator',
 };
 
+const FAIR_ROLE_DOT_COLORS: Record<string, string> = {
+  seller: 'bg-orange-500',
+  buyer_credit: 'bg-green-500',
+  platform: 'bg-blue-500',
+};
+
 function truncateFairDid(did: string): string {
   return did.length > 16 ? did.slice(0, 10) + '…' + did.slice(-6) : did;
 }
@@ -791,12 +798,7 @@ function GuestFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement 
           className="flex items-center justify-between px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg text-xs border border-gray-100 dark:border-gray-700"
         >
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              entry.role === 'seller' ? 'bg-orange-500' :
-              entry.role === 'buyer_credit' ? 'bg-green-500' :
-              entry.role === 'platform' ? 'bg-blue-500' :
-              'bg-gray-500'
-            }`} />
+            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${FAIR_ROLE_DOT_COLORS[entry.role] ?? 'bg-gray-500'}`} />
             <span className="font-medium">{FAIR_ROLE_LABELS[entry.role] ?? entry.role}</span>
             <span className="text-gray-400 font-mono">{truncateFairDid(entry.did)}</span>
           </div>
@@ -967,7 +969,11 @@ function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmai
       disabled={disabled}
       className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg transition disabled:opacity-50"
     >
-      {isSending ? 'Sending…' : lastEmailSentAt ? `Resend (${timeAgo(lastEmailSentAt)})` : 'Resend Email'}
+      {(() => {
+        if (isSending) return 'Sending…';
+        if (lastEmailSentAt) return `Resend (${timeAgo(lastEmailSentAt)})`;
+        return 'Resend Email';
+      })()}
     </button>
   );
 }

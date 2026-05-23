@@ -117,7 +117,11 @@ export async function GET(
         paymentMethod: t.payment_method ?? null,
         paymentId: t.payment_id ?? null,
         holdExpiresAt: t.hold_expires_at ?? null,
-        profile: profile ? { ...profile, email: sqlEmail || profile.email || null } : (sqlEmail ? { name: null, handle: null, avatar: null, email: sqlEmail } : null),
+        profile: (() => {
+          if (profile) return { ...profile, email: sqlEmail || profile.email || null };
+          if (sqlEmail) return { name: null, handle: null, avatar: null, email: sqlEmail };
+          return null;
+        })(),
         registrationStatus: t.registration_status ?? null,
         attendeeName: t.attendee_name ?? null,
         lastEmailSentAt: t.last_email_sent_at ?? null,
