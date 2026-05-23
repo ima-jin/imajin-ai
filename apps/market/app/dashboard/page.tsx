@@ -463,10 +463,10 @@ export default function DashboardPage() {
                   Next →
                 </button>
             </div>
+            )}
           </>
           );
         })()}
-        )}
       </div>
 
       {/* Confirmation modal */}
