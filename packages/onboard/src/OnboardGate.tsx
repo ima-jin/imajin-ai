@@ -34,9 +34,9 @@ export function OnboardGate({
 
   // Resolve auth URL from props or env
   const authUrl = authUrlProp || (
-    typeof window !== 'undefined'
-      ? `${globalThis.location.origin}/auth`
-      : ''
+    typeof window === 'undefined'
+      ? ''
+      : `${globalThis.location.origin}/auth`
   );
 
   const checkSession = useCallback(async () => {

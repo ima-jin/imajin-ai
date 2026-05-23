@@ -71,9 +71,9 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
   async function loadConfig() {
     try {
       const profileUrl =
-        typeof window !== 'undefined'
-          ? globalThis.location.origin
-          : (process.env.NEXT_PUBLIC_PROFILE_URL ?? '');
+        typeof window === 'undefined'
+          ? (process.env.NEXT_PUBLIC_PROFILE_URL ?? '')
+          : globalThis.location.origin;
       const res = await fetch(
         `${profileUrl}/api/forest/${encodeURIComponent(groupDid)}/config`,
         { credentials: 'include' }

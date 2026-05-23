@@ -137,10 +137,10 @@ export function canonicalize(obj: unknown): string {
 export function createChallenge(): string {
   // 32 random bytes as hex
   const bytes = new Uint8Array(32);
-  if (typeof globalThis.crypto !== 'undefined') {
-    globalThis.crypto.getRandomValues(bytes);
-  } else {
+  if (typeof globalThis.crypto === 'undefined') {
     throw new TypeError('Secure random source unavailable');
+  } else {
+    globalThis.crypto.getRandomValues(bytes);
   }
   return crypto.bytesToHex(bytes);
 }

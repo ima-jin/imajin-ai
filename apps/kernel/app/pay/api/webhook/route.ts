@@ -552,11 +552,11 @@ async function notifyEventsService(
       }),
     });
     
-    if (!response.ok) {
+    if (response.ok) {
+      log.info({}, 'Events service notified successfully');
+    } else {
       const error = await response.text();
       log.error({ error }, 'Events service webhook failed');
-    } else {
-      log.info({}, 'Events service notified successfully');
     }
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to notify events service');
@@ -599,11 +599,11 @@ async function notifyCoffeeService(
       }),
     });
 
-    if (!response.ok) {
+    if (response.ok) {
+      log.info({}, 'Coffee service notified successfully');
+    } else {
       const error = await response.text();
       log.error({ error }, 'Coffee service webhook failed');
-    } else {
-      log.info({}, 'Coffee service notified successfully');
     }
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to notify coffee service');
@@ -726,11 +726,11 @@ async function notifyCoffeeServiceSubscription(
       }),
     });
 
-    if (!response.ok) {
+    if (response.ok) {
+      log.info({ type }, 'Coffee service notified of subscription event');
+    } else {
       const error = await response.text();
       log.error({ error }, 'Coffee service subscription webhook failed');
-    } else {
-      log.info({ type }, 'Coffee service notified of subscription event');
     }
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to notify coffee service of subscription event');

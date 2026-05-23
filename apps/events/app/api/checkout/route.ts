@@ -123,7 +123,7 @@ export const POST = withLogger('events', async (request, { log, correlationId })
         const available = tt.quantity - (tt.sold ?? 0);
         if (available < item.quantity) {
           return NextResponse.json(
-            { error: `Only ${available} ${tt.name} ticket${available !== 1 ? 's' : ''} available` },
+            { error: `Only ${available} ${tt.name} ticket${available === 1 ? '' : 's'} available` },
             { status: 409 }
           );
         }

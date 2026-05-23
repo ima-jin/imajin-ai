@@ -302,7 +302,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     let updated;
-    if (!existing) {
+    if (existing) {
+      // Update existing profile
+      [updated] = await db
+        .update(profiles)
+        .set(updates)
+        .where(eq(profiles.did, existing.did))
+        .returning();
+    } else {
       // Create new profile for bare identity
       [updated] = await db
         .insert(profiles)
@@ -318,13 +325,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           featureToggles: feature_toggles || {},
           agentPricing: agentPricing || null,
         })
-        .returning();
-    } else {
-      // Update existing profile
-      [updated] = await db
-        .update(profiles)
-        .set(updates)
-        .where(eq(profiles.did, existing.did))
         .returning();
     }
 

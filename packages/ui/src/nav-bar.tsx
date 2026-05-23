@@ -272,7 +272,7 @@ export function NavBar({
     }
   }, [showDropdown]);
 
-  return !isEmbed ? (
+  return isEmbed ? null : (
     <nav className="w-full border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm relative z-50">
       {isDev && (
         <div className="w-full bg-amber-500/90 text-black text-xs font-bold text-center py-1 tracking-wide">
@@ -609,5 +609,5 @@ export function NavBar({
         </div>
       )}
     </nav>
-  ) : null;
+  );
 }
