@@ -178,8 +178,8 @@ export default function EventsClient() {
     fetchEvents(filters, newOffset);
   }
 
-  const hasFilters = Object.values(pendingFilters).some(Boolean);
-  const hasActiveFilters = Object.values(filters).some(Boolean);
+  const hasFilters = Object.values(pendingFilters).some((value) => value !== '');
+  const hasActiveFilters = Object.values(filters).some((value) => value !== '');
   const hasPrev = offset > 0;
   const hasNext = offset + LIMIT < total;
   const page = Math.floor(offset / LIMIT) + 1;
