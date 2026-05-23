@@ -84,7 +84,7 @@ export async function verifyReceipt(
     }
 
     const buyer = payload.buyer as unknown;
-    if (typeof buyer !== 'string' || !buyer || !buyer.startsWith('did:')) {
+    if (typeof buyer !== 'string' || !buyer?.startsWith('did:')) {
       return null;
     }
 

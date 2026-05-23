@@ -24,8 +24,8 @@ import { StripeProvider } from './providers/stripe';
 import { SolanaProvider } from './providers/solana';
 
 export class PaymentService {
-  private providers: Map<string, PaymentProvider> = new Map();
-  private config: PaymentServiceConfig;
+  private readonly providers: Map<string, PaymentProvider> = new Map();
+  private readonly config: PaymentServiceConfig;
   
   constructor(config: PaymentServiceConfig) {
     this.config = config;

@@ -41,8 +41,8 @@ export class SolanaProvider implements PaymentProvider {
     refunds: false,       // Blockchain is immutable
   };
   
-  private connection: Connection;
-  private config: SolanaProviderConfig;
+  private readonly connection: Connection;
+  private readonly config: SolanaProviderConfig;
   
   constructor(config: SolanaProviderConfig) {
     this.config = config;

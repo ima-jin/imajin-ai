@@ -21,7 +21,7 @@ export async function checkPreliminaryEligibility(did: string): Promise<void> {
     .where(eq(identities.id, did))
     .limit(1);
 
-  if (!identity || identity.tier !== 'soft') return;
+  if (identity?.tier !== 'soft') return;
   if (!identity.handle) return;
 
   // Check for ≥1 active connection to a preliminary+ human
@@ -81,7 +81,7 @@ export async function checkHardEligibility(did: string): Promise<void> {
     .where(eq(identities.id, did))
     .limit(1);
 
-  if (!identity || identity.tier !== 'preliminary') return;
+  if (identity?.tier !== 'preliminary') return;
 
   // Check handle claimed ≥4 weeks ago
   if (!identity.handleClaimedAt) return;

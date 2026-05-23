@@ -1,11 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import BumpConnect from '../connections/bump/BumpConnect';
 
 export default function BumpPageClient() {
-  const router = useRouter();
   const [started, setStarted] = useState(false);
 
   if (!started) {

@@ -25,7 +25,7 @@ export async function GET(
       .from(sellerSettings)
       .where(eq(sellerSettings.did, did));
 
-    if (!settings || !settings.showMarketItems) {
+    if (!settings?.showMarketItems) {
       return jsonResponse({ listings: [], enabled: false });
     }
 

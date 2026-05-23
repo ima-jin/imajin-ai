@@ -87,7 +87,6 @@ export function simpleMarkdown(text: string): string {
 
     // Code blocks
     if (line.startsWith('```')) {
-      const lang = line.slice(3).trim();
       const codeLines: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith('```')) {

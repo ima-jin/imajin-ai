@@ -11,7 +11,7 @@ type RouteParams = { params: Promise<{ slug: string; moduleId: string; lessonId:
  * GET /api/courses/[slug]/modules/[moduleId]/lessons/[lessonId] — Get lesson content
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
-  const { slug, moduleId, lessonId } = await params;
+  const { slug, lessonId } = await params;
 
   const courseResult = await db.select().from(courses).where(eq(courses.slug, slug)).limit(1);
   if (!courseResult[0]) return errorResponse('Course not found', 404);
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * PATCH /api/courses/[slug]/modules/[moduleId]/lessons/[lessonId] — Update lesson
  */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
-  const { slug, moduleId, lessonId } = await params;
+  const { slug, lessonId } = await params;
 
   const authResult = await requireHardDID(request);
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
@@ -90,7 +90,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
  * DELETE /api/courses/[slug]/modules/[moduleId]/lessons/[lessonId] — Delete lesson
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  const { slug, moduleId, lessonId } = await params;
+  const { slug, lessonId } = await params;
 
   const authResult = await requireHardDID(request);
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);

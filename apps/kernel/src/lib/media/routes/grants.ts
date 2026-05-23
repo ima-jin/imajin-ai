@@ -59,7 +59,7 @@ export async function patchGrants(
     );
   }
 
-  if (!asset || asset.status !== "active") {
+  if (asset?.status !== "active") {
     return NextResponse.json({ error: "Not found" }, { status: 404, headers: cors });
   }
 

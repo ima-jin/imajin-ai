@@ -47,7 +47,7 @@ export async function resolveHandle(handle: string): Promise<AuthorInfo | null> 
     .where(eq(identities.handle, handle))
     .limit(1);
 
-  if (!row || !row.handle) return null;
+  if (!row?.handle) return null;
 
   return {
     did: row.id,
@@ -185,7 +185,7 @@ export async function getArticleBySlug(ownerDid: string, slug: string): Promise<
     )
     .limit(1);
 
-  if (!row || !row.storagePath) {
+  if (!row?.storagePath) {
     return null;
   }
 

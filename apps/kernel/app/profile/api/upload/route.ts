@@ -7,7 +7,7 @@ import { withLogger } from '@imajin/logger';
 
 const UPLOAD_DIR = '/mnt/media/avatars';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 /**
  * POST /api/upload - Upload an avatar image
@@ -29,7 +29,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     // Validate file type
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    if (!ALLOWED_TYPES.has(file.type)) {
       return errorResponse('Invalid file type. Only JPG, PNG, GIF, and WebP are allowed.');
     }
 

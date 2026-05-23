@@ -6,7 +6,7 @@ import { createLogger } from '@imajin/logger';
 import { randomUUID } from 'node:crypto';
 
 const log = createLogger('kernel');
-const ALLOWED_ROLES = ['maintainer', 'admin', 'owner'];
+const ALLOWED_ROLES = new Set(['maintainer', 'admin', 'owner']);
 const MAX_GALLERY_IMAGES = 6;
 
 interface RouteParams {
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     )
     .limit(1);
 
-  if (!membership || !ALLOWED_ROLES.includes(membership.role)) {
+  if (!membership || !ALLOWED_ROLES.has(membership.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

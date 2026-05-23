@@ -62,7 +62,7 @@ export function MarketItems({ did, handle, marketBaseUrl }: Readonly<MarketItems
     <div className="mt-6">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-300">
-          🏪 Market
+          🏪 Market{' '}
           <span className="ml-1.5 text-gray-500 font-normal">({listings.length})</span>
         </h2>
         <a

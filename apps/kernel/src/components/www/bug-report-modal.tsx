@@ -31,7 +31,7 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback((file: File | null) => {
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!file?.type.startsWith('image/')) return;
     setScreenshotFile(file);
     setPreviewUrl(URL.createObjectURL(file));
   }, []);

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
 
@@ -33,7 +32,6 @@ type Step = 1 | 2 | 3;
 type Method = 'stripe' | 'emt';
 
 export default function TopupPage() {
-  const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [amount, setAmount] = useState<number>(50);
   const [customAmount, setCustomAmount] = useState<string>('');

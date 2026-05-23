@@ -24,7 +24,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
   const { did: agentDid } = await params;
 
-  if (!agentDid || !agentDid.startsWith('did:imajin:')) {
+  if (!agentDid?.startsWith('did:imajin:')) {
     return NextResponse.json({ error: 'Invalid DID' }, { status: 400 });
   }
 

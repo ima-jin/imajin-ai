@@ -27,7 +27,7 @@ export async function PUT(
     .where(and(eq(assets.id, id), eq(assets.ownerDid, ownerDid)))
     .limit(1);
 
-  if (!asset || asset.status !== "active") {
+  if (asset?.status !== "active") {
     return NextResponse.json({ error: "Asset not found" }, { status: 404 });
   }
 

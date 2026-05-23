@@ -18,7 +18,7 @@ export function MemberSection({ memberCount, topMembers, children }: Readonly<Me
     <div className="mb-6">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-300">
-          👥 Members
+          👥 Members{' '}
           <span className="ml-1.5 text-gray-500 font-normal">({memberCount})</span>
         </h2>
         <button

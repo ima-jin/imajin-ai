@@ -164,7 +164,7 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
   log.info({ id: paymentIntent.id, amount: paymentIntent.amount, currency: paymentIntent.currency, metadata: paymentIntent.metadata }, 'Regular payment completed');
 
   // Update transaction status to completed
-  const updated = await db
+  await db
     .update(transactions)
     .set({ status: 'completed' })
     .where(eq(transactions.stripeId, paymentIntent.id));

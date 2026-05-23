@@ -12,9 +12,9 @@
 
 import { readFileSync, readdirSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { createRequire } from 'module';
+import { createRequire } from 'node:module';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const baseDir = resolve(__dirname, '..');

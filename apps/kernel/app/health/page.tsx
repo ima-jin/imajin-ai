@@ -100,9 +100,9 @@ export default function HealthPage() {
 
   const allUp = health?.services.every(s => s.status === 'up');
 
-  const CORE_NAMES = ['www', 'auth', 'pay', 'profile', 'registry', 'events', 'chat', 'connections', 'input', 'media'];
-  const coreServices = health?.services.filter(s => CORE_NAMES.includes(s.name)) || [];
-  const appServices = health?.services.filter(s => !CORE_NAMES.includes(s.name)) || [];
+  const CORE_NAMES = new Set(['www', 'auth', 'pay', 'profile', 'registry', 'events', 'chat', 'connections', 'input', 'media']);
+  const coreServices = health?.services.filter(s => CORE_NAMES.has(s.name)) || [];
+  const appServices = health?.services.filter(s => !CORE_NAMES.has(s.name)) || [];
 
   return (
     <main className="min-h-screen py-16 px-6">

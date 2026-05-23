@@ -72,7 +72,7 @@ export const heartbeats = registrySchema.table('heartbeats', {
   timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow(),
   buildHash: text('build_hash').notNull(),
   version: text('version').notNull(),
-  health: jsonb('health'),                            // { status, services, uptime, metrics }
+  health: jsonb('health'),
   signature: text('signature').notNull(),
 }, (table) => ({
   nodeIdx: index('idx_registry_heartbeats_node').on(table.nodeId),
@@ -149,7 +149,7 @@ export const bumpSessions = registrySchema.table('bump_sessions', {
   id: text('id').primaryKey(),
   did: text('did').notNull(),
   nodeId: text('node_id').notNull(),
-  location: jsonb('location'),                                   // { lat, lng }
+  location: jsonb('location'),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
@@ -166,7 +166,7 @@ export const bumpEvents = registrySchema.table('bump_events', {
   waveform: jsonb('waveform').notNull(),                         // number[]
   rotationRate: jsonb('rotation_rate').notNull(),                // number[]
   timestamp: timestamp('timestamp', { withTimezone: true }).notNull(),
-  location: jsonb('location'),                                   // { lat, lng }
+  location: jsonb('location'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   sessionCreatedIdx: index('idx_bump_events_session_created').on(table.sessionId, table.createdAt),

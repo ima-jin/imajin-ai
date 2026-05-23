@@ -81,11 +81,11 @@ export default async function AuthPage() {
   let avatarSrc: string | null = null;
   if (profile.avatarAssetId && mediaUrl) {
     avatarSrc = `${mediaUrl}/api/media/${profile.avatarAssetId}`;
-  } else if (profile.avatar && profile.avatar.startsWith('http')) {
+  } else if (profile.avatar?.startsWith('http')) {
     avatarSrc = profile.avatar;
-  } else if (profile.avatar && profile.avatar.startsWith('/') && publicBase) {
+  } else if (profile.avatar?.startsWith('/') && publicBase) {
     avatarSrc = `${publicBase}${profile.avatar}`;
-  } else if (profile.avatar && profile.avatar.startsWith('/')) {
+  } else if (profile.avatar?.startsWith('/')) {
     avatarSrc = profile.avatar;
   }
 

@@ -1,6 +1,5 @@
 import { ImajinFooter } from '@imajin/ui';
 import { getClient } from '@imajin/db';
-import { SERVICES } from '@imajin/config';
 import { LandingGrid, EmailCapture } from '@/src/components/www/LandingGrid';
 import { PromoVideo } from '@/src/components/www/PromoVideo';
 import { BugReportButton } from '@/src/components/www/bug-report-button';
@@ -44,11 +43,7 @@ async function getNetworkStats() {
 }
 
 export default async function Home() {
-  const stats = await getNetworkStats();
-
-  const totalIdentities = stats.humans + stats.businesses + stats.presences;
-  const serviceCount = SERVICES.filter((s) => s.visibility !== 'internal').length;
-  const daysSinceLaunch = Math.floor((Date.now() - new Date('2026-02-01').getTime()) / (1000 * 60 * 60 * 24));
+  await getNetworkStats();
 
   return (
     <main className="min-h-screen flex flex-col items-center px-6 py-16 bg-gray-950">

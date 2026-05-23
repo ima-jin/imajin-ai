@@ -91,7 +91,7 @@ async function copyDocumentToSigner(
     }
 
     // Insert asset record
-    const [newAsset] = await db
+    await db
       .insert(assets)
       .values({
         id: newAssetId,

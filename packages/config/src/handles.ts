@@ -10,10 +10,10 @@
 export const HANDLE_PATTERN = /^[a-z0-9._-]{3,30}$/;
 
 /** Regex: disallowed leading/trailing characters */
-const HANDLE_EDGE = /^[.\-]|[.\-]$/;
+const HANDLE_EDGE = /^[.-]|[.-]$/;
 
 /** Regex: consecutive dots or hyphens */
-const HANDLE_CONSECUTIVE = /[.\-]{2}/;
+const HANDLE_CONSECUTIVE = /[.-]{2}/;
 
 /** HTML input pattern attribute (no anchors, no flags) */
 export const HANDLE_INPUT_PATTERN = '[a-z0-9._\\-]{3,30}';

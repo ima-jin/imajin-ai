@@ -46,7 +46,7 @@ function getUploadLimitBytes(identity: { tier?: string; uploadLimitMb?: number |
 }
 
 const ALLOWED_MIME_PREFIXES = ["image/", "audio/", "video/", "text/"];
-const ALLOWED_MIME_EXACT = ["application/pdf"];
+const ALLOWED_MIME_EXACT = new Set(["application/pdf"]);
 
 /** Map file extensions to MIME types for files browsers send as octet-stream */
 const EXT_TO_MIME: Record<string, string> = {
@@ -73,7 +73,7 @@ function inferMime(browserMime: string, filename: string): string {
 }
 
 function isAllowedMime(mime: string): boolean {
-  if (ALLOWED_MIME_EXACT.includes(mime)) return true;
+  if (ALLOWED_MIME_EXACT.has(mime)) return true;
   return ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
 }
 

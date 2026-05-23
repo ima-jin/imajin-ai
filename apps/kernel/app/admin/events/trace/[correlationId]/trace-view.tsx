@@ -106,7 +106,6 @@ export default function TraceView({ events, correlationId }: Readonly<{ events: 
               const isExpanded = expandedIds.has(evt.id);
               const hasPayload = evt.payload && Object.keys(evt.payload).length > 0;
               const isFailed = evt.status !== 'success';
-              const isLast = idx === events.length - 1;
 
               return (
                 <div key={evt.id} className="relative pl-12">

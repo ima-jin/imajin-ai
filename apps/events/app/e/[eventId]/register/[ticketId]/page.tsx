@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function RegisterPage({ params, searchParams }: Readonly<Props>) {
   const { eventId, ticketId } = await params;
-  const { token } = await searchParams;
+  await searchParams;
 
   // Load ticket with its type
   const [row] = await db

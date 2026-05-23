@@ -115,7 +115,7 @@ export function getPublicUrl(
 
   // Single-domain mode: prefix contains dots (e.g. "dev-jin.imajin.ai/")
   // Build https://{prefix}{name} instead of https://{prefix}-{name}.{domain}
-  if (prefix && prefix.includes(".")) {
+  if (prefix?.includes(".")) {
     const base = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
     // "www" or "kernel" = root of the node, no suffix
     if (name === "www" || name === "kernel") return `https://${base}`;

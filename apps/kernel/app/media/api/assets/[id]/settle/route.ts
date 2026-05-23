@@ -68,7 +68,7 @@ export async function POST(
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
-  if (!asset || asset.status !== "active") {
+  if (asset?.status !== "active") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -107,7 +107,7 @@ export async function POST(
   const buyerDid = authResult.identity.actingAs || authResult.identity.id;
 
   // 5. Validate manifest.owner is a DID before interpolating into URI
-  if (!manifest.owner || !manifest.owner.startsWith("did:")) {
+  if (!manifest.owner?.startsWith("did:")) {
     log.error({ assetId: id, owner: manifest.owner }, "manifest.owner is not a valid DID");
     return NextResponse.json({ error: "Asset manifest has invalid owner DID" }, { status: 500 });
   }

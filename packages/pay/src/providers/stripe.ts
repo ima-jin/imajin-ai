@@ -41,8 +41,8 @@ export class StripeProvider implements PaymentProvider {
     refunds: true,
   };
   
-  private stripe: Stripe;
-  private config: StripeProviderConfig;
+  private readonly stripe: Stripe;
+  private readonly config: StripeProviderConfig;
   
   constructor(config: StripeProviderConfig) {
     this.config = config;
