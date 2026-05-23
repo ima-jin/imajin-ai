@@ -4,7 +4,6 @@ const log = createLogger('dykil');
 import { db, surveys } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
-import { eq } from 'drizzle-orm';
 
 /**
  * POST /api/surveys - Create a new survey

@@ -1,5 +1,5 @@
 import { createLogger } from '@imajin/logger';
-import type { BusEvent, ReactorHandler } from '../types';
+import type { ReactorHandler } from '../types';
 
 const log = createLogger('bus:webhook');
 

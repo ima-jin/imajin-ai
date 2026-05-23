@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 export { corsHeaders, corsOptions } from '@imajin/config';
 
 export function jsonResponse(data: any, status = 200, headers?: Record<string, string>) {

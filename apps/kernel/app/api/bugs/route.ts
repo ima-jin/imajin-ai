@@ -1,9 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { db, bugReports } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
-import { isAdmin } from '@/src/lib/www/session-auth';
 import { withLogger } from '@imajin/logger';
 
 // POST /api/bugs — submit a new bug report

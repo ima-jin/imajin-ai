@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, boolean, index, unique, pgSchema, integer } from 'drizzle-orm/pg-core';
+import { uuid, text, timestamp, boolean, index, unique, pgSchema, integer } from 'drizzle-orm/pg-core';
 
 export const wwwSchema = pgSchema('www');
 

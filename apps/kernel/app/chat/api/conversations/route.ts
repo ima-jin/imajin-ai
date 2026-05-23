@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { eq, desc, and, gt, ne, inArray, sql } from 'drizzle-orm';

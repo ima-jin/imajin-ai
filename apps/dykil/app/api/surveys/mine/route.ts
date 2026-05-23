@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('dykil');
-import { db, surveys } from '@/db';
+import { db } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 

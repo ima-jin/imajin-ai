@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, attestations, attestationSignatures, assets } from '@/src/db';
+import { db, attestations, attestationSignatures } from '@/src/db';
 import { eq, and, or, desc, sql, inArray } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { requireAuth } from '@/src/lib/auth/middleware';

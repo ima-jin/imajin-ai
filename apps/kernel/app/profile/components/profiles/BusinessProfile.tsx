@@ -1,4 +1,4 @@
-import { getMembersByRole, getViewerMembership } from '../../lib/profile-data';
+import { getViewerMembership } from '../../lib/profile-data';
 import { formatMemberSince } from '../../lib/profile-utils';
 import { ScopeHeader } from '../ScopeHeader';
 import { ServiceLinks } from '../ServiceLinks';

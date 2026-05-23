@@ -7,7 +7,6 @@ import { generateId } from '@/src/lib/kernel/id';
 import {
   correlateBump,
   haversineDistance,
-  BUMP_CORRELATION_THRESHOLD,
   BUMP_MATCH_WINDOW_MS,
   BUMP_LOCATION_RADIUS_M,
 } from '@/src/lib/registry/bump-correlation';

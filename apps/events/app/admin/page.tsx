@@ -1,4 +1,4 @@
-import { redirect, notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { requireAdmin } from '@imajin/auth';
 import { db, events } from '@/src/db';
 import { desc } from 'drizzle-orm';

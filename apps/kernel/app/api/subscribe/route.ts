@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { db, contacts, mailingLists, subscriptions } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { sendEmail } from '@imajin/email';

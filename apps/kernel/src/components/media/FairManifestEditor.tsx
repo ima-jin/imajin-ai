@@ -3,11 +3,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type {
   FairManifestV1_1,
-  DidShareList,
-  Money,
   FairDistributionRight,
-  FairTraining,
-  FairCommercial,
   FairTransferV1_1,
   FairAccessV1_1,
 } from '@imajin/fair';

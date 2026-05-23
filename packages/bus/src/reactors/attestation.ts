@@ -1,5 +1,5 @@
 import { emitAttestation } from '@imajin/auth';
-import type { BusEvent, ReactorHandler } from '../types';
+import type { ReactorHandler } from '../types';
 
 export const attestationReactor: ReactorHandler = async (event, config) => {
   const attestationType = (config.attestationType as string) || event.type;

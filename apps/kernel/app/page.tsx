@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import { ImajinFooter } from '@imajin/ui';
 import { getClient } from '@imajin/db';
 import { SERVICES } from '@imajin/config';

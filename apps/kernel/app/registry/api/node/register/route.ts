@@ -9,7 +9,6 @@ import {
   type NodeAttestation,
 } from '@imajin/auth';
 import { provisionSubdomain, isHostnameAvailable } from '@/src/lib/registry/cloudflare';
-import { randomBytes } from 'node:crypto';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 

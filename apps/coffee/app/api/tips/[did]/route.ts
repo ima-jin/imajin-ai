@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('coffee');
-import { db, coffeePages, tips } from '@/db';
+import { db, tips } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 interface RouteParams {
   params: { did: string };

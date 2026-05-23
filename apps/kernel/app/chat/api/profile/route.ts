@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db, profiles } from '@/src/db';
-import { or, eq } from 'drizzle-orm';
+import { NextResponse } from 'next/server';
+import { db } from '@/src/db';
 import { withLogger } from '@imajin/logger';
 
 /**

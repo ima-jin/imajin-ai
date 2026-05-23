@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { eq, ne, and, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db, conversationsV2, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';

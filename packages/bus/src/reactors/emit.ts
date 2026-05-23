@@ -1,5 +1,5 @@
 import { emit } from '@imajin/emit';
-import type { BusEvent, ReactorHandler } from '../types';
+import type { ReactorHandler } from '../types';
 
 export const emitReactor: ReactorHandler = async (event, _config) => {
   emit({

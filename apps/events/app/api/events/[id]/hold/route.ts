@@ -5,7 +5,6 @@ import { db, tickets, ticketTypes } from '@/src/db';
 const log = createLogger('events');
 import { requireAuth } from '@imajin/auth';
 import { eq, and, lt } from 'drizzle-orm';
-import { randomBytes } from 'node:crypto';
 
 const DEFAULT_HOLD_HOURS = 72;
 

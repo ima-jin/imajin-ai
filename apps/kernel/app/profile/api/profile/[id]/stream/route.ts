@@ -6,9 +6,8 @@
  */
 
 import { NextRequest } from 'next/server';
-import { db, profiles, queryLogs } from '@/src/db';
+import { db, queryLogs } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
-import { eq } from 'drizzle-orm';
 import { streamText } from 'ai';
 import { resolveModel, calculateCost, createPresenceTools } from '@imajin/llm';
 import { nanoid } from 'nanoid';

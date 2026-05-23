@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { eq, and, desc, lt, ne, isNull, inArray, or } from 'drizzle-orm';
+import { eq, and, desc, lt, ne, isNull, inArray } from 'drizzle-orm';
 
 const log = createLogger('kernel');
-import { db, conversationsV2, conversationMembers, messagesV2, messageReactionsV2, profiles, identities } from '@/src/db';
+import { db, conversationsV2, conversationMembers, messagesV2, messageReactionsV2, identities } from '@/src/db';
 import { requireAuth, isVerifiedTier } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";

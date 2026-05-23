@@ -1,5 +1,5 @@
 import { db, identities, attestations, attestationSignatures } from '@/src/db';
-import { eq, or, and, isNull, desc, inArray, notInArray, sql } from 'drizzle-orm';
+import { eq, or, and, isNull, desc, inArray, notInArray } from 'drizzle-orm';
 import Link from 'next/link';
 import DocumentSigningCard, { type DocumentAttestation, type Signature } from '../attestations/components/DocumentSigningCard';
 

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, events, ticketTypes } from '@/src/db';

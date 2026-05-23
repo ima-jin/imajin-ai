@@ -1,4 +1,3 @@
-import { notFound } from 'next/navigation';
 import { AcceptSection } from './AcceptSection';
 
 import { buildPublicUrl } from '@imajin/config';

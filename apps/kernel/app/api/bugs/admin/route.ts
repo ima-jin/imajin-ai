@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { db, bugReports } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';

@@ -4,9 +4,6 @@ import { eq } from 'drizzle-orm';
 import { 
   verify, 
   NODE_HEARTBEAT_INTERVAL,
-  NODE_STALE_THRESHOLD,
-  NODE_UNREACHABLE_THRESHOLD,
-  NODE_REGISTRATION_TTL,
   type NodeHeartbeat,
 } from '@imajin/auth';
 import { randomBytes } from 'node:crypto';

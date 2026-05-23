@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
-import { db, profiles, follows, connections, identityMembers, forestConfig } from '@/src/db';
+import { db, profiles, follows, identityMembers, forestConfig } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { eq, count, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';

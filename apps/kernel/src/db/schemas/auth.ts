@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, integer, boolean, index, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, integer, boolean, index, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 /** Key role configuration for multi-device / role-separated identities */

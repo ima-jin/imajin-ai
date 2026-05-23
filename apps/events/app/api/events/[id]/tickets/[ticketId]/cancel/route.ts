@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
-import { db, tickets, events } from '@/src/db';
+import { db, tickets } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { createLogger } from '@imajin/logger';

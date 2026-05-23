@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, modules, lessons, enrollments, lessonProgress } from '@/db/schema';
-import { requireAuth, requireHardDID, optionalAuth } from '@imajin/auth';
+import { requireHardDID, optionalAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { eq, and, sql, asc } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 
 type RouteParams = { params: Promise<{ slug: string }> };
 

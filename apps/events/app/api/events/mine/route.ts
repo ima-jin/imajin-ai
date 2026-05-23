@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { db, events, ticketTypes } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 
 /**
  * GET /api/events/mine - Get all events created by authenticated user

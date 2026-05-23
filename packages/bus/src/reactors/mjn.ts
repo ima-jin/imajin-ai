@@ -1,5 +1,5 @@
 import { createLogger } from '@imajin/logger';
-import type { BusEvent, ReactorHandler } from '../types';
+import type { ReactorHandler } from '../types';
 import { EMISSION_SCHEDULE, resolveAmount, resolveTarget } from '../emissions';
 
 const log = createLogger('bus:mjn');

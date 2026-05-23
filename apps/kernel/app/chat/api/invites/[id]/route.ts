@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, invites } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
-import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
+import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { createLogger } from '@imajin/logger';
 

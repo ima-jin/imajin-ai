@@ -41,7 +41,6 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 }));
 
 import { requireAuth } from '@imajin/auth';
-import { db } from '@/src/db';
 import { updateManifestFlow } from '@/src/lib/media/manifest-helpers';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────

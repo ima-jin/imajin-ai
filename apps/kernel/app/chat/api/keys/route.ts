@@ -1,4 +1,3 @@
-import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { ed25519 } from '@noble/curves/ed25519';
 import { db, publicKeys, preKeys } from '@/src/db';

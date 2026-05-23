@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { patchGrants } from "@/src/lib/media/routes/grants";
 import { corsOptions } from "@/src/lib/kernel/cors";
 

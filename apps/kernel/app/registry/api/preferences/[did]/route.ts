@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { requireAuth } from '@imajin/auth';
-import { db, didPreferences, didInterests, interests } from '@/src/db';
+import { db, didPreferences, didInterests } from '@/src/db';
 import { eq, asc } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 

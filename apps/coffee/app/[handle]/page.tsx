@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { db, coffeePages } from '@/db';
+import { db } from '@/db';
 import { buildPublicUrl } from '@imajin/config';
 import TipForm from './tip-form';
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createDefaultAdapters } from '../src/adapters.js';
-import { computeVaultCid, verifyVaultCid } from '../src/cid.js';
+import { computeVaultCid } from '../src/cid.js';
 import { deriveKeyId, verifyDidKeyBinding } from '../src/identity.js';
 import { verifyVaultSignature } from '../src/signature.js';
 import * as ed25519 from '@noble/ed25519';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 
 export type CommunityTab = 'overview' | 'events' | 'chat' | 'members' | 'market';
 

@@ -1,4 +1,4 @@
-import type { FairManifest, FairManifestV1_1, Money, DidShareList } from "./types";
+import type { FairManifest } from "./types";
 
 const SUM_TOLERANCE = 1e-6;
 

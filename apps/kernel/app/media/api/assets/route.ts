@@ -6,7 +6,7 @@ import { nanoid } from "nanoid";
 import { db, assets, folders, assetFolders, identities } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
 import { rateLimit, getClientIP } from "@/src/lib/kernel/rate-limit";
 import { createLogger } from "@imajin/logger";

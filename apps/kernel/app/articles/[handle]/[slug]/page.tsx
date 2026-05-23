@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { resolveHandle, getAllArticleSlugs, getArticleBySlug } from '@/src/lib/www/articles';
+import { resolveHandle, getArticleBySlug } from '@/src/lib/www/articles';
 import { ImajinFooter } from '@imajin/ui';
 
 // Articles now load from the database (media.assets), so static generation

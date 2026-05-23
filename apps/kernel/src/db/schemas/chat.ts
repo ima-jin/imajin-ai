@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
+import { text, timestamp, boolean, index, pgSchema } from 'drizzle-orm/pg-core';
 
 export const chatSchema = pgSchema('chat');
 

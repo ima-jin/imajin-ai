@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { EmojiPicker } from './EmojiPicker';
 import { VoiceRecorder } from './VoiceRecorder';
 import { LocationPicker, type LocationData } from './LocationPicker';

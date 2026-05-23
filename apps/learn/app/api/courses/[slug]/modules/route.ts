@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { courses, modules } from '@/db/schema';
 import { requireHardDID } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
-import { eq, and, asc, sql } from 'drizzle-orm';
+import { eq, asc, sql } from 'drizzle-orm';
 
 type RouteParams = { params: Promise<{ slug: string }> };
 
