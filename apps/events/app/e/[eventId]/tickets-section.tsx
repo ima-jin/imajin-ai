@@ -90,7 +90,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
 
   // Issue #14: read hash on mount so external links / router.refresh can target a tab
   useEffect(() => {
-    if (typeof globalThis.window !== 'undefined') {
+    if (globalThis.window !== undefined) {
       const hash = globalThis.location.hash.replaceAll('#', '');
       if (hash === 'my-tickets' || hash === 'buy-tickets') {
         setActiveTab(hash);
@@ -100,7 +100,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
 
   const handleTabChange = (tab: 'my-tickets' | 'buy-tickets') => {
     setActiveTab(tab);
-    if (typeof globalThis.window !== 'undefined') {
+    if (globalThis.window !== undefined) {
       globalThis.location.hash = tab;
     }
   };
@@ -855,7 +855,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
   // cross-tab login. Use it as a belt-and-suspenders trigger for the same
   // cleanup in case the session prop doesn't update on the same tick.
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return;
+    if (globalThis.window === undefined) return;
     const handler = () => {
       setStepState('idle');
       setEmtResultState(null);
@@ -1043,7 +1043,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
             return;
           }
           // Notify any listening components (e.g. NavBar) that auth changed.
-          if (typeof globalThis.window !== 'undefined') {
+          if (globalThis.window !== undefined) {
             globalThis.dispatchEvent(new Event('imajin:session-changed'));
           }
           // Re-fire the EMT reserve directly without router.refresh().

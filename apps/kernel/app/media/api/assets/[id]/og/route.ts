@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import { db, assets } from "@/src/db";
 import { eq } from "drizzle-orm";
-import type { FairManifest } from "@imajin/fair";
 
 const OG_MAX_WIDTH = 1200;
 const OG_MAX_HEIGHT = 630;

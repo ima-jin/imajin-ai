@@ -1,10 +1,10 @@
 export function getActingAs(): string | null {
-  if (typeof globalThis.window === 'undefined') return null;
+  if (globalThis.window === undefined) return null;
   return localStorage.getItem('imajin:acting-as');
 }
 
 export function setActingAs(did: string | null): void {
-  if (typeof globalThis.window === 'undefined') return;
+  if (globalThis.window === undefined) return;
   if (did) {
     localStorage.setItem('imajin:acting-as', did);
     document.cookie = `x-acting-as=${did}; path=/; max-age=31536000; SameSite=Lax`;

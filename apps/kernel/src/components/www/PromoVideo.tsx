@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 
 function getVideoSrc(assetId: string): string {
   const base = `/media/api/assets/${assetId}`;
-  if (typeof globalThis.window === 'undefined') return `${base}?quality=720p`;
+  if (globalThis.window === undefined) return `${base}?quality=720p`;
   const w = globalThis.innerWidth;
   if (w >= 768) return `${base}?quality=1080p`;
   if (w >= 480) return `${base}?quality=720p`;

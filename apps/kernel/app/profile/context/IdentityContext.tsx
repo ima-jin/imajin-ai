@@ -60,7 +60,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
   }, []);
 
   async function loadIdentity() {
-    if (typeof globalThis.window === 'undefined') return;
+    if (globalThis.window === undefined) return;
 
     // Check auth session first
     try {
@@ -101,7 +101,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
   }
 
   async function logout() {
-    if (typeof globalThis.window === 'undefined') return;
+    if (globalThis.window === undefined) return;
 
     // Clear auth session cookie
     try {

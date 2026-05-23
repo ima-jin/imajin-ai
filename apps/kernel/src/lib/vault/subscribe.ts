@@ -1,5 +1,5 @@
 import type { VaultEntry } from '@imajin/vault-core';
-import { registerReactor, type BusEvent, type BusEventMap, type ReactorHandler } from '@imajin/bus';
+import { registerReactor, type BusEvent, type ReactorHandler } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { vaultService } from '@/src/lib/vault';
 

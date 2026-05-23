@@ -49,7 +49,8 @@ export async function resolveHandleToDid(handle: string): Promise<string | null>
 
 function extractMessageText(content: unknown): string {
   if (typeof content === 'object' && content !== null && 'text' in content) {
-    return String(content.text ?? '');
+    const text = (content as Record<string, unknown>).text;
+    return typeof text === 'string' ? text : '';
   }
   if (typeof content === 'string') return content;
   return '';

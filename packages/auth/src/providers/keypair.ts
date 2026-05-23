@@ -150,7 +150,7 @@ const STORAGE_PREFIX = 'imajin_keypair_';
  * - Password-encrypted storage
  */
 export function storeKeypair(keypair: Keypair, name: string = 'default'): void {
-  if (typeof globalThis.window === 'undefined') {
+  if (globalThis.window === undefined) {
     throw new Error('storeKeypair only works in browser');
   }
   
@@ -163,7 +163,7 @@ export function storeKeypair(keypair: Keypair, name: string = 'default'): void {
  * Load keypair from localStorage
  */
 export function loadKeypair(name: string = 'default'): Keypair | null {
-  if (typeof globalThis.window === 'undefined') {
+  if (globalThis.window === undefined) {
     return null;
   }
   
@@ -193,7 +193,7 @@ export function loadKeypair(name: string = 'default'): Keypair | null {
  * Delete keypair from localStorage
  */
 export function deleteKeypair(name: string = 'default'): void {
-  if (typeof globalThis.window === 'undefined') return;
+  if (globalThis.window === undefined) return;
   localStorage.removeItem(STORAGE_PREFIX + name);
 }
 
@@ -201,7 +201,7 @@ export function deleteKeypair(name: string = 'default'): void {
  * List all stored keypair names
  */
 export function listKeypairs(): string[] {
-  if (typeof globalThis.window === 'undefined') return [];
+  if (globalThis.window === undefined) return [];
   
   const names: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
