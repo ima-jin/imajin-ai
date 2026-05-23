@@ -14,7 +14,7 @@ export const coffeePages = coffeeSchema.table('pages', {
   avatar: text('avatar'),                                     // Image URL or emoji
   // SQL: ALTER TABLE coffee.pages ADD COLUMN IF NOT EXISTS avatar_asset_id TEXT;
   avatarAssetId: text('avatar_asset_id'),                     // asset_xxx from media service (nullable — emoji stays in avatar)
-  theme: jsonb('theme').default({}),                          // { primaryColor, backgroundColor }
+  theme: jsonb('theme').default({}),
   paymentMethods: jsonb('payment_methods').notNull(),         // { stripe: {...}, solana: {...} }
   presets: integer('presets').array().default([100, 500, 1000]), // cents: $1, $5, $10
   fundDirections: jsonb('fund_directions').default([]),       // [{ id, label, description }] — configurable by page owner

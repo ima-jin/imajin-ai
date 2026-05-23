@@ -32,7 +32,7 @@ export const surveyResponses = dykil_schema.table('survey_responses', {
   surveyId: text('survey_id').references(() => surveys.id, { onDelete: 'cascade' }).notNull(),
   respondentDid: text('respondent_did'),                      // null for anonymous
   ticketId: text('ticket_id'),                                // events ticket reference (for ticket-scoped responses)
-  answers: jsonb('answers').notNull(),                        // { fieldId: value }
+  answers: jsonb('answers').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   surveyIdx: index('idx_responses_survey').on(table.surveyId),
