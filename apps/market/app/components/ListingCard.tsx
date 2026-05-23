@@ -29,7 +29,7 @@ function relativeTime(date: Date): string {
   return new Date(date).toLocaleDateString();
 }
 
-function TierBadge({ tier }: { tier: string }) {
+function TierBadge({ tier }: Readonly<{ tier: string }>) {
   if (tier === 'public_offplatform') {
     return (
       <span className="px-1.5 py-0.5 text-xs font-medium bg-amber-900/50 text-amber-400 border border-amber-700/50 rounded">
@@ -54,7 +54,7 @@ function TierBadge({ tier }: { tier: string }) {
   return null;
 }
 
-export default function ListingCard({ listing }: { listing: Listing }) {
+export default function ListingCard({ listing }: Readonly<{ listing: Listing }>) {
   const images = Array.isArray(listing.images) ? listing.images : [];
   const primaryRef = images.find((img): img is string => typeof img === 'string' && img.length > 0);
   const primaryImage = primaryRef ? resolveMediaRef(primaryRef, 'card') : undefined;

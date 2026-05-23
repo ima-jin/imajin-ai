@@ -15,7 +15,7 @@ interface Props {
   onCancel: () => void;
 }
 
-export default function RegisterAppForm({ onSuccess, onCancel }: Props) {
+export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [callbackUrl, setCallbackUrl] = useState('');

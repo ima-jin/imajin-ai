@@ -20,7 +20,7 @@ interface Props {
   accessMode: string;
 }
 
-export function InviteManager({ eventId, accessMode }: Props) {
+export function InviteManager({ eventId, accessMode }: Readonly<Props>) {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);

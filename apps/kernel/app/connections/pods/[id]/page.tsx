@@ -32,7 +32,7 @@ interface Pod {
 }
 
 
-export default function PodDetailPage({ params }: { params: { id: string } }) {
+export default function PodDetailPage({ params }: Readonly<{ params: { id: string } }>) {
   const { id } = params;
   const { did, isLoggedIn, loading } = useIdentity();
   const { toast } = useToast();

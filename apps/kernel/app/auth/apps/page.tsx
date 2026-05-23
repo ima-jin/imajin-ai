@@ -21,10 +21,10 @@ interface ConnectedApp {
 function AppCard({
   app,
   onRevoke,
-}: {
+}: Readonly<{
   app: ConnectedApp;
   onRevoke: (app: ConnectedApp) => void;
-}) {
+}>) {
   const isRevoked = !!app.revokedAt;
   const initial = app.appName.charAt(0).toUpperCase();
 
@@ -112,12 +112,12 @@ function ConfirmRevokeDialog({
   onConfirm,
   onCancel,
   revoking,
-}: {
+}: Readonly<{
   app: ConnectedApp;
   onConfirm: () => void;
   onCancel: () => void;
   revoking: boolean;
-}) {
+}>) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div

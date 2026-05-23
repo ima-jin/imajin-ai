@@ -13,7 +13,7 @@ interface IdentityContextType {
 
 const IdentityContext = createContext<IdentityContextType | undefined>(undefined);
 
-export function IdentityProvider({ children }: { children: ReactNode }) {
+export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [did, setDid] = useState<string | null>(null);
   const [handle, setHandle] = useState<string | null>(null);
   const [type, setType] = useState<string | null>(null);

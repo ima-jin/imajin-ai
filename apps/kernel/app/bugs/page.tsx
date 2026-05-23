@@ -25,7 +25,7 @@ const TYPE_EMOJI: Record<string, string> = {
   other: '💬',
 };
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: Readonly<{ status: string }>) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLES[status] ?? 'bg-gray-700 text-gray-300'}`}>
       {status}
@@ -44,7 +44,7 @@ interface ReporterInfo {
   avatar?: string | null;
 }
 
-function ReportCard({ r, reporter }: { r: BugReport; reporter?: ReporterInfo }) {
+function ReportCard({ r, reporter }: Readonly<{ r: BugReport; reporter?: ReporterInfo }>) {
   return (
     <li className="rounded-xl border border-gray-800 bg-[#111] p-5">
       <div className="flex items-start gap-4">

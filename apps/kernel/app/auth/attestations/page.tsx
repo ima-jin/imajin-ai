@@ -13,7 +13,7 @@ interface SearchParams {
   doc_role?: string;
 }
 
-export default async function AttestationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+export default async function AttestationsPage({ searchParams }: Readonly<{ searchParams: Promise<SearchParams> }>) {
   const resolvedSearchParams = await searchParams;
   const { sessionDid, effectiveDid } = await getEffectiveDid();
 

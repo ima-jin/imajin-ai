@@ -83,7 +83,7 @@ interface Props {
   hasHiddenTiers?: boolean;
 }
 
-export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false }: Props) {
+export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], hasTicket = false, inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false }: Readonly<Props>) {
   const [activeTab, setActiveTab] = useState<'my-tickets' | 'buy-tickets'>(
     hasTicket ? 'my-tickets' : 'buy-tickets'
   );
@@ -168,7 +168,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
   );
 }
 
-function MyTicketsTab({ userOrders, eventId }: { userOrders: UserOrder[]; eventId: string }) {
+function MyTicketsTab({ userOrders, eventId }: Readonly<{ userOrders: UserOrder[]; eventId: string }>) {
   return (
     <div className="space-y-6">
       {userOrders.map((order) => (
@@ -178,7 +178,7 @@ function MyTicketsTab({ userOrders, eventId }: { userOrders: UserOrder[]; eventI
   );
 }
 
-function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
+function OrderCard({ order, eventId }: Readonly<{ order: UserOrder; eventId: string }>) {
   const purchaseDate = order.purchasedAt
     ? new Date(order.purchasedAt).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -253,7 +253,7 @@ function OrderCard({ order, eventId }: { order: UserOrder; eventId: string }) {
   );
 }
 
-function TicketQRCell({ ticket, override }: { ticket: OrderTicket; eventId: string; override?: { status: string; qrCode?: string } }) {
+function TicketQRCell({ ticket, override }: Readonly<{ ticket: OrderTicket; eventId: string; override?: { status: string; qrCode?: string } }>) {
   const status = override?.status ?? ticket.registrationStatus;
   const isPending = status === 'pending';
   const qrCode = override?.qrCode ?? ticket.qrCodeDataUri;
@@ -294,7 +294,7 @@ function TicketQRCell({ ticket, override }: { ticket: OrderTicket; eventId: stri
   );
 }
 
-function TicketRegistrationSurvey({ ticket, eventId, override, onComplete }: { ticket: OrderTicket; eventId: string; override?: { status: string; qrCode?: string }; onComplete?: (ticketId: string, qrCode?: string) => void }) {
+function TicketRegistrationSurvey({ ticket, eventId, override, onComplete }: Readonly<{ ticket: OrderTicket; eventId: string; override?: { status: string; qrCode?: string }; onComplete?: (ticketId: string, qrCode?: string) => void }>) {
   const [regStatus, setRegStatus] = useState(ticket.registrationStatus);
   const [isRetrying, setIsRetrying] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -426,7 +426,7 @@ const ROLE_LABELS: Record<string, string> = {
   creator: 'Creator',
 };
 
-function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
+function TicketFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement }>) {
   const [open, setOpen] = useState(false);
   const currencyFmt = new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -514,7 +514,7 @@ function TicketFairReceipt({ settlement }: { settlement: FairSettlement }) {
   );
 }
 
-function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false, onJumpToMyTickets }: { eventId: string; eventTitle: string; tickets: TicketType[]; userOrders?: UserOrder[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sessionContactEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean; onJumpToMyTickets?: () => void }) {
+function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken, etransferEnabled = false, isAuthenticated = false, sessionEmail, sessionContactEmail, sellerConnected = true, hasHiddenTiers = false, onJumpToMyTickets }: Readonly<{ eventId: string; eventTitle: string; tickets: TicketType[]; userOrders?: UserOrder[]; inviteToken?: string; etransferEnabled?: boolean; isAuthenticated?: boolean; sessionEmail?: string; sessionContactEmail?: string; sellerConnected?: boolean; hasHiddenTiers?: boolean; onJumpToMyTickets?: () => void }>) {
   const [unlockedTickets, setUnlockedTickets] = useState<TicketType[]>([]);
   const [unlockCode, setUnlockCode] = useState('');
   const [showUnlock, setShowUnlock] = useState(false);

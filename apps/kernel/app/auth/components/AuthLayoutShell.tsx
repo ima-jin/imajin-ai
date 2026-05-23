@@ -13,7 +13,7 @@ interface Props {
   landingService?: string | null;
 }
 
-export default function AuthLayoutShell({ leftRail, identityDetail, tabBar, children, landingService }: Props) {
+export default function AuthLayoutShell({ leftRail, identityDetail, tabBar, children, landingService }: Readonly<Props>) {
   const pathname = usePathname();
   const router = useRouter();
 

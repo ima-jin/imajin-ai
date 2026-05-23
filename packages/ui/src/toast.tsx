@@ -70,10 +70,10 @@ function AutoDismiss({
 function ToastItem({
   toast,
   onDismiss,
-}: {
+}: Readonly<{
   toast: Toast;
   onDismiss: () => void;
-}) {
+}>) {
   return (
     <div
       className={`flex items-start gap-3 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg border-l-4 ${BORDER_COLORS[toast.type]} min-w-[280px] max-w-sm`}
@@ -103,7 +103,7 @@ function createToastId(): string {
   return `${Date.now().toString(36)}-toast`;
 }
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [toasts, dispatch] = useReducer(reducer, []);
 
   const dismiss = useCallback((id: string) => {

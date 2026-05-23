@@ -5,7 +5,7 @@ interface Props {
   onPress?: () => void;
 }
 
-export default function BumpIndicator({ timeRemaining, onPress }: Props) {
+export default function BumpIndicator({ timeRemaining, onPress }: Readonly<Props>) {
   const minutes = Math.floor(timeRemaining / 60);
   const seconds = String(timeRemaining % 60).padStart(2, '0');
 

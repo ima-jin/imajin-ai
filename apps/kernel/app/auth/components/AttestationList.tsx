@@ -78,7 +78,7 @@ interface Props {
   excludeDocumentTypes?: boolean;
 }
 
-export default async function AttestationList({ sessionDid, searchParams, excludeDocumentTypes = false }: Props) {
+export default async function AttestationList({ sessionDid, searchParams, excludeDocumentTypes = false }: Readonly<Props>) {
   const { type: typeFilter, role = 'all' } = searchParams;
   const page = Math.max(1, Number.parseInt(searchParams.page || '1'));
   const offset = (page - 1) * PAGE_SIZE;

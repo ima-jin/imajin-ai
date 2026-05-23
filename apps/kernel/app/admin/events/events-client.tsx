@@ -48,7 +48,7 @@ function serviceBadgeClass(service: string): string {
   return SERVICE_COLORS[service] ?? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400';
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: Readonly<{ status: string }>) {
   if (status === 'success') {
     return (
       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400">

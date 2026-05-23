@@ -293,7 +293,7 @@ async function getCohosts(podId: string, authUrl: string): Promise<OrganizerProf
   }
 }
 
-export default async function EventPage({ params, searchParams }: Props) {
+export default async function EventPage({ params, searchParams }: Readonly<Props>) {
   const { eventId } = await params;
   const { invite: inviteToken } = await searchParams;
   const event = await getEvent(eventId);

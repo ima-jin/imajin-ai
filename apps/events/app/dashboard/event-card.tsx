@@ -36,7 +36,7 @@ const statusLabels = {
   completed: 'Past',
 };
 
-export function EventCard({ event }: Props) {
+export function EventCard({ event }: Readonly<Props>) {
   const eventDate = new Date(event.startsAt);
   const formattedDate = eventDate.toLocaleDateString('en-US', {
     month: 'short',

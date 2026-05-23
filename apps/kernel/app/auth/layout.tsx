@@ -8,7 +8,7 @@ import PlacesMaintained from './components/PlacesMaintained';
 import IdentityTabBar from './components/IdentityTabBar';
 import AuthLayoutShell from './components/AuthLayoutShell';
 
-export default async function AuthLayout({ children }: { children: React.ReactNode }) {
+export default async function AuthLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const cookieConfig = getSessionCookieOptions();
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(cookieConfig.name)?.value;

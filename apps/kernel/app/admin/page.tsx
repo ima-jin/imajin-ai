@@ -10,7 +10,7 @@ interface StatCard {
   icon: string;
 }
 
-function StatCardUI({ label, value, subtitle, icon }: StatCard) {
+function StatCardUI({ label, value, subtitle, icon }: Readonly<StatCard>) {
   return (
     <div className="rounded-xl bg-white dark:bg-gray-800 p-6 shadow border border-gray-100 dark:border-gray-700">
       <div className="flex items-start justify-between">

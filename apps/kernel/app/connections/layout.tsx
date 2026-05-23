@@ -3,7 +3,7 @@
 import { IdentityProvider } from './context/IdentityContext';
 import { ToastProvider } from '@imajin/ui';
 
-export default function ConnectionsLayout({ children }: { children: React.ReactNode }) {
+export default function ConnectionsLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <ToastProvider>
       <IdentityProvider>

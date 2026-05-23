@@ -156,12 +156,12 @@ function AttributionView({
   didNames,
   roleClassName = () => 'text-orange-400',
   roleLabel = (role: string) => role,
-}: {
+}: Readonly<{
   entries: FairEntry[];
   didNames: Record<string, string>;
   roleClassName?: (role: string) => string;
   roleLabel?: (role: string) => string;
-}) {
+}>) {
   return (
     <div className="space-y-3">
       {entries.map((entry, i) => (
@@ -192,10 +192,10 @@ function AttributionView({
 function AttributionEdit({
   entries,
   onChange,
-}: {
+}: Readonly<{
   entries: FairEntry[];
   onChange: (entries: FairEntry[]) => void;
-}) {
+}>) {
   const { update, remove } = createEntryListEditor(entries, onChange);
 
   const add = () =>
@@ -270,7 +270,7 @@ function AttributionEdit({
   );
 }
 
-function ChainView({ entries, didNames }: { entries: FairEntry[]; didNames: Record<string, string> }) {
+function ChainView({ entries, didNames }: Readonly<{ entries: FairEntry[]; didNames: Record<string, string> }>) {
   return (
     <AttributionView
       entries={entries}
@@ -284,10 +284,10 @@ function ChainView({ entries, didNames }: { entries: FairEntry[]; didNames: Reco
 function ChainEdit({
   entries,
   onChange,
-}: {
+}: Readonly<{
   entries: FairEntry[];
   onChange: (entries: FairEntry[]) => void;
-}) {
+}>) {
   const { update, remove } = createEntryListEditor(entries, onChange);
 
   const add = () =>
@@ -365,7 +365,7 @@ function ChainEdit({
   );
 }
 
-function FeesView({ fees }: { fees: FairFee[] }) {
+function FeesView({ fees }: Readonly<{ fees: FairFee[] }>) {
   return (
     <div className="space-y-3">
       {fees.map((fee, i) => (
@@ -393,11 +393,11 @@ function AccessSection({
   access,
   readOnly,
   onChange,
-}: {
+}: Readonly<{
   access: FairAccess;
   readOnly: boolean;
   onChange?: (access: FairAccess) => void;
-}) {
+}>) {
   const types = ['public', 'private', 'trust-graph', 'conversation'] as const;
 
   return (
@@ -482,11 +482,11 @@ function TransferSection({
   transfer,
   readOnly,
   onChange,
-}: {
+}: Readonly<{
   transfer: FairManifest['transfer'];
   readOnly: boolean;
   onChange?: (t: FairManifest['transfer']) => void;
-}) {
+}>) {
   const t = transfer ?? { allowed: false };
 
   const toggle = (key: keyof typeof t, val: boolean | number) =>
@@ -553,7 +553,7 @@ function TransferSection({
   );
 }
 
-function IntegritySection({ integrity }: { integrity: FairManifest['integrity'] }) {
+function IntegritySection({ integrity }: Readonly<{ integrity: FairManifest['integrity'] }>) {
   if (!integrity) {
     return <p className="text-xs text-gray-600 italic">No integrity data.</p>;
   }
@@ -573,7 +573,7 @@ function IntegritySection({ integrity }: { integrity: FairManifest['integrity'] 
 
 // ─── Panel wrapper ───────────────────────────────────────────────────────────
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({ title, children }: Readonly<{ title: string; children: React.ReactNode }>) {
   return (
     <div className="bg-[#252525] rounded-xl p-4 space-y-3">
       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">{title}</h3>

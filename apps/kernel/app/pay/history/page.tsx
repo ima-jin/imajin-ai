@@ -27,9 +27,9 @@ interface SearchParams {
 
 export default async function HistoryPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: SearchParams;
-}) {
+}>) {
   const session = await getSession();
 
   if (!session) {

@@ -12,7 +12,7 @@ interface Props {
   role: DocumentRoleFilter;
 }
 
-export default async function DocumentList({ sessionDid, role }: Props) {
+export default async function DocumentList({ sessionDid, role }: Readonly<Props>) {
   let rows: typeof attestations.$inferSelect[] = [];
 
   if (role === 'created') {

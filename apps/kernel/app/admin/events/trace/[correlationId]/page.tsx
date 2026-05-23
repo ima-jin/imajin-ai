@@ -7,9 +7,9 @@ const sql = getClient();
 
 export default async function AdminEventsTracePage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ correlationId: string }>;
-}) {
+}>) {
   const session = await requireAdmin();
   if (!session) {
     redirect('/');

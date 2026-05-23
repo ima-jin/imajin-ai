@@ -113,7 +113,7 @@ function getStripeDashboardUrl(paymentId: string | null, sessionId: string | nul
   return null;
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: Readonly<{ status: string }>) {
   switch (status) {
     case 'completed':
       return (
@@ -154,13 +154,13 @@ function StatusBadge({ status }: { status: string }) {
   }
 }
 
-function ProfileCell({ buyerDid, buyerName, buyerHandle, buyerAvatar, buyerEmail }: {
+function ProfileCell({ buyerDid, buyerName, buyerHandle, buyerAvatar, buyerEmail }: Readonly<{
   buyerDid: string | null;
   buyerName: string | null;
   buyerHandle: string | null;
   buyerAvatar: string | null;
   buyerEmail: string | null;
-}) {
+}>) {
   const display = buyerName || buyerHandle || (buyerDid ? truncateId(buyerDid, 20) : '—');
   const initials = display.charAt(0).toUpperCase();
   const profileUrl = buyerHandle
@@ -615,7 +615,7 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
+function StatCard({ label, value }: Readonly<{ label: string; value: string | number }>) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-3 md:p-4 shadow">
       <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>

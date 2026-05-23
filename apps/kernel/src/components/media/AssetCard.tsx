@@ -44,7 +44,7 @@ export function getFairAccess(fairManifest: unknown): string | null {
   return null;
 }
 
-export function FairBadge({ access }: { access: string }) {
+export function FairBadge({ access }: Readonly<{ access: string }>) {
   if (access === "public") {
     return (
       <span className="text-xs font-medium bg-green-500/15 text-green-400 px-1.5 py-0.5 rounded">

@@ -11,7 +11,7 @@ interface Props {
 
 export const dynamic = 'force-dynamic';
 
-export default async function RegisterPage({ params, searchParams }: Props) {
+export default async function RegisterPage({ params, searchParams }: Readonly<Props>) {
   const { eventId, ticketId } = await params;
   const { token } = await searchParams;
 

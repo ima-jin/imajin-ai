@@ -26,9 +26,9 @@ async function requireAdmin() {
 
 export default async function AdminSubscribersPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<SearchParams>;
-}) {
+}>) {
   const session = await requireAdmin();
   const params = await searchParams;
   const q = params.q?.trim() ?? '';

@@ -25,13 +25,13 @@ function FieldFormPanel({
   onSave,
   onCancel,
   isEditing,
-}: {
+}: Readonly<{
   fieldForm: SurveyJSElement;
   setFieldForm: (f: SurveyJSElement) => void;
   onSave: () => void;
   onCancel: () => void;
   isEditing: boolean;
-}) {
+}>) {
   return (
     <div className="mb-2 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border-2 border-orange-500/50">
       <h3 className="text-lg font-semibold mb-3">

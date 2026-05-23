@@ -61,7 +61,7 @@ function statusBadge(status: string) {
   );
 }
 
-export default function InvitationsTab({ onCountUpdate }: { onCountUpdate?: (pending: number, remaining: number | null) => void }) {
+export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpdate?: (pending: number, remaining: number | null) => void }>) {
   const { toast } = useToast();
   const [invitedBy, setInvitedBy] = useState<InvitedBy | null | 'loading'>('loading');
   const [sentInvites, setSentInvites] = useState<SentInvite[]>([]);

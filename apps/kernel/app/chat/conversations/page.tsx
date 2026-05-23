@@ -282,10 +282,10 @@ export default function ConversationsPage() {
 function ConversationRow({
   conv,
   onlineStatus,
-}: {
+}: Readonly<{
   conv: DisplayConversation;
   onlineStatus: Record<string, boolean>;
-}) {
+}>) {
   const isGroup = conv.type === 'group';
   const isEvent = conv.type === 'event';
   const isDm = conv.type === 'dm';

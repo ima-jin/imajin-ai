@@ -25,7 +25,7 @@ interface Props {
 
 const PRESET_AMOUNTS = [10, 25, 50, 100, 250];
 
-export function CampaignSection({ eventId, eventTitle, isAuthenticated }: Props) {
+export function CampaignSection({ eventId, eventTitle, isAuthenticated }: Readonly<Props>) {
   const [status, setStatus] = useState<CampaignStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [pledging, setPledging] = useState(false);

@@ -147,7 +147,7 @@ export default async function AdminModerationPage() {
   );
 }
 
-function ActionBadge({ action }: { action: string }) {
+function ActionBadge({ action }: Readonly<{ action: string }>) {
   const styles: Record<string, string> = {
     suspend: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
     unsuspend: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400',

@@ -22,7 +22,7 @@ interface Props {
   }>;
 }
 
-export default function NewsletterComposer({ initialLists, initialConnectionCount, recentSends }: Props) {
+export default function NewsletterComposer({ initialLists, initialConnectionCount, recentSends }: Readonly<Props>) {
   const [subject, setSubject] = useState('');
   const [replyTo, setReplyTo] = useState('');
   const [markdown, setMarkdown] = useState('');

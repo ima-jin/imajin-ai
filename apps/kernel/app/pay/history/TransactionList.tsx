@@ -50,7 +50,7 @@ function fmtDate(iso: string | null) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: Readonly<{ status: string }>) {
   const cls =
     status === 'completed'
       ? 'bg-green-900/30 text-green-400 border-green-800'
@@ -76,7 +76,7 @@ function ChevronIcon() {
   );
 }
 
-function StandaloneRow({ tx, sessionId }: { tx: SerializedTx; sessionId: string }) {
+function StandaloneRow({ tx, sessionId }: Readonly<{ tx: SerializedTx; sessionId: string }>) {
   const isIncoming = tx.toDid === sessionId;
   const amount = Number.parseFloat(tx.amount);
   const icon = SERVICE_ICONS[tx.service] || '💳';
@@ -179,11 +179,11 @@ function BatchGroupRow({
   entries,
   sessionId,
   showGross,
-}: {
+}: Readonly<{
   entries: SerializedTx[];
   sessionId: string;
   showGross: boolean;
-}) {
+}>) {
   const userEntry = entries.find((e) => e.toDid === sessionId) ?? entries[0];
   const icon = SERVICE_ICONS[userEntry.service] || '💳';
 

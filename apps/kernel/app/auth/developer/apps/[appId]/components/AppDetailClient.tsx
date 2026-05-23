@@ -23,7 +23,7 @@ interface Props {
   app: App;
 }
 
-function CopyButton({ text, label }: { text: string; label?: string }) {
+function CopyButton({ text, label }: Readonly<{ text: string; label?: string }>) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     await navigator.clipboard.writeText(text);
@@ -40,7 +40,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
   return (
     <div>
       <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">{label}</p>
@@ -49,7 +49,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export default function AppDetailClient({ app: initialApp }: Props) {
+export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
   const router = useRouter();
   const [app, setApp] = useState(initialApp);
   const [editing, setEditing] = useState(false);

@@ -13,7 +13,7 @@ interface Props {
   sessionDid: string;
 }
 
-export default async function IdentityDetail({ did, sessionDid }: Props) {
+export default async function IdentityDetail({ did, sessionDid }: Readonly<Props>) {
   const [identity] = await db
     .select()
     .from(identities)

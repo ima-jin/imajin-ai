@@ -41,12 +41,12 @@ function ResolvedDidChip({
   profile,
   onClear,
   readOnly,
-}: {
+}: Readonly<{
   did: string;
   profile: ResolvedProfile | null;
   onClear: () => void;
   readOnly?: boolean;
-}) {
+}>) {
   const displayName = profile?.name || did.slice(0, 16) + '…';
   const handle = profile?.handle;
   const avatar = profile?.avatar;
@@ -109,11 +109,11 @@ function InlineDidPicker({
   connectionsUrl,
   onSelect,
   readOnly,
-}: {
+}: Readonly<{
   connectionsUrl?: string;
   onSelect: (did: string) => void;
   readOnly?: boolean;
-}) {
+}>) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [connections, setConnections] = useState<Connection[]>([]);

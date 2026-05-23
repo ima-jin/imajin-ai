@@ -15,7 +15,7 @@ interface LookupResult {
   name: string | null;
 }
 
-export default function CreateDocumentForm({ sessionDid, onCreated }: Props) {
+export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<Props>) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<'upload' | 'details' | 'preview'>('upload');
   const [file, setFile] = useState<File | null>(null);

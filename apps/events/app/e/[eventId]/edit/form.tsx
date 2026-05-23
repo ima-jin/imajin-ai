@@ -42,7 +42,7 @@ interface Survey {
 
 type ActiveTab = 'details' | 'fair' | 'campaign';
 
-export default function EventEditForm({ event, existingTickets, creatorEmail, organizerDids, viewerDid, creatorHandle, creatorName }: Props) {
+export default function EventEditForm({ event, existingTickets, creatorEmail, organizerDids, viewerDid, creatorHandle, creatorName }: Readonly<Props>) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

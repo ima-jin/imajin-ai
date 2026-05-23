@@ -9,7 +9,7 @@ function getServiceFromPathname(pathname: string): string {
   return segment;
 }
 
-export function ImajinFooter({ className }: { className?: string }) {
+export function ImajinFooter({ className }: Readonly<{ className?: string }>) {
   const [subscribeHref, setSubscribeHref] = useState('/subscribe');
 
   useEffect(() => {

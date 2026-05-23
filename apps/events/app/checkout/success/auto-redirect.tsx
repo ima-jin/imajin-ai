@@ -8,7 +8,7 @@ interface Props {
   seconds: number;
 }
 
-export function AutoRedirect({ href, seconds }: Props) {
+export function AutoRedirect({ href, seconds }: Readonly<Props>) {
   const router = useRouter();
   const [countdown, setCountdown] = useState(seconds);
 

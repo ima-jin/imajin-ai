@@ -32,7 +32,7 @@ function groupServices(services: ServiceEntry[]): Groups {
   };
 }
 
-function ServiceTile({ service, onAuthRequired }: { service: ServiceEntry; onAuthRequired: (url: string) => void }) {
+function ServiceTile({ service, onAuthRequired }: Readonly<{ service: ServiceEntry; onAuthRequired: (url: string) => void }>) {
   const isExternal = !!service.externalUrl;
 
   function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
@@ -56,7 +56,7 @@ function ServiceTile({ service, onAuthRequired }: { service: ServiceEntry; onAut
   );
 }
 
-function TileGroup({ label, services, onAuthRequired }: { label?: string; services: ServiceEntry[]; onAuthRequired: (url: string) => void }) {
+function TileGroup({ label, services, onAuthRequired }: Readonly<{ label?: string; services: ServiceEntry[]; onAuthRequired: (url: string) => void }>) {
   if (services.length === 0) return null;
   return (
     <div>

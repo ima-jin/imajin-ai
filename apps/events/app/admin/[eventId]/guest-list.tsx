@@ -90,12 +90,12 @@ function truncateDid(did: string): string {
   return `${did.slice(0, 16)}…`;
 }
 
-function ProfileCell({ ownerDid, profile, paymentMethod, paymentId }: {
+function ProfileCell({ ownerDid, profile, paymentMethod, paymentId }: Readonly<{
   ownerDid: string | null;
   profile: Profile | null;
   paymentMethod?: string | null;
   paymentId?: string | null;
-}) {
+}>) {
   const display = profile?.name || profile?.handle || (ownerDid ? truncateDid(ownerDid) : '—');
   const initials = display.charAt(0).toUpperCase();
 
@@ -773,7 +773,7 @@ function truncateFairDid(did: string): string {
   return did.length > 16 ? did.slice(0, 10) + '…' + did.slice(-6) : did;
 }
 
-function GuestFairReceipt({ settlement }: { settlement: FairSettlement }) {
+function GuestFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement }>) {
   const currencyFmt = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: settlement.currency || 'CAD',
@@ -838,7 +838,7 @@ function GuestFairReceipt({ settlement }: { settlement: FairSettlement }) {
   );
 }
 
-function RegistrationCell({ status, attendeeName, onViewSurvey }: { status: string | null; attendeeName: string | null; onViewSurvey?: () => void }) {
+function RegistrationCell({ status, attendeeName, onViewSurvey }: Readonly<{ status: string | null; attendeeName: string | null; onViewSurvey?: () => void }>) {
   if (!status || status === 'not_required') {
     return <span className="text-xs text-gray-400">—</span>;
   }
@@ -868,7 +868,7 @@ function RegistrationCell({ status, attendeeName, onViewSurvey }: { status: stri
   return <span className="text-xs text-gray-400">{status}</span>;
 }
 
-function StatusBadge({ status, paymentMethod }: { status: string; paymentMethod?: string | null }) {
+function StatusBadge({ status, paymentMethod }: Readonly<{ status: string; paymentMethod?: string | null }>) {
   if (status === 'held' && paymentMethod === 'etransfer') {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300">
@@ -934,12 +934,12 @@ function timeAgo(dateStr: string): string {
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 
-function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmail }: {
+function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmail }: Readonly<{
   loading: boolean;
   resendState?: 'sending' | 'sent';
   lastEmailSentAt: string | null;
   onResendEmail: () => void;
-}) {
+}>) {
   const onCooldown = lastEmailSentAt && (Date.now() - new Date(lastEmailSentAt).getTime()) < COOLDOWN_MS;
   const isSending = resendState === 'sending';
   const isSent = resendState === 'sent';

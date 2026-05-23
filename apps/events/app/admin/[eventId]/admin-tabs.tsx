@@ -151,7 +151,7 @@ function StatsTab({
   tiers,
   basePath,
   eventId,
-}: {
+}: Readonly<{
   totalSold: number;
   confirmedRevenue: number;
   heldRevenue: number;
@@ -160,7 +160,7 @@ function StatsTab({
   tiers: TicketType[];
   basePath: string;
   eventId: string;
-}) {
+}>) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -211,7 +211,7 @@ function StatsTab({
   );
 }
 
-function EditTab({ basePath, eventId }: { basePath: string; eventId: string }) {
+function EditTab({ basePath, eventId }: Readonly<{ basePath: string; eventId: string }>) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
       <h2 className="text-xl font-semibold mb-4">Edit Event</h2>
@@ -228,7 +228,7 @@ function EditTab({ basePath, eventId }: { basePath: string; eventId: string }) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
+function StatCard({ label, value }: Readonly<{ label: string; value: string | number }>) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-3 md:p-4 shadow">
       <p className="text-sm text-gray-500">{label}</p>

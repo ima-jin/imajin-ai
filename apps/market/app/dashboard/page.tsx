@@ -55,7 +55,7 @@ function relativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status }: Readonly<{ status: string }>) {
   const styles: Record<string, string> = {
     active: 'bg-green-900/50 text-green-400 border-green-700/50',
     paused: 'bg-yellow-900/50 text-yellow-400 border-yellow-700/50',
@@ -75,7 +75,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({ label, value }: Readonly<{ label: string; value: number }>) {
   return (
     <div className="bg-gray-800 rounded-xl p-4 flex flex-col gap-1">
       <span className="text-xs text-gray-400 uppercase tracking-wide">{label}</span>
@@ -508,7 +508,7 @@ interface ListingActionProps {
   onRemove: () => void;
 }
 
-function ListingThumbnail({ images }: { images: string[] | null }) {
+function ListingThumbnail({ images }: Readonly<{ images: string[] | null }>) {
   const imgs = Array.isArray(images) ? images : [];
   const ref = imgs.find((img) => typeof img === 'string' && img.length > 0);
   const src = ref ? resolveMediaRef(ref, 'thumbnail') : undefined;
@@ -678,11 +678,11 @@ function ConfirmModal({
   action,
   onConfirm,
   onCancel,
-}: {
+}: Readonly<{
   action: { type: 'sold' | 'remove'; id: string; title: string };
   onConfirm: () => void;
   onCancel: () => void;
-}) {
+}>) {
   const isSold = action.type === 'sold';
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">

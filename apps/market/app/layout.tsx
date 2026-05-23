@@ -6,9 +6,9 @@ export const metadata: Metadata = buildServiceMetadata('Market', 'Local commerce
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   const { servicePrefix, domain } = getServiceRuntimeEnv();
 
   return (

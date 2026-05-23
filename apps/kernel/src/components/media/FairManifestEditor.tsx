@@ -70,12 +70,12 @@ function Toggle({
   checked,
   onChange,
   readOnly,
-}: {
+}: Readonly<{
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   readOnly?: boolean;
-}) {
+}>) {
   return (
     <label className="flex items-center gap-2 cursor-pointer">
       <input
@@ -104,13 +104,13 @@ function DistributionRightEditor({
   readOnly,
   connectionsUrl,
   resolveProfile,
-}: {
+}: Readonly<{
   right?: FairDistributionRight;
   onChange: (r: FairDistributionRight | undefined) => void;
   readOnly?: boolean;
   connectionsUrl?: string;
   resolveProfile?: (did: string) => Promise<{ name: string; handle?: string; avatar?: string } | null>;
-}) {
+}>) {
   const mode = right?.mode ?? 'reserved';
   const canHavePrice = mode === 'allowed' || mode === 'allow-with-share' || mode === 'allow-with-attribution';
   const hasPrice = canHavePrice && !!right?.price && right.price.amount > 0;

@@ -42,7 +42,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function ArticlePage({ params }: Props) {
+export default async function ArticlePage({ params }: Readonly<Props>) {
   const { handle, slug } = await params;
   const author = await resolveHandle(handle);
   if (!author) notFound();

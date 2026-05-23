@@ -77,7 +77,7 @@ const CHAT_URL = buildPublicUrl('chat');
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function BumpConnect({ onClose }: Props) {
+export default function BumpConnect({ onClose }: Readonly<Props>) {
   const [state, setState] = useState<BumpState>('selecting');
 
   // Selecting state

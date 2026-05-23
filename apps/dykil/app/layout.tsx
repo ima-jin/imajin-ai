@@ -7,9 +7,9 @@ export const metadata: Metadata = buildServiceMetadata('Dykil', 'Sovereign surve
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">

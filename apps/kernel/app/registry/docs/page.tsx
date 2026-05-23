@@ -97,7 +97,7 @@ export default function DocsPage() {
   );
 }
 
-function SpecViewer({ spec }: { spec: any }) {
+function SpecViewer({ spec }: Readonly<{ spec: any }>) {
   const paths = spec.paths || {};
 
   return (

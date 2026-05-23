@@ -22,7 +22,7 @@ const SELECTABLE_SERVICES = SERVICES.filter(
     s.category !== 'kernel'
 );
 
-export default function IdentitySettingsPanel({ groupDid }: { groupDid: string }) {
+export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid: string }>) {
   const [loading, setLoading] = useState(true);
   const [enabledServices, setEnabledServices] = useState<string[]>([]);
   const [landingService, setLandingService] = useState<string | null>(null);

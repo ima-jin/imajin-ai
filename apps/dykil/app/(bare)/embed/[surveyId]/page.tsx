@@ -63,7 +63,7 @@ function applyHtmlHandler(model: Model) {
  * EditableSurvey — renders a SurveyJS model pre-filled with answers for editing.
  * Own component so the Model is created once on mount, not on every parent render.
  */
-function EditableSurvey({ fields, answers, onSubmit }: { fields: any; answers: Record<string, any>; onSubmit: (answers: Record<string, any>) => Promise<void> }) {
+function EditableSurvey({ fields, answers, onSubmit }: Readonly<{ fields: any; answers: Record<string, any>; onSubmit: (answers: Record<string, any>) => Promise<void> }>) {
   const modelRef = useRef<Model | null>(null);
   const [ready, setReady] = useState(false);
 

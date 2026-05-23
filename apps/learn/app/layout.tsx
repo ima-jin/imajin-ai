@@ -7,9 +7,9 @@ export const metadata: Metadata = buildServiceMetadata('Learn', 'Courses and les
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   const { servicePrefix, domain } = getServiceRuntimeEnv();
 
   return (

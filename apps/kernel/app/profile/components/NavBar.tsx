@@ -22,7 +22,7 @@ const serviceUrls: ServiceUrls = {
 };
 const hasOverrides = Object.keys(serviceUrls).length > 0;
 
-export function NavBar({ currentService = 'Profile' }: { currentService?: string }) {
+export function NavBar({ currentService = 'Profile' }: Readonly<{ currentService?: string }>) {
   const router = useRouter();
   const { isLoggedIn, handle, did, logout } = useIdentity();
 

@@ -9,7 +9,7 @@ interface UnreadCountContextValue {
 
 const UnreadCountContext = createContext<UnreadCountContextValue>({ total: 0 });
 
-export function UnreadCountProvider({ children }: { children: React.ReactNode }) {
+export function UnreadCountProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [total, setTotal] = useState(0);
   const { lastMessage } = useWebSocket();
 

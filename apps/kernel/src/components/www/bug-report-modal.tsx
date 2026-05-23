@@ -19,7 +19,7 @@ const REPORT_TYPES = [
   { value: 'other', label: '💬 Other', placeholder: 'Tell us what\'s on your mind.' },
 ] as const;
 
-export function BugReportModal({ onClose }: Props) {
+export function BugReportModal({ onClose }: Readonly<Props>) {
   const router = useRouter();
   const [type, setType] = useState<string>('bug');
   const [description, setDescription] = useState('');

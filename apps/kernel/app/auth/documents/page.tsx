@@ -7,7 +7,7 @@ interface SearchParams {
   role?: string;
 }
 
-export default async function DocumentsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+export default async function DocumentsPage({ searchParams }: Readonly<{ searchParams: Promise<SearchParams> }>) {
   const resolvedSearchParams = await searchParams;
   const { sessionDid, effectiveDid } = await getEffectiveDid();
 

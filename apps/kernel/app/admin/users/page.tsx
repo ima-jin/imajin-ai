@@ -14,9 +14,9 @@ interface SearchParams {
 
 export default async function AdminUsersPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<SearchParams>;
-}) {
+}>) {
   const params = await searchParams;
   const q = params.q?.trim() ?? '';
   const tier = params.tier ?? '';
@@ -261,7 +261,7 @@ export default async function AdminUsersPage({
   );
 }
 
-function TierBadge({ tier }: { tier: string }) {
+function TierBadge({ tier }: Readonly<{ tier: string }>) {
   const styles: Record<string, string> = {
     soft: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
     preliminary: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400',

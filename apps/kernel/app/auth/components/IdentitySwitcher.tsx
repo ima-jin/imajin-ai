@@ -23,7 +23,7 @@ export default function IdentitySwitcher({
   personalDid,
   personalName,
   personalHandle,
-}: Props) {
+}: Readonly<Props>) {
   const { identities, loading, activeIdentity } = useIdentities(authUrl, profileUrl);
 
   async function switchTo(did: string | null) {

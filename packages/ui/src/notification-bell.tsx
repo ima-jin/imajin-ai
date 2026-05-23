@@ -15,7 +15,7 @@ function relativeTime(dateStr: string): string {
   return `${days}d ago`;
 }
 
-function BellIcon({ className }: { className?: string }) {
+function BellIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       className={className}

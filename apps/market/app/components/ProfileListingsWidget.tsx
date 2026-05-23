@@ -32,10 +32,10 @@ function formatPrice(price: number, currency: string): string {
 function MiniCard({
   listing,
   marketServiceUrl,
-}: {
+}: Readonly<{
   listing: ProfileListing;
   marketServiceUrl: string;
-}) {
+}>) {
   const images = Array.isArray(listing.images) ? listing.images : [];
   const primaryRef = images.find(
     (img): img is string => typeof img === 'string' && img.length > 0
