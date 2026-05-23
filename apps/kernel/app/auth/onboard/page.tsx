@@ -219,7 +219,8 @@ function OnboardContent() {
   })();
   const onboardPath = `/auth/onboard${onboardQuery}`;
   const loginNext = redirect || scope ? onboardPath : '';
-  const loginUrl = `/auth/login${loginNext ? `?next=${encodeURIComponent(loginNext)}` : ''}`;
+  const loginQuery = loginNext ? `?next=${encodeURIComponent(loginNext)}` : '';
+  const loginUrl = `/auth/login${loginQuery}`;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">

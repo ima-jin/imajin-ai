@@ -215,7 +215,8 @@ function printResult(result: ServiceResult, env: "dev" | "prod"): void {
   }
 
   for (const { key, expected, actual } of wrongPorts) {
-    console.log(`       ${sym.arrow}  ${red("wrong port")}  ${cyan(key)}  ${dim(`expected :${expected}, got :${actual}`)}`);
+    const portMismatch = `expected :${expected}, got :${actual}`;
+    console.log(`       ${sym.arrow}  ${red("wrong port")}  ${cyan(key)}  ${dim(portMismatch)}`);
   }
 
   for (const key of extra) {
@@ -256,7 +257,9 @@ function main(): void {
   }
 
   console.log();
-  console.log(`${bold("check-env")}  ${dim(`env=${env}`)}  ${dim(`checking ${services.length} service(s)`)}`);
+  const envLabel = `env=${env}`;
+  const checkingLabel = `checking ${services.length} service(s)`;
+  console.log(`${bold("check-env")}  ${dim(envLabel)}  ${dim(checkingLabel)}`);
   console.log(dim("─".repeat(60)));
   console.log();
 

@@ -207,7 +207,7 @@ export default function ConnectionsPage() {
         <h1 className="text-3xl font-bold mb-3">Imajin Connections</h1>
         <p className="text-gray-400 mb-8">Sign in to manage your trusted connections.</p>
         <a
-          href={`${PROFILE_URL}/login?next=${encodeURIComponent(`${AUTH_URL}`)}`}
+          href={`${PROFILE_URL}/login?next=${encodeURIComponent(AUTH_URL)}`}
           className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition"
         >
           Sign In

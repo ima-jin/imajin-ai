@@ -34,7 +34,8 @@ export function SurveyAccordion({
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
-  const embedUrl = `${DYKIL_URL}/embed/${surveyId}${ticketId ? `?ticketId=${ticketId}` : ''}`;
+  const ticketQuery = ticketId ? `?ticketId=${ticketId}` : '';
+  const embedUrl = `${DYKIL_URL}/embed/${surveyId}${ticketQuery}`;
 
   // Fetch authoritative registration status from DB
   const fetchStatus = useCallback(async () => {

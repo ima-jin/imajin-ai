@@ -56,7 +56,8 @@ export function CohostManager({ eventId, isOwner, ownerDid }: Readonly<CohostMan
       }
 
       setCohosts(prev => [...prev, data.cohost]);
-      setSuccess(`${data.cohost.name || (data.cohost.handle ? `@${data.cohost.handle}` : data.cohost.did.slice(0, 12))} added as co-host`);
+      const cohostLabel = data.cohost.name || (data.cohost.handle ? `@${data.cohost.handle}` : data.cohost.did.slice(0, 12));
+      setSuccess(`${cohostLabel} added as co-host`);
       setTimeout(() => setSuccess(null), 4000);
     } catch {
       setError('Failed to add cohost');

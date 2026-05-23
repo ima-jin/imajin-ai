@@ -322,6 +322,8 @@ function RegisterPage() {
   }
 
   const inviterDisplay = inviteInfo?.fromHandle ? `@${inviteInfo.fromHandle}` : inviteInfo?.fromDid.slice(0, 20) + '...';
+  const redirectParam = redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : '';
+  const loginQuery = inviteCode ? `?invite=${inviteCode}${redirectParam}` : '';
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
@@ -440,7 +442,7 @@ function RegisterPage() {
         <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
           Already have an identity?{' '}
           <Link
-            href={`/auth/login${inviteCode ? `?invite=${inviteCode}${redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : ''}` : ''}`}
+            href={`/auth/login${loginQuery}`}
             className="text-orange-500 hover:underline"
           >
             Sign in
