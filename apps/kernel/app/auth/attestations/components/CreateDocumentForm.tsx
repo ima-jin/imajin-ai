@@ -203,8 +203,9 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
       {step === 'details' && (
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1.5">Title</label>
+            <label htmlFor="doc-signing-title" className="block text-xs text-zinc-500 mb-1.5">Title</label>
             <input
+              id="doc-signing-title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -214,7 +215,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
           </div>
 
           <div>
-            <label className="block text-xs text-zinc-500 mb-1.5">Signers</label>
+            <span className="block text-xs text-zinc-500 mb-1.5">Signers</span>
             <IdentityPicker
               onSelect={addSigner}
               placeholder="Search by handle, name, or DID…"
@@ -241,8 +242,9 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
           </div>
 
           <div>
-            <label className="block text-xs text-zinc-500 mb-1.5">Expiry</label>
+            <label htmlFor="doc-signing-expiry" className="block text-xs text-zinc-500 mb-1.5">Expiry</label>
             <select
+              id="doc-signing-expiry"
               value={expiry}
               onChange={(e) => setExpiry(e.target.value as typeof expiry)}
               className="w-full bg-black border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"

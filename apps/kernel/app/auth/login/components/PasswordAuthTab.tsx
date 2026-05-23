@@ -243,8 +243,9 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: R
 
         <form onSubmit={handlePasswordSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Password</label>
+            <label htmlFor="login-password" className="block text-sm font-medium mb-1 text-gray-300">Password</label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -276,8 +277,9 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: R
   return (
     <form onSubmit={handleIdentifierSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium mb-1 text-gray-300">Handle</label>
+        <label htmlFor="login-handle" className="block text-sm font-medium mb-1 text-gray-300">Handle</label>
         <input
+          id="login-handle"
           type="text"
           value={handle}
           onChange={e => setHandle(e.target.value)}

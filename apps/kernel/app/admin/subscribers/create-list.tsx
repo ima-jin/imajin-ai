@@ -59,8 +59,9 @@ export default function CreateList() {
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Create Mailing List</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
+            <label htmlFor="create-list-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
             <input
+              id="create-list-name"
               type="text"
               required
               value={name}
@@ -70,8 +71,9 @@ export default function CreateList() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Slug</label>
+            <label htmlFor="create-list-slug" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Slug</label>
             <input
+              id="create-list-slug"
               type="text"
               required
               value={slug}
@@ -81,10 +83,11 @@ export default function CreateList() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="create-list-description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Description <span className="text-gray-400">(optional)</span>
             </label>
             <textarea
+              id="create-list-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}

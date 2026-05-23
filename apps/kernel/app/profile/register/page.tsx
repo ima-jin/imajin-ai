@@ -441,8 +441,9 @@ function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Display Name *</label>
+            <label htmlFor="profile-register-display-name" className="block text-sm font-medium mb-1 text-gray-300">Display Name *</label>
             <input
+              id="profile-register-display-name"
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
@@ -453,10 +454,11 @@ function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Handle</label>
+            <label htmlFor="profile-register-handle" className="block text-sm font-medium mb-1 text-gray-300">Handle</label>
             <div className="flex items-center">
               <span className="text-gray-500 mr-1">@</span>
               <input
+                id="profile-register-handle"
                 type="text"
                 value={handle}
                 onChange={(e) => setHandle(normalizeHandleInput(e.target.value))}
@@ -481,8 +483,9 @@ function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Bio (optional)</label>
+            <label htmlFor="profile-register-bio" className="block text-sm font-medium mb-1 text-gray-300">Bio (optional)</label>
             <textarea
+              id="profile-register-bio"
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="Tell us about yourself..."
@@ -507,8 +510,9 @@ function RegisterPage() {
               />
             ) : (
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-300">Avatar (emoji)</label>
+                <label htmlFor="profile-register-avatar-emoji" className="block text-sm font-medium mb-1 text-gray-300">Avatar (emoji)</label>
                 <input
+                  id="profile-register-avatar-emoji"
                   type="text"
                   value={avatar}
                   onChange={(e) => setAvatar(e.target.value)}

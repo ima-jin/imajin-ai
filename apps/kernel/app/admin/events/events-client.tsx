@@ -227,8 +227,9 @@ export default function EventsClient() {
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-2 items-end">
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">Service</label>
+          <label htmlFor="events-filter-service" className="text-xs text-gray-500 dark:text-gray-400">Service</label>
           <select
+            id="events-filter-service"
             value={pendingFilters.service}
             onChange={(e) => setPendingFilters({ ...pendingFilters, service: e.target.value })}
             className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -240,8 +241,9 @@ export default function EventsClient() {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">Action</label>
+          <label htmlFor="events-filter-action" className="text-xs text-gray-500 dark:text-gray-400">Action</label>
           <input
+            id="events-filter-action"
             type="text"
             value={pendingFilters.action}
             onChange={(e) => setPendingFilters({ ...pendingFilters, action: e.target.value })}
@@ -250,8 +252,9 @@ export default function EventsClient() {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">DID</label>
+          <label htmlFor="events-filter-did" className="text-xs text-gray-500 dark:text-gray-400">DID</label>
           <input
+            id="events-filter-did"
             type="text"
             value={pendingFilters.did}
             onChange={(e) => setPendingFilters({ ...pendingFilters, did: e.target.value })}
@@ -260,8 +263,9 @@ export default function EventsClient() {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">From</label>
+          <label htmlFor="events-filter-from" className="text-xs text-gray-500 dark:text-gray-400">From</label>
           <input
+            id="events-filter-from"
             type="datetime-local"
             value={pendingFilters.from}
             onChange={(e) => setPendingFilters({ ...pendingFilters, from: e.target.value })}
@@ -269,8 +273,9 @@ export default function EventsClient() {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 dark:text-gray-400">To</label>
+          <label htmlFor="events-filter-to" className="text-xs text-gray-500 dark:text-gray-400">To</label>
           <input
+            id="events-filter-to"
             type="datetime-local"
             value={pendingFilters.to}
             onChange={(e) => setPendingFilters({ ...pendingFilters, to: e.target.value })}

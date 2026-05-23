@@ -157,10 +157,11 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
 
           {/* Name */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="edit-app-name" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Name <span className="text-red-400">*</span>
             </label>
             <input
+              id="edit-app-name"
               type="text"
               value={editName}
               onChange={e => setEditName(e.target.value)}
@@ -172,10 +173,11 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="edit-app-description" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Description
             </label>
             <textarea
+              id="edit-app-description"
               value={editDescription}
               onChange={e => setEditDescription(e.target.value)}
               rows={2}
@@ -186,10 +188,11 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
 
           {/* Callback URL */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="edit-app-callback-url" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Callback URL <span className="text-red-400">*</span>
             </label>
             <input
+              id="edit-app-callback-url"
               type="url"
               value={editCallbackUrl}
               onChange={e => setEditCallbackUrl(e.target.value)}
@@ -200,10 +203,11 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
 
           {/* Homepage URL */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="edit-app-homepage-url" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Homepage URL
             </label>
             <input
+              id="edit-app-homepage-url"
               type="url"
               value={editHomepageUrl}
               onChange={e => setEditHomepageUrl(e.target.value)}
@@ -213,10 +217,11 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
 
           {/* Logo URL */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="edit-app-logo-url" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Logo URL
             </label>
             <input
+              id="edit-app-logo-url"
               type="url"
               value={editLogoUrl}
               onChange={e => setEditLogoUrl(e.target.value)}
@@ -226,13 +231,14 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
 
           {/* Scopes */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
+            <span className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
               Requested Scopes
-            </label>
+            </span>
             <div className="space-y-1.5">
               {Object.entries(SCOPES).map(([scope, label]) => (
-                <label key={scope} className="flex items-center gap-3 cursor-pointer">
+                <label key={scope} htmlFor={`edit-app-scope-${scope}`} className="flex items-center gap-3 cursor-pointer">
                   <input
+                    id={`edit-app-scope-${scope}`}
                     type="checkbox"
                     checked={editScopes.includes(scope)}
                     onChange={() => toggleEditScope(scope)}

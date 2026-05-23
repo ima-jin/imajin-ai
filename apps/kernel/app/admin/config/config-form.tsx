@@ -67,11 +67,12 @@ export function ConfigForm({ registrationMode, maxIdentities, maxStoragePerDidMb
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Resource Limits</h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <label htmlFor="config-max-identities" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
               Max Identities (0 = unlimited)
             </label>
             <div className="flex items-center gap-3">
               <input
+                id="config-max-identities"
                 type="number"
                 min={0}
                 value={maxIds}
@@ -88,11 +89,12 @@ export function ConfigForm({ registrationMode, maxIdentities, maxStoragePerDidMb
             </div>
           </div>
           <div>
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <label htmlFor="config-max-storage" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
               Max Storage per DID (MB, 0 = unlimited)
             </label>
             <div className="flex items-center gap-3">
               <input
+                id="config-max-storage"
                 type="number"
                 min={0}
                 value={maxStorage}

@@ -227,12 +227,13 @@ export default function AgentsPage() {
             <h2 className="text-lg font-semibold text-white mb-4">Create new agent</h2>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Handle</label>
+                <label htmlFor="create-agent-handle" className="block text-sm text-gray-400 mb-1">Handle</label>
                 <div className="flex items-center gap-2">
                   {handlePrefix && (
                     <span className="text-sm text-gray-500 shrink-0">{handlePrefix}-</span>
                   )}
                   <input
+                    id="create-agent-handle"
                     type="text"
                     value={handle}
                     onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
@@ -246,8 +247,9 @@ export default function AgentsPage() {
                 </p>
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Display name</label>
+                <label htmlFor="create-agent-display-name" className="block text-sm text-gray-400 mb-1">Display name</label>
                 <input
+                  id="create-agent-display-name"
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
@@ -256,8 +258,9 @@ export default function AgentsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-400 mb-1">Bio</label>
+                <label htmlFor="create-agent-bio" className="block text-sm text-gray-400 mb-1">Bio</label>
                 <textarea
+                  id="create-agent-bio"
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   placeholder="Helps plan trips"

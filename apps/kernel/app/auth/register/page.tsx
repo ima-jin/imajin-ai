@@ -338,10 +338,11 @@ function RegisterPage() {
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Handle</label>
+            <label htmlFor="register-handle" className="block text-sm font-medium mb-1">Handle</label>
             <div className="flex items-center">
               <span className="text-gray-400 mr-1">@</span>
               <input
+                id="register-handle"
                 type="text"
                 value={handle}
                 onChange={(e) => setHandle(normalizeHandleInput(e.target.value))}
@@ -355,8 +356,9 @@ function RegisterPage() {
           </div>
           
           <div>
-            <label className="block text-sm font-medium mb-1">Display Name</label>
+            <label htmlFor="register-display-name" className="block text-sm font-medium mb-1">Display Name</label>
             <input
+              id="register-display-name"
               type="text"
               value={name}
               onChange={(e) => setDisplayName(e.target.value)}
@@ -367,10 +369,11 @@ function RegisterPage() {
           </div>
           
           <div>
-            <label className="block text-sm font-medium mb-1">
+            <label htmlFor="register-email" className="block text-sm font-medium mb-1">
               Email <span className="text-gray-400 font-normal">(optional)</span>
             </label>
             <input
+              id="register-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -380,10 +383,11 @@ function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">
+            <label htmlFor="register-phone" className="block text-sm font-medium mb-1">
               Phone <span className="text-gray-400 font-normal">(optional)</span>
             </label>
             <input
+              id="register-phone"
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -407,8 +411,9 @@ function RegisterPage() {
           )}
 
           <div>
-            <label className="block text-sm font-medium mb-1">Account Type</label>
+            <label htmlFor="register-account-type" className="block text-sm font-medium mb-1">Account Type</label>
             <select
+              id="register-account-type"
               value={subtype}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
               disabled

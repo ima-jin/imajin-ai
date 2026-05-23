@@ -313,8 +313,9 @@ export default function LogsClient() {
           <div className="mb-4 flex flex-wrap gap-2 items-end">
             {/* Service */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">Service</label>
+              <label htmlFor="logs-filter-service" className="text-xs text-gray-500 dark:text-gray-400">Service</label>
               <select
+                id="logs-filter-service"
                 value={pendingFilters.service}
                 onChange={(e) => setPendingFilters({ ...pendingFilters, service: e.target.value })}
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-36"
@@ -328,7 +329,7 @@ export default function LogsClient() {
 
             {/* Level pills */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">Level</label>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Level</span>
               <div className="flex gap-1">
                 {ALL_LEVELS.map((level) => {
                   const active = pendingFilters.levels.includes(level);
@@ -351,8 +352,9 @@ export default function LogsClient() {
 
             {/* Search */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">Search</label>
+              <label htmlFor="logs-filter-search" className="text-xs text-gray-500 dark:text-gray-400">Search</label>
               <input
+                id="logs-filter-search"
                 type="text"
                 value={pendingFilters.search}
                 onChange={(e) => setPendingFilters({ ...pendingFilters, search: e.target.value })}
@@ -363,8 +365,9 @@ export default function LogsClient() {
 
             {/* Correlation ID */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">Correlation ID</label>
+              <label htmlFor="logs-filter-correlation-id" className="text-xs text-gray-500 dark:text-gray-400">Correlation ID</label>
               <input
+                id="logs-filter-correlation-id"
                 type="text"
                 value={pendingFilters.correlationId}
                 onChange={(e) => setPendingFilters({ ...pendingFilters, correlationId: e.target.value })}
@@ -375,8 +378,9 @@ export default function LogsClient() {
 
             {/* DID */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">DID</label>
+              <label htmlFor="logs-filter-did" className="text-xs text-gray-500 dark:text-gray-400">DID</label>
               <input
+                id="logs-filter-did"
                 type="text"
                 value={pendingFilters.did}
                 onChange={(e) => setPendingFilters({ ...pendingFilters, did: e.target.value })}
@@ -387,8 +391,9 @@ export default function LogsClient() {
 
             {/* From / To */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">From</label>
+              <label htmlFor="logs-filter-from" className="text-xs text-gray-500 dark:text-gray-400">From</label>
               <input
+                id="logs-filter-from"
                 type="datetime-local"
                 value={pendingFilters.from}
                 onChange={(e) => setPendingFilters({ ...pendingFilters, from: e.target.value })}
@@ -396,8 +401,9 @@ export default function LogsClient() {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">To</label>
+              <label htmlFor="logs-filter-to" className="text-xs text-gray-500 dark:text-gray-400">To</label>
               <input
+                id="logs-filter-to"
                 type="datetime-local"
                 value={pendingFilters.to}
                 onChange={(e) => setPendingFilters({ ...pendingFilters, to: e.target.value })}
@@ -587,8 +593,9 @@ export default function LogsClient() {
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2 items-end">
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">Service</label>
+              <label htmlFor="raw-logs-service" className="text-xs text-gray-500 dark:text-gray-400">Service</label>
               <select
+                id="raw-logs-service"
                 value={rawService}
                 onChange={(e) => setRawService(e.target.value)}
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-40"
@@ -599,8 +606,9 @@ export default function LogsClient() {
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500 dark:text-gray-400">Lines</label>
+              <label htmlFor="raw-logs-lines" className="text-xs text-gray-500 dark:text-gray-400">Lines</label>
               <input
+                id="raw-logs-lines"
                 type="number"
                 min={1}
                 max={500}

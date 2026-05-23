@@ -263,7 +263,7 @@ function EditProfileContent() {
           {/* Handle (read-only) */}
           {handle && (
             <div>
-              <label className="block text-sm font-medium mb-1 text-gray-300">Handle</label>
+              <span className="block text-sm font-medium mb-1 text-gray-300">Handle</span>
               <div className="flex items-center px-4 py-2 border border-gray-700 rounded-lg bg-gray-900/50 text-gray-500">
                 <span className="mr-1">@</span>
                 <span>{handle}</span>
@@ -274,8 +274,9 @@ function EditProfileContent() {
 
           {/* Display Name */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Display Name *</label>
+            <label htmlFor="profile-edit-display-name" className="block text-sm font-medium mb-1 text-gray-300">Display Name *</label>
             <input
+              id="profile-edit-display-name"
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
@@ -287,8 +288,9 @@ function EditProfileContent() {
 
           {/* Bio */}
           <div>
-            <label className="block text-sm font-medium mb-1 text-gray-300">Bio</label>
+            <label htmlFor="profile-edit-bio" className="block text-sm font-medium mb-1 text-gray-300">Bio</label>
             <textarea
+              id="profile-edit-bio"
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               placeholder="Tell us about yourself..."
@@ -304,8 +306,9 @@ function EditProfileContent() {
             <p className="text-xs text-gray-500 mb-3">🔒 Contact info is only visible to your connections</p>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-300">Email</label>
+                <label htmlFor="profile-edit-email" className="block text-sm font-medium mb-1 text-gray-300">Email</label>
                 <input
+                  id="profile-edit-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -314,8 +317,9 @@ function EditProfileContent() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-300">Phone</label>
+                <label htmlFor="profile-edit-phone" className="block text-sm font-medium mb-1 text-gray-300">Phone</label>
                 <input
+                  id="profile-edit-phone"
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -421,8 +425,9 @@ function EditProfileContent() {
               />
             ) : (
               <div>
-                <label className="block text-sm font-medium mb-1 text-gray-300">Avatar (emoji)</label>
+                <label htmlFor="profile-edit-avatar-emoji" className="block text-sm font-medium mb-1 text-gray-300">Avatar (emoji)</label>
                 <input
+                  id="profile-edit-avatar-emoji"
                   type="text"
                   value={avatar}
                   onChange={(e) => setAvatar(e.target.value)}

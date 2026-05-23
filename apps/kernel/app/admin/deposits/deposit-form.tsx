@@ -110,11 +110,12 @@ export default function DepositForm() {
     >
       {/* Handle / DID */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        <label htmlFor="deposit-target" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Target Handle or DID
         </label>
         <div className="flex gap-2">
           <input
+            id="deposit-target"
             type="text"
             value={handle}
             onChange={(e) => {
@@ -146,10 +147,11 @@ export default function DepositForm() {
 
       {/* Amount */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        <label htmlFor="deposit-amount" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Amount (CAD)
         </label>
         <input
+          id="deposit-amount"
           type="number"
           step="0.01"
           min="0.01"
@@ -162,10 +164,11 @@ export default function DepositForm() {
 
       {/* Memo */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        <label htmlFor="deposit-memo" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Memo
         </label>
         <input
+          id="deposit-memo"
           type="text"
           value={memo}
           onChange={(e) => setMemo(e.target.value)}

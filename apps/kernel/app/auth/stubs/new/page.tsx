@@ -204,10 +204,11 @@ export default function NewStubPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Name */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="new-stub-name" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Name <span className="text-red-400">*</span>
             </label>
             <input
+              id="new-stub-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -220,7 +221,7 @@ export default function NewStubPage() {
 
           {/* Category */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="new-stub-category" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Category
             </label>
             <div className="flex flex-wrap gap-2 mb-2">
@@ -240,6 +241,7 @@ export default function NewStubPage() {
               ))}
             </div>
             <input
+              id="new-stub-category"
               type="text"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
@@ -252,7 +254,7 @@ export default function NewStubPage() {
           {/* Location */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+              <label htmlFor="new-stub-location" className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                 Location
               </label>
               {deviceLoc ? (
@@ -270,6 +272,7 @@ export default function NewStubPage() {
             <div className="relative flex gap-2">
               <div className="relative flex-1">
                 <input
+                  id="new-stub-location"
                   type="text"
                   value={location}
                   onChange={(e) => handleLocationChange(e.target.value)}
@@ -338,12 +341,13 @@ export default function NewStubPage() {
 
           {/* Handle */}
           <div>
-            <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
+            <label htmlFor="new-stub-handle" className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1.5">
               Handle <span className="text-zinc-600">(optional)</span>
             </label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">@</span>
               <input
+                id="new-stub-handle"
                 type="text"
                 value={handle}
                 onChange={(e) => setHandle(normalizeHandleInput(e.target.value))}
