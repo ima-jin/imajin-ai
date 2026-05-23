@@ -165,8 +165,8 @@ export async function assertEntryIntegrity(
         senderPubkey: entry.senderPubkey,
         keyId: entry.keyId,
         timestamp: entry.timestamp,
-        ...(entry.previousCid !== undefined ? { previousCid: entry.previousCid } : {}),
-        ...(entry.deleted !== undefined ? { deleted: entry.deleted } : {})
+        ...(entry.previousCid === undefined  ? {} : { previousCid: entry.previousCid }),
+        ...(entry.deleted === undefined  ? {} : { deleted: entry.deleted })
     };
     const signatureOk = adapters.verifySignature(payload, entry.signature, entry.senderPubkey);
     if (!signatureOk) {

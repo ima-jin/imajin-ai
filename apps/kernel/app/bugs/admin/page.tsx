@@ -145,7 +145,7 @@ export default function AdminBugsPage() {
         if (loading) return <p className="text-gray-500 text-sm">Loading...</p>;
         if (reports.length === 0) return (
           <div className="rounded-xl border border-gray-800 bg-[#111] px-6 py-12 text-center">
-            <p className="text-gray-500">No reports{filter !== 'all' ? ` with status "${filter}"` : ''}.</p>
+            <p className="text-gray-500">No reports{filter === 'all'  ? '' : ` with status "${filter}"`}.</p>
           </div>
         );
         return (

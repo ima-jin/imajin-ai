@@ -34,7 +34,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
   const [copyLabel, setCopyLabel] = useState('Copy');
 
   const authUrl =
-    typeof window !== 'undefined' ? globalThis.location.origin : (process.env.NEXT_PUBLIC_AUTH_URL ?? '');
+    typeof window === 'undefined'  ? (process.env.NEXT_PUBLIC_AUTH_URL ?? '') : globalThis.location.origin;
   const profileUrl = buildPublicUrl('profile');
   const onboardUrl = `${authUrl}/auth/onboard?scope=${encodeURIComponent(groupDid)}`;
 

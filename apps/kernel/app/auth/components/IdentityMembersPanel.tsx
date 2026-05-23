@@ -42,7 +42,7 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
   const [enabledServices, setEnabledServices] = useState<string[]>([]);
 
   const authBase =
-    typeof window !== 'undefined' ? globalThis.location.origin : (process.env.NEXT_PUBLIC_AUTH_URL ?? '');
+    typeof window === 'undefined'  ? (process.env.NEXT_PUBLIC_AUTH_URL ?? '') : globalThis.location.origin;
 
   useEffect(() => {
     loadData();

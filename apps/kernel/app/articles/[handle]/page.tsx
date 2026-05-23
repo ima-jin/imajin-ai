@@ -51,7 +51,7 @@ export default async function AuthorArticlesPage({ params }: Readonly<Props>) {
 
         <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-4">{displayName}</h1>
         <p className="text-xl text-gray-400 mb-12">
-          {articles.length} article{articles.length !== 1 ? 's' : ''}
+          {articles.length} article{articles.length === 1  ? '' : 's'}
         </p>
 
         <div className="space-y-6">

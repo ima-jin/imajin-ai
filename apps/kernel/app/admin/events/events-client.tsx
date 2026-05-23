@@ -352,7 +352,7 @@ export default function EventsClient() {
                           <StatusBadge status={row.status} />
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-                          {row.duration_ms != null ? `${row.duration_ms}` : '—'}
+                          {row.duration_ms == null  ? '—' : `${row.duration_ms}`}
                         </td>
                         <td className="px-4 py-3">
                           {row.correlation_id ? (

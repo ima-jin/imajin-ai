@@ -194,7 +194,7 @@ export default function ResultsPage() {
           <div>
             <h1 className="text-3xl font-bold">{survey.title}</h1>
             <p className="text-gray-600 dark:text-gray-400 mt-1">
-              {responses.length} response{responses.length !== 1 ? 's' : ''}
+              {responses.length} response{responses.length === 1  ? '' : 's'}
             </p>
           </div>
           <div className="flex gap-3">
@@ -235,7 +235,7 @@ export default function ResultsPage() {
                 >
                   <h3 className="text-xl font-semibold mb-4">{field.title}</h3>
                   <div className="text-sm text-gray-500 dark:text-gray-500 mb-4">
-                    {agg.total} response{agg.total !== 1 ? 's' : ''}
+                    {agg.total} response{agg.total === 1  ? '' : 's'}
                   </div>
 
                   {/* Choice-based fields (radiogroup, dropdown, checkbox) */}

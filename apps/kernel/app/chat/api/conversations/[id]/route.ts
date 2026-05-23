@@ -50,7 +50,7 @@ export async function GET(
             AND member_did != ${effectiveDid}
           LIMIT 1
         `);
-        const otherDid = members[0]?.member_did || (conversation.createdBy !== effectiveDid ? conversation.createdBy : null);
+        const otherDid = members[0]?.member_did || (conversation.createdBy === effectiveDid  ? null : conversation.createdBy);
         if (otherDid) {
           const profile = await db.query.profiles.findFirst({
             where: eq(profiles.did, otherDid),

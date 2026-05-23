@@ -205,7 +205,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
               </div>
             ) : (
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Send to all {initialConnectionCount.toLocaleString()} connection{initialConnectionCount !== 1 ? 's' : ''} with a contact email.
+                Send to all {initialConnectionCount.toLocaleString()} connection{initialConnectionCount === 1  ? '' : 's'} with a contact email.
               </p>
             )}
 
@@ -263,7 +263,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Confirm Send</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
               This will send <strong>"{subject}"</strong> to{' '}
-              <strong>{recipientCount.toLocaleString()} recipient{recipientCount !== 1 ? 's' : ''}</strong>.
+              <strong>{recipientCount.toLocaleString()} recipient{recipientCount === 1  ? '' : 's'}</strong>.
               This cannot be undone.
             </p>
             <div className="flex gap-2 justify-end">

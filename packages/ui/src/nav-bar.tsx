@@ -185,7 +185,7 @@ export function NavBar({
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   useEffect(() => {
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
+    const saved = typeof window === 'undefined'  ? null : localStorage.getItem('theme');
     setTheme(saved === 'light' ? 'light' : 'dark');
   }, []);
 
@@ -218,15 +218,15 @@ export function NavBar({
   }, []);
   useEffect(() => {
     if (!identity?.isLoggedIn || !identity?.did) { setCashBalance(null); setMjnBalance(null); return; }
-    const actingAs = typeof window !== 'undefined' ? localStorage.getItem('imajin:acting-as') : null;
+    const actingAs = typeof window === 'undefined'  ? null : localStorage.getItem('imajin:acting-as');
     const effectiveDid = actingAs || identity.did;
     const payUrl = buildUrl('pay', servicePrefix, domain, serviceUrls);
     fetch(`${payUrl}/api/balance/${encodeURIComponent(effectiveDid)}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (data) {
-          setCashBalance(data.cashAmount != null ? Number.parseFloat(data.cashAmount) : null);
-          setMjnBalance(data.creditAmount != null ? Number.parseFloat(data.creditAmount) : null);
+          setCashBalance(data.cashAmount == null  ? null : Number.parseFloat(data.cashAmount));
+          setMjnBalance(data.creditAmount == null  ? null : Number.parseFloat(data.creditAmount));
         } else {
           setCashBalance(null);
           setMjnBalance(null);

@@ -66,7 +66,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       phone: phone || null,
       metadata: {
         ...(metadata || {}),
-        ...(optInUpdates !== undefined ? { optInUpdates } : {}),
+        ...(optInUpdates === undefined  ? {} : { optInUpdates }),
       },
     }).returning();
 

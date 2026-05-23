@@ -458,7 +458,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
         {guests.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-4 mb-4">
             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-              {filteredGuests.length} of {guests.length} ticket{guests.length !== 1 ? 's' : ''}
+              {filteredGuests.length} of {guests.length} ticket{guests.length === 1  ? '' : 's'}
             </span>
             {uniqueTypes.map(type => (
               <button

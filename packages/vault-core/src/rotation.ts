@@ -69,6 +69,6 @@ export async function prepareRotationEntryFromSignedInput(
         signature: input.signature,
         timestamp: input.timestamp,
         previousCid: existingEntry.cid,
-        ...(input.deleted !== undefined ? { deleted: input.deleted } : {})
+        ...(input.deleted === undefined  ? {} : { deleted: input.deleted })
     };
 }

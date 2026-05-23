@@ -1217,7 +1217,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
             <span className="text-amber-600 dark:text-amber-400 text-lg shrink-0">⚠️</span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                You have {totalPendingCount} ticket{totalPendingCount !== 1 ? 's' : ''} that need registration before the event.
+                You have {totalPendingCount} ticket{totalPendingCount === 1  ? '' : 's'} that need registration before the event.
               </p>
               <button
                 onClick={() => {
@@ -1275,7 +1275,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
       <div className="sticky bottom-0 -mx-4 px-4 py-4 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 rounded-b-xl space-y-3">
         <h3 className="font-semibold text-base">🏦 Pay by e-Transfer</h3>
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Reserves {totalQty} ticket{totalQty !== 1 ? 's' : ''} for 72 hours while you send your e-Transfer.
+          Reserves {totalQty} ticket{totalQty === 1  ? '' : 's'} for 72 hours while you send your e-Transfer.
         </p>
         {cartItems.length > 1 && (
           <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
@@ -1337,7 +1337,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
             'Select tickets above'
           ) : (
             <span className="text-base font-semibold text-white">
-              {totalQty} ticket{totalQty !== 1 ? 's' : ''} · {formattedTotal}
+              {totalQty} ticket{totalQty === 1  ? '' : 's'} · {formattedTotal}
             </span>
           )}
         </div>

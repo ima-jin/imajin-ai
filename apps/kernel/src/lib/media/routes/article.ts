@@ -111,7 +111,7 @@ export async function patchArticle(
     description: typeof body.description === "string" ? body.description.trim() : undefined,
     status,
     date,
-    ...(order !== undefined ? { order } : {}),
+    ...(order === undefined  ? {} : { order }),
   };
 
   const metadata = {

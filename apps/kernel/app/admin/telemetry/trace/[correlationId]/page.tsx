@@ -72,7 +72,7 @@ export default async function TracePage({
         <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-              {data.steps.length} request{data.steps.length !== 1 ? 's' : ''}
+              {data.steps.length} request{data.steps.length === 1  ? '' : 's'}
             </span>
             {totalDuration !== null && (
               <span className="text-xs text-gray-500 dark:text-gray-400">
