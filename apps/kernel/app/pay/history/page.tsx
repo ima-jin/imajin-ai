@@ -35,7 +35,8 @@ export default async function HistoryPage({
   if (!session) {
     const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
     const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
-    redirect(`${authUrl}/login?next=${encodeURIComponent(`${payUrl}/history`)}`);
+    const historyUrl = `${payUrl}/history`;
+    redirect(`${authUrl}/login?next=${encodeURIComponent(historyUrl)}`);
   }
 
   const did = session.actingAs || session.id;

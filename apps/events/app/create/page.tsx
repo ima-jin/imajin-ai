@@ -9,7 +9,8 @@ export default async function CreateEventPage() {
     // Redirect to auth with return URL
     const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
     const eventsUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
-    redirect(`${authUrl}/login?next=${encodeURIComponent(`${eventsUrl}/create`)}`);
+    const createUrl = `${eventsUrl}/create`;
+    redirect(`${authUrl}/login?next=${encodeURIComponent(createUrl)}`);
   }
 
   const did = session.actingAs || session.id;

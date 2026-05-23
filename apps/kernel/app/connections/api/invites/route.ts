@@ -170,8 +170,9 @@ export async function POST(request: NextRequest) {
     ));
 
   if (pendingCount >= limit) {
+    const tierMessage = `Your tier allows ${limit} pending invite${limit === 1 ? '' : 's'}.`;
     return NextResponse.json({
-      error: `Invite limit reached (${limit === Infinity ? 'unlimited' : limit}). ${limit < Infinity ? `Your tier allows ${limit} pending invite${limit === 1 ? '' : 's'}.` : ''}`,
+      error: `Invite limit reached (${limit === Infinity ? 'unlimited' : limit}). ${limit < Infinity ? tierMessage : ''}`,
       limit: limit === Infinity ? null : limit,
       pending: pendingCount,
     }, { status: 429 });
