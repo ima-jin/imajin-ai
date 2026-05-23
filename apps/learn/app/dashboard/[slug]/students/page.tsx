@@ -104,7 +104,7 @@ export default function StudentsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
                 {data.students.map((student, i) => (
-                  <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <tr key={student.studentDid} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className="px-5 py-3">
                       <div>
                         {student.displayName && (

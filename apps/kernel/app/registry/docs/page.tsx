@@ -132,7 +132,7 @@ function SpecViewer({ spec }: Readonly<{ spec: any }>) {
                   <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Parameters</p>
                   <div className="space-y-1">
                     {details.parameters.map((p: any, i: number) => (
-                      <div key={i} className="text-sm flex gap-2">
+                      <div key={p.name} className="text-sm flex gap-2">
                         <code className="text-[#F59E0B] text-xs">{p.name}</code>
                         <span className="text-gray-600 text-xs">({p.in})</span>
                         {p.required && <span className="text-red-400 text-xs">required</span>}

@@ -81,7 +81,7 @@ function FieldFormPanel({
             {(fieldForm.choices || []).map((choice, i) => {
               const choiceText = typeof choice === 'string' ? choice : choice.text || '';
               return (
-                <div key={i} className="flex gap-2 mb-2">
+                <div key={`choice-${choiceText || i}`} className="flex gap-2 mb-2">
                   <input
                     id={i === 0 ? `field-choice-0-${isEditing ? 'edit' : 'new'}` : undefined}
                     type="text"

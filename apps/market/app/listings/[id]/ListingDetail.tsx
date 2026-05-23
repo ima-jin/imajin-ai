@@ -471,7 +471,7 @@ export default function ListingDetail() {
               <div className="flex gap-2 flex-wrap">
                 {thumbImages.map((src, i) => (
                   <button
-                    key={i}
+                    key={src}
                     onClick={() => setActiveImage(i)}
                     className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition ${
                       i === activeImage ? 'border-orange-500' : 'border-transparent opacity-60 hover:opacity-100'

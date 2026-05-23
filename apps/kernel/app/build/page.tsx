@@ -34,7 +34,7 @@ export default async function BuildPage() {
         {/* Entries */}
         <div className="space-y-16">
           {entries.map((entry, i) => (
-            <article key={i} className="relative">
+            <article key={entry.date} className="relative">
               {/* Date & title */}
               <div className="mb-6">
                 <time className="text-sm font-mono text-amber-500/80">

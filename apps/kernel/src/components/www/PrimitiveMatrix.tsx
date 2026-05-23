@@ -33,7 +33,7 @@ export function PrimitiveMatrix({ cells, overall }: Readonly<PrimitiveMatrixProp
       >
         <div /> {/* empty corner */}
         {PRIMITIVES.map((col, ci) => (
-          <div key={ci} className="flex justify-center h-20 text-white/50">
+          <div key={col} className="flex justify-center h-20 text-white/50">
             <span
               className="text-[10px] uppercase tracking-wider font-medium whitespace-nowrap origin-center"
               style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }}
@@ -47,7 +47,7 @@ export function PrimitiveMatrix({ cells, overall }: Readonly<PrimitiveMatrixProp
       {/* Rows */}
       {SCOPES.map((scope, ri) => (
         <div
-          key={ri}
+          key={scope}
           className="grid gap-1 mb-1"
           style={{ gridTemplateColumns: `100px repeat(${PRIMITIVES.length}, 1fr)` }}
         >
@@ -63,7 +63,7 @@ export function PrimitiveMatrix({ cells, overall }: Readonly<PrimitiveMatrixProp
             const pct = cells[key] ?? 0;
             return (
               <div
-                key={ci}
+                key={`${scope}-${primitive}`}
                 className={`h-10 rounded-sm border border-white/10 ${glowClass(pct)}`}
                 title={`${scope} × ${primitive}: ${pct}%`}
                 style={{

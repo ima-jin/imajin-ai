@@ -638,7 +638,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
                 <table className="w-full text-sm">
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {surveyQuestions.map((qa, i) => (
-                      <tr key={i}>
+                      <tr key={qa.question}>
                         <td className="py-2 pr-4 font-medium text-gray-700 dark:text-gray-300 w-2/5 align-top">{qa.question}</td>
                         <td className="py-2 text-gray-600 dark:text-gray-400 break-words">
                           {(() => {
@@ -794,7 +794,7 @@ function GuestFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement 
     <div className="mt-1 mb-1 space-y-1.5 max-w-sm">
       {settlement.chain.map((entry, i) => (
         <div
-          key={i}
+          key={`${entry.role}-${entry.did}`}
           className="flex items-center justify-between px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg text-xs border border-gray-100 dark:border-gray-700"
         >
           <div className="flex items-center gap-2">
@@ -807,7 +807,7 @@ function GuestFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement 
       ))}
       {settlement.fees && settlement.fees.length > 0 && settlement.fees.map((fee, i) => (
         <div
-          key={`fee-${i}`}
+          key={`fee-${fee.name}`}
           className="flex items-center justify-between px-3 py-1.5 bg-white dark:bg-gray-800 rounded-lg text-xs border border-gray-100 dark:border-gray-700"
         >
           <div className="flex items-center gap-2">

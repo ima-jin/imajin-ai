@@ -185,7 +185,7 @@ export default async function AdminUserDetailPage({
             )}
             {authMethods.length > 0 ? (
               authMethods.map((am, i) => (
-                <Row key={i} label={`${am.type as string}`} value={am.value as string} mono />
+                <Row key={`${am.type as string}-${am.value as string}`} label={`${am.type as string}`} value={am.value as string} mono />
               ))
             ) : (
               <p className="text-xs text-gray-400 dark:text-gray-500">No auth methods</p>

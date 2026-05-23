@@ -172,7 +172,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
       <div className="flex items-center gap-px flex-1 h-8">
         {waveform.map((val, i) => (
           <div
-            key={i}
+            key={`bar-${i}`}
             className="flex-1 bg-orange-500 dark:bg-orange-400 rounded-full transition-all duration-75"
             style={{ height: `${Math.max(4, val * 32)}px` }}
           />
