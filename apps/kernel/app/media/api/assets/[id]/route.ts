@@ -408,9 +408,9 @@ export async function GET(
       const processed = await remark().use(remarkGfm).use(remarkHtml, { sanitize: false }).process(bodyClean);
       const articleHtml = processed.toString();
 
-      const escapedTitle = (fm.title as string).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const escapedSubtitle = fm.subtitle ? (fm.subtitle as string).replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
-      const escapedDesc = fm.description ? (fm.description as string).replace(/</g, "&lt;").replace(/>/g, "&gt;") : "";
+      const escapedTitle = (fm.title as string).replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+      const escapedSubtitle = fm.subtitle ? (fm.subtitle as string).replaceAll('<', '&lt;').replaceAll('>', '&gt;') : "";
+      const escapedDesc = fm.description ? (fm.description as string).replaceAll('<', '&lt;').replaceAll('>', '&gt;') : "";
       const author = fm.author || "";
       const date = fm.date
         ? new Date(fm.date as string).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })

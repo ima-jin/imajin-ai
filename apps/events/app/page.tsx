@@ -15,10 +15,10 @@ function stripMarkdown(text: string): string {
   let out = withoutLinksAndImages;
   for (const marker of ['*', '_', '~', '`', '#', '>']) out = out.split(marker).join('');
   return out
-    .replace(/\r\n/g, '\n')
+    .replaceAll('\r\n', '\n')
     .replace(/\n{2,}/g, ' · ')
-    .replace(/\n/g, ' ')
-    .replace(/\t/g, ' ')
+    .replaceAll('\n', ' ')
+    .replaceAll('\t', ' ')
     .replace(/ {2,}/g, ' ')
     .trim();
 }

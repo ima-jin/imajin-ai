@@ -158,7 +158,7 @@ function ActionBadge({ action }: Readonly<{ action: string }>) {
   };
   return (
     <span className={`text-xs px-2 py-0.5 rounded ${styles[action] ?? styles.dismiss_flag}`}>
-      {action.replace(/_/g, ' ')}
+      {action.replaceAll('_', ' ')}
     </span>
   );
 }

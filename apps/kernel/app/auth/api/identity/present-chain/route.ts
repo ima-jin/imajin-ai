@@ -125,7 +125,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       .returning();
 
     // Store credential link
-    const credId = `cred_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+    const credId = `cred_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
     await db.insert(credentials).values({
       id: credId,
       did: imajinDid,

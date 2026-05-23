@@ -79,7 +79,7 @@ function isAllowedMime(mime: string): boolean {
 
 /** Replace chars that are unsafe on most filesystems */
 function didToPath(did: string): string {
-  return did.replace(/:/g, "_").replace(/[^a-zA-Z0-9._@-]/g, "_");
+  return did.replaceAll(':', '_').replaceAll(/[^a-zA-Z0-9._@-]/g, '_');
 }
 
 // ---------------------------------------------------------------------------

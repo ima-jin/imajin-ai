@@ -69,7 +69,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     // Generate challenge
-    const challengeId = `chl_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+    const challengeId = `chl_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
     const challenge = generateChallenge();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 

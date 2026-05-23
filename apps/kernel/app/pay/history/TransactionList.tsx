@@ -92,7 +92,7 @@ function StandaloneRow({ tx, sessionId }: Readonly<{ tx: SerializedTx; sessionId
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-white capitalize">
-              {tx.type.replace(/_/g, ' ')}
+              {tx.type.replaceAll('_', ' ')}
             </span>
             <span className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-zinc-400">
               {tx.service}
@@ -220,7 +220,7 @@ function BatchGroupRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-medium text-white capitalize">
-              {userEntry.type.replace(/_/g, ' ')}
+              {userEntry.type.replaceAll('_', ' ')}
             </span>
             <span className="text-xs px-2 py-0.5 bg-zinc-800 border border-zinc-700 rounded-full text-zinc-400">
               {userEntry.service}
@@ -268,7 +268,7 @@ function BatchGroupRow({
                   className="flex items-center gap-3 text-xs bg-black/40 border border-zinc-800 rounded-lg px-3 py-2"
                 >
                   <span className="text-zinc-600 w-24 shrink-0 capitalize">
-                    {e.type.replace(/_/g, ' ')}
+                    {e.type.replaceAll('_', ' ')}
                   </span>
                   <span
                     className={`font-mono flex-1 truncate ${isUser ? 'text-orange-400' : 'text-zinc-400'}`}

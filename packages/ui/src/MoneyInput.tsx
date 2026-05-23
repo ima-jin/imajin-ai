@@ -26,7 +26,7 @@ function formatCents(cents: number): string {
 }
 
 function parseDecimalInput(raw: string): number | null {
-  const cleaned = raw.replace(/,/g, '');
+  const cleaned = raw.replaceAll(',', '');
   const parsed = Number.parseFloat(cleaned);
   if (Number.isNaN(parsed) || parsed < 0) return null;
   return Math.round(parsed * 100);

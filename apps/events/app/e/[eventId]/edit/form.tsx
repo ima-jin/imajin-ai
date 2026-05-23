@@ -483,7 +483,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
             className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500"
           >
             {Intl.supportedValuesOf('timeZone').map((tz) => (
-              <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
+              <option key={tz} value={tz}>{tz.replaceAll('_', ' ')}</option>
             ))}
           </select>
         </div>

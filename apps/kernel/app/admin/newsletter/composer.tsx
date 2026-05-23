@@ -96,7 +96,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
     return md
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/\n/g, '<br/>');
+      .replaceAll('\n', '<br/>');
   }
 
   const canSend = subject.trim().length > 0 && markdown.trim().length > 0 && recipientCount > 0;

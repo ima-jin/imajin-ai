@@ -300,7 +300,7 @@ export const POST = withLogger('kernel', async (request, { log, correlationId })
     const allMembers = [...new Set([effectiveDid, ...participantDids])];
 
     // Random group DID — group identity is the room, not the members
-    const groupId = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    const groupId = crypto.randomUUID().replaceAll('-', '').slice(0, 16);
     const convDid = `did:imajin:group:${groupId}`;
 
     await db.insert(conversationsV2).values({

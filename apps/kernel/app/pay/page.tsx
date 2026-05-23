@@ -126,7 +126,7 @@ export default async function Home() {
                   <span className="text-xl w-6 text-center shrink-0">{icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-white capitalize">
-                      {tx.type.replace(/_/g, ' ')}
+                      {tx.type.replaceAll('_', ' ')}
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">
                       {tx.service}
