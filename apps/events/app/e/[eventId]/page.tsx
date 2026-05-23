@@ -71,7 +71,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const priceText = lowestPrice !== null
     ? lowestPrice === 0 
       ? 'Free' 
-      : `From CA\$${(lowestPrice / 100).toFixed(2)}`
+      : `From CA$${(lowestPrice / 100).toFixed(2)}`
     : '';
   
   const description = event.description
@@ -494,6 +494,12 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
   
   // Calculate lowest price for sticky bar
   const lowestPrice = ticketTypesList.length > 0 ? Math.min(...ticketTypesList.map(t => t.price)) : null;
+<<<<<<< HEAD
+=======
+  const lowestPriceText = lowestPrice !== null
+    ? lowestPrice === 0 ? 'Free' : `From CA$${(lowestPrice / 100).toFixed(2)}`
+    : '';
+>>>>>>> 420065c6 (fix(sonar): remove unnecessary character escapes (S6535))
 
   return (
     <>
