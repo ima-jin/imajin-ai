@@ -29,7 +29,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
   const [markdown, setMarkdown] = useState('');
   const [audienceType, setAudienceType] = useState<'newsletter' | 'connections'>('newsletter');
   const [selectedListId, setSelectedListId] = useState<string>(initialLists[0]?.id ?? '');
-  const [preview, setPreview] = useState(false);
+  const [editorMode, setEditorMode] = useState<'raw' | 'rich' | 'preview'>('raw');
   const [sending, setSending] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
   const [testEmail, setTestEmail] = useState('');
@@ -137,23 +137,40 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
           <div>
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Body (Markdown)</span>
-              <button
-                type="button"
-                onClick={() => setPreview((v) => !v)}
-                className="text-xs text-orange-600 dark:text-orange-400 hover:underline"
-              >
-                {preview ? 'Edit' : 'Preview'}
-              </button>
+              <div className="flex gap-1 rounded-md overflow-hidden border border-gray-300 dark:border-gray-600">
+                {(['raw', 'rich', 'preview'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setEditorMode(mode)}
+                    className={`px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                      editorMode === mode
+                        ? 'bg-orange-500 text-white'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    {mode === 'raw' ? 'Raw' : mode === 'rich' ? 'Rich' : 'Preview'}
+                  </button>
+                ))}
+              </div>
             </div>
-            {preview ? (
+            {editorMode === 'preview' ? (
               <div className="w-full min-h-48 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-4 py-3">
                 <MarkdownContent content={markdown} />
               </div>
-            ) : (
+            ) : editorMode === 'rich' ? (
               <MarkdownEditor
                 value={markdown}
                 onChange={setMarkdown}
                 placeholder="Write your newsletter in Markdown…"
+              />
+            ) : (
+              <textarea
+                value={markdown}
+                onChange={(e) => setMarkdown(e.target.value)}
+                placeholder="Write your newsletter in Markdown…"
+                rows={12}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-500 resize-y"
               />
             )}
           </div>
