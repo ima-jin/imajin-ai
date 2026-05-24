@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { simpleMarkdown } from '../../../lib/markdown';
+import ReactMarkdown from 'react-markdown';
 import { apiFetch } from '@imajin/config';
 
 interface Lesson {
@@ -181,10 +181,9 @@ export default function LessonViewerPage() {
                   <p className="text-white/40 text-sm mb-4">{lesson.metadata.subtitle}</p>
                 )}
                 {lesson.content && (
-                  <div
-                    className="text-white/70 leading-relaxed text-base"
-                    dangerouslySetInnerHTML={{ __html: simpleMarkdown(lesson.content) }}
-                  />
+                  <div className="text-white/70 leading-relaxed text-base">
+                    <ReactMarkdown>{lesson.content}</ReactMarkdown>
+                  </div>
                 )}
                 {lesson.metadata?.items && (
                   <div className="mt-4 space-y-3">
@@ -232,20 +231,18 @@ export default function LessonViewerPage() {
 
           {/* Markdown content (non-slide) */}
           {lesson.content && lesson.contentType !== 'slide' && (
-            <div
-              className="prose prose-lg dark:prose-invert max-w-none mb-8"
-              dangerouslySetInnerHTML={{ __html: simpleMarkdown(lesson.content) }}
-            />
+            <div className="prose prose-lg dark:prose-invert max-w-none mb-8">
+              <ReactMarkdown>{lesson.content}</ReactMarkdown>
+            </div>
           )}
 
           {/* Exercise metadata */}
           {lesson.contentType === 'exercise' && lesson.metadata?.instructions && (
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-6 mb-8">
               <h3 className="font-semibold mb-2">📋 Instructions</h3>
-              <div
-                className="prose dark:prose-invert"
-                dangerouslySetInnerHTML={{ __html: simpleMarkdown(lesson.metadata.instructions) }}
-              />
+              <div className="prose dark:prose-invert">
+                <ReactMarkdown>{lesson.metadata.instructions}</ReactMarkdown>
+              </div>
             </div>
           )}
 

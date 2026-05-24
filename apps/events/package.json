@@ -31,8 +31,8 @@
     "@stripe/stripe-js": "^4.10.0",
     "drizzle-orm": "^0.45.1",
     "html5-qrcode": "^2.3.8",
-    "marked": "^12.0.0",
     "next": "14.2.35",
+    "react-markdown": "^10.1.0",
     "react": "^18",
     "react-dom": "^18"
   },
