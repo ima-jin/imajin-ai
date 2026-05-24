@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { marked } from 'marked';
+import ReactMarkdown from 'react-markdown';
 import { apiFetch } from '@imajin/config';
 import type { TicketType } from '@/src/db/schema';
 
@@ -22,7 +22,6 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
   const [subject, setSubject] = useState('');
   const [markdown, setMarkdown] = useState('');
   const [preview, setPreview] = useState(false);
-  const [previewHtml, setPreviewHtml] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sent: number; skipped: number; errors: number } | null>(null);
@@ -33,13 +32,6 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
   const [selectedTicketTypes, setSelectedTicketTypes] = useState<Set<string>>(new Set());
   const [recipientCount, setRecipientCount] = useState(initialCount);
   const [countLoading, setCountLoading] = useState(false);
-
-  // Render preview with marked (same lib the email uses)
-  useEffect(() => {
-    if (preview && markdown.trim()) {
-      setPreviewHtml(marked.parse(markdown) as string);
-    }
-  }, [preview, markdown]);
 
   // Fetch recipient count when filter changes
   const fetchCount = useCallback(async () => {
@@ -222,10 +214,13 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
 
         {/* Editor / Preview */}
         {preview ? (
-          <div
-            className="min-h-[160px] px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-200 prose dark:prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: markdown.trim() ? previewHtml : '<span class="text-gray-400">Nothing to preview</span>' }}
-          />
+          <div className="min-h-[160px] px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm text-gray-800 dark:text-gray-200 prose dark:prose-invert max-w-none">
+            {markdown.trim() ? (
+              <ReactMarkdown>{markdown}</ReactMarkdown>
+            ) : (
+              <span className="text-gray-400">Nothing to preview</span>
+            )}
+          </div>
         ) : (
           <textarea
             value={markdown}

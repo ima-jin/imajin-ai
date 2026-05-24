@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { simpleMarkdown } from '../lib/markdown';
+import ReactMarkdown from 'react-markdown';
 import { PrimitiveMatrix } from './PrimitiveMatrix';
 
 export interface SlideLesson {
@@ -130,10 +130,9 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
                 {slide.title}
               </h1>
               {slide.content && (
-                <div
-                  className="text-lg text-white/70 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: simpleMarkdown(slide.content) }}
-                />
+                <div className="text-lg text-white/70 leading-relaxed">
+                  <ReactMarkdown>{slide.content}</ReactMarkdown>
+                </div>
               )}
             </div>
           </div>
@@ -159,10 +158,9 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
 
             {/* Plain markdown content (when no structured data overrides it) */}
             {slide.content && !meta?.items && !meta?.stats && !meta?.compare && (
-              <div
-                className="text-lg text-white/70 leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: simpleMarkdown(slide.content) }}
-              />
+              <div className="text-lg text-white/70 leading-relaxed">
+                <ReactMarkdown>{slide.content}</ReactMarkdown>
+              </div>
             )}
 
             {/* Items list (numbered) */}
@@ -248,10 +246,9 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
 
             {/* Content rendered after structured data (if both exist) */}
             {slide.content && (meta?.items || meta?.stats || meta?.compare) && (
-              <div
-                className="text-white/40 mt-8 text-lg leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: simpleMarkdown(slide.content) }}
-              />
+              <div className="text-white/40 mt-8 text-lg leading-relaxed">
+                <ReactMarkdown>{slide.content}</ReactMarkdown>
+              </div>
             )}
 
             {/* CTA link */}
