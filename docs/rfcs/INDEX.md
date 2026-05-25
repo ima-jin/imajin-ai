@@ -36,3 +36,5 @@ Canonical location for all Imajin protocol and architecture RFCs. Each RFC has a
 | [30](./RFC-30-the-judgment-token-thesis.md) | The Judgment Token Thesis | Draft | — |
 | [31](./RFC-31-agent-execution-sandbox.md) | Agent Execution Sandbox | Draft | — |
 | [32](./RFC-32-agent-protocol-interop.md) | Agent Protocol Interoperability | Draft | — |
+| [33](./RFC-33-agent-ci-pipeline.md) | Agent CI Pipeline | Draft | — |
+| [34](./RFC-34-community-needs-brokerage.md) | Community Needs Brokerage | Draft | — |
