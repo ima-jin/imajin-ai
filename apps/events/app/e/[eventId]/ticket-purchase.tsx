@@ -236,7 +236,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => handleFreeRsvp(!!sessionEmail)}
+            onClick={() => handleFreeRsvp(true)}
             disabled={step === 'loading-rsvp' || !email.includes('@')}
             className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${(() => {
               if (step === 'loading-rsvp') return 'bg-orange-400 text-white cursor-wait';
