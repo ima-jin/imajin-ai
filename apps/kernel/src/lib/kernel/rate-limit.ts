@@ -22,7 +22,7 @@ function pruneStore(now: number) {
 }
 
 export function rateLimit(
-  ip: string,
+  key: string,
   limit: number,
   windowMs: number
 ): { limited: boolean; retryAfter: number } {
@@ -30,7 +30,7 @@ export function rateLimit(
   pruneStore(now);
 
   const windowStart = now - windowMs;
-  const entry = store.get(ip) ?? { timestamps: [], lastSeen: now };
+  const entry = store.get(key) ?? { timestamps: [], lastSeen: now };
 
   entry.timestamps = entry.timestamps.filter((t) => t > windowStart);
   entry.lastSeen = now;
@@ -38,12 +38,12 @@ export function rateLimit(
   if (entry.timestamps.length >= limit) {
     const oldest = entry.timestamps[0];
     const retryAfter = Math.ceil((oldest + windowMs - now) / 1000);
-    store.set(ip, entry);
+    store.set(key, entry);
     return { limited: true, retryAfter: Math.max(1, retryAfter) };
   }
 
   entry.timestamps.push(now);
-  store.set(ip, entry);
+  store.set(key, entry);
   return { limited: false, retryAfter: 0 };
 }
 

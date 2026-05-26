@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
 import { db, identities, credentials } from '@/src/db';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { eq, and } from 'drizzle-orm';
@@ -16,7 +14,12 @@ export async function OPTIONS(request: NextRequest) {
 
 /**
  * POST /api/session/soft
- * Create a soft DID session from email (no keypair needed)
+ * Server-side soft DID resolver: create or retrieve an unverified soft identity
+ * by email address. Returns the DID only — does NOT issue a session cookie.
+ *
+ * Intended for server-to-server use (checkout, payment webhooks). Browser
+ * clients must go through POST /api/onboard → GET /api/onboard/verify to
+ * obtain a verified session.
  *
  * Body: {
  *   email: string,
@@ -26,12 +29,13 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
+  // IP-level guard: 10 req/min
   const ip = getClientIP(request);
-  const rl = rateLimit(ip, 10, 60_000);
-  if (rl.limited) {
+  const ipRl = rateLimit(ip, 10, 60_000);
+  if (ipRl.limited) {
     return NextResponse.json(
-      { error: 'Too many requests', retryAfter: rl.retryAfter },
-      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } }
+      { error: 'Too many requests', retryAfter: ipRl.retryAfter },
+      { status: 429, headers: { ...cors, 'Retry-After': String(ipRl.retryAfter) } }
     );
   }
 
@@ -49,6 +53,15 @@ export async function POST(request: NextRequest) {
 
     // Normalize email to lowercase
     const normalizedEmail = email.toLowerCase().trim();
+
+    // Email-level guard: 3 lookups/creations per email per hour
+    const emailRl = rateLimit(`soft-email:${normalizedEmail}`, 3, 3_600_000);
+    if (emailRl.limited) {
+      return NextResponse.json(
+        { error: 'Too many requests for this email', retryAfter: emailRl.retryAfter },
+        { status: 429, headers: { ...cors, 'Retry-After': String(emailRl.retryAfter) } }
+      );
+    }
 
     // Check if a credential already exists for this email (prevents duplicate DIDs)
     const [existingCred] = await db
@@ -102,30 +115,21 @@ export async function POST(request: NextRequest) {
         })
         .returning();
 
-      // Insert email credential
+      // Insert email credential — verifiedAt is null until the user completes
+      // the email challenge via POST /api/onboard → GET /api/onboard/verify.
       await db.insert(credentials).values({
         id: `cred_${nanoid(16)}`,
         did,
         type: 'email',
         value: normalizedEmail,
-        verifiedAt: new Date(),
+        verifiedAt: null,
       });
 
       identity = [newIdentity];
     }
 
-    // Create session token with tier information
-    const token = await createSessionToken({
-      sub: identity[0].id,
-      handle: identity[0].handle || undefined,
-      scope: identity[0].scope,
-      subtype: identity[0].subtype || undefined,
-      name: identity[0].name || undefined,
-      tier: 'soft',
-    });
-
-    const cookieConfig = getSessionCookieOptions();
-    const response = NextResponse.json({
+    // Return identity metadata only — no session token, no cookie.
+    return NextResponse.json({
       did: identity[0].id,
       handle: identity[0].handle,
       scope: identity[0].scope,
@@ -133,17 +137,6 @@ export async function POST(request: NextRequest) {
       name: identity[0].name,
       tier: 'soft',
     }, { headers: cors });
-
-    response.cookies.set(cookieConfig.name, token, cookieConfig.options);
-
-    emitSessionAttestation({
-      did: identity[0].id,
-      method: "email_soft",
-      tier: "soft",
-      userAgent: request.headers.get("user-agent"),
-    }).catch(err => log.error({ err: String(err) }, 'Session attestation error'));
-
-    return response;
 
   } catch (error) {
     log.error({ err: String(error) }, 'Soft session error');
