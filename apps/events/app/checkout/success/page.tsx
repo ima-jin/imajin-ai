@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { db, ticketTypes, events } from '@/src/db';
+import { db, ticketTypes, events, orders } from '@/src/db';
 import { eq } from 'drizzle-orm';
+import { getClient } from '@imajin/db';
 import { AutoRedirect } from './auto-redirect';
 import { eventCheckoutSuccessPath } from '@imajin/config';
 
@@ -32,6 +33,40 @@ export default async function SuccessPage({ searchParams }: Readonly<Props>) {
       hasRegistrationRequired = tiers.some(t => t.requiresRegistration);
     }
   }
+
+  // Try to auto-authenticate via onboard token created by the webhook
+  let magicLink: string | null = null;
+  if (params.session_id) {
+    const [order] = await db
+      .select({ buyerEmail: orders.buyerEmail, metadata: orders.metadata })
+      .from(orders)
+      .where(eq(orders.stripeSessionId, params.session_id))
+      .limit(1);
+
+    if (order) {
+      const meta = (order.metadata || {}) as Record<string, unknown>;
+      const email = order.buyerEmail || (meta.purchaseEmail as string | undefined);
+
+      if (email) {
+        const authSql = getClient();
+        const rows = await authSql<{ token: string }[]>`
+          SELECT token FROM auth.onboard_tokens
+          WHERE email = ${email.toLowerCase().trim()}
+            AND used_at IS NULL
+            AND expires_at > NOW()
+            AND created_at > NOW() - INTERVAL '10 minutes'
+          ORDER BY created_at DESC LIMIT 1
+        `;
+
+        if (rows.length > 0) {
+          const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || 'https://auth.imajin.ai';
+          magicLink = `${authUrl}/api/onboard/verify?token=${rows[0].token}`;
+        }
+      }
+    }
+  }
+
+  const eventCtaHref = magicLink || (event ? eventCheckoutSuccessPath(event.id) : '/');
 
   return (
     <div className="max-w-2xl mx-auto text-center py-8 px-4">
@@ -82,19 +117,19 @@ export default async function SuccessPage({ searchParams }: Readonly<Props>) {
             You must complete the registration form before your tickets are confirmed.
           </p>
           <Link
-            href={eventCheckoutSuccessPath(event.id)}
+            href={eventCtaHref}
             className="inline-block px-6 py-3 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-lg transition"
           >
             Complete Registration Now →
           </Link>
-          <AutoRedirect href={eventCheckoutSuccessPath(event.id)} seconds={10} />
+          <AutoRedirect href={eventCtaHref} seconds={10} />
         </div>
       )}
 
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
         {event ? (
           <Link
-            href={eventCheckoutSuccessPath(event.id)}
+            href={eventCtaHref}
             className="inline-block px-8 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-semibold text-lg"
           >
             Go to the Event →
