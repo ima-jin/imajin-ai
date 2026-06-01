@@ -12,7 +12,7 @@ const log = createLogger('events');
 import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
-import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
+import { rateLimit, getClientIP, eventUrl } from '@imajin/config';
 import { generateQRCode } from '@/src/lib/email';
 import { publish } from '@imajin/bus';
 import { getClient } from '@imajin/db';
@@ -21,7 +21,6 @@ import { randomBytes } from 'node:crypto';
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;
 const PROFILE_URL = process.env.PROFILE_URL!;
-import { eventUrl } from '@imajin/config';
 
 interface FreeCheckoutRequest {
   eventId: string;
@@ -181,7 +180,7 @@ export const POST = withLogger('events', async (request, { log }) => {
         await attachEmailToProfile(ownerDid, body.email);
       }
     } else if (body.email) {
-      // Anonymous — create soft DID
+      // Anonymous â€” create soft DID
       ownerDid = await getOrCreateSoftDid(body.email, body.name);
       ownerEmail = body.email;
     } else {

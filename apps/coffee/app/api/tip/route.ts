@@ -5,10 +5,9 @@ import { db, tips } from '@/db';
 import { requireAuth } from '@imajin/auth';
 import * as bus from '@imajin/bus';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
-import { rateLimit, getClientIP } from '@/lib/rate-limit';
+import { rateLimit, getClientIP, buildPublicUrl } from '@imajin/config';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
-import { buildPublicUrl } from '@imajin/config';
 
 const COFFEE_URL = buildPublicUrl('coffee');
 
@@ -97,7 +96,7 @@ export async function POST(request: NextRequest) {
           sellerDid: page.did,
           items: [{
             name: `Tip for ${page.title || page.handle}`,
-            description: message ? `"${message}" — ${fromName || 'Anonymous'}` : `From ${fromName || 'Anonymous'}`,
+            description: message ? `"${message}" â€” ${fromName || 'Anonymous'}` : `From ${fromName || 'Anonymous'}`,
             amount,
             quantity: 1,
           }],
@@ -142,7 +141,7 @@ export async function POST(request: NextRequest) {
         status: 'pending',
       });
 
-      // Fire and forget — never block the response
+      // Fire and forget â€” never block the response
       if (fromDid) {
         bus.publish('tip.granted', {
           issuer: fromHumanDid!, subject: page.did, scope: 'coffee',
@@ -175,7 +174,7 @@ export async function POST(request: NextRequest) {
         status: 'pending',
       });
 
-      // Fire and forget — never block the response
+      // Fire and forget â€” never block the response
       if (fromDid) {
         bus.publish('tip.granted', {
           issuer: fromHumanDid!, subject: page.did, scope: 'coffee',

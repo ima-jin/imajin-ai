@@ -32,7 +32,7 @@ import { db, balances, transactions } from '@/src/db';
 import { sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {

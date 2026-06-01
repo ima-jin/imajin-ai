@@ -32,7 +32,7 @@ import { db, transactions, connectedAccounts } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
 interface CheckoutBody {

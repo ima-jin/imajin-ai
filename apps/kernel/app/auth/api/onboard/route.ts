@@ -13,8 +13,7 @@ import { sendEmail } from '@imajin/email';
 import { getClient } from '@imajin/db';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { corsHeaders } from '@imajin/config';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
 const AUTH_URL = process.env.AUTH_URL || process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
@@ -57,7 +56,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const emailRl = rateLimit(`onboard-email:${normalizedEmail}`, 3, 3_600_000);
     if (emailRl.limited) {
       return NextResponse.json(
-        { error: 'Too many requests for this email', retryAfter: emailRl.retryAfter },
+        { error: 'Too many requests', retryAfter: emailRl.retryAfter },
         { status: 429, headers: { ...cors, 'Retry-After': String(emailRl.retryAfter) } }
       );
     }

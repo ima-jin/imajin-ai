@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, credentials } from '@/src/db';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { rateLimit, getClientIP, corsHeaders } from '@imajin/config';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { corsHeaders } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -58,7 +57,7 @@ export async function POST(request: NextRequest) {
     const emailRl = rateLimit(`soft-email:${normalizedEmail}`, 3, 3_600_000);
     if (emailRl.limited) {
       return NextResponse.json(
-        { error: 'Too many requests for this email', retryAfter: emailRl.retryAfter },
+      { error: 'Too many requests', retryAfter: emailRl.retryAfter },
         { status: 429, headers: { ...cors, 'Retry-After': String(emailRl.retryAfter) } }
       );
     }

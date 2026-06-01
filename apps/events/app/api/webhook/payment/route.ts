@@ -54,10 +54,11 @@ async function getOrCreateGuestDid(email: string, eventId: string, eventDid: str
 }
 
 /**
- * Create soft DID session via auth service.
- * This creates/updates the identity profile with tier='soft' and returns session token.
+ * Resolve or create a soft DID via the auth service.
+ * POST /api/session/soft is a server-side DID resolver only — it does not
+ * issue session cookies or tokens.
  */
-async function createSoftDidSession(email: string, name?: string): Promise<{ did: string; sessionToken?: string } | null> {
+async function createSoftDidSession(email: string, name?: string): Promise<{ did: string } | null> {
   try {
     const response = await fetch(`${AUTH_URL}/api/session/soft`, {
       method: 'POST',
@@ -74,19 +75,8 @@ async function createSoftDidSession(email: string, name?: string): Promise<{ did
     }
 
     const data = await response.json();
-
-    // Extract session token from Set-Cookie header if present
-    const setCookie = response.headers.get('set-cookie');
-    let sessionToken: string | undefined;
-    if (setCookie) {
-      const tokenMatch = setCookie.match(/session=([^;]+)/);
-      if (tokenMatch) {
-        sessionToken = tokenMatch[1];
-      }
-    }
-
-    log.info({ email, did: data.did, hasSessionToken: !!sessionToken }, 'Soft DID session created');
-    return { did: data.did, sessionToken };
+    log.info({ email, did: data.did }, 'Soft DID resolved');
+    return { did: data.did };
   } catch (error) {
     log.error({ err: String(error) }, 'Soft session creation error');
     return null;
