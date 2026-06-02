@@ -6,6 +6,7 @@ import { corsHeaders } from '@imajin/config';
 const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
+import { resolveAttendee } from '@/src/lib/attendee';
 
 const sql = getClient();
 
@@ -69,10 +70,14 @@ export async function GET(
              t.payment_method, t.payment_id, t.hold_expires_at, t.registration_status,
              t.last_email_sent_at,
              tt.name as ticket_type,
-             COALESCE(sr.answers->>'full_name', sr.answers->>'name') as attendee_name,
+             sr.answers as survey_answers,
              o.fair_settlement, o.amount_total,
+             o.buyer_email,
+             o.buyer_did,
+             i.name as identity_name,
              i.contact_email,
-             cred.value as fallback_email
+             cred.value as fallback_email,
+             buyer_i.name as buyer_name
       FROM events.tickets t
       JOIN events.ticket_types tt ON t.ticket_type_id = tt.id
       LEFT JOIN LATERAL (
@@ -87,6 +92,7 @@ export async function GET(
         WHERE did = t.owner_did AND type = 'email'
         ORDER BY created_at DESC LIMIT 1
       ) cred ON true
+      LEFT JOIN auth.identities buyer_i ON buyer_i.id = o.buyer_did
       WHERE t.event_id = ${id}
       ORDER BY t.created_at DESC
     `;
@@ -105,6 +111,20 @@ export async function GET(
     const guests = ticketRows.map((t: any) => {
       const profile = t.owner_did ? profileMap.get(t.owner_did) ?? null : null;
       const sqlEmail = t.contact_email || t.fallback_email || null;
+
+      const surveyAnswers = t.survey_answers || {};
+      const resolved = resolveAttendee({
+        surveyName: surveyAnswers.full_name || surveyAnswers.name || null,
+        surveyEmail: surveyAnswers.email || null,
+        identityName: t.identity_name || null,
+        identityContactEmail: t.contact_email || null,
+        identityCredentialEmail: t.fallback_email || null,
+        profileName: profile?.name || null,
+        profileEmail: profile?.email || null,
+        buyerName: t.buyer_name || null,
+        buyerEmail: t.buyer_email || null,
+      });
+
       return {
         id: t.id,
         status: t.status,
@@ -123,7 +143,10 @@ export async function GET(
           return null;
         })(),
         registrationStatus: t.registration_status ?? null,
-        attendeeName: t.attendee_name ?? null,
+        attendeeName: surveyAnswers.full_name || surveyAnswers.name || null,
+        resolvedName: resolved.name || null,
+        resolvedEmail: resolved.email || null,
+        guestOf: resolved.guestOf || null,
         lastEmailSentAt: t.last_email_sent_at ?? null,
         fairSettlement: t.fair_settlement ?? null,
         orderAmountTotal: t.amount_total ?? null,
