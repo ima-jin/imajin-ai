@@ -13,6 +13,37 @@ export type AppAuthResult = { appAuth: AppAuthContext } | { error: string; statu
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
 /**
+ * Verify a short-lived app token (#1069). Calls the kernel's stateless verify
+ * endpoint, which checks the EdDSA signature + expiry locally (no DB hit) and
+ * returns the AppAuthContext. The short TTL bounds the revocation window.
+ *
+ * Follow-up: move verification fully in-process (jose + published kernel public
+ * key) to drop this round-trip entirely — tracked in #1069.
+ */
+async function verifyBearerAppToken(token: string, scope?: string): Promise<AppAuthResult> {
+  const authUrl = getAuthUrl();
+  if (!authUrl) {
+    return { error: 'Auth service unavailable', status: 503 };
+  }
+  try {
+    const res = await fetch(`${authUrl}/api/apps/token/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, scope }),
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { error: data.error ?? 'Invalid app token', status: res.status };
+    }
+    return { appAuth: (await res.json()) as AppAuthContext };
+  } catch (err) {
+    log.error({ err: String(err) }, '[APP-AUTH] Token verify request failed');
+    return { error: 'Auth service unavailable', status: 503 };
+  }
+}
+
+/**
  * Require app authentication via X-App-DID + X-App-Authorization headers.
  *
  * X-App-DID:           The app's DID (received at registration)
@@ -26,11 +57,18 @@ export async function requireAppAuth(
   request: Request,
   options?: { scope?: string }
 ): Promise<AppAuthResult> {
+  // Preferred path (#1069): short-lived scoped app token via Authorization: Bearer.
+  const bearer = request.headers.get('authorization');
+  if (bearer?.startsWith('Bearer ')) {
+    return verifyBearerAppToken(bearer.slice(7), options?.scope);
+  }
+
+  // Legacy path: static attestationId as bearer. Kept during migration.
   const appDid = request.headers.get('x-app-did');
   const attestationId = request.headers.get('x-app-authorization');
 
   if (!appDid || !attestationId) {
-    return { error: 'X-App-DID and X-App-Authorization headers required', status: 401 };
+    return { error: 'Authorization Bearer <app-token>, or X-App-DID + X-App-Authorization headers required', status: 401 };
   }
 
   const authUrl = getAuthUrl();
