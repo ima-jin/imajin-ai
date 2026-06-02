@@ -12,6 +12,7 @@ const log = createLogger('events');
 import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
+import { resolveCheckoutIdentity } from '@/src/lib/checkout-common';
 import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
 import { generateQRCode } from '@/src/lib/email';
 import { publish } from '@imajin/bus';
@@ -29,41 +30,6 @@ interface FreeCheckoutRequest {
   email?: string;
   name?: string;
   invite?: string;
-}
-
-/**
- * Create or retrieve a soft DID from email.
- */
-async function getOrCreateSoftDid(email: string, name?: string): Promise<string> {
-  const response = await fetch(`${AUTH_URL}/api/session/soft`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: email.toLowerCase().trim(),
-      name: name?.trim(),
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Soft DID creation failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.did;
-}
-
-/**
- * Attach email to an existing hard DID profile (if not already set).
- */
-async function attachEmailToProfile(did: string, email: string): Promise<void> {
-  try {
-    const normalizedEmail = email.toLowerCase().trim();
-    await db.execute(
-      sql`UPDATE profile.profiles SET contact_email = ${normalizedEmail} WHERE did = ${did} AND (contact_email IS NULL OR contact_email = '')`
-    );
-  } catch (error) {
-    log.error({ err: String(error) }, 'attachEmailToProfile error');
-  }
 }
 
 export const POST = withLogger('events', async (request, { log }) => {
@@ -158,38 +124,35 @@ export const POST = withLogger('events', async (request, { log }) => {
       }
     }
 
-    // Resolve owner DID
-    const session = await optionalAuth(request);
-    let ownerDid: string;
-    let ownerEmail: string | null = null;
-
-    if (session && session.tier !== 'soft') {
-      // Logged in with hard DID
-      ownerDid = session.id;
-
-      // Try to get their email from profile
-      try {
-        const [profile] = await db.execute(
-          sql`SELECT contact_email FROM profile.profiles WHERE did = ${ownerDid} LIMIT 1`
-        ) as any[];
-        ownerEmail = profile?.contact_email || body.email || null;
-      } catch {
-        ownerEmail = body.email || null;
+    // Resolve owner DID via the canonical checkout-identity primitive.
+    // Free RSVP needs a ticket owner immediately, so createSoftDid is set:
+    // hard session → that DID; otherwise mint/resolve a soft DID from email.
+    if (!body.email) {
+      const probe = await optionalAuth(request);
+      if (!probe || probe.tier === 'soft') {
+        return NextResponse.json(
+          { error: 'Please provide an email address to RSVP' },
+          { status: 400 }
+        );
       }
+    }
 
-      if (body.email) {
-        await attachEmailToProfile(ownerDid, body.email);
-      }
-    } else if (body.email) {
-      // Anonymous — create soft DID
-      ownerDid = await getOrCreateSoftDid(body.email, body.name);
-      ownerEmail = body.email;
-    } else {
+    const resolved = await resolveCheckoutIdentity(
+      request,
+      { email: body.email, name: body.name },
+      log,
+      { createSoftDid: true },
+    );
+
+    if (!resolved.did) {
       return NextResponse.json(
         { error: 'Please provide an email address to RSVP' },
         { status: 400 }
       );
     }
+
+    const ownerDid: string = resolved.did;
+    let ownerEmail: string | null = resolved.email ?? null;
 
     // Idempotency: check if this DID already has a ticket for this event
     const [existingTicket] = await db

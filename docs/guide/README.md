@@ -22,6 +22,10 @@
 
 **How to make your own data the source of truth without replacing anything you already use.**
 
+## For Contributors & Coding Agents
+
+- **[Canonical Patterns](./canonical-patterns.md)** — the one correct primitive for each seam (auth, settlement, .fair, checkout identity). Read before writing code at a primitive boundary; do not re-implement these inline.
+
 ## Quick Links
 
 - **HTTP API reference:** [Developer Guide](../developer-guide.md) (curl-based walkthrough)
