@@ -5,7 +5,8 @@ import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
 
 const log = createLogger('kernel');
 import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/src/db';
-import { requireAuth, isVerifiedTier } from '@imajin/auth';
+import { requireAuth, requireAppAuth, isVerifiedTier } from '@imajin/auth';
+import { lookupIdentity } from '@/src/lib/kernel/lookup';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
 import { hasCapability, requiredCapability, CAPABILITY_MESSAGES } from '@/src/lib/chat/capabilities';
@@ -20,14 +21,25 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+  let requesterDid: string;
+
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'messages:read' });
+    if ('error' in appResult) {
+      return errorResponse(appResult.error, appResult.status);
+    }
+    requesterDid = appResult.appAuth.userDid;
+  } else {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return errorResponse(authResult.error, authResult.status);
+    }
+    requesterDid = authResult.identity.actingAs || authResult.identity.id;
   }
 
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
-  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
 
   const access = await checkAccess(requesterDid, conversationDid);
   if (!access.allowed) {
@@ -110,13 +122,30 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
-  }
+  let effectiveDid: string;
+  let identity: { id: string; tier?: string; handle?: string | null };
 
-  const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'messages:write' });
+    if ('error' in appResult) {
+      return errorResponse(appResult.error, appResult.status);
+    }
+    effectiveDid = appResult.appAuth.userDid;
+    const lookedUp = await lookupIdentity(effectiveDid);
+    identity = {
+      id: effectiveDid,
+      tier: lookedUp?.tier ?? 'preliminary',
+      handle: lookedUp?.handle ?? null,
+    };
+  } else {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return errorResponse(authResult.error, authResult.status);
+    }
+    identity = authResult.identity;
+    effectiveDid = identity.actingAs || identity.id;
+  }
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 

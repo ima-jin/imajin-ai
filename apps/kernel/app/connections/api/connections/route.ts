@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, connections, nicknames } from '@/src/db';
 import { corsHeaders, corsOptions, withCors } from '@/src/lib/kernel/cors';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
 
@@ -11,12 +11,23 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+  let did: string;
+
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'connections:read' });
+    if ('error' in appResult) {
+      return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+    }
+    did = appResult.appAuth.userDid;
+  } else {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+    }
+    const { identity } = authResult;
+    did = identity.actingAs || identity.id;
   }
-  const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
 
   const rows = await db
     .select()

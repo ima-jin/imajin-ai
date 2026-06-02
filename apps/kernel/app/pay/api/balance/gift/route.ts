@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances, transactions } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
@@ -30,15 +30,28 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   const cors = corsHeaders(request);
 
   try {
-    const authResult = await requireAuth(request);
-    if ('error' in authResult) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401, headers: cors }
-      );
-    }
+    let effectiveDid: string;
 
-    const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+    // App auth path
+    if (request.headers.get('x-app-did')) {
+      const appResult = await requireAppAuth(request, { scope: 'wallet:write' });
+      if ('error' in appResult) {
+        return NextResponse.json(
+          { error: appResult.error },
+          { status: appResult.status, headers: cors }
+        );
+      }
+      effectiveDid = appResult.appAuth.userDid;
+    } else {
+      const authResult = await requireAuth(request);
+      if ('error' in authResult) {
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401, headers: cors }
+        );
+      }
+      effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+    }
 
     const body = await request.json();
     const { from_did, recipients, metadata = {} } = body;

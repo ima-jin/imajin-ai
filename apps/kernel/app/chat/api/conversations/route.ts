@@ -3,7 +3,7 @@ import { publish } from '@imajin/bus';
 import { eq, desc, and, gt, ne, inArray, sql } from 'drizzle-orm';
 import { db, conversationsV2, messagesV2, conversationReadsV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
 import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
 import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/kernel/utils';
 import { dmDid, parseConversationDid } from '@/src/lib/chat/conversation-did';
@@ -16,13 +16,23 @@ const rawSql = getClient();
  * Returns conversations the user participates in, with DM enrichment.
  */
 export const GET = withLogger('kernel', async (request, { log }) => {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
-  }
+  let effectiveDid: string;
 
-  const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'messages:read' });
+    if ('error' in appResult) {
+      return errorResponse(appResult.error, appResult.status);
+    }
+    effectiveDid = appResult.appAuth.userDid;
+  } else {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return errorResponse(authResult.error, authResult.status);
+    }
+    const { identity } = authResult;
+    effectiveDid = identity.actingAs || identity.id;
+  }
 
   try {
     // Discover all conversation DIDs this user participates in (same logic as conversations-v2)

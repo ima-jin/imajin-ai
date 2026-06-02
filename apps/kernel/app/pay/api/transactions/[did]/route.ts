@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, transactions } from '@/src/db';
 import { eq, and, desc, or } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 
@@ -28,19 +28,33 @@ export async function GET(
   try {
     const { did } = params;
 
-    // Auth: must be the DID owner (or acting as scope)
-    const authResult = await requireAuth(request);
-    if ('error' in authResult) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401, headers: cors }
-      );
+    let effectiveDid: string;
+    let isAgentDelegated = false;
+
+    // App auth path
+    if (request.headers.get('x-app-did')) {
+      const appResult = await requireAppAuth(request, { scope: 'wallet:read' });
+      if ('error' in appResult) {
+        return NextResponse.json(
+          { error: appResult.error },
+          { status: appResult.status, headers: cors }
+        );
+      }
+      effectiveDid = appResult.appAuth.userDid;
+    } else {
+      const authResult = await requireAuth(request);
+      if ('error' in authResult) {
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401, headers: cors }
+        );
+      }
+      effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+      isAgentDelegated =
+        authResult.identity.actingAs === did &&
+        authResult.identity.actingAsRole === 'agent';
     }
 
-    const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
-    const isAgentDelegated =
-      authResult.identity.actingAs === did &&
-      authResult.identity.actingAsRole === 'agent';
     if (effectiveDid !== did && !isAgentDelegated) {
       return NextResponse.json(
         { error: 'Forbidden - can only access your own transactions' },

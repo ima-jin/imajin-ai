@@ -24,7 +24,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
 import type { CheckoutRequest, FiatCurrency } from '@/src/lib/pay';
 import { DEFAULT_PLATFORM_FEE_BPS } from '@/src/lib/pay';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
@@ -125,9 +125,22 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     // Optional: capture identity if authenticated
     let identity: { id: string; actingAs?: string } | null = null;
-    const authResult = await requireAuth(request);
-    if (!('error' in authResult)) {
-      identity = authResult.identity;
+
+    // App auth path
+    if (request.headers.get('x-app-did')) {
+      const appResult = await requireAppAuth(request, { scope: 'wallet:write' });
+      if ('error' in appResult) {
+        return NextResponse.json(
+          { error: appResult.error },
+          { status: appResult.status, headers: cors }
+        );
+      }
+      identity = { id: appResult.appAuth.userDid };
+    } else {
+      const authResult = await requireAuth(request);
+      if (!('error' in authResult)) {
+        identity = authResult.identity;
+      }
     }
     
     const pay = getPaymentService();
