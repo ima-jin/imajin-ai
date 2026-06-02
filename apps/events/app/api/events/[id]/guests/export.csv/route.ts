@@ -3,6 +3,7 @@ import { createLogger } from '@imajin/logger';
 import { requireAuth } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
+import { resolveAttendee } from '@/src/lib/attendee';
 
 const log = createLogger('events');
 const sql = getClient();
@@ -66,8 +67,43 @@ async function resolveProfile(did: string): Promise<{ name: string | null; handl
   return { name: null, handle: null, email: null };
 }
 
+function buildProofOfPayment(
+  paymentMethod: string | null,
+  status: string,
+  paymentConfirmedAt: string | Date | null
+): string {
+  if (!paymentMethod) return '';
+  if (paymentMethod === 'etransfer') {
+    if (paymentConfirmedAt) {
+      const dateStr = typeof paymentConfirmedAt === 'string'
+        ? paymentConfirmedAt.split('T')[0]
+        : new Date(paymentConfirmedAt).toISOString().split('T')[0];
+      return `etransfer / confirmed ${dateStr}`;
+    }
+    return 'etransfer / pending';
+  }
+  if (paymentMethod === 'free') {
+    return 'free / n/a';
+  }
+  const displayStatus = status === 'valid' ? 'paid' : status;
+  return `${paymentMethod} / ${displayStatus}`;
+}
+
+function resolvePaymentId(
+  ticketPaymentId: string | null,
+  orderPaymentId: string | null,
+  orderStripeSessionId: string | null,
+  paymentMethod: string | null
+): string {
+  if (paymentMethod === 'etransfer' || paymentMethod === 'free') return '';
+  return ticketPaymentId || orderPaymentId || orderStripeSessionId || '';
+}
+
 /**
  * GET /api/events/[id]/guests/export.csv — export guest list as CSV
+ * Query params:
+ *   ?includeCancelled=1 — include cancelled/refunded tickets
+ *   ?summary=1          — return JSON summary instead of CSV
  */
 export async function GET(
   request: NextRequest,
@@ -82,13 +118,16 @@ export async function GET(
   const did = identity.actingAs || identity.id;
   const { id } = await params;
 
+  const url = new URL(request.url);
+  const includeCancelled = url.searchParams.get('includeCancelled') === '1';
+  const summaryMode = url.searchParams.get('summary') === '1';
+
   try {
     const orgCheck = await isEventOrganizer(id, did);
     if (!orgCheck.authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Fetch event for filename
     const [event] = await sql`
       SELECT id, title FROM events.events WHERE id = ${id} LIMIT 1
     `;
@@ -96,24 +135,83 @@ export async function GET(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    // Fetch tickets with all needed info
+    const statusFilter = includeCancelled
+      ? sql``
+      : sql`AND t.status NOT IN ('cancelled', 'refunded')`;
+
     const ticketRows = await sql`
       SELECT
-        t.id, t.status, t.owner_did, t.price_paid, t.currency, t.purchased_at, t.used_at,
-        t.payment_method, t.order_id, t.registration_status,
-        tt.name AS ticket_type, tt.registration_form_id,
-        COALESCE(sr.answers->>'full_name', sr.answers->>'name') AS attendee_name,
-        sr.answers->>'email' AS attendee_email,
-        sr.survey_id AS form_id,
-        sr.id AS response_id
+        t.id,
+        t.status,
+        t.owner_did,
+        t.purchased_at,
+        t.payment_method,
+        t.payment_id AS ticket_payment_id,
+        t.payment_confirmed_at,
+        t.registration_status,
+        t.order_id,
+        tt.name AS ticket_type,
+        tt.registration_form_id,
+        sr.id AS survey_response_id,
+        sr.survey_id AS survey_form_id,
+        sr.answers AS survey_answers,
+        o.payment_id AS order_payment_id,
+        o.stripe_session_id,
+        o.buyer_email,
+        o.buyer_did,
+        i.name AS identity_name,
+        i.contact_email,
+        cred.value AS credential_email,
+        buyer_i.name AS buyer_name
       FROM events.tickets t
       JOIN events.ticket_types tt ON t.ticket_type_id = tt.id
-      LEFT JOIN dykil.survey_responses sr ON sr.ticket_id = t.id
+      LEFT JOIN events.orders o ON t.order_id = o.id
+      LEFT JOIN auth.identities i ON i.id = t.owner_did
+      LEFT JOIN LATERAL (
+        SELECT value FROM auth.credentials
+        WHERE did = t.owner_did AND type = 'email'
+        ORDER BY created_at DESC LIMIT 1
+      ) cred ON true
+      LEFT JOIN LATERAL (
+        SELECT id, survey_id, answers
+        FROM dykil.survey_responses
+        WHERE ticket_id = t.id
+        ORDER BY created_at DESC LIMIT 1
+      ) sr ON true
+      LEFT JOIN auth.identities buyer_i ON buyer_i.id = o.buyer_did
       WHERE t.event_id = ${id}
+      ${statusFilter}
       ORDER BY t.created_at DESC
     `;
 
-    // Batch-resolve unique DIDs for profile info
+    // Detect duplicate survey responses and warn
+    const ticketIds = ticketRows.map((t: any) => t.id);
+    if (ticketIds.length > 0) {
+      const dupRows = await sql`
+        SELECT ticket_id, COUNT(*) as cnt
+        FROM dykil.survey_responses
+        WHERE ticket_id = ANY(${ticketIds})
+        GROUP BY ticket_id
+        HAVING COUNT(*) > 1
+      `;
+      for (const row of dupRows) {
+        log.warn(
+          { ticketId: row.ticket_id, count: Number(row.cnt) },
+          'Ticket has multiple survey responses; using most recent'
+        );
+      }
+    }
+
+    if (summaryMode) {
+      const total = ticketRows.length;
+      const valid = ticketRows.filter((t: any) => !['cancelled', 'refunded'].includes(t.status)).length;
+      const pendingRegistration = ticketRows.filter((t: any) => t.registration_status === 'pending').length;
+      const completeRegistration = ticketRows.filter((t: any) => t.registration_status === 'complete').length;
+      const cancelled = ticketRows.filter((t: any) => ['cancelled', 'refunded'].includes(t.status)).length;
+      return NextResponse.json({ total, valid, pendingRegistration, completeRegistration, cancelled });
+    }
+
+    // Batch-resolve unique owner DIDs for profile name/email
     const uniqueDids = [...new Set(ticketRows.map((t: any) => t.owner_did).filter(Boolean))] as string[];
     const profileMap = new Map<string, { name: string | null; handle: string | null; email: string | null }>();
     await Promise.all(
@@ -128,7 +226,7 @@ export async function GET(
 
     // Fetch form definitions from Dykil and build survey column list
     const surveyColumns: string[] = [];
-    const formFieldMap = new Map<string, Array<{ name: string; title: string }>>();
+    const formFieldMap = new Map<string, Array<{ name: string; title: string; exportLabel?: string }>>();
 
     if (formIds.length > 0) {
       const formRows = await sql`
@@ -136,7 +234,7 @@ export async function GET(
       `;
       for (const row of formRows) {
         const rawFields = row.fields || {};
-    let fields: Array<{ name: string; title?: string }>;
+        let fields: Array<{ name: string; title?: string; exportLabel?: string }>;
         if (Array.isArray(rawFields)) {
           fields = rawFields;
         } else if (Array.isArray(rawFields.elements)) {
@@ -160,19 +258,6 @@ export async function GET(
       }
     }
 
-    // Fetch all survey responses for tickets that have them
-    const responseIds = [...new Set(ticketRows.map((t: any) => t.response_id).filter(Boolean))] as string[];
-    const responseMap = new Map<string, Record<string, unknown>>();
-
-    if (responseIds.length > 0) {
-      const responseRows = await sql`
-        SELECT id, answers FROM dykil.survey_responses WHERE id = ANY(${responseIds})
-      `;
-      for (const row of responseRows) {
-        responseMap.set(row.id, row.answers || {});
-      }
-    }
-
     // Build CSV
     const dateStr = new Date().toISOString().split('T')[0];
     const safeTitle = event.title
@@ -181,55 +266,89 @@ export async function GET(
     const filename = `${safeTitle || event.id}-guests-${dateStr}.csv`;
 
     const baseHeaders = [
-      'Ticket ID', 'Order ID', 'Attendee Name', 'Attendee Email', 'Ticket Type',
-      'Status', 'Registration Status', 'Purchased At', 'Checked In At',
-      'Payment Method', 'Price Paid (cents)', 'Currency', 'Owner DID',
+      'Ticket ID',
+      'Order ID',
+      'Payment ID',
+      'Guest Full Name',
+      'Guest Email',
+      'Ticket Type',
+      'Proof of Payment',
+      'Status',
+      'Registration Status',
+      'Guest Of',
+      'Purchased At',
     ];
-    const headers = [...baseHeaders, ...surveyColumns];
+    const headers = [...baseHeaders, ...surveyColumns, 'Owner DID'];
 
     let csvBody = csvRow(headers);
 
     for (const t of ticketRows) {
       const profile = t.owner_did ? (profileMap.get(t.owner_did) ?? null) : null;
-      const attendeeName = t.attendee_name || profile?.name || '';
-      const attendeeEmail = t.attendee_email || profile?.email || '';
+
+      const surveyAnswers = t.survey_answers || {};
+      const surveyName = surveyAnswers.full_name || surveyAnswers.name || null;
+      const surveyEmail = surveyAnswers.email || null;
+
+      const resolved = resolveAttendee({
+        surveyName,
+        surveyEmail,
+        identityName: t.identity_name || null,
+        identityContactEmail: t.contact_email || null,
+        identityCredentialEmail: t.credential_email || null,
+        profileName: profile?.name || null,
+        profileEmail: profile?.email || null,
+        buyerName: t.buyer_name || null,
+        buyerEmail: t.buyer_email || null,
+      });
+
+      const paymentId = resolvePaymentId(
+        t.ticket_payment_id,
+        t.order_payment_id,
+        t.stripe_session_id,
+        t.payment_method
+      );
+
+      const proofOfPayment = buildProofOfPayment(
+        t.payment_method,
+        t.status,
+        t.payment_confirmed_at
+      );
 
       const baseValues = [
         t.id,
         t.order_id || '',
-        attendeeName,
-        attendeeEmail,
+        paymentId,
+        resolved.name,
+        resolved.email,
         t.ticket_type,
+        proofOfPayment,
         t.status,
         t.registration_status || '',
+        resolved.guestOf,
         t.purchased_at ? new Date(t.purchased_at).toISOString() : '',
-        t.used_at ? new Date(t.used_at).toISOString() : '',
-        t.payment_method || '',
-        t.price_paid ?? '',
-        t.currency || '',
-        t.owner_did || '',
       ];
 
       // Survey answers
       const surveyValues: string[] = [];
-      if (t.response_id && t.form_id && formFieldMap.has(t.form_id)) {
-        const fields = formFieldMap.get(t.form_id)!;
-        const answers = responseMap.get(t.response_id) || {};
+      if (t.survey_form_id && formFieldMap.has(t.survey_form_id)) {
+        const fields = formFieldMap.get(t.survey_form_id)!;
         for (const colName of surveyColumns) {
           const question = colName.replaceAll('Survey: ', '');
           const field = fields.find((f) => (f.exportLabel || stripHtml(f.title)) === question);
-          if (field && field.name in answers) {
-            const ans = answers[field.name];
+          if (field && field.name in surveyAnswers) {
+            const ans = surveyAnswers[field.name];
             surveyValues.push(ans === null || ans === undefined ? '' : String(ans));
           } else {
             surveyValues.push('');
           }
         }
       } else {
-        surveyValues.push(...new Array(surveyColumns.length).fill(''));
+        for (const _ of surveyColumns) {
+          surveyValues.push('');
+        }
       }
 
-      csvBody += csvRow([...baseValues, ...surveyValues]);
+      csvBody += csvRow([...baseValues, ...surveyValues, t.owner_did || '']);
     }
 
     const bom = '\uFEFF';
