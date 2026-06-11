@@ -14,6 +14,7 @@ import { eq, and, gt, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { consumePendingInvites } from '@/src/lib/auth/consume-invite';
 
 const log = createLogger('kernel');
 
@@ -210,6 +211,13 @@ export async function GET(request: NextRequest) {
         },
       }).catch((err) => log.error({ err: String(err) }, '[onboard/verify] Attestation (identity.created) error (non-fatal)'));
     }
+
+    // Auto-consume any pending invites sent to this email — fire and forget
+    consumePendingInvites({
+      did,
+      email: record.email,
+      handle: identity.handle,
+    }).catch(() => {});
 
     // Create session token — use actual tier (supports hard DID re-auth via magic link)
     const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';

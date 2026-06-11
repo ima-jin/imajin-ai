@@ -28,7 +28,7 @@ export const GET = withLogger('kernel', async (req, { log }) => {
 
   try {
     // Discover all conversation DIDs this user is involved in
-    const [readRecords, sentMessages, createdConvs, podConvDids] = await Promise.all([
+    const [readRecords, sentMessages, podConvDids, memberConvDids] = await Promise.all([
       db
         .select()
         .from(conversationReadsV2)
@@ -37,10 +37,6 @@ export const GET = withLogger('kernel', async (req, { log }) => {
         .selectDistinct({ conversationDid: messagesV2.conversationDid })
         .from(messagesV2)
         .where(eq(messagesV2.fromDid, effectiveDid)),
-      db
-        .select({ did: conversationReadsV2.conversationDid })
-        .from(conversationReadsV2)
-        .where(eq(conversationReadsV2.did, effectiveDid)),
       rawSql`
         SELECT p.conversation_did
         FROM connections.pods p
@@ -49,13 +45,19 @@ export const GET = withLogger('kernel', async (req, { log }) => {
           AND pm.removed_at IS NULL
           AND p.conversation_did IS NOT NULL
       `,
+      rawSql`
+        SELECT conversation_did
+        FROM chat.conversation_members
+        WHERE member_did = ${effectiveDid}
+          AND left_at IS NULL
+      `,
     ]);
 
     const didSet = new Set<string>([
       ...readRecords.map(r => r.conversationDid),
       ...sentMessages.map(m => m.conversationDid),
-      ...createdConvs.map(c => c.did),
       ...podConvDids.map((r: Record<string, string>) => r.conversation_did),
+      ...memberConvDids.map((r: Record<string, string>) => r.conversation_did),
     ]);
 
     if (didSet.size === 0) {

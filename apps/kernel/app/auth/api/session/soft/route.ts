@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
+import { publish } from '@imajin/bus';
 import { db, identities, credentials } from '@/src/db';
+import { consumePendingInvites } from '@/src/lib/auth/consume-invite';
 import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
@@ -112,6 +114,27 @@ export async function POST(request: NextRequest) {
       });
 
       identity = [newIdentity];
+
+      // Emit identity.created → triggers 10 MJN welcome emission
+      publish('identity.created', {
+        issuer: did,
+        subject: did,
+        scope: 'auth',
+        payload: {
+          did,
+          scope: 'actor',
+          subtype: 'human',
+          tier: 'soft',
+          context_id: did,
+          context_type: 'identity',
+        },
+      }).catch((err) => log.error({ err: String(err) }, '[session/soft] identity.created publish error (non-fatal)'));
+
+      // Auto-consume any pending invites sent to this email — fire and forget
+      consumePendingInvites({
+        did,
+        email: normalizedEmail,
+      }).catch(() => {});
     }
 
     // Create session token with tier information

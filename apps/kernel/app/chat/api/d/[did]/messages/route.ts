@@ -15,6 +15,7 @@ import { checkAccess } from '@/src/lib/kernel/access';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 import { verifyChain } from '@imajin/dfos';
 import { processMentions } from '@/src/lib/chat/mentions';
+import { notifyMessageRecipients } from '@/src/lib/chat/notify-message';
 
 /**
  * Sign a message payload with the node's platform key.
@@ -353,6 +354,19 @@ export async function POST(
       senderDid: effectiveDid,
       senderName: identity.handle || identity.id.slice(0, 16),
       content,
+    });
+
+    // Notify conversation participants about the new message — fire and forget
+    const previewText = typeof content === 'string'
+      ? content
+      : typeof content === 'object' && content !== null && 'text' in content
+        ? String((content as Record<string, unknown>).text)
+        : '';
+    notifyMessageRecipients({
+      conversationDid: did,
+      senderDid: effectiveDid,
+      senderName: identity.handle || identity.name || identity.id.slice(0, 16),
+      messagePreview: previewText,
     });
 
     // Unfurl link previews async — don't block the response
