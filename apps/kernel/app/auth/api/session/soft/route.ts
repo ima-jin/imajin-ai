@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { publish } from '@imajin/bus';
 import { db, identities, credentials } from '@/src/db';
-import { rateLimit, getClientIP, corsHeaders } from '@imajin/config';
+import { consumePendingInvites } from '@/src/lib/auth/consume-invite';
+import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { corsHeaders } from '@imajin/config';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
@@ -125,6 +128,27 @@ export async function POST(request: NextRequest) {
       });
 
       identity = [newIdentity];
+
+      // Emit identity.created → triggers 10 MJN welcome emission
+      publish('identity.created', {
+        issuer: did,
+        subject: did,
+        scope: 'auth',
+        payload: {
+          did,
+          scope: 'actor',
+          subtype: 'human',
+          tier: 'soft',
+          context_id: did,
+          context_type: 'identity',
+        },
+      }).catch((err) => log.error({ err: String(err) }, '[session/soft] identity.created publish error (non-fatal)'));
+
+      // Auto-consume any pending invites sent to this email — fire and forget
+      consumePendingInvites({
+        did,
+        email: normalizedEmail,
+      }).catch(() => {});
     }
 
     // Return identity metadata only — no session token, no cookie.

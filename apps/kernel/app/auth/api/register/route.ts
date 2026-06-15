@@ -393,7 +393,7 @@ export async function POST(request: NextRequest) {
             set: { disconnectedAt: null, connectedAt: new Date() },
           });
 
-        events.emit({ action: 'connection.create', did: identity.id, payload: { otherDid: inviteData.fromDid, source: 'invite' } });
+        bus.publish('connection.create', { issuer: identity.id, subject: inviteData.fromDid, scope: 'connections', payload: { source: 'invite' } }).catch(() => {});
 
         const now = new Date().toISOString();
         await db
