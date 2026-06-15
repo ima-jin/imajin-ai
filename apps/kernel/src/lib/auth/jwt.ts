@@ -131,6 +131,71 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   }
 }
 
+// ============================================================================
+// App tokens (#1069 / #799 P3) — short-lived, scoped, app-bound delegated tokens.
+//
+// Minted by POST /auth/api/apps/token after the app proves possession of its
+// keypair and the kernel validates the user's app.authorized attestation.
+// Services verify these LOCALLY against the kernel public key (same EdDSA key
+// as session tokens) — no per-call round-trip to the kernel.
+// ============================================================================
+
+const APP_TOKEN_EXPIRY_SECONDS = 600; // 10 minutes
+
+export interface AppTokenPayload {
+  sub: string;          // user DID (the resource owner)
+  azp: string;          // authorized party = app DID
+  scope: string;        // space-delimited granted scopes
+  aud?: string;         // optional target service/audience
+  attestationId: string; // source app.authorized attestation (for revocation correlation)
+}
+
+/**
+ * Mint a short-lived app token. Caller MUST have already validated the
+ * attestation and the app's proof-of-possession.
+ */
+export async function createAppToken(payload: AppTokenPayload): Promise<string> {
+  const { privateKey } = await getKeyPair();
+
+  return new jose.SignJWT({
+    azp: payload.azp,
+    scope: payload.scope,
+    attestationId: payload.attestationId,
+  })
+    .setProtectedHeader({ alg: 'EdDSA', typ: 'app+jwt' })
+    .setSubject(payload.sub)
+    .setIssuer(JWT_ISSUER)
+    .setIssuedAt()
+    .setExpirationTime(`${APP_TOKEN_EXPIRY_SECONDS}s`)
+    .setAudience(payload.aud ?? 'imajin:apps')
+    .sign(privateKey);
+}
+
+/**
+ * Verify an app token locally. Returns the payload or null.
+ * Does NOT check revocation — short TTL bounds the revocation window; callers
+ * needing instant revocation should fall back to the attestation-validate path.
+ */
+export async function verifyAppToken(token: string): Promise<AppTokenPayload | null> {
+  try {
+    const { publicKey } = await getKeyPair();
+    const { payload, protectedHeader } = await jose.jwtVerify(token, publicKey, {
+      issuer: JWT_ISSUER,
+    });
+    if (protectedHeader.typ !== 'app+jwt') return null; // reject session tokens used as app tokens
+    return {
+      sub: payload.sub as string,
+      azp: payload.azp as string,
+      scope: (payload.scope as string) || '',
+      aud: payload.aud as string | undefined,
+      attestationId: payload.attestationId as string,
+    };
+  } catch (error) {
+    log.error({ err: String(error) }, 'App token verification failed');
+    return null;
+  }
+}
+
 // Re-export from @imajin/config — auth's own callers can keep importing from here
 export { getSessionCookieOptions } from '@imajin/config';
 
