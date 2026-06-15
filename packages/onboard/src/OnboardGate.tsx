@@ -13,7 +13,11 @@ export interface OnboardGateProps {
   authUrl?: string;
   /** URL to redirect back to after email verification */
   redirectUrl?: string;
-  /** Skip email verification for low-stakes actions */
+  /**
+   * @deprecated No-op. All flows now require email verification.
+   * Previously allowed skipping verification for low-stakes actions; removed
+   * because POST /api/session/soft no longer issues browser sessions.
+   */
   requireVerification?: boolean;
 }
 
@@ -25,7 +29,8 @@ export function OnboardGate({
   children,
   authUrl: authUrlProp,
   redirectUrl,
-  requireVerification = true,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  requireVerification: _requireVerification,
 }: Readonly<OnboardGateProps>) {
   const [state, setState] = useState<State>('idle');
   const [email, setEmail] = useState('');
@@ -58,31 +63,8 @@ export function OnboardGate({
     e.preventDefault();
     if (!email.trim()) return;
 
-    if (!requireVerification) {
-      // Direct soft DID creation (no email verification)
-      setState('sending');
-      try {
-        const res = await fetch(`${authUrl}/api/session/soft`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email.trim(), name: name.trim() || undefined }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          onIdentity(data.did);
-          return;
-        }
-        setError('Something went wrong. Please try again.');
-        setState('prompt');
-      } catch {
-        setError('Connection error. Please try again.');
-        setState('prompt');
-      }
-      return;
-    }
-
-    // Verified flow — send email
+    // All flows send a verification email. POST /api/session/soft no longer
+    // issues browser sessions, so there is no shortcut path here.
     setState('sending');
     setError('');
     try {

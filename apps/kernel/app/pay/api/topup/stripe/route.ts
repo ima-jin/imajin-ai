@@ -14,7 +14,7 @@ import { requireAuth } from '@imajin/auth';
 import { db, transactions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { rateLimit, getClientIP } from '@imajin/config';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
 import { withLogger } from '@imajin/logger';
 

@@ -334,6 +334,10 @@ If you want to run your own node or build on the stack, start with the [Develope
 
 ---
 
+## Security
+
+Found a vulnerability, or want to know what we do and don't guarantee yet? See [SECURITY.md](SECURITY.md) for the responsible-disclosure process and an honest list of known limitations. We're pre-1.0 sovereign plumbing — not claiming to be unhackable, just claiming to be honest about where we are.
+
 ## License
 
 MIT

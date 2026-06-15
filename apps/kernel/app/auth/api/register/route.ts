@@ -3,7 +3,7 @@ import { db, identities, profiles, invitesInConnections as invites, podsInConnec
 import { eq, or, sql } from 'drizzle-orm';
 import { didFromPublicKey, verifySignature } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { rateLimit, getClientIP } from '@imajin/config';
 import { generateId } from '@/src/lib/kernel/utils';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { sendEmail } from '@imajin/email';

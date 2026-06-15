@@ -34,8 +34,8 @@ apps/*/drizzle/relations.ts
 
 # Personal
 *.raw.md
-scripts/launch-local.tsimajin-courses/
-apps/auth/tsconfig.tsbuildinfo
+scripts/launch-local.ts
+imajin-courses/
 memory/
 .claire/
 *.tsbuildinfo

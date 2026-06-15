@@ -8,8 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, onboardTokens } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { corsHeaders } from '@imajin/config';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
 const HANDOFF_TTL_MS = 5 * 60 * 1000; // 5 minutes

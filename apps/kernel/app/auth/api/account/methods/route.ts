@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, storedKeys, mfaMethods } from '@/src/db';
 import { eq, and, isNotNull } from 'drizzle-orm';
-import { corsHeaders } from '@imajin/config';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {

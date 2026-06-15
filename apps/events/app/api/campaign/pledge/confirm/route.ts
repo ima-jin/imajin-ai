@@ -21,8 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { db, pledges } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
-import { corsHeaders } from '@imajin/config';
-import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
+import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;

@@ -380,20 +380,27 @@ export async function createOrderWithTickets(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the buyer's identity for checkout.
+ * Resolve the buyer's identity for checkout. Canonical for ALL checkout paths
+ * (Stripe, e-Transfer, free RSVP). Do not re-implement identity resolution in
+ * a checkout route — extend this with an option instead.
  *
  * 1. Attempt session auth (optionalAuth).
- * 2. If authenticated: backfill contact email if one was provided in the body,
- *    resolve the stored contact email, and return the DID + resolved email.
- * 3. If not authenticated: return the email from the request body (if any).
+ * 2. If authenticated: backfill contact email if provided, resolve the stored
+ *    contact email, return DID + resolved email.
+ * 3. If not authenticated:
+ *    - default: return just the email (caller defers DID creation — Stripe
+ *      hands the email to the pay service; e-Transfer sends a magic-link).
+ *    - `createSoftDid: true`: eagerly create/resolve a soft DID from the email
+ *      (free RSVP needs a ticket owner immediately — there is no later step to
+ *      defer to). Requires `email`.
  *
- * The caller decides how to handle the unauthenticated case (Stripe sends
- * the email to the pay service; e-Transfer sends a magic-link).
+ * `opts.name` is used only when minting a soft DID.
  */
 export async function resolveCheckoutIdentity(
   request: NextRequest,
-  body: { email?: string },
+  body: { email?: string; name?: string },
   log: any,
+  opts?: { createSoftDid?: boolean },
 ): Promise<{ did?: string; email?: string }> {
   const session = await optionalAuth(request);
 
@@ -403,6 +410,9 @@ export async function resolveCheckoutIdentity(
 
     if (email) {
       await backfillContactEmail(did, email, log);
+      // Soft-DID/free flows also rely on profile.profiles.contact_email for
+      // ticket delivery; keep both stores aligned for authenticated buyers.
+      await backfillProfileContactEmail(did, email, log);
     }
 
     const contactEmail = await getContactEmail(did, log);
@@ -413,5 +423,48 @@ export async function resolveCheckoutIdentity(
     return { did, email };
   }
 
+  if (opts?.createSoftDid) {
+    if (!body.email) {
+      throw new Error('email is required to create a soft DID for checkout');
+    }
+    const did = await createSoftDidFromEmail(body.email, body.name);
+    await backfillProfileContactEmail(did, body.email, log);
+    return { did, email: body.email };
+  }
+
   return { email: body.email };
+}
+
+/**
+ * Create or retrieve a soft DID from an email via the auth service.
+ * Canonical for checkout soft-DID minting.
+ */
+async function createSoftDidFromEmail(email: string, name?: string): Promise<string> {
+  const authUrl = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || process.env.NEXT_PUBLIC_AUTH_URL;
+  const response = await fetch(`${authUrl}/api/session/soft`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email.toLowerCase().trim(), name: name?.trim() }),
+  });
+  if (!response.ok) {
+    throw new Error(`Soft DID creation failed: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.did;
+}
+
+/**
+ * Backfill profile.profiles.contact_email (distinct from the auth.identities
+ * store handled by backfillContactEmail — both are load-bearing for notify
+ * resolution order: profile → auth → www).
+ */
+async function backfillProfileContactEmail(did: string, email: string, log: any): Promise<void> {
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    await db.execute(
+      sql`UPDATE profile.profiles SET contact_email = ${normalizedEmail} WHERE did = ${did} AND (contact_email IS NULL OR contact_email = '')`
+    );
+  } catch (error) {
+    log.error({ err: String(error) }, 'backfillProfileContactEmail error');
+  }
 }

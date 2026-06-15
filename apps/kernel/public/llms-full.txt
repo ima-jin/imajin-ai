@@ -1,6 +1,6 @@
 # Imajin Network (MJN Protocol)
 # llms-full.txt — Complete technical reference for AI consumption
-# v0.6 · May 2026
+# v0.7 · May 2026
 # Ryan Veteze · ryan@imajin.ai · github.com/ima-jin/imajin-ai
 #
 # This document is the single source of truth for the Imajin architecture.
@@ -12,11 +12,18 @@
 ## 1. What This Is
 
 Imajin is a cryptographic operating system. One kernel, a federated userspace, and four
-infrastructure layers that make every action verifiable and every relationship bilateral.
+infrastructure layers that make user-authored actions verifiable and relationships bilateral.
+What is user-signed, platform-signed, or merely logged is spelled out per service — not
+everything is independently verifiable, and the design is explicit about which is which.
 
 Without the chains, each service is a dumb CRUD app. With the chains, they form a sovereign
 operating system where identity, attribution, trust, and settlement are structural properties —
 not features bolted on after the fact.
+
+Federation is progressive: today this runs as a single operator's node. Cross-node trust and
+DID resolution at scale are roadmap milestones, not shipped guarantees — the "sovereign"
+property is real for a single node and a stated direction for the network, not a finished
+multi-node claim. See SECURITY.md for the honest list of current gaps.
 
 The kernel (`apps/kernel`) consolidates auth, payments, messaging, media, trust graph, and
 registry into one Next.js application. One domain, one cookie, one build. Userspace apps
@@ -812,9 +819,15 @@ Fee cascade — deducted in order, seller gets the remainder:
 4. **Scope fee**: optional — only when a community/business takes a cut
 5. **Seller share**: everything else
 
-Default total overhead: 2%. The seller gets 98%. Compare to Stripe's 2.9% + $0.30 where
-the platform keeps everything. Here, the 2% is split across four stakeholders who all
-contributed to the transaction happening.
+Default total overhead: 2%. The seller gets 98% of what reaches the protocol. Compare to
+Stripe's 2.9% + $0.30 where the platform keeps everything. Here, the 2% is split across four
+stakeholders who all contributed to the transaction happening.
+
+**Note on processor fees:** Imajin's 2% is *additive* to the underlying payment processor's fee,
+not a replacement for it. A Stripe-settled transaction still incurs Stripe's 2.9% + $0.30; the
+Imajin protocol fee is layered on top and split across stakeholders. The comparison above is
+about *who keeps the overhead* (one platform vs. four contributors), not about eliminating
+processor costs.
 
 Chain placeholder DIDs:
 - `BUYER_PLACEHOLDER` → resolved to actual buyer DID at settlement
@@ -1000,7 +1013,12 @@ Cookie: imajin_session=...
 
 Presence tracked per-DID (multiple tabs share a DID; last tab closing triggers offline).
 
-### E2EE (Simplified)
+### Chat encryption (Simplified)
+
+> **Maturity note:** This is transport/payload encryption with a key-epoch model, **not** a
+> ratcheting forward-secret E2EE protocol (no forward secrecy or post-compromise security yet).
+> Do not treat it as equivalent to Signal-class messaging. Full ratcheting E2EE (MLS / Double
+> Ratchet) is planned — see #458.
 
 Chat uses X25519 key agreement + XChaCha20-Poly1305:
 
@@ -1212,7 +1230,7 @@ const db = createDb(schema);
 |-----------|---------|
 | Ed25519 | DID keypairs, attestation signing, .fair signing, session auth |
 | SHA-256 | Content hashing, hard DID derivation |
-| X25519 | Chat E2EE key agreement (derived from Ed25519) |
+| X25519 | Chat key agreement (derived from Ed25519) |
 | XChaCha20-Poly1305 | Chat message encryption |
 | XSalsa20-Poly1305 | Vault encryption (NaCl box) |
 | dag-cbor + CID | DFOS content addressing, attestation CIDs |

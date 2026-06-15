@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('coffee');
-import { rateLimit, getClientIP } from '@/lib/rate-limit';
+import { rateLimit, getClientIP } from '@imajin/config';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3009';
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
