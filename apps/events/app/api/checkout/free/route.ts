@@ -13,8 +13,7 @@ import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { optionalAuth } from '@imajin/auth';
 import { resolveCheckoutIdentity } from '@/src/lib/checkout-common';
-import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
-import { eventUrl } from '@imajin/config';
+import { rateLimit, getClientIP, eventUrl } from '@imajin/config';
 import { generateQRCode } from '@/src/lib/email';
 import { publish } from '@imajin/bus';
 import { getClient } from '@imajin/db';
@@ -145,22 +144,14 @@ export const POST = withLogger('events', async (request, { log }) => {
     );
 
     if (!resolved.did) {
-      if (body.email) {
-        await attachEmailToProfile(ownerDid, body.email);
-      }
-    } else if (body.email) {
-      // Anonymous â€” create soft DID
-      ownerDid = await getOrCreateSoftDid(body.email, body.name);
-      ownerEmail = body.email;
-    } else {
       return NextResponse.json(
-        { error: 'Please provide an email address to RSVP' },
+        { error: 'Could not resolve a ticket owner — please provide an email address to RSVP' },
         { status: 400 }
       );
     }
 
     const ownerDid: string = resolved.did;
-    let ownerEmail: string | null = resolved.email ?? null;
+    const ownerEmail: string | null = resolved.email ?? null;
 
     // Idempotency: check if this DID already has a ticket for this event
     const [existingTicket] = await db
