@@ -13,7 +13,7 @@ import { publish } from '@imajin/bus';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { rateLimit, getClientIP } from '@imajin/config';
 import { consumePendingInvites } from '@/src/lib/auth/consume-invite';
 
 const log = createLogger('kernel');
