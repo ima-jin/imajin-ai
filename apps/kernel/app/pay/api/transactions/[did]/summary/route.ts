@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, transactions } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
-import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { resolveEffectiveDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 
@@ -28,28 +28,14 @@ export async function GET(
   try {
     const { did } = params;
 
-    let effectiveDid: string;
-
-    // App auth path
-    if (request.headers.get('x-app-did')) {
-      const appResult = await requireAppAuth(request, { scope: 'wallet:read' });
-      if ('error' in appResult) {
-        return NextResponse.json(
-          { error: appResult.error },
-          { status: appResult.status, headers: cors }
-        );
-      }
-      effectiveDid = appResult.appAuth.userDid;
-    } else {
-      const authResult = await requireAuth(request);
-      if ('error' in authResult) {
-        return NextResponse.json(
-          { error: 'Unauthorized' },
-          { status: 401, headers: cors }
-        );
-      }
-      effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+    const auth = await resolveEffectiveDid(request, { scope: 'wallet:read' });
+    if (!auth.ok) {
+      return NextResponse.json(
+        { error: auth.error },
+        { status: auth.status, headers: cors }
+      );
     }
+    const effectiveDid = auth.effectiveDid;
 
     if (effectiveDid !== did) {
       return NextResponse.json(

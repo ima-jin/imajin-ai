@@ -32,7 +32,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
-import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveEffectiveDid } from '@imajin/auth';
 import type { EscrowRequest, Currency } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
@@ -74,28 +74,14 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    let depositorDid: string;
-
-    // App auth path
-    if (request.headers.get('x-app-did')) {
-      const appResult = await requireAppAuth(request, { scope: 'wallet:write' });
-      if ('error' in appResult) {
-        return NextResponse.json(
-          { error: appResult.error },
-          { status: appResult.status, headers: cors }
-        );
-      }
-      depositorDid = appResult.appAuth.userDid;
-    } else {
-      const authResult = await requireAuth(request);
-      if ('error' in authResult) {
-        return NextResponse.json(
-          { error: authResult.error },
-          { status: authResult.status, headers: cors }
-        );
-      }
-      depositorDid = authResult.identity.actingAs || authResult.identity.id;
+    const auth = await resolveEffectiveDid(request, { scope: 'wallet:write' });
+    if (!auth.ok) {
+      return NextResponse.json(
+        { error: auth.error },
+        { status: auth.status, headers: cors }
+      );
     }
+    const depositorDid = auth.effectiveDid;
 
     // Verify the authenticated user is the depositor
     if (depositorDid !== body.from) {
