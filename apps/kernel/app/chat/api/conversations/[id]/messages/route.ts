@@ -5,7 +5,8 @@ import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
 
 const log = createLogger('kernel');
 import { db, conversationsV2, messagesV2, messageReactionsV2 } from '@/src/db';
-import { requireAuth, requireAppAuth, isVerifiedTier, resolveEffectiveDid } from '@imajin/auth';
+import { requireAuth, isVerifiedTier, resolveEffectiveDid } from '@imajin/auth';
+import type { EffectiveDidResult, Identity } from '@imajin/auth';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
@@ -107,32 +108,55 @@ export async function GET(
 /**
  * POST /api/conversations/:id/messages - Send a message
  */
+type SenderIdentity = { id: string; tier?: Identity['tier']; handle?: string | null };
+
+/**
+ * Hydrate the full sender identity (tier/handle) from a resolved auth result.
+ * App path looks the DID up; session path reuses the authenticated identity.
+ * Mirrors the resolveEffectiveDid result shape so callers branch once.
+ */
+async function hydrateSenderIdentity(
+  request: NextRequest,
+  auth: Extract<EffectiveDidResult, { ok: true }>,
+): Promise<
+  | { ok: true; identity: SenderIdentity }
+  | { ok: false; status: number; error: string }
+> {
+  if (auth.via === 'app') {
+    const lookedUp = await lookupIdentity(auth.effectiveDid);
+    return {
+      ok: true,
+      identity: {
+        id: auth.effectiveDid,
+        tier: (lookedUp?.tier as Identity['tier']) ?? 'preliminary',
+        handle: lookedUp?.handle ?? null,
+      },
+    };
+  }
+
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
+    return { ok: false, status: authResult.status, error: authResult.error };
+  }
+  return { ok: true, identity: authResult.identity };
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  let identity: { id: string; tier?: string; handle?: string | null };
-
   const auth = await resolveEffectiveDid(request, { scope: 'messages:write' });
   if (!auth.ok) {
     return errorResponse(auth.error, auth.status);
   }
   const effectiveDid = auth.effectiveDid;
 
-  if (auth.via === 'app') {
-    const lookedUp = await lookupIdentity(effectiveDid);
-    identity = {
-      id: effectiveDid,
-      tier: lookedUp?.tier ?? 'preliminary',
-      handle: lookedUp?.handle ?? null,
-    };
-  } else {
-    const authResult = await requireAuth(request);
-    if ('error' in authResult) {
-      return errorResponse(authResult.error, authResult.status);
-    }
-    identity = authResult.identity;
+  const hydrated = await hydrateSenderIdentity(request, auth);
+  if (!hydrated.ok) {
+    return errorResponse(hydrated.error, hydrated.status);
   }
+  const identity = hydrated.identity;
+
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 
@@ -152,8 +176,12 @@ export async function POST(
 
     const earlyContentType = body.contentType || content?.type || 'text';
     const required = requiredCapability(earlyContentType);
-    const tier = identity.tier ?? 'preliminary';
-    if (!hasCapability({ tier }, required)) {
+    // Capability tiers are a narrower set; higher tiers (steward/operator) are
+    // all verified, so collapse them to 'established' for the capability check.
+    const rawTier = identity.tier ?? 'preliminary';
+    const capabilityTier: 'soft' | 'preliminary' | 'established' =
+      rawTier === 'soft' || rawTier === 'preliminary' ? rawTier : 'established';
+    if (!hasCapability({ tier: capabilityTier }, required)) {
       return Response.json(
         { error: CAPABILITY_MESSAGES[required], code: 'CAPABILITY_DENIED', required },
         { status: 403 }
