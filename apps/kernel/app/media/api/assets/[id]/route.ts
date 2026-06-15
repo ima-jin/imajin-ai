@@ -380,8 +380,13 @@ export async function GET(
   }
 
   // 5a. Auto-render markdown articles as HTML
-  // If it's text/markdown with frontmatter status: POSTED and the client
-  // isn't requesting raw bytes, render as a styled article page.
+  // If it's text/markdown carrying a frontmatter `title` and the client isn't
+  // requesting raw bytes, render as a styled article page. Presence of a
+  // `title` is the signal it's an article; `status` no longer gates rendering
+  // (a DRAFT/REVIEW doc should still render for anyone allowed to access it —
+  // access control already ran above, so private assets stay auth-gated). The
+  // public article index filters on DB `metadata.article.status` separately, so
+  // rendering here never publishes or lists a doc.
   if (
     asset.mimeType === "text/markdown" &&
     !download &&
@@ -391,7 +396,7 @@ export async function GET(
     const matter = (await import("gray-matter")).default;
     const { data: fm, content: body } = matter(mdContent);
 
-    if (fm.status === "POSTED" && fm.title) {
+    if (fm.title) {
       const { remark } = await import("remark");
       const remarkGfm = (await import("remark-gfm")).default;
       const remarkHtml = (await import("remark-html")).default;
