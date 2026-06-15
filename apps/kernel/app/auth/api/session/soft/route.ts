@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
 import { publish } from '@imajin/bus';
 import { db, identities, credentials } from '@/src/db';
 import { consumePendingInvites } from '@/src/lib/auth/consume-invite';
