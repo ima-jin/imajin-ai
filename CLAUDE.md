@@ -2,6 +2,7 @@
 
 Read these before doing anything:
 
+- `docs/guide/canonical-patterns.md` — **the one correct primitive for each seam (auth, settlement, .fair, checkout identity). Do NOT re-implement these inline. Extend with an option instead of forking.** This is the single highest-leverage file for keeping the codebase coherent.
 - `docs/DEVELOPER.md` — quickstart, env setup, port map, conventions
 - `docs/ENVIRONMENTS.md` — service URLs, ports, domains
 - `docs/PR-CHECKLIST.md` — what every PR needs

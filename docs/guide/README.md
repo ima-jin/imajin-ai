@@ -22,6 +22,10 @@
 
 **How to make your own data the source of truth without replacing anything you already use.**
 
+## For Contributors & Coding Agents
+
+- **[Canonical Patterns](./canonical-patterns.md)** — the one correct primitive for each seam (auth, settlement, .fair, checkout identity). Read before writing code at a primitive boundary; do not re-implement these inline.
+
 ## Security & Boundaries
 
 - **[Proof Model](./proof-model.md)** — what is user-signed vs platform-signed vs merely logged, and what that means for independent verification.
