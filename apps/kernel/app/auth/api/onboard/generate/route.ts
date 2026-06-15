@@ -13,8 +13,7 @@ import { db, identities, credentials, identityMembers, profiles } from '@/src/db
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { publish } from '@imajin/bus';
-import { corsHeaders } from '@imajin/config';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';

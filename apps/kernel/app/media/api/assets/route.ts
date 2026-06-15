@@ -8,7 +8,7 @@ import { requireAuth, hexToBytes } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and, sql } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
-import { rateLimit, getClientIP } from "@/src/lib/kernel/rate-limit";
+import { rateLimit, getClientIP } from "@imajin/config";
 import { createLogger } from "@imajin/logger";
 import { getDefaultManifest, signManifest, canonicalize } from "@imajin/fair";
 import { publishContentEvent } from "@imajin/dfos";
