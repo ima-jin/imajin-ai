@@ -2,7 +2,7 @@
  * POST /api/checkout
  *
  * Creates a checkout session via the pay service.
- * Events app doesn't touch Stripe directly — sovereign node model.
+ * Events app doesn't touch Stripe directly â€” sovereign node model.
  */
 
 import { NextResponse } from 'next/server';
@@ -10,7 +10,7 @@ import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, events, eventInvites } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
+import { rateLimit, getClientIP, eventUrl } from '@imajin/config';
 import {
   validateCart,
   resolveCheckoutIdentity,
@@ -18,7 +18,6 @@ import {
   CheckoutValidationError,
   type CartItem,
 } from '@/src/lib/checkout-common';
-import { eventUrl } from '@imajin/config';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;
@@ -141,7 +140,7 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     const stripeItems = cart.map((c) => {
       const tt = typesById.get(c.ticketTypeId)!;
       return {
-        name: `${event.title} — ${tt.name}`,
+        name: `${event.title} â€” ${tt.name}`,
         description: tt.description || undefined,
         amount: tt.price,
         quantity: c.quantity,

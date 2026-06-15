@@ -2,8 +2,8 @@
  * POST /api/checkout/balance
  *
  * Pays for tickets using the buyer's MJNx balance. Transfers funds from
- * buyer → event creator via the pay service, then creates an order with
- * instantly-valid tickets (no hold period — payment is immediate).
+ * buyer â†’ event creator via the pay service, then creates an order with
+ * instantly-valid tickets (no hold period â€” payment is immediate).
  */
 
 import { NextResponse } from 'next/server';
@@ -13,7 +13,7 @@ import { db, events, eventInvites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { publish } from '@imajin/bus';
 import { getClient } from '@imajin/db';
-import { rateLimit, getClientIP } from '@/src/lib/rate-limit';
+import { rateLimit, getClientIP, eventUrl } from '@imajin/config';
 import {
   validateCart,
   validateInviteAccess,
@@ -21,7 +21,6 @@ import {
   CheckoutValidationError,
   type CartItem,
 } from '@/src/lib/checkout-common';
-import { eventUrl } from '@imajin/config';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const MAX_QUANTITY = 20;
@@ -45,7 +44,7 @@ export const POST = withLogger('events', async (request, { log }) => {
   }
 
   try {
-    // Auth required — buyer must be logged in
+    // Auth required â€” buyer must be logged in
     const authResult = await requireAuth(request);
     if ('error' in authResult) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
@@ -137,7 +136,7 @@ export const POST = withLogger('events', async (request, { log }) => {
       log.warn({ err: String(err) }, 'Failed to resolve buyer email');
     }
 
-    // Transfer balance: buyer → event creator
+    // Transfer balance: buyer â†’ event creator
     const payRes = await fetch(`${PAY_SERVICE_URL}/pay/api/balance/transfer`, {
       method: 'POST',
       headers: {

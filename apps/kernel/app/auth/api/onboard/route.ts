@@ -13,8 +13,7 @@ import { sendEmail } from '@imajin/email';
 import { getClient } from '@imajin/db';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { corsHeaders } from '@imajin/config';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
 const AUTH_URL = process.env.AUTH_URL || process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
@@ -26,17 +25,15 @@ export async function OPTIONS(request: NextRequest) {
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
-  // 20 req/min/IP. Two paths funnel through here now (#912):
+  // IP-level guard: 20 req/min. Two paths funnel through here (#912):
   //   - new soft-DID onboarding (purchase / signup)
   //   - existing-account login (mode='login', replaces /api/magic/send)
-  // The previous 5/min limit locked legitimate retries from a single tester
-  // out within seconds and offered no real abuse protection vs 20.
   const ip = getClientIP(request);
-  const rl = rateLimit(ip, 20, 60_000);
-  if (rl.limited) {
+  const ipRl = rateLimit(ip, 20, 60_000);
+  if (ipRl.limited) {
     return NextResponse.json(
-      { error: 'Too many requests', retryAfter: rl.retryAfter },
-      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } }
+      { error: 'Too many requests', retryAfter: ipRl.retryAfter },
+      { status: 429, headers: { ...cors, 'Retry-After': String(ipRl.retryAfter) } }
     );
   }
 
@@ -52,6 +49,17 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+
+    // Email-level guard: 3 verification emails per email address per hour.
+    // Applied before any DB lookups so enumeration protection still holds
+    // (unknown emails silently succeed in login mode but still consume a slot).
+    const emailRl = rateLimit(`onboard-email:${normalizedEmail}`, 3, 3_600_000);
+    if (emailRl.limited) {
+      return NextResponse.json(
+        { error: 'Too many requests', retryAfter: emailRl.retryAfter },
+        { status: 429, headers: { ...cors, 'Retry-After': String(emailRl.retryAfter) } }
+      );
+    }
 
     // mode='login' (used by MagicLinkButton): only send to existing accounts,
     // reject hard DIDs (they must authenticate by key, not email), and apply

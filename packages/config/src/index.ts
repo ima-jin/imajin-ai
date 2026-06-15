@@ -27,6 +27,8 @@ export {
 
 export { apiFetch, apiUrl } from "./base-path";
 
+export { rateLimit, getClientIP } from "./rate-limit";
+
 export {
   HANDLE_PATTERN,
   HANDLE_INPUT_PATTERN,

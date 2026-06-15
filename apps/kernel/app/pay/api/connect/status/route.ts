@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { rateLimit, getClientIP } from '@/src/lib/kernel/rate-limit';
+import { rateLimit, getClientIP } from '@imajin/config';
 import { requireAuth } from '@imajin/auth';
 import { db, connectedAccounts } from '@/src/db';
 import { withLogger } from '@imajin/logger';

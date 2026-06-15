@@ -22,6 +22,12 @@
 
 **How to make your own data the source of truth without replacing anything you already use.**
 
+## Security & Boundaries
+
+- **[Proof Model](./proof-model.md)** — what is user-signed vs platform-signed vs merely logged, and what that means for independent verification.
+- **[.fair Legal Boundaries](./fair-legal-boundaries.md)** — `.fair` is a machine-readable payout instruction, not a legal instrument. What it does and does not cover.
+- **[SECURITY.md](../../SECURITY.md)** — responsible disclosure + honest list of known limitations.
+
 ## Quick Links
 
 - **HTTP API reference:** [Developer Guide](../developer-guide.md) (curl-based walkthrough)
