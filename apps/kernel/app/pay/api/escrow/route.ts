@@ -32,7 +32,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveEffectiveDid } from '@imajin/auth';
 import type { EscrowRequest, Currency } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
@@ -74,17 +74,17 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    // Require authentication for escrow
-    const authResult = await requireAuth(request);
-    if ('error' in authResult) {
+    const auth = await resolveEffectiveDid(request, { scope: 'wallet:write' });
+    if (!auth.ok) {
       return NextResponse.json(
-        { error: authResult.error },
-        { status: authResult.status, headers: cors }
+        { error: auth.error },
+        { status: auth.status, headers: cors }
       );
     }
+    const depositorDid = auth.effectiveDid;
 
     // Verify the authenticated user is the depositor
-    if (authResult.identity.id !== body.from) {
+    if (depositorDid !== body.from) {
       return NextResponse.json(
         { error: 'Authenticated identity must match depositor (from)' },
         { status: 403, headers: cors }
@@ -146,15 +146,25 @@ export const PUT = withLogger('kernel', async (request: NextRequest, { log }) =>
       );
     }
     
-    // Require authentication
-    const authResult = await requireAuth(request);
-    if ('error' in authResult) {
-      return NextResponse.json(
-        { error: authResult.error },
-        { status: authResult.status }
-      );
+    // App auth path
+    if (request.headers.get('x-app-did')) {
+      const appResult = await requireAppAuth(request, { scope: 'wallet:write' });
+      if ('error' in appResult) {
+        return NextResponse.json(
+          { error: appResult.error },
+          { status: appResult.status }
+        );
+      }
+    } else {
+      const authResult = await requireAuth(request);
+      if ('error' in authResult) {
+        return NextResponse.json(
+          { error: authResult.error },
+          { status: authResult.status }
+        );
+      }
     }
-    
+
     const pay = getPaymentService();
     
     let result;

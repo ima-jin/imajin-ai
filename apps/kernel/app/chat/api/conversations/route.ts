@@ -3,7 +3,7 @@ import { publish } from '@imajin/bus';
 import { eq, desc, and, gt, ne, inArray, sql } from 'drizzle-orm';
 import { db, conversationsV2, messagesV2, conversationReadsV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveEffectiveDid } from '@imajin/auth';
 import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
 import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/kernel/utils';
 import { dmDid, parseConversationDid } from '@/src/lib/chat/conversation-did';
@@ -16,13 +16,11 @@ const rawSql = getClient();
  * Returns conversations the user participates in, with DM enrichment.
  */
 export const GET = withLogger('kernel', async (request, { log }) => {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return errorResponse(authResult.error, authResult.status);
+  const auth = await resolveEffectiveDid(request, { scope: 'messages:read' });
+  if (!auth.ok) {
+    return errorResponse(auth.error, auth.status);
   }
-
-  const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = auth.effectiveDid;
 
   try {
     // Discover all conversation DIDs this user participates in (same logic as conversations-v2)

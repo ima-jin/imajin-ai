@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, transactions } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { resolveEffectiveDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 
@@ -28,16 +28,15 @@ export async function GET(
   try {
     const { did } = params;
 
-    // Auth: must be the DID owner (or acting as scope)
-    const authResult = await requireAuth(request);
-    if ('error' in authResult) {
+    const auth = await resolveEffectiveDid(request, { scope: 'wallet:read' });
+    if (!auth.ok) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401, headers: cors }
+        { error: auth.error },
+        { status: auth.status, headers: cors }
       );
     }
+    const effectiveDid = auth.effectiveDid;
 
-    const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
     if (effectiveDid !== did) {
       return NextResponse.json(
         { error: 'Forbidden - can only access your own summary' },

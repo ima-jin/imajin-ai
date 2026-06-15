@@ -30,7 +30,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
 import type { ChargeRequest, Currency, Recipient } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
@@ -77,9 +77,22 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     
     // Optional: capture fromDid if authenticated
     let fromDid: string | undefined;
-    const authResult = await requireAuth(request);
-    if (!('error' in authResult)) {
-      fromDid = authResult.identity.actingAs || authResult.identity.id;
+
+    // App auth path
+    if (request.headers.get('x-app-did')) {
+      const appResult = await requireAppAuth(request, { scope: 'wallet:write' });
+      if ('error' in appResult) {
+        return NextResponse.json(
+          { error: appResult.error },
+          { status: appResult.status, headers: cors }
+        );
+      }
+      fromDid = appResult.appAuth.userDid;
+    } else {
+      const authResult = await requireAuth(request);
+      if (!('error' in authResult)) {
+        fromDid = authResult.identity.actingAs || authResult.identity.id;
+      }
     }
     
     const pay = getPaymentService();

@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances, transactions } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { resolveEffectiveDid } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
@@ -30,15 +30,14 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   const cors = corsHeaders(request);
 
   try {
-    const authResult = await requireAuth(request);
-    if ('error' in authResult) {
+    const auth = await resolveEffectiveDid(request, { scope: 'wallet:write' });
+    if (!auth.ok) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401, headers: cors }
+        { error: auth.error },
+        { status: auth.status, headers: cors }
       );
     }
-
-    const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+    const effectiveDid = auth.effectiveDid;
 
     const body = await request.json();
     const { from_did, to_did, amount, metadata = {} } = body;

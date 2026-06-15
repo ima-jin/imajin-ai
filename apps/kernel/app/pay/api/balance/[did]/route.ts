@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, balances } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -26,20 +26,33 @@ export async function GET(
   const { did } = await params;
   const decoded = decodeURIComponent(did);
 
-  // Authenticate via cookie or Bearer token
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401, headers: cors }
-    );
+  let effectiveDid: string;
+  let isAgentDelegated = false;
+
+  // App auth path
+  if (request.headers.get('x-app-did')) {
+    const appResult = await requireAppAuth(request, { scope: 'wallet:read' });
+    if ('error' in appResult) {
+      return NextResponse.json(
+        { error: appResult.error },
+        { status: appResult.status, headers: cors }
+      );
+    }
+    effectiveDid = appResult.appAuth.userDid;
+  } else {
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401, headers: cors }
+      );
+    }
+    effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+    isAgentDelegated =
+      authResult.identity.actingAs === decoded &&
+      authResult.identity.actingAsRole === 'agent';
   }
 
-  // Must be requesting your own balance (or acting as scope, or agent-delegated)
-  const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
-  const isAgentDelegated =
-    authResult.identity.actingAs === decoded &&
-    authResult.identity.actingAsRole === 'agent';
   if (effectiveDid !== decoded && !isAgentDelegated) {
     return NextResponse.json(
       { error: 'Forbidden - can only access your own balance' },
