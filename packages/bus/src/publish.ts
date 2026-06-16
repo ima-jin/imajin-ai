@@ -15,7 +15,7 @@ export async function publish<T extends BusEventType>(
     timestamp: event.timestamp || new Date().toISOString(),
   };
 
-  const config = getChainConfig(type, event.scope);
+  const config = await getChainConfig(type, event.scope);
 
   for (const reactor of config.reactors) {
     if (!reactor.enabled) continue;

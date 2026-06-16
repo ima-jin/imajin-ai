@@ -10,6 +10,7 @@ import * as chatV2Schema from './schemas/chat-v2';
 import * as mediaSchema from './schemas/media';
 import * as notifySchema from './schemas/notify';
 import * as wwwSchema from './schemas/www';
+import * as busSchema from './schemas/bus';
 
 const schema = {
   ...authSchema,
@@ -22,6 +23,7 @@ const schema = {
   ...mediaSchema,
   ...notifySchema,
   ...wwwSchema,
+  ...busSchema,
 };
 
 export const db = createDb(schema);
@@ -37,6 +39,7 @@ export * from './schemas/chat';
 export * from './schemas/media';
 export * from './schemas/notify';
 export * from './schemas/www';
+export * from './schemas/bus';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";

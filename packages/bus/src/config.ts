@@ -257,7 +257,113 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
 };
 
-export function getChainConfig(eventType: string, _scope: string): ChainConfig {
+// ---------------------------------------------------------------------------
+// In-memory cache with 5-minute TTL
+// ---------------------------------------------------------------------------
+
+interface CacheEntry {
+  config: ChainConfig | null;
+  expiresAt: number;
+}
+
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const cache = new Map<string, CacheEntry>();
+
+function cacheKey(eventType: string, scope: string | null): string {
+  return scope === null ? `${eventType}:null` : `${eventType}:${scope}`;
+}
+
+function getCached(key: string): ChainConfig | null | undefined {
+  const entry = cache.get(key);
+  if (entry === undefined) {
+    return undefined;
+  }
+  if (Date.now() > entry.expiresAt) {
+    cache.delete(key);
+    return undefined;
+  }
+  return entry.config;
+}
+
+function setCached(key: string, config: ChainConfig | null): void {
+  cache.set(key, { config, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
+// ---------------------------------------------------------------------------
+// DB-backed chain config lookup
+// ---------------------------------------------------------------------------
+
+import { createLogger } from '@imajin/logger';
+
+const log = createLogger('bus:config');
+
+export async function getChainConfig(eventType: string, scope: string): Promise<ChainConfig> {
+  const key = cacheKey(eventType, scope);
+  const cached = getCached(key);
+  if (cached !== undefined) {
+    return cached ?? makeFallbackConfig(eventType);
+  }
+
+  let dbConfig: ChainConfig | null = null;
+
+  try {
+    const { getClient } = await import('@imajin/db');
+    const sql = getClient();
+
+    // 1. Try scoped match first
+    const scopedRows = await sql`
+      SELECT reactors, enabled
+      FROM kernel.bus_chain_configs
+      WHERE event_type = ${eventType}
+        AND scope = ${scope}
+      LIMIT 1
+    `;
+
+    if (scopedRows.length > 0) {
+      const row = scopedRows[0];
+      dbConfig = {
+        eventType,
+        scope,
+        reactors: row.enabled ? (row.reactors as ReactorConfig[]) : [],
+      };
+    } else {
+      // 2. Fall back to node default (scope IS NULL)
+      const defaultRows = await sql`
+        SELECT reactors, enabled
+        FROM kernel.bus_chain_configs
+        WHERE event_type = ${eventType}
+          AND scope IS NULL
+        LIMIT 1
+      `;
+
+      if (defaultRows.length > 0) {
+        const row = defaultRows[0];
+        dbConfig = {
+          eventType,
+          scope: null,
+          reactors: row.enabled ? (row.reactors as ReactorConfig[]) : [],
+        };
+      }
+    }
+  } catch (err) {
+    log.warn(
+      { err: String(err), eventType, scope },
+      'DB query failed for chain config; falling back to hardcoded defaults'
+    );
+  }
+
+  if (dbConfig !== null) {
+    setCached(key, dbConfig);
+    return dbConfig;
+  }
+
+  // 3. Fall back to hardcoded defaults
+  const fallback = makeFallbackConfig(eventType);
+  setCached(key, null);
+  return fallback;
+}
+
+function makeFallbackConfig(eventType: string): ChainConfig {
   const reactors = DEFAULTS[eventType] || [];
   return {
     eventType,
