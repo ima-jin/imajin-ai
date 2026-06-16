@@ -14,8 +14,40 @@ export type LoggerHandler = (
 ) => Promise<NextResponse>;
 
 /**
+ * Paths excluded from DB request logging.
+ * High-frequency polling endpoints that generate noise without diagnostic value.
+ * Still logged to stdout via pino — only the DB insert is suppressed.
+ */
+const SKIP_LOG_PATHS = new Set([
+  '/auth/api/session',
+  '/chat/api/conversations/unread',
+  '/profile/api/presence/update',
+]);
+
+// Opportunistic cleanup — at most once per hour per process
+let lastCleanupAt = 0;
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const CLEANUP_RETENTION_DAYS = 30;
+
+function runRequestLogCleanup(): void {
+  const now = Date.now();
+  if (now - lastCleanupAt < CLEANUP_INTERVAL_MS) return;
+  lastCleanupAt = now;
+  import('@imajin/db')
+    .then(({ getClient }) => {
+      const sql = getClient();
+      return sql`SELECT registry.cleanup_old_logs(${CLEANUP_RETENTION_DAYS})`;
+    })
+    .catch(() => {
+      // Never block or surface errors from the log sink
+    });
+}
+
+/**
  * Fire-and-forget insert into registry.logs (source='request').
  * Only runs when ENABLE_REQUEST_LOG=true.
+ * Skips paths in SKIP_LOG_PATHS (polling endpoints) unless the response is an error (≥500).
+ * Triggers opportunistic cleanup (~hourly, 30-day retention).
  */
 function writeRequestLog(entry: {
   service: string;
@@ -28,6 +60,9 @@ function writeRequestLog(entry: {
   errorMessage?: string;
 }): void {
   if (process.env.ENABLE_REQUEST_LOG !== 'true') return;
+
+  // Skip high-frequency polling endpoints unless they error
+  if (SKIP_LOG_PATHS.has(entry.path) && entry.status < 500) return;
 
   // Dynamically import to avoid loading @imajin/db at startup when not needed
   import('@imajin/db')
@@ -47,6 +82,9 @@ function writeRequestLog(entry: {
            ${entry.durationMs}, ${entry.correlationId}, ${entry.ip},
            ${entry.errorMessage ?? null}, now())
       `;
+    })
+    .then(() => {
+      runRequestLogCleanup();
     })
     .catch(() => {
       // Silently ignore — never block or surface errors from the log sink
