@@ -48,10 +48,10 @@ export interface ContentEvent {
  */
 export async function publishContentEvent(
   input: PublishContentEventInput,
-): Promise<PublishedContentEvent> {
+): Promise<PublishedContentEvent | null> {
   const relayUrl = process.env.DFOS_RELAY_URL;
   if (!relayUrl) {
-    throw new Error('DFOS_RELAY_URL is not configured');
+    return null;
   }
 
   const privateKeyHex = process.env.DFOS_PRIVATE_KEY_HEX || process.env.AUTH_PRIVATE_KEY;
@@ -110,7 +110,7 @@ export async function getContentEvent(
 ): Promise<ContentEvent | null> {
   const relayUrl = process.env.DFOS_RELAY_URL;
   if (!relayUrl) {
-    throw new Error('DFOS_RELAY_URL is not configured');
+    return null;
   }
 
   const response = await fetch(`${relayUrl}/api/v1/events/${encodeURIComponent(eventId)}`, {

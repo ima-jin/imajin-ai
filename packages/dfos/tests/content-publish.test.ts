@@ -57,8 +57,9 @@ describe('publishContentEvent', () => {
       },
     });
 
-    expect(result.eventId).toBe('evt_test1234567890');
-    expect(result.anchoredAt).toBe('2026-05-10T20:38:00.000Z');
+    expect(result).not.toBeNull();
+    expect(result!.eventId).toBe('evt_test1234567890');
+    expect(result!.anchoredAt).toBe('2026-05-10T20:38:00.000Z');
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const [url, init] = mockFetch.mock.calls[0];
@@ -72,13 +73,12 @@ describe('publishContentEvent', () => {
     expect(body.timestamp).toBeTruthy();
   });
 
-  it('throws if DFOS_RELAY_URL is missing', async () => {
+  it('returns null if DFOS_RELAY_URL is missing', async () => {
     const originalRelay = process.env.DFOS_RELAY_URL;
     delete process.env.DFOS_RELAY_URL;
 
-    await expect(
-      publishContentEvent({ topic: 'test', payload: {} })
-    ).rejects.toThrow('DFOS_RELAY_URL is not configured');
+    const result = await publishContentEvent({ topic: 'test', payload: {} });
+    expect(result).toBeNull();
 
     process.env.DFOS_RELAY_URL = originalRelay;
   });
