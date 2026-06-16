@@ -14,7 +14,7 @@ const REGISTRY_URL = process.env.REGISTRY_URL;
  * Submits all JWS tokens to REGISTRY_URL/relay/operations.
  * Non-fatal — returns false on any error.
  */
-export async function ingestToRelay(log: string[]): Promise<boolean> {
+export async function ingestToRelay(chainLog: string[]): Promise<boolean> {
   if (!REGISTRY_URL) {
     log.warn({}, 'REGISTRY_URL not set — skipping relay ingest');
     return false;
@@ -23,7 +23,7 @@ export async function ingestToRelay(log: string[]): Promise<boolean> {
     const res = await fetch(`${REGISTRY_URL}/relay/operations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operations: log }),
+      body: JSON.stringify({ operations: chainLog }),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
