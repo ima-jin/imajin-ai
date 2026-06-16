@@ -157,7 +157,9 @@ export async function POST(
         settledAt: new Date().toISOString(),
       },
     });
-    dfosEventId = result.eventId;
+    if (result) {
+      dfosEventId = result.eventId;
+    }
   } catch (err) {
     log.warn({ err: String(err), settlementId }, "DFOS publish failed (non-fatal)");
   }

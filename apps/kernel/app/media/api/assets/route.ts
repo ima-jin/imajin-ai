@@ -301,10 +301,12 @@ export async function POST(request: NextRequest) {
       },
     });
     // Store the DFOS event ID on the asset record
-    await db
-      .update(assets)
-      .set({ fairDfosEventId: dfosResult.eventId })
-      .where(eq(assets.id, assetId));
+    if (dfosResult) {
+      await db
+        .update(assets)
+        .set({ fairDfosEventId: dfosResult.eventId })
+        .where(eq(assets.id, assetId));
+    }
   } catch (err) {
     log.error({ err: String(err), assetId }, "DFOS publish failed (non-fatal)");
   }
