@@ -1,4 +1,4 @@
--- 0038_seed_bus_chain_configs.sql
+-- 0039_seed_bus_chain_configs.sql
 -- Seed default reactor chains for @imajin/bus (Issue #763)
 -- Sources from packages/bus/src/config.ts DEFAULTS object
 
