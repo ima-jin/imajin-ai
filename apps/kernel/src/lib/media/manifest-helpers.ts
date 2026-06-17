@@ -90,7 +90,7 @@ export async function publishManifestDfosEvent(
         signedAt: new Date().toISOString(),
       },
     });
-    return result.eventId;
+    return result?.eventId ?? null;
   } catch (err) {
     log.error({ err: String(err), assetId }, "DFOS publish failed (non-fatal)");
     return null;

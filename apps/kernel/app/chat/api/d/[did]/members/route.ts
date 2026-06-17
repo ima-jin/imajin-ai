@@ -100,8 +100,8 @@ export async function POST(
       // Webhook / event-chat mode: no auth required
       // Ensure conversation exists (event chats may not exist yet)
       await sql`
-        INSERT INTO chat.conversations_v2 (did, type, name, created_at, updated_at)
-        VALUES (${did}, 'group', '', NOW(), NOW())
+        INSERT INTO chat.conversations_v2 (did, type, name, created_by, created_at, updated_at)
+        VALUES (${did}, 'group', '', ${memberDid}, NOW(), NOW())
         ON CONFLICT (did) DO NOTHING
       `;
 

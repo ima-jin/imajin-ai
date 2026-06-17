@@ -223,7 +223,7 @@ export class PostgresRelayStore implements RelayStore {
       jwsToken: entry.jwsToken,
       kind: entry.kind,
       chainId: entry.chainId,
-    });
+    }).onConflictDoNothing();
   }
 
   async readLog(params: { after?: string; limit: number }): Promise<ReadLogResult> {
@@ -234,7 +234,9 @@ export class PostgresRelayStore implements RelayStore {
       const cursorRows = await this.db
         .select({ seq: relayOperationLog.seq })
         .from(relayOperationLog)
-        .where(eq(relayOperationLog.cid, params.after));
+        .where(eq(relayOperationLog.cid, params.after))
+        .orderBy(sql`${relayOperationLog.seq} DESC`)
+        .limit(1);
       const cursorRow = cursorRows[0];
       if (cursorRow) {
         cursorSeq = cursorRow.seq as bigint;
@@ -265,7 +267,8 @@ export class PostgresRelayStore implements RelayStore {
       chainId: row.chainId,
     }));
 
-    const cursor = entries.length === params.limit ? entries.at(-1).cid : null;
+    const lastEntry = entries.at(-1);
+    const cursor = entries.length === params.limit && lastEntry ? lastEntry.cid : null;
 
     return { entries, cursor };
   }
@@ -540,7 +543,8 @@ export class PostgresRelayStore implements RelayStore {
       });
     }
 
-    const cursor = page.length === params.limit ? page.at(-1).cid : null;
+    const lastPage = page.at(-1);
+    const cursor = page.length === params.limit && lastPage ? lastPage.cid : null;
     return { documents, cursor };
   }
 

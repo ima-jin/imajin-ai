@@ -105,7 +105,7 @@ export const relayOperationLog = relaySchema.table('relay_operation_log', {
   kind: text('kind').notNull(),
   chainId: text('chain_id').notNull(),
 }, (table) => ({
-  cidIdx: index('idx_relay_operation_log_cid').on(table.cid),
+  cidIdx: uniqueIndex('uq_relay_operation_log_cid').on(table.cid),
 }));
 
 export const relayRevocations = relaySchema.table('relay_revocations', {
