@@ -128,7 +128,7 @@ export function useMentions({
     const q = query.toLowerCase();
     return members.filter(
       (m) =>
-        m.handle.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
+        (m.handle ?? '').toLowerCase().includes(q) || (m.name ?? '').toLowerCase().includes(q)
     );
   }, [members, query]);
 
