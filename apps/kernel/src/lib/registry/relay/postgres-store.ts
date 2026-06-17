@@ -223,7 +223,7 @@ export class PostgresRelayStore implements RelayStore {
       jwsToken: entry.jwsToken,
       kind: entry.kind,
       chainId: entry.chainId,
-    });
+    }).onConflictDoNothing();
   }
 
   async readLog(params: { after?: string; limit: number }): Promise<ReadLogResult> {
@@ -234,7 +234,9 @@ export class PostgresRelayStore implements RelayStore {
       const cursorRows = await this.db
         .select({ seq: relayOperationLog.seq })
         .from(relayOperationLog)
-        .where(eq(relayOperationLog.cid, params.after));
+        .where(eq(relayOperationLog.cid, params.after))
+        .orderBy(sql`${relayOperationLog.seq} DESC`)
+        .limit(1);
       const cursorRow = cursorRows[0];
       if (cursorRow) {
         cursorSeq = cursorRow.seq as bigint;
