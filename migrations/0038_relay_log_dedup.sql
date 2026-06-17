@@ -1,4 +1,4 @@
--- 0037: Deduplicate relay_operation_log and add unique constraint on cid
+-- 0038: Deduplicate relay_operation_log and add unique constraint on cid
 --
 -- Bug: appendToLog did not guard against duplicate CIDs. Sync/retry cycles
 -- inserted the same operation multiple times. Cursor resolution (readLog)

@@ -1,4 +1,5 @@
-import { pgSchema, text, boolean, timestamp, jsonb, index, unique, sql } from 'drizzle-orm/pg-core';
+import { pgSchema, text, boolean, timestamp, jsonb, index, unique } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const busSchema = pgSchema('kernel');
 
