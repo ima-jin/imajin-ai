@@ -154,6 +154,8 @@ async function handler(request: Request) {
   return relay.fetch(relayRequest);
 }
 
+export const dynamic = 'force-dynamic';
+
 export const GET = handler;
 export const POST = handler;
 export const PUT = handler;
