@@ -95,8 +95,8 @@ export function ClientErrorReporter(): null {
         enqueue({
           message: event.message || 'Unknown error',
           stack: event.error instanceof Error ? event.error.stack || '' : '',
-          url: typeof window !== 'undefined' ? window.location.href : '',
-          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+          url: typeof globalThis.window === 'undefined' ? '' : globalThis.location.href,
+          userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
           timestamp: new Date().toISOString(),
         });
       } catch {
@@ -125,8 +125,8 @@ export function ClientErrorReporter(): null {
         enqueue({
           message,
           stack,
-          url: typeof window !== 'undefined' ? window.location.href : '',
-          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+          url: typeof globalThis.window === 'undefined' ? '' : globalThis.location.href,
+          userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
           timestamp: new Date().toISOString(),
         });
       } catch {
@@ -138,16 +138,16 @@ export function ClientErrorReporter(): null {
       flushQueue();
     }
 
-    window.addEventListener('error', handleError);
-    window.addEventListener('unhandledrejection', handleRejection);
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    globalThis.addEventListener('error', handleError);
+    globalThis.addEventListener('unhandledrejection', handleRejection);
+    globalThis.addEventListener('beforeunload', handleBeforeUnload);
 
     timerRef.current = setInterval(flushQueue, FLUSH_INTERVAL_MS);
 
     return () => {
-      window.removeEventListener('error', handleError);
-      window.removeEventListener('unhandledrejection', handleRejection);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      globalThis.removeEventListener('error', handleError);
+      globalThis.removeEventListener('unhandledrejection', handleRejection);
+      globalThis.removeEventListener('beforeunload', handleBeforeUnload);
 
       if (timerRef.current) {
         clearInterval(timerRef.current);

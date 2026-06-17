@@ -13,8 +13,8 @@ async function reportError(error: Error): Promise<void> {
     const payload = {
       message: error.message || 'React rendering error',
       stack: error.stack || '',
-      url: typeof window !== 'undefined' ? window.location.href : '',
-      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      url: typeof globalThis.window === 'undefined' ? '' : globalThis.location.href,
+      userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
       componentStack: '',
       timestamp: new Date().toISOString(),
     };
@@ -29,7 +29,7 @@ async function reportError(error: Error): Promise<void> {
   }
 }
 
-export default function ErrorBoundary({ error, reset }: ErrorBoundaryProps) {
+export default function ErrorBoundary({ error, reset }: Readonly<ErrorBoundaryProps>) {
   useEffect(() => {
     reportError(error);
   }, [error]);
