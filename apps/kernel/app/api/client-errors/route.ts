@@ -105,8 +105,19 @@ export async function POST(request: Request) {
     return new NextResponse(null, { status: 400 });
   }
 
-  const payload = validatePayload(body);
-  if (!payload) {
+  // Accept a single error object or an array of errors
+  const items = Array.isArray(body) ? body : [body];
+  if (items.length === 0 || items.length > 10) {
+    return new NextResponse(null, { status: 400 });
+  }
+
+  const payloads: ClientErrorPayload[] = [];
+  for (const item of items) {
+    const payload = validatePayload(item);
+    if (payload) payloads.push(payload);
+  }
+
+  if (payloads.length === 0) {
     return new NextResponse(null, { status: 400 });
   }
 
@@ -123,30 +134,33 @@ export async function POST(request: Request) {
 
   try {
     const sql = getClient();
-    const id = `cerr_${nanoid(16)}`;
-    const metadata = JSON.stringify({
-      userAgent: payload.userAgent,
-      componentStack: payload.componentStack,
-      timestamp: payload.timestamp,
-    });
 
-    await sql`
-      INSERT INTO registry.logs
-        (id, source, service, level, message, path, error_message, did, metadata, created_at)
-      VALUES
-        (
-          ${id},
-          'browser',
-          'client',
-          'error',
-          ${payload.message},
-          ${payload.url},
-          ${payload.stack.length > 0 ? payload.stack : null},
-          ${did},
-          ${metadata}::jsonb,
-          now()
-        )
-    `;
+    for (const payload of payloads) {
+      const id = `cerr_${nanoid(16)}`;
+      const metadata = JSON.stringify({
+        userAgent: payload.userAgent,
+        componentStack: payload.componentStack,
+        timestamp: payload.timestamp,
+      });
+
+      await sql`
+        INSERT INTO registry.logs
+          (id, source, service, level, message, path, error_message, did, metadata, created_at)
+        VALUES
+          (
+            ${id},
+            'browser',
+            'client',
+            'error',
+            ${payload.message},
+            ${payload.url},
+            ${payload.stack.length > 0 ? payload.stack : null},
+            ${did},
+            ${metadata}::jsonb,
+            now()
+          )
+      `;
+    }
   } catch (error) {
     log.error({ err: String(error), ip }, 'failed to write client error to registry.logs');
   }
