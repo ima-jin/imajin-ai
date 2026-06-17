@@ -95,7 +95,7 @@ export function ClientErrorReporter(): null {
         enqueue({
           message: event.message || 'Unknown error',
           stack: event.error instanceof Error ? event.error.stack || '' : '',
-          url: typeof globalThis.window === 'undefined' ? '' : globalThis.location.href,
+          url: 'window' in globalThis ? globalThis.location.href : '',
           userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
           timestamp: new Date().toISOString(),
         });
@@ -125,7 +125,7 @@ export function ClientErrorReporter(): null {
         enqueue({
           message,
           stack,
-          url: typeof globalThis.window === 'undefined' ? '' : globalThis.location.href,
+          url: 'window' in globalThis ? globalThis.location.href : '',
           userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
           timestamp: new Date().toISOString(),
         });

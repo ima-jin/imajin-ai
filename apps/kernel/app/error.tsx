@@ -13,7 +13,7 @@ async function reportError(error: Error): Promise<void> {
     const payload = {
       message: error.message || 'React rendering error',
       stack: error.stack || '',
-      url: typeof globalThis.window === 'undefined' ? '' : globalThis.location.href,
+      url: 'window' in globalThis ? globalThis.location.href : '',
       userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
       componentStack: '',
       timestamp: new Date().toISOString(),
