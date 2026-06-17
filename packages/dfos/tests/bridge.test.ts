@@ -103,7 +103,7 @@ describe('identity chain creation', () => {
       .toBe(verified.controllerKeys[0].publicKeyMultibase);
   });
 
-  it('DID format matches did:dfos spec (22-char custom alphabet)', async () => {
+  it('DID format matches did:dfos spec (31-char custom alphabet, v0.10+)', async () => {
     const keypair = generateKeypair();
     const { did } = await createIdentityChain({
       privateKeyHex: keypair.privateKey,
@@ -111,7 +111,7 @@ describe('identity chain creation', () => {
     });
 
     const id = did.replaceAll('did:dfos:', '');
-    expect(id).toHaveLength(22);
+    expect(id).toHaveLength(31);
     expect(id).toMatch(/^[2346789acdefhknrtvz]+$/);
   });
 });
