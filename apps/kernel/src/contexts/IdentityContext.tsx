@@ -73,17 +73,17 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
 export function LoginPrompt() {
   const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 
     buildPublicUrl('auth');
-  const chatUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://dev-chat.imajin.ai';
+  const currentUrl = typeof globalThis.window !== 'undefined' ? globalThis.window.location.href : '';
 
   return (
     <div className="max-w-md mx-auto mt-20 text-center">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
-        <h2 className="text-2xl font-bold mb-2">Sign in to Chat</h2>
+        <h2 className="text-2xl font-bold mb-2">Sign in to continue</h2>
         <p className="text-gray-500 dark:text-gray-400 mb-6">
-          You need an Imajin identity to use encrypted messaging.
+          You need an Imajin identity to access this page.
         </p>
         <a
-          href={`${authUrl}/login?next=${encodeURIComponent(chatUrl + '/conversations')}`}
+          href={`${authUrl}/login?next=${encodeURIComponent(currentUrl)}`}
           className="inline-block px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium"
         >
           Sign In
