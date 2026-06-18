@@ -22,7 +22,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.actingAs || authResult.identity.id;
+  const ownerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
   try {
     const values = DEFAULT_FOLDERS.map((f, i) => ({

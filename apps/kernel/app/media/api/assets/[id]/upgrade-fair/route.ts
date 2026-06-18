@@ -27,7 +27,7 @@ export async function POST(
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
   // 2. Load asset
   let asset;
