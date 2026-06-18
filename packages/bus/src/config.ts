@@ -255,6 +255,18 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'broker.rejection': [
     { type: 'emit', config: {}, enabled: true },
   ],
+  'calendar.entry.created': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'calendar.entry.updated': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'calendar.entry.deleted': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'calendar.entry.expired': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------
