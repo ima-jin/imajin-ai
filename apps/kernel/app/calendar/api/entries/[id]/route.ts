@@ -7,6 +7,24 @@ import { VISIBILITIES, publishCalendarEntry } from '@/src/lib/calendar';
 
 const log = createLogger('kernel');
 
+/** Coerce an ISO string field to Date, or null if absent/falsy. */
+function toDate(val: unknown): Date | null {
+  return val ? new Date(val as string) : null;
+}
+
+/** Extract whitelisted fields from a PATCH body into a DB update map. */
+function parseEntryUpdates(body: Record<string, unknown>): Record<string, unknown> {
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const scalar = ['title', 'activityTags', 'visibility', 'visibilityDids', 'recurrence', 'metadata'] as const;
+  for (const key of scalar) {
+    if (key in body) updates[key] = body[key];
+  }
+  if ('startsAt' in body) updates.startsAt = toDate(body.startsAt);
+  if ('endsAt' in body) updates.endsAt = toDate(body.endsAt);
+  if ('expiresAt' in body) updates.expiresAt = toDate(body.expiresAt);
+  return updates;
+}
+
 /**
  * PATCH /calendar/api/entries/[id] — update an entry the caller owns.
  */
@@ -30,21 +48,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     );
   }
 
-  // Whitelist updatable fields; coerce timestamps from ISO strings.
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
-  if ('title' in body) updates.title = body.title;
-  if ('activityTags' in body) updates.activityTags = body.activityTags;
-  if ('startsAt' in body) updates.startsAt = body.startsAt ? new Date(body.startsAt as string) : null;
-  if ('endsAt' in body) updates.endsAt = body.endsAt ? new Date(body.endsAt as string) : null;
-  if ('expiresAt' in body) updates.expiresAt = body.expiresAt ? new Date(body.expiresAt as string) : null;
-  if ('visibility' in body) updates.visibility = body.visibility;
-  if ('visibilityDids' in body) updates.visibilityDids = body.visibilityDids;
-  if ('recurrence' in body) updates.recurrence = body.recurrence;
-  if ('metadata' in body) updates.metadata = body.metadata;
-
   const [updated] = await db
     .update(calendarEntries)
-    .set(updates)
+    .set(parseEntryUpdates(body))
     .where(and(eq(calendarEntries.id, params.id), eq(calendarEntries.did, did)))
     .returning();
 

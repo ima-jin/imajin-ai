@@ -44,7 +44,7 @@ export async function GET(request: Request, { params }: { params: { did: string 
   const entries = await db
     .select()
     .from(calendarEntries)
-    .where(and(eq(calendarEntries.did, targetDid), notExpired!));
+    .where(and(eq(calendarEntries.did, targetDid), notExpired));
 
   // Self-query: full visibility.
   if (requesterDid === targetDid) {
