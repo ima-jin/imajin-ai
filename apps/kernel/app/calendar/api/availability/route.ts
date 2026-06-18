@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
-import { publish } from '@imajin/bus';
 import { generateId } from '@/src/lib/kernel/id';
 import { db, calendarEntries } from '@/src/db';
 import { and, eq, gt, isNull, or, desc } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
+import { publishCalendarEntry } from '@/src/lib/calendar';
 
 const log = createLogger('kernel');
 
@@ -68,7 +68,7 @@ export async function GET(request: Request) {
   const intents = await db
     .select()
     .from(calendarEntries)
-    .where(and(eq(calendarEntries.did, did), eq(calendarEntries.type, 'availability'), notExpired!))
+    .where(and(eq(calendarEntries.did, did), eq(calendarEntries.type, 'availability'), notExpired))
     .orderBy(desc(calendarEntries.expiresAt));
 
   return NextResponse.json({ intents });
@@ -164,12 +164,7 @@ export async function POST(request: Request) {
     .returning();
 
   // Fire and forget.
-  publish('calendar.entry.created', {
-    issuer: auth.identity.id,
-    subject: did,
-    scope: 'calendar',
-    payload: { entryId: entry.id, type: 'availability', did, context_id: entry.id, context_type: 'calendar' },
-  }).catch((err: unknown) => log.error({ err: String(err) }, 'availability intent created emit error'));
+  publishCalendarEntry('calendar.entry.created', auth.identity.id, did, entry.id, entry.type, log);
 
   return NextResponse.json({ intent: entry }, { status: 201 });
 }
