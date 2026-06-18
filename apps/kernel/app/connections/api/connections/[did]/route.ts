@@ -2,6 +2,7 @@
 import { db, connections } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { publish } from '@imajin/bus';
 
 /**
@@ -17,7 +18,7 @@ export async function DELETE(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const { identity } = authResult;
-  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
 
   const { did: targetDid } = await params;
 

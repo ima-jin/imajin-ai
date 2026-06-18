@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
 import { db, nicknames } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { eq, and } from 'drizzle-orm';
 
 export async function GET(
@@ -12,7 +13,7 @@ export async function GET(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const { identity } = authResult;
-  const did = identity.actingFor || identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   const { did: targetDid } = params;
 
@@ -33,7 +34,7 @@ export async function PATCH(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const { identity } = authResult;
-  const did = identity.actingFor || identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   const { did: targetDid } = params;
   const { nickname } = await request.json();
@@ -58,7 +59,7 @@ export async function DELETE(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const { identity } = authResult;
-  const did = identity.actingFor || identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   const { did: targetDid } = params;
 

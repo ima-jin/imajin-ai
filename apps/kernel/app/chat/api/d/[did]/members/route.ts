@@ -1,6 +1,7 @@
 ﻿import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { publish } from '@imajin/bus';
@@ -54,7 +55,7 @@ export async function POST(
       }
 
       const { identity } = authResult;
-      const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
+      const effectiveDid = resolveActingDid(identity);
 
       const callerRows = await sql`
         SELECT role FROM chat.conversation_members

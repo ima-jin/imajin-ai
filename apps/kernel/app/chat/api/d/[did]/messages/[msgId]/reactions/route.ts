@@ -2,6 +2,7 @@
 import { eq, and } from 'drizzle-orm';
 import { db, messagesV2, messageReactionsV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { checkAccess } from '@/src/lib/kernel/access';
@@ -30,7 +31,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
   const { did, msgId } = await params;
 
   const access = await checkAccess(effectiveDid, did);
@@ -91,7 +92,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
   const { did, msgId } = await params;
 
   const access = await checkAccess(effectiveDid, did);

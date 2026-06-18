@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
 import { publish } from '@imajin/bus';
 import { generateId } from '@/src/lib/kernel/id';
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const did = auth.identity.actingFor || auth.identity.actingAs || auth.identity.id;
+  const did = resolveActingDid(auth.identity);
 
   const myPods = await db
     .select({ pod: pods })
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const id = generateId('pod_');
   const now = new Date().toISOString();
-  const effectiveDid = auth.identity.actingFor || auth.identity.actingAs || auth.identity.id;
+  const effectiveDid = resolveActingDid(auth.identity);
 
   const [pod] = await db.insert(pods).values({
     id,

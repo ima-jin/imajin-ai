@@ -2,6 +2,7 @@
 import { db, nicknames } from '@/src/db';
 import { corsHeaders, corsOptions, withCors } from '@/src/lib/kernel/cors';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { eq, and, inArray } from 'drizzle-orm';
 
 export async function OPTIONS(request: NextRequest) {
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const { identity } = authResult;
-  const did = identity.actingFor || identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   const body = await request.json();
   const dids: string[] = body.dids ?? [];

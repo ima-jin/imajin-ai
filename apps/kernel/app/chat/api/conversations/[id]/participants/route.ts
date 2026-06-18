@@ -1,6 +1,7 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
@@ -26,7 +27,7 @@ export async function GET(
 
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
-  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = resolveActingDid(authResult.identity);
 
   const access = await checkAccess(requesterDid, conversationDid);
   if (!access.allowed) {
@@ -76,7 +77,7 @@ export async function POST(
 
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
-  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = resolveActingDid(authResult.identity);
 
   const access = await checkAccess(requesterDid, conversationDid);
   if (!access.allowed) {

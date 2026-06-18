@@ -2,6 +2,7 @@
 import { eq, and } from 'drizzle-orm';
 import { db, messagesV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { createLogger } from '@imajin/logger';
@@ -23,7 +24,7 @@ export async function PUT(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
   const { id, msgId } = await params;
   const conversationDid = decodeURIComponent(id);
 
@@ -92,7 +93,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
   const { id, msgId } = await params;
   const conversationDid = decodeURIComponent(id);
 

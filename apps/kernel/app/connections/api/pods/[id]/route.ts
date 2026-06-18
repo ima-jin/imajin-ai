@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { db, pods, podMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 
@@ -22,7 +23,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const effectiveDid = auth.identity.actingFor || auth.identity.actingAs || auth.identity.id;
+  const effectiveDid = resolveActingDid(auth.identity);
   const body = await request.json();
   const [updated] = await db
     .update(pods)
@@ -38,7 +39,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const effectiveDid = auth.identity.actingFor || auth.identity.actingAs || auth.identity.id;
+  const effectiveDid = resolveActingDid(auth.identity);
   const [deleted] = await db
     .delete(pods)
     .where(and(eq(pods.id, params.id), eq(pods.ownerDid, effectiveDid)))

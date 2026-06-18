@@ -3,6 +3,7 @@ import { db, conversationReadsV2, messagesV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { withLogger } from '@imajin/logger';
 
@@ -24,7 +25,7 @@ export const GET = withLogger('kernel', async (req, { log }) => {
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
 
   try {
     // Discover all conversation DIDs this user is involved in

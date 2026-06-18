@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { db, podLinks } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 
@@ -8,7 +9,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await request.json();
-  const linkedBy = auth.identity.actingFor || auth.identity.actingAs || auth.identity.id;
+  const linkedBy = resolveActingDid(auth.identity);
 
   const [link] = await db.insert(podLinks).values({
     parentPodId: params.id,

@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
+import { resolveActingDid } from "@imajin/auth";
 import { publish } from '@imajin/bus';
 import { db, pods, podMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -11,7 +12,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const auth = await requireAuth(request, { verifyChain: true });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const effectiveDid = auth.identity.actingFor || auth.identity.actingAs || auth.identity.id;
+  const effectiveDid = resolveActingDid(auth.identity);
   const [pod] = await db.select().from(pods).where(eq(pods.id, params.id));
   if (!pod) return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
   if (pod.ownerDid !== effectiveDid) return NextResponse.json({ error: 'Only the owner can add members' }, { status: 403 });
@@ -45,7 +46,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const auth = await requireAuth(request, { verifyChain: true });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const effectiveDid = auth.identity.actingFor || auth.identity.actingAs || auth.identity.id;
+  const effectiveDid = resolveActingDid(auth.identity);
   const [pod] = await db.select().from(pods).where(eq(pods.id, params.id));
   if (!pod) return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
   if (pod.ownerDid !== effectiveDid) return NextResponse.json({ error: 'Only the owner can change roles' }, { status: 403 });
@@ -80,7 +81,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   const auth = await requireAuth(request, { verifyChain: true });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const effectiveDid = auth.identity.actingFor || auth.identity.actingAs || auth.identity.id;
+  const effectiveDid = resolveActingDid(auth.identity);
   const [pod] = await db.select().from(pods).where(eq(pods.id, params.id));
   if (!pod) return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
   if (pod.ownerDid !== effectiveDid) return NextResponse.json({ error: 'Only the owner can remove members' }, { status: 403 });
