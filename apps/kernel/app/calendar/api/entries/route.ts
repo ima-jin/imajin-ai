@@ -1,15 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
-import { publish } from '@imajin/bus';
 import { generateId } from '@/src/lib/kernel/id';
 import { db, calendarEntries } from '@/src/db';
 import { and, eq, gte, lte, gt, isNull, or, desc } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
+import { ENTRY_TYPES, VISIBILITIES, publishCalendarEntry } from '@/src/lib/calendar';
 
 const log = createLogger('kernel');
-
-const ENTRY_TYPES = ['availability', 'meeting', 'event', 'booking', 'reminder', 'block'];
-const VISIBILITIES = ['public', 'connections', 'selective', 'private'];
 
 /**
  * GET /calendar/api/entries — list the caller's own entries.
@@ -98,12 +95,7 @@ export async function POST(request: Request) {
     .returning();
 
   // Fire and forget — never block the response.
-  publish('calendar.entry.created', {
-    issuer: auth.identity.id,
-    subject: did,
-    scope: 'calendar',
-    payload: { entryId: entry.id, type: entry.type, did, context_id: entry.id, context_type: 'calendar' },
-  }).catch((err: unknown) => log.error({ err: String(err) }, 'calendar.entry.created emit error'));
+  publishCalendarEntry('calendar.entry.created', auth.identity.id, did, entry.id, entry.type, log);
 
   return NextResponse.json({ entry }, { status: 201 });
 }
