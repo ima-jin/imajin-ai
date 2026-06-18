@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { eq, and, desc, lt, ne, isNull, inArray } from 'drizzle-orm';
@@ -67,7 +67,7 @@ export async function GET(
   const { did } = await params;
 
   // Verify access
-  const hasAccess = await verifyDidAccess(authResult.identity.actingAs || authResult.identity.id, did);
+  const hasAccess = await verifyDidAccess(authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id, did);
   if (!hasAccess) {
     return errorResponse('Access denied', 403, cors);
   }
@@ -168,7 +168,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
   const { did } = await params;
 
   // Soft DIDs cannot send messages — they must verify their account first

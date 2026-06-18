@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
   const token = createWsToken(effectiveDid);
 
   return jsonResponse({ token }, 200, cors);

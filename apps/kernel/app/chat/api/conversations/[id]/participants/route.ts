@@ -26,7 +26,7 @@ export async function GET(
 
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
-  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
   const access = await checkAccess(requesterDid, conversationDid);
   if (!access.allowed) {
@@ -76,7 +76,7 @@ export async function POST(
 
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
-  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
   const access = await checkAccess(requesterDid, conversationDid);
   if (!access.allowed) {

@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import { db, conversationsV2, profiles } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
@@ -22,7 +22,7 @@ export async function GET(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 
@@ -85,7 +85,7 @@ export async function PATCH(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 
@@ -139,7 +139,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
   const { id } = await params;
   const conversationDid = decodeURIComponent(id);
 

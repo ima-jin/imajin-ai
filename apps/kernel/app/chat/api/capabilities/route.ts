@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { isInGraph } from '@/src/lib/kernel/require-graph-member';
 import { getCapabilities } from '@/src/lib/chat/capabilities';
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
   const tier = identity.tier ?? 'preliminary';
 
   let inGraph = false;

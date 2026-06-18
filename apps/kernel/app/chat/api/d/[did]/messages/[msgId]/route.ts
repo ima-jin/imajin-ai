@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { db, messagesV2 } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
@@ -29,7 +29,7 @@ export async function PATCH(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
   const { did, msgId } = await params;
 
   try {
@@ -99,7 +99,7 @@ export async function DELETE(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
   const { did, msgId } = await params;
 
   try {

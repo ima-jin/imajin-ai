@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -41,7 +41,7 @@ export async function POST(
   const conversationDid = decodeURIComponent(id);
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = identity.actingFor || identity.actingAs || identity.id;
   const access = await checkAccess(effectiveDid, conversationDid);
   if (!access.allowed) {
     return errorResponse('Conversation not found or access denied', 404);
