@@ -1,6 +1,7 @@
 import { createLogger } from '@imajin/logger';
 import type {
   BrokerEventType,
+  BrokerReactor,
   BrokerRequest,
   BrokerResult,
   BrokerPipelineState,
@@ -10,14 +11,81 @@ import { consentReactor } from './reactors/consent';
 import { scopeReactor } from './reactors/scope';
 import { releaseReactor } from './reactors/release';
 import { auditReactor, auditRejection } from './reactors/audit';
+import { getBrokerChainConfig } from './config';
+import { getBrokerReactor, registerBrokerReactor } from './broker-registry';
 
 const log = createLogger('bus:broker');
 
+/** A resolved pipeline step: the reactor and the config name it was resolved from. */
+interface BrokerChainStep {
+  type: string;
+  reactor: BrokerReactor;
+}
+
 /**
- * Broker reactors executed in pipeline order.
- * Each reactor is sync/awaited and passes state to the next.
+ * Built-in broker reactors, registered by name so chain configs in
+ * `kernel.bus_chain_configs` can reference them as pure data.
  */
-const BROKER_CHAIN = [consentReactor, scopeReactor, releaseReactor, auditReactor];
+registerBrokerReactor('consent', consentReactor);
+registerBrokerReactor('scope', scopeReactor);
+registerBrokerReactor('release', releaseReactor);
+registerBrokerReactor('audit', auditReactor);
+
+/**
+ * Default broker pipeline, used when no chain config row exists for the
+ * {eventType, scope} (or the DB is unreachable). Preserves the original
+ * consent → scope → release → audit behavior.
+ */
+const DEFAULT_BROKER_CHAIN: readonly BrokerChainStep[] = [
+  { type: 'consent', reactor: consentReactor },
+  { type: 'scope', reactor: scopeReactor },
+  { type: 'release', reactor: releaseReactor },
+  { type: 'audit', reactor: auditReactor },
+];
+
+/** Reactor names skipped in preview mode (no envelope construction, no audit). */
+const PREVIEW_SKIPPED_REACTORS = new Set(['release', 'audit']);
+
+/**
+ * Resolve the ordered broker pipeline for an event/scope.
+ *
+ * Reads the chain from `kernel.bus_chain_configs` (via {@link getBrokerChainConfig})
+ * and maps each configured reactor name to a registered {@link BrokerReactor}.
+ * Falls back to {@link DEFAULT_BROKER_CHAIN} when no usable config exists, so the
+ * broker never runs an empty pipeline.
+ */
+async function resolveBrokerChain(
+  eventType: string,
+  scope: string
+): Promise<readonly BrokerChainStep[]> {
+  const config = await getBrokerChainConfig(eventType, scope);
+  if (!config || config.reactors.length === 0) {
+    return DEFAULT_BROKER_CHAIN;
+  }
+
+  const chain: BrokerChainStep[] = [];
+  for (const rc of config.reactors) {
+    if (!rc.enabled) continue;
+
+    const reactor = getBrokerReactor(rc.type);
+    if (!reactor) {
+      log.warn({ reactor: rc.type, eventType, scope }, 'Unknown broker reactor type; skipping');
+      continue;
+    }
+
+    chain.push({ type: rc.type, reactor });
+  }
+
+  if (chain.length === 0) {
+    log.warn(
+      { eventType, scope },
+      'Chain config resolved to no usable reactors; using default broker chain'
+    );
+    return DEFAULT_BROKER_CHAIN;
+  }
+
+  return chain;
+}
 
 /**
  * Execute a consent-gated data release request.
@@ -48,11 +116,13 @@ export async function broker<T extends BrokerEventType>(
 
   let state: BrokerPipelineState = { request };
 
+  const chain = await resolveBrokerChain(type, request.scope);
+
   // Execute pipeline reactors in order
-  for (const reactor of BROKER_CHAIN) {
+  for (const { type: reactorType, reactor } of chain) {
     // In preview mode, skip release and audit reactors
-    if (request.preview && (reactor === releaseReactor || reactor === auditReactor)) {
-      log.info({ reactor: reactor.name, preview: true }, 'Skipping reactor in preview mode');
+    if (request.preview && PREVIEW_SKIPPED_REACTORS.has(reactorType)) {
+      log.info({ reactor: reactorType, preview: true }, 'Skipping reactor in preview mode');
       continue;
     }
 
@@ -62,7 +132,7 @@ export async function broker<T extends BrokerEventType>(
       // If a reactor returns a rejection, short-circuit
       if (isRejection(result)) {
         log.warn(
-          { reason: result.reason, reactor: reactor.name },
+          { reason: result.reason, reactor: reactorType },
           'Broker pipeline rejected'
         );
 
@@ -73,13 +143,13 @@ export async function broker<T extends BrokerEventType>(
 
       state = result;
     } catch (err) {
-      log.error({ err: String(err), reactor: reactor.name }, 'Broker reactor threw');
+      log.error({ err: String(err), reactor: reactorType }, 'Broker reactor threw');
 
       const rejection: BrokerRejection = {
         status: 'rejected',
         reason: 'requester_unauthorized',
         fields: request.fields,
-        details: `Reactor ${reactor.name} threw: ${String(err)}`,
+        details: `Reactor ${reactorType} threw: ${String(err)}`,
       };
 
       await auditRejection(request, rejection);
