@@ -298,10 +298,41 @@ import { createLogger } from '@imajin/logger';
 const log = createLogger('bus:config');
 
 export async function getChainConfig(eventType: string, scope: string): Promise<ChainConfig> {
+  const dbConfig = await fetchChainConfigFromDb(eventType, scope);
+  return dbConfig ?? makeFallbackConfig(eventType);
+}
+
+/**
+ * Broker-chain variant of {@link getChainConfig}.
+ *
+ * Returns the DB-backed chain config for a broker event/scope, or `null` when
+ * no row exists. Unlike {@link getChainConfig}, it does NOT fall back to the
+ * publish-side {@link DEFAULTS} map — broker callers supply their own built-in
+ * default chain (consent → scope → release → audit), so a publish default must
+ * never leak into the broker pipeline.
+ */
+export async function getBrokerChainConfig(
+  eventType: string,
+  scope: string
+): Promise<ChainConfig | null> {
+  return fetchChainConfigFromDb(eventType, scope);
+}
+
+/**
+ * Shared DB-backed chain config lookup (with cache).
+ *
+ * Returns the configured chain for {eventType, scope}, or `null` when no row
+ * exists in `kernel.bus_chain_configs` (or the DB is unreachable). Callers
+ * decide what fallback to apply.
+ */
+async function fetchChainConfigFromDb(
+  eventType: string,
+  scope: string
+): Promise<ChainConfig | null> {
   const key = cacheKey(eventType, scope);
   const cached = getCached(key);
   if (cached !== undefined) {
-    return cached ?? makeFallbackConfig(eventType);
+    return cached;
   }
 
   let dbConfig: ChainConfig | null = null;
@@ -357,10 +388,9 @@ export async function getChainConfig(eventType: string, scope: string): Promise<
     return dbConfig;
   }
 
-  // 3. Fall back to hardcoded defaults
-  const fallback = makeFallbackConfig(eventType);
+  // No row found — cache the miss and let the caller choose a fallback.
   setCached(key, null);
-  return fallback;
+  return null;
 }
 
 function makeFallbackConfig(eventType: string): ChainConfig {
