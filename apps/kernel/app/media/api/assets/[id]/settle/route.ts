@@ -104,7 +104,7 @@ export async function POST(
       { status: 401 }
     );
   }
-  const buyerDid = authResult.identity.actingAs || authResult.identity.id;
+  const buyerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
   // 5. Validate manifest.owner is a DID before interpolating into URI
   if (!manifest.owner?.startsWith("did:")) {

@@ -88,7 +88,7 @@ export async function GET(
         { status: 403 }
       );
     }
-    const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+    const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
     if (accessType === "private") {
       if (requesterDid !== asset.ownerDid) {
@@ -152,7 +152,7 @@ export async function PUT(
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
   let asset;
   try {

@@ -20,7 +20,7 @@ export async function PATCH(
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.actingAs || authResult.identity.id;
+  const ownerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
   const [existing] = await db
     .select()
@@ -88,7 +88,7 @@ export async function DELETE(
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.actingAs || authResult.identity.id;
+  const ownerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
   const [existing] = await db
     .select()

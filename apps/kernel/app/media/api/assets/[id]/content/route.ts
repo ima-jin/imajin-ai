@@ -68,7 +68,7 @@ export async function GET(
     if ("error" in authResult) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
-    if ((authResult.identity.actingAs || authResult.identity.id) !== asset.ownerDid) {
+    if ((authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id) !== asset.ownerDid) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   }
@@ -96,7 +96,7 @@ export async function PUT(
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
 
   let body: { content?: unknown };
   try {
