@@ -598,6 +598,25 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'calendar';
   };
+  'availability.intent.created': {
+    intentId: string;
+    did: string;
+    reach: string;
+    activityTags: string[];
+    sensitiveTags: string[];
+    context_id: string;
+    context_type: 'calendar';
+  };
+  'availability.match.surfaced': {
+    matchId: string;
+    recipientDid: string;
+    otherDid: string;
+    overlapTags: string[];
+    isSensitive: boolean;
+    deliveryPolicy: 'named_nudge' | 'staged' | 'sensitive_staged';
+    context_id: string;
+    context_type: 'calendar';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

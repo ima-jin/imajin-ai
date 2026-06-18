@@ -267,6 +267,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'calendar.entry.expired': [
     { type: 'emit', config: {}, enabled: true },
   ],
+  'availability.intent.created': [
+    { type: 'match-engine', config: {}, enabled: true },
+  ],
+  'availability.match.surfaced': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------

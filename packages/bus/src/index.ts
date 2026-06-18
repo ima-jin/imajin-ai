@@ -6,6 +6,7 @@ import { mjnReactor } from './reactors/mjn';
 import { notifyReactor } from './reactors/notify';
 import { settleReactor } from './reactors/settle';
 import { webhookReactor } from './reactors/webhook';
+import { matchEngineReactor } from './match/engine';
 
 // Auto-register built-in reactors on import
 registerReactor('attestation', attestationReactor);
@@ -15,6 +16,7 @@ registerReactor('mjn', mjnReactor);
 registerReactor('notify', notifyReactor);
 registerReactor('settle', settleReactor);
 registerReactor('webhook', webhookReactor);
+registerReactor('match-engine', matchEngineReactor);
 
 export { publish } from './publish';
 export { broker } from './broker';
@@ -24,6 +26,9 @@ export { getChainConfig, getBrokerChainConfig } from './config';
 export { EMISSION_SCHEDULE } from './emissions';
 export { resolveConsent } from './broker-config';
 export { isBrokerRelease, isBrokerRejection } from './types';
+// Match engine broker reactors — registered via registerBrokerReactor() in broker.ts after #1103 merges.
+export { mutualReachConsentReactor } from './reactors/mutual-reach-consent';
+export { intersectionScopeReactor } from './reactors/intersection-scope';
 export type {
   BusEvent,
   BusEventMap,
