@@ -570,6 +570,34 @@ export interface BusEventMap {
     reason: BrokerRejectionReason;
     details?: string;
   };
+  'calendar.entry.created': {
+    entryId: string;
+    type: string;
+    did: string;
+    context_id: string;
+    context_type: 'calendar';
+  };
+  'calendar.entry.updated': {
+    entryId: string;
+    type: string;
+    did: string;
+    context_id: string;
+    context_type: 'calendar';
+  };
+  'calendar.entry.deleted': {
+    entryId: string;
+    type: string;
+    did: string;
+    context_id: string;
+    context_type: 'calendar';
+  };
+  'calendar.entry.expired': {
+    entryId: string;
+    type: string;
+    did: string;
+    context_id: string;
+    context_type: 'calendar';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
