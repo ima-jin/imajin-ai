@@ -34,6 +34,6 @@ export function rankCandidates(
   });
 
   return ranked
-    .sort((a, b) => b.sharedConnectionCount - a.sharedConnectionCount)
+    .toSorted((a, b) => b.sharedConnectionCount - a.sharedConnectionCount)
     .slice(0, cap);
 }

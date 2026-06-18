@@ -26,7 +26,7 @@ const log = createLogger('bus:broker:mutual-reach-consent');
  */
 export const mutualReachConsentReactor: BrokerReactor = async (state) => {
   const { request } = state;
-  const data = (request.data ?? {}) as Record<string, unknown>;
+  const data: Record<string, unknown> = request.data ?? {};
 
   const arriverAdmitsCandidate = data.arriverAdmitsCandidate === true;
   const candidateAdmitsArriver = data.candidateAdmitsArriver === true;
@@ -42,9 +42,9 @@ export const mutualReachConsentReactor: BrokerReactor = async (state) => {
   );
 
   if (!arriverAdmitsCandidate || !candidateAdmitsArriver) {
-    const reason = !arriverAdmitsCandidate
-      ? 'arriver reach does not admit candidate'
-      : 'candidate reach does not admit arriver';
+    const reason = arriverAdmitsCandidate
+      ? 'candidate reach does not admit arriver'
+      : 'arriver reach does not admit candidate';
 
     log.warn(
       { requester: request.requester, subject: request.subject, reason },
@@ -54,8 +54,8 @@ export const mutualReachConsentReactor: BrokerReactor = async (state) => {
     return makeRejection(request.fields, 'no_consent', `Mutual reach not satisfied: ${reason}`);
   }
 
-  const intentA = String(data.arriverIntentId ?? '');
-  const intentB = String(data.candidateIntentId ?? '');
+  const intentA = typeof data.arriverIntentId === 'string' ? data.arriverIntentId : '';
+  const intentB = typeof data.candidateIntentId === 'string' ? data.candidateIntentId : '';
 
   log.info(
     { requester: request.requester, subject: request.subject },

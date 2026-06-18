@@ -23,9 +23,11 @@ const log = createLogger('bus:broker:intersection-scope');
  */
 export const intersectionScopeReactor: BrokerReactor = async (state) => {
   const { request } = state;
-  const data = (request.data ?? {}) as Record<string, unknown>;
+  const data: Record<string, unknown> = request.data ?? {};
 
-  const overlapTags = Array.isArray(data.overlapTags) ? (data.overlapTags as string[]) : [];
+  const overlapTags: string[] = Array.isArray(data.overlapTags)
+    ? data.overlapTags.filter((t): t is string => typeof t === 'string')
+    : [];
 
   log.info(
     { requester: request.requester, subject: request.subject, overlapTags },
@@ -50,9 +52,9 @@ export const intersectionScopeReactor: BrokerReactor = async (state) => {
     filteredData: {
       overlap_tags: overlapTags,
       is_sensitive: data.isSensitive === true,
-      delivery_policy: String(data.deliveryPolicy ?? 'staged'),
-      arriver_intent_id: String(data.arriverIntentId ?? ''),
-      candidate_intent_id: String(data.candidateIntentId ?? ''),
+      delivery_policy: typeof data.deliveryPolicy === 'string' ? data.deliveryPolicy : 'staged',
+      arriver_intent_id: typeof data.arriverIntentId === 'string' ? data.arriverIntentId : '',
+      candidate_intent_id: typeof data.candidateIntentId === 'string' ? data.candidateIntentId : '',
     },
   };
 };

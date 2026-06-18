@@ -165,7 +165,7 @@ export const matchEngineReactor: ReactorHandler = async (
   event: BusEvent,
   _config: Record<string, unknown>
 ): Promise<void> => {
-  const payload = (event.payload ?? {}) as Record<string, unknown>;
+  const payload: Record<string, unknown> = event.payload ?? {};
   const intentId = typeof payload.intentId === 'string' ? payload.intentId : null;
   const arriverDid = typeof payload.did === 'string' ? payload.did : event.subject;
   const arriverReach = typeof payload.reach === 'string' ? payload.reach : 'favourites';
