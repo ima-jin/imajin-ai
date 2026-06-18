@@ -16,10 +16,14 @@ export const calendarEntries = calendarSchema.table('calendar_entries', {
   type: text('type').notNull(),                                 // 'availability' | 'meeting' | 'event' | 'booking' | 'reminder' | 'block'
   title: text('title'),
   activityTags: text('activity_tags').array(),
+  // Availability-specific fields (null for other entry types)
+  intent: text('intent'),                                       // availability switch, e.g. 'going_out'
+  sensitiveTags: text('sensitive_tags').array(),                // subset of activity_tags flagged sensitive
+  reach: text('reach').notNull().default('favourites'),         // 'favourites' | 'one_degree' | 'strangers'
   startsAt: timestamp('starts_at', { withTimezone: true }),     // null = open-ended
   endsAt: timestamp('ends_at', { withTimezone: true }),         // null = open-ended
   expiresAt: timestamp('expires_at', { withTimezone: true }),   // TTL — auto-cleanup for transient entries
-  visibility: text('visibility').notNull().default('private'),  // 'public' | 'connections' | 'selective' | 'private'
+  visibility: text('visibility').notNull().default('private'),  // 'public' | 'connections' | 'selective' | 'private' | 'sealed'
   visibilityDids: text('visibility_dids').array(),              // for selective: specific DIDs that can see this
   recurrence: jsonb('recurrence'),                              // future: rrule-style recurrence
   metadata: jsonb('metadata').notNull().default({}),
@@ -30,6 +34,7 @@ export const calendarEntries = calendarSchema.table('calendar_entries', {
   didTimeIdx: index('idx_calendar_entries_did_time').on(table.did, table.startsAt, table.endsAt),
   typeIdx: index('idx_calendar_entries_type').on(table.did, table.type),
   expiresIdx: index('idx_calendar_entries_expires').on(table.expiresAt).where(sql`${table.expiresAt} IS NOT NULL`),
+  liveIdx: index('idx_calendar_entries_live').on(table.type, table.expiresAt).where(sql`${table.expiresAt} IS NOT NULL`),
 }));
 
 export type CalendarEntry = typeof calendarEntries.$inferSelect;
