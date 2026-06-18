@@ -12,6 +12,7 @@ import * as notifySchema from './schemas/notify';
 import * as wwwSchema from './schemas/www';
 import * as busSchema from './schemas/bus';
 import * as calendarSchema from './schemas/calendar';
+import * as matchSchema from './schemas/match';
 
 const schema = {
   ...authSchema,
@@ -26,6 +27,7 @@ const schema = {
   ...wwwSchema,
   ...busSchema,
   ...calendarSchema,
+  ...matchSchema,
 };
 
 export const db = createDb(schema);
@@ -43,6 +45,7 @@ export * from './schemas/notify';
 export * from './schemas/www';
 export * from './schemas/bus';
 export * from './schemas/calendar';
+export * from './schemas/match';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";

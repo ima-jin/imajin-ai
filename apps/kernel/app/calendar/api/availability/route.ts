@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { generateId } from '@/src/lib/kernel/id';
 import { db, calendarEntries } from '@/src/db';
 import { and, eq, gt, isNull, or, desc } from 'drizzle-orm';
@@ -163,8 +164,25 @@ export async function POST(request: Request) {
     })
     .returning();
 
-  // Fire and forget.
+  // Fire and forget — two events:
+  // 1. calendar.entry.created: generic entry lifecycle event.
+  // 2. availability.intent.created: match-engine trigger (fires the bilateral match pipeline).
   publishCalendarEntry('calendar.entry.created', auth.identity.id, did, entry.id, entry.type, log);
+
+  publish('availability.intent.created', {
+    issuer: auth.identity.id,
+    subject: did,
+    scope: 'calendar',
+    payload: {
+      intentId: entry.id,
+      did,
+      reach,
+      activityTags: entry.activityTags ?? [],
+      sensitiveTags: entry.sensitiveTags ?? [],
+      context_id: entry.id,
+      context_type: 'calendar',
+    },
+  }).catch((err: unknown) => log.error({ err: String(err) }, 'availability.intent.created emit error'));
 
   return NextResponse.json({ intent: entry }, { status: 201 });
 }
