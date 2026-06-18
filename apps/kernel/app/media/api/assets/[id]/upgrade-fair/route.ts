@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
+import { resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest } from "@imajin/fair";
 import { upgradeToV1_1 } from "@imajin/fair";
@@ -27,7 +28,7 @@ export async function POST(
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = resolveActingDid(authResult.identity);
 
   // 2. Load asset
   let asset;

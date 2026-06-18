@@ -1,4 +1,4 @@
-// TODO(#904): Replace owner-confirms-receipt with atomic node-ledger debit when MJNx balance system lands. Until then, settlement is operator-mediated.
+﻿// TODO(#904): Replace owner-confirms-receipt with atomic node-ledger debit when MJNx balance system lands. Until then, settlement is operator-mediated.
 
 /**
  * POST /media/api/assets/[id]/settle/confirm
@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, assets, settlements } from "@/src/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "@imajin/auth";
+import { resolveActingDid } from "@imajin/auth";
 import { signReceipt, loadSigningKey, receiptExpiryForAction } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 
@@ -47,7 +48,7 @@ export async function POST(
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = resolveActingDid(authResult.identity);
 
   // Parse body
   let body: {

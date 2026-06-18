@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /media/api/assets/[id]/settle
  *
  * Initiate settlement for a priced asset action.
@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets, settlements } from "@/src/db";
 import { requireAuth, canonicalize } from "@imajin/auth";
+import { resolveActingDid } from "@imajin/auth";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { isFairManifestV1_1 } from "@imajin/fair";
 import type { FairManifestV1_1 } from "@imajin/fair";
@@ -104,7 +105,7 @@ export async function POST(
       { status: 401 }
     );
   }
-  const buyerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const buyerDid = resolveActingDid(authResult.identity);
 
   // 5. Validate manifest.owner is a DID before interpolating into URI
   if (!manifest.owner?.startsWith("did:")) {

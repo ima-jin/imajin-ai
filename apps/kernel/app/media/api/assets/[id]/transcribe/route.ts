@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { db, assets } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
+import { resolveActingDid } from "@imajin/auth";
 
 export const dynamic = "force-dynamic";
 import { eq } from "drizzle-orm";
@@ -66,7 +67,7 @@ export async function GET(
   }
 
   // 2. Check ownership
-  const ownerDid = identity.actingFor || identity.actingAs || identity.id;
+  const ownerDid = resolveActingDid(identity);
   if (asset.ownerDid !== ownerDid) {
     return NextResponse.json({ error: "Not your asset" }, { status: 403, headers: cors });
   }

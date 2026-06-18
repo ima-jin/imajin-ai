@@ -28,7 +28,7 @@ export async function resolveEffectiveDid(
   }
   return {
     ok: true,
-    effectiveDid: authResult.identity.actingAs || authResult.identity.id,
+    effectiveDid: authResult.identity.actingFor ?? authResult.identity.actingAs ?? authResult.identity.id,
     via: "session",
   };
 }

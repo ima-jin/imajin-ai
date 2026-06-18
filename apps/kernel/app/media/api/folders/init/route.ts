@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 import { db, folders } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
+import { resolveActingDid } from "@imajin/auth";
 import { withLogger } from "@imajin/logger";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const ownerDid = resolveActingDid(authResult.identity);
 
   try {
     const values = DEFAULT_FOLDERS.map((f, i) => ({

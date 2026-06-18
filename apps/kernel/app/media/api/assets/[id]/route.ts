@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { readFile, unlink, rename, stat, open } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { db, assets, settlements, accessLog } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
+import { resolveActingDid } from "@imajin/auth";
 import { eq, and, sql } from "drizzle-orm";
 import type { FairManifest, FairAction } from "@imajin/fair";
 import { isFairManifestV1_1, build402Response, verifyReceipt, loadVerifyKey, canonicalize } from "@imajin/fair";
@@ -190,7 +191,7 @@ export async function GET(
         { status: 403 }
       );
     }
-    const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+    const requesterDid = resolveActingDid(authResult.identity);
 
     if (accessType === "private") {
       if (requesterDid !== asset.ownerDid) {
@@ -271,7 +272,7 @@ export async function GET(
         { status: 401 }
       );
     }
-    const callerDid = buyerAuth.identity.actingAs || buyerAuth.identity.id;
+    const callerDid = resolveActingDid(buyerAuth.identity);
     if (callerDid !== receiptPayload.buyer) {
       return NextResponse.json(
         { error: "Receipt is bound to a different identity" },
@@ -575,7 +576,7 @@ export async function DELETE(
     }, { status: 403 });
   }
 
-  const requesterDid = identity.actingAs || identity.id;
+  const requesterDid = resolveActingDid(identity);
 
   let asset;
   try {
@@ -640,7 +641,7 @@ export async function PATCH(
     }, { status: 403 });
   }
 
-  const requesterDid = identity.actingAs || identity.id;
+  const requesterDid = resolveActingDid(identity);
 
   let body: { filename?: unknown };
   try {

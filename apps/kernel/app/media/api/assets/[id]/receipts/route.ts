@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET /media/api/assets/[id]/receipts
  *
  * Returns settlement history (audit trail) for the owner's asset.
@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets, settlements, accessLog } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
+import { resolveActingDid } from "@imajin/auth";
 import { eq, desc } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
 
@@ -24,7 +25,7 @@ export async function GET(
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = resolveActingDid(authResult.identity);
 
   // 2. Look up asset
   let asset;

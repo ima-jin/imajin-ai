@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { db, assets, folders, assetFolders } from "@/src/db";
 import { requireAuth } from "@imajin/auth";
+import { resolveActingDid } from "@imajin/auth";
 import { eq, and, inArray } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
 
@@ -18,7 +19,7 @@ export async function PUT(
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const ownerDid = resolveActingDid(authResult.identity);
 
   // Verify asset belongs to the authenticated user
   const [asset] = await db
