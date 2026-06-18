@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { getMatchDb } from './db';
 
 const log = createLogger('bus:match:candidates');
 
@@ -33,8 +34,7 @@ export async function findCandidates(
   }
 
   try {
-    const { getClient } = await import('@imajin/db');
-    const sql = getClient();
+    const sql = await getMatchDb();
 
     // Exclude the arriver's own intent and already-spent pairs.
     const spentList = [arriverIntentId, ...Array.from(spentIntentIds)];

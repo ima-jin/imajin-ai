@@ -1,5 +1,6 @@
 import { createLogger } from '@imajin/logger';
-import type { BrokerRejection, BrokerReactor } from '../types';
+import type { BrokerReactor } from '../types';
+import { makeRejection } from './rejection';
 
 const log = createLogger('bus:broker:mutual-reach-consent');
 
@@ -50,13 +51,7 @@ export const mutualReachConsentReactor: BrokerReactor = async (state) => {
       'Mutual reach check failed — rejecting (fail-closed)'
     );
 
-    const rejection: BrokerRejection = {
-      status: 'rejected',
-      reason: 'no_consent',
-      fields: request.fields,
-      details: `Mutual reach not satisfied: ${reason}`,
-    };
-    return rejection;
+    return makeRejection(request.fields, 'no_consent', `Mutual reach not satisfied: ${reason}`);
   }
 
   const intentA = String(data.arriverIntentId ?? '');

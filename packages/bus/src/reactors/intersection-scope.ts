@@ -1,5 +1,6 @@
 import { createLogger } from '@imajin/logger';
-import type { BrokerRejection, BrokerReactor } from '../types';
+import type { BrokerReactor } from '../types';
+import { makeRejection } from './rejection';
 
 const log = createLogger('bus:broker:intersection-scope');
 
@@ -36,13 +37,7 @@ export const intersectionScopeReactor: BrokerReactor = async (state) => {
       { requester: request.requester, subject: request.subject },
       'No overlap tags in intersection-scope — rejecting'
     );
-    const rejection: BrokerRejection = {
-      status: 'rejected',
-      reason: 'no_consent',
-      fields: request.fields,
-      details: 'No overlapping tags between intent pair',
-    };
-    return rejection;
+    return makeRejection(request.fields, 'no_consent', 'No overlapping tags between intent pair');
   }
 
   log.info(

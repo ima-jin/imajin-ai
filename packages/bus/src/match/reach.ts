@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { getMatchDb } from './db';
 
 const log = createLogger('bus:match:reach');
 
@@ -24,8 +25,7 @@ export interface ReachRings {
  */
 export async function resolveReachRings(did: string): Promise<ReachRings> {
   try {
-    const { getClient } = await import('@imajin/db');
-    const sql = getClient();
+    const sql = await getMatchDb();
 
     // 1-hop connections (direct).
     const directRows = await sql<{ other_did: string }[]>`

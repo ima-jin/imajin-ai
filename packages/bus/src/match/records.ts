@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
+import { getMatchDb } from './db';
 
 const log = createLogger('bus:match:records');
 
@@ -22,8 +23,7 @@ export async function recordMatch(
     : [intentIdB, intentIdA];
 
   try {
-    const { getClient } = await import('@imajin/db');
-    const sql = getClient();
+    const sql = await getMatchDb();
 
     const rows = await sql`
       INSERT INTO kernel.match_records (id, intent_a, intent_b, overlap_tags, sensitive)
@@ -58,8 +58,7 @@ export async function recordMatch(
  */
 export async function getSpentIntents(intentId: string): Promise<Set<string>> {
   try {
-    const { getClient } = await import('@imajin/db');
-    const sql = getClient();
+    const sql = await getMatchDb();
 
     const rows = await sql<{ intent_a: string; intent_b: string }[]>`
       SELECT intent_a, intent_b
