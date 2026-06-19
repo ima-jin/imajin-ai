@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { db, folders } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq, and } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
 
@@ -20,7 +20,7 @@ export async function PATCH(
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const ownerDid = resolveActingDid(authResult.identity);
 
   const [existing] = await db
     .select()
@@ -88,7 +88,7 @@ export async function DELETE(
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const ownerDid = resolveActingDid(authResult.identity);
 
   const [existing] = await db
     .select()

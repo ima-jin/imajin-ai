@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "node:fs/promises";
 import { db, assets } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
 import { isFairManifestV1_1 } from "@imajin/fair";
@@ -88,7 +88,7 @@ export async function GET(
         { status: 403 }
       );
     }
-    const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+    const requesterDid = resolveActingDid(authResult.identity);
 
     if (accessType === "private") {
       if (requesterDid !== asset.ownerDid) {
@@ -152,7 +152,7 @@ export async function PUT(
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = resolveActingDid(authResult.identity);
 
   let asset;
   try {

@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { nanoid } from "nanoid";
 import { db, assets, folders, assetFolders, identities } from "@/src/db";
-import { requireAuth, hexToBytes } from "@imajin/auth";
+import { requireAuth, hexToBytes, resolveActingDid } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and, sql } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const { identity } = authResult;
-  const ownerDid = identity.actingFor || identity.actingAs || identity.id;
+  const ownerDid = resolveActingDid(identity);
   const uploadedBy = identity.id;
 
   // Fetch full identity row to get uploadLimitMb
@@ -416,7 +416,7 @@ export async function GET(request: NextRequest) {
       ownerDid = didParam;
       isAgentQuery = true;
     } else {
-      ownerDid = identity.actingFor || identity.actingAs || identity.id;
+      ownerDid = resolveActingDid(identity);
     }
   }
 

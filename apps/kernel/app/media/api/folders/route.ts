@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 import { db, folders, assetFolders } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq, sql } from "drizzle-orm";
 import { withLogger } from "@imajin/logger";
 
@@ -15,7 +15,7 @@ export const GET = withLogger('kernel', async (request, { log }) => {
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const ownerDid = resolveActingDid(authResult.identity);
 
   try {
     const rows = await db
@@ -51,7 +51,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const ownerDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const ownerDid = resolveActingDid(authResult.identity);
 
   let body: { name?: string; parentId?: string; icon?: string };
   try {

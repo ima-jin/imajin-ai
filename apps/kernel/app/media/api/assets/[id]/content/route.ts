@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { db, assets } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
@@ -68,7 +68,7 @@ export async function GET(
     if ("error" in authResult) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
-    if ((authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id) !== asset.ownerDid) {
+    if ((resolveActingDid(authResult.identity)) !== asset.ownerDid) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   }
@@ -96,7 +96,7 @@ export async function PUT(
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = authResult.identity.actingFor || authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = resolveActingDid(authResult.identity);
 
   let body: { content?: unknown };
   try {
