@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { db, profiles } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { isValidHandle, HANDLE_ERROR } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
@@ -32,7 +32,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     // Use acting-as DID if present, otherwise personal DID
-    const effectiveDid = identity.actingAs || identity.id;
+    const effectiveDid = resolveActingDid(identity);
 
     // Check if profile already exists for this DID
     const existing = await db.query.profiles.findFirst({

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { nanoid } from 'nanoid';
 import { db, preferences } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
@@ -20,7 +20,7 @@ export async function PUT(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   const { scope } = await params;
 

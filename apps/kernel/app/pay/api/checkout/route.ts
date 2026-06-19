@@ -24,7 +24,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
-import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
+import type { Identity } from '@imajin/auth';
 import type { CheckoutRequest, FiatCurrency } from '@/src/lib/pay';
 import { DEFAULT_PLATFORM_FEE_BPS } from '@/src/lib/pay';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
@@ -124,7 +125,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     // Optional: capture identity if authenticated
-    let identity: { id: string; actingAs?: string } | null = null;
+    let identity: Identity | null = null;
 
     // App auth path
     if (request.headers.get('x-app-did')) {
@@ -135,7 +136,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
           { status: appResult.status, headers: cors }
         );
       }
-      identity = { id: appResult.appAuth.userDid };
+      identity = { id: appResult.appAuth.userDid, scope: 'actor' };
     } else {
       const authResult = await requireAuth(request);
       if (!('error' in authResult)) {
@@ -225,7 +226,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       id: txId,
       service: body.metadata?.service || 'unknown',
       type: body.metadata?.type || 'checkout',
-      fromDid: (identity?.actingAs || identity?.id) || null,
+      fromDid: identity ? resolveActingDid(identity) : null,
       toDid: body.metadata?.to_did || body.metadata?.recipient_did || 'platform',
       amount: (totalAmount / 100).toString(), // Convert cents to dollars
       currency: body.currency || 'CAD',

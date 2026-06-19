@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, transactions } from '@/src/db';
 import { eq, and, desc, or } from 'drizzle-orm';
-import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 
@@ -49,7 +49,7 @@ export async function GET(
           { status: 401, headers: cors }
         );
       }
-      effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+      effectiveDid = resolveActingDid(authResult.identity);
       isAgentDelegated =
         authResult.identity.actingAs === did &&
         authResult.identity.actingAsRole === 'agent';

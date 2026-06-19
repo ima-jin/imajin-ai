@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { db, bumpSessions } from '@/src/db';
 import { and, eq } from 'drizzle-orm';
 import { withLogger } from '@imajin/logger';
@@ -33,7 +33,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     return NextResponse.json({ error: 'sessionId is required' }, { status: 400, headers: cors });
   }
 
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
 
   try {
     const result = await db.update(bumpSessions)
