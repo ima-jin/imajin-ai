@@ -62,6 +62,9 @@ export const SERVICES: readonly ServiceDefinition[] = [
   { name: 'github',      label: 'GitHub',      icon: '🐙', description: 'Source code',                                       devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', externalUrl: 'https://github.com/ima-jin/imajin-ai' },
   { name: 'docs',        label: 'Docs',        icon: '📄', description: 'API documentation',                                 devPort: 3000, prodPort: 7000, schema: "public",      tier: 'core',   visibility: 'public',        category: 'meta', wwwPath: '/developer-guide' },
 
+  // Daemon processes — not web apps, no HTTP port exposed
+  { name: 'broker-agent', label: 'Broker Agent', icon: '🤖', description: 'Telegram broker agent — conversational surface for social coordination (#1101)', devPort: 0, prodPort: 0, schema: null, tier: 'core', visibility: 'internal', category: 'infrastructure' },
+
   // Connected apps (separate repos) will use the plugin architecture (#249).
   // Not included here — they authenticate via delegated sessions, not the monorepo manifest.
 ] as const satisfies readonly ServiceDefinition[];
