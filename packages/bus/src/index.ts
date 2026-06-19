@@ -7,6 +7,7 @@ import { notifyReactor } from './reactors/notify';
 import { settleReactor } from './reactors/settle';
 import { webhookReactor } from './reactors/webhook';
 import { matchEngineReactor } from './match/engine';
+import { notifyMatchDeliveryReactor } from './reactors/notify-match-delivery';
 
 // Auto-register built-in reactors on import
 registerReactor('attestation', attestationReactor);
@@ -17,6 +18,7 @@ registerReactor('notify', notifyReactor);
 registerReactor('settle', settleReactor);
 registerReactor('webhook', webhookReactor);
 registerReactor('match-engine', matchEngineReactor);
+registerReactor('notify-match-delivery', notifyMatchDeliveryReactor);
 
 export { publish } from './publish';
 export { broker } from './broker';

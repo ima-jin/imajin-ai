@@ -1,4 +1,5 @@
 import { pgSchema, text, boolean, timestamp, index, unique } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 /**
  * Match records — spent-forever tracking for the bilateral match engine (#1102).
@@ -24,3 +25,26 @@ export const matchRecords = matchSchema.table('match_records', {
 
 export type MatchRecord = typeof matchRecords.$inferSelect;
 export type NewMatchRecord = typeof matchRecords.$inferInsert;
+
+/**
+ * Match notifications — delivery queue for the broker agent.
+ * Written by the notify-match-delivery reactor when a match is surfaced;
+ * read and cleared by the bot when it delivers to the recipient's chat.
+ */
+export const matchNotifications = matchSchema.table('match_notifications', {
+  id: text('id').primaryKey(),
+  matchId: text('match_id').notNull(),
+  recipientDid: text('recipient_did').notNull(),
+  otherDid: text('other_did'),                       // null if sensitive_staged
+  overlapTags: text('overlap_tags').array().notNull(),
+  isSensitive: boolean('is_sensitive').notNull().default(false),
+  deliveryPolicy: text('delivery_policy').notNull(), // 'named_nudge' | 'staged' | 'sensitive_staged'
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  pendingIdx: index('idx_match_notifications_recipient').on(table.recipientDid, table.deliveredAt).where(sql`${table.deliveredAt} IS NULL`),
+  createdIdx: index('idx_match_notifications_created').on(table.createdAt),
+}));
+
+export type MatchNotification = typeof matchNotifications.$inferSelect;
+export type NewMatchNotification = typeof matchNotifications.$inferInsert;
