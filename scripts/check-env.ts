@@ -123,7 +123,11 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
   const extra: string[] = [];
 
   if (!hasEnvLocal) {
-    return { service: svc, hasEnvLocal, missing: [], wrongPorts: [], extra: [], errors: 1, warnings: 0 };
+    // Daemon processes (devPort === 0) have no HTTP port and may not have .env.local
+    // set up on the server yet — treat as a warning rather than a hard failure.
+    const noEnvErrors = svc.devPort === 0 ? 0 : 1;
+    const noEnvWarnings = svc.devPort === 0 ? 1 : 0;
+    return { service: svc, hasEnvLocal, missing: [], wrongPorts: [], extra: [], errors: noEnvErrors, warnings: noEnvWarnings };
   }
 
   // Check all keys from .env.example are present in .env.local
