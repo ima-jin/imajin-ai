@@ -607,6 +607,22 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'calendar';
   };
+  'channel.link.created': {
+    linkId: string;
+    channel: string;
+    did: string;
+    appDid: string;
+    context_id: string;
+    context_type: 'channel_link';
+  };
+  'channel.link.revoked': {
+    linkId: string;
+    channel: string;
+    did: string;
+    appDid: string;
+    context_id: string;
+    context_type: 'channel_link';
+  };
   'availability.match.surfaced': {
     matchId: string;
     recipientDid: string;
