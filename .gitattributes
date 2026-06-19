@@ -1,0 +1,2 @@
+# Ensure pnpm lockfile always uses LF so Windows/Linux generate identical diffs
+pnpm-lock.yaml text eol=lf
