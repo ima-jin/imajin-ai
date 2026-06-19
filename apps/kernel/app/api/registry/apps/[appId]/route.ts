@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 
 // GET /api/registry/apps/:appId — app detail (public)
 export async function GET(
@@ -53,7 +53,7 @@ export async function PATCH(
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (existing.ownerDid !== identity.id) {
+  if (existing.ownerDid !== resolveActingDid(identity)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -102,7 +102,7 @@ export async function DELETE(
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (existing.ownerDid !== identity.id) {
+  if (existing.ownerDid !== resolveActingDid(identity)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

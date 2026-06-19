@@ -12,8 +12,9 @@ export async function getEffectiveDid(): Promise<{ sessionDid: string | null; ef
     sessionDid = session?.sub ?? null;
   }
 
+  const actingFor = cookieStore.get('x-acting-for')?.value || null;
   const actingAs = cookieStore.get('x-acting-as')?.value || null;
-  const effectiveDid = actingAs || sessionDid;
+  const effectiveDid = actingFor ?? actingAs ?? sessionDid;
 
   return { sessionDid, effectiveDid };
 }
