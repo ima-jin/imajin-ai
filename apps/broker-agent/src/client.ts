@@ -47,14 +47,18 @@ export class KernelClient {
     return h;
   }
 
-  private async fetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async fetch<T>(
+    path: string,
+    init: Omit<RequestInit, 'headers'> & { headers?: Record<string, string> } = {}
+  ): Promise<T> {
+    const { headers: extraHeaders, ...rest } = init;
     const res = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: { ...this.headers(), ...(init.headers as Record<string, string> ?? {}) },
+      ...rest,
+      headers: { ...this.headers(), ...extraHeaders },
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(`Kernel API ${path} → ${res.status}: ${(err as { error?: string }).error ?? res.statusText}`);
+      const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
+      throw new Error(`Kernel API ${path} \u2192 ${res.status}: ${body.error ?? res.statusText}`);
     }
     return res.json() as Promise<T>;
   }
