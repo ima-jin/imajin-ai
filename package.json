@@ -24,6 +24,7 @@
     "@typescript-eslint/parser": "^7",
     "eslint": "^8",
     "eslint-config-next": "14",
+    "eslint-plugin-sonarjs": "^2",
     "husky": "^9.1.7",
     "next": "^14.2.0",
     "postgres": "^3.4.5",
