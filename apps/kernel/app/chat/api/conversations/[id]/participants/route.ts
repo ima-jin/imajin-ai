@@ -1,7 +1,6 @@
 ﻿import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
-import { requireAuth } from '@imajin/auth';
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';

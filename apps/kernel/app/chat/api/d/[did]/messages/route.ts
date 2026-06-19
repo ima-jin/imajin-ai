@@ -5,8 +5,7 @@ import { eq, and, desc, lt, ne, isNull, inArray } from 'drizzle-orm';
 
 const log = createLogger('kernel');
 import { db, conversationsV2, conversationMembers, messagesV2, messageReactionsV2, identities } from '@/src/db';
-import { requireAuth, isVerifiedTier, canonicalize, crypto as authCrypto } from '@imajin/auth';
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, isVerifiedTier, canonicalize, crypto as authCrypto, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';

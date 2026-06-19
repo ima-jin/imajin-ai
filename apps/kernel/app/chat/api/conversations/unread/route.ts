@@ -2,8 +2,7 @@
 import { db, conversationReadsV2, messagesV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { eq } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { withLogger } from '@imajin/logger';
 

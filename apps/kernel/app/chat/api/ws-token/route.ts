@@ -1,6 +1,5 @@
 ﻿import { NextRequest } from 'next/server';
-import { requireAuth } from '@imajin/auth';
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { createWsToken } from '@/src/lib/chat/ws-tokens';

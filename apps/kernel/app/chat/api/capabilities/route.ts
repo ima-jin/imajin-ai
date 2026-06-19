@@ -1,6 +1,5 @@
 ﻿import { NextRequest } from 'next/server';
-import { requireAuth } from '@imajin/auth';
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { isInGraph } from '@/src/lib/kernel/require-graph-member';
 import { getCapabilities } from '@/src/lib/chat/capabilities';
 import { errorResponse } from '@/src/lib/kernel/utils';

@@ -1,8 +1,7 @@
 ﻿import { NextRequest } from 'next/server';
 import { eq, sql } from 'drizzle-orm';
 import { db, conversationsV2, profiles } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { createLogger } from '@imajin/logger';

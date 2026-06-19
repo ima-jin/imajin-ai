@@ -1,6 +1,5 @@
 ﻿import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
 import { publish } from '@imajin/bus';
 import { generateId } from '@/src/lib/kernel/id';

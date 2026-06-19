@@ -1,7 +1,6 @@
 ﻿import { eq, and, isNull } from 'drizzle-orm';
 import { db, invites } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { withLogger } from '@imajin/logger';

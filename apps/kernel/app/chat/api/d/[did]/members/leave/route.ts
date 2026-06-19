@@ -1,7 +1,6 @@
 ﻿import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
-import { requireAuth } from '@imajin/auth';
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { publish } from '@imajin/bus';
