@@ -1,5 +1,5 @@
 import { text, timestamp, jsonb, integer, boolean, index, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 /** Key role configuration for multi-device / role-separated identities */
 export interface KeyRoles {
@@ -244,6 +244,46 @@ export const identityMembers = authSchema.table('identity_members', {
   memberIdx: index('idx_identity_members_member').on(table.memberDid),
 }));
 
+/**
+ * Channel Link Tokens — single-use challenge tokens for the messenger linking handshake.
+ * Bot creates a token; user opens the URL and approves; token consumed on approve.
+ */
+export const channelLinkTokens = authSchema.table('channel_link_tokens', {
+  id: text('id').primaryKey(),
+  token: text('token').notNull().unique(),
+  channel: text('channel').notNull(),                        // 'telegram' | 'whatsapp' | 'signal'
+  channelUid: text('channel_uid').notNull(),                 // external account id
+  appDid: text('app_did').notNull(),                         // bot app DID
+  requestedScopes: jsonb('requested_scopes').notNull().default([]),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  consumedBy: text('consumed_by'),                           // Imajin DID that approved
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  tokenIdx: index('idx_channel_link_tokens_token').on(table.token),
+  pendingIdx: index('idx_channel_link_tokens_pending').on(table.expiresAt).where(sql`${table.consumedAt} IS NULL`),
+}));
+
+/**
+ * Channel Links — persistent binding of external channel accounts to Imajin DIDs.
+ * Enables the bot to resolve a chat user to their DID for actingFor delegation.
+ */
+export const channelLinks = authSchema.table('channel_links', {
+  id: text('id').primaryKey(),
+  channel: text('channel').notNull(),                        // 'telegram' | 'whatsapp' | 'signal'
+  channelUid: text('channel_uid').notNull(),                 // external account id
+  did: text('did').notNull(),                                // linked Imajin user DID
+  appDid: text('app_did').notNull(),                         // bot app this link authorizes
+  scopes: jsonb('scopes').notNull().default([]),             // approved scopes
+  status: text('status').notNull().default('active'),        // 'active' | 'revoked'
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  didIdx: index('idx_channel_links_did').on(table.did),
+  lookupIdx: index('idx_channel_links_lookup').on(table.channel, table.channelUid, table.status),
+  pairUnique: uniqueIndex('uniq_channel_links_pair').on(table.channel, table.channelUid, table.appDid),
+}));
+
 // Types
 export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;
@@ -266,3 +306,7 @@ export type Device = typeof devices.$inferSelect;
 export type NewDevice = typeof devices.$inferInsert;
 export type IdentityMember = typeof identityMembers.$inferSelect;
 export type NewIdentityMember = typeof identityMembers.$inferInsert;
+export type ChannelLinkToken = typeof channelLinkTokens.$inferSelect;
+export type NewChannelLinkToken = typeof channelLinkTokens.$inferInsert;
+export type ChannelLink = typeof channelLinks.$inferSelect;
+export type NewChannelLink = typeof channelLinks.$inferInsert;
