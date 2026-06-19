@@ -129,8 +129,9 @@ export async function executeTool(
         reach: toolInput.reach as 'favourites' | 'one_degree' | 'strangers' | undefined,
         window: toolInput.window as string | undefined,
       });
-      const intent = result.intent as Record<string, unknown>;
-      return `Intention set! Your sealed note is live until ${intent.expiresAt ?? 'it expires'}. Nothing is disclosed until a bilateral match fires.`;
+      const intent: Record<string, unknown> = result.intent;
+      const expiresAt = typeof intent.expiresAt === 'string' ? intent.expiresAt : 'it expires';
+      return `Intention set! Your sealed note is live until ${expiresAt}. Nothing is disclosed until a bilateral match fires.`;
     }
 
     case 'list_intentions': {
@@ -138,9 +139,13 @@ export async function executeTool(
       if (!result.intents || result.intents.length === 0) {
         return 'You have no active intentions set.';
       }
-      const lines = result.intents.map((i: Record<string, unknown>) =>
-        `• ${i.intent ?? '(unnamed)'} [${i.reach ?? 'favourites'}] — tags: ${((i.activityTags as string[]) ?? []).join(', ') || 'none'} — expires: ${i.expiresAt ?? 'unknown'} (id: ${i.id})`
-      );
+      const lines = result.intents.map((i: Record<string, unknown>) => {
+        const name = typeof i.intent === 'string' ? i.intent : '(unnamed)';
+        const reach = typeof i.reach === 'string' ? i.reach : 'favourites';
+        const tags = Array.isArray(i.activityTags) ? (i.activityTags as string[]).join(', ') || 'none' : 'none';
+        const expires = typeof i.expiresAt === 'string' ? i.expiresAt : 'unknown';
+        return `• ${name} [${reach}] — tags: ${tags} — expires: ${expires} (id: ${i.id})`;
+      });
       return `Your active intentions:\n${lines.join('\n')}`;
     }
 
@@ -159,10 +164,15 @@ export async function executeTool(
     case 'respond_to_match': {
       const { matchId, action } = toolInput as { matchId: string; action: string };
       // Match response endpoint is tracked for #1049 / consent phase — stub here.
-      return `Match response recorded: ${action} for match ${matchId}. ` +
-        (action === 'connect' ? 'The other party will be notified you want to connect.' :
-         action === 'unmask' ? 'Requesting mutual identity reveal — both sides must agree.' :
-         'You passed on this match.');
+      let outcome: string;
+      if (action === 'connect') {
+        outcome = 'The other party will be notified you want to connect.';
+      } else if (action === 'unmask') {
+        outcome = 'Requesting mutual identity reveal — both sides must agree.';
+      } else {
+        outcome = 'You passed on this match.';
+      }
+      return `Match response recorded: ${action} for match ${matchId}. ${outcome}`;
     }
 
     default:

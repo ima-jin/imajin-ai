@@ -14,7 +14,7 @@ function renderMatch(n: PendingNotification): string {
       return [
         '✨ *A match just surfaced*',
         '',
-        `You and ${n.otherDid ? `\`${n.otherDid.slice(0, 20)}…\`` : 'someone in your circle'} are both up for: *${tags}*`,
+        `You and ${n.otherDid ? `${n.otherDid.slice(0, 20)}…` : 'someone in your circle'} are both up for: *${tags}*`,
         '',
         'You reached each other because you both set overlapping intentions.',
         `Match ID: \`${n.matchId}\``,

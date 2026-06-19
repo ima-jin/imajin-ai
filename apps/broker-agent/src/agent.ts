@@ -56,7 +56,7 @@ export async function routeMessage(
     // If Claude is done (no tool calls), return its text.
     if (response.stop_reason === 'end_turn' || !response.content.some((b) => b.type === 'tool_use')) {
       const textBlock = response.content.find((b) => b.type === 'text');
-      return textBlock && textBlock.type === 'text' ? textBlock.text : 'Done.';
+      return textBlock?.type === 'text' ? textBlock.text : 'Done.';
     }
 
     // Append Claude's response to the message history.
