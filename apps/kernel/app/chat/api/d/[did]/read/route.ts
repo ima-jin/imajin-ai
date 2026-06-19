@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { db, conversationReadsV2 } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { createLogger } from '@imajin/logger';
@@ -28,7 +28,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
   const { did } = await params;
 
   try {

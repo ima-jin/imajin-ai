@@ -1,11 +1,11 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { eq, and, desc, lt, ne, isNull, inArray } from 'drizzle-orm';
 
 const log = createLogger('kernel');
 import { db, conversationsV2, conversationMembers, messagesV2, messageReactionsV2, identities } from '@/src/db';
-import { requireAuth, isVerifiedTier, canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { requireAuth, isVerifiedTier, canonicalize, crypto as authCrypto, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
@@ -67,7 +67,7 @@ export async function GET(
   const { did } = await params;
 
   // Verify access
-  const hasAccess = await verifyDidAccess(authResult.identity.actingAs || authResult.identity.id, did);
+  const hasAccess = await verifyDidAccess(resolveActingDid(authResult.identity), did);
   if (!hasAccess) {
     return errorResponse('Access denied', 403, cors);
   }
@@ -168,7 +168,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
   const { did } = await params;
 
   // Soft DIDs cannot send messages — they must verify their account first

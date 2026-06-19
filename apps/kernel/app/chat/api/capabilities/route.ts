@@ -1,5 +1,5 @@
-import { NextRequest } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+﻿import { NextRequest } from 'next/server';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { isInGraph } from '@/src/lib/kernel/require-graph-member';
 import { getCapabilities } from '@/src/lib/chat/capabilities';
 import { errorResponse } from '@/src/lib/kernel/utils';
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
   const tier = identity.tier ?? 'preliminary';
 
   let inGraph = false;

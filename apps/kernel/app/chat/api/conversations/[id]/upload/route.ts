@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { createLogger } from '@imajin/logger';
@@ -41,7 +41,7 @@ export async function POST(
   const conversationDid = decodeURIComponent(id);
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
   const access = await checkAccess(effectiveDid, conversationDid);
   if (!access.allowed) {
     return errorResponse('Conversation not found or access denied', 404);

@@ -1,9 +1,9 @@
-import { withLogger } from '@imajin/logger';
+﻿import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { eq, desc, and, gt, ne, inArray, sql } from 'drizzle-orm';
 import { db, conversationsV2, messagesV2, conversationReadsV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
-import { requireAuth, resolveEffectiveDid } from '@imajin/auth';
+import { requireAuth, resolveEffectiveDid, resolveActingDid } from '@imajin/auth';
 import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
 import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/kernel/utils';
 import { dmDid, parseConversationDid } from '@/src/lib/chat/conversation-did';
@@ -240,7 +240,7 @@ export const POST = withLogger('kernel', async (request, { log, correlationId })
     }
 
     const { identity } = authResult;
-    const effectiveDid = identity.actingAs || identity.id;
+    const effectiveDid = resolveActingDid(identity);
 
     if (!participantDids || !Array.isArray(participantDids) || participantDids.length === 0) {
       return errorResponse('participantDids is required');

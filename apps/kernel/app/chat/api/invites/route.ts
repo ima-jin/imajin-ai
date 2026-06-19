@@ -1,6 +1,6 @@
-import { eq, and, isNull } from 'drizzle-orm';
+﻿import { eq, and, isNull } from 'drizzle-orm';
 import { db, invites } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { withLogger } from '@imajin/logger';
@@ -20,7 +20,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
 
   try {
     const body = await request.json();
@@ -83,7 +83,7 @@ export const GET = withLogger('kernel', async (request, { log }) => {
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
   const access = await checkAccess(effectiveDid, conversationId);
   if (!access.allowed) {
     return errorResponse('Permission denied', 403);
