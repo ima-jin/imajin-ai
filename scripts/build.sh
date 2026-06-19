@@ -106,6 +106,17 @@ echo "" >> "$REPORT"
 for app in "${APPS[@]}"; do
   echo "=== Building $app ===" | tee -a "$REPORT"
   cd "apps/$app"
+
+  # Non-Next.js apps (e.g. broker-agent) don't need next build — mark as succeeded
+  # and let pm2 restart handle the runtime reload.
+  if [[ ! -f "next.config.js" && ! -f "next.config.ts" && ! -f "next.config.mjs" ]]; then
+    SUCCEEDED+=("$app")
+    echo "✅ $app (no next build — daemon process)" | tee -a "$REPORT"
+    cd "$BASE_DIR"
+    echo "" >> "$REPORT"
+    continue
+  fi
+
   rm -rf .next || true
 
   if npx next build >> "$REPORT" 2>&1; then
