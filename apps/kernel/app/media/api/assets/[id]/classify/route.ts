@@ -1,8 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import { db, assets } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
 import { createLogger } from "@imajin/logger";

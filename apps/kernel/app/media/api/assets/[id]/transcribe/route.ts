@@ -2,8 +2,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { db, assets } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 
 export const dynamic = "force-dynamic";
 import { eq } from "drizzle-orm";

@@ -1,8 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 import { db, folders } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { withLogger } from "@imajin/logger";
 
 export const dynamic = "force-dynamic";

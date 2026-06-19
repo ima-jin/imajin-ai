@@ -1,7 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { db, assets } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest } from "@imajin/fair";
 import { upgradeToV1_1 } from "@imajin/fair";

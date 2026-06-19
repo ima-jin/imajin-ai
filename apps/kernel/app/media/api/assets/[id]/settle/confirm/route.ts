@@ -16,8 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets, settlements } from "@/src/db";
 import { eq } from "drizzle-orm";
-import { requireAuth } from "@imajin/auth";
-import { resolveActingDid } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { signReceipt, loadSigningKey, receiptExpiryForAction } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 
