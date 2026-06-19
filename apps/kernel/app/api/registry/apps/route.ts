@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { db, registryApps } from '@/src/db';
 import { eq, desc, and } from 'drizzle-orm';
-import { requireAuth, generateKeypair, isValidPublicKey } from '@imajin/auth';
+import { requireAuth, generateKeypair, isValidPublicKey, resolveActingDid } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { withLogger } from '@imajin/logger';
 
@@ -62,7 +62,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
 
   const [app] = await db.insert(registryApps).values({
     id: `app_${nanoid(16)}`,
-    ownerDid: identity.id,
+    ownerDid: resolveActingDid(identity),
     name: name.trim(),
     description: typeof description === 'string' ? description.trim() || null : null,
     appDid,
@@ -96,7 +96,7 @@ export const GET = withLogger('kernel', async (request: NextRequest) => {
     if ('error' in authResult) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    ownerDid = authResult.identity.id;
+    ownerDid = resolveActingDid(authResult.identity);
   }
 
   const whereClause = ownerDid

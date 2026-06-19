@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, conversationsV2, conversationMembers } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { dmDid, conversationPath } from '@/src/lib/chat/conversation-did';
 
 const APP_URL = process.env.NEXT_PUBLIC_CHAT_URL || process.env.APP_URL || 'http://localhost:3000/chat';
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     return redirect('/conversations');
   }
 
-  const myDid = authResult.identity.id;
+  const myDid = resolveActingDid(authResult.identity);
 
   // Derive stable DM conversation DID
   const convDid = dmDid(myDid, did);
