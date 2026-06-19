@@ -278,6 +278,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'availability.match.surfaced': [
     { type: 'emit', config: {}, enabled: true },
+    { type: 'notify-match-delivery', config: {}, enabled: true },
   ],
 };
 
