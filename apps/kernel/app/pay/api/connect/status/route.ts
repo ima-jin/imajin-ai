@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET /api/connect/status?did=xxx
  *
  * Returns the connected account status for a DID (from DB, kept fresh by webhook).
@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { db, connectedAccounts } from '@/src/db';
 import { withLogger } from '@imajin/logger';
 
@@ -49,7 +49,7 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     );
   }
 
-  const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+  const effectiveDid = resolveActingDid(authResult.identity);
   if (effectiveDid !== did) {
     return NextResponse.json(
       { error: 'Not authorized to access this account' },

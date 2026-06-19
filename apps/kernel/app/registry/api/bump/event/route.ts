@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { db, bumpSessions, bumpEvents, bumpMatches, connections, profiles } from '@/src/db';
 import { and, eq, ne, gt, gte, lte, or, isNull, desc } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'sessionId, waveform, rotationRate, and timestamp are required' }, { status: 400, headers: cors });
   }
 
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
   const now = new Date();
 
   try {

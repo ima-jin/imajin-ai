@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { db, bumpSessions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { withLogger } from '@imajin/logger';
@@ -44,7 +44,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     );
   }
 
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
   const sessionId = generateId('bsess');
   const expiresAt = new Date(Date.now() + (expiryMinutes as number) * 60 * 1000);
 

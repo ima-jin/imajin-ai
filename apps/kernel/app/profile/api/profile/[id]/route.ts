@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { db, profiles, connections, identityMembers } from '@/src/db';
-import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { eq, or, and, isNull, count } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
@@ -227,7 +227,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     });
 
     // Check ownership — allow personal DID or acting-as DID
-    const effectiveDid = identity.actingAs || identity.id;
+    const effectiveDid = resolveActingDid(identity);
 
     if (!existing) {
       // No profile yet — only the identity owner can create it, and the DID must exist in auth.identities

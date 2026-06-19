@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { db, didPreferences, didInterests } from '@/src/db';
 import { eq, asc } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
@@ -29,7 +29,7 @@ export async function GET(
 
   const { did } = await params;
 
-  const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+  const effectiveDid = resolveActingDid(authResult.identity);
 
   if (effectiveDid !== did) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: cors });
@@ -84,7 +84,7 @@ export async function PUT(
 
   const { did } = await params;
 
-  const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+  const effectiveDid = resolveActingDid(authResult.identity);
 
   if (effectiveDid !== did) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: cors });

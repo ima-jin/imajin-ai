@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions, profilePath } from '@imajin/config';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { db, bumpSessions, bumpMatches, pods, podMembers, connections, profiles, nodes } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'matchId and accept are required' }, { status: 400, headers: cors });
   }
 
-  const callerDid = authResult.identity.actingAs || authResult.identity.id;
+  const callerDid = resolveActingDid(authResult.identity);
 
   try {
     const [match] = await db.select().from(bumpMatches).where(eq(bumpMatches.id, matchId)).limit(1);
