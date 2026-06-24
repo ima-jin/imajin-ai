@@ -141,14 +141,42 @@ pm2_name() {
   esac
 }
 
-# Only restart services that built successfully
+# Ecosystem config lives one level above the repo root, named per environment
+# (~/dev/ecosystem.config.js or ~/prod/ecosystem.config.js). Used to cold-start
+# services pm2 has never seen yet (e.g. a newly added app).
+ECOSYSTEM_FILE="$(dirname "$BASE_DIR")/ecosystem.config.js"
+
+# Restart services that built successfully.
+# Restart each one individually so a single missing/unknown process can't abort
+# the whole batch. If pm2 has never seen the process (new service), fall back to
+# starting it from the ecosystem config.
 if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
   RESTART_LIST=""
   for app in "${SUCCEEDED[@]}"; do
     RESTART_LIST+="$(pm2_name "$app") "
   done
   echo "=== Restarting: $RESTART_LIST ===" | tee -a "$REPORT"
-  pm2 restart $RESTART_LIST >> "$REPORT" 2>&1
+
+  RESTART_FAILED=()
+  for app in "${SUCCEEDED[@]}"; do
+    name="$(pm2_name "$app")"
+    if pm2 restart "$name" --update-env >> "$REPORT" 2>&1; then
+      continue
+    fi
+    # pm2 doesn't know this process yet — try to cold-start from ecosystem config.
+    echo "ℹ️  $name not running — attempting cold start from ecosystem config" | tee -a "$REPORT"
+    if [[ -f "$ECOSYSTEM_FILE" ]] && pm2 start "$ECOSYSTEM_FILE" --only "$name" >> "$REPORT" 2>&1; then
+      echo "✅ $name started from ecosystem config" | tee -a "$REPORT"
+    else
+      echo "⚠️  Could not restart or start $name (not in pm2 and not in $ECOSYSTEM_FILE)" | tee -a "$REPORT"
+      RESTART_FAILED+=("$name")
+    fi
+  done
+
+  if [[ ${#RESTART_FAILED[@]} -gt 0 ]]; then
+    echo "⚠️  Services that could not be (re)started: ${RESTART_FAILED[*]}" | tee -a "$REPORT"
+  fi
+  pm2 save >> "$REPORT" 2>&1 || true
 fi
 
 echo "" >> "$REPORT"
