@@ -57,6 +57,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
         version: 0.39.0
+      '@imajin/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       dotenv:
         specifier: ^16.0.0
         version: 16.6.1
