@@ -1,14 +1,18 @@
 import 'dotenv/config';
 import { KernelClient } from './client.js';
+import { TokenProvider } from './token.js';
 import { createBot, startMatchDelivery } from './bot.js';
 
-const KERNEL_URL = process.env.KERNEL_URL;
-const BOT_APP_TOKEN = process.env.BOT_APP_TOKEN;
+const KERNEL_URL     = process.env.KERNEL_URL;
+const APP_DID        = process.env.APP_DID;
+const APP_PRIVATE_KEY = process.env.APP_PRIVATE_KEY;
 
-if (!KERNEL_URL) throw new Error('KERNEL_URL is required');
-if (!BOT_APP_TOKEN) throw new Error('BOT_APP_TOKEN is required');
+if (!KERNEL_URL)      throw new Error('KERNEL_URL is required');
+if (!APP_DID)         throw new Error('APP_DID is required');
+if (!APP_PRIVATE_KEY) throw new Error('APP_PRIVATE_KEY is required');
 
-const kernelClient = new KernelClient(KERNEL_URL, BOT_APP_TOKEN);
+const tokenProvider = new TokenProvider(KERNEL_URL, APP_DID, APP_PRIVATE_KEY);
+const kernelClient  = new KernelClient(KERNEL_URL, tokenProvider);
 const bot = createBot(kernelClient);
 
 // Start match delivery polling loop.
@@ -26,9 +30,11 @@ bot.start({
 // Graceful shutdown.
 process.once('SIGINT', () => {
   clearInterval(deliveryTimer);
+  tokenProvider.dispose();
   bot.stop();
 });
 process.once('SIGTERM', () => {
   clearInterval(deliveryTimer);
+  tokenProvider.dispose();
   bot.stop();
 });

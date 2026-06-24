@@ -10,6 +10,7 @@
   "dependencies": {
     "grammy": "^1.30.0",
     "@anthropic-ai/sdk": "^0.39.0",
+    "@imajin/auth": "workspace:*",
     "dotenv": "^16.0.0"
   },
   "devDependencies": {

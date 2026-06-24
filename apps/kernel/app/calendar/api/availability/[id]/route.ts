@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { db, calendarEntries } from '@/src/db';
 import { and, eq } from 'drizzle-orm';
@@ -15,10 +15,25 @@ const log = createLogger('kernel');
  * The note dies sealed — nobody ever knew it existed.
  */
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
-  const auth = await requireAuth(request);
-  if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  let issuerId: string;
+  let did: string;
 
-  const did = auth.identity.actingAs || auth.identity.id;
+  // App-auth path: service token (broker-agent acting on behalf of a user)
+  const appAuthResult = await requireAppAuth(request, { scope: 'availability:write' });
+  if ('appAuth' in appAuthResult) {
+    const actingFor = request.headers.get('x-acting-for');
+    if (!actingFor) {
+      return NextResponse.json({ error: 'X-Acting-For header required for app auth' }, { status: 400 });
+    }
+    issuerId = appAuthResult.appAuth.appDid;
+    did = actingFor;
+  } else {
+    // Session auth path: cookie or session Bearer token
+    const auth = await requireAuth(request);
+    if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    issuerId = auth.identity.id;
+    did = resolveActingDid(auth.identity);
+  }
 
   const [deleted] = await db
     .delete(calendarEntries)
@@ -36,7 +51,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   }
 
   publish('calendar.entry.deleted', {
-    issuer: auth.identity.id,
+    issuer: issuerId,
     subject: did,
     scope: 'calendar',
     payload: { entryId: deleted.id, type: 'availability', did, context_id: deleted.id, context_type: 'calendar' },

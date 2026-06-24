@@ -143,11 +143,12 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 const APP_TOKEN_EXPIRY_SECONDS = 600; // 10 minutes
 
 export interface AppTokenPayload {
-  sub: string;          // user DID (the resource owner)
-  azp: string;          // authorized party = app DID
-  scope: string;        // space-delimited granted scopes
-  aud?: string;         // optional target service/audience
-  attestationId: string; // source app.authorized attestation (for revocation correlation)
+  sub: string;           // user DID (resource owner); empty string for service tokens
+  azp: string;           // authorized party = app DID
+  scope: string;         // space-delimited granted scopes
+  aud?: string;          // optional target service/audience
+  attestationId: string; // source app.authorized attestation; empty string for service tokens
+  isServiceToken?: boolean; // true when typ='app-service+jwt' (no user delegation)
 }
 
 /**
@@ -172,7 +173,34 @@ export async function createAppToken(payload: AppTokenPayload): Promise<string> 
 }
 
 /**
+ * Mint a short-lived app-tier (keyholder) service token. No user delegation —
+ * sub = azp = appDid. Used by registered daemons (e.g. broker-agent) that
+ * authenticate as the app itself rather than on behalf of a specific user.
+ */
+export async function createAppServiceToken(payload: {
+  azp: string;
+  scope: string;
+  aud?: string;
+}): Promise<string> {
+  const { privateKey } = await getKeyPair();
+  return new jose.SignJWT({
+    azp: payload.azp,
+    scope: payload.scope,
+  })
+    .setProtectedHeader({ alg: 'EdDSA', typ: 'app-service+jwt' })
+    .setSubject(payload.azp)
+    .setIssuer(JWT_ISSUER)
+    .setIssuedAt()
+    .setExpirationTime(`${APP_TOKEN_EXPIRY_SECONDS}s`)
+    .setAudience(payload.aud ?? 'imajin:apps')
+    .sign(privateKey);
+}
+
+const VALID_APP_TOKEN_TYPES = new Set(['app+jwt', 'app-service+jwt']);
+
+/**
  * Verify an app token locally. Returns the payload or null.
+ * Accepts both user-delegated (app+jwt) and keyholder service (app-service+jwt) tokens.
  * Does NOT check revocation — short TTL bounds the revocation window; callers
  * needing instant revocation should fall back to the attestation-validate path.
  */
@@ -182,13 +210,15 @@ export async function verifyAppToken(token: string): Promise<AppTokenPayload | n
     const { payload, protectedHeader } = await jose.jwtVerify(token, publicKey, {
       issuer: JWT_ISSUER,
     });
-    if (protectedHeader.typ !== 'app+jwt') return null; // reject session tokens used as app tokens
+    if (!VALID_APP_TOKEN_TYPES.has(protectedHeader.typ as string)) return null;
+    const isServiceToken = protectedHeader.typ === 'app-service+jwt';
     return {
       sub: payload.sub as string,
       azp: payload.azp as string,
       scope: (payload.scope as string) || '',
       aud: payload.aud as string | undefined,
-      attestationId: payload.attestationId as string,
+      attestationId: (payload.attestationId as string) ?? '',
+      isServiceToken,
     };
   } catch (error) {
     log.error({ err: String(error) }, 'App token verification failed');
