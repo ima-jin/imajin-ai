@@ -78,8 +78,10 @@ export class TokenProvider {
   /** Get the current token, minting one if necessary. */
   async getToken(): Promise<string> {
     if (!this.cachedToken) {
-      // Coalesce concurrent callers onto a single mint (??= assigns only if null)
-      await (this.mintPromise ??= this.refresh().finally(() => { this.mintPromise = null; }));
+      // Coalesce concurrent callers onto a single mint (??= assigns only when null)
+      this.mintPromise ??= this.refresh().finally(() => { this.mintPromise = null; });
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      await this.mintPromise!;
     }
     return this.cachedToken!;
   }
