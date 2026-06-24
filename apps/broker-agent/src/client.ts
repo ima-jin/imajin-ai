@@ -1,9 +1,15 @@
 /**
  * KernelClient — thin HTTP wrapper for broker-agent → kernel API calls.
  *
- * All calls authenticate as the bot app (Bearer <BOT_APP_TOKEN>).
+ * All calls authenticate as the bot app (Bearer <app-service-token>).
  * Calls that act on behalf of a user include X-Acting-For: <userDid>.
+ *
+ * The token is obtained lazily from the TokenProvider, auto-refreshed near
+ * expiry, and retried once on 401 (covers the edge case where the cached token
+ * expires between the TTL threshold and the actual expiry).
  */
+
+import type { TokenProvider } from './token.js';
 
 export interface IntentionParams {
   intent: string;
@@ -31,17 +37,18 @@ export interface PendingNotification {
 
 export class KernelClient {
   private readonly baseUrl: string;
-  private readonly appToken: string;
+  private readonly tokenProvider: TokenProvider;
 
-  constructor(baseUrl: string, appToken: string) {
-    this.baseUrl = baseUrl.replace(/\/$/, '');
-    this.appToken = appToken;
+  constructor(baseUrl: string, tokenProvider: TokenProvider) {
+    this.baseUrl       = baseUrl.replace(/\/$/, '');
+    this.tokenProvider = tokenProvider;
   }
 
-  private headers(userDid?: string): Record<string, string> {
+  private async headers(userDid?: string): Promise<Record<string, string>> {
+    const token = await this.tokenProvider.getToken();
     const h: Record<string, string> = {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.appToken}`,
+      Authorization: `Bearer ${token}`,
     };
     if (userDid) h['X-Acting-For'] = userDid;
     return h;
@@ -49,13 +56,22 @@ export class KernelClient {
 
   private async fetch<T>(
     path: string,
-    init: Omit<RequestInit, 'headers'> & { headers?: Record<string, string> } = {}
+    init: Omit<RequestInit, 'headers'> & { userDid?: string } = {}
   ): Promise<T> {
-    const { headers: extraHeaders, ...rest } = init;
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const { userDid, ...rest } = init;
+    const doRequest = async () => fetch(`${this.baseUrl}${path}`, {
       ...rest,
-      headers: { ...this.headers(), ...extraHeaders },
+      headers: await this.headers(userDid),
     });
+
+    let res = await doRequest();
+
+    // Retry once on 401 — the cached token may have just expired
+    if (res.status === 401) {
+      this.tokenProvider.invalidate();
+      res = await doRequest();
+    }
+
     if (!res.ok) {
       const body = await res.json().catch(() => ({ error: res.statusText })) as { error?: string };
       throw new Error(`Kernel API ${path} \u2192 ${res.status}: ${body.error ?? res.statusText}`);
@@ -90,23 +106,21 @@ export class KernelClient {
   async setIntention(userDid: string, params: IntentionParams): Promise<{ intent: Record<string, unknown> }> {
     return this.fetch('/calendar/api/availability', {
       method: 'POST',
-      headers: this.headers(userDid),
+      userDid,
       body: JSON.stringify(params),
     });
   }
 
   /** List a user's own live availability intents. */
   async listIntentions(userDid: string): Promise<{ intents: Record<string, unknown>[] }> {
-    return this.fetch('/calendar/api/availability', {
-      headers: this.headers(userDid),
-    });
+    return this.fetch('/calendar/api/availability', { userDid });
   }
 
   /** Cancel an availability intent. */
   async cancelIntention(userDid: string, intentionId: string): Promise<{ cancelled: boolean }> {
     return this.fetch(`/calendar/api/availability/${encodeURIComponent(intentionId)}`, {
       method: 'DELETE',
-      headers: this.headers(userDid),
+      userDid,
     });
   }
 

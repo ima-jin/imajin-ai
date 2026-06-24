@@ -3,9 +3,10 @@ const log = createLogger('auth');
 
 export interface AppAuthContext {
   appDid: string;
-  userDid: string;
+  userDid: string;       // empty string for service tokens (no user delegation)
   scopes: string[];
-  attestationId: string;
+  attestationId: string; // empty string for service tokens
+  isServiceToken?: boolean; // true when minted via /auth/api/apps/token/service
 }
 
 export type AppAuthResult = { appAuth: AppAuthContext } | { error: string; status: number };

@@ -5,8 +5,11 @@
  * and expiry locally against the kernel public key — no DB lookup. Optionally
  * enforces that a required scope is present in the token's granted scopes.
  *
+ * Accepts both user-delegated (app+jwt) and keyholder service (app-service+jwt)
+ * tokens. For service tokens, userDid is returned as '' and isServiceToken is true.
+ *
  * Body: { token: string, scope?: string }
- * Returns: { appDid, userDid, scopes, attestationId }  (AppAuthContext shape)
+ * Returns: { appDid, userDid, scopes, attestationId, isServiceToken? }  (AppAuthContext shape)
  *
  * Note: this is the interim transport for the local fast-path. Verification can
  * later move fully in-process in @imajin/auth (jose + published public key) to
@@ -49,9 +52,10 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(
     {
       appDid: payload.azp,
-      userDid: payload.sub,
+      userDid: payload.isServiceToken ? '' : payload.sub,
       scopes,
       attestationId: payload.attestationId,
+      ...(payload.isServiceToken ? { isServiceToken: true } : {}),
     },
     { headers: cors }
   );

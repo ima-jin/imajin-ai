@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { generateId } from '@/src/lib/kernel/id';
 import { db, calendarEntries } from '@/src/db';
@@ -58,12 +58,32 @@ function resolveWindow(window: string): { startsAt: Date; endsAt: Date; expiresA
 
 /**
  * GET /calendar/api/availability — list caller's own live (not-expired) availability intents.
+ *
+ * Auth: session cookie/Bearer (users) OR app-service Bearer with availability:read scope
+ * (broker-agent). App path requires X-Acting-For header to identify the target user.
  */
 export async function GET(request: Request) {
+  // App-auth path: service token (broker-agent acting on behalf of a user)
+  const appAuthResult = await requireAppAuth(request, { scope: 'availability:read' });
+  if ('appAuth' in appAuthResult) {
+    const actingFor = request.headers.get('x-acting-for');
+    if (!actingFor) {
+      return NextResponse.json({ error: 'X-Acting-For header required for app auth' }, { status: 400 });
+    }
+    const notExpired = or(isNull(calendarEntries.expiresAt), gt(calendarEntries.expiresAt, new Date()));
+    const intents = await db
+      .select()
+      .from(calendarEntries)
+      .where(and(eq(calendarEntries.did, actingFor), eq(calendarEntries.type, 'availability'), notExpired))
+      .orderBy(desc(calendarEntries.expiresAt));
+    return NextResponse.json({ intents });
+  }
+
+  // Session auth path: cookie or session Bearer token
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const did = auth.identity.actingAs || auth.identity.id;
+  const did = resolveActingDid(auth.identity);
   const notExpired = or(isNull(calendarEntries.expiresAt), gt(calendarEntries.expiresAt, new Date()));
 
   const intents = await db
@@ -93,10 +113,24 @@ export async function GET(request: Request) {
  *   title          string            — optional display title
  */
 export async function POST(request: Request) {
+  // App-auth path: service token (broker-agent acting on behalf of a user)
+  const appAuthResult = await requireAppAuth(request, { scope: 'availability:write' });
+  if ('appAuth' in appAuthResult) {
+    const actingFor = request.headers.get('x-acting-for');
+    if (!actingFor) {
+      return NextResponse.json({ error: 'X-Acting-For header required for app auth' }, { status: 400 });
+    }
+    return handleAvailabilityPost(request, appAuthResult.appAuth.appDid, actingFor);
+  }
+
+  // Session auth path: cookie or session Bearer token
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const did = auth.identity.actingAs || auth.identity.id;
+  return handleAvailabilityPost(request, auth.identity.id, resolveActingDid(auth.identity));
+}
+
+async function handleAvailabilityPost(request: Request, issuerId: string, did: string) {
 
   let body: Record<string, unknown>;
   try {
@@ -167,10 +201,10 @@ export async function POST(request: Request) {
   // Fire and forget — two events:
   // 1. calendar.entry.created: generic entry lifecycle event.
   // 2. availability.intent.created: match-engine trigger (fires the bilateral match pipeline).
-  publishCalendarEntry('calendar.entry.created', auth.identity.id, did, entry.id, entry.type, log);
+  publishCalendarEntry('calendar.entry.created', issuerId, did, entry.id, entry.type, log);
 
   publish('availability.intent.created', {
-    issuer: auth.identity.id,
+    issuer: issuerId,
     subject: did,
     scope: 'calendar',
     payload: {
