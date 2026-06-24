@@ -15,6 +15,8 @@ export const SCOPES = {
   'messages:write':     'Send messages on your behalf',
   'attestations:read':  'View your attestations and reputation',
   'attestations:write': 'Issue attestations on your behalf',
+  'availability:read':  'View your availability and coordination intents',
+  'availability:write': 'Set and cancel availability intents on your behalf',
 } as const;
 
 export type Scope = keyof typeof SCOPES;
