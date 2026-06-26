@@ -62,6 +62,11 @@ function NewsletterSignup() {
   );
 }
 
+/** Allow same-origin relative paths only — blocks open redirects via absolute or protocol-relative URLs */
+function isSafeNext(url: string | null): url is string {
+  return typeof url === 'string' && url.startsWith('/') && !url.startsWith('//');
+}
+
 type Tab = 'key' | 'password';
 
 interface MfaState {
@@ -89,7 +94,7 @@ function LoginForm() {
         })
         .then(session => {
           if (!session) return;
-          if (nextUrl) {
+          if (isSafeNext(nextUrl)) {
             globalThis.location.href = nextUrl;
           } else if (!session.handle && !session.name) {
             globalThis.location.href = `/profile/edit?did=${encodeURIComponent(session.did)}`;
@@ -102,7 +107,7 @@ function LoginForm() {
   }, [nextUrl]);
 
   async function handleSuccess(did: string) {
-    if (nextUrl) {
+    if (isSafeNext(nextUrl)) {
       globalThis.location.href = nextUrl;
       return;
     }
