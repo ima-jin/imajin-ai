@@ -131,6 +131,32 @@ function buildFairHeaders(
   return headers;
 }
 
+/** Build a minimal HTML error page for Accept-negotiated browser responses */
+function buildErrorHtml(title: string, message: string): string {
+  const esc = (s: string) =>
+    s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${esc(title)}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e0e0e0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .card { max-width: 480px; padding: 2.5rem; border: 1px solid #222; border-radius: 12px; text-align: center; }
+    h1 { font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0 0 0.75rem; }
+    p { color: #999; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>${esc(title)}</h1>
+    <p>${esc(message)}</p>
+  </div>
+</body>
+</html>`;
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/assets/[id] — serve asset file with .fair access control
 // ---------------------------------------------------------------------------
@@ -185,15 +211,29 @@ export async function GET(
   if (accessType !== "public") {
     const authResult = await requireAuth(request);
     if ("error" in authResult) {
+      const wantsHtml = request.headers.get("accept")?.includes("text/html");
+      if (wantsHtml) {
+        const returnTo = request.nextUrl.pathname;
+        return NextResponse.redirect(
+          new URL(`/auth/login?next=${encodeURIComponent(returnTo)}`, request.url)
+        );
+      }
       return NextResponse.json(
-        { error: "Access denied", reason: "Authentication required" },
-        { status: 403 }
+        { error: "Authentication required" },
+        { status: 401, headers: { "WWW-Authenticate": "Bearer" } }
       );
     }
     const requesterDid = resolveActingDid(authResult.identity);
 
     if (accessType === "private") {
       if (requesterDid !== asset.ownerDid) {
+        const wantsHtml = request.headers.get("accept")?.includes("text/html");
+        if (wantsHtml) {
+          return new NextResponse(
+            buildErrorHtml("Private Asset", "This asset is private and only accessible to its owner."),
+            { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } }
+          );
+        }
         return NextResponse.json(
           { error: "Access denied", reason: "Private asset — owner only" },
           { status: 403 }
@@ -205,6 +245,13 @@ export async function GET(
         requesterDid !== asset.ownerDid &&
         !allowedDids.includes(requesterDid)
       ) {
+        const wantsHtml = request.headers.get("accept")?.includes("text/html");
+        if (wantsHtml) {
+          return new NextResponse(
+            buildErrorHtml("Access Restricted", "This asset is only accessible to members of the owner's trust graph."),
+            { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } }
+          );
+        }
         return NextResponse.json(
           { error: "Access denied", reason: "Not in trust graph" },
           { status: 403 }
@@ -234,6 +281,13 @@ export async function GET(
           supportedSchemes: ['mjnx-direct'],
           baseUrl,
         });
+        const wantsHtml = request.headers.get("accept")?.includes("text/html");
+        if (wantsHtml) {
+          return new NextResponse(
+            buildErrorHtml("Payment Required", "This asset requires payment to unlock. Please use a compatible client to complete settlement."),
+            { status: 402, headers: { "Content-Type": "text/html; charset=utf-8" } }
+          );
+        }
         return NextResponse.json(resp.body, { status: 402, headers: resp.headers });
       } catch (err) {
         log.error({ err: String(err), assetId: id, action }, "build402Response failed");
