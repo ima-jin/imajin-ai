@@ -21,6 +21,9 @@ vi.mock('@/src/db', () => ({
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: vi.fn(),
+  resolveActingDid: vi.fn((identity: { actingFor?: string; actingAs?: string; id: string }) =>
+    identity.actingFor ?? identity.actingAs ?? identity.id
+  ),
 }));
 
 vi.mock('@imajin/fair', () => ({

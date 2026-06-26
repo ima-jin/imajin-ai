@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { isFairManifestV1_1 } from "@imajin/fair";
 import type { FairManifestV1_1 } from "@imajin/fair";
@@ -24,7 +24,7 @@ export async function patchGrants(
       { status: authResult.status, headers: cors }
     );
   }
-  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = resolveActingDid(authResult.identity);
 
   // 2. Parse body
   let body: { add?: unknown; remove?: unknown };
