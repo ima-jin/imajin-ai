@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets } from "@/src/db";
-import { requireAuth } from "@imajin/auth";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
 import * as bus from "@imajin/bus";
@@ -26,7 +26,7 @@ export async function patchArticle(
       { status: authResult.status, headers: cors }
     );
   }
-  const requesterDid = authResult.identity.actingAs || authResult.identity.id;
+  const requesterDid = resolveActingDid(authResult.identity);
 
   // 2. Parse body
   let body: {
