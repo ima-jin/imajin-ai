@@ -4,7 +4,7 @@ import { defineConfig } from 'drizzle-kit';
 
 envUtils.loadEnvFileIntoProcessEnv('.env.local');
 export default defineConfig({
-  schema: './src/db/schemas/auth.ts',
+  schema: ['./src/db/schemas/auth.ts', './src/db/schemas/oauth.ts'],
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
