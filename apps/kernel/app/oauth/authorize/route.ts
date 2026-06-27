@@ -65,14 +65,13 @@ export async function GET(request: NextRequest) {
       id: registryApps.id,
       appDid: registryApps.appDid,
       callbackUrl: registryApps.callbackUrl,
-      status: registryApps.status,
       requestedScopes: registryApps.requestedScopes,
     })
     .from(registryApps)
-    .where(eq(registryApps.id, clientId))
+    .where(and(eq(registryApps.id, clientId), eq(registryApps.status, 'active')))
     .limit(1);
 
-  if (!client || client.status !== 'active') {
+  if (!client) {
     return NextResponse.json({ error: 'unauthorized_client', error_description: 'Unknown or inactive client' }, { status: 400 });
   }
 

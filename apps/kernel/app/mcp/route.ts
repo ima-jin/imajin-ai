@@ -53,7 +53,10 @@ export async function POST(request: NextRequest) {
   // verifyAppToken checks signature/issuer/typ but NOT a specific audience —
   // enforce the resource binding here so a token minted for another audience
   // (e.g. 'imajin:apps') cannot be replayed against the MCP surface.
-  if (!payload || !payload.sub || payload.aud !== MCP_RESOURCE) {
+  if (!payload) {
+    return unauthorized();
+  }
+  if (!payload.sub || payload.aud !== MCP_RESOURCE) {
     return unauthorized();
   }
 

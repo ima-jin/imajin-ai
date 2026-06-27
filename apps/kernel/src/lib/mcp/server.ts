@@ -11,11 +11,11 @@ import type { McpToolContext } from './types';
 export const SERVER_INFO = { name: 'imajin-media-mcp', version: '0.1.0' };
 
 // Protocol versions we can speak. Echo the client's if supported, else default.
-const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26'];
+const SUPPORTED_PROTOCOL_VERSIONS = new Set(['2025-06-18', '2025-03-26']);
 export const DEFAULT_PROTOCOL_VERSION = '2025-06-18';
 
 export function negotiateProtocol(requested: unknown): string {
-  return typeof requested === 'string' && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+  return typeof requested === 'string' && SUPPORTED_PROTOCOL_VERSIONS.has(requested)
     ? requested
     : DEFAULT_PROTOCOL_VERSION;
 }

@@ -24,14 +24,16 @@
  *   3. Use the returned access_token as MCP_ACCESS_TOKEN.
  */
 
-const BASE = (process.env.MCP_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
+let BASE = process.env.MCP_BASE_URL || 'http://localhost:3000';
+while (BASE.endsWith('/')) BASE = BASE.slice(0, -1);
 const TOKEN = process.env.MCP_ACCESS_TOKEN || '';
 const PROTOCOL = '2025-06-18';
 
 let failures = 0;
 function check(label, cond, detail) {
   const mark = cond ? '✓' : '✗';
-  console.log(`${mark} ${label}${detail ? ` — ${detail}` : ''}`);
+  const suffix = detail ? ` — ${detail}` : '';
+  console.log(`${mark} ${label}${suffix}`);
   if (!cond) failures += 1;
 }
 
@@ -103,11 +105,14 @@ async function main() {
 }
 
 function done() {
-  console.log(`\n${failures === 0 ? 'PASS' : `FAIL (${failures})`}`);
+  const status = failures === 0 ? 'PASS' : `FAIL (${failures})`;
+  console.log(`\n${status}`);
   process.exit(failures === 0 ? 0 : 1);
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error('smoke harness error:', err);
   process.exit(1);
-});
+}

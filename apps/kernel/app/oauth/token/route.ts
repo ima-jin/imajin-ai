@@ -38,6 +38,12 @@ function tooManyRequests(retryAfter: number) {
   );
 }
 
+/** Read a string field from form data (ignores File values; avoids unsafe toString). */
+function field(form: FormData, name: string): string | undefined {
+  const value = form.get(name);
+  return typeof value === 'string' ? value : undefined;
+}
+
 /** OAuth access token = short-lived app+jwt (sub=user DID, azp=app, aud=MCP resource). */
 function mintAccessToken(opts: { userDid: string; appDid: string; scope: string; attestationId: string }) {
   return createAppToken({
@@ -82,23 +88,23 @@ export async function POST(request: NextRequest) {
     return tokenError('invalid_request', 400, 'expected application/x-www-form-urlencoded');
   }
 
-  const clientId = form.get('client_id')?.toString();
+  const clientId = field(form, 'client_id');
   if (clientId) {
     const clientLimit = rateLimit(`oauth-token:client:${clientId}`, 120, 60_000);
     if (clientLimit.limited) return tooManyRequests(clientLimit.retryAfter);
   }
 
-  const grantType = form.get('grant_type')?.toString();
+  const grantType = field(form, 'grant_type');
   if (grantType === 'authorization_code') return handleAuthorizationCode(form);
   if (grantType === 'refresh_token') return handleRefreshToken(form);
   return tokenError('unsupported_grant_type');
 }
 
 async function handleAuthorizationCode(form: FormData) {
-  const code = form.get('code')?.toString();
-  const clientId = form.get('client_id')?.toString();
-  const redirectUri = form.get('redirect_uri')?.toString();
-  const codeVerifier = form.get('code_verifier')?.toString();
+  const code = field(form, 'code');
+  const clientId = field(form, 'client_id');
+  const redirectUri = field(form, 'redirect_uri');
+  const codeVerifier = field(form, 'code_verifier');
 
   if (!code || !clientId || !redirectUri || !codeVerifier) {
     return tokenError('invalid_request', 400, 'code, client_id, redirect_uri, code_verifier required');
@@ -133,11 +139,11 @@ async function handleAuthorizationCode(form: FormData) {
   }
 
   const [client] = await db
-    .select({ appDid: registryApps.appDid, status: registryApps.status })
+    .select({ appDid: registryApps.appDid })
     .from(registryApps)
-    .where(eq(registryApps.id, record.clientId))
+    .where(and(eq(registryApps.id, record.clientId), eq(registryApps.status, 'active')))
     .limit(1);
-  if (!client || client.status !== 'active') {
+  if (!client) {
     return tokenError('invalid_client', 401, 'client inactive');
   }
 
@@ -166,8 +172,8 @@ async function handleAuthorizationCode(form: FormData) {
 }
 
 async function handleRefreshToken(form: FormData) {
-  const refreshToken = form.get('refresh_token')?.toString();
-  const clientId = form.get('client_id')?.toString();
+  const refreshToken = field(form, 'refresh_token');
+  const clientId = field(form, 'client_id');
   if (!refreshToken || !clientId) {
     return tokenError('invalid_request', 400, 'refresh_token, client_id required');
   }
@@ -175,10 +181,13 @@ async function handleRefreshToken(form: FormData) {
   const [record] = await db
     .select()
     .from(oauthRefreshTokens)
-    .where(eq(oauthRefreshTokens.tokenHash, hashToken(refreshToken)))
+    .where(and(
+      eq(oauthRefreshTokens.tokenHash, hashToken(refreshToken)),
+      eq(oauthRefreshTokens.clientId, clientId),
+    ))
     .limit(1);
 
-  if (!record || record.clientId !== clientId) {
+  if (!record) {
     return tokenError('invalid_grant', 400, 'refresh token invalid');
   }
 
@@ -223,11 +232,11 @@ async function handleRefreshToken(form: FormData) {
   }
 
   const [client] = await db
-    .select({ appDid: registryApps.appDid, status: registryApps.status })
+    .select({ appDid: registryApps.appDid })
     .from(registryApps)
-    .where(eq(registryApps.id, record.clientId))
+    .where(and(eq(registryApps.id, record.clientId), eq(registryApps.status, 'active')))
     .limit(1);
-  if (!client || client.status !== 'active') {
+  if (!client) {
     return tokenError('invalid_client', 401, 'client inactive');
   }
 
