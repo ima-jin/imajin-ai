@@ -66,20 +66,7 @@ import {
   getTranscodingStatus,
   transcodeVideo,
 } from "@/src/lib/media/transcode";
-
-function getAccessType(
-  access: FairManifest["access"]
-): "public" | "private" | "trust-graph" | "conversation" {
-  if (!access) return "private";
-  if (access === "public") return "public";
-  if (access === "private") return "private";
-  return access.type;
-}
-
-function getAllowedDids(access: FairManifest["access"]): string[] {
-  if (!access || typeof access === "string") return [];
-  return access.allowedDids ?? [];
-}
+import { getAccessType, canReadAsset } from "@/src/lib/media/read-access";
 
 function determineAction(request: NextRequest, mimeType: string): FairAction {
   const { searchParams } = new URL(request.url);
@@ -207,7 +194,9 @@ export async function GET(
   // 2b. Compute .fair sidecar headers (used for both full and Range responses)
   const fairHeaders = buildFairHeaders(id, manifest, asset.fairDfosEventId ?? null);
 
-  // 3. Access control
+  // 3. Access control — shared decision (src/lib/media/read-access.ts).
+  //    Behavior is unchanged from the previous inline checks; conversation
+  //    gating remains TODO(#1168) inside canReadAsset.
   if (accessType !== "public") {
     const authResult = await requireAuth(request);
     if ("error" in authResult) {
@@ -224,39 +213,23 @@ export async function GET(
       );
     }
     const requesterDid = resolveActingDid(authResult.identity);
-
-    if (accessType === "private") {
-      if (requesterDid !== asset.ownerDid) {
-        const wantsHtml = request.headers.get("accept")?.includes("text/html");
-        if (wantsHtml) {
-          return new NextResponse(
-            buildErrorHtml("Private Asset", "This asset is private and only accessible to its owner."),
-            { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } }
-          );
-        }
-        return NextResponse.json(
-          { error: "Access denied", reason: "Private asset — owner only" },
-          { status: 403 }
+    const decision = canReadAsset({ ownerDid: asset.ownerDid, access }, requesterDid);
+    if (!decision.allowed) {
+      const wantsHtml = request.headers.get("accept")?.includes("text/html");
+      if (wantsHtml) {
+        const [title, message] =
+          decision.accessType === "trust-graph"
+            ? ["Access Restricted", "This asset is only accessible to members of the owner's trust graph."]
+            : ["Private Asset", "This asset is private and only accessible to its owner."];
+        return new NextResponse(
+          buildErrorHtml(title, message),
+          { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } }
         );
       }
-    } else if (accessType === "trust-graph") {
-      const allowedDids = getAllowedDids(access);
-      if (
-        requesterDid !== asset.ownerDid &&
-        !allowedDids.includes(requesterDid)
-      ) {
-        const wantsHtml = request.headers.get("accept")?.includes("text/html");
-        if (wantsHtml) {
-          return new NextResponse(
-            buildErrorHtml("Access Restricted", "This asset is only accessible to members of the owner's trust graph."),
-            { status: 403, headers: { "Content-Type": "text/html; charset=utf-8" } }
-          );
-        }
-        return NextResponse.json(
-          { error: "Access denied", reason: "Not in trust graph" },
-          { status: 403 }
-        );
-      }
+      return NextResponse.json(
+        { error: "Access denied", reason: decision.reason },
+        { status: 403 }
+      );
     }
   }
 
