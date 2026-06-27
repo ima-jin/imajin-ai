@@ -6,7 +6,7 @@ import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
 import { isFairManifestV1_1 } from "@imajin/fair";
-import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
+import { contentSigner } from "@/src/lib/media/content-signer";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { createLogger } from "@imajin/logger";
 
@@ -160,18 +160,20 @@ export async function PUT(
   let updatedFairManifest = asset.fairManifest as Record<string, unknown> | undefined;
   const rawManifest = asset.fairManifest as Record<string, unknown> | null;
   if (rawManifest && isFairManifestV1_1(rawManifest)) {
-    const signResult = await signFairAsNode(rawManifest as unknown as FairManifestV1_1);
-    if (signResult.ok) {
-      updatedFairManifest = signResult.signed as unknown as Record<string, unknown>;
-      if (asset.fairPath) {
-        await writeFile(asset.fairPath, JSON.stringify(signResult.signed, null, 2)).catch(
-          (err: unknown) =>
-            log.warn({ err: String(err), assetId: id }, "Could not write re-signed .fair to disk (non-fatal)")
-        );
-      }
-    } else {
-      log.warn({ assetId: id, error: signResult.error }, "Could not re-sign .fair after content edit (non-fatal)");
-    }
+    await contentSigner
+      .sign(rawManifest as unknown as FairManifestV1_1)
+      .then(async (signed) => {
+        updatedFairManifest = signed as unknown as Record<string, unknown>;
+        if (asset.fairPath) {
+          await writeFile(asset.fairPath, JSON.stringify(signed, null, 2)).catch(
+            (err: unknown) =>
+              log.warn({ err: String(err), assetId: id }, "Could not write re-signed .fair to disk (non-fatal)")
+          );
+        }
+      })
+      .catch((err: unknown) =>
+        log.warn({ err: String(err), assetId: id }, "Could not re-sign .fair after content edit (non-fatal)")
+      );
   }
 
   await db
