@@ -373,6 +373,9 @@ importers:
       '@imajin/vault-core':
         specifier: workspace:*
         version: link:../../packages/vault-core
+      '@lore-vcs/sdk':
+        specifier: ^0.8.3
+        version: 0.8.3
       '@metalabel/dfos-protocol':
         specifier: ^0.10.0
         version: 0.10.0
@@ -430,6 +433,9 @@ importers:
       otplib:
         specifier: ^13.4.0
         version: 13.4.0
+      p-queue:
+        specifier: ^8.0.1
+        version: 8.1.1
       postgres:
         specifier: ^3.4.5
         version: 3.4.9
@@ -2376,6 +2382,29 @@ packages:
 
   '@lezer/yaml@1.0.4':
     resolution: {integrity: sha512-2lrrHqxalACEbxIbsjhqGpSW8kWpUKuY6RHgnSAFZa6qK62wvnPxA8hGOwOoDbwHcOFs5M4o27mjGu+P7TvBmw==}
+
+  '@lore-vcs/sdk-amd64-unknown-linux@0.8.3':
+    resolution: {integrity: sha512-d9wg7amvV1idJEa9T9a+he2QDzMNgfb9giUH6JgXnVeMs/LQt0l4/Jcmf1HTT4BSyGXHcu4BaGzUxOnfUov07A==}
+    cpu: [x64]
+    os: [linux]
+
+  '@lore-vcs/sdk-amd64-unknown-windows@0.8.3':
+    resolution: {integrity: sha512-E+puPEJVtYaGWl9bbxVTOXR6KWLl70gu7TvbYYJltl0EAZ3LRRrim/w0UEuaR5OK3wPON3bSN0Rl4LfjFzs/+Q==}
+    cpu: [x64]
+    os: [win32]
+
+  '@lore-vcs/sdk-arm64-apple-darwin@0.8.3':
+    resolution: {integrity: sha512-uAQCi/GPYWkUnu8vpUoG31W8nIV66AYQjwEdjo/wHpJ9ib6rhqQvICKqJh2+aKFqUqm3uDYfXhw7wc4mAfCK2w==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@lore-vcs/sdk-arm64-graviton-linux@0.8.3':
+    resolution: {integrity: sha512-Mg0URCMimZN0mgAYBUCU0rwMJrH6FBDAg5dxg9zRS6lEFz1WsDL4zmNBRB3oW2tzB7qnx/r8qMLTJMpiosNV/g==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@lore-vcs/sdk@0.8.3':
+    resolution: {integrity: sha512-O9kNsHZzseA98c4bjbKHXYmnXj9Wiu3enfrnI9wC4DZGWNo/JG2lzN0yabI5LOKARZxKeGb1pKZs3hDWx7DOXA==}
 
   '@marijn/find-cluster-break@1.0.2':
     resolution: {integrity: sha512-l0h88YhZFyKdXIFNfSWpyjStDjGHwZ/U7iobcK1cQQD8sejsONdQtTVU+1wVN1PBw40PiiHB1vA5S7VTfQiP9g==}
@@ -5078,6 +5107,9 @@ packages:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
 
+  koffi@2.16.2:
+    resolution: {integrity: sha512-owU0MRwv6xkrVqCd+33uw6BaYppkTRXbO/rVdJNI2dvZG0gzyRhYwW25eWtc5pauwK8TGh3AbkFONSezdykfSA==}
+
   language-subtag-registry@0.3.23:
     resolution: {integrity: sha512-0K65Lea881pHotoGEa5gDlMxt3pctLi2RplBb7Ezh4rRdLEOtgi7n4EwK9lamnUCkKBqaeKRVebTq6BAxSkpXQ==}
 
@@ -5577,6 +5609,14 @@ packages:
   p-locate@5.0.0:
     resolution: {integrity: sha512-LaNjtRWUBY++zB5nE/NwcaoMylSPk+S+ZHNB1TzdbMJMny6dynpAGt7X/tl/QYq3TIeE6nxHppbo2LGymrG5Pw==}
     engines: {node: '>=10'}
+
+  p-queue@8.1.1:
+    resolution: {integrity: sha512-aNZ+VfjobsWryoiPnEApGGmf5WmNsCo9xu8dfaYamG5qaLP7ClhLN6NgsFe6SwJ2UbLEBK5dv9x8Mn5+RVhMWQ==}
+    engines: {node: '>=18'}
+
+  p-timeout@6.1.4:
+    resolution: {integrity: sha512-MyIV3ZA/PmyBN/ud8vV9XzwTrNtR4jFrObymZYnZqMmW0zA8Z17vnT0rBgFE/TlohB+YCHqXMgZzb3Csp49vqg==}
+    engines: {node: '>=14.16'}
 
   p-try@2.2.0:
     resolution: {integrity: sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==}
@@ -8179,6 +8219,27 @@ snapshots:
       '@lezer/common': 1.5.2
       '@lezer/highlight': 1.2.3
       '@lezer/lr': 1.4.8
+
+  '@lore-vcs/sdk-amd64-unknown-linux@0.8.3':
+    optional: true
+
+  '@lore-vcs/sdk-amd64-unknown-windows@0.8.3':
+    optional: true
+
+  '@lore-vcs/sdk-arm64-apple-darwin@0.8.3':
+    optional: true
+
+  '@lore-vcs/sdk-arm64-graviton-linux@0.8.3':
+    optional: true
+
+  '@lore-vcs/sdk@0.8.3':
+    dependencies:
+      koffi: 2.16.2
+    optionalDependencies:
+      '@lore-vcs/sdk-amd64-unknown-linux': 0.8.3
+      '@lore-vcs/sdk-amd64-unknown-windows': 0.8.3
+      '@lore-vcs/sdk-arm64-apple-darwin': 0.8.3
+      '@lore-vcs/sdk-arm64-graviton-linux': 0.8.3
 
   '@marijn/find-cluster-break@1.0.2': {}
 
@@ -11152,6 +11213,8 @@ snapshots:
 
   kleur@4.1.5: {}
 
+  koffi@2.16.2: {}
+
   language-subtag-registry@0.3.23: {}
 
   language-tags@1.0.9:
@@ -11957,6 +12020,13 @@ snapshots:
   p-locate@5.0.0:
     dependencies:
       p-limit: 3.1.0
+
+  p-queue@8.1.1:
+    dependencies:
+      eventemitter3: 5.0.4
+      p-timeout: 6.1.4
+
+  p-timeout@6.1.4: {}
 
   p-try@2.2.0: {}
 

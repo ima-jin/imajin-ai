@@ -12,6 +12,7 @@ import { rateLimit, getClientIP } from "@imajin/config";
 import { createLogger } from "@imajin/logger";
 import { getDefaultManifest, signManifest, canonicalize } from "@imajin/fair";
 import { publishContentEvent } from "@imajin/dfos";
+import { blobStore } from "@/src/lib/media/blob-store-lore";
 
 const log = createLogger("kernel");
 
@@ -255,6 +256,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Register in Lore blob store (non-fatal — asset is still served from storagePath if this fails)
+  const blobRef = await blobStore
+    .put(ownerDid, storagePath, { assetId, sizeBytes: file.size })
+    .catch((err: unknown) => {
+      log.error({ err: String(err), assetId }, "Lore blob store put failed (non-fatal)");
+      return null;
+    });
+
   // Insert DB record
   let record;
   try {
@@ -271,6 +280,7 @@ export async function POST(request: NextRequest) {
         hash,
         fairManifest: signedManifest,
         fairPath,
+        loreRef: blobRef?.loreRef ?? null,
         status: "active",
         metadata: context ? { context } : {},
       })

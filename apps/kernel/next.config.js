@@ -36,7 +36,11 @@ const nextConfig = {
     ],
   },
   experimental: {
-    serverComponentsExternalPackages: ['@metalabel/dfos-protocol'],
+    serverComponentsExternalPackages: [
+      '@metalabel/dfos-protocol',
+      '@lore-vcs/sdk',
+      'koffi',
+    ],
     serverActions: { bodySizeLimit: '2gb' },
   },
   webpack: (config, { isServer }) => {

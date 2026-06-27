@@ -28,6 +28,11 @@ export const assets = mediaSchema.table(
     fairManifest: jsonb("fair_manifest").default({}),          // inline .fair JSON
     fairPath: text("fair_path"),                               // path to .fair.json file
 
+    // Lore storage pointer (#1154 — Layer B blob store)
+    // 64-char SHA-256 hex revision hash from @lore-vcs/sdk REVISION_COMMIT_REVISION event.
+    // NULL for assets uploaded before Lore integration. Distinct from the DFOS CID (#1122).
+    loreRef: text("lore_ref"),
+
     // DFOS federation anchor
     fairDfosEventId: text("fair_dfos_event_id"),               // DFOS event ID for signed manifest anchor
 
