@@ -170,3 +170,76 @@ export type NewAccessLog = typeof accessLog.$inferInsert;
 
 export type AssetReference = typeof assetReferences.$inferSelect;
 export type NewAssetReference = typeof assetReferences.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Workspace manifest tables (#1123 — Layer 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * A workspace snapshot is a content-addressed manifest recording the current
+ * state (CID) of every active asset in a DID's workspace at a point in time.
+ * The snapshot itself has a manifestCid so it is immutable and verifiable.
+ */
+export const workspaceSnapshots = mediaSchema.table(
+  "workspace_snapshots",
+  {
+    id: text("id").primaryKey(),                                  // snap_xxx
+    ownerDid: text("owner_did").notNull(),
+    branchName: text("branch_name").notNull().default("main"),
+    manifestCid: text("manifest_cid").notNull(),                   // CIDv1 of the manifest document
+    manifest: jsonb("manifest").notNull(),                         // { version, owner, branch, assets, ... }
+    parentSnapshotId: text("parent_snapshot_id"),                  // prior snapshot in this branch
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    ownerIdx: index("idx_workspace_snapshots_owner").on(table.ownerDid),
+    branchIdx: index("idx_workspace_snapshots_branch").on(table.ownerDid, table.branchName),
+  })
+);
+
+export type WorkspaceSnapshot = typeof workspaceSnapshots.$inferSelect;
+export type NewWorkspaceSnapshot = typeof workspaceSnapshots.$inferInsert;
+
+/** Per-DID named branch — a mutable pointer to the HEAD snapshot. */
+export const workspaceBranches = mediaSchema.table(
+  "workspace_branches",
+  {
+    id: text("id").primaryKey(),                                   // wbranch_xxx
+    ownerDid: text("owner_did").notNull(),
+    branchName: text("branch_name").notNull(),
+    headSnapshotId: text("head_snapshot_id"),                      // null = empty branch
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    ownerIdx: index("idx_workspace_branches_owner").on(table.ownerDid),
+    uniq: unique("uq_workspace_branch").on(table.ownerDid, table.branchName),
+  })
+);
+
+export type WorkspaceBranch = typeof workspaceBranches.$inferSelect;
+export type NewWorkspaceBranch = typeof workspaceBranches.$inferInsert;
+
+/**
+ * Workspace-wide history grants.
+ * granteeDid can view revision history for ALL assets owned by ownerDid.
+ * scope 'broad' = workspace-wide (per #1123 spec).
+ * Per-asset overrides in hasHistoryAccess still take precedence.
+ */
+export const workspaceHistoryGrants = mediaSchema.table(
+  "workspace_history_grants",
+  {
+    id: text("id").primaryKey(),
+    ownerDid: text("owner_did").notNull(),
+    granteeDid: text("grantee_did").notNull(),
+    scope: text("scope").notNull().default("broad"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    ownerIdx: index("idx_workspace_history_grants_owner").on(table.ownerDid),
+    uniq: unique("uq_workspace_history_grant").on(table.ownerDid, table.granteeDid),
+  })
+);
+
+export type WorkspaceHistoryGrant = typeof workspaceHistoryGrants.$inferSelect;
+export type NewWorkspaceHistoryGrant = typeof workspaceHistoryGrants.$inferInsert;

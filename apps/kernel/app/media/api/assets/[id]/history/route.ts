@@ -48,7 +48,7 @@ export async function GET(
   }
 
   // 3. History access policy
-  if (!hasHistoryAccess(callerDid, asset.ownerDid)) {
+  if (!await hasHistoryAccess(callerDid, asset.ownerDid)) {
     return NextResponse.json(
       {
         error: "History access not granted",
