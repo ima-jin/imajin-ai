@@ -5,7 +5,6 @@ import type {
   StoredOperation,
   StoredIdentityChain,
   StoredContentChain,
-  StoredBeacon,
   BlobKey,
   LogEntry,
   OperationKind,
@@ -17,7 +16,6 @@ import {
   relayOperations,
   relayIdentityChains,
   relayContentChains,
-  relayBeacons,
   relayBlobs,
   relayCountersignatures,
   relayOperationLog,
@@ -132,41 +130,6 @@ export class PostgresRelayStore implements RelayStore {
           log: chain.log,
           state: chain.state,
           lastCreatedAt: chain.lastCreatedAt ? new Date(chain.lastCreatedAt) : null,
-          updatedAt: new Date(),
-        },
-      });
-  }
-
-  async getBeacon(did: string): Promise<StoredBeacon | undefined> {
-    const rows = await this.db
-      .select()
-      .from(relayBeacons)
-      .where(eq(relayBeacons.did, did));
-    const row = rows[0];
-    if (!row) return undefined;
-    return {
-      did: row.did,
-      jwsToken: row.jwsToken,
-      beaconCID: row.beaconCid,
-      state: row.state as StoredBeacon['state'],
-    };
-  }
-
-  async putBeacon(beacon: StoredBeacon): Promise<void> {
-    await this.db
-      .insert(relayBeacons)
-      .values({
-        did: beacon.did,
-        jwsToken: beacon.jwsToken,
-        beaconCid: beacon.beaconCID,
-        state: beacon.state,
-      })
-      .onConflictDoUpdate({
-        target: relayBeacons.did,
-        set: {
-          jwsToken: beacon.jwsToken,
-          beaconCid: beacon.beaconCID,
-          state: beacon.state,
           updatedAt: new Date(),
         },
       });

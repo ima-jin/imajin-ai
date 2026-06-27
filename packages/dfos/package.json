@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@imajin/auth": "workspace:*",
-    "@metalabel/dfos-protocol": "^0.10.0",
+    "@metalabel/dfos-protocol": "^0.13.5",
     "@noble/curves": "^1.8.1"
   },
   "devDependencies": {

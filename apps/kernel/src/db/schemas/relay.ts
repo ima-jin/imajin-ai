@@ -34,6 +34,14 @@ export const relayContentChains = relaySchema.table('relay_content_chains', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
+/**
+ * @deprecated Beacon + manifest primitive was removed in DFOS protocol
+ * 0.13.x (metalabel/dfos#78); identity discovery is now `services`
+ * (metalabel/dfos#77). No code references this table anymore — the
+ * PostgresRelayStore beacon methods were dropped in #1159. The table is
+ * retained (not dropped) to avoid a destructive migration on existing
+ * relay data; it is simply unused going forward.
+ */
 export const relayBeacons = relaySchema.table('relay_beacons', {
   did: text('did').primaryKey(),
   jwsToken: text('jws_token').notNull(),

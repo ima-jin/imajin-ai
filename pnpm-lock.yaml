@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@metalabel/dfos-protocol':
-        specifier: ^0.10.0
-        version: 0.10.0
+        specifier: ^0.13.5
+        version: 0.13.5
       '@noble/ed25519':
         specifier: ^2.3.0
         version: 2.3.0
@@ -377,11 +377,11 @@ importers:
         specifier: ^0.8.3
         version: 0.8.3
       '@metalabel/dfos-protocol':
-        specifier: ^0.10.0
-        version: 0.10.0
+        specifier: ^0.13.5
+        version: 0.13.5
       '@metalabel/dfos-web-relay':
-        specifier: ^0.10.0
-        version: 0.10.0(@metalabel/dfos-protocol@0.10.0)
+        specifier: ^0.13.5
+        version: 0.13.5(@metalabel/dfos-protocol@0.13.5)
       '@noble/ciphers':
         specifier: ^1.2.1
         version: 1.3.0
@@ -872,8 +872,8 @@ importers:
         specifier: workspace:*
         version: link:../auth
       '@metalabel/dfos-protocol':
-        specifier: ^0.10.0
-        version: 0.10.0
+        specifier: ^0.13.5
+        version: 0.13.5
       '@noble/curves':
         specifier: ^1.8.1
         version: 1.9.7
@@ -2423,13 +2423,13 @@ packages:
       react: '>= 18 || >= 19'
       react-dom: '>= 18 || >= 19'
 
-  '@metalabel/dfos-protocol@0.10.0':
-    resolution: {integrity: sha512-xKl/igsS2uYfCkQP3UXraMWLYT3P+unkkUj4VS8uf9CJGqT9x2PXD5L/QBRlltMN2W+WIYyCF/jlA6mFk9W2fw==}
+  '@metalabel/dfos-protocol@0.13.5':
+    resolution: {integrity: sha512-IDNom26XS3kRlM6KoRanm7dqWXJzpBoU9kdtWa8bwxtJ3u89bh9sbQFZQCLvGZT/avfOoCafS3h+ReR2Un+9RQ==}
 
-  '@metalabel/dfos-web-relay@0.10.0':
-    resolution: {integrity: sha512-2IMZ58138lXP+vofkMimPscHdYLR2iCVIY89wTIQuUfNS/PbgUFU+Si/rWhQ6JBXiIjtEdLKgAgpQ1r+xpSiOw==}
+  '@metalabel/dfos-web-relay@0.13.5':
+    resolution: {integrity: sha512-Kszk93uNBFbYe7NX41UInFTIoCz1nOYB8Shd6SRBFJjBnVh29xpL3n1TlMMi4BcGFlNeHCzdn9AWTBXT4kKB+w==}
     peerDependencies:
-      '@metalabel/dfos-protocol': ^0.10.0
+      '@metalabel/dfos-protocol': ^0.13.5
 
   '@napi-rs/wasm-runtime@0.2.12':
     resolution: {integrity: sha512-ZVWUcfwY4E/yPitQJl481FjFo3K22D6qF0DuFH6Y/nbnE11GY5uguDxZMGXPQ8WQ0128MXQD7TnfHyK4oWoIJQ==}
@@ -8316,7 +8316,7 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@metalabel/dfos-protocol@0.10.0':
+  '@metalabel/dfos-protocol@0.13.5':
     dependencies:
       '@ipld/dag-cbor': 10.0.1
       '@noble/curves': 2.2.0
@@ -8324,9 +8324,9 @@ snapshots:
       multiformats: 14.0.0
       zod: 4.4.3
 
-  '@metalabel/dfos-web-relay@0.10.0(@metalabel/dfos-protocol@0.10.0)':
+  '@metalabel/dfos-web-relay@0.13.5(@metalabel/dfos-protocol@0.13.5)':
     dependencies:
-      '@metalabel/dfos-protocol': 0.10.0
+      '@metalabel/dfos-protocol': 0.13.5
       hono: 4.12.25
       zod: 4.4.3
 
