@@ -28,6 +28,12 @@ export const assets = mediaSchema.table(
     fairManifest: jsonb("fair_manifest").default({}),          // inline .fair JSON
     fairPath: text("fair_path"),                               // path to .fair.json file
 
+    // Content-addressed identity (#1122 — Layer A)
+    // CIDv1 dag-cbor+sha256 (base32lower, e.g. bafyrei...) computed over the raw file bytes.
+    // NULL for assets uploaded before Bundle 2. The DFOS CID is the content identity;
+    // loreRef is the Lore-internal storage pointer — they are parallel, independent columns.
+    cid: text("cid"),
+
     // Lore storage pointer (#1154 — Layer B blob store)
     // 64-char SHA-256 hex revision hash from @lore-vcs/sdk REVISION_COMMIT_REVISION event.
     // NULL for assets uploaded before Lore integration. Distinct from the DFOS CID (#1122).

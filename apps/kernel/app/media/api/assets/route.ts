@@ -12,6 +12,7 @@ import { rateLimit, getClientIP } from "@imajin/config";
 import { createLogger } from "@imajin/logger";
 import { getDefaultManifest, signManifest, canonicalize } from "@imajin/fair";
 import { publishContentEvent } from "@imajin/dfos";
+import { computeCid } from "@imajin/cid";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
 
 const log = createLogger("kernel");
@@ -177,26 +178,54 @@ export async function POST(request: NextRequest) {
   // SHA-256 hash
   const hash = createHash("sha256").update(buffer).digest("hex");
 
-  // Dedup: if this exact file (same hash + same owner) already exists, return the existing asset
-  const [existing] = await db
+  // CID (content-addressed identity, #1122 Layer A)
+  // Computed over raw file bytes; distinct from the Lore revision hash (loreRef).
+  const cid = await computeCid(new Uint8Array(buffer));
+
+  // ── Dedup: CID-first global check, then hash+owner fallback ───────────────
+  //
+  // 1. CID-based global dedup: same content bytes = same CID regardless of owner.
+  //    If found, return the existing asset. If the match is from a different DID,
+  //    log a provenance attribution link (epic decision #5 — default-on, silent,
+  //    no opt-out in v1). Storage-level dedup is automatic via Lore's chunk store.
+  const [existingByCid] = await db
     .select()
     .from(assets)
-    .where(and(eq(assets.hash, hash), eq(assets.ownerDid, ownerDid), eq(assets.status, "active")))
+    .where(and(eq(assets.cid, cid), eq(assets.status, "active")))
     .limit(1);
 
-  if (existing) {
+  if (existingByCid) {
+    if (existingByCid.ownerDid !== ownerDid) {
+      // Cross-DID dedup: silently link provenance to the original creator.
+      // Storage is shared (Lore dedup); access remains strictly per-DID.
+      log.info(
+        { cid, originalOwner: existingByCid.ownerDid, newUploader: ownerDid, assetId: existingByCid.id },
+        "Cross-DID dedup: provenance attributed to original creator (#1122 §2 — default-on, no opt-out in v1)"
+      );
+    }
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
-    const url = `${baseUrl}/media/api/assets/${existing.id}`;
+    const url = `${baseUrl}/media/api/assets/${existingByCid.id}`;
     return NextResponse.json(
-      {
-        id: existing.id,
-        url,
-        filename: existing.filename,
-        mimeType: existing.mimeType,
-        size: existing.size,
-        hash: existing.hash,
-        deduplicated: true,
-      },
+      { id: existingByCid.id, url, filename: existingByCid.filename, mimeType: existingByCid.mimeType,
+        size: existingByCid.size, hash: existingByCid.hash, cid: existingByCid.cid, deduplicated: true },
+      { status: 200, headers: cors }
+    );
+  }
+
+  // 2. Backward-compat: hash + owner dedup for assets without a CID
+  //    (uploaded before Bundle 2 where cid column was added).
+  const [existingByHash] = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.hash, hash), eq(assets.ownerDid, ownerDid), eq(assets.status, "active"), sql`${assets.cid} IS NULL`))
+    .limit(1);
+
+  if (existingByHash) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
+    const url = `${baseUrl}/media/api/assets/${existingByHash.id}`;
+    return NextResponse.json(
+      { id: existingByHash.id, url, filename: existingByHash.filename, mimeType: existingByHash.mimeType,
+        size: existingByHash.size, hash: existingByHash.hash, deduplicated: true },
       { status: 200, headers: cors }
     );
   }
@@ -280,6 +309,7 @@ export async function POST(request: NextRequest) {
         hash,
         fairManifest: signedManifest,
         fairPath,
+        cid,
         loreRef: blobRef?.loreRef ?? null,
         status: "active",
         metadata: context ? { context } : {},
