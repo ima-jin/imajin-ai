@@ -6,6 +6,7 @@ import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
 import { isFairManifestV1_1 } from "@imajin/fair";
+import { computeCid } from "@imajin/cid";
 import { contentSigner } from "@/src/lib/media/content-signer";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { createLogger } from "@imajin/logger";
@@ -147,12 +148,19 @@ export async function PUT(
   const hash = createHash("sha256").update(content).digest("hex");
   const size = Buffer.byteLength(content, "utf-8");
 
-  // Register updated content in Lore blob store (non-fatal)
-  await blobStore
+  // New CID for this version of the content (#1122 Bundle 3 — new CID per edit).
+  // The alias (asset_xxx) stays the same; the CID tracks the current content state.
+  const cid = await computeCid(new Uint8Array(Buffer.from(content, "utf-8")));
+
+  // Register new revision in Lore and capture the revision hash (non-fatal).
+  // loreRef now points to the Lore revision for THIS version of the content;
+  // prior versions are soft-superseded (chunks retained in Lore's immutable store).
+  const blobRef = await blobStore
     .put(asset.ownerDid, asset.storagePath, { assetId: id, sizeBytes: size })
-    .catch((err: unknown) =>
-      log.error({ err: String(err), assetId: id }, "Lore put after content edit failed (non-fatal)")
-    );
+    .catch((err: unknown) => {
+      log.error({ err: String(err), assetId: id }, "Lore put after content edit failed (non-fatal)");
+      return null;
+    });
 
   // Re-sign .fair manifest so the signature covers the current content state.
   // Non-fatal: if signing fails the content is still saved; the manifest will
@@ -178,7 +186,14 @@ export async function PUT(
 
   await db
     .update(assets)
-    .set({ hash, size, fairManifest: updatedFairManifest ?? asset.fairManifest, updatedAt: new Date() })
+    .set({
+      hash,
+      size,
+      cid,
+      loreRef: blobRef?.loreRef ?? asset.loreRef,  // keep prior ref if Lore put failed
+      fairManifest: updatedFairManifest ?? asset.fairManifest,
+      updatedAt: new Date(),
+    })
     .where(eq(assets.id, id));
 
   return NextResponse.json({ ok: true });
