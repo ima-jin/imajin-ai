@@ -5,6 +5,7 @@ import { db, registryApps, attestations, oauthAuthorizationCodes } from '@/src/d
 import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import { createLogger } from '@imajin/logger';
+import { rateLimit, getClientIP } from '@imajin/config';
 import {
   MCP_RESOURCE,
   AUTHORIZATION_CODE_TTL_MS,
@@ -34,6 +35,13 @@ function errorRedirect(redirectUri: string, state: string | null, error: string,
  * the client with ?code&state.
  */
 export async function GET(request: NextRequest) {
+  // Rate-limit this public endpoint (per-IP now; per-client once client_id known).
+  const ip = getClientIP(request);
+  const ipLimit = rateLimit(`oauth-authorize:ip:${ip}`, 60, 60_000);
+  if (ipLimit.limited) {
+    return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfter) } });
+  }
+
   const { searchParams } = new URL(request.url);
   const responseType = searchParams.get('response_type');
   const clientId = searchParams.get('client_id');
@@ -47,6 +55,10 @@ export async function GET(request: NextRequest) {
   // 1. Resolve + validate the pre-registered client BEFORE trusting redirect_uri.
   if (!clientId) {
     return NextResponse.json({ error: 'invalid_request', error_description: 'client_id required' }, { status: 400 });
+  }
+  const clientLimit = rateLimit(`oauth-authorize:client:${clientId}`, 120, 60_000);
+  if (clientLimit.limited) {
+    return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': String(clientLimit.retryAfter) } });
   }
   const [client] = await db
     .select({

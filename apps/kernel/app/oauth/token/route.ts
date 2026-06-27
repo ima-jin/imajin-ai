@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { db, registryApps, attestations, oauthAuthorizationCodes, oauthRefreshTokens } from '@/src/db';
 import { createAppToken } from '@/src/lib/auth/jwt';
 import { createLogger } from '@imajin/logger';
+import { rateLimit, getClientIP } from '@imajin/config';
 import {
   MCP_RESOURCE,
   ACCESS_TOKEN_TTL_SECONDS,
@@ -28,6 +29,13 @@ function tokenError(error: string, status = 400, description?: string) {
 
 function tokenResponse(body: Record<string, unknown>) {
   return NextResponse.json(body, { headers: NO_STORE });
+}
+
+function tooManyRequests(retryAfter: number) {
+  return NextResponse.json(
+    { error: 'slow_down', error_description: 'rate limit exceeded' },
+    { status: 429, headers: { ...NO_STORE, 'Retry-After': String(retryAfter) } },
+  );
 }
 
 /** OAuth access token = short-lived app+jwt (sub=user DID, azp=app, aud=MCP resource). */
@@ -62,11 +70,22 @@ async function issueRefreshToken(opts: { clientId: string; userDid: string; scop
  * No client authentication / PoP — PKCE binds the code to the requester.
  */
 export async function POST(request: NextRequest) {
+  // Rate-limit this public, unauthenticated endpoint: per-IP, then per-client_id.
+  const ip = getClientIP(request);
+  const ipLimit = rateLimit(`oauth-token:ip:${ip}`, 60, 60_000);
+  if (ipLimit.limited) return tooManyRequests(ipLimit.retryAfter);
+
   let form: FormData;
   try {
     form = await request.formData();
   } catch {
     return tokenError('invalid_request', 400, 'expected application/x-www-form-urlencoded');
+  }
+
+  const clientId = form.get('client_id')?.toString();
+  if (clientId) {
+    const clientLimit = rateLimit(`oauth-token:client:${clientId}`, 120, 60_000);
+    if (clientLimit.limited) return tooManyRequests(clientLimit.retryAfter);
   }
 
   const grantType = form.get('grant_type')?.toString();
@@ -85,17 +104,24 @@ async function handleAuthorizationCode(form: FormData) {
     return tokenError('invalid_request', 400, 'code, client_id, redirect_uri, code_verifier required');
   }
 
+  // Atomic single-use consume: mark used ONLY if currently unused, returning the
+  // row. A concurrent replay loses the race → no row → invalid_grant. All checks
+  // run against the consumed row; a failed check still burns the code (correct for
+  // single-use — there is no window between read and mark-used).
   const [record] = await db
-    .select()
-    .from(oauthAuthorizationCodes)
-    .where(eq(oauthAuthorizationCodes.codeHash, hashToken(code)))
-    .limit(1);
+    .update(oauthAuthorizationCodes)
+    .set({ usedAt: new Date() })
+    .where(and(
+      eq(oauthAuthorizationCodes.codeHash, hashToken(code)),
+      isNull(oauthAuthorizationCodes.usedAt),
+    ))
+    .returning();
 
-  // Single-use + expiry + binding checks.
-  // TODO: wrap consume-and-mint in a transaction (or DELETE…RETURNING) so a
-  //       concurrent replay can't ride the window between SELECT and UPDATE.
-  if (!record || record.usedAt || record.expiresAt.getTime() < Date.now()) {
-    return tokenError('invalid_grant', 400, 'code invalid or expired');
+  if (!record) {
+    return tokenError('invalid_grant', 400, 'code invalid or already used');
+  }
+  if (record.expiresAt.getTime() < Date.now()) {
+    return tokenError('invalid_grant', 400, 'code expired');
   }
   if (record.clientId !== clientId || record.redirectUri !== redirectUri) {
     return tokenError('invalid_grant', 400, 'client_id / redirect_uri mismatch');
@@ -105,8 +131,6 @@ async function handleAuthorizationCode(form: FormData) {
   if (!safeEqual(pkceChallengeFromVerifier(codeVerifier), record.codeChallenge)) {
     return tokenError('invalid_grant', 400, 'PKCE verification failed');
   }
-
-  await db.update(oauthAuthorizationCodes).set({ usedAt: new Date() }).where(eq(oauthAuthorizationCodes.id, record.id));
 
   const [client] = await db
     .select({ appDid: registryApps.appDid, status: registryApps.status })
@@ -154,10 +178,38 @@ async function handleRefreshToken(form: FormData) {
     .where(eq(oauthRefreshTokens.tokenHash, hashToken(refreshToken)))
     .limit(1);
 
-  if (!record || record.revokedAt || record.expiresAt.getTime() < Date.now() || record.clientId !== clientId) {
-    // TODO: if a REVOKED token is presented, treat as reuse → revoke the whole
-    //       rotation chain (record.rotatedTo …) and the grant.
+  if (!record || record.clientId !== clientId) {
     return tokenError('invalid_grant', 400, 'refresh token invalid');
+  }
+
+  // Reuse detection (OAuth 2.1 §6.1): an ALREADY-revoked token presented again is
+  // a rotated-out token being replayed — the stolen-token signal. Kill the whole
+  // grant. Every token in the rotation lineage shares this attestationId, so
+  // revoking by attestationId revokes the entire chain in one statement (more
+  // robust than walking rotatedTo, which could miss a token if a link broke), and
+  // revoking the attestation blocks any further mint via this grant.
+  if (record.revokedAt) {
+    const revokedAt = new Date();
+    await db
+      .update(oauthRefreshTokens)
+      .set({ revokedAt })
+      .where(and(
+        eq(oauthRefreshTokens.attestationId, record.attestationId),
+        isNull(oauthRefreshTokens.revokedAt),
+      ));
+    await db
+      .update(attestations)
+      .set({ revokedAt })
+      .where(and(eq(attestations.id, record.attestationId), isNull(attestations.revokedAt)));
+    log.warn(
+      { clientId: record.clientId, userDid: record.userDid, attestationId: record.attestationId },
+      'oauth: refresh token reuse detected — grant revoked',
+    );
+    return tokenError('invalid_grant', 400, 'refresh token reuse detected; authorization revoked');
+  }
+
+  if (record.expiresAt.getTime() < Date.now()) {
+    return tokenError('invalid_grant', 400, 'refresh token expired');
   }
 
   // Instant-revoke story: deny if the backing app.authorized attestation was revoked.
@@ -179,7 +231,18 @@ async function handleRefreshToken(form: FormData) {
     return tokenError('invalid_client', 401, 'client inactive');
   }
 
-  // Rotate: issue successor, then revoke the presented token and chain to it.
+  // Atomic rotation: consume the presented token only if still active. Losing the
+  // race (concurrent rotation) yields 0 rows → deny, so a token can't rotate twice.
+  const consumed = await db
+    .update(oauthRefreshTokens)
+    .set({ revokedAt: new Date(), lastUsedAt: new Date() })
+    .where(and(eq(oauthRefreshTokens.id, record.id), isNull(oauthRefreshTokens.revokedAt)))
+    .returning({ id: oauthRefreshTokens.id });
+  if (consumed.length === 0) {
+    return tokenError('invalid_grant', 400, 'refresh token already used');
+  }
+
+  // Issue successor, then link the rotation chain (rotatedTo powers reuse audit).
   const successor = await issueRefreshToken({
     clientId: record.clientId,
     userDid: record.userDid,
@@ -188,7 +251,7 @@ async function handleRefreshToken(form: FormData) {
   });
   await db
     .update(oauthRefreshTokens)
-    .set({ revokedAt: new Date(), rotatedTo: successor.id, lastUsedAt: new Date() })
+    .set({ rotatedTo: successor.id })
     .where(eq(oauthRefreshTokens.id, record.id));
 
   const accessToken = await mintAccessToken({
