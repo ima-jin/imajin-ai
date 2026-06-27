@@ -174,6 +174,11 @@ export async function PUT(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Immutability guard
+  if (asset.immutable) {
+    return NextResponse.json({ error: "Immutable asset — manifest cannot be modified" }, { status: 403 });
+  }
+
   let manifest: FairManifest;
   try {
     manifest = await request.json();

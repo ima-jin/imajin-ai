@@ -1,10 +1,13 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
-import type { FairManifest } from "@imajin/fair";
+import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
+import { isFairManifestV1_1 } from "@imajin/fair";
+import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
+import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { createLogger } from "@imajin/logger";
 
 const log = createLogger("kernel");
@@ -126,6 +129,14 @@ export async function PUT(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Immutability guard — locked assets cannot have their content edited
+  if (asset.immutable) {
+    return NextResponse.json(
+      { error: "Immutable asset — content cannot be edited" },
+      { status: 403 }
+    );
+  }
+
   try {
     await writeFile(asset.storagePath, content, "utf-8");
   } catch (err) {
@@ -136,9 +147,36 @@ export async function PUT(
   const hash = createHash("sha256").update(content).digest("hex");
   const size = Buffer.byteLength(content, "utf-8");
 
+  // Register updated content in Lore blob store (non-fatal)
+  await blobStore
+    .put(asset.ownerDid, asset.storagePath, { assetId: id, sizeBytes: size })
+    .catch((err: unknown) =>
+      log.error({ err: String(err), assetId: id }, "Lore put after content edit failed (non-fatal)")
+    );
+
+  // Re-sign .fair manifest so the signature covers the current content state.
+  // Non-fatal: if signing fails the content is still saved; the manifest will
+  // be re-signed on the next explicit PUT /fair or on the next upload.
+  let updatedFairManifest = asset.fairManifest as Record<string, unknown> | undefined;
+  const rawManifest = asset.fairManifest as Record<string, unknown> | null;
+  if (rawManifest && isFairManifestV1_1(rawManifest)) {
+    const signResult = await signFairAsNode(rawManifest as unknown as FairManifestV1_1);
+    if (signResult.ok) {
+      updatedFairManifest = signResult.signed as unknown as Record<string, unknown>;
+      if (asset.fairPath) {
+        await writeFile(asset.fairPath, JSON.stringify(signResult.signed, null, 2)).catch(
+          (err: unknown) =>
+            log.warn({ err: String(err), assetId: id }, "Could not write re-signed .fair to disk (non-fatal)")
+        );
+      }
+    } else {
+      log.warn({ assetId: id, error: signResult.error }, "Could not re-sign .fair after content edit (non-fatal)");
+    }
+  }
+
   await db
     .update(assets)
-    .set({ hash, size, updatedAt: new Date() })
+    .set({ hash, size, fairManifest: updatedFairManifest ?? asset.fairManifest, updatedAt: new Date() })
     .where(eq(assets.id, id));
 
   return NextResponse.json({ ok: true });

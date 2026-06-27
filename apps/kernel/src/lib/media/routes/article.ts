@@ -92,6 +92,11 @@ export async function patchArticle(
     return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: cors });
   }
 
+  // Immutability guard
+  if (asset.immutable) {
+    return NextResponse.json({ error: "Immutable asset — article metadata cannot be modified" }, { status: 403, headers: cors });
+  }
+
   // 4. Validate mime type
   if (asset.mimeType !== "text/markdown") {
     return NextResponse.json(
