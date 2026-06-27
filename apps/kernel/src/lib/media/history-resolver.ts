@@ -3,6 +3,8 @@ import { LoreEventTag } from "@lore-vcs/sdk/types/enums";
 import type { LoreRevisionHistoryEntryEvent } from "@lore-vcs/sdk/types/events";
 import { join } from "node:path";
 import { createLogger } from "@imajin/logger";
+import { db, workspaceHistoryGrants } from "@/src/db";
+import { and, eq } from "drizzle-orm";
 
 const log = createLogger("kernel");
 const MEDIA_ROOT = process.env.MEDIA_ROOT ?? "/mnt/media";
@@ -24,20 +26,38 @@ export interface RevisionEntry {
 /**
  * History access policy — most-specific-wins, default HEAD-only.
  *
- * Current scope (Bundle 4):
+ * Current scope (#1123 Layer 2):
  *   owner → full history
+ *   workspace grant (broad) → full history for any asset in the owner's workspace
  *   everyone else → HEAD-only (false)
  *
- * Designed to extend without redesign (slot in between):
+ * Designed to extend without redesign:
  *   asset override → [folder →] [project →] [group →] workspace default → HEAD-only
- * Those tiers will be added when #1123 (workspace manifest) ships.
  */
-export function hasHistoryAccess(
+export async function hasHistoryAccess(
   callerDid: string,
   ownerDid: string,
-  // future: assetPolicy?: ..., workspacePolicy?: ...
-): boolean {
-  return callerDid === ownerDid;
+): Promise<boolean> {
+  // Owner always has full access
+  if (callerDid === ownerDid) return true;
+
+  // Workspace-wide history grant (--broad DFOS tier, #1123)
+  try {
+    const [grant] = await db
+      .select({ id: workspaceHistoryGrants.id })
+      .from(workspaceHistoryGrants)
+      .where(and(
+        eq(workspaceHistoryGrants.ownerDid, ownerDid),
+        eq(workspaceHistoryGrants.granteeDid, callerDid),
+      ))
+      .limit(1);
+    if (grant) return true;
+  } catch {
+    // DB error — fail closed (no access)
+  }
+
+  // Default: HEAD-only
+  return false;
 }
 
 /**
