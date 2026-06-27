@@ -1,6 +1,7 @@
 import { createDb, getClient } from '@imajin/db';
 
 import * as authSchema from './schemas/auth';
+import * as oauthSchema from './schemas/oauth';
 import * as paySchema from './schemas/pay';
 import * as profileSchema from './schemas/profile';
 import * as registrySchema from './schemas/registry';
@@ -16,6 +17,7 @@ import * as matchSchema from './schemas/match';
 
 const schema = {
   ...authSchema,
+  ...oauthSchema,
   ...paySchema,
   ...profileSchema,
   ...registrySchema,
@@ -35,6 +37,7 @@ export const db = createDb(schema);
 export { getClient };
 
 export * from './schemas/auth';
+export * from './schemas/oauth';
 export * from './schemas/pay';
 export * from './schemas/profile';
 export * from './schemas/registry';

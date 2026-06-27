@@ -6,6 +6,7 @@
 export const SCOPES = {
   'profile:read':       'Read your profile information',
   'identity:read':      'Read your identity and DID',
+  'media:read':         'Read your media library (files, folders, and metadata)',
   'wallet:read':        'View your wallet balance and transaction history',
   'wallet:write':       'Create payments and transfers on your behalf',
   'connections:read':   'View your connections',
