@@ -2,7 +2,7 @@
 import { readFile, unlink, rename, stat, open } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { db, assets, settlements, accessLog } from "@/src/db";
+import { db, assets, settlements, accessLog, assetReferences } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq, and, sql } from "drizzle-orm";
 import type { FairManifest, FairAction } from "@imajin/fair";
@@ -604,7 +604,7 @@ export async function GET(
 }
 
 // ---------------------------------------------------------------------------
-// DELETE /api/assets/[id] — hard-delete asset + files (owner only)
+// DELETE /api/assets/[id] — soft-delete asset + files (owner only)
 // ---------------------------------------------------------------------------
 export async function DELETE(
   request: NextRequest,
@@ -662,8 +662,18 @@ export async function DELETE(
     try { await unlink(asset.fairPath); } catch {}
   }
 
-  // Delete DB row
-  await db.delete(assets).where(eq(assets.id, id));
+  // Soft-delete: mark status='deleted' rather than removing the DB row.
+  // The row stays for audit trail (settlements, accessLog reference assetId
+  // as a plain string with no FK — they are intentionally left intact as
+  // financial/audit records). Lore GC will reclaim the blob chunks.
+  await db
+    .update(assets)
+    .set({ status: "deleted", updatedAt: new Date() })
+    .where(eq(assets.id, id));
+
+  // Tombstone asset_references rows — these are live dependency trackers,
+  // not financial records. Once the asset is gone they're stale.
+  await db.delete(assetReferences).where(eq(assetReferences.assetId, id));
 
   return NextResponse.json({ ok: true });
 }

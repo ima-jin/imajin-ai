@@ -68,6 +68,11 @@ export async function patchAccess(
     return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: cors });
   }
 
+  // Immutability guard
+  if (asset.immutable) {
+    return NextResponse.json({ error: "Immutable asset — access level cannot be changed" }, { status: 403, headers: cors });
+  }
+
   // 4. Build updated manifest
   let manifest: FairManifestV1_1;
   if (

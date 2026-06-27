@@ -91,7 +91,7 @@ export type NewFolder = typeof folders.$inferInsert;
 
 export const assetReferences = mediaSchema.table("asset_references", {
   id: text("id").primaryKey(),
-  assetId: text("asset_id").references(() => assets.id).notNull(),
+  assetId: text("asset_id").references(() => assets.id, { onDelete: "cascade" }).notNull(),
   service: text("service").notNull(),
   entityType: text("entity_type").notNull(),
   entityId: text("entity_id").notNull(),
