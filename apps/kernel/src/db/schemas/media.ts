@@ -28,6 +28,11 @@ export const assets = mediaSchema.table(
     fairManifest: jsonb("fair_manifest").default({}),          // inline .fair JSON
     fairPath: text("fair_path"),                               // path to .fair.json file
 
+    // Version count (#1122 Bundle 5 — version badge)
+    // Starts at 1 on upload; incremented by 1 on each PUT /content.
+    // Badge shown in AssetCard when versionCount > 1.
+    versionCount: integer("version_count").notNull().default(1),
+
     // Content-addressed identity (#1122 — Layer A)
     // CIDv1 dag-cbor+sha256 (base32lower, e.g. bafyrei...) computed over the raw file bytes.
     // NULL for assets uploaded before Bundle 2. The DFOS CID is the content identity;

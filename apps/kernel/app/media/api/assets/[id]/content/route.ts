@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
 import { isFairManifestV1_1 } from "@imajin/fair";
 import { computeCid } from "@imajin/cid";
@@ -189,6 +189,7 @@ export async function PUT(
     .set({
       hash,
       size,
+      versionCount: sql`${assets.versionCount} + 1`,
       cid,
       loreRef: blobRef?.loreRef ?? asset.loreRef,  // keep prior ref if Lore put failed
       fairManifest: updatedFairManifest ?? asset.fairManifest,

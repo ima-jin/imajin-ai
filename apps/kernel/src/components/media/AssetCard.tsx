@@ -115,7 +115,7 @@ function AssetCard({ asset, selected, checked, compact, selectionActive, onSelec
       </button>
 
       {/* Thumbnail */}
-      <div className="aspect-square bg-[#1a1a1a] flex items-center justify-center overflow-hidden">
+      <div className="aspect-square bg-[#1a1a1a] flex items-center justify-center overflow-hidden relative">
         {isImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -126,6 +126,12 @@ function AssetCard({ asset, selected, checked, compact, selectionActive, onSelec
           />
         ) : (
           <span className={compact ? "text-2xl" : "text-4xl"}>{getMimeIcon(asset.mimeType)}</span>
+        )}
+        {/* Version badge — shown only when asset has been edited (>1 version) */}
+        {(asset.versionCount ?? 1) > 1 && (
+          <span className="absolute bottom-1 right-1 text-[10px] font-medium bg-black/70 text-gray-300 px-1.5 py-0.5 rounded pointer-events-none">
+            v{asset.versionCount}
+          </span>
         )}
       </div>
 
