@@ -311,6 +311,7 @@ export async function POST(request: NextRequest) {
         fairPath,
         cid,
         loreRef: blobRef?.loreRef ?? null,
+        versionCount: 1,
         status: "active",
         metadata: context ? { context } : {},
       })

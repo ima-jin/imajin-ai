@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
 import { isFairManifestV1_1 } from "@imajin/fair";
 import { contentSigner } from "@/src/lib/media/content-signer";
@@ -178,7 +178,13 @@ export async function PUT(
 
   await db
     .update(assets)
-    .set({ hash, size, fairManifest: updatedFairManifest ?? asset.fairManifest, updatedAt: new Date() })
+    .set({
+      hash,
+      size,
+      versionCount: sql`${assets.versionCount} + 1`,
+      fairManifest: updatedFairManifest ?? asset.fairManifest,
+      updatedAt: new Date(),
+    })
     .where(eq(assets.id, id));
 
   return NextResponse.json({ ok: true });
