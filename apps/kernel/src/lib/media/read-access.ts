@@ -7,10 +7,9 @@ import type { FairManifest } from '@imajin/fair';
  * (GET /media/api/assets/[id], /content) and — next — the MCP media READ tools
  * (#1166). Extracted verbatim from the [id] serve route so behavior is unchanged.
  *
- * Fixing the two known gaps happens HERE (one place), not in each caller:
- *   - #1167: GET /content is still owner-only and should adopt canReadAsset.
- *   - #1168: `conversation` currently allows any authenticated DID; it should be
- *            gated on membership via FairAccess.conversationDid.
+ * This is the pure, synchronous core. Conversation membership (#1168) needs a DB
+ * lookup, so it is layered on by the async authorizeAssetRead() wrapper in
+ * authorize-read.ts — the HTTP routes and MCP tools call that wrapper.
  */
 
 export type AssetAccessType = 'public' | 'private' | 'trust-graph' | 'conversation';
@@ -44,9 +43,8 @@ export type ReadDecision =
  *   public:       anyone, no auth required
  *   private:      owner only
  *   trust-graph:  owner OR an explicitly granted DID (allowedDids)
- *   conversation: TODO(#1168) — currently any authenticated DID; membership
- *                 gating (FairAccess.conversationDid) is not implemented yet.
- *                 Preserves the prior GET /media/api/assets/[id] behavior.
+ *   conversation: owner only here; non-owner membership is resolved by the async
+ *                 authorizeAssetRead() wrapper (deny-by-default otherwise).
  */
 export function canReadAsset(
   subject: AssetReadSubject,
@@ -72,9 +70,10 @@ export function canReadAsset(
         ? { allowed: true, requiresAuth: true, accessType }
         : { allowed: false, requiresAuth: true, accessType, reason: 'Not in trust graph' };
     case 'conversation':
-      // TODO(#1168): gate on conversation membership (FairAccess.conversationDid)
-      // instead of allowing any authenticated DID.
-      return { allowed: true, requiresAuth: true, accessType };
+      // Non-owner conversation access depends on membership, which needs a DB
+      // lookup — resolved by authorizeAssetRead() (src/lib/media/authorize-read.ts).
+      // Deny here so any caller that skips that async check stays secure (#1168).
+      return { allowed: false, requiresAuth: true, accessType, reason: 'Conversation membership required' };
     default:
       // private (owner already handled above) and any unknown type → deny.
       return { allowed: false, requiresAuth: true, accessType, reason: 'Private asset — owner only' };

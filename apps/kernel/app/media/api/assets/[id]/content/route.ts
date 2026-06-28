@@ -4,13 +4,14 @@ import { createHash } from "node:crypto";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq, sql } from "drizzle-orm";
-import type { FairManifestV1_1 } from "@imajin/fair";
+import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
 import { isFairManifestV1_1 } from "@imajin/fair";
 import { computeCid } from "@imajin/cid";
 import { contentSigner } from "@/src/lib/media/content-signer";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { createLogger } from "@imajin/logger";
 import { getAccessType } from "@/src/lib/media/read-access";
+import { authorizeAssetRead } from "@/src/lib/media/authorize-read";
 
 const log = createLogger("kernel");
 
@@ -46,8 +47,9 @@ export async function GET(
   }
 
   // Determine .fair access level
-  const manifest = asset.fairManifest;
-  const accessType = getAccessType(manifest?.access ?? "private");
+  const manifest = asset.fairManifest as FairManifest | null;
+  const access = manifest?.access ?? "private";
+  const accessType = getAccessType(access);
 
   // Internal API key auth: allow read for public/trust-graph assets
   const internalApiKey = process.env.MEDIA_INTERNAL_API_KEY;
@@ -62,16 +64,19 @@ export async function GET(
       );
     }
   } else {
-    // Cookie auth. Owner-only for now — unlike GET /media/api/assets/[id], this
-    // endpoint does not yet honor trust-graph/allowedDids grants.
-    // TODO(#1167): adopt canReadAsset(...) so granted readers can fetch text
-    // content too. Deferred to keep this change a pure extraction.
+    // Cookie auth — honor the shared read-access decision: owner, public,
+    // trust-graph grant (#1167), or conversation membership (#1168).
     const authResult = await requireAuth(request);
     if ("error" in authResult) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
-    if (resolveActingDid(authResult.identity) !== asset.ownerDid) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const requesterDid = resolveActingDid(authResult.identity);
+    const decision = await authorizeAssetRead(
+      { ownerDid: asset.ownerDid, access, metadata: asset.metadata },
+      requesterDid,
+    );
+    if (!decision.allowed) {
+      return NextResponse.json({ error: "Forbidden", reason: decision.reason }, { status: 403 });
     }
   }
 

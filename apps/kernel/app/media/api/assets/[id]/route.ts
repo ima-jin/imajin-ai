@@ -66,7 +66,8 @@ import {
   getTranscodingStatus,
   transcodeVideo,
 } from "@/src/lib/media/transcode";
-import { getAccessType, canReadAsset } from "@/src/lib/media/read-access";
+import { getAccessType } from "@/src/lib/media/read-access";
+import { authorizeAssetRead } from "@/src/lib/media/authorize-read";
 
 function determineAction(request: NextRequest, mimeType: string): FairAction {
   const { searchParams } = new URL(request.url);
@@ -194,9 +195,8 @@ export async function GET(
   // 2b. Compute .fair sidecar headers (used for both full and Range responses)
   const fairHeaders = buildFairHeaders(id, manifest, asset.fairDfosEventId ?? null);
 
-  // 3. Access control — shared decision (src/lib/media/read-access.ts).
-  //    Behavior is unchanged from the previous inline checks; conversation
-  //    gating remains TODO(#1168) inside canReadAsset.
+  // 3. Access control — shared async decision (src/lib/media/authorize-read.ts):
+  //    owner / public / trust-graph grant, plus conversation membership (#1168).
   if (accessType !== "public") {
     const authResult = await requireAuth(request);
     if ("error" in authResult) {
@@ -213,7 +213,7 @@ export async function GET(
       );
     }
     const requesterDid = resolveActingDid(authResult.identity);
-    const decision = canReadAsset({ ownerDid: asset.ownerDid, access }, requesterDid);
+    const decision = await authorizeAssetRead({ ownerDid: asset.ownerDid, access, metadata: asset.metadata }, requesterDid);
     if (!decision.allowed) {
       const wantsHtml = request.headers.get("accept")?.includes("text/html");
       if (wantsHtml) {

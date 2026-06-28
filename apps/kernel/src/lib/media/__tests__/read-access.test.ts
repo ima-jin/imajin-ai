@@ -46,8 +46,9 @@ describe('canReadAsset', () => {
     expect(canReadAsset(subject(access), STRANGER).allowed).toBe(false);
   });
 
-  it('conversation: any authed for now (TODO #1168), auth still required', () => {
-    expect(canReadAsset(subject({ type: 'conversation' }), STRANGER).allowed).toBe(true);
+  it('conversation: owner only at the sync layer; non-owner deferred to authorizeAssetRead', () => {
+    expect(canReadAsset(subject({ type: 'conversation' }), OWNER).allowed).toBe(true);
+    expect(canReadAsset(subject({ type: 'conversation' }), STRANGER).allowed).toBe(false);
     expect(canReadAsset(subject({ type: 'conversation' }), null).allowed).toBe(false);
   });
 });
