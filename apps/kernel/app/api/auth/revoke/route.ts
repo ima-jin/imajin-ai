@@ -10,8 +10,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
-import { db, attestations } from '@/src/db';
-import { eq, and } from 'drizzle-orm';
+import { db, attestations, oauthRefreshTokens } from '@/src/db';
+import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth, canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 
@@ -89,6 +89,21 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     .update(attestations)
     .set({ revokedAt: new Date(issuedAtMs) })
     .where(eq(attestations.id, attestationId));
+
+  // Defense-in-depth (#1171, 5b): revoke this user's OAuth refresh-token chain for
+  // this grant. Per-user scoped via attestationId — never touches the shared
+  // registry.apps adapter row (Correction 4). handleRefreshToken already denies a
+  // refresh once the backing attestation is revoked; marking the tokens here also
+  // makes them surface as revoked and blocks reuse if that gate ever changes.
+  await db
+    .update(oauthRefreshTokens)
+    .set({ revokedAt: new Date(issuedAtMs) })
+    .where(
+      and(
+        eq(oauthRefreshTokens.attestationId, attestationId),
+        isNull(oauthRefreshTokens.revokedAt),
+      )
+    );
 
   return NextResponse.json({ ok: true });
 });
