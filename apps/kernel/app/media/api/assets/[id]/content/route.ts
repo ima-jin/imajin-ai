@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq, sql } from "drizzle-orm";
-import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
+import type { FairManifestV1_1 } from "@imajin/fair";
 import { isFairManifestV1_1 } from "@imajin/fair";
 import { computeCid } from "@imajin/cid";
 import { contentSigner } from "@/src/lib/media/content-signer";
