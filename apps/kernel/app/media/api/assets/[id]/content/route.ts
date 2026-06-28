@@ -4,20 +4,15 @@ import { createHash } from "node:crypto";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq, sql } from "drizzle-orm";
-import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
+import type { FairManifestV1_1 } from "@imajin/fair";
 import { isFairManifestV1_1 } from "@imajin/fair";
 import { computeCid } from "@imajin/cid";
 import { contentSigner } from "@/src/lib/media/content-signer";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { createLogger } from "@imajin/logger";
+import { getAccessType } from "@/src/lib/media/read-access";
 
 const log = createLogger("kernel");
-
-function getAccessType(access: FairManifest["access"]): string {
-  if (!access) return "private";
-  if (typeof access === "string") return access;
-  return access.type ?? "private";
-}
 
 // ---------------------------------------------------------------------------
 // GET /api/assets/[id]/content — read text content of a file
@@ -67,12 +62,15 @@ export async function GET(
       );
     }
   } else {
-    // Fall through to cookie auth — owner always allowed
+    // Cookie auth. Owner-only for now — unlike GET /media/api/assets/[id], this
+    // endpoint does not yet honor trust-graph/allowedDids grants.
+    // TODO(#1167): adopt canReadAsset(...) so granted readers can fetch text
+    // content too. Deferred to keep this change a pure extraction.
     const authResult = await requireAuth(request);
     if ("error" in authResult) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
-    if ((resolveActingDid(authResult.identity)) !== asset.ownerDid) {
+    if (resolveActingDid(authResult.identity) !== asset.ownerDid) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
   }
