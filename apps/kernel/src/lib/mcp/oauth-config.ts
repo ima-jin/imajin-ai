@@ -20,7 +20,32 @@ export const MCP_RESOURCE = `${MCP_ISSUER}/mcp`;
 
 export const OAUTH_AUTHORIZATION_ENDPOINT = `${MCP_ISSUER}/oauth/authorize`;
 export const OAUTH_TOKEN_ENDPOINT = `${MCP_ISSUER}/oauth/token`;
+export const OAUTH_REGISTRATION_ENDPOINT = `${MCP_ISSUER}/oauth/register`;
 export const PROTECTED_RESOURCE_METADATA_URL = `${MCP_ISSUER}/.well-known/oauth-protected-resource`;
+
+/**
+ * Redirect-URI allowlist for Dynamic Client Registration (RFC 7591, #1185).
+ *
+ * Claude Desktop's connector flow REQUIRES DCR (it rejects an AS with no
+ * `registration_endpoint` → `oauth_error=registration_endpoint_missing`), so we
+ * cannot use the pre-registered-client-only model. A registered client is inert
+ * — it grants nothing until a real DID consents — but the one risk that matters
+ * is a phished consent via an attacker-controlled `redirect_uri`. We kill that by
+ * accepting registration ONLY for exact, known Anthropic callback URLs.
+ *
+ * Exact-match only. No prefix/substring/wildcard matching, ever.
+ */
+export const DCR_ALLOWED_REDIRECT_URIS: readonly string[] = [
+  'https://claude.ai/api/mcp/auth_callback',
+  'https://claude.com/api/mcp/auth_callback',
+];
+
+/** True iff EVERY requested redirect_uri is on the exact-match allowlist. */
+export function areRedirectUrisAllowed(uris: readonly string[]): boolean {
+  if (uris.length === 0) return false;
+  const allow = new Set(DCR_ALLOWED_REDIRECT_URIS);
+  return uris.every((u) => allow.has(u));
+}
 
 /**
  * Media scopes the MCP surface supports (read + create/write). NOTE: each string
