@@ -570,6 +570,22 @@ export interface BusEventMap {
     reason: BrokerRejectionReason;
     details?: string;
   };
+  'broker.consent.created': {
+    consentId: string;
+    subject: string;
+    grantedTo: string | null;
+    purpose: string;
+    context_id: string;
+    context_type: 'consent';
+  };
+  'broker.consent.revoked': {
+    consentId: string;
+    subject: string;
+    grantedTo: string | null;
+    purpose: string;
+    context_id: string;
+    context_type: 'consent';
+  };
   'calendar.entry.created': {
     entryId: string;
     type: string;

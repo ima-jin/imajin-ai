@@ -1,4 +1,7 @@
+import { createLogger } from '@imajin/logger';
 import type { BrokerRejectionReason } from './types';
+
+const log = createLogger('bus:broker:config');
 
 /**
  * Consent entry — what a subject has consented to release.
@@ -65,46 +68,132 @@ function buildLookupKeys(subject: string, requester: string, purpose: string): C
   ];
 }
 
+/** Resolved consent shape returned to the broker pipeline. */
+type ResolvedConsent = { allowedFields: string[]; mode: 'attestation' | 'raw'; consentRef: string };
+
 /**
- * Look up consent configuration for a broker request.
- *
- * Composes multiple matching grants permissively:
+ * Compose a set of consent entries permissively (most-specific first):
  * - Unions their allowed field sets
  * - Returns the consentRef of the most specific match
- * - Prefers 'raw' mode if any grant allows it (most permissive)
- *
- * @returns Resolved consent or undefined if no consent found
+ * - Prefers 'raw' mode if any entry allows it (most permissive)
  */
-export function resolveConsent(
-  subject: string,
-  requester: string,
-  purpose: string
-): { allowedFields: string[]; mode: 'attestation' | 'raw'; consentRef: string } | undefined {
-  const keys = buildLookupKeys(subject, requester, purpose);
+function composeEntries(entries: ConsentEntry[]): ResolvedConsent | undefined {
   const unionFields = new Set<string>();
   let mode: 'attestation' | 'raw' = 'attestation';
   let primaryRef = '';
 
-  for (const key of keys) {
-    const entries = CONSENT_DEFAULTS[key];
-    if (!entries || entries.length === 0) continue;
-
-    for (const entry of entries) {
-      for (const f of entry.allowedFields) {
-        unionFields.add(f);
-      }
-      if (entry.mode === 'raw') mode = 'raw';
-      if (!primaryRef) primaryRef = entry.consentRef;
+  for (const entry of entries) {
+    for (const f of entry.allowedFields) {
+      unionFields.add(f);
     }
+    if (entry.mode === 'raw') mode = 'raw';
+    if (!primaryRef) primaryRef = entry.consentRef;
   }
 
   if (unionFields.size === 0) return undefined;
 
-  return {
-    allowedFields: Array.from(unionFields),
-    mode,
-    consentRef: primaryRef,
+  return { allowedFields: Array.from(unionFields), mode, consentRef: primaryRef };
+}
+
+/**
+ * Hardcoded fallback lookup — used only in degraded mode (DB unreachable).
+ * Composes grants from {@link CONSENT_DEFAULTS} in specificity order.
+ */
+function resolveConsentFromDefaults(
+  subject: string,
+  requester: string,
+  purpose: string
+): ResolvedConsent | undefined {
+  const keys = buildLookupKeys(subject, requester, purpose);
+  const entries: ConsentEntry[] = [];
+  for (const key of keys) {
+    const matched = CONSENT_DEFAULTS[key];
+    if (matched && matched.length > 0) entries.push(...matched);
+  }
+  return composeEntries(entries);
+}
+
+/**
+ * DB-backed consent lookup against `kernel.consent_grants`.
+ *
+ * Matches active, non-expired grants where the requester is either the exact
+ * `granted_to` DID or the `*` wildcard, and the purpose is either exact or the
+ * `*` wildcard. Class-based grants (`granted_to_class`, future #1189) have a
+ * NULL `granted_to` and are intentionally excluded here.
+ *
+ * Rows are composed in specificity order (exact requester + exact purpose
+ * first) so the most specific grant supplies the `consentRef`.
+ *
+ * Throws on DB error — callers (see {@link resolveConsent}) treat a throw as
+ * degraded mode and fall back to {@link CONSENT_DEFAULTS}. A reachable DB with
+ * no matching rows returns `undefined` (a legitimate fail-closed no-consent).
+ */
+export async function resolveConsentFromDb(
+  subject: string,
+  requester: string,
+  purpose: string
+): Promise<ResolvedConsent | undefined> {
+  const { getClient } = await import('@imajin/db');
+  const sql = getClient();
+
+  const rows = await sql`
+    SELECT allowed_fields, mode, consent_ref, granted_to, purpose
+    FROM kernel.consent_grants
+    WHERE subject = ${subject}
+      AND (granted_to = ${requester} OR granted_to = '*')
+      AND (purpose = ${purpose} OR purpose = '*')
+      AND status = 'active'
+      AND (expires_at IS NULL OR expires_at > now())
+  `;
+
+  if (rows.length === 0) return undefined;
+
+  // Specificity: exact requester + exact purpose (0) is most specific; both
+  // wildcards (3) least. Mirrors buildLookupKeys() ordering.
+  const specificity = (row: { granted_to: string; purpose: string }): number => {
+    const reqWild = row.granted_to === '*';
+    const purposeWild = row.purpose === '*';
+    if (!reqWild && !purposeWild) return 0;
+    if (reqWild && !purposeWild) return 1;
+    if (!reqWild && purposeWild) return 2;
+    return 3;
   };
+
+  const ordered = [...rows].sort((a, b) => specificity(a) - specificity(b));
+
+  const entries: ConsentEntry[] = ordered.map((row) => ({
+    allowedFields: (row.allowed_fields as string[]) ?? [],
+    mode: row.mode === 'raw' ? 'raw' : 'attestation',
+    consentRef: row.consent_ref as string,
+  }));
+
+  return composeEntries(entries);
+}
+
+/**
+ * Look up consent configuration for a broker request.
+ *
+ * DB-backed: queries `kernel.consent_grants` via {@link resolveConsentFromDb}.
+ * If the DB call throws (unreachable / misconfigured), falls back to the
+ * hardcoded {@link CONSENT_DEFAULTS} in degraded mode. A reachable DB with no
+ * matching grants returns `undefined` (fail-closed).
+ *
+ * @returns Resolved consent or undefined if no consent found
+ */
+export async function resolveConsent(
+  subject: string,
+  requester: string,
+  purpose: string
+): Promise<ResolvedConsent | undefined> {
+  try {
+    return await resolveConsentFromDb(subject, requester, purpose);
+  } catch (err) {
+    log.warn(
+      { err: String(err), subject, requester, purpose },
+      'Consent DB lookup failed; degraded mode — falling back to CONSENT_DEFAULTS'
+    );
+    return resolveConsentFromDefaults(subject, requester, purpose);
+  }
 }
 
 /**
