@@ -30,10 +30,16 @@ const TOKEN = process.env.MCP_ACCESS_TOKEN || '';
 const PROTOCOL = '2025-06-18';
 
 let failures = 0;
+// Strip CR/LF (and other control chars) before logging interpolated values, so
+// HTTP-response-derived strings can't forge log lines (log injection, S5145).
+function sanitizeForLog(value) {
+  // eslint-disable-next-line no-control-regex
+  return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ');
+}
 function check(label, cond, detail) {
   const mark = cond ? '✓' : '✗';
-  const suffix = detail ? ` — ${detail}` : '';
-  console.log(`${mark} ${label}${suffix}`);
+  const suffix = detail ? ` — ${sanitizeForLog(detail)}` : '';
+  console.log(`${mark} ${sanitizeForLog(label)}${suffix}`);
   if (!cond) failures += 1;
 }
 
@@ -55,7 +61,7 @@ async function rpc(method, params, id) {
 }
 
 async function main() {
-  console.log(`MCP smoke → ${BASE}\n`);
+  console.log(`MCP smoke → ${sanitizeForLog(BASE)}\n`);
 
   // 1. Protected-resource metadata (RFC 9728)
   const prm = await fetch(`${BASE}/.well-known/oauth-protected-resource`).then((r) => r.json());
