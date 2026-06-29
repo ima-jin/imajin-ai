@@ -13,6 +13,15 @@ export interface FeatureToggles {
 }
 
 /**
+ * Per-field visibility rules for profile metadata (#1003).
+ * Keyed by metadata field name; absent keys default to public (pass through).
+ */
+export type FieldVisibility = Record<string, {
+  level: 'public' | 'connections' | 'selective' | 'private';
+  allowedDids?: string[];
+}>;
+
+/**
  * Profiles - public identity pages linked to DIDs
  */
 export const profiles = profileSchema.table('profiles', {
@@ -29,6 +38,7 @@ export const profiles = profileSchema.table('profiles', {
   visibility: text('visibility').notNull().default('public'),   // 'public' | 'incognito'
   nextInviteAvailableAt: timestamp('next_invite_available_at', { withTimezone: true }),
   metadata: jsonb('metadata').default({}),                    // location, website, etc.
+  fieldVisibility: jsonb('field_visibility').$type<FieldVisibility>().notNull().default({}), // per-field disclosure rules (#1003)
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }), // Online presence tracking
   featureToggles: jsonb('feature_toggles').$type<FeatureToggles>().notNull().default({}),
   agentPricing: jsonb('agent_pricing').default({}),
