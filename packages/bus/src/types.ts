@@ -633,6 +633,13 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'calendar';
   };
+  'asset.article.published': {
+    assetId: string;
+    slug: string;
+    title: string;
+    status: string;
+    date: string;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

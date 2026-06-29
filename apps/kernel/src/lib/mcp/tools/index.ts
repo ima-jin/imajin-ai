@@ -1,6 +1,7 @@
 import type { McpTool } from '../types';
 import { pingTool } from './ping';
 import { mediaTools } from './media';
+import { mediaWriteTools } from './media-write';
 
 /**
  * The MCP tool registry. To add a tool: create `./<tool>.ts` exporting an
@@ -9,11 +10,14 @@ import { mediaTools } from './media';
  *
  * Media READ tools (list/get/content/resolve) call the in-process media query
  * lib (src/lib/media/queries.ts) with ctx.did and gate per-asset reads through
- * canReadAsset (src/lib/media/read-access.ts).
+ * canReadAsset (src/lib/media/read-access.ts). Media WRITE tools
+ * (create_text/upload) call the in-process createAsset lib owner-pinned to
+ * ctx.did and are gated by the 'media:write' scope per-tool (#1170).
  */
 export const ALL_TOOLS: McpTool[] = [
   pingTool,
   ...mediaTools,
+  ...mediaWriteTools,
 ];
 
 const TOOLS_BY_NAME = new Map<string, McpTool>(ALL_TOOLS.map((t) => [t.name, t]));

@@ -1,40 +1,19 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { extname } from "node:path";
-import { nanoid } from "nanoid";
-import { db, assets, folders, assetFolders, identities } from "@/src/db";
-import { requireAuth, hexToBytes, resolveActingDid } from "@imajin/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { db, assets, identities } from "@/src/db";
+import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and, sql } from "drizzle-orm";
-import { classifyAsset } from "@/src/lib/media/classify";
 import { rateLimit, getClientIP } from "@imajin/config";
 import { createLogger } from "@imajin/logger";
-import { getDefaultManifest, signManifest, canonicalize } from "@imajin/fair";
-import { publishContentEvent } from "@imajin/dfos";
-import { computeCid } from "@imajin/cid";
-import { blobStore } from "@/src/lib/media/blob-store-lore";
+import { createAsset, inferMime, isAllowedMime } from "@/src/lib/media/create-asset";
 
 const log = createLogger("kernel");
-
-// Context → folder mapping
-const CONTEXT_FOLDER_MAP: Record<string, { name: string; icon: string }> = {
-  bugs: { name: "Bug Reports", icon: "🐛" },
-  chat: { name: "Chat", icon: "💬" },
-  profile: { name: "Profile", icon: "👤" },
-  events: { name: "Events", icon: "🎫" },
-  market: { name: "Profile", icon: "👤" },
-  voice: { name: "Audio Recordings", icon: "🎙️" },
-  signed: { name: "Signed Documents", icon: "📝" },
-};
 
 export const dynamic = "force-dynamic";
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
-
-const MEDIA_ROOT = process.env.MEDIA_ROOT || "/mnt/media";
 
 const TIER_LIMITS: Record<string, number> = {
   soft: 50,
@@ -45,43 +24,6 @@ const TIER_LIMITS: Record<string, number> = {
 function getUploadLimitBytes(identity: { tier?: string; uploadLimitMb?: number | null }): number {
   const mb = identity.uploadLimitMb ?? TIER_LIMITS[identity.tier || 'soft'] ?? 50;
   return mb * 1024 * 1024;
-}
-
-const ALLOWED_MIME_PREFIXES = ["image/", "audio/", "video/", "text/"];
-const ALLOWED_MIME_EXACT = new Set(["application/pdf"]);
-
-/** Map file extensions to MIME types for files browsers send as octet-stream */
-const EXT_TO_MIME: Record<string, string> = {
-  ".md": "text/markdown",
-  ".markdown": "text/markdown",
-  ".txt": "text/plain",
-  ".csv": "text/csv",
-  ".json": "application/json",
-  ".yaml": "text/yaml",
-  ".yml": "text/yaml",
-  ".xml": "text/xml",
-  ".svg": "image/svg+xml",
-  ".webp": "image/webp",
-};
-
-function inferMime(browserMime: string, filename: string): string {
-  // If the browser gave us a real type, trust it
-  if (browserMime && browserMime !== "application/octet-stream") {
-    return browserMime;
-  }
-  // Infer from extension
-  const ext = filename.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
-  return EXT_TO_MIME[ext] || browserMime || "application/octet-stream";
-}
-
-function isAllowedMime(mime: string): boolean {
-  if (ALLOWED_MIME_EXACT.has(mime)) return true;
-  return ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
-}
-
-/** Replace chars that are unsafe on most filesystems */
-function didToPath(did: string): string {
-  return did.replaceAll(':', '_').replaceAll(/[^a-zA-Z0-9._@-]/g, '_');
 }
 
 // ---------------------------------------------------------------------------
@@ -168,260 +110,67 @@ export async function POST(request: NextRequest) {
     try { context = JSON.parse(contextRaw); } catch { /* ignore bad JSON */ }
   }
 
-  const assetId = `asset_${nanoid(16)}`;
-  const ext = extname(originalName) || "";
+  // Read file bytes and hand off to the shared create pipeline (#1170). The
+  // route owns HTTP concerns (auth, multipart, tier/size, MIME inference);
+  // createAsset owns hashing/CID, dedup, storage, .fair signing, DB insert,
+  // DFOS anchor, auto-folder, and classification.
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
 
-  // Read file bytes
-  const bytes = await file.arrayBuffer();
-  const buffer = Buffer.from(bytes);
-
-  // SHA-256 hash
-  const hash = createHash("sha256").update(buffer).digest("hex");
-
-  // CID (content-addressed identity, #1122 Layer A)
-  // Computed over raw file bytes; distinct from the Lore revision hash (loreRef).
-  const cid = await computeCid(new Uint8Array(buffer));
-
-  // ── Dedup: CID-first global check, then hash+owner fallback ───────────────
-  //
-  // 1. CID-based global dedup: same content bytes = same CID regardless of owner.
-  //    If found, return the existing asset. If the match is from a different DID,
-  //    log a provenance attribution link (epic decision #5 — default-on, silent,
-  //    no opt-out in v1). Storage-level dedup is automatic via Lore's chunk store.
-  const [existingByCid] = await db
-    .select()
-    .from(assets)
-    .where(and(eq(assets.cid, cid), eq(assets.status, "active")))
-    .limit(1);
-
-  if (existingByCid) {
-    if (existingByCid.ownerDid !== ownerDid) {
-      // Cross-DID dedup: silently link provenance to the original creator.
-      // Storage is shared (Lore dedup); access remains strictly per-DID.
-      log.info(
-        { cid, originalOwner: existingByCid.ownerDid, newUploader: ownerDid, assetId: existingByCid.id },
-        "Cross-DID dedup: provenance attributed to original creator (#1122 §2 — default-on, no opt-out in v1)"
-      );
-    }
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
-    const url = `${baseUrl}/media/api/assets/${existingByCid.id}`;
-    return NextResponse.json(
-      { id: existingByCid.id, url, filename: existingByCid.filename, mimeType: existingByCid.mimeType,
-        size: existingByCid.size, hash: existingByCid.hash, cid: existingByCid.cid, deduplicated: true },
-      { status: 200, headers: cors }
-    );
-  }
-
-  // 2. Backward-compat: hash + owner dedup for assets without a CID
-  //    (uploaded before Bundle 2 where cid column was added).
-  const [existingByHash] = await db
-    .select()
-    .from(assets)
-    .where(and(eq(assets.hash, hash), eq(assets.ownerDid, ownerDid), eq(assets.status, "active"), sql`${assets.cid} IS NULL`))
-    .limit(1);
-
-  if (existingByHash) {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
-    const url = `${baseUrl}/media/api/assets/${existingByHash.id}`;
-    return NextResponse.json(
-      { id: existingByHash.id, url, filename: existingByHash.filename, mimeType: existingByHash.mimeType,
-        size: existingByHash.size, hash: existingByHash.hash, deduplicated: true },
-      { status: 200, headers: cors }
-    );
-  }
-
-  // Storage path: {MEDIA_ROOT}/{didPath}/assets/{assetId}{ext}
-  const didPath = didToPath(ownerDid);
-  const dirPath = `${MEDIA_ROOT}/${didPath}/assets`;
-  const storagePath = `${dirPath}/${assetId}${ext}`;
-  const fairPath = `${dirPath}/${assetId}.fair.json`;
-
-  // .fair manifest — context-aware access and transfer rules
-  // Prefer explicit access from context, fall back to app-based inference
-  const app = context?.app;
-  const explicitAccess = context?.access;
-  let accessLevel: string;
-  if (explicitAccess) {
-    accessLevel = explicitAccess;
-  } else if (app === "chat") {
-    accessLevel = "conversation";
-  } else if (app === "market") {
-    accessLevel = "public";
-  } else if (app === "profile" || app === "events" || app === "www") {
-    accessLevel = "public";
-  } else {
-    accessLevel = "private";
-  }
-  // Build v1.1 manifest from templates (single source of truth)
-  const fairManifest = getDefaultManifest(mimeType, ownerDid);
-  fairManifest.id = assetId;
-  fairManifest.created = new Date().toISOString();
-  fairManifest.access = { type: accessLevel };
-
-  // Sign the manifest with the platform key
-  const platformDid = process.env.PLATFORM_DID;
-  const platformKeyHex = process.env.AUTH_PRIVATE_KEY;
-  let signedManifest = fairManifest;
-  if (platformDid && platformKeyHex) {
-    try {
-      signedManifest = await signManifest(
-        fairManifest,
-        { did: platformDid, privateKey: hexToBytes(platformKeyHex) }
-      );
-    } catch (err) {
-      log.warn({ err: String(err) }, "Manifest signing failed, using unsigned manifest");
-    }
-  }
-
+  let result;
   try {
-    await mkdir(dirPath, { recursive: true });
-    await writeFile(storagePath, buffer);
-    await writeFile(fairPath, JSON.stringify(signedManifest, null, 2));
+    result = await createAsset({
+      ownerDid,
+      uploadedBy,
+      buffer,
+      filename: originalName,
+      mimeType,
+      context,
+      baseUrl,
+    });
   } catch (err) {
-    log.error({ err: String(err) }, "Storage write failed");
+    log.error({ err: String(err) }, "Asset creation failed");
     return NextResponse.json(
       { error: "Storage failure", detail: String(err) },
-      { status: 500 }
+      { status: 500, headers: cors }
     );
   }
 
-  // Register in Lore blob store (non-fatal — asset is still served from storagePath if this fails)
-  const blobRef = await blobStore
-    .put(ownerDid, storagePath, { assetId, sizeBytes: file.size })
-    .catch((err: unknown) => {
-      log.error({ err: String(err), assetId }, "Lore blob store put failed (non-fatal)");
-      return null;
-    });
+  const { asset, deduplicated } = result;
+  const url = `${baseUrl}/media/api/assets/${asset.id}`;
 
-  // Insert DB record
-  let record;
-  try {
-    [record] = await db
-      .insert(assets)
-      .values({
-        id: assetId,
-        ownerDid,
-        uploadedBy,
-        filename: originalName,
-        mimeType,
-        size: file.size,
-        storagePath,
-        hash,
-        fairManifest: signedManifest,
-        fairPath,
-        cid,
-        loreRef: blobRef?.loreRef ?? null,
-        versionCount: 1,
-        status: "active",
-        metadata: context ? { context } : {},
-      })
-      .returning();
-  } catch (err) {
-    log.error({ err: String(err) }, "DB insert failed");
+  if (deduplicated) {
+    // Existing asset returned on content match (CID-global or hash+owner).
     return NextResponse.json(
-      { error: "Database failure", detail: String(err) },
-      { status: 500 }
+      {
+        id: asset.id,
+        url,
+        filename: asset.filename,
+        mimeType: asset.mimeType,
+        size: asset.size,
+        hash: asset.hash,
+        ...(asset.cid ? { cid: asset.cid } : {}),
+        deduplicated: true,
+      },
+      { status: 200, headers: cors }
     );
   }
 
-  // Publish signed manifest to DFOS federation (best-effort, never blocks upload)
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
-  const manifestUrl = `${baseUrl}/media/api/assets/${assetId}/fair`;
-  const manifestDigest = createHash("sha256").update(canonicalize(signedManifest)).digest("hex");
-
-  try {
-    const dfosResult = await publishContentEvent({
-      topic: "fair.manifest.published",
-      payload: {
-        assetId,
-        ownerDid,
-        manifestDigest: `sha256:${manifestDigest}`,
-        manifestUrl,
-        fairVersion: (signedManifest as { fair?: string }).fair || "1.1",
-        signedAt: new Date().toISOString(),
-      },
-    });
-    // Store the DFOS event ID on the asset record
-    if (dfosResult) {
-      await db
-        .update(assets)
-        .set({ fairDfosEventId: dfosResult.eventId })
-        .where(eq(assets.id, assetId));
-    }
-  } catch (err) {
-    log.error({ err: String(err), assetId }, "DFOS publish failed (non-fatal)");
-  }
-
-  // Auto-assign to folder based on context
-  if (context?.feature || context?.app) {
-    const folderKey = context.feature || context.app || "";
-    const folderConfig = CONTEXT_FOLDER_MAP[folderKey];
-    if (folderConfig) {
-      try {
-        // Find or create the system folder for this user (idempotent under races)
-        const existing = await db.select().from(folders).where(
-          and(eq(folders.ownerDid, ownerDid), eq(folders.name, folderConfig.name), eq(folders.isSystem, true))
-        ).limit(1);
-
-        let folderId: string;
-        if (existing.length > 0) {
-          folderId = existing[0].id;
-        } else {
-          folderId = `folder_${nanoid(16)}`;
-          const [inserted] = await db.insert(folders).values({
-            id: folderId,
-            ownerDid,
-            name: folderConfig.name,
-            icon: folderConfig.icon,
-            isSystem: true,
-          }).onConflictDoNothing().returning();
-
-          if (!inserted) {
-            // Another request created it concurrently; fetch the winner
-            const [retry] = await db.select().from(folders).where(
-              and(eq(folders.ownerDid, ownerDid), eq(folders.name, folderConfig.name), eq(folders.isSystem, true))
-            ).limit(1);
-            if (retry) folderId = retry.id;
-          }
-        }
-
-        // Link asset to folder
-        await db.insert(assetFolders).values({ assetId, folderId }).onConflictDoNothing();
-      } catch (err) {
-        log.error({ err: String(err) }, "Auto-folder assignment failed (non-fatal)");
-      }
-    }
-  }
-
-  // Build public URL — use configured base URL, not request origin (which may be localhost behind reverse proxy)
-  const url = `${baseUrl}/media/api/assets/${record.id}`;
-
-  const response = NextResponse.json(
+  return NextResponse.json(
     {
-      id: record.id,
+      id: asset.id,
       url,
-      filename: record.filename,
-      mimeType: record.mimeType,
-      size: record.size,
-      hash: record.hash,
-      storagePath: record.storagePath,
-      fairManifest: record.fairManifest,
-      createdAt: record.createdAt,
+      filename: asset.filename,
+      mimeType: asset.mimeType,
+      size: asset.size,
+      hash: asset.hash,
+      storagePath: asset.storagePath,
+      fairManifest: asset.fairManifest,
+      createdAt: asset.createdAt,
     },
     { status: 201, headers: cors }
   );
-
-  // Fire-and-forget async classification
-  const existingMeta = record.metadata;
-  classifyAsset(buffer, originalName, mimeType).then(async (result) => {
-    await db.update(assets).set({
-      classification: result.category,
-      classificationConfidence: Math.round(result.confidence * 100),
-      metadata: { ...(typeof existingMeta === "object" && existingMeta !== null ? existingMeta : {}), classification: result },
-    }).where(eq(assets.id, assetId));
-  }).catch((err: unknown) => log.error({ err: String(err) }, "Classification failed"));
-
-  return response;
 }
 
 // ---------------------------------------------------------------------------

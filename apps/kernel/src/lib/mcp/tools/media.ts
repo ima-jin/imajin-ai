@@ -70,6 +70,7 @@ async function loadReadable(id: string, requesterDid: string): Promise<Asset> {
 
 const listTool: McpTool = {
   name: 'media_list',
+  requiredScope: 'media:read',
   description:
     'List the media assets owned by your DID. Optional filters: type (mime prefix, e.g. "image"), search (filename substring), folderId, limit (max 200), offset.',
   inputSchema: {
@@ -98,6 +99,7 @@ const listTool: McpTool = {
 
 const getTool: McpTool = {
   name: 'media_get',
+  requiredScope: 'media:read',
   description: 'Get metadata for a single asset by id. Respects access grants (owner, public, or trust-graph grant).',
   inputSchema: {
     type: 'object',
@@ -115,6 +117,7 @@ const getTool: McpTool = {
 
 const getContentTool: McpTool = {
   name: 'media_get_content',
+  requiredScope: 'media:read',
   description:
     'Read the UTF-8 text content of a text/markdown/JSON asset by id. Respects access grants (owner or trust-graph grant).',
   inputSchema: {
@@ -137,6 +140,7 @@ const getContentTool: McpTool = {
 
 const resolveTool: McpTool = {
   name: 'media_resolve',
+  requiredScope: 'media:read',
   description:
     'Resolve assets by folder or by owner DID. Provide folderId (assets in that folder you may read) OR did (assets owned by that DID you may read). Optional limit (max 200), offset.',
   inputSchema: {

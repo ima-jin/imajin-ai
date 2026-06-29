@@ -14,6 +14,7 @@ import { db, attestations, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth, validateScopes, canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
+import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 
 export const POST = withLogger('kernel', async (request: NextRequest) => {
   const authResult = await requireAuth(request);
@@ -46,6 +47,8 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
       status: registryApps.status,
       requestedScopes: registryApps.requestedScopes,
       callbackUrl: registryApps.callbackUrl,
+      name: registryApps.name,
+      logoUrl: registryApps.logoUrl,
     })
     .from(registryApps)
     .where(eq(registryApps.id, appId));
@@ -97,6 +100,16 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     payload,
     signature,
     issuedAt: new Date(issuedAtMs),
+  });
+
+  // Promote the authorized app into a first-class actor identity in the graph
+  // (#1170). Idempotent + non-fatal; the attestation above is the grant of record.
+  await promoteActorOnGrant({
+    appId: app.id,
+    appDid: app.appDid,
+    name: app.name,
+    avatarUrl: app.logoUrl,
+    adapter: 'keypair',
   });
 
   return NextResponse.json({ attestationId, userDid: identity.id }, { status: 201 });

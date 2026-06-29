@@ -77,6 +77,16 @@ export async function handleMcpRpc(
       const name = msg.params?.name;
       const tool = typeof name === 'string' ? toolByName(name) : undefined;
       if (!tool) return rpcError(msg.id, -32602, `Unknown tool: ${String(name)}`);
+      // Per-tool scope gate (#1170): the /mcp route only checks that SOME media
+      // scope is present; the authoritative read-vs-write decision is here. A
+      // read-only token cannot reach a write tool, and vice versa. Returned
+      // in-band (isError) per MCP convention so the model sees why it was denied.
+      if (tool.requiredScope && !ctx.scopes.has(tool.requiredScope)) {
+        return ok(msg.id, {
+          content: [{ type: 'text', text: `Error: insufficient_scope — '${tool.name}' requires the '${tool.requiredScope}' grant` }],
+          isError: true,
+        });
+      }
       try {
         const args = (msg.params?.arguments as Record<string, unknown>) ?? {};
         const content = await tool.handler(args, ctx);
