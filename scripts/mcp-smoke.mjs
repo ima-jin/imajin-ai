@@ -30,10 +30,16 @@ const TOKEN = process.env.MCP_ACCESS_TOKEN || '';
 const PROTOCOL = '2025-06-18';
 
 let failures = 0;
+// Strip CR/LF (and other control chars) before logging interpolated values, so
+// HTTP-response-derived strings can't forge log lines (log injection, S5145).
+function sanitizeForLog(value) {
+  // eslint-disable-next-line no-control-regex
+  return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ');
+}
 function check(label, cond, detail) {
   const mark = cond ? '✓' : '✗';
-  const suffix = detail ? ` — ${detail}` : '';
-  console.log(`${mark} ${label}${suffix}`);
+  const suffix = detail ? ` — ${sanitizeForLog(detail)}` : '';
+  console.log(`${mark} ${sanitizeForLog(label)}${suffix}`);
   if (!cond) failures += 1;
 }
 
@@ -55,7 +61,7 @@ async function rpc(method, params, id) {
 }
 
 async function main() {
-  console.log(`MCP smoke → ${BASE}\n`);
+  console.log(`MCP smoke → ${sanitizeForLog(BASE)}\n`);
 
   // 1. Protected-resource metadata (RFC 9728)
   const prm = await fetch(`${BASE}/.well-known/oauth-protected-resource`).then((r) => r.json());
@@ -70,8 +76,33 @@ async function main() {
   check('as-metadata: authorization_code grant', (asm.grant_types_supported || []).includes('authorization_code'));
   check('as-metadata: refresh_token grant', (asm.grant_types_supported || []).includes('refresh_token'));
   check('as-metadata: token auth method none (public client)', (asm.token_endpoint_auth_methods_supported || []).includes('none'));
-  // The Claude Zod gotcha: registration_endpoint must be ABSENT, not null.
-  check('as-metadata: registration_endpoint OMITTED', !('registration_endpoint' in asm));
+  // DCR (#1185): Claude Desktop REQUIRES registration_endpoint. Must be a real
+  // URL (never null — Claude's Zod throws on null; that only applied to the old
+  // omitted/null pre-registered-client model).
+  check('as-metadata: registration_endpoint present (string URL)', typeof asm.registration_endpoint === 'string' && asm.registration_endpoint.startsWith('http'), asm.registration_endpoint);
+
+  // 2b. RFC 7591 Dynamic Client Registration (#1185)
+  if (asm.registration_endpoint) {
+    // Reject a non-allowlisted redirect_uri.
+    const bad = await fetch(asm.registration_endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ redirect_uris: ['https://evil.example/cb'], token_endpoint_auth_method: 'none' }),
+    });
+    check('dcr: rejects non-allowlisted redirect_uri', bad.status === 400, `status ${bad.status}`);
+
+    // Accept an allowlisted Anthropic callback → 201 + client_id, no secret.
+    const ok = await fetch(asm.registration_endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ redirect_uris: ['https://claude.ai/api/mcp/auth_callback'], token_endpoint_auth_method: 'none', client_name: 'smoke-test' }),
+    });
+    const reg = await ok.json().catch(() => ({}));
+    check('dcr: registers allowlisted client (201)', ok.status === 201, `status ${ok.status}`);
+    check('dcr: returns client_id', typeof reg.client_id === 'string' && reg.client_id.startsWith('app_'), reg.client_id);
+    check('dcr: issues NO client_secret (public client)', !('client_secret' in reg));
+    check('dcr: caps scope to media', (reg.scope || '').split(' ').every((s) => s === 'media:read' || s === 'media:write'), reg.scope);
+  }
 
   // 3. Unauthenticated /mcp → 401 + WWW-Authenticate pointer
   const unauth = await fetch(`${BASE}/mcp`, {
