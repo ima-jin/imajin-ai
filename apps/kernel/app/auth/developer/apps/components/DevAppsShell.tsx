@@ -48,7 +48,7 @@ function SuccessBanner({ app, onDismiss }: Readonly<{ app: RegisteredApp; onDism
   return (
     <div className="bg-green-900/20 border border-green-800/40 rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-green-400">App registered successfully</p>
+        <p className="text-sm font-semibold text-green-400">Integration registered</p>
         <button onClick={onDismiss} className="text-zinc-500 hover:text-zinc-300 text-xs transition-colors">
           Dismiss
         </button>
@@ -145,15 +145,15 @@ export default function DevAppsShell({ apps: initialApps }: Readonly<Props>) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-base font-semibold text-white">Developer Apps</h1>
-          <p className="text-xs text-zinc-500 mt-0.5">Apps registered under your identity</p>
+          <h1 className="text-base font-semibold text-white">Integrations</h1>
+          <p className="text-xs text-zinc-500 mt-0.5">Adapter bindings that connect an actor DID to your identity</p>
         </div>
         {!showForm && (
           <button
             onClick={() => setShowForm(true)}
             className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-black text-sm font-semibold rounded-lg transition-colors"
           >
-            Register new app
+            Register integration
           </button>
         )}
       </div>
@@ -170,12 +170,12 @@ export default function DevAppsShell({ apps: initialApps }: Readonly<Props>) {
       {apps.length === 0 && !showForm ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
           <p className="text-2xl mb-3">🔑</p>
-          <p className="text-sm text-zinc-400 mb-4">No apps registered yet.</p>
+          <p className="text-sm text-zinc-400 mb-4">No integrations registered yet.</p>
           <button
             onClick={() => setShowForm(true)}
             className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-sm font-semibold rounded-lg transition-colors"
           >
-            Register your first app
+            Register your first integration
           </button>
         </div>
       ) : (
