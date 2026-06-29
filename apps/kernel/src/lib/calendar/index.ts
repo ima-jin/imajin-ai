@@ -138,6 +138,103 @@ export async function filterAndGateEntries(
 }
 
 // ---------------------------------------------------------------------------
+// Connection grant lifecycle — auto-manage grantedToClass grants (#1189)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sync the `grantedToClass='connections'` consent grant for a calendar owner.
+ *
+ * Called fire-and-forget after any write that could change how many
+ * `connections`-visibility entries the owner has.
+ *
+ * Logic:
+ * - If the owner has ≥1 active `connections`-visibility entry → ensure an
+ *   active `grantedToClass='connections'` grant exists for the given purpose.
+ * - If the owner has 0 such entries → revoke the grant (if it exists).
+ *
+ * Purpose should match the broker event purpose used when querying entries:
+ * - `'calendar.entry'` for /calendar/api/d/[did]/entries
+ */
+export function syncCalendarConnectionGrant(
+  ownerDid: string,
+  purpose: string,
+  issuerId: string,
+  log: Pick<Logger, 'error'>,
+): void {
+  _syncConnectionGrant(ownerDid, purpose, issuerId).catch((err: unknown) => {
+    log.error({ err: String(err) }, 'syncCalendarConnectionGrant failed');
+  });
+}
+
+async function _syncConnectionGrant(
+  ownerDid: string,
+  purpose: string,
+  issuerId: string,
+): Promise<void> {
+  const { getClient } = await import('@imajin/db');
+  const sql = getClient();
+
+  // Count active connections-visibility entries for this owner.
+  const countRows = await sql`
+    SELECT COUNT(*) AS count
+    FROM kernel.calendar_entries
+    WHERE did = ${ownerDid}
+      AND visibility = 'connections'
+      AND (expires_at IS NULL OR expires_at > now())
+  `;
+  const count = Number.parseInt((countRows[0] as { count: string }).count, 10);
+
+  // Look for an existing active class-based grant.
+  const grantRows = await sql`
+    SELECT id FROM kernel.consent_grants
+    WHERE subject = ${ownerDid}
+      AND granted_to IS NULL
+      AND granted_to_class = 'connections'
+      AND purpose = ${purpose}
+      AND status = 'active'
+    LIMIT 1
+  `;
+  const existingId = grantRows[0] ? (grantRows[0] as { id: string }).id : null;
+
+  if (count > 0 && !existingId) {
+    // Create the grant — upsert on id to handle rare concurrent inserts.
+    const { randomUUID } = await import('node:crypto');
+    const id = `consent_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
+    const consentRef = `cg_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
+    await sql`
+      INSERT INTO kernel.consent_grants
+        (id, subject, granted_to, granted_to_class, purpose, allowed_fields, mode, status, consent_ref)
+      VALUES
+        (${id}, ${ownerDid}, NULL, 'connections', ${purpose},
+         ARRAY['entries'::text], 'attestation', 'active', ${consentRef})
+      ON CONFLICT (id) DO NOTHING
+    `;
+  } else if (count === 0 && existingId) {
+    // No more connections-visibility entries — revoke the grant.
+    await sql`
+      UPDATE kernel.consent_grants
+      SET status = 'revoked', updated_at = now()
+      WHERE id = ${existingId}
+    `;
+    // Emit broker.consent.revoked so downstream services can react.
+    const { publish } = await import('@imajin/bus');
+    publish('broker.consent.revoked', {
+      issuer: issuerId,
+      subject: ownerDid,
+      scope: 'calendar',
+      payload: {
+        consentId: existingId,
+        subject: ownerDid,
+        grantedTo: null,
+        purpose,
+        context_id: existingId,
+        context_type: 'consent',
+      },
+    }).catch(() => { /* fire-and-forget */ });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Bus event helper
 // ---------------------------------------------------------------------------
 

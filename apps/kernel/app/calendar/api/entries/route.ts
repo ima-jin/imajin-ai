@@ -4,7 +4,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { db, calendarEntries } from '@/src/db';
 import { and, eq, gte, lte, gt, isNull, or, desc } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { ENTRY_TYPES, VISIBILITIES, enforceTypeDefaults, publishCalendarEntry } from '@/src/lib/calendar';
+import { ENTRY_TYPES, VISIBILITIES, enforceTypeDefaults, publishCalendarEntry, syncCalendarConnectionGrant } from '@/src/lib/calendar';
 
 const log = createLogger('kernel');
 
@@ -104,6 +104,9 @@ export async function POST(request: Request) {
 
   // Fire and forget — never block the response.
   publishCalendarEntry('calendar.entry.created', auth.identity.id, did, entry.id, entry.type, log);
+  // Sync connection grant: if this entry is connections-visible, ensure a
+  // grantedToClass grant exists so broker queries can release it (#1189).
+  syncCalendarConnectionGrant(did, 'calendar.entry', auth.identity.id, log);
 
   return NextResponse.json({ entry }, { status: 201 });
 }
