@@ -138,42 +138,54 @@ export async function GET(request: NextRequest) {
  * the consent page commits via fetch) so the page can navigate the browser back
  * to the client with ?code&state.
  */
-export async function POST(request: NextRequest) {
-  const ip = getClientIP(request);
-  const ipLimit = rateLimit(`oauth-authorize:ip:${ip}`, 60, 60_000);
-  if (ipLimit.limited) {
-    return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfter) } });
-  }
+type ConsentClient = {
+  id: string;
+  appDid: string;
+  callbackUrl: string;
+  requestedScopes: string[] | null;
+  name: string;
+  logoUrl: string | null;
+};
 
-  let body: {
-    client_id?: unknown;
-    redirect_uri?: unknown;
-    scope?: unknown;
-    state?: unknown;
-    code_challenge?: unknown;
-    code_challenge_method?: unknown;
-    resource?: unknown;
-  };
+type ValidatedConsent = {
+  client: ConsentClient;
+  redirectUri: string;
+  codeChallenge: string;
+  granted: string[];
+  scope: string;
+  state: string | null;
+};
+
+/**
+ * Parse + validate the consent-commit request. Returns either an error response
+ * (to be returned as-is) or the validated, scoped values. Extracted to keep POST
+ * under the cognitive-complexity bound — the decision gauntlet lives here.
+ */
+async function validateConsentRequest(
+  request: NextRequest,
+): Promise<{ error: NextResponse } | { ok: ValidatedConsent }> {
+  let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    body = (await request.json()) as Record<string, unknown>;
   } catch {
-    return NextResponse.json({ error: 'invalid_request', error_description: 'invalid JSON body' }, { status: 400 });
+    return { error: NextResponse.json({ error: 'invalid_request', error_description: 'invalid JSON body' }, { status: 400 }) };
   }
 
-  const clientId = typeof body.client_id === 'string' ? body.client_id : null;
-  const redirectUri = typeof body.redirect_uri === 'string' ? body.redirect_uri : null;
-  const scopeParam = typeof body.scope === 'string' ? body.scope : null;
-  const state = typeof body.state === 'string' ? body.state : null;
-  const codeChallenge = typeof body.code_challenge === 'string' ? body.code_challenge : null;
-  const codeChallengeMethod = typeof body.code_challenge_method === 'string' ? body.code_challenge_method : null;
-  const resource = typeof body.resource === 'string' ? body.resource : null;
+  const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+  const clientId = str(body.client_id);
+  const redirectUri = str(body.redirect_uri);
+  const scopeParam = str(body.scope);
+  const state = str(body.state);
+  const codeChallenge = str(body.code_challenge);
+  const codeChallengeMethod = str(body.code_challenge_method);
+  const resource = str(body.resource);
 
   if (!clientId) {
-    return NextResponse.json({ error: 'invalid_request', error_description: 'client_id required' }, { status: 400 });
+    return { error: NextResponse.json({ error: 'invalid_request', error_description: 'client_id required' }, { status: 400 }) };
   }
   const clientLimit = rateLimit(`oauth-authorize:client:${clientId}`, 120, 60_000);
   if (clientLimit.limited) {
-    return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': String(clientLimit.retryAfter) } });
+    return { error: new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': String(clientLimit.retryAfter) } }) };
   }
 
   const [client] = await db
@@ -190,25 +202,40 @@ export async function POST(request: NextRequest) {
     .limit(1);
 
   if (!client) {
-    return NextResponse.json({ error: 'unauthorized_client', error_description: 'Unknown or inactive client' }, { status: 400 });
+    return { error: NextResponse.json({ error: 'unauthorized_client', error_description: 'Unknown or inactive client' }, { status: 400 }) };
   }
   if (!redirectUri || redirectUri !== client.callbackUrl) {
-    return NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri mismatch' }, { status: 400 });
+    return { error: NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri mismatch' }, { status: 400 }) };
   }
   if (!codeChallenge || codeChallengeMethod !== 'S256') {
-    return NextResponse.json({ error: 'invalid_request', error_description: 'PKCE code_challenge with S256 required' }, { status: 400 });
+    return { error: NextResponse.json({ error: 'invalid_request', error_description: 'PKCE code_challenge with S256 required' }, { status: 400 }) };
   }
   if (resource && resource !== MCP_RESOURCE) {
-    return NextResponse.json({ error: 'invalid_target', error_description: 'unknown resource' }, { status: 400 });
+    return { error: NextResponse.json({ error: 'invalid_target', error_description: 'unknown resource' }, { status: 400 }) };
   }
 
   // Scope = requested ∩ MCP-supported ∩ client-registered.
   const registered = new Set(client.requestedScopes ?? []);
   const granted = filterGrantedScopes(scopeParam).filter((s) => registered.has(s));
   if (granted.length === 0) {
-    return NextResponse.json({ error: 'invalid_scope' }, { status: 400 });
+    return { error: NextResponse.json({ error: 'invalid_scope' }, { status: 400 }) };
   }
-  const scope = granted.join(' ');
+
+  return { ok: { client, redirectUri, codeChallenge, granted, scope: granted.join(' '), state } };
+}
+
+export async function POST(request: NextRequest) {
+  const ip = getClientIP(request);
+  const ipLimit = rateLimit(`oauth-authorize:ip:${ip}`, 60, 60_000);
+  if (ipLimit.limited) {
+    return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfter) } });
+  }
+
+  const validated = await validateConsentRequest(request);
+  if ('error' in validated) {
+    return validated.error;
+  }
+  const { client, redirectUri, codeChallenge, granted, scope, state } = validated.ok;
 
   // Require a logged-in DID session (real session DID, not acting-as / acting-for).
   const { sessionDid } = await getEffectiveDid();
@@ -284,7 +311,7 @@ export async function POST(request: NextRequest) {
     scope,
     codeChallenge,
     codeChallengeMethod: 'S256',
-    resource: resource ?? MCP_RESOURCE,
+    resource: MCP_RESOURCE, // helper validated request resource === MCP_RESOURCE (or absent)
     attestationId,
     expiresAt: new Date(Date.now() + AUTHORIZATION_CODE_TTL_MS),
   });

@@ -71,8 +71,9 @@ function AuthorizeForm() {
         setApp(data);
 
         // Scopes from URL (what the actor is requesting now), filtered against what it registered.
+        const scopeSeparator = isOAuth ? /\s+/ : ',';
         const urlScopes = requestedParam
-          ? requestedParam.split(isOAuth ? /\s+/ : ',').map(s => s.trim()).filter(Boolean)
+          ? requestedParam.split(scopeSeparator).map(s => s.trim()).filter(Boolean)
           : [];
         const applicableScopes = urlScopes.length > 0
           ? urlScopes.filter(s => data.requestedScopes.includes(s))

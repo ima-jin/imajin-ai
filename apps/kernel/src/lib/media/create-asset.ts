@@ -49,7 +49,7 @@ export function inferMime(browserMime: string, filename: string): string {
   if (browserMime && browserMime !== "application/octet-stream") {
     return browserMime;
   }
-  const ext = filename.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
+  const ext = /\.[a-z0-9]+$/.exec(filename.toLowerCase())?.[0] ?? "";
   return EXT_TO_MIME[ext] || browserMime || "application/octet-stream";
 }
 
@@ -138,6 +138,78 @@ function resolveBaseUrl(explicit?: string): string {
  * (auth, multipart parse, tier/size limits, MIME inference); this owns the
  * create pipeline.
  */
+/**
+ * CID-first global dedup (then legacy hash+owner). Returns an existing active
+ * asset if the same content was already stored, else null. Extracted to keep
+ * createAsset under the cognitive-complexity bound.
+ */
+async function findDedupTarget(cid: string, hash: string, ownerDid: string): Promise<Asset | null> {
+  const [existingByCid] = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.cid, cid), eq(assets.status, "active")))
+    .limit(1);
+
+  if (existingByCid) {
+    if (existingByCid.ownerDid !== ownerDid) {
+      log.info(
+        { cid, originalOwner: existingByCid.ownerDid, newUploader: ownerDid, assetId: existingByCid.id },
+        "Cross-DID dedup: provenance attributed to original creator (#1122 §2 — default-on, no opt-out in v1)",
+      );
+    }
+    return existingByCid;
+  }
+
+  // Backward-compat: hash + owner dedup for pre-CID assets.
+  const [existingByHash] = await db
+    .select()
+    .from(assets)
+    .where(and(eq(assets.hash, hash), eq(assets.ownerDid, ownerDid), eq(assets.status, "active"), sql`${assets.cid} IS NULL`))
+    .limit(1);
+
+  return existingByHash ?? null;
+}
+
+/** Resolve (get-or-create, race-safe) a system folder id for the given name. */
+async function getOrCreateSystemFolder(ownerDid: string, name: string, icon: string): Promise<string> {
+  const [existing] = await db
+    .select()
+    .from(folders)
+    .where(and(eq(folders.ownerDid, ownerDid), eq(folders.name, name), eq(folders.isSystem, true)))
+    .limit(1);
+  if (existing) return existing.id;
+
+  const folderId = `folder_${nanoid(16)}`;
+  const [inserted] = await db
+    .insert(folders)
+    .values({ id: folderId, ownerDid, name, icon, isSystem: true })
+    .onConflictDoNothing()
+    .returning();
+  if (inserted) return folderId;
+
+  // Lost the insert race — re-read.
+  const [retry] = await db
+    .select()
+    .from(folders)
+    .where(and(eq(folders.ownerDid, ownerDid), eq(folders.name, name), eq(folders.isSystem, true)))
+    .limit(1);
+  return retry?.id ?? folderId;
+}
+
+/** Auto-assign a freshly-created asset to a system folder based on context (non-fatal). */
+async function autoAssignContextFolder(assetId: string, ownerDid: string, context: CreateAssetInput['context']): Promise<void> {
+  const folderKey = context?.feature || context?.app || "";
+  if (!folderKey) return;
+  const folderConfig = CONTEXT_FOLDER_MAP[folderKey];
+  if (!folderConfig) return;
+  try {
+    const folderId = await getOrCreateSystemFolder(ownerDid, folderConfig.name, folderConfig.icon);
+    await db.insert(assetFolders).values({ assetId, folderId }).onConflictDoNothing();
+  } catch (err) {
+    log.error({ err: String(err) }, "Auto-folder assignment failed (non-fatal)");
+  }
+}
+
 export async function createAsset(input: CreateAssetInput): Promise<CreateAssetResult> {
   const {
     ownerDid,
@@ -165,32 +237,9 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
 
   // ── Dedup (HTTP upload only) ──────────────────────────────────────────────
   if (dedup) {
-    // CID-first global dedup: same content bytes = same CID regardless of owner.
-    const [existingByCid] = await db
-      .select()
-      .from(assets)
-      .where(and(eq(assets.cid, cid), eq(assets.status, "active")))
-      .limit(1);
-
-    if (existingByCid) {
-      if (existingByCid.ownerDid !== ownerDid) {
-        log.info(
-          { cid, originalOwner: existingByCid.ownerDid, newUploader: ownerDid, assetId: existingByCid.id },
-          "Cross-DID dedup: provenance attributed to original creator (#1122 §2 — default-on, no opt-out in v1)",
-        );
-      }
-      return { asset: existingByCid, deduplicated: true };
-    }
-
-    // Backward-compat: hash + owner dedup for pre-CID assets.
-    const [existingByHash] = await db
-      .select()
-      .from(assets)
-      .where(and(eq(assets.hash, hash), eq(assets.ownerDid, ownerDid), eq(assets.status, "active"), sql`${assets.cid} IS NULL`))
-      .limit(1);
-
-    if (existingByHash) {
-      return { asset: existingByHash, deduplicated: true };
+    const existing = await findDedupTarget(cid, hash, ownerDid);
+    if (existing) {
+      return { asset: existing, deduplicated: true };
     }
   }
 
@@ -285,45 +334,8 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
     log.error({ err: String(err), assetId }, "DFOS publish failed (non-fatal)");
   }
 
-  // Auto-assign to a system folder based on context.
-  if (context?.feature || context?.app) {
-    const folderKey = context.feature || context.app || "";
-    const folderConfig = CONTEXT_FOLDER_MAP[folderKey];
-    if (folderConfig) {
-      try {
-        const existing = await db
-          .select()
-          .from(folders)
-          .where(and(eq(folders.ownerDid, ownerDid), eq(folders.name, folderConfig.name), eq(folders.isSystem, true)))
-          .limit(1);
-
-        let folderId: string;
-        if (existing.length > 0) {
-          folderId = existing[0].id;
-        } else {
-          folderId = `folder_${nanoid(16)}`;
-          const [inserted] = await db
-            .insert(folders)
-            .values({ id: folderId, ownerDid, name: folderConfig.name, icon: folderConfig.icon, isSystem: true })
-            .onConflictDoNothing()
-            .returning();
-
-          if (!inserted) {
-            const [retry] = await db
-              .select()
-              .from(folders)
-              .where(and(eq(folders.ownerDid, ownerDid), eq(folders.name, folderConfig.name), eq(folders.isSystem, true)))
-              .limit(1);
-            if (retry) folderId = retry.id;
-          }
-        }
-
-        await db.insert(assetFolders).values({ assetId, folderId }).onConflictDoNothing();
-      } catch (err) {
-        log.error({ err: String(err) }, "Auto-folder assignment failed (non-fatal)");
-      }
-    }
-  }
+  // Auto-assign to a system folder based on context (non-fatal).
+  await autoAssignContextFolder(assetId, ownerDid, context);
 
   // Fire-and-forget async classification.
   if (classify) {
