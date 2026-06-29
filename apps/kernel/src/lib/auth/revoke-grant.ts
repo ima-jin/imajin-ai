@@ -29,7 +29,7 @@ export type RevokeResult = { ok: true } | { ok: false; status: number; error: st
 export async function revokeGrant(ref: GrantRef, ownerDid: string): Promise<RevokeResult> {
   if (ref.kind === 'channel-link') {
     const [link] = await db.select().from(channelLinks).where(eq(channelLinks.id, ref.id)).limit(1);
-    if (!link || link.did !== ownerDid) {
+    if (link?.did !== ownerDid) {
       return { ok: false, status: 404, error: 'Link not found' };
     }
     if (link.status !== 'revoked') {

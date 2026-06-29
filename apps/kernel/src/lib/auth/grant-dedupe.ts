@@ -29,9 +29,10 @@ export function dedupeAttestationsBySubject(atts: AttestationRow[]): Attestation
     }
     const curActive = !cur.revokedAt;
     const aActive = !a.revokedAt;
-    if (aActive && !curActive) {
-      bySubject.set(a.subjectDid, a);
-    } else if (aActive === curActive && (a.issuedAt?.getTime() ?? 0) > (cur.issuedAt?.getTime() ?? 0)) {
+    const aMoreRecent = (a.issuedAt?.getTime() ?? 0) > (cur.issuedAt?.getTime() ?? 0);
+    // Replace cur when a is preferable: active beats revoked, then most-recent wins within the same active-state.
+    const aWins = (aActive && !curActive) || (aActive === curActive && aMoreRecent);
+    if (aWins) {
       bySubject.set(a.subjectDid, a);
     }
   }
