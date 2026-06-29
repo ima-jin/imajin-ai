@@ -5,16 +5,20 @@ import * as bus from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { createAsset, inferMime, isAllowedMime } from '@/src/lib/media/create-asset';
 import { buildArticleBlock, mergeArticleMetadata } from '@/src/lib/media/routes/article';
+import { updateAssetContent } from '@/src/lib/media/update-asset';
 
 /**
- * Media WRITE tools for the MCP connector (#1170, Stage 1 — CREATE-ONLY).
+ * Media WRITE tools for the MCP connector (#1170). All require the 'media:write'
+ * scope (enforced per-tool in handleMcpRpc) and act only on the caller's own DID.
  *
- * Both tools require the 'media:write' scope (enforced per-tool in handleMcpRpc)
- * and create NEW assets owner-pinned to ctx.did with a fresh, signed `.fair`
- * manifest. They go through the in-process createAsset lib (no HTTP self-call)
- * with dedup DISABLED so a write can never return or mutate another DID's asset,
- * and access pinned to 'private' so MCP-created media never inherits a
- * public-implying app context. UPDATE / VERSION is deferred to Stage 2 (#1122).
+ * - media_create_text / media_upload: CREATE new assets owner-pinned to ctx.did
+ *   via the in-process createAsset lib (no HTTP self-call), with dedup DISABLED
+ *   so a write can never return or mutate another DID's asset, and access pinned
+ *   to 'private' so MCP-created media never inherits a public-implying context.
+ * - media_update: owner-only content UPDATE (new version) via updateAssetContent;
+ *   the versioning substrate (#1122/#1123) handles the new CID + Lore revision.
+ *
+ * Delegated cross-DID writes remain out of scope (see write-access.ts).
  */
 
 const log = createLogger('kernel');
@@ -170,4 +174,46 @@ const uploadTool: McpTool = {
   },
 };
 
-export const mediaWriteTools: McpTool[] = [createTextTool, uploadTool];
+const updateTool: McpTool = {
+  name: 'media_update',
+  requiredScope: 'media:write',
+  description:
+    'Overwrite the text content of an existing text asset you own, creating a new version (the asset id stays the same). Owner-only.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'Asset id (asset_...) to update' },
+      content: { type: 'string', description: 'New UTF-8 text content (replaces the current content)' },
+    },
+    required: ['id', 'content'],
+    additionalProperties: false,
+  },
+  async handler(args, ctx) {
+    const id = str(args, 'id');
+    if (!id) throw new Error('id is required');
+    // content may be an empty string (clears the file), so this can't use str().
+    const content = typeof args.content === 'string' ? args.content : undefined;
+    if (content === undefined) throw new Error('content is required');
+
+    const result = await updateAssetContent({
+      assetId: id,
+      requesterDid: ctx.did,
+      content,
+      requireTextMime: true,
+    });
+    if (!result.ok) throw new Error(result.message);
+
+    const a = result.asset;
+    return json({
+      id: a.id,
+      filename: a.filename,
+      mimeType: a.mimeType,
+      size: a.size,
+      versionCount: a.versionCount,
+      cid: a.cid,
+      updatedAt: a.updatedAt,
+    });
+  },
+};
+
+export const mediaWriteTools: McpTool[] = [createTextTool, uploadTool, updateTool];

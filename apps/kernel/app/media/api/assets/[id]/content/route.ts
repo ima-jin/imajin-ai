@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, writeFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
-import { eq, sql } from "drizzle-orm";
-import type { FairManifestV1_1 } from "@imajin/fair";
-import { isFairManifestV1_1 } from "@imajin/fair";
-import { computeCid } from "@imajin/cid";
-import { contentSigner } from "@/src/lib/media/content-signer";
-import { blobStore } from "@/src/lib/media/blob-store-lore";
+import { eq } from "drizzle-orm";
+import { updateAssetContent } from "@/src/lib/media/update-asset";
 import { createLogger } from "@imajin/logger";
 import { getAccessType } from "@/src/lib/media/read-access";
 import { authorizeAssetRead } from "@/src/lib/media/authorize-read";
@@ -117,88 +112,27 @@ export async function PUT(
     return NextResponse.json({ error: "content must be a string" }, { status: 400 });
   }
 
-  let asset;
-  try {
-    [asset] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
-  } catch (err) {
-    log.error({ err: String(err) }, "DB lookup failed");
-    return NextResponse.json({ error: "Database failure" }, { status: 500 });
+  // Owner-only content overwrite + versioning, shared with the media_update MCP
+  // tool (#1170). The route keeps HTTP concerns (auth, body parse, content type);
+  // updateAssetContent owns authorization + the write/CID/Lore/.fair/versionCount
+  // pipeline.
+  const result = await updateAssetContent({ assetId: id, requesterDid, content });
+  if (!result.ok) {
+    switch (result.code) {
+      case "not_found":
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      case "forbidden":
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      case "immutable":
+        return NextResponse.json({ error: result.message }, { status: 403 });
+      case "unsupported_media":
+        return NextResponse.json({ error: result.message }, { status: 415 });
+      case "storage_failed":
+        return NextResponse.json({ error: "File write failed" }, { status: 500 });
+      case "db_failed":
+        return NextResponse.json({ error: result.message }, { status: 500 });
+    }
   }
-
-  if (asset?.status !== "active") {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-
-  if (asset.ownerDid !== requesterDid) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  // Immutability guard — locked assets cannot have their content edited
-  if (asset.immutable) {
-    return NextResponse.json(
-      { error: "Immutable asset — content cannot be edited" },
-      { status: 403 }
-    );
-  }
-
-  try {
-    await writeFile(asset.storagePath, content, "utf-8");
-  } catch (err) {
-    log.error({ err: String(err) }, "File write failed");
-    return NextResponse.json({ error: "File write failed" }, { status: 500 });
-  }
-
-  const hash = createHash("sha256").update(content).digest("hex");
-  const size = Buffer.byteLength(content, "utf-8");
-
-  // New CID for this version of the content (#1122 Bundle 3 — new CID per edit).
-  // The alias (asset_xxx) stays the same; the CID tracks the current content state.
-  const cid = await computeCid(new Uint8Array(Buffer.from(content, "utf-8")));
-
-  // Register new revision in Lore and capture the revision hash (non-fatal).
-  // loreRef now points to the Lore revision for THIS version of the content;
-  // prior versions are soft-superseded (chunks retained in Lore's immutable store).
-  const blobRef = await blobStore
-    .put(asset.ownerDid, asset.storagePath, { assetId: id, sizeBytes: size })
-    .catch((err: unknown) => {
-      log.error({ err: String(err), assetId: id }, "Lore put after content edit failed (non-fatal)");
-      return null;
-    });
-
-  // Re-sign .fair manifest so the signature covers the current content state.
-  // Non-fatal: if signing fails the content is still saved; the manifest will
-  // be re-signed on the next explicit PUT /fair or on the next upload.
-  let updatedFairManifest = asset.fairManifest as Record<string, unknown> | undefined;
-  const rawManifest = asset.fairManifest as Record<string, unknown> | null;
-  if (rawManifest && isFairManifestV1_1(rawManifest)) {
-    await contentSigner
-      .sign(rawManifest as unknown as FairManifestV1_1)
-      .then(async (signed) => {
-        updatedFairManifest = signed as unknown as Record<string, unknown>;
-        if (asset.fairPath) {
-          await writeFile(asset.fairPath, JSON.stringify(signed, null, 2)).catch(
-            (err: unknown) =>
-              log.warn({ err: String(err), assetId: id }, "Could not write re-signed .fair to disk (non-fatal)")
-          );
-        }
-      })
-      .catch((err: unknown) =>
-        log.warn({ err: String(err), assetId: id }, "Could not re-sign .fair after content edit (non-fatal)")
-      );
-  }
-
-  await db
-    .update(assets)
-    .set({
-      hash,
-      size,
-      versionCount: sql`${assets.versionCount} + 1`,
-      cid,
-      loreRef: blobRef?.loreRef ?? asset.loreRef,  // keep prior ref if Lore put failed
-      fairManifest: updatedFairManifest ?? asset.fairManifest,
-      updatedAt: new Date(),
-    })
-    .where(eq(assets.id, id));
 
   return NextResponse.json({ ok: true });
 }
