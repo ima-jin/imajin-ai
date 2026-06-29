@@ -3,7 +3,7 @@ import { requireAuth } from '@imajin/auth';
 import { db, calendarEntries } from '@/src/db';
 import { and, eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { VISIBILITIES, publishCalendarEntry } from '@/src/lib/calendar';
+import { VISIBILITIES, publishCalendarEntry, syncCalendarConnectionGrant } from '@/src/lib/calendar';
 
 const log = createLogger('kernel');
 
@@ -59,6 +59,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
 
   publishCalendarEntry('calendar.entry.updated', auth.identity.id, did, updated.id, updated.type, log);
+  // Visibility may have changed — reconcile the connection grant.
+  syncCalendarConnectionGrant(did, 'calendar.entry', auth.identity.id, log);
 
   return NextResponse.json({ entry: updated });
 }
@@ -82,6 +84,9 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   }
 
   publishCalendarEntry('calendar.entry.deleted', auth.identity.id, did, deleted.id, deleted.type, log);
+  // Entry removed — revoke the connection grant if no connections-visibility
+  // entries remain for this owner.
+  syncCalendarConnectionGrant(did, 'calendar.entry', auth.identity.id, log);
 
   return NextResponse.json({ deleted: true });
 }

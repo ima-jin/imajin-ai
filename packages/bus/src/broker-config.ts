@@ -116,17 +116,20 @@ function resolveConsentFromDefaults(
 /**
  * DB-backed consent lookup against `kernel.consent_grants`.
  *
- * Matches active, non-expired grants where the requester is either the exact
- * `granted_to` DID or the `*` wildcard, and the purpose is either exact or the
- * `*` wildcard. Class-based grants (`granted_to_class`, future #1189) have a
- * NULL `granted_to` and are intentionally excluded here.
+ * Two consent paths, composed permissively:
  *
- * Rows are composed in specificity order (exact requester + exact purpose
- * first) so the most specific grant supplies the `consentRef`.
+ * 1. Per-DID grants (`granted_to` = exact DID or `*` wildcard). Ordered by
+ *    specificity (exact requester + exact purpose first).
+ *
+ * 2. Class-based grants (`granted_to_class` = 'connections' | 'one_degree' |
+ *    'strangers', `granted_to` IS NULL). The subject's connection rings are
+ *    resolved via `resolveReachRings` and the requester must be a member of
+ *    the appropriate ring. This enables calendar `connections` visibility (#1189)
+ *    and any other reach-ring-gated consent without per-DID enumeration.
  *
  * Throws on DB error — callers (see {@link resolveConsent}) treat a throw as
  * degraded mode and fall back to {@link CONSENT_DEFAULTS}. A reachable DB with
- * no matching rows returns `undefined` (a legitimate fail-closed no-consent).
+ * no matching grants returns `undefined` (fail-closed).
  */
 export async function resolveConsentFromDb(
   subject: string,
@@ -136,48 +139,99 @@ export async function resolveConsentFromDb(
   const { getClient } = await import('@imajin/db');
   const sql = getClient();
 
+  const allEntries: ConsentEntry[] = [];
+
+  // ── Path 1: per-DID grants ────────────────────────────────────────────────
   const rows = await sql`
     SELECT allowed_fields, mode, consent_ref, granted_to, purpose
     FROM kernel.consent_grants
     WHERE subject = ${subject}
+      AND granted_to IS NOT NULL
       AND (granted_to = ${requester} OR granted_to = '*')
       AND (purpose = ${purpose} OR purpose = '*')
       AND status = 'active'
       AND (expires_at IS NULL OR expires_at > now())
   `;
 
-  if (rows.length === 0) return undefined;
+  if (rows.length > 0) {
+    const specificity = (row: { granted_to: string; purpose: string }): number => {
+      const reqWild = row.granted_to === '*';
+      const purposeWild = row.purpose === '*';
+      if (!reqWild && !purposeWild) return 0;
+      if (reqWild && !purposeWild) return 1;
+      if (!reqWild && purposeWild) return 2;
+      return 3;
+    };
 
-  // Specificity: exact requester + exact purpose (0) is most specific; both
-  // wildcards (3) least. Mirrors buildLookupKeys() ordering.
-  const specificity = (row: { granted_to: string; purpose: string }): number => {
-    const reqWild = row.granted_to === '*';
-    const purposeWild = row.purpose === '*';
-    if (!reqWild && !purposeWild) return 0;
-    if (reqWild && !purposeWild) return 1;
-    if (!reqWild && purposeWild) return 2;
-    return 3;
-  };
+    type GrantRow = {
+      granted_to: string;
+      purpose: string;
+      allowed_fields: string[];
+      mode: string;
+      consent_ref: string;
+    };
 
-  type GrantRow = {
-    granted_to: string;
-    purpose: string;
-    allowed_fields: string[];
-    mode: string;
-    consent_ref: string;
-  };
+    const ordered = ([...rows] as GrantRow[]).sort((a, b) => specificity(a) - specificity(b));
+    for (const row of ordered) {
+      allEntries.push({
+        allowedFields: row.allowed_fields ?? [],
+        mode: row.mode === 'raw' ? 'raw' : 'attestation',
+        consentRef: row.consent_ref,
+      });
+    }
+  }
 
-  const ordered = ([...rows] as GrantRow[]).sort(
-    (a, b) => specificity(a) - specificity(b),
-  );
+  // ── Path 2: grantedToClass grants (reach-ring based) ─────────────────────
+  const classRows = await sql`
+    SELECT allowed_fields, mode, consent_ref, granted_to_class
+    FROM kernel.consent_grants
+    WHERE subject = ${subject}
+      AND granted_to IS NULL
+      AND granted_to_class IS NOT NULL
+      AND (purpose = ${purpose} OR purpose = '*')
+      AND status = 'active'
+      AND (expires_at IS NULL OR expires_at > now())
+  `;
 
-  const entries: ConsentEntry[] = ordered.map((row) => ({
-    allowedFields: row.allowed_fields ?? [],
-    mode: row.mode === 'raw' ? 'raw' : 'attestation',
-    consentRef: row.consent_ref,
-  }));
+  if (classRows.length > 0) {
+    // Resolve the subject's connection rings once per request.
+    const { resolveReachRings } = await import('./match/reach');
+    const subjectRings = await resolveReachRings(subject);
 
-  return composeEntries(entries);
+    type ClassGrantRow = {
+      granted_to_class: string;
+      allowed_fields: string[];
+      mode: string;
+      consent_ref: string;
+    };
+
+    for (const row of classRows as ClassGrantRow[]) {
+      let admitted = false;
+      switch (row.granted_to_class) {
+        case 'connections':
+          // subject's direct connections (favourites proxy)
+          admitted = subjectRings.favouritesSet.has(requester);
+          break;
+        case 'one_degree':
+          // subject's 1° ring (direct + 2-hop)
+          admitted = subjectRings.oneDegreeSet.has(requester);
+          break;
+        case 'strangers':
+          admitted = true;
+          break;
+      }
+      if (admitted) {
+        allEntries.push({
+          allowedFields: row.allowed_fields ?? [],
+          mode: row.mode === 'raw' ? 'raw' : 'attestation',
+          consentRef: row.consent_ref,
+        });
+      }
+    }
+  }
+
+  if (allEntries.length === 0) return undefined;
+  return composeEntries(allEntries);
 }
 
 /**
