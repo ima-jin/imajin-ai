@@ -286,6 +286,13 @@ export interface BusEventMap {
   'profile.update': {
     profileDid: string;
   };
+  'profile.field.request': {
+    requester: string;
+    subject: string;
+    fields: string[];
+    context_id: string;
+    context_type: 'profile';
+  };
   'stub.created': {
     name: string;
     handle: string | null;
