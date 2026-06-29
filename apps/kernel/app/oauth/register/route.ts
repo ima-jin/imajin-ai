@@ -12,19 +12,14 @@ import {
 const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+// Registration is called server-to-server by the OAuth client (Claude Desktop),
+// not as a browser fetch from an arbitrary origin — so NO permissive CORS. We
+// match the /oauth/token route: no-store, no wildcard Access-Control-Allow-Origin.
+const NO_STORE = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
 /** RFC 7591 error body. */
 function regError(error: string, description: string, status = 400) {
-  return NextResponse.json({ error, error_description: description }, { status, headers: CORS_HEADERS });
-}
-
-export function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+  return NextResponse.json({ error, error_description: description }, { status, headers: NO_STORE });
 }
 
 function asStringArray(value: unknown): string[] | null {
@@ -60,7 +55,7 @@ export async function POST(request: NextRequest) {
   if (limit.limited) {
     return new NextResponse('Too Many Requests', {
       status: 429,
-      headers: { 'Retry-After': String(limit.retryAfter), ...CORS_HEADERS },
+      headers: { ...NO_STORE, 'Retry-After': String(limit.retryAfter) },
     });
   }
 
@@ -145,6 +140,6 @@ export async function POST(request: NextRequest) {
       scope: scopes.join(' '),
       client_name: clientName,
     },
-    { status: 201, headers: CORS_HEADERS },
+    { status: 201, headers: NO_STORE },
   );
 }
