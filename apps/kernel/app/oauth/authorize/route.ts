@@ -7,6 +7,7 @@ import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import { createLogger } from '@imajin/logger';
 import { rateLimit, getClientIP } from '@imajin/config';
 import {
+  MCP_ISSUER,
   MCP_RESOURCE,
   AUTHORIZATION_CODE_TTL_MS,
   filterGrantedScopes,
@@ -17,6 +18,24 @@ import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 
 const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
+
+/**
+ * Resolve the PUBLIC origin for browser-facing redirects (login / consent).
+ *
+ * The kernel sits behind Caddy, so `request.url` reports the internal proxy
+ * target (http://localhost:3000) — redirecting off that dead-ends the user's
+ * browser (the #1185 "redirect to localhost:3000" bug). The OAuth ceremony is
+ * advertised on the configured issuer origin (MCP_ISSUER === MCP_PUBLIC_URL),
+ * and Claude arrived on exactly that origin, so we anchor all browser redirects
+ * to it. Fall back to the forwarded host, then request.url, if unset.
+ */
+function publicOrigin(request: NextRequest): string {
+  if (MCP_ISSUER) return MCP_ISSUER;
+  const fwHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  const fwProto = request.headers.get('x-forwarded-proto') ?? 'https';
+  if (fwHost) return `${fwProto}://${fwHost}`;
+  return new URL(request.url).origin;
+}
 
 /** Redirect back to the client with OAuth error params (RFC 6749 §4.1.2.1). */
 function errorRedirect(redirectUri: string, state: string | null, error: string, description?: string) {
@@ -106,9 +125,16 @@ export async function GET(request: NextRequest) {
   //    acting-as / acting-for effective DID) as the resource owner, so a
   //    connector can never be minted against a group the user is impersonating.
   const { sessionDid } = await getEffectiveDid();
+  const origin = publicOrigin(request);
+  const originUrl = new URL(origin);
   if (!sessionDid) {
-    const loginUrl = new URL('/auth/login', request.url);
-    loginUrl.searchParams.set('next', request.url); // return to /authorize after login
+    // Anchor login + the post-login `next` to the PUBLIC origin, not the internal
+    // localhost:3000 that request.url reports behind Caddy (#1185 redirect bug).
+    const publicAuthorizeUrl = new URL(request.url);
+    publicAuthorizeUrl.protocol = originUrl.protocol;
+    publicAuthorizeUrl.host = originUrl.host;
+    const loginUrl = new URL('/auth/login', origin);
+    loginUrl.searchParams.set('next', publicAuthorizeUrl.toString()); // return to /authorize after login
     return NextResponse.redirect(loginUrl);
   }
 
@@ -117,7 +143,7 @@ export async function GET(request: NextRequest) {
   //    client actor access in the user's graph and POSTs back to commit. Only
   //    validated params are forwarded; the POST handler re-validates before it
   //    mints anything.
-  const consentUrl = new URL('/auth/authorize', request.url);
+  const consentUrl = new URL('/auth/authorize', origin);
   consentUrl.searchParams.set('client_id', client.id);
   consentUrl.searchParams.set('redirect_uri', redirectUri);
   consentUrl.searchParams.set('scope', scope);
