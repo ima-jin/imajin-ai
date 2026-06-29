@@ -19,7 +19,7 @@ export const consentReactor: BrokerReactor = async (state) => {
     'Resolving consent'
   );
 
-  const resolved = resolveConsent(request.subject, request.requester, request.purpose);
+  const resolved = await resolveConsent(request.subject, request.requester, request.purpose);
 
   if (!resolved) {
     log.warn(

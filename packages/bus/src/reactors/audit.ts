@@ -1,8 +1,44 @@
+import { randomUUID } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
 import { publish } from '../publish';
 import type { BrokerPipelineState, BrokerReactor, BrokerResult } from '../types';
 
 const log = createLogger('bus:broker:audit');
+
+/**
+ * Write a row to kernel.broker_audit_log (fire-and-forget).
+ * Uses the same dynamic @imajin/db import pattern as packages/bus/src/config.ts.
+ */
+async function writeAuditLogRow(row: {
+  type: 'release' | 'rejection';
+  requester: string;
+  subject: string;
+  purpose: string;
+  scope: string;
+  fieldsRequested: string[];
+  fieldsReleased: string[] | null;
+  status: 'RELEASED' | 'DENIED';
+  mode: string | null;
+  consentRef: string | null;
+  reason: string | null;
+}): Promise<void> {
+  try {
+    const { getClient } = await import('@imajin/db');
+    const sql = getClient();
+    const id = randomUUID();
+    await sql`
+      INSERT INTO kernel.broker_audit_log
+        (id, type, requester, subject, purpose, scope,
+         fields_requested, fields_released, status, mode, consent_ref, reason)
+      VALUES
+        (${id}, ${row.type}, ${row.requester}, ${row.subject}, ${row.purpose}, ${row.scope},
+         ${row.fieldsRequested}, ${row.fieldsReleased ?? null}, ${row.status},
+         ${row.mode ?? null}, ${row.consentRef ?? null}, ${row.reason ?? null})
+    `;
+  } catch (err: unknown) {
+    log.error({ err: String(err) }, 'broker_audit_log DB write failed');
+  }
+}
 
 /**
  * Audit reactor — fires a broker.release or broker.rejection event.
@@ -24,6 +60,23 @@ export const auditReactor: BrokerReactor = async (state) => {
   }
 
   log.info({ releaseId: envelope.releaseId }, 'Firing broker.release audit event');
+
+  // Persist to queryable audit log (fire-and-forget).
+  writeAuditLogRow({
+    type: 'release',
+    requester: request.requester,
+    subject: request.subject,
+    purpose: request.purpose,
+    scope: request.scope,
+    fieldsRequested: request.fields,
+    fieldsReleased: Object.keys(filteredData || {}),
+    status: 'RELEASED',
+    mode: envelope.mode,
+    consentRef: envelope.consentReference ?? null,
+    reason: null,
+  }).catch((err: unknown) => {
+    log.error({ err: String(err) }, 'writeAuditLogRow (release) failed');
+  });
 
   publish('broker.release', {
     issuer: request.requester,
@@ -62,6 +115,23 @@ export async function auditRejection(
   }
 
   log.info({ reason: result.reason }, 'Firing broker.rejection audit event');
+
+  // Persist to queryable audit log (fire-and-forget).
+  writeAuditLogRow({
+    type: 'rejection',
+    requester: request.requester,
+    subject: request.subject,
+    purpose: request.purpose,
+    scope: request.scope,
+    fieldsRequested: request.fields,
+    fieldsReleased: null,
+    status: 'DENIED',
+    mode: null,
+    consentRef: null,
+    reason: result.reason,
+  }).catch((err: unknown) => {
+    log.error({ err: String(err) }, 'writeAuditLogRow (rejection) failed');
+  });
 
   publish('broker.rejection', {
     issuer: request.requester,

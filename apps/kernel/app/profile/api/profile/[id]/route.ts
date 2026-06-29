@@ -9,6 +9,8 @@ import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { validateAgentPricingManifest } from '@imajin/fair';
+import { filterProfileFields, FIELD_VISIBILITY_LEVELS } from '@/src/lib/profile';
+import type { FieldVisibility } from '@/src/db/schemas/profile';
 
 const log = createLogger('kernel');
 
@@ -165,6 +167,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    // Per-field metadata visibility (#1003): non-owners get a broker-filtered metadata object.
+    // Self-queries bypass filtering and see everything.
+    if (viewerDid === null) viewerDid = await getViewerDid(request);
+    if (viewerDid !== profile.did) {
+      result.metadata = await filterProfileFields(
+        profile.metadata as Record<string, unknown> | null,
+        profile.fieldVisibility,
+        viewerDid ?? '',
+        profile.did,
+        log
+      );
+      // The visibility rules themselves are owner-only config.
+      delete result.fieldVisibility;
+    }
+
     // Stub metadata for business profiles
     if (profile.claimStatus) {
       const [{ value: maintainerCount }] = await db
@@ -263,7 +280,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = JSON.parse(bodyText);
-    const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles, agentPricing } = body;
+    const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles, agentPricing, fieldVisibility } = body;
 
     // Build update object
     const updates: Record<string, any> = {
@@ -299,6 +316,27 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ error: 'visibility must be public or incognito' }, { status: 400, headers: cors });
       }
       updates.visibility = visibility;
+    }
+    if (fieldVisibility !== undefined) {
+      if (typeof fieldVisibility !== 'object' || fieldVisibility === null || Array.isArray(fieldVisibility)) {
+        return NextResponse.json({ error: 'fieldVisibility must be an object' }, { status: 400, headers: cors });
+      }
+      for (const [field, rule] of Object.entries(fieldVisibility as Record<string, unknown>)) {
+        if (typeof rule !== 'object' || rule === null) {
+          return NextResponse.json({ error: `fieldVisibility.${field} must be an object` }, { status: 400, headers: cors });
+        }
+        const { level, allowedDids } = rule as { level?: unknown; allowedDids?: unknown };
+        if (typeof level !== 'string' || !FIELD_VISIBILITY_LEVELS.includes(level)) {
+          return NextResponse.json(
+            { error: `fieldVisibility.${field}.level must be one of ${FIELD_VISIBILITY_LEVELS.join(', ')}` },
+            { status: 400, headers: cors }
+          );
+        }
+        if (allowedDids !== undefined && !(Array.isArray(allowedDids) && allowedDids.every((d) => typeof d === 'string'))) {
+          return NextResponse.json({ error: `fieldVisibility.${field}.allowedDids must be an array of strings` }, { status: 400, headers: cors });
+        }
+      }
+      updates.fieldVisibility = fieldVisibility as FieldVisibility;
     }
 
     let updated;
