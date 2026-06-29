@@ -23,11 +23,15 @@ export const OAUTH_TOKEN_ENDPOINT = `${MCP_ISSUER}/oauth/token`;
 export const PROTECTED_RESOURCE_METADATA_URL = `${MCP_ISSUER}/.well-known/oauth-protected-resource`;
 
 /**
- * Read-only media scope. NOTE: this string must also be added to the shared
- * SCOPES vocabulary in packages/auth/src/scopes.ts so the consent listing
- * (/auth/apps) and validateScopes() recognize it.
+ * Media scopes the MCP surface supports (read + create/write). NOTE: each string
+ * must also exist in the shared SCOPES vocabulary in packages/auth/src/scopes.ts
+ * so the consent listing (/auth/apps) and validateScopes() recognize it.
+ *
+ * `media:write` is server-supported here, but a given client only receives it if
+ * its registry.apps.requested_scopes includes it — the Claude seed (0052) stays
+ * read-only, so no existing client gains write capability implicitly.
  */
-export const MCP_SCOPES = ['media:read'] as const;
+export const MCP_SCOPES = ['media:read', 'media:write'] as const;
 const MCP_SCOPE_SET = new Set<string>(MCP_SCOPES);
 
 export const ACCESS_TOKEN_TTL_SECONDS = 600; // matches createAppToken (10 min)

@@ -13,6 +13,7 @@ import {
   generateOpaqueToken,
   hashToken,
 } from '@/src/lib/mcp/oauth-config';
+import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 
 const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
@@ -111,16 +112,143 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 5. Consent → app.authorized attestation (this is the grant the revoke story
-  //    reads: /auth/apps lists it, /api/auth/revoke revokes it). Reuse an active
-  //    grant if one already exists for this (user, app).
-  //    TODO(consent-ui): render an explicit scope-consent screen before this step
-  //    instead of implicit first-party consent.
-  const privateKey = process.env.AUTH_PRIVATE_KEY;
-  if (!privateKey) {
-    return errorRedirect(redirectUri, state, 'server_error', 'signing key unavailable');
+  // 5. Consent screen (#1170). Instead of implicit first-party consent, hand the
+  //    validated request to the consent UI, which frames the grant as giving the
+  //    client actor access in the user's graph and POSTs back to commit. Only
+  //    validated params are forwarded; the POST handler re-validates before it
+  //    mints anything.
+  const consentUrl = new URL('/auth/authorize', request.url);
+  consentUrl.searchParams.set('client_id', client.id);
+  consentUrl.searchParams.set('redirect_uri', redirectUri);
+  consentUrl.searchParams.set('scope', scope);
+  consentUrl.searchParams.set('code_challenge', codeChallenge);
+  consentUrl.searchParams.set('code_challenge_method', 'S256');
+  consentUrl.searchParams.set('resource', resource ?? MCP_RESOURCE);
+  if (state) consentUrl.searchParams.set('state', state);
+  return NextResponse.redirect(consentUrl);
+}
+
+/**
+ * POST /oauth/authorize — consent commit (#1170).
+ *
+ * Called by the consent UI once the user approves. Re-validates the request,
+ * records consent as an app.authorized attestation (reusing an active grant),
+ * promotes the client into a first-class actor identity, and mints a single-use
+ * PKCE-bound authorization code. Returns { redirect } (JSON, not a 302, because
+ * the consent page commits via fetch) so the page can navigate the browser back
+ * to the client with ?code&state.
+ */
+type ConsentClient = {
+  id: string;
+  appDid: string;
+  callbackUrl: string;
+  requestedScopes: string[] | null;
+  name: string;
+  logoUrl: string | null;
+};
+
+type ValidatedConsent = {
+  client: ConsentClient;
+  redirectUri: string;
+  codeChallenge: string;
+  granted: string[];
+  scope: string;
+  state: string | null;
+};
+
+/**
+ * Parse + validate the consent-commit request. Returns either an error response
+ * (to be returned as-is) or the validated, scoped values. Extracted to keep POST
+ * under the cognitive-complexity bound — the decision gauntlet lives here.
+ */
+async function validateConsentRequest(
+  request: NextRequest,
+): Promise<{ error: NextResponse } | { ok: ValidatedConsent }> {
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return { error: NextResponse.json({ error: 'invalid_request', error_description: 'invalid JSON body' }, { status: 400 }) };
   }
 
+  const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+  const clientId = str(body.client_id);
+  const redirectUri = str(body.redirect_uri);
+  const scopeParam = str(body.scope);
+  const state = str(body.state);
+  const codeChallenge = str(body.code_challenge);
+  const codeChallengeMethod = str(body.code_challenge_method);
+  const resource = str(body.resource);
+
+  if (!clientId) {
+    return { error: NextResponse.json({ error: 'invalid_request', error_description: 'client_id required' }, { status: 400 }) };
+  }
+  const clientLimit = rateLimit(`oauth-authorize:client:${clientId}`, 120, 60_000);
+  if (clientLimit.limited) {
+    return { error: new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': String(clientLimit.retryAfter) } }) };
+  }
+
+  const [client] = await db
+    .select({
+      id: registryApps.id,
+      appDid: registryApps.appDid,
+      callbackUrl: registryApps.callbackUrl,
+      requestedScopes: registryApps.requestedScopes,
+      name: registryApps.name,
+      logoUrl: registryApps.logoUrl,
+    })
+    .from(registryApps)
+    .where(and(eq(registryApps.id, clientId), eq(registryApps.status, 'active')))
+    .limit(1);
+
+  if (!client) {
+    return { error: NextResponse.json({ error: 'unauthorized_client', error_description: 'Unknown or inactive client' }, { status: 400 }) };
+  }
+  if (!redirectUri || redirectUri !== client.callbackUrl) {
+    return { error: NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri mismatch' }, { status: 400 }) };
+  }
+  if (!codeChallenge || codeChallengeMethod !== 'S256') {
+    return { error: NextResponse.json({ error: 'invalid_request', error_description: 'PKCE code_challenge with S256 required' }, { status: 400 }) };
+  }
+  if (resource && resource !== MCP_RESOURCE) {
+    return { error: NextResponse.json({ error: 'invalid_target', error_description: 'unknown resource' }, { status: 400 }) };
+  }
+
+  // Scope = requested ∩ MCP-supported ∩ client-registered.
+  const registered = new Set(client.requestedScopes ?? []);
+  const granted = filterGrantedScopes(scopeParam).filter((s) => registered.has(s));
+  if (granted.length === 0) {
+    return { error: NextResponse.json({ error: 'invalid_scope' }, { status: 400 }) };
+  }
+
+  return { ok: { client, redirectUri, codeChallenge, granted, scope: granted.join(' '), state } };
+}
+
+export async function POST(request: NextRequest) {
+  const ip = getClientIP(request);
+  const ipLimit = rateLimit(`oauth-authorize:ip:${ip}`, 60, 60_000);
+  if (ipLimit.limited) {
+    return new NextResponse('Too Many Requests', { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfter) } });
+  }
+
+  const validated = await validateConsentRequest(request);
+  if ('error' in validated) {
+    return validated.error;
+  }
+  const { client, redirectUri, codeChallenge, granted, scope, state } = validated.ok;
+
+  // Require a logged-in DID session (real session DID, not acting-as / acting-for).
+  const { sessionDid } = await getEffectiveDid();
+  if (!sessionDid) {
+    return NextResponse.json({ error: 'login_required' }, { status: 401 });
+  }
+
+  const privateKey = process.env.AUTH_PRIVATE_KEY;
+  if (!privateKey) {
+    return NextResponse.json({ error: 'server_error', error_description: 'signing key unavailable' }, { status: 500 });
+  }
+
+  // Consent → app.authorized attestation (reuse an active grant if present).
   let attestationId: string;
   const [existing] = await db
     .select({ id: attestations.id, revokedAt: attestations.revokedAt })
@@ -134,7 +262,6 @@ export async function GET(request: NextRequest) {
 
   if (existing && !existing.revokedAt) {
     attestationId = existing.id;
-    // TODO: if existing payload.scopes ⊉ granted, widen (re-sign) or re-consent.
   } else {
     const issuedAtMs = Date.now();
     const payload = { scopes: granted, appId: client.id, callbackUrl: client.callbackUrl };
@@ -163,7 +290,17 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // 6. Mint a single-use, PKCE-bound authorization code (store only its hash).
+  // Promote the client into a first-class actor identity (#1170). OAuth public
+  // clients are keyless → non-signing agent_ sentinel. Idempotent + non-fatal.
+  await promoteActorOnGrant({
+    appId: client.id,
+    appDid: client.appDid,
+    name: client.name,
+    avatarUrl: client.logoUrl,
+    adapter: 'oauth',
+  });
+
+  // Mint a single-use, PKCE-bound authorization code (store only its hash).
   const code = generateOpaqueToken();
   await db.insert(oauthAuthorizationCodes).values({
     id: `oac_${nanoid(16)}`,
@@ -174,15 +311,15 @@ export async function GET(request: NextRequest) {
     scope,
     codeChallenge,
     codeChallengeMethod: 'S256',
-    resource: resource ?? MCP_RESOURCE,
+    resource: MCP_RESOURCE, // helper validated request resource === MCP_RESOURCE (or absent)
     attestationId,
     expiresAt: new Date(Date.now() + AUTHORIZATION_CODE_TTL_MS),
   });
 
-  log.info({ clientId: client.id, userDid: sessionDid, scope }, 'oauth: issued authorization code');
+  log.info({ clientId: client.id, userDid: sessionDid, scope }, 'oauth: consent committed, issued authorization code');
 
   const redirect = new URL(redirectUri);
   redirect.searchParams.set('code', code);
   if (state) redirect.searchParams.set('state', state);
-  return NextResponse.redirect(redirect);
+  return NextResponse.json({ redirect: redirect.toString() });
 }

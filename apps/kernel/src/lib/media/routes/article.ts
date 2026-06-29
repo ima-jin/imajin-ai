@@ -8,9 +8,74 @@ import { corsHeaders } from "@/src/lib/kernel/cors";
 
 const log = createLogger("kernel");
 
-const SLUG_REGEX = /^[a-z0-9-]+$/;
-const VALID_STATUSES = ["POSTED", "REVIEW", "DRAFT"] as const;
-type ArticleStatus = (typeof VALID_STATUSES)[number];
+export const SLUG_REGEX = /^[a-z0-9-]+$/;
+export const VALID_STATUSES = ["POSTED", "REVIEW", "DRAFT"] as const;
+export type ArticleStatus = (typeof VALID_STATUSES)[number];
+
+/** Raw article fields as received from a request body or tool args. */
+export interface ArticleInput {
+  slug?: unknown;
+  title?: unknown;
+  subtitle?: unknown;
+  description?: unknown;
+  status?: unknown;
+  date?: unknown;
+  order?: unknown;
+}
+
+/** A validated, normalized article metadata block. */
+export interface ArticleBlock {
+  slug: string;
+  title: string;
+  subtitle?: string;
+  description?: string;
+  status: ArticleStatus;
+  date: string;
+  order?: number;
+}
+
+/**
+ * Validate + normalize article fields into a metadata block. Returns the block
+ * or a human-readable error (the exact messages the HTTP route surfaces). Shared
+ * by patchArticle (HTTP) and the media_create_text MCP tool (#1170).
+ */
+export function buildArticleBlock(body: ArticleInput): { block: ArticleBlock } | { error: string } {
+  if (!body.slug || typeof body.slug !== "string" || !SLUG_REGEX.test(body.slug)) {
+    return { error: "slug is required and must be URL-safe (a-z, 0-9, hyphens only)" };
+  }
+  if (!body.title || typeof body.title !== "string" || !body.title.trim()) {
+    return { error: "title is required" };
+  }
+
+  const status: ArticleStatus =
+    body.status && VALID_STATUSES.includes(body.status as ArticleStatus)
+      ? (body.status as ArticleStatus)
+      : "POSTED";
+
+  const date =
+    body.date && typeof body.date === "string"
+      ? body.date
+      : new Date().toISOString().split("T")[0];
+
+  const order = typeof body.order === "number" ? body.order : undefined;
+
+  const block: ArticleBlock = {
+    slug: body.slug,
+    title: body.title.trim(),
+    subtitle: typeof body.subtitle === "string" ? body.subtitle.trim() : undefined,
+    description: typeof body.description === "string" ? body.description.trim() : undefined,
+    status,
+    date,
+    ...(order === undefined ? {} : { order }),
+  };
+  return { block };
+}
+
+/** Merge a validated article block into an asset's existing metadata object. */
+export function mergeArticleMetadata(existing: unknown, block: ArticleBlock): Record<string, unknown> {
+  const base = existing && typeof existing === "object" ? (existing as Record<string, unknown>) : {};
+  return { ...base, article: block };
+}
 
 export async function patchArticle(
   request: NextRequest,
@@ -47,30 +112,11 @@ export async function patchArticle(
     );
   }
 
-  if (!body.slug || typeof body.slug !== "string" || !SLUG_REGEX.test(body.slug)) {
-    return NextResponse.json(
-      { error: "slug is required and must be URL-safe (a-z, 0-9, hyphens only)" },
-      { status: 400, headers: cors }
-    );
+  const built = buildArticleBlock(body);
+  if ("error" in built) {
+    return NextResponse.json({ error: built.error }, { status: 400, headers: cors });
   }
-  if (!body.title || typeof body.title !== "string" || !body.title.trim()) {
-    return NextResponse.json(
-      { error: "title is required" },
-      { status: 400, headers: cors }
-    );
-  }
-
-  const status: ArticleStatus =
-    body.status && VALID_STATUSES.includes(body.status as ArticleStatus)
-      ? (body.status as ArticleStatus)
-      : "POSTED";
-
-  const date =
-    body.date && typeof body.date === "string"
-      ? body.date
-      : new Date().toISOString().split("T")[0];
-
-  const order = typeof body.order === "number" ? body.order : undefined;
+  const article = built.block;
 
   // 3. Load asset
   let asset;
@@ -106,23 +152,7 @@ export async function patchArticle(
   }
 
   // 5. Merge article block into metadata
-  const existingMetadata =
-    asset.metadata && typeof asset.metadata === "object" ? (asset.metadata as Record<string, unknown>) : {};
-
-  const articleBlock = {
-    slug: body.slug,
-    title: body.title.trim(),
-    subtitle: typeof body.subtitle === "string" ? body.subtitle.trim() : undefined,
-    description: typeof body.description === "string" ? body.description.trim() : undefined,
-    status,
-    date,
-    ...(order === undefined  ? {} : { order }),
-  };
-
-  const metadata = {
-    ...existingMetadata,
-    article: articleBlock,
-  };
+  const metadata = mergeArticleMetadata(asset.metadata, article);
 
   // 6. Update DB
   try {
@@ -146,10 +176,10 @@ export async function patchArticle(
       scope: "media",
       payload: {
         assetId: id,
-        slug: body.slug,
-        title: body.title.trim(),
-        status,
-        date,
+        slug: article.slug,
+        title: article.title,
+        status: article.status,
+        date: article.date,
       },
     });
   } catch (err) {

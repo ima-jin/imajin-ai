@@ -60,16 +60,20 @@ export async function POST(request: NextRequest) {
     return unauthorized();
   }
 
-  // Read-only gate. (Set is the existence-check idiom here.)
+  // Surface gate: the token must carry at least one media scope to reach the MCP
+  // surface at all. The authoritative read-vs-write decision is per-tool in
+  // handleMcpRpc (each McpTool.requiredScope), so a write-only token can reach the
+  // write tools and a read-only token cannot call them (#1170). (Set is the
+  // existence-check idiom here.)
   const scopes = new Set(payload.scope ? payload.scope.split(' ') : []);
-  if (!scopes.has('media:read')) {
+  if (!scopes.has('media:read') && !scopes.has('media:write')) {
     return NextResponse.json(
       { error: 'insufficient_scope' },
       { status: 403, headers: { 'WWW-Authenticate': 'Bearer error="insufficient_scope"' } },
     );
   }
 
-  // Authenticated + audience-bound + read-scoped. Parse + dispatch JSON-RPC.
+  // Authenticated + audience-bound + media-scoped. Parse + dispatch JSON-RPC.
   let body: unknown;
   try {
     body = await request.json();
