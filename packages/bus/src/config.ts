@@ -280,6 +280,16 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'emit', config: {}, enabled: true },
     { type: 'notify-match-delivery', config: {}, enabled: true },
   ],
+  // calendar.entry.request: broker chain config seeded in migration 0054.
+  // Hardcoded fallback mirrors calendar.availability.request (consent → scope → release → audit).
+  // getBrokerChainConfig() reads from DB and never uses DEFAULTS, so this entry
+  // is documentation-only — it will never be used at runtime.
+  'calendar.entry.request': [
+    { type: 'consent', config: {}, enabled: true },
+    { type: 'scope', config: {}, enabled: true },
+    { type: 'release', config: {}, enabled: true },
+    { type: 'audit', config: {}, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { db, calendarEntries } from '@/src/db';
 import { and, eq, gte, lte, gt, isNull, or, desc } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { ENTRY_TYPES, VISIBILITIES, publishCalendarEntry } from '@/src/lib/calendar';
+import { ENTRY_TYPES, VISIBILITIES, enforceTypeDefaults, publishCalendarEntry } from '@/src/lib/calendar';
 
 const log = createLogger('kernel');
 
@@ -66,13 +66,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const visibility = typeof body.visibility === 'string' ? body.visibility : 'private';
-  if (!VISIBILITIES.includes(visibility)) {
+  const callerVisibility = typeof body.visibility === 'string' ? body.visibility : 'private';
+  if (!VISIBILITIES.includes(callerVisibility)) {
     return NextResponse.json(
       { error: `visibility must be one of: ${VISIBILITIES.join(', ')}` },
       { status: 400 }
     );
   }
+
+  const typeDefaults = enforceTypeDefaults(type, body, callerVisibility);
+  const visibility = typeDefaults.visibility;
+  // visibilityDids: type-derived value wins (e.g. meeting participantDids);
+  // fall back to caller-supplied visibilityDids for types that don't drive it.
+  const visibilityDids =
+    typeDefaults.visibilityDids ??
+    (Array.isArray(body.visibilityDids) ? (body.visibilityDids as string[]) : null);
 
   const id = generateId('cal');
 
@@ -88,7 +96,7 @@ export async function POST(request: Request) {
       endsAt: body.endsAt ? new Date(body.endsAt as string) : null,
       expiresAt: body.expiresAt ? new Date(body.expiresAt as string) : null,
       visibility,
-      visibilityDids: Array.isArray(body.visibilityDids) ? (body.visibilityDids as string[]) : null,
+      visibilityDids,
       recurrence: body.recurrence ?? null,
       metadata: (body.metadata as Record<string, unknown>) ?? {},
     })
