@@ -159,12 +159,22 @@ export async function resolveConsentFromDb(
     return 3;
   };
 
-  const ordered = [...rows].sort((a, b) => specificity(a) - specificity(b));
+  type GrantRow = {
+    granted_to: string;
+    purpose: string;
+    allowed_fields: string[];
+    mode: string;
+    consent_ref: string;
+  };
+
+  const ordered = ([...rows] as GrantRow[]).sort(
+    (a, b) => specificity(a) - specificity(b),
+  );
 
   const entries: ConsentEntry[] = ordered.map((row) => ({
-    allowedFields: (row.allowed_fields as string[]) ?? [],
+    allowedFields: row.allowed_fields ?? [],
     mode: row.mode === 'raw' ? 'raw' : 'attestation',
-    consentRef: row.consent_ref as string,
+    consentRef: row.consent_ref,
   }));
 
   return composeEntries(entries);
