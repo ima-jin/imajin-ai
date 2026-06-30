@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { corsHeaders } from "@/src/lib/kernel/cors";
-import { applyGrants } from "@/src/lib/media/apply-grants";
+import { applyGrants } from "../apply-grants";
 
 export async function patchGrants(
   request: NextRequest,

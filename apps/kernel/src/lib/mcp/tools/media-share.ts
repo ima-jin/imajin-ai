@@ -1,5 +1,5 @@
 import type { McpTool, McpContent } from '../types';
-import { applyGrants } from '@/src/lib/media/apply-grants';
+import { applyGrants } from '../../media/apply-grants';
 
 /**
  * Media SHARE tool for the MCP connector (#1195).

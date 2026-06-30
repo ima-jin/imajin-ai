@@ -1,5 +1,5 @@
 import type { McpTool, McpContent } from '../types';
-import { listConnections } from '@/src/lib/connections/list';
+import { listConnections } from '../../connections/list';
 
 /**
  * Connections tool for the MCP connector (#1195).
