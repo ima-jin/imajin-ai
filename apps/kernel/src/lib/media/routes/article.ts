@@ -1,81 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readFile } from "node:fs/promises";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
 import * as bus from "@imajin/bus";
 import { corsHeaders } from "@/src/lib/kernel/cors";
+import { buildArticleBlock, type ArticleInput } from "../article-core";
+import { composeArticleFile, parseFrontmatter } from "../frontmatter";
+import { updateAssetContent } from "@/src/lib/media/update-asset";
 
 const log = createLogger("kernel");
-
-export const SLUG_REGEX = /^[a-z0-9-]+$/;
-export const VALID_STATUSES = ["POSTED", "REVIEW", "DRAFT"] as const;
-export type ArticleStatus = (typeof VALID_STATUSES)[number];
-
-/** Raw article fields as received from a request body or tool args. */
-export interface ArticleInput {
-  slug?: unknown;
-  title?: unknown;
-  subtitle?: unknown;
-  description?: unknown;
-  status?: unknown;
-  date?: unknown;
-  order?: unknown;
-}
-
-/** A validated, normalized article metadata block. */
-export interface ArticleBlock {
-  slug: string;
-  title: string;
-  subtitle?: string;
-  description?: string;
-  status: ArticleStatus;
-  date: string;
-  order?: number;
-}
-
-/**
- * Validate + normalize article fields into a metadata block. Returns the block
- * or a human-readable error (the exact messages the HTTP route surfaces). Shared
- * by patchArticle (HTTP) and the media_create_text MCP tool (#1170).
- */
-export function buildArticleBlock(body: ArticleInput): { block: ArticleBlock } | { error: string } {
-  if (!body.slug || typeof body.slug !== "string" || !SLUG_REGEX.test(body.slug)) {
-    return { error: "slug is required and must be URL-safe (a-z, 0-9, hyphens only)" };
-  }
-  if (!body.title || typeof body.title !== "string" || !body.title.trim()) {
-    return { error: "title is required" };
-  }
-
-  const status: ArticleStatus =
-    body.status && VALID_STATUSES.includes(body.status as ArticleStatus)
-      ? (body.status as ArticleStatus)
-      : "POSTED";
-
-  const date =
-    body.date && typeof body.date === "string"
-      ? body.date
-      : new Date().toISOString().split("T")[0];
-
-  const order = typeof body.order === "number" ? body.order : undefined;
-
-  const block: ArticleBlock = {
-    slug: body.slug,
-    title: body.title.trim(),
-    subtitle: typeof body.subtitle === "string" ? body.subtitle.trim() : undefined,
-    description: typeof body.description === "string" ? body.description.trim() : undefined,
-    status,
-    date,
-    ...(order === undefined ? {} : { order }),
-  };
-  return { block };
-}
-
-/** Merge a validated article block into an asset's existing metadata object. */
-export function mergeArticleMetadata(existing: unknown, block: ArticleBlock): Record<string, unknown> {
-  const base = existing && typeof existing === "object" ? (existing as Record<string, unknown>) : {};
-  return { ...base, article: block };
-}
 
 export async function patchArticle(
   request: NextRequest,
@@ -94,15 +29,7 @@ export async function patchArticle(
   const requesterDid = resolveActingDid(authResult.identity);
 
   // 2. Parse body
-  let body: {
-    slug?: unknown;
-    title?: unknown;
-    subtitle?: unknown;
-    description?: unknown;
-    status?: unknown;
-    date?: unknown;
-    order?: unknown;
-  };
+  let body: ArticleInput;
   try {
     body = await request.json();
   } catch {
@@ -151,21 +78,37 @@ export async function patchArticle(
     );
   }
 
-  // 5. Merge article block into metadata
-  const metadata = mergeArticleMetadata(asset.metadata, article);
-
-  // 6. Update DB
+  // 5. Read the current file body — frontmatter is regenerated, body preserved.
+  let currentBody = "";
   try {
-    await db
-      .update(assets)
-      .set({ metadata, updatedAt: new Date() })
-      .where(eq(assets.id, id));
+    const raw = await readFile(asset.storagePath, "utf-8");
+    currentBody = parseFrontmatter(raw).body;
   } catch (err) {
-    log.error({ err: String(err), assetId: id }, "DB update failed");
-    return NextResponse.json(
-      { error: "Database update failed" },
-      { status: 500, headers: cors }
+    log.warn(
+      { err: String(err), assetId: id },
+      "Could not read current article file; writing frontmatter with empty body"
     );
+  }
+
+  // 6. Write frontmatter into the file as a new version. The shared content-write
+  //    path re-derives metadata.article from the bytes we just wrote, so the DB
+  //    projection is never updated independently (single direction of truth).
+  const result = await updateAssetContent({
+    assetId: id,
+    requesterDid,
+    content: composeArticleFile(article, currentBody),
+    requireTextMime: true,
+  });
+  if (!result.ok) {
+    const statusByCode = {
+      not_found: 404,
+      forbidden: 403,
+      immutable: 403,
+      unsupported_media: 400,
+      storage_failed: 500,
+      db_failed: 500,
+    } as const;
+    return NextResponse.json({ error: result.message }, { status: statusByCode[result.code], headers: cors });
   }
 
   // 7. Emit bus event (best-effort)
@@ -186,7 +129,6 @@ export async function patchArticle(
     log.error({ err: String(err), assetId: id }, "Bus event publish failed (non-fatal)");
   }
 
-  // 8. Return updated asset
-  const [updated] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
-  return NextResponse.json(updated, { status: 200, headers: cors });
+  // 8. Return updated asset (metadata.article already re-derived on write).
+  return NextResponse.json(result.asset, { status: 200, headers: cors });
 }
