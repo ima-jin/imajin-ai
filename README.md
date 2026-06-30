@@ -1,25 +1,32 @@
 # Imajin
 
-**Imajin runs your community.**
+**For 2,000 years the money was in the lie.**
 
-Self-hosted software for running communities, events, identity, and payments. Without renting from Discord, Eventbrite, Stripe, or anyone else. Open source. Your data, your keys, your domain.
+Information asymmetry — I know what you don't, I hide it, I profit from the gap — is the business model under advertising, finance, platforms, and supply chains. The web we got runs on it: value extracted from what you can't see. The dark web is just the honest name for what the whole thing already is underneath.
+
+**Imajin is the light web.** A sovereign, auditable layer where identity, history, and value are things you can *see and own* — not things done to you in the dark. It flips the gradient: honesty becomes the profitable move, because the signed record *is* the value. Hiding stops paying; disclosure starts. Be honest. Make money. The human is centered not as a slogan but as a consequence — a system that can't profit by lying to you has to serve you.
+
+You do a human thing — send a voice note, take a photo, drop a file. An agent figures out what you meant, does it on your behalf, asks before anything leaves your hands, and signs a record of what it did. The machinery recedes; the proof remains.
 
 [See it live](https://imajin.ai) · [Buy us a coffee](https://jin.imajin.ai/coffee/veteze) · [Jin's Launch Party](https://jin.imajin.ai/events/jins-launch-party)
 
-Live since February 2026. 246 identities. ~2,480 commits. One kernel, two platform apps, five Imajin apps, three client apps. All real, all self-hostable.
+Live since February 2026. 2,700+ commits. One kernel, two platform apps, five Imajin apps, three client apps. All real, all self-hostable. Open source, MIT. Your data, your keys, your domain.
 
 ---
 
 ## What you can do with it today
 
+The thesis is the substrate; these are the proof it's real and running.
+
+- **Run a community.** Members, forums, governance, shared identity — without renting from Discord, Circle, or Mighty Networks.
 - **Run events.** Sell tickets, accept e-Transfer or Stripe, send receipts, manage guest lists. [jin.imajin.ai/events](https://jin.imajin.ai/events)
 - **Host an identity.** Cryptographic DID, profile page, link tree, attestations, contact channels. [jin.imajin.ai/profile](https://jin.imajin.ai/profile)
 - **Accept payments.** Stripe plus optional Solana. Your keys, your account, your money.
-- **Build a community.** Federated registry, scoped forums, shared identity, governance attestations.
 - **Plug in custom apps.** Reuse auth, identity, payments, and attribution as primitives instead of stitching together five SaaS APIs.
 
 ## Who this is for
 
+- **People** who want an agent that manages their digital life without selling them out.
 - **Community operators** running clubs, courses, events, or member groups who want to leave Discord, Circle, Eventbrite, or Mighty Networks.
 - **Developers** building on a sovereign identity plus payments plus attribution stack instead of SaaS APIs.
 - **Founders** who want to own their data layer end to end rather than rent it.
@@ -49,7 +56,7 @@ The protocol doesn't require the token. The token requires the protocol.
 
 ## The Protocol Matrix
 
-Every problem the protocol solves is a cell in this matrix. Every service in this repo implements cells.
+The matrix is the substrate's **vocabulary** — the verbs any intent resolves to, the same whether the actor is a person, a family, or a community. The agent doesn't invent capabilities; it composes these cells on your behalf. Every problem the protocol solves is a cell; every service in this repo implements cells.
 
 |  | Attestation | Communication | Attribution | Settlement | Discovery |
 |--|-------------|---------------|-------------|------------|-----------|

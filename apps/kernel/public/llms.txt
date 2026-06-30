@@ -1,6 +1,7 @@
-# Imajin — A Cryptographic Operating System for Sovereign Commerce
+# Imajin — The Light Web
 
-> imajin.ai runs a JBOS (Just a Bunch Of Services) on a cryptographic substrate.
+> For 2,000 years the money was in the lie. Information asymmetry — I know what you don't, I hide it, I profit from the gap — is the business model under advertising, finance, platforms, and supply chains.
+> Imajin is the light web: a sovereign, auditable layer where the signed record IS the value, so honesty becomes the profitable move. Be honest. Make money.
 > Services are commodity. Chains are permanent. Identity, attribution, trust, and settlement are structural.
 
 ## Full specification
@@ -10,7 +11,11 @@ https://imajin.ai/llms-full.txt
 
 ## The Problem
 
-Every platform you use holds your identity, reputation, and audience hostage. Not because they're evil — because the architecture requires it. Imajin fixes this structurally: users hold the keys. Identity is self-certifying, reputation is portable, data lives on hardware you own.
+Every platform you use holds your identity, reputation, and audience hostage. Not because they're evil — because the architecture requires it, and because the architecture pays to keep you in the dark. Imajin fixes this structurally: users hold the keys, the record is signed and portable, and the incentive flips — a system that can't profit by lying to you has to serve you. Identity is self-certifying, reputation is portable, data lives on hardware you own.
+
+## The Inversion
+
+The whole edifice runs on monetized opacity: value extracted from what you can't see. Imajin inverts the *incentive*, not just the tech. Proof-of-history means the record of what really happened is itself the value — so hiding stops paying and disclosure starts. The human is centered not as a slogan but as a consequence. You do a human thing (send a voice note, take a photo, drop a file); an agent infers what you meant, acts on your behalf, asks before anything crosses a boundary, and signs a record of what it did. The machinery recedes; the proof remains.
 
 ## What is Imajin?
 
@@ -70,9 +75,9 @@ Ed25519 keypairs → `did:imajin:xxx` (also valid Solana wallet). Three standing
 - OpenAPI specs: https://<service>.imajin.ai/api/spec
 - Developer guide: https://imajin.ai/developer-guide
 
-## Build Stats (March 2026)
+## Build Stats (June 2026)
 
-15 services · ~123K LOC · ~120 identities · 52 days · 1 human + AI · $77K actual ($2.3M traditional estimate)
+15 services · 2,700+ commits · 1 human + AI agents · single server, no Kubernetes/Docker/service-mesh. The constraint is intentional — if the architecture can't be maintained by a small team, it's the wrong architecture.
 
 ## Contact
 
