@@ -6,13 +6,10 @@ import { patchArticle } from '../routes/article';
 const mockFrom = vi.fn();
 const mockWhere = vi.fn();
 const mockLimit = vi.fn();
-const mockSet = vi.fn();
-const mockDbWhere = vi.fn();
 
 vi.mock('@/src/db', () => ({
   db: {
     select: vi.fn(() => ({ from: mockFrom })),
-    update: vi.fn(() => ({ set: mockSet })),
   },
   assets: {},
 }));
@@ -37,9 +34,21 @@ vi.mock('@/src/lib/kernel/cors', () => ({
   corsOptions: vi.fn(() => new Response(null, { status: 204 })),
 }));
 
+// patchArticle now persists frontmatter into the file via the shared content
+// write path, then re-derives metadata.article from those bytes (#1193). We stub
+// the file read + updateAssetContent rather than asserting a direct db.update.
+vi.mock('node:fs/promises', () => ({
+  readFile: vi.fn(),
+}));
+
+vi.mock('@/src/lib/media/update-asset', () => ({
+  updateAssetContent: vi.fn(),
+}));
+
 import { requireAuth } from '@imajin/auth';
 import { publish } from '@imajin/bus';
-import { db } from '@/src/db';
+import { readFile } from 'node:fs/promises';
+import { updateAssetContent } from '@/src/lib/media/update-asset';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -57,6 +66,8 @@ function setupAsset(overrides: Record<string, unknown> = {}) {
     ownerDid: 'did:imajin:owner',
     status: 'active',
     mimeType: 'text/markdown',
+    storagePath: '/mnt/media/did_imajin_owner/assets/asset_test.md',
+    immutable: false,
     fairManifest: {},
     fairPath: null,
     fairDfosEventId: null,
@@ -68,9 +79,6 @@ function setupAsset(overrides: Record<string, unknown> = {}) {
   mockFrom.mockReturnValue({ where: mockWhere });
   mockWhere.mockReturnValue({ limit: mockLimit });
   mockLimit.mockResolvedValue([asset]);
-
-  mockSet.mockReturnValue({ where: mockDbWhere });
-  mockDbWhere.mockResolvedValue(undefined);
 
   return asset;
 }
@@ -153,27 +161,28 @@ describe('PATCH /media/api/assets/[id]/article', () => {
     expect(body.error).toContain('text/markdown');
   });
 
-  it('publishes article with defaults and emits bus event', async () => {
+  it('writes frontmatter, defaults status to DRAFT, and emits the bus event', async () => {
     vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
     const asset = setupAsset();
-    const updatedAsset = { ...asset, metadata: { article: { slug: 'hello-world', title: 'Hello World', status: 'POSTED', date: '2026-05-12' } } };
+    const updated = {
+      ...asset,
+      metadata: { article: { slug: 'hello-world', title: 'Hello World', status: 'DRAFT', date: '2026-05-12' } },
+    };
+    vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: true, asset: updated } as never);
 
-    mockFrom.mockReturnValueOnce({ where: mockWhere });
-    mockWhere.mockReturnValueOnce({ limit: mockLimit });
-    mockLimit.mockResolvedValueOnce([asset]);
-
-    mockFrom.mockReturnValueOnce({ where: mockWhere });
-    mockWhere.mockReturnValueOnce({ limit: mockLimit });
-    mockLimit.mockResolvedValueOnce([updatedAsset]);
-
-    const res = await patchArticle(
-      makeRequest({ slug: 'hello-world', title: 'Hello World' }),
-      'asset_test'
-    );
+    const res = await patchArticle(makeRequest({ slug: 'hello-world', title: 'Hello World' }), 'asset_test');
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body.metadata).toEqual(updatedAsset.metadata);
+    expect(body.metadata).toEqual(updated.metadata);
+
+    // The bytes handed to the shared write path carry YAML frontmatter, DRAFT by default.
+    const writeArg = vi.mocked(updateAssetContent).mock.calls[0][0];
+    expect(writeArg.assetId).toBe('asset_test');
+    expect(writeArg.requesterDid).toBe('did:imajin:owner');
+    expect(writeArg.requireTextMime).toBe(true);
+    expect(writeArg.content).toContain('slug: "hello-world"');
+    expect(writeArg.content).toContain('status: "DRAFT"');
 
     expect(publish).toHaveBeenCalledWith(
       'asset.article.published',
@@ -185,38 +194,17 @@ describe('PATCH /media/api/assets/[id]/article', () => {
           assetId: 'asset_test',
           slug: 'hello-world',
           title: 'Hello World',
-          status: 'POSTED',
+          status: 'DRAFT',
           date: expect.any(String),
         }),
       })
     );
   });
 
-  it('accepts all optional fields', async () => {
+  it('writes all supplied fields into the frontmatter and keeps an explicit status', async () => {
     vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
     const asset = setupAsset();
-    const updatedAsset = {
-      ...asset,
-      metadata: {
-        article: {
-          slug: 'deep-dive',
-          title: 'A Deep Dive',
-          subtitle: 'Subtitle here',
-          description: 'Description here',
-          status: 'REVIEW',
-          date: '2026-06-01',
-          order: 5,
-        },
-      },
-    };
-
-    mockFrom.mockReturnValueOnce({ where: mockWhere });
-    mockWhere.mockReturnValueOnce({ limit: mockLimit });
-    mockLimit.mockResolvedValueOnce([asset]);
-
-    mockFrom.mockReturnValueOnce({ where: mockWhere });
-    mockWhere.mockReturnValueOnce({ limit: mockLimit });
-    mockLimit.mockResolvedValueOnce([updatedAsset]);
+    vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: true, asset } as never);
 
     const res = await patchArticle(
       makeRequest({
@@ -232,52 +220,51 @@ describe('PATCH /media/api/assets/[id]/article', () => {
     );
     expect(res.status).toBe(200);
 
-    const setCall = vi.mocked(db.update).mock.calls;
-    expect(setCall.length).toBeGreaterThan(0);
+    const writeArg = vi.mocked(updateAssetContent).mock.calls[0][0];
+    expect(writeArg.content).toContain('slug: "deep-dive"');
+    expect(writeArg.content).toContain('subtitle: "Subtitle here"');
+    expect(writeArg.content).toContain('description: "Description here"');
+    expect(writeArg.content).toContain('status: "REVIEW"');
+    expect(writeArg.content).toContain('order: 5');
+    expect(publish).toHaveBeenCalledWith(
+      'asset.article.published',
+      expect.objectContaining({ payload: expect.objectContaining({ status: 'REVIEW' }) })
+    );
   });
 
-  it('merges article block into existing metadata', async () => {
+  it('replaces stale frontmatter but preserves the existing file body', async () => {
     vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
-    const asset = setupAsset({ metadata: { source: 'editor', tags: ['tutorial'] } });
-    const updatedAsset = { ...asset };
+    const asset = setupAsset();
+    vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: true, asset } as never);
+    vi.mocked(readFile).mockResolvedValueOnce('---\nslug: "old"\nstatus: "POSTED"\n---\n\n# Body kept' as never);
 
-    mockFrom.mockReturnValueOnce({ where: mockWhere });
-    mockWhere.mockReturnValueOnce({ limit: mockLimit });
-    mockLimit.mockResolvedValueOnce([asset]);
-
-    mockFrom.mockReturnValueOnce({ where: mockWhere });
-    mockWhere.mockReturnValueOnce({ limit: mockLimit });
-    mockLimit.mockResolvedValueOnce([updatedAsset]);
-
-    const res = await patchArticle(
-      makeRequest({ slug: 'merged', title: 'Merged' }),
-      'asset_test'
-    );
+    const res = await patchArticle(makeRequest({ slug: 'merged', title: 'Merged' }), 'asset_test');
     expect(res.status).toBe(200);
 
-    const setCall = vi.mocked(db.update).mock.calls;
-    expect(setCall.length).toBeGreaterThan(0);
+    const writeArg = vi.mocked(updateAssetContent).mock.calls[0][0];
+    expect(writeArg.content).toContain('slug: "merged"');
+    expect(writeArg.content).not.toContain('slug: "old"');
+    expect(writeArg.content).toContain('# Body kept');
   });
 
-  it('supports acting-as impersonation', async () => {
+  it('maps a failed content write to an error status', async () => {
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    setupAsset();
+    vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: false, code: 'storage_failed', message: 'File write failed' } as never);
+
+    const res = await patchArticle(makeRequest({ slug: 'x', title: 'X' }), 'asset_test');
+    expect(res.status).toBe(500);
+  });
+
+  it('supports acting-as impersonation (writes as the represented owner)', async () => {
     vi.mocked(requireAuth).mockResolvedValueOnce({
       identity: { id: 'did:imajin:agent', actingAs: 'did:imajin:owner', actingAsRole: 'admin' },
     });
     const asset = setupAsset();
-    const updatedAsset = { ...asset, metadata: { article: { slug: 'agent-post', title: 'Agent Post', status: 'POSTED', date: '2026-05-12' } } };
+    vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: true, asset } as never);
 
-    mockFrom.mockReturnValueOnce({ where: mockWhere });
-    mockWhere.mockReturnValueOnce({ limit: mockLimit });
-    mockLimit.mockResolvedValueOnce([asset]);
-
-    mockFrom.mockReturnValueOnce({ where: mockWhere });
-    mockWhere.mockReturnValueOnce({ limit: mockLimit });
-    mockLimit.mockResolvedValueOnce([updatedAsset]);
-
-    const res = await patchArticle(
-      makeRequest({ slug: 'agent-post', title: 'Agent Post' }),
-      'asset_test'
-    );
+    const res = await patchArticle(makeRequest({ slug: 'agent-post', title: 'Agent Post' }), 'asset_test');
     expect(res.status).toBe(200);
+    expect(vi.mocked(updateAssetContent).mock.calls[0][0].requesterDid).toBe('did:imajin:owner');
   });
 });

@@ -9,6 +9,7 @@ import { contentSigner } from "@/src/lib/media/content-signer";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { createLogger } from "@imajin/logger";
 import { canWriteAssetContent } from "@/src/lib/media/write-access";
+import { deriveArticleProjection } from "./article-core";
 
 const log = createLogger("kernel");
 
@@ -124,6 +125,18 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
   } catch (err) {
     log.error({ err: String(err), assetId }, "DB update failed");
     return { ok: false, code: "db_failed", message: "Database update failed" };
+  }
+
+  // Re-derive the article projection from the freshly written file. Frontmatter
+  // is the source of truth (#1193): markdown-only, and a no-op for plain notes
+  // (content with no article header). Best-effort — the file is authoritative, so
+  // a projection failure self-heals on the next write rather than failing it.
+  if (asset.mimeType === "text/markdown") {
+    try {
+      await deriveArticleProjection(assetId, content, asset.metadata);
+    } catch (err) {
+      log.warn({ err: String(err), assetId }, "Article projection re-derive failed (non-fatal)");
+    }
   }
 
   const [updated] = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1);

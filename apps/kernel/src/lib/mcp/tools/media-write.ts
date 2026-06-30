@@ -1,22 +1,25 @@
 import type { McpTool, McpContent } from '../types';
-import { db, assets } from '@/src/db';
-import { eq } from 'drizzle-orm';
 import * as bus from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { createAsset, inferMime, isAllowedMime } from '@/src/lib/media/create-asset';
-import { buildArticleBlock, mergeArticleMetadata } from '@/src/lib/media/routes/article';
+import { buildArticleBlock, deriveArticleProjection } from '../../media/article-core';
+import { composeArticleFile } from '../../media/frontmatter';
 import { updateAssetContent } from '@/src/lib/media/update-asset';
 
 /**
  * Media WRITE tools for the MCP connector (#1170). All require the 'media:write'
  * scope (enforced per-tool in handleMcpRpc) and act only on the caller's own DID.
  *
- * - media_create_text / media_upload: CREATE new assets owner-pinned to ctx.did
- *   via the in-process createAsset lib (no HTTP self-call), with dedup DISABLED
- *   so a write can never return or mutate another DID's asset, and access pinned
- *   to 'private' so MCP-created media never inherits a public-implying context.
+ * - media_create_note / media_create_article / media_upload: CREATE new assets
+ *   owner-pinned to ctx.did via the in-process createAsset lib (no HTTP
+ *   self-call), with dedup DISABLED so a write can never return or mutate
+ *   another DID's asset, and access pinned to 'private' so MCP-created media
+ *   never inherits a public-implying context. media_create_article writes YAML
+ *   frontmatter into the file (source of truth, #1193) and defaults to DRAFT;
+ *   media_create_note is plain capture with no article treatment.
  * - media_update: owner-only content UPDATE (new version) via updateAssetContent;
- *   the versioning substrate (#1122/#1123) handles the new CID + Lore revision.
+ *   the versioning substrate (#1122/#1123) handles the new CID + Lore revision,
+ *   and re-derives metadata.article from the file's frontmatter on write.
  *
  * Delegated cross-DID writes remain out of scope (see write-access.ts).
  */
@@ -36,11 +39,55 @@ function json(value: unknown): McpContent[] {
   return [{ type: 'text', text: JSON.stringify(value, null, 2) }];
 }
 
-const createTextTool: McpTool = {
-  name: 'media_create_text',
+const createNoteTool: McpTool = {
+  name: 'media_create_note',
   requiredScope: 'media:write',
   description:
-    'Create a new private Markdown article owned by your DID. Stores the Markdown as a text/markdown asset and applies article metadata (slug, title, etc.). Create-only: always makes a new asset.',
+    'Create a new PRIVATE plain-text Markdown NOTE owned by your DID. Use this for quick capture: freeform notes, snippets, or drafts with no publishing intent. Content only — no title, slug, status, or article frontmatter is added, and a note never appears on the public site. Use media_create_article instead when you want a titled, publishable article. Create-only: always makes a new asset.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      content: { type: 'string', description: 'Markdown body' },
+      filename: { type: 'string', description: 'Optional filename; defaults to note-<timestamp>.md' },
+    },
+    required: ['content'],
+    additionalProperties: false,
+  },
+  async handler(args, ctx) {
+    const content = str(args, 'content');
+    if (content === undefined) throw new Error('content is required');
+
+    const requestedName = str(args, 'filename') ?? `note-${Date.now()}.md`;
+    const filename = requestedName.endsWith('.md') ? requestedName : `${requestedName}.md`;
+
+    const { asset } = await createAsset({
+      ownerDid: ctx.did,
+      uploadedBy: ctx.did,
+      buffer: Buffer.from(content, 'utf8'),
+      filename,
+      mimeType: 'text/markdown',
+      access: 'private',
+      dedup: false,
+      classify: false,
+    });
+
+    return json({
+      id: asset.id,
+      filename: asset.filename,
+      mimeType: asset.mimeType,
+      access: 'private',
+      ownerDid: asset.ownerDid,
+      cid: asset.cid,
+      createdAt: asset.createdAt,
+    });
+  },
+};
+
+const createArticleTool: McpTool = {
+  name: 'media_create_article',
+  requiredScope: 'media:write',
+  description:
+    'Create a new PRIVATE, PUBLISHABLE Markdown article owned by your DID. Generates YAML frontmatter (slug, title, status, date, …) into the file body — the file is self-describing and is the source of truth. Defaults to status DRAFT: the article is NOT visible on the public site until explicitly promoted to POSTED. Use media_create_note instead for plain notes with no publishing intent. Create-only: always makes a new asset.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -49,7 +96,7 @@ const createTextTool: McpTool = {
       content: { type: 'string', description: 'Markdown body' },
       subtitle: { type: 'string' },
       description: { type: 'string' },
-      status: { type: 'string', enum: ['POSTED', 'REVIEW', 'DRAFT'] },
+      status: { type: 'string', enum: ['POSTED', 'REVIEW', 'DRAFT'], description: 'Defaults to DRAFT when omitted' },
       date: { type: 'string', description: 'ISO date (YYYY-MM-DD); defaults to today' },
       order: { type: 'integer' },
       filename: { type: 'string', description: 'Optional filename; defaults to <slug>.md' },
@@ -77,10 +124,14 @@ const createTextTool: McpTool = {
     const requestedName = str(args, 'filename') ?? `${article.slug}.md`;
     const filename = requestedName.endsWith('.md') ? requestedName : `${requestedName}.md`;
 
+    // Frontmatter is the source of truth: write it into the file body, then
+    // re-derive the DB projection from those same bytes (#1193).
+    const fileContent = composeArticleFile(article, content);
+
     const { asset } = await createAsset({
       ownerDid: ctx.did,
       uploadedBy: ctx.did,
-      buffer: Buffer.from(content, 'utf8'),
+      buffer: Buffer.from(fileContent, 'utf8'),
       filename,
       mimeType: 'text/markdown',
       access: 'private',
@@ -88,10 +139,7 @@ const createTextTool: McpTool = {
       classify: false,
     });
 
-    // Apply the article treatment in-process. Owner is ctx.did by construction,
-    // so the patchArticle owner/mime guards are already satisfied.
-    const metadata = mergeArticleMetadata(asset.metadata, article);
-    await db.update(assets).set({ metadata, updatedAt: new Date() }).where(eq(assets.id, asset.id));
+    await deriveArticleProjection(asset.id, fileContent, asset.metadata);
 
     try {
       await bus.publish('asset.article.published', {
@@ -216,4 +264,4 @@ const updateTool: McpTool = {
   },
 };
 
-export const mediaWriteTools: McpTool[] = [createTextTool, uploadTool, updateTool];
+export const mediaWriteTools: McpTool[] = [createNoteTool, createArticleTool, uploadTool, updateTool];
