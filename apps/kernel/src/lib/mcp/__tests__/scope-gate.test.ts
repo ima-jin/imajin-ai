@@ -5,9 +5,11 @@ import { describe, it, expect, vi } from 'vitest';
 // tests the REAL gate logic in server.ts.
 vi.mock('../tools', () => {
   const tools = [
-    { name: 't_read', requiredScope: 'media:read', description: 'r', inputSchema: {}, handler: () => [{ type: 'text', text: 'read-ok' }] },
-    { name: 't_write', requiredScope: 'media:write', description: 'w', inputSchema: {}, handler: () => [{ type: 'text', text: 'write-ok' }] },
-    { name: 't_ping', description: 'p', inputSchema: {}, handler: () => [{ type: 'text', text: 'pong' }] },
+    { name: 't_read',        requiredScope: 'media:read',       description: 'r', inputSchema: {}, handler: () => [{ type: 'text', text: 'read-ok' }] },
+    { name: 't_write',       requiredScope: 'media:write',      description: 'w', inputSchema: {}, handler: () => [{ type: 'text', text: 'write-ok' }] },
+    { name: 't_share',       requiredScope: 'media:share',      description: 's', inputSchema: {}, handler: () => [{ type: 'text', text: 'share-ok' }] },
+    { name: 't_connections', requiredScope: 'connections:read', description: 'c', inputSchema: {}, handler: () => [{ type: 'text', text: 'connections-ok' }] },
+    { name: 't_ping',        description: 'p', inputSchema: {}, handler: () => [{ type: 'text', text: 'pong' }] },
   ];
   const byName = new Map(tools.map((t) => [t.name, t]));
   return { ALL_TOOLS: tools, toolByName: (n: string) => byName.get(n) };
@@ -66,5 +68,54 @@ describe('per-tool scope gate (read-grant != write-grant)', () => {
   it('returns a JSON-RPC error for an unknown tool', async () => {
     const res = await call('does_not_exist', ['media:read', 'media:write']);
     expect(res.error.code).toBe(-32602);
+  });
+});
+
+describe('media:share scope gate', () => {
+  it('denies a read/write-only token calling media_grant_access', async () => {
+    const readOnly = await call('t_share', ['media:read']);
+    expect(readOnly.result.isError).toBe(true);
+    expect(readOnly.result.content[0].text).toContain('insufficient_scope');
+    expect(readOnly.result.content[0].text).toContain('media:share');
+
+    const writeOnly = await call('t_share', ['media:write']);
+    expect(writeOnly.result.isError).toBe(true);
+    expect(writeOnly.result.content[0].text).toContain('media:share');
+  });
+
+  it('allows a media:share token calling the share tool', async () => {
+    const res = await call('t_share', ['media:share']);
+    expect(res.result.isError).toBe(false);
+    expect(res.result.content[0].text).toBe('share-ok');
+  });
+
+  it('allows a full-default token (read+write+share+connections) to call the share tool', async () => {
+    const res = await call('t_share', ['media:read', 'media:write', 'media:share', 'connections:read']);
+    expect(res.result.isError).toBe(false);
+  });
+});
+
+describe('connections:read scope gate', () => {
+  it('denies a read/write-only token calling connections_list', async () => {
+    const readOnly = await call('t_connections', ['media:read']);
+    expect(readOnly.result.isError).toBe(true);
+    expect(readOnly.result.content[0].text).toContain('insufficient_scope');
+    expect(readOnly.result.content[0].text).toContain('connections:read');
+
+    const writeOnly = await call('t_connections', ['media:write']);
+    expect(writeOnly.result.isError).toBe(true);
+    expect(writeOnly.result.content[0].text).toContain('connections:read');
+  });
+
+  it('allows a connections:read token calling the connections tool', async () => {
+    const res = await call('t_connections', ['connections:read']);
+    expect(res.result.isError).toBe(false);
+    expect(res.result.content[0].text).toBe('connections-ok');
+  });
+
+  it('denies a connections:read-only token from calling media tools', async () => {
+    const res = await call('t_read', ['connections:read']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('media:read');
   });
 });

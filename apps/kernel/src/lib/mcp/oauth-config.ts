@@ -48,15 +48,22 @@ export function areRedirectUrisAllowed(uris: readonly string[]): boolean {
 }
 
 /**
- * Media scopes the MCP surface supports (read + create/write). NOTE: each string
- * must also exist in the shared SCOPES vocabulary in packages/auth/src/scopes.ts
- * so the consent listing (/auth/apps) and validateScopes() recognize it.
+ * Scopes the MCP surface supports. NOTE: each string must also exist in the
+ * shared SCOPES vocabulary in packages/auth/src/scopes.ts so the consent
+ * listing (/auth/apps) and validateScopes() recognize it.
  *
- * `media:write` is server-supported here, but a given client only receives it if
- * its registry.apps.requested_scopes includes it — the Claude seed (0052) stays
- * read-only, so no existing client gains write capability implicitly.
+ * Scope semantics:
+ *   media:read        — list/get/read caller's media
+ *   media:write       — create/update caller's own media
+ *   media:share       — add/remove allowedDids on caller's assets (crosses
+ *                       sovereignty boundary; distinct from media:write)
+ *   connections:read  — enumerate caller's trust-graph connections (used by
+ *                       connections_list to resolve a name → DID for sharing)
+ *
+ * A given client only receives a scope if its registry.apps.requested_scopes
+ * includes it — no existing client gains new capability implicitly.
  */
-export const MCP_SCOPES = ['media:read', 'media:write'] as const;
+export const MCP_SCOPES = ['media:read', 'media:write', 'media:share', 'connections:read'] as const;
 const MCP_SCOPE_SET = new Set<string>(MCP_SCOPES);
 
 export const ACCESS_TOKEN_TTL_SECONDS = 600; // matches createAppToken (10 min)
