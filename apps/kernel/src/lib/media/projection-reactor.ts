@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createLogger } from "@imajin/logger";
 import {
   broker,
+  publish,
   registerReactor,
   isBrokerRelease,
   type BusEvent,
@@ -27,6 +28,20 @@ import { parseReleasePolicy, type FieldReleasePolicy } from "./release-policy";
  * that was never materialized cannot leak (Q2: no generic release-gated
  * projection table). The broker's audit reactor writes the `broker_audit_log`
  * row for every consent-gated decision for free.
+ *
+ * ── Revoke-on-delete / reconcile (#1208) ────────────────────────────────────
+ * The projection is RECONCILED to exactly match the current signed file on
+ * every change: a declared field is either RELEASED (materialized via
+ * {@link ProjectionSurface.apply}) or REMOVED (de-materialized via
+ * {@link ProjectionSurface.remove}) because its data line was deleted or it is
+ * now gated (`never` / consent withdrawn). Removal is detected by
+ * reconcile-from-current — recomputing the released set from the CURRENT doc —
+ * rather than a prevCid diff (the Lore blob store exposes no read-by-CID, so a
+ * prior-content diff is not cheaply available, and reconcile-from-current is
+ * sufficient: a removed field simply fails to re-materialize). `remove()` also
+ * fires each surface's downstream revocation, reusing the existing revoke seam
+ * (#1195/#1182) — delete = revoke, signed by the `.fair` re-sign already done
+ * by `updateAssetContent()` (no second signing path).
  *
  * ── Import direction ────────────────────────────────────────────────────────
  * packages/bus MUST NOT import apps/kernel. This reactor lives on the KERNEL
@@ -71,7 +86,24 @@ export interface ProjectionContext {
  */
 export interface ProjectionSurface {
   readonly name: string;
+  /**
+   * GRANT / update. Materialize the currently-released field values into the
+   * surface's home. `released` contains ONLY fields that passed the gate, so a
+   * surface physically cannot leak a gated field.
+   */
   apply(ctx: ProjectionContext, released: Record<string, unknown>): Promise<void>;
+  /**
+   * REVOKE / reconcile (#1208). De-materialize `removedFields` from the
+   * surface's home AND fire this surface's downstream revocation for the ones
+   * that were actually materialized. `removedFields` are the declared fields
+   * the reactor reconciled as NO LONGER released this change (data line deleted
+   * or newly gated). Implementations MUST be idempotent: a field that was never
+   * materialized here is a no-op (no write, no spurious revoke). This is the
+   * seam #1209's channel_links surface implements — it flips
+   * `auth.channel_links.status='revoked'` for the removed scope rows and
+   * publishes `channel.link.revoked` to kill the auth/refresh chain.
+   */
+  remove(ctx: ProjectionContext, removedFields: string[]): Promise<void>;
 }
 
 /**
@@ -109,6 +141,67 @@ export const articleMetadataSurface: ProjectionSurface = {
       .update(assets)
       .set({ metadata, updatedAt: new Date() })
       .where(eq(assets.id, ctx.assetId));
+  },
+
+  async remove(ctx, removedFields) {
+    if (removedFields.length === 0) return;
+
+    const [row] = await db
+      .select({ metadata: assets.metadata })
+      .from(assets)
+      .where(eq(assets.id, ctx.assetId))
+      .limit(1);
+
+    const existing =
+      row?.metadata && typeof row.metadata === "object"
+        ? (row.metadata as Record<string, unknown>)
+        : {};
+    const article =
+      existing.article && typeof existing.article === "object"
+        ? { ...(existing.article as Record<string, unknown>) }
+        : {};
+
+    // Only fields THIS surface actually materialized are de-materialized/revoked.
+    // A gated field that was never projected here is a no-op — no needless write,
+    // no spurious revoke (this also keeps the standard #1193 article block, e.g.
+    // slug/title, untouched since the reactor never manages those keys).
+    const actuallyRemoved = removedFields.filter((field) => field in article);
+    if (actuallyRemoved.length === 0) return;
+
+    for (const field of actuallyRemoved) delete article[field];
+
+    const metadata = { ...existing, article };
+    await db
+      .update(assets)
+      .set({ metadata, updatedAt: new Date() })
+      .where(eq(assets.id, ctx.assetId));
+
+    // Surface-owned downstream revocation (#1208): the projection release for
+    // these fields is withdrawn, so we fire the existing `broker.consent.revoked`
+    // seam (#1195/#1182) per removed field. The article demo has no auth/refresh
+    // chain to kill, so this just demonstrates the MECHANISM; #1209's connector
+    // surface fires `channel.link.revoked` instead. Fire-and-forget/non-fatal —
+    // the file (signed) is authoritative.
+    for (const field of actuallyRemoved) {
+      publish("broker.consent.revoked", {
+        issuer: ctx.ownerDid,
+        subject: ctx.ownerDid,
+        scope: ctx.scope,
+        payload: {
+          consentId: `${ctx.assetId}:${field}`,
+          subject: ctx.ownerDid,
+          grantedTo: null,
+          purpose: PROJECTION_PURPOSE,
+          context_id: ctx.assetId,
+          context_type: "consent",
+        },
+      }).catch((err: unknown) =>
+        log.error(
+          { err: String(err), field, assetId: ctx.assetId },
+          "projection revoke publish failed (non-fatal)",
+        ),
+      );
+    }
   },
 };
 
@@ -217,15 +310,29 @@ export const projectReactor: ReactorHandler = async (event: BusEvent) => {
     path,
   };
 
+  // Reconcile-from-current (#1208): every declared field is either RELEASED
+  // (materialized) or REMOVED (de-materialized + revoked) this change. A field
+  // is removed when its data line was deleted (value absent) or it is now gated
+  // (never / consent withdrawn / owner-filtered). The projection is thereby made
+  // to exactly match the current signed file: delete = revoke.
   const released: Record<string, unknown> = {};
+  const removed: string[] = [];
   for (const field of fields) {
     const value = data[field];
-    if (value === undefined) continue; // Declared but absent in truth-data → nothing to project.
+    if (value === undefined) {
+      // Declared but absent in truth-data → its data line was deleted. Reconcile
+      // it OUT of the projection (and revoke it) rather than leaving it stale.
+      removed.push(field);
+      continue;
+    }
     const decision = await decideFieldRelease(ctx, field, value, releasePolicy[field]);
     if (decision.release) {
       released[field] = decision.value;
+    } else {
+      // Gated (never / unconsented / owner-filtered) → ABSENT from the
+      // projection; de-materialize any prior materialization and revoke.
+      removed.push(field);
     }
-    // Gated fields are simply never added → ABSENT from the projection.
   }
 
   for (const surface of surfaces) {
@@ -234,8 +341,18 @@ export const projectReactor: ReactorHandler = async (event: BusEvent) => {
     } catch (err) {
       log.error(
         { err: String(err), surface: surface.name, assetId: ctx.assetId },
-        "projection surface failed (non-fatal)",
+        "projection surface apply failed (non-fatal)",
       );
+    }
+    if (removed.length > 0) {
+      try {
+        await surface.remove(ctx, removed);
+      } catch (err) {
+        log.error(
+          { err: String(err), surface: surface.name, assetId: ctx.assetId },
+          "projection surface remove failed (non-fatal)",
+        );
+      }
     }
   }
 };
