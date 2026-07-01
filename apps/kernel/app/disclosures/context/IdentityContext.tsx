@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 
 interface IdentityContextType {
   did: string | null;
@@ -21,27 +21,26 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    async function checkSession() {
+      try {
+        const res = await fetch('/auth/api/session');
+        if (res.ok) {
+          const data = await res.json();
+          setDid(data.did);
+          setHandle(data.handle || null);
+          setType(data.type || null);
+          setIsLoggedIn(true);
+        }
+      } catch (e) {
+        console.error('Session check failed:', e);
+      } finally {
+        setLoading(false);
+      }
+    }
     checkSession();
   }, []);
 
-  async function checkSession() {
-    try {
-      const res = await fetch('/auth/api/session');
-      if (res.ok) {
-        const data = await res.json();
-        setDid(data.did);
-        setHandle(data.handle || null);
-        setType(data.type || null);
-        setIsLoggedIn(true);
-      }
-    } catch (e) {
-      console.error('Session check failed:', e);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function logout() {
+  const logout = useCallback(async () => {
     try {
       await fetch('/auth/api/logout', { method: 'POST' });
     } catch {}
@@ -49,13 +48,14 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
     setHandle(null);
     setType(null);
     setIsLoggedIn(false);
-  }
+  }, []);
 
-  return (
-    <IdentityContext.Provider value={{ did, handle, type, isLoggedIn, loading, logout }}>
-      {children}
-    </IdentityContext.Provider>
+  const value = useMemo(
+    () => ({ did, handle, type, isLoggedIn, loading, logout }),
+    [did, handle, type, isLoggedIn, loading, logout],
   );
+
+  return <IdentityContext.Provider value={value}>{children}</IdentityContext.Provider>;
 }
 
 export function useIdentity() {
