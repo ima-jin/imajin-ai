@@ -238,6 +238,11 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'asset.fair.upgraded': [
     { type: 'attestation', config: { attestationType: 'asset.fair.upgraded' }, enabled: true },
   ],
+  // #1205 — authored-document change trigger. Emit-only initially; the
+  // release-gated projection reactor (#1207) attaches downstream.
+  'document.changed': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
   'document.created': [
     { type: 'notify', config: { scope: 'auth:document-signature-request' }, enabled: true },
   ],
