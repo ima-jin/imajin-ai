@@ -10,6 +10,7 @@ import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { createLogger } from "@imajin/logger";
 import { canWriteAssetContent } from "@/src/lib/media/write-access";
 import { deriveArticleProjection } from "./article-core";
+import { ensureProjectReactorRegistered } from "./projection-reactor";
 import { publish } from "@imajin/bus";
 
 const log = createLogger("kernel");
@@ -169,6 +170,9 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
   // (discipline rule 1). Best-effort/non-fatal: the file is authoritative, so a
   // publish failure must not fail the write (mirrors asset.article.published).
   if (AUTHORED_DOC_MIME_TYPES.has(asset.mimeType)) {
+    // Ensure the release-gated projection reactor (#1207) is registered in this
+    // process before we publish, so publish() can run it in-process. Idempotent.
+    ensureProjectReactorRegistered();
     try {
       await publish("document.changed", {
         issuer: asset.ownerDid,
