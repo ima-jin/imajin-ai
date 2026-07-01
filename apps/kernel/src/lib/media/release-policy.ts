@@ -82,17 +82,19 @@ export interface ParsedReleasePolicy {
 /**
  * Derive the default release tier from the #1196 consent 2x2.
  *
- * ASSUMPTION (#1196 not yet in code): the quadrant → tier mapping is
- * implemented locally here. Restrictiveness is monotonic in both axes — each
- * axis that is `true` discloses less, and both-true is the most restrictive:
+ * CANONICAL IMPLEMENTATION of the #1196 decision record. #1196 is a governing
+ * decision record (closed 2026-07-01), not a build ticket — it defines the 2x2
+ * rule in prose but ships no code. This function is the single executable
+ * authority for that rule; there is no separate #1196 implementation to
+ * reconcile with. Restrictiveness is monotonic in both axes — each axis that is
+ * `true` discloses less, and both-true is the most restrictive:
  *
  *   self,     not sensitive  → silent      (freely projectable)
  *   discloses-others, not sensitive → on-consent  (needs others' consent)
  *   self,     sensitive      → owner-only  (owner sees it, nobody else)
  *   discloses-others, sensitive → never    (most restrictive default)
  *
- * This is a pure helper; when the real #1196 2x2 lands, swap the body for it
- * without changing the signature. Flagged in the #1206 handoff.
+ * Pure helper. If the #1196 rule ever changes, change it here (the one place).
  */
 export function deriveReleaseTier(classification: FieldClassification): ReleaseTier {
   if (!classification.disclosesOthers && !classification.sensitive) return "silent";
@@ -160,9 +162,9 @@ function parseFieldEntry(
   if (raw.release !== undefined) {
     if (!isReleaseTier(raw.release)) {
       return {
-        error: `release policy for field "${field}": invalid release tier "${String(
+        error: `release policy for field "${field}": invalid release tier ${JSON.stringify(
           raw.release,
-        )}" (expected ${RELEASE_TIERS.join(" | ")})`,
+        )} (expected ${RELEASE_TIERS.join(" | ")})`,
       };
     }
     if (TIER_RANK[raw.release] < TIER_RANK[derived]) {
@@ -179,9 +181,9 @@ function parseFieldEntry(
 
   if (raw.proof_grade !== undefined && !isProofGrade(raw.proof_grade)) {
     return {
-      error: `release policy for field "${field}": invalid proof_grade "${String(
+      error: `release policy for field "${field}": invalid proof_grade ${JSON.stringify(
         raw.proof_grade,
-      )}" (expected ${PROOF_GRADES.join(" | ")})`,
+      )} (expected ${PROOF_GRADES.join(" | ")})`,
     };
   }
 

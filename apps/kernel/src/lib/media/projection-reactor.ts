@@ -267,6 +267,70 @@ async function decideFieldRelease(
   }
 }
 
+/** Result of reconciling declared fields against the current signed doc. */
+interface Reconciled {
+  released: Record<string, unknown>;
+  removed: string[];
+}
+
+/**
+ * Reconcile-from-current (#1208): every declared field is either RELEASED
+ * (materialized) or REMOVED (de-materialized + revoked) this change. A field is
+ * removed when its data line was deleted (value absent) or it is now gated
+ * (never / consent withdrawn / owner-filtered). The projection is thereby made
+ * to exactly match the current signed file: delete = revoke.
+ */
+async function reconcileFields(
+  ctx: ProjectionContext,
+  fields: string[],
+  data: Record<string, unknown>,
+  releasePolicy: Record<string, FieldReleasePolicy>,
+): Promise<Reconciled> {
+  const released: Record<string, unknown> = {};
+  const removed: string[] = [];
+  for (const field of fields) {
+    const value = data[field];
+    if (value === undefined) {
+      // Declared but absent in truth-data → its data line was deleted. Reconcile
+      // it OUT of the projection (and revoke it) rather than leaving it stale.
+      removed.push(field);
+      continue;
+    }
+    const decision = await decideFieldRelease(ctx, field, value, releasePolicy[field]);
+    if (decision.release) {
+      released[field] = decision.value;
+    } else {
+      // Gated (never / unconsented / owner-filtered) → ABSENT from the
+      // projection; de-materialize any prior materialization and revoke.
+      removed.push(field);
+    }
+  }
+  return { released, removed };
+}
+
+/** Fan the reconciled result out to every registered surface (non-fatal each). */
+async function applyToSurfaces(ctx: ProjectionContext, { released, removed }: Reconciled): Promise<void> {
+  for (const surface of surfaces) {
+    try {
+      await surface.apply(ctx, released);
+    } catch (err) {
+      log.error(
+        { err: String(err), surface: surface.name, assetId: ctx.assetId },
+        "projection surface apply failed (non-fatal)",
+      );
+    }
+    if (removed.length === 0) continue;
+    try {
+      await surface.remove(ctx, removed);
+    } catch (err) {
+      log.error(
+        { err: String(err), surface: surface.name, assetId: ctx.assetId },
+        "projection surface remove failed (non-fatal)",
+      );
+    }
+  }
+}
+
 /**
  * The `project` reactor handler. Best-effort/non-fatal: the file is the signed
  * source of truth, so any failure self-heals on the next edit rather than
@@ -310,51 +374,8 @@ export const projectReactor: ReactorHandler = async (event: BusEvent) => {
     path,
   };
 
-  // Reconcile-from-current (#1208): every declared field is either RELEASED
-  // (materialized) or REMOVED (de-materialized + revoked) this change. A field
-  // is removed when its data line was deleted (value absent) or it is now gated
-  // (never / consent withdrawn / owner-filtered). The projection is thereby made
-  // to exactly match the current signed file: delete = revoke.
-  const released: Record<string, unknown> = {};
-  const removed: string[] = [];
-  for (const field of fields) {
-    const value = data[field];
-    if (value === undefined) {
-      // Declared but absent in truth-data → its data line was deleted. Reconcile
-      // it OUT of the projection (and revoke it) rather than leaving it stale.
-      removed.push(field);
-      continue;
-    }
-    const decision = await decideFieldRelease(ctx, field, value, releasePolicy[field]);
-    if (decision.release) {
-      released[field] = decision.value;
-    } else {
-      // Gated (never / unconsented / owner-filtered) → ABSENT from the
-      // projection; de-materialize any prior materialization and revoke.
-      removed.push(field);
-    }
-  }
-
-  for (const surface of surfaces) {
-    try {
-      await surface.apply(ctx, released);
-    } catch (err) {
-      log.error(
-        { err: String(err), surface: surface.name, assetId: ctx.assetId },
-        "projection surface apply failed (non-fatal)",
-      );
-    }
-    if (removed.length > 0) {
-      try {
-        await surface.remove(ctx, removed);
-      } catch (err) {
-        log.error(
-          { err: String(err), surface: surface.name, assetId: ctx.assetId },
-          "projection surface remove failed (non-fatal)",
-        );
-      }
-    }
-  }
+  const reconciled = await reconcileFields(ctx, fields, data, releasePolicy);
+  await applyToSurfaces(ctx, reconciled);
 };
 
 let registered = false;
