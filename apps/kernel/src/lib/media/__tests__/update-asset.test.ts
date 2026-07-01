@@ -59,6 +59,9 @@ vi.mock('../article-core', () => ({
 
 vi.mock('@imajin/bus', () => ({
   publish: vi.fn().mockResolvedValue(undefined),
+  // update-asset now registers the #1207 project reactor before publishing;
+  // stub registerReactor so ensureProjectReactorRegistered() is a no-op here.
+  registerReactor: vi.fn(),
 }));
 
 vi.mock('node:fs/promises', () => ({
