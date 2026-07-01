@@ -11,6 +11,7 @@ import { createLogger } from "@imajin/logger";
 import { canWriteAssetContent } from "@/src/lib/media/write-access";
 import { deriveArticleProjection } from "./article-core";
 import { ensureProjectReactorRegistered } from "./projection-reactor";
+import { ensureChannelLinksSurfaceRegistered } from "./channel-links-surface";
 import { publish } from "@imajin/bus";
 
 const log = createLogger("kernel");
@@ -170,9 +171,13 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
   // (discipline rule 1). Best-effort/non-fatal: the file is authoritative, so a
   // publish failure must not fail the write (mirrors asset.article.published).
   if (AUTHORED_DOC_MIME_TYPES.has(asset.mimeType)) {
-    // Ensure the release-gated projection reactor (#1207) is registered in this
-    // process before we publish, so publish() can run it in-process. Idempotent.
+    // Ensure the release-gated projection reactor (#1207) and its projection
+    // surfaces are registered in this process before we publish, so publish()
+    // can run them in-process. Idempotent. The connector scope-manifest surface
+    // (#1209) gates itself to scope-manifest assets, so it is a cheap no-op for
+    // article/other docs.
     ensureProjectReactorRegistered();
+    ensureChannelLinksSurfaceRegistered();
     try {
       await publish("document.changed", {
         issuer: asset.ownerDid,
