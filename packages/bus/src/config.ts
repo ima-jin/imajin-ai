@@ -238,6 +238,13 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'asset.fair.upgraded': [
     { type: 'attestation', config: { attestationType: 'asset.fair.upgraded' }, enabled: true },
   ],
+  // #1205 — authored-document change trigger. #1207 attaches the release-gated
+  // `project` reactor downstream (awaited so the projection is settled before
+  // the write path returns). Kept in sync with migration 0059.
+  'document.changed': [
+    { type: 'emit', config: {}, enabled: true },
+    { type: 'project', config: {}, await: true, enabled: true },
+  ],
   'document.created': [
     { type: 'notify', config: { scope: 'auth:document-signature-request' }, enabled: true },
   ],

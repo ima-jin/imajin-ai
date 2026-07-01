@@ -663,6 +663,14 @@ export interface BusEventMap {
     status: string;
     date: string;
   };
+  // #1205 — authored-document change trigger (the control-plane "button").
+  // issuer=ownerDid, subject=<assetId/doc-id>, scope=<service scope>.
+  // Emitted only for tracked authored doc classes, never hot-state writes.
+  'document.changed': {
+    path: string;
+    cid: string;
+    prevCid: string | null;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

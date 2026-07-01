@@ -10,8 +10,28 @@ import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { createLogger } from "@imajin/logger";
 import { canWriteAssetContent } from "@/src/lib/media/write-access";
 import { deriveArticleProjection } from "./article-core";
+import { ensureProjectReactorRegistered } from "./projection-reactor";
+import { ensureChannelLinksSurfaceRegistered } from "./channel-links-surface";
+import { publish } from "@imajin/bus";
 
 const log = createLogger("kernel");
+
+/**
+ * Tracked *authored* document classes that may fire the document.changed
+ * trigger (#1205, EPIC #1204). Human-cadence authored config/content only —
+ * NEVER binary/other assets or machine-hot state (discipline rule 1). Editing
+ * one of these IS the privileged control-plane action; the bus reacts
+ * downstream (#1207).
+ */
+const AUTHORED_DOC_MIME_TYPES = new Set([
+  "text/markdown",
+  "text/yaml",
+  "application/yaml",
+  "application/x-yaml",
+]);
+
+/** Service scope for authored-document control-plane events. */
+const DOCUMENT_CHANGED_SCOPE = "media";
 
 export interface UpdateAssetContentInput {
   assetId: string;
@@ -58,6 +78,10 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
     return { ok: false, code: "not_found", message: "Not found" };
   }
   const asset = loaded; // narrowed to Asset
+
+  // Capture the CID BEFORE the write so document.changed can report the
+  // prev→new transition (#1205).
+  const prevCid = asset.cid ?? null;
 
   const decision = canWriteAssetContent({ ownerDid: asset.ownerDid, immutable: asset.immutable }, requesterDid);
   if (!decision.allowed) {
@@ -136,6 +160,33 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
       await deriveArticleProjection(assetId, content, asset.metadata);
     } catch (err) {
       log.warn({ err: String(err), assetId }, "Article projection re-derive failed (non-fatal)");
+    }
+  }
+
+  // #1205 — authored-document change trigger. Editing a tracked authored doc
+  // (markdown/YAML) IS the control-plane action: republish it on the bus so the
+  // release-gated projection reactor (#1207) can run downstream. Owner-pinned is
+  // already enforced above (canWriteAssetContent, owner-only). Gated to authored
+  // doc classes ONLY — binary/other assets and machine-hot state never fire this
+  // (discipline rule 1). Best-effort/non-fatal: the file is authoritative, so a
+  // publish failure must not fail the write (mirrors asset.article.published).
+  if (AUTHORED_DOC_MIME_TYPES.has(asset.mimeType)) {
+    // Ensure the release-gated projection reactor (#1207) and its projection
+    // surfaces are registered in this process before we publish, so publish()
+    // can run them in-process. Idempotent. The connector scope-manifest surface
+    // (#1209) gates itself to scope-manifest assets, so it is a cheap no-op for
+    // article/other docs.
+    ensureProjectReactorRegistered();
+    ensureChannelLinksSurfaceRegistered();
+    try {
+      await publish("document.changed", {
+        issuer: asset.ownerDid,
+        subject: assetId,
+        scope: DOCUMENT_CHANGED_SCOPE,
+        payload: { path: asset.storagePath, cid, prevCid },
+      });
+    } catch (err) {
+      log.error({ err: String(err), assetId }, "document.changed publish failed (non-fatal)");
     }
   }
 
