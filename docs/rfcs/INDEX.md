@@ -39,3 +39,4 @@ Canonical location for all Imajin protocol and architecture RFCs. Each RFC has a
 | [33](./RFC-33-agent-ci-pipeline.md) | Agent CI Pipeline | Draft | — |
 | [34](./RFC-34-community-needs-brokerage.md) | Community Needs Brokerage | Draft | — |
 | [35](./RFC-35-context-bound-connection.md) | Context-Bound Connection | Draft | — |
+| [36](./RFC-36-deterministic-hooks.md) | Deterministic Hooks | Draft | — |
