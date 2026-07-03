@@ -19,9 +19,9 @@ The whole edifice runs on monetized opacity: value extracted from what you can't
 
 ## What is Imajin?
 
-Imajin (今人 — "now-person") is sovereign infrastructure. 15 independent HTTP services sharing a cryptographic kernel: signed identity chains (DFOS), .fair attribution manifests, and bilateral attestations.
+Imajin (今人 — "now-person") is sovereign infrastructure: one cryptographic kernel plus disposable userspace apps. The kernel provides signed identity chains (DFOS), .fair attribution manifests, and bilateral attestations. Live since February 2026: one kernel, two platform apps, five Imajin apps, three client apps — all real, all self-hostable, open source (MIT).
 
-The kernel (auth + pay) enforces identity and settlement. Userspace services (events, chat, market, learn, etc.) are disposable — swap, rewrite, or add more without touching the chain layer.
+The kernel enforces identity and settlement. Userspace apps (events, chat, market, learn, etc.) are disposable — swap, rewrite, or add more without touching the chain layer.
 
 ## Architecture
 
@@ -31,38 +31,46 @@ DFOS (L0–L5) ← proof chains, key rotation, countersignatures
 HTTPS        ← transport
 ```
 
-## Services (15 live)
+## The kernel (one app, all core routes)
 
-| Service | URL | Role |
-|---------|-----|------|
-| auth | auth.imajin.ai | Kernel — DIDs, sessions, attestations, DFOS bridge |
-| pay | pay.imajin.ai | Kernel — Stripe, settlement, .fair verification |
-| connections | connections.imajin.ai | Trust — pods, invites, groups, vouches |
-| profile | profile.imajin.ai | Discovery — public profiles, handles |
-| registry | registry.imajin.ai | Federation — node discovery, DFOS relay |
-| events | events.imajin.ai | Userspace — events, tickets, .fair splits |
-| chat | chat.imajin.ai | Userspace — DID messaging, WebSocket |
-| media | media.imajin.ai | Userspace — assets, .fair sidecars |
-| input | input.imajin.ai | Userspace — voice (Whisper), uploads |
-| learn | learn.imajin.ai | Userspace — courses, enrollment |
-| market | market.imajin.ai | Userspace — consent-based local commerce |
-| coffee | coffee.imajin.ai | Userspace — tipping pages |
-| links | links.imajin.ai | Userspace — link-in-bio |
-| dykil | dykil.imajin.ai | Userspace — community spending surveys |
-| www | imajin.ai | Userspace — landing, app launcher |
+The kernel (canonical host `jin.imajin.ai`) serves every core capability as route-groups of a single app — not separate deployments:
+
+| Capability | Path | Role |
+|------------|------|------|
+| auth | jin.imajin.ai/auth | DIDs, sessions, attestations, DFOS bridge |
+| pay | jin.imajin.ai/pay | Stripe, settlement, .fair verification |
+| connections | jin.imajin.ai/connections | Trust — pods, invites, groups, vouches |
+| profile | jin.imajin.ai/profile | Discovery — public profiles, handles |
+| registry | jin.imajin.ai/registry | Federation — node discovery, DFOS relay |
+| chat | jin.imajin.ai/chat | DID messaging, WebSocket |
+| media | jin.imajin.ai/media | Assets, .fair sidecars |
+| calendar | jin.imajin.ai/calendar | Scheduling, consent-gated availability |
+| mcp | jin.imajin.ai/mcp | Sovereign connector door (OAuth, per-DID scopes) |
+| oauth | jin.imajin.ai/oauth | Authorization surface for connectors |
+
+## Userspace apps
+
+Disposable apps on top of the kernel — swap, rewrite, or add more without touching the chain layer:
+events, learn, market, coffee, links, dykil.
 
 ## Identity
 
-Ed25519 keypairs → `did:imajin:xxx` (also valid Solana wallet). Three standing tiers: soft (email), preliminary (keypair), established (earned). Chain-backed via DFOS.
+Ed25519 keypairs → `did:imajin:xxx`. Three standing tiers: soft (email), preliminary (keypair), established (earned). Chain-backed via DFOS.
 
 ## Key Concepts
 
 - **JBOS** — Just a Bunch Of Services. No orchestration. Services verify chains, not each other.
 - **.fair** — JSON manifests: who made it, who gets paid. Kernel primitive — settlement rejects unsigned manifests.
 - **Bilateral attestations** — both parties sign via DFOS countersignatures. Trust is mutual, not unilateral.
+- **Selective disclosure** — release only what's needed, only with consent, only for that interaction. Every release is logged and auditable.
 - **Exit credentials** — leave with your reputation. Signed, portable, encrypted under your key.
-- **Two-token model** — MJN (equity, earned through participation, mints on Solana Year 3) + MJNx (payment rail, fiat-pegged, vendor-withdrawable). Every MJN token traces to a signed chain entry — work, contribution, or usage.
 - **Trust-gated commerce** — three seller tiers: direct (off-platform settlement), protected (on-platform with .fair), trust-gated (visible only to verified members with preliminary DID+).
+
+## Currency & settlement (there is no token to trade)
+
+The protocol is currency-agnostic. A node can settle in CAD via Stripe, in USD, in community credits, or in MJNx — whatever makes sense for that community. **MJNx is to Imajin as USD is to SWIFT: SWIFT moves money, it doesn't BE money.** The protocol doesn't require the token; the token requires the protocol.
+
+There is no public asset to trade. **MJN is an internal accounting unit (1 MJN = 0.01 CHF), not a tradable token.** Hardware first, token later — Year 3. Roadmap: Year 1 software, Year 2 devices, Year 3 chip.
 
 ## Links
 
@@ -71,13 +79,13 @@ Ed25519 keypairs → `did:imajin:xxx` (also valid Solana wallet). Three standing
 - .fair spec: https://github.com/ima-jin/.fair
 - MJN protocol: https://github.com/ima-jin/mjn-protocol
 - DFOS: https://protocol.dfos.com
-- DFOS relay: https://registry.imajin.ai/relay/
-- OpenAPI specs: https://<service>.imajin.ai/api/spec
+- DFOS relay: https://jin.imajin.ai/registry/relay/
+- OpenAPI specs: https://jin.imajin.ai/<capability>/api/spec
 - Developer guide: https://imajin.ai/developer-guide
 
-## Build Stats (June 2026)
+## Build Stats (July 2026)
 
-15 services · 2,700+ commits · 1 human + AI agents · single server, no Kubernetes/Docker/service-mesh. The constraint is intentional — if the architecture can't be maintained by a small team, it's the wrong architecture.
+Live since February 2026 · 2,700+ commits · one kernel, two platform apps, five Imajin apps, three client apps · 1 human + AI agents · single server, no Kubernetes/Docker/service-mesh. The constraint is intentional — if the architecture can't be maintained by a small team, it's the wrong architecture.
 
 ## Contact
 
