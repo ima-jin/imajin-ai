@@ -679,6 +679,18 @@ export type BusEventType = keyof BusEventMap;
 // Broker types — consent-gated data release (#1014)
 // ============================================================================
 
+/**
+ * Broker enforcement mode (#1231).
+ * - `enforce` (default): the broker decision gates the caller (existing behavior).
+ * - `shadow`: run the identical consent → scope → release → audit pipeline and
+ *   write a real (shadow-flagged) audit row, but the decision is advisory. The
+ *   caller is told `enforced: false` and must not act on a rejection.
+ *
+ * Distinct from `preview`: preview is a dry-run that SKIPS release + audit;
+ * shadow does ALL the work (including audit) but is non-binding.
+ */
+export type BrokerMode = 'enforce' | 'shadow';
+
 /** Broker request — asks for consented field release */
 export interface BrokerRequest<T extends BrokerEventType = BrokerEventType> {
   type: T;
@@ -689,6 +701,7 @@ export interface BrokerRequest<T extends BrokerEventType = BrokerEventType> {
   scope: string;            // service scope
   data?: Record<string, unknown>; // subject data to filter (Phase 1: inline)
   preview?: boolean;        // dry-run mode
+  mode?: BrokerMode;        // enforcement mode; defaults to 'enforce'
 }
 
 /** Successful release */
@@ -701,9 +714,10 @@ export interface BrokerRelease {
     purpose: string;
     issuedAt: string;
     consentReference: string;
-    mode: 'attestation' | 'raw';
+    mode: 'attestation' | 'raw';   // release form — NOT the broker enforcement mode
   };
   preview?: boolean;
+  enforced?: boolean;       // false in shadow mode — decision is advisory, not binding
 }
 
 /** Rejection */
@@ -712,6 +726,7 @@ export interface BrokerRejection {
   reason: BrokerRejectionReason;
   fields?: string[];
   details?: string;
+  enforced?: boolean;       // false in shadow mode — rejection is advisory, do not gate the caller
 }
 
 export type BrokerRejectionReason =

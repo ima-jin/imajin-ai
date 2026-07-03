@@ -12,7 +12,7 @@ const MAX_LIMIT = 100;
  *   - A subject can query records where they are the subject or the requester.
  *   - Admin / node-operator scope can query all records (no DID restriction).
  *
- * Filters: ?subject= ?requester= ?purpose= ?status= ?from=ISO ?to=ISO ?limit= ?offset=
+ * Filters: ?subject= ?requester= ?purpose= ?status= ?shadow=true|false ?from=ISO ?to=ISO ?limit= ?offset=
  */
 export async function GET(request: Request) {
   const auth = await requireAuth(request);
@@ -26,6 +26,7 @@ export async function GET(request: Request) {
   const requesterFilter = url.searchParams.get('requester');
   const purposeFilter = url.searchParams.get('purpose');
   const statusFilter = url.searchParams.get('status');
+  const shadowFilter = url.searchParams.get('shadow');
   const from = url.searchParams.get('from');
   const to = url.searchParams.get('to');
   const limit = Math.min(Number.parseInt(url.searchParams.get('limit') ?? '50', 10), MAX_LIMIT);
@@ -46,6 +47,8 @@ export async function GET(request: Request) {
   if (requesterFilter) conditions.push(eq(brokerAuditLog.requester, requesterFilter));
   if (purposeFilter) conditions.push(eq(brokerAuditLog.purpose, purposeFilter));
   if (statusFilter) conditions.push(eq(brokerAuditLog.status, statusFilter));
+  if (shadowFilter === 'true') conditions.push(eq(brokerAuditLog.shadow, true));
+  if (shadowFilter === 'false') conditions.push(eq(brokerAuditLog.shadow, false));
   if (from) conditions.push(gte(brokerAuditLog.createdAt, new Date(from)));
   if (to) conditions.push(lte(brokerAuditLog.createdAt, new Date(to)));
 
