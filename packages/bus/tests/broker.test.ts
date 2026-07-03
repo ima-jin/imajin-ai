@@ -301,4 +301,40 @@ describe('bus.broker()', () => {
 
     expect(mockPublish).not.toHaveBeenCalled();
   });
+
+  // --------------------------------------------------------------------------
+  // Shadow mode (#1231) — full pipeline + audit, but non-binding (enforced:false)
+  // --------------------------------------------------------------------------
+
+  it('enforce mode (default) tags a release enforced:true', async () => {
+    const result = await broker('profile.read', makeRequest());
+
+    assertRelease(result);
+    expect(result.enforced).toBe(true);
+  });
+
+  it('shadow mode returns a release tagged enforced:false and still audits', async () => {
+    const result = await broker('profile.read', makeRequest({ mode: 'shadow' }));
+
+    assertRelease(result);
+    expect(result.enforced).toBe(false);
+    expect(result.data).toEqual({ name: 'Alice', email: 'alice@example.com' });
+    // Full pipeline ran: the release audit event still fires (unlike preview).
+    expect(mockPublish).toHaveBeenCalledWith('broker.release', expect.anything());
+  });
+
+  it('shadow mode returns a rejection tagged enforced:false and still audits', async () => {
+    const result = await broker('profile.read', makeRequest({
+      subject: 'did:imajin:unknown',
+      requester: 'did:imajin:stranger',
+      purpose: 'nefarious',
+      mode: 'shadow',
+    }));
+
+    assertRejection(result);
+    expect(result.reason).toBe('no_consent');
+    expect(result.enforced).toBe(false);
+    // A shadow rejection is a real, logged decision — the audit event fires.
+    expect(mockPublish).toHaveBeenCalledWith('broker.rejection', expect.anything());
+  });
 });

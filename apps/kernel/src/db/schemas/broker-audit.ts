@@ -1,4 +1,4 @@
-import { pgSchema, text, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgSchema, text, timestamp, index, boolean } from 'drizzle-orm/pg-core';
 
 /**
  * Broker audit log — append-only record of every broker release and rejection.
@@ -20,6 +20,7 @@ export const brokerAuditLog = brokerAuditSchema.table('broker_audit_log', {
   mode: text('mode'),                                              // 'attestation' | 'raw'
   consentRef: text('consent_ref'),
   reason: text('reason'),                                          // rejection reason
+  shadow: boolean('shadow').notNull().default(false),              // true = shadow-mode (advisory) decision (#1231)
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   subjectIdx: index('idx_broker_audit_subject').on(table.subject, table.createdAt),

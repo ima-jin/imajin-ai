@@ -21,6 +21,7 @@ async function writeAuditLogRow(row: {
   mode: string | null;
   consentRef: string | null;
   reason: string | null;
+  shadow: boolean;
 }): Promise<void> {
   try {
     const { getClient } = await import('@imajin/db');
@@ -29,11 +30,11 @@ async function writeAuditLogRow(row: {
     await sql`
       INSERT INTO kernel.broker_audit_log
         (id, type, requester, subject, purpose, scope,
-         fields_requested, fields_released, status, mode, consent_ref, reason)
+         fields_requested, fields_released, status, mode, consent_ref, reason, shadow)
       VALUES
         (${id}, ${row.type}, ${row.requester}, ${row.subject}, ${row.purpose}, ${row.scope},
          ${row.fieldsRequested}, ${row.fieldsReleased ?? null}, ${row.status},
-         ${row.mode ?? null}, ${row.consentRef ?? null}, ${row.reason ?? null})
+         ${row.mode ?? null}, ${row.consentRef ?? null}, ${row.reason ?? null}, ${row.shadow})
     `;
   } catch (err: unknown) {
     log.error({ err: String(err) }, 'broker_audit_log DB write failed');
@@ -48,6 +49,7 @@ async function writeAuditLogRow(row: {
  */
 export const auditReactor: BrokerReactor = async (state) => {
   const { request, envelope, filteredData } = state;
+  const shadow = request.mode === 'shadow';
 
   if (request.preview) {
     log.info({ preview: true }, 'Audit skipped (preview mode)');
@@ -74,6 +76,7 @@ export const auditReactor: BrokerReactor = async (state) => {
     mode: envelope.mode,
     consentRef: envelope.consentReference ?? null,
     reason: null,
+    shadow,
   }).catch((err: unknown) => {
     log.error({ err: String(err) }, 'writeAuditLogRow (release) failed');
   });
@@ -129,6 +132,7 @@ export async function auditRejection(
     mode: null,
     consentRef: null,
     reason: result.reason,
+    shadow: request.mode === 'shadow',
   }).catch((err: unknown) => {
     log.error({ err: String(err) }, 'writeAuditLogRow (rejection) failed');
   });

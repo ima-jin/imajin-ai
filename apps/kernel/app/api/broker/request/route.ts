@@ -21,8 +21,15 @@ const log = createLogger('kernel');
  *   scope       string    optional  — service scope (defaults to 'default')
  *   data        object    optional  — inline subject data for Phase 1 broker
  *   preview     boolean   optional  — dry-run mode; skips release + audit
+ *   mode        string    optional  — 'enforce' (default) | 'shadow'
  *
- * Returns BrokerRelease or BrokerRejection directly.
+ * Shadow mode (#1231) runs the full consent + audit pipeline but is
+ * non-binding: the response always carries `enforced: false` (on both release
+ * and rejection) so the caller logs the decision without acting on it. This is
+ * distinct from `preview`, which skips release + audit entirely.
+ *
+ * Returns BrokerRelease or BrokerRejection, augmented with `mode` and
+ * `enforced`.
  */
 export async function POST(request: Request) {
   const auth = await requireAuth(request);
@@ -45,12 +52,16 @@ export async function POST(request: Request) {
   const scope = typeof body.scope === 'string' ? body.scope : 'default';
   const data = typeof body.data === 'object' && body.data !== null ? (body.data as Record<string, unknown>) : undefined;
   const preview = body.preview === true;
+  const mode = body.mode === undefined ? 'enforce' : body.mode;
 
   if (!type) return NextResponse.json({ error: 'type is required' }, { status: 400 });
   if (!requester) return NextResponse.json({ error: 'requester is required' }, { status: 400 });
   if (!subject) return NextResponse.json({ error: 'subject is required' }, { status: 400 });
   if (!purpose) return NextResponse.json({ error: 'purpose is required' }, { status: 400 });
   if (!fields || fields.length === 0) return NextResponse.json({ error: 'fields must be a non-empty string array' }, { status: 400 });
+  if (mode !== 'enforce' && mode !== 'shadow') {
+    return NextResponse.json({ error: "mode must be 'enforce' or 'shadow'" }, { status: 400 });
+  }
 
   // Acting DID must match requester — no impersonation.
   if (requester !== actingDid) {
@@ -60,7 +71,7 @@ export async function POST(request: Request) {
     );
   }
 
-  log.info({ type, requester, subject, purpose, preview }, 'HTTP broker request');
+  log.info({ type, requester, subject, purpose, preview, mode }, 'HTTP broker request');
 
   const result = await broker(type, {
     type,
@@ -71,7 +82,11 @@ export async function POST(request: Request) {
     scope,
     data,
     preview,
+    mode,
   });
 
-  return NextResponse.json(result);
+  // Shadow decisions are advisory: always report enforced:false so the caller
+  // never gates its flow on the result. The HTTP status stays 200 for both
+  // release and rejection (unchanged from enforce mode).
+  return NextResponse.json({ ...result, mode, enforced: mode !== 'shadow' });
 }

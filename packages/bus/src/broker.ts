@@ -99,6 +99,11 @@ async function resolveBrokerChain(
  * Preview mode: consent + scope run, release envelope + audit are skipped.
  * Returns what *would* be released with preview: true.
  *
+ * Shadow mode (request.mode === 'shadow'): the identical pipeline runs,
+ * including a real (shadow-flagged) audit row, but the result is tagged
+ * `enforced: false` so the caller treats it as advisory. Shadow never changes
+ * enforce semantics and, unlike preview, never skips a reactor.
+ *
  * Fail-closed: no consent → rejection. No bypass.
  *
  * @param type - broker event type
@@ -109,8 +114,11 @@ export async function broker<T extends BrokerEventType>(
   type: T,
   request: BrokerRequest<T>
 ): Promise<BrokerResult> {
+  // Shadow decisions run the full pipeline but are non-binding (enforced: false).
+  const enforced = request.mode !== 'shadow';
+
   log.info(
-    { type, requester: request.requester, subject: request.subject, fields: request.fields, preview: request.preview },
+    { type, requester: request.requester, subject: request.subject, fields: request.fields, preview: request.preview, mode: request.mode ?? 'enforce' },
     'Broker request received'
   );
 
@@ -138,7 +146,7 @@ export async function broker<T extends BrokerEventType>(
 
         // Fire audit for rejection (skipped in preview by auditRejection)
         await auditRejection(request, result);
-        return result;
+        return { ...result, enforced };
       }
 
       state = result;
@@ -150,6 +158,7 @@ export async function broker<T extends BrokerEventType>(
         reason: 'requester_unauthorized',
         fields: request.fields,
         details: `Reactor ${reactorType} threw: ${String(err)}`,
+        enforced,
       };
 
       await auditRejection(request, rejection);
@@ -166,6 +175,7 @@ export async function broker<T extends BrokerEventType>(
       reason: 'requester_unauthorized',
       fields: request.fields,
       details: 'Pipeline completed but release data is incomplete',
+      enforced,
     };
 
     await auditRejection(request, rejection);
@@ -186,6 +196,7 @@ export async function broker<T extends BrokerEventType>(
         mode: state.mode || 'attestation',
       },
       preview: true as const,
+      enforced,
     };
 
     log.info({ preview: true }, 'Broker preview complete');
@@ -200,6 +211,7 @@ export async function broker<T extends BrokerEventType>(
       reason: 'requester_unauthorized',
       fields: request.fields,
       details: 'Pipeline completed but envelope is missing',
+      enforced,
     };
 
     await auditRejection(request, rejection);
@@ -210,6 +222,7 @@ export async function broker<T extends BrokerEventType>(
     status: 'released' as const,
     data: state.filteredData,
     envelope: state.envelope,
+    enforced,
   };
 
   log.info(
