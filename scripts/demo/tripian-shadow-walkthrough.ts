@@ -25,8 +25,8 @@
  *   DATABASE_URL=<postgres> \
  *   npx tsx ../../scripts/demo/tripian-shadow-walkthrough.ts
  *
- * Before #1227 merges, add DEMO_SKIP_VAULT=1 to use an in-memory vault
- * stand-in (see vault-client.ts). See scripts/demo/README-tripian.md.
+ * The vault round-trip uses #1227's in-process seal/unseal (see vault-client.ts);
+ * it needs AUTH_PRIVATE_KEY and VAULT_PATH. See scripts/demo/README-tripian.md.
  */
 
 import { readFileSync } from 'node:fs';
@@ -82,9 +82,7 @@ Required env:
   DEMO_AGENT_TOKEN   Bearer token for the demo's delegated agent (the requester)
   DEMO_AGENT_DID     DID of that agent; must equal the token's acting DID
   DATABASE_URL       Postgres URL (used to seed the traveler's consent grants)
-
-Optional env:
-  DEMO_SKIP_VAULT=1  Use an in-memory vault stand-in until #1227 lands
+  AUTH_PRIVATE_KEY   Node key for #1227 vault seal/unseal (dev fallback if unset)
 
 Run:
   cd apps/kernel && npx tsx ../../scripts/demo/tripian-shadow-walkthrough.ts`;
@@ -269,7 +267,7 @@ async function main(): Promise<void> {
   loadEnvLocal();
   const cfg = readConfig();
   const sql = postgres(cfg.databaseUrl);
-  const vault: VaultClient = createVaultClient({ baseUrl: cfg.baseUrl, token: cfg.token });
+  const vault: VaultClient = createVaultClient();
 
   console.log('Tripian shadow-mode restaurant walkthrough (#1232)');
   console.log(`kernel: ${cfg.baseUrl}  |  agent: ${cfg.agentDid}  |  vault: ${vault.label}`);

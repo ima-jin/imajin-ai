@@ -40,10 +40,14 @@ audit entirely.
 
 ## Prerequisites
 
-- A running dev kernel with the merged primitives (#1230 identity, #1231 broker
-  shadow mode) and **#1227** (vault seal/unseal).
+- A running dev kernel with the merged primitives: #1230 (identity), #1231
+  (broker shadow mode), and #1227 (vault seal/unseal).
 - A delegated **demo agent**: an authenticated identity that plays the
   restaurant's data-requesting service. You need its bearer token and DID.
+- `AUTH_PRIVATE_KEY` available to the script — the vault round-trip runs
+  **in-process** using #1227's real cipher (`sealSecret`/`unsealSecret`) with the
+  same node seal-key derivation as `sealing.ts`. A dev fallback key is used when
+  `AUTH_PRIVATE_KEY` is unset; never use the fallback with real secrets.
 
 ## Running it
 
@@ -53,27 +57,20 @@ KERNEL_BASE_URL=http://localhost:3001 \
 DEMO_AGENT_TOKEN=<bearer-token> \
 DEMO_AGENT_DID=did:imajin:<agent> \
 DATABASE_URL=<postgres-url> \
+AUTH_PRIVATE_KEY=<node-key> \
 npx tsx ../../scripts/demo/tripian-shadow-walkthrough.ts
 ```
 
 `npx tsx ../../scripts/demo/tripian-shadow-walkthrough.ts --help` prints the env
 reference. The script exits `0` only if every assertion holds; otherwise `1`.
 
-### Before #1227 merges
-
-The vault seal/unseal capability is delivered by #1227. Until it lands, run with
-`DEMO_SKIP_VAULT=1` to exercise the identity + consent + broker(shadow) + audit
-path using an **in-memory** seal/unseal stand-in:
-
-```bash
-DEMO_SKIP_VAULT=1 KERNEL_BASE_URL=... DEMO_AGENT_TOKEN=... DEMO_AGENT_DID=... DATABASE_URL=... \
-  npx tsx ../../scripts/demo/tripian-shadow-walkthrough.ts
-```
-
-The in-memory stand-in is **not** encryption and **not** a substitute for the
-vault — it only keeps the data flow and the round-trip assertion runnable. With
-`DEMO_SKIP_VAULT` unset, the demo uses the real vault via the HTTP seam in
-`vault-client.ts`.
+The vault seal/unseal round-trip runs in-process using #1227's real cipher
+(`sealSecret`/`unsealSecret`, see `vault-client.ts`): prefs are sealed to genuine
+AES-256-GCM ciphertext under the node seal key and unsealed back. #1227 exposes
+no HTTP unseal, and its in-process `sealAndStore`/`loadAndUnseal` pull in
+workspace-only packages a standalone script can't load, so the demo binds to the
+cipher primitives directly. The full FileVaultRepository persistence +
+signed-entry chain is covered by #1227's own `roundtrip.test.ts`.
 
 ## Expected output (abridged)
 
