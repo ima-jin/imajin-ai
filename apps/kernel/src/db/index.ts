@@ -16,6 +16,7 @@ import * as calendarSchema from './schemas/calendar';
 import * as matchSchema from './schemas/match';
 import * as consentSchema from './schemas/consent';
 import * as brokerAuditSchema from './schemas/broker-audit';
+import * as identityAliasesSchema from './schemas/identity-aliases';
 
 const schema = {
   ...authSchema,
@@ -34,6 +35,7 @@ const schema = {
   ...matchSchema,
   ...consentSchema,
   ...brokerAuditSchema,
+  ...identityAliasesSchema,
 };
 
 export const db = createDb(schema);
@@ -55,6 +57,7 @@ export * from './schemas/calendar';
 export * from './schemas/match';
 export * from './schemas/consent';
 export * from './schemas/broker-audit';
+export * from './schemas/identity-aliases';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";
