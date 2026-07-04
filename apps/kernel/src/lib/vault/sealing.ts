@@ -8,12 +8,9 @@
  *   provenance-signed — but this is NOT zero-custody.
  *   Zero-custody (owner-sealed) is the separate hardening track filed as A4.
  */
-import { hkdfSync, createHash } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { crypto as authCrypto } from '@imajin/auth';
-import { extractPrivateKeySeed } from '@imajin/vault-core';
-
-const HKDF_SALT = Buffer.from('imajin-vault', 'utf8');
-const HKDF_INFO = Buffer.from('seal-v1', 'utf8');
+import { deriveSealKey, extractPrivateKeySeed } from '@imajin/vault-core';
 
 export interface NodeSigningIdentity {
     /** Hex-encoded Ed25519 private key (raw 32-byte seed format). */
@@ -43,15 +40,8 @@ export function getSealKey(): Buffer {
     if (cachedSealKey !== undefined) {
         return cachedSealKey;
     }
-    const rawKey = process.env.AUTH_PRIVATE_KEY;
-    if (!rawKey) {
-        // Dev fallback — mirrors auth/encrypt.ts
-        cachedSealKey = createHash('sha256').update('dev-vault-seal-imajin').digest();
-        return cachedSealKey;
-    }
-    const seedHex = extractPrivateKeySeed(rawKey);
-    const seed = Buffer.from(seedHex, 'hex');
-    cachedSealKey = Buffer.from(hkdfSync('sha256', seed, HKDF_SALT, HKDF_INFO, 32));
+    // Single source of truth for seal-key derivation lives in @imajin/vault-core.
+    cachedSealKey = deriveSealKey(process.env.AUTH_PRIVATE_KEY);
     return cachedSealKey;
 }
 

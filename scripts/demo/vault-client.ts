@@ -10,9 +10,9 @@
  * primitives — `sealSecret` / `unsealSecret` in `@imajin/vault-core` — which
  * depend only on `node:crypto` and load cleanly by relative path.
  *
- * The seal key is derived EXACTLY as `apps/kernel/src/lib/vault/sealing.ts`
- * derives it (HKDF-SHA256 over the AUTH_PRIVATE_KEY seed, with the same
- * salt/info; a documented dev fallback when unset). Keep the two in sync.
+ * The seal key is derived by #1227's shared `deriveSealKey` (the single source
+ * of truth, also used by `apps/kernel/src/lib/vault/sealing.ts`), so there is no
+ * duplicated derivation to keep in sync.
  *
  * This gives a genuine AES-256-GCM seal -> unseal round-trip using #1227's real
  * cipher and node key. The full FileVaultRepository persistence + signed-entry
@@ -20,9 +20,9 @@
  * #1227's own `apps/kernel/src/lib/vault/__tests__/roundtrip.test.ts`.
  */
 
-import { createHash, hkdfSync } from 'node:crypto';
-// Real #1227 cipher — relative import avoids the workspace package export map.
-import { sealSecret, unsealSecret } from '../../packages/vault-core/src/seal.js';
+// Real #1227 cipher + key derivation — relative import avoids the workspace
+// package export map (a standalone tsx script can't resolve the built dist).
+import { sealSecret, unsealSecret, deriveSealKey } from '../../packages/vault-core/src/seal.js';
 
 interface VaultBlob {
   encrypted: string;
@@ -38,30 +38,6 @@ export interface VaultClient {
   readonly label: string;
 }
 
-// ── Seal-key derivation — mirrors apps/kernel/src/lib/vault/sealing.ts ──────────
-const HKDF_SALT = Buffer.from('imajin-vault', 'utf8');
-const HKDF_INFO = Buffer.from('seal-v1', 'utf8');
-const PKCS8_ED25519_PREFIX = '302e020100300506032b657004220420';
-
-/** Normalize an Ed25519 private key to its 32-byte seed hex (raw or PKCS#8). */
-function extractPrivateKeySeed(privateKeyHex: string): string {
-  const cleaned = privateKeyHex.toLowerCase().trim();
-  if (cleaned.length === 64) return cleaned;
-  if (cleaned.length === 96 && cleaned.startsWith(PKCS8_ED25519_PREFIX)) return cleaned.slice(32);
-  throw new Error(`Invalid AUTH_PRIVATE_KEY: expected 64 hex (raw) or 96 hex (PKCS#8), got ${cleaned.length}`);
-}
-
-/** Derive the 32-byte AES-256-GCM seal key exactly as #1227's sealing.ts does. */
-function getSealKey(): Buffer {
-  const rawKey = process.env.AUTH_PRIVATE_KEY;
-  if (!rawKey) {
-    // Dev fallback — mirrors sealing.ts; never use with real secrets.
-    return createHash('sha256').update('dev-vault-seal-imajin').digest();
-  }
-  const seed = Buffer.from(extractPrivateKeySeed(rawKey), 'hex');
-  return Buffer.from(hkdfSync('sha256', seed, HKDF_SALT, HKDF_INFO, 32));
-}
-
 /** Namespace a vault field by the subject DID (#1227 stores under one node identity). */
 function nsField(did: string, field: string): string {
   return `${did}:${field}`;
@@ -75,7 +51,7 @@ function nsField(did: string, field: string): string {
  */
 class VaultCryptoClient implements VaultClient {
   readonly label = 'in-process (#1227 real seal/unseal cipher)';
-  private readonly key = getSealKey();
+  private readonly key = deriveSealKey(process.env.AUTH_PRIVATE_KEY);
   private readonly store = new Map<string, VaultBlob>();
 
   async seal(did: string, field: string, plaintext: string): Promise<void> {

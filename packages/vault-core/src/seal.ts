@@ -1,9 +1,35 @@
-import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
+import { randomBytes, createCipheriv, createDecipheriv, hkdfSync, createHash } from 'node:crypto';
 import { type VaultBlob } from './models.js';
+import { extractPrivateKeySeed } from './signature.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
+
+// Seal-key derivation constants. HKDF domain-separates the sealing key from the
+// raw signing key so the same seed never serves two purposes directly.
+const SEAL_KEY_HKDF_SALT = Buffer.from('imajin-vault', 'utf8');
+const SEAL_KEY_HKDF_INFO = Buffer.from('seal-v1', 'utf8');
+const DEV_SEAL_KEY_SEED = 'dev-vault-seal-imajin';
+
+/**
+ * Derive the 32-byte AES-256-GCM vault seal key from an Ed25519 private key.
+ *
+ * HKDF-SHA256 over the key seed with a fixed salt/info. This is the single
+ * source of truth for seal-key derivation, shared by the kernel vault
+ * (`sealing.ts`) and any headless caller — do not reimplement it elsewhere.
+ *
+ * When `authPrivateKey` is absent, returns a deterministic dev-fallback key so
+ * sign/verify is self-consistent in development. NEVER use the fallback with
+ * real secrets.
+ */
+export function deriveSealKey(authPrivateKey?: string): Buffer {
+    if (authPrivateKey) {
+        const seed = Buffer.from(extractPrivateKeySeed(authPrivateKey), 'hex');
+        return Buffer.from(hkdfSync('sha256', seed, SEAL_KEY_HKDF_SALT, SEAL_KEY_HKDF_INFO, 32));
+    }
+    return createHash('sha256').update(DEV_SEAL_KEY_SEED).digest();
+}
 
 /**
  * Seal a plaintext string using AES-256-GCM.
