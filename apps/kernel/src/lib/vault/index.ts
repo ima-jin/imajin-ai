@@ -18,7 +18,7 @@ import {
   type VaultEntry,
 } from '@imajin/vault-core';
 import { createLogger } from '@imajin/logger';
-import { getSealKey, getNodeSigningIdentity } from './sealing.js';
+import { getSealKey, getNodeSigningIdentity } from './sealing';
 
 const log = createLogger('kernel');
 

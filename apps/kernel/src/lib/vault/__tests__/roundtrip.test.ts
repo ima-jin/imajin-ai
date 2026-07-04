@@ -249,7 +249,7 @@ describe('vault round-trip (A3)', () => {
 
         const identity = getNodeSigningIdentity();
         expect(identity.senderDid).toBe(`did:imajin:${identity.senderPubkey.slice(0, 16)}`);
-        expect(identity.senderPubkey.length).toBe(64); // 32 bytes hex
+        expect(identity.senderPubkey).toHaveLength(64); // 32 bytes hex
 
         delete process.env.AUTH_PRIVATE_KEY;
     });
