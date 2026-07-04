@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  assertEntryIntegrity,
-  prepareRotationEntryFromSignedInput,
-} from '@imajin/vault-core';
 import { publish } from '@imajin/bus';
 import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { vaultAdapters, vaultService } from '@/src/lib/vault';
+import { rotateAndStore, vaultService } from '@/src/lib/vault';
 import { ensureVaultHotReloadReactorRegistered } from '@/src/lib/vault/subscribe';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 
@@ -17,12 +13,7 @@ const nodeDid = process.env.NODE_DID ?? 'did:imajin:node';
 
 interface RotateVaultBody {
   field: string;
-  encrypted: string;
-  nonce: string;
-  senderDid: string;
-  senderPubkey: string;
-  signature: string;
-  timestamp: string;
+  value: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -36,43 +27,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const {
-    field,
-    encrypted,
-    nonce,
-    senderDid,
-    senderPubkey,
-    signature,
-    timestamp,
-  } = body;
+  const { field, value } = body;
 
-  if (
-    typeof field !== 'string' ||
-    typeof encrypted !== 'string' ||
-    typeof nonce !== 'string' ||
-    typeof senderDid !== 'string' ||
-    typeof senderPubkey !== 'string' ||
-    typeof signature !== 'string' ||
-    typeof timestamp !== 'string'
-  ) {
-    return NextResponse.json({ error: 'Missing or invalid required fields' }, { status: 400 });
+  if (typeof field !== 'string' || field.trim().length === 0) {
+    return NextResponse.json({ error: 'field is required' }, { status: 400 });
+  }
+  if (typeof value !== 'string' || value.length === 0) {
+    return NextResponse.json({ error: 'value is required' }, { status: 400 });
   }
 
   try {
-    const existing = await vaultService.get(field);
+    const existing = await vaultService.get(field.trim());
     if (!existing) {
       return NextResponse.json({ error: 'Field not found' }, { status: 404 });
     }
 
-    const entry = await prepareRotationEntryFromSignedInput(
-      existing,
-      { encrypted, nonce },
-      { senderDid, senderPubkey, signature, timestamp }
-    );
+    const entry = await rotateAndStore(field.trim(), value);
 
-    await assertEntryIntegrity(entry, vaultAdapters);
-
-    const persisted = await vaultService.set(entry);
     let published = true;
     try {
       await publish('vault.secret.rotated', {
@@ -80,11 +51,11 @@ export async function POST(request: NextRequest) {
         subject: nodeDid,
         scope: 'vault',
         payload: {
-          field,
+          field: entry.field,
           cid: entry.cid,
           previousCid: existing.cid,
-          senderDid,
-          context_id: field,
+          senderDid: entry.senderDid,
+          context_id: entry.field,
           context_type: 'vault',
         },
       });
@@ -94,15 +65,15 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      field,
+      field: entry.field,
       cid: entry.cid,
       previousCid: existing.cid,
-      timestamp: persisted.timestamp,
-      senderDid,
+      timestamp: entry.timestamp,
+      senderDid: entry.senderDid,
       status: published ? 'confirmed' : 'pending',
     });
   } catch (error) {
     log.error({ err: String(error), field }, 'Vault rotate error');
-    return toVaultErrorResponse(error, 'Validation failed', 400);
+    return toVaultErrorResponse(error, 'Failed to rotate secret', 400);
   }
 }

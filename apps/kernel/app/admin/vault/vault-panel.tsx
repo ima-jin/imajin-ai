@@ -2,9 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import * as ed25519 from '@noble/ed25519';
-import { sha512 } from '@noble/hashes/sha2.js';
-import { computeCid } from '@imajin/cid';
 import { HistoryDialog } from './history-dialog';
 import { RotateSecretDialog } from './rotate-secret-dialog';
 import { SetSecretDialog } from './set-secret-dialog';
@@ -18,109 +15,6 @@ import type {
   VaultSecretRow,
   VaultWriteApiResponse,
 } from './types';
-
-ed25519.etc.sha512Sync = (...messages) => sha512(ed25519.etc.concatBytes(...messages));
-
-interface VaultSignedPayload {
-  version: number;
-  field: string;
-  cid: string;
-  encrypted: string;
-  nonce: string;
-  senderDid: string;
-  senderPubkey: string;
-  keyId: string;
-  timestamp: string;
-}
-
-interface VaultSignedRequestBody extends VaultSignedPayload {
-  signature: string;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let index = 0; index < bytes.length; index += 1) {
-    bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
-  }
-  return bytes;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  bytes.forEach((byte) => {
-    binary += String.fromCodePoint(byte);
-  });
-  return btoa(binary);
-}
-
-function canonicalize(value: unknown): string {
-  if (value === null) return 'null';
-  if (value === undefined) return 'undefined';
-  if (typeof value === 'boolean' || typeof value === 'number') return JSON.stringify(value);
-  if (typeof value === 'string') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
-
-  const objectValue = value as Record<string, unknown>;
-  const keys = Object.keys(objectValue).sort((a, b) => a.localeCompare(b));
-  const pairs = keys
-    .filter((key) => objectValue[key] !== undefined)
-    .map((key) => `${JSON.stringify(key)}:${canonicalize(objectValue[key])}`);
-  return `{${pairs.join(',')}}`;
-}
-
-async function deriveKeyId(senderPubkeyHex: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', hexToBytes(senderPubkeyHex));
-  return bytesToHex(new Uint8Array(digest)).slice(0, 16);
-}
-
-async function encryptInBrowser(plaintext: string): Promise<{ encrypted: string; nonce: string }> {
-  const keyMaterial = crypto.getRandomValues(new Uint8Array(32));
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const key = await crypto.subtle.importKey('raw', keyMaterial, { name: 'AES-GCM' }, false, ['encrypt']);
-  const plaintextBytes = new TextEncoder().encode(plaintext);
-  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, plaintextBytes);
-  return {
-    encrypted: bytesToBase64(new Uint8Array(encrypted)),
-    nonce: bytesToBase64(nonce),
-  };
-}
-
-async function buildSignedVaultBody(field: string, value: string): Promise<VaultSignedRequestBody> {
-  const { encrypted, nonce } = await encryptInBrowser(value);
-  const privateKeyFactory =
-    (ed25519.utils as { randomPrivateKey?: () => Uint8Array; randomSecretKey?: () => Uint8Array });
-  const privateKey = privateKeyFactory.randomPrivateKey?.() ?? privateKeyFactory.randomSecretKey?.();
-  if (!privateKey) {
-    throw new Error('Unable to generate vault signing key');
-  }
-
-  const senderPubkey = bytesToHex(ed25519.getPublicKey(privateKey));
-  const senderDid = `did:imajin:${senderPubkey.slice(0, 16)}`;
-  const cid = await computeCid({ encrypted, nonce });
-  const keyId = await deriveKeyId(senderPubkey);
-  const timestamp = new Date().toISOString();
-
-  const payload: VaultSignedPayload = {
-    version: 1,
-    field,
-    cid,
-    encrypted,
-    nonce,
-    senderDid,
-    senderPubkey,
-    keyId,
-    timestamp,
-  };
-
-  const signature = bytesToHex(ed25519.sign(new TextEncoder().encode(canonicalize(payload)), privateKey));
-  return { ...payload, signature };
-}
 
 function createHint(value: string, hint: string): string {
   const source = hint.trim() || value.trim();
@@ -270,11 +164,10 @@ export function VaultPanel() {
   async function handleSetSecret(input: SetSecretInput): Promise<void> {
     setSubmitting(true);
     try {
-      const signedBody = await buildSignedVaultBody(input.field, input.value);
       const response = await fetch('/api/vault/set', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(signedBody),
+        body: JSON.stringify({ field: input.field, value: input.value }),
       });
 
       if (!response.ok) {
@@ -318,11 +211,10 @@ export function VaultPanel() {
   async function handleRotateSecret(input: RotateSecretInput): Promise<void> {
     setSubmitting(true);
     try {
-      const signedBody = await buildSignedVaultBody(input.field, input.value);
       const response = await fetch('/api/vault/rotate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(signedBody),
+        body: JSON.stringify({ field: input.field, value: input.value }),
       });
 
       if (!response.ok) {

@@ -36,7 +36,7 @@ export function RotateSecretDialog({
       <div className="w-full max-w-md rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-100 dark:border-gray-700 p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Rotate Secret</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Submit a new encrypted value for <span className="font-mono">{field}</span> and publish a rotation event.
+          Submit a new value for <span className="font-mono">{field}</span>. Transmitted over TLS, sealed server-side, and a rotation event is published.
         </p>
         <label htmlFor="rotate-secret-value" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">New value</label>
         <input

@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  computeVaultCid,
-  deriveKeyId,
-  assertEntryIntegrity,
-  VAULT_ENTRY_VERSION_V1,
-  type VaultEntry,
-} from '@imajin/vault-core';
 import { publish } from '@imajin/bus';
 import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { vaultAdapters, vaultService } from '@/src/lib/vault';
+import { sealAndStore } from '@/src/lib/vault';
 import { ensureVaultHotReloadReactorRegistered } from '@/src/lib/vault/subscribe';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 
@@ -20,14 +13,7 @@ const nodeDid = process.env.NODE_DID ?? 'did:imajin:node';
 
 interface SetVaultBody {
   field: string;
-  encrypted: string;
-  nonce: string;
-  senderDid: string;
-  senderPubkey: string;
-  signature: string;
-  timestamp: string;
-  previousCid?: string;
-  deleted?: boolean;
+  value: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -41,52 +27,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const {
-    field,
-    encrypted,
-    nonce,
-    senderDid,
-    senderPubkey,
-    signature,
-    timestamp,
-    previousCid,
-    deleted,
-  } = body;
+  const { field, value } = body;
 
-  if (
-    typeof field !== 'string' ||
-    typeof encrypted !== 'string' ||
-    typeof nonce !== 'string' ||
-    typeof senderDid !== 'string' ||
-    typeof senderPubkey !== 'string' ||
-    typeof signature !== 'string' ||
-    typeof timestamp !== 'string'
-  ) {
-    return NextResponse.json({ error: 'Missing or invalid required fields' }, { status: 400 });
+  if (typeof field !== 'string' || field.trim().length === 0) {
+    return NextResponse.json({ error: 'field is required' }, { status: 400 });
+  }
+  if (typeof value !== 'string' || value.length === 0) {
+    return NextResponse.json({ error: 'value is required' }, { status: 400 });
   }
 
   try {
-    const cid = await computeVaultCid({ encrypted, nonce });
-    const keyId = deriveKeyId(senderPubkey);
-
-    const entry: VaultEntry = {
-      version: VAULT_ENTRY_VERSION_V1,
-      field,
-      cid,
-      encrypted,
-      nonce,
-      senderDid,
-      senderPubkey,
-      keyId,
-      signature,
-      timestamp,
-      ...(previousCid === undefined  ? {} : { previousCid }),
-      ...(deleted === undefined  ? {} : { deleted }),
-    };
-
-    await assertEntryIntegrity(entry, vaultAdapters);
-
-    await vaultService.set(entry);
+    const entry = await sealAndStore(field.trim(), value);
 
     let published = true;
     try {
@@ -95,10 +46,10 @@ export async function POST(request: NextRequest) {
         subject: nodeDid,
         scope: 'vault',
         payload: {
-          field,
-          cid,
-          senderDid,
-          context_id: field,
+          field: entry.field,
+          cid: entry.cid,
+          senderDid: entry.senderDid,
+          context_id: entry.field,
           context_type: 'vault',
         },
       });
@@ -108,14 +59,14 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
-      field,
-      cid,
-      timestamp,
-      senderDid,
+      field: entry.field,
+      cid: entry.cid,
+      timestamp: entry.timestamp,
+      senderDid: entry.senderDid,
       status: published ? 'confirmed' : 'pending',
     });
   } catch (error) {
     log.error({ err: String(error), field }, 'Vault set error');
-    return toVaultErrorResponse(error, 'Validation failed', 400);
+    return toVaultErrorResponse(error, 'Failed to seal and store secret', 400);
   }
 }

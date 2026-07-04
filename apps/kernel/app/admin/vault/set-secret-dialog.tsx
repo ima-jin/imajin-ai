@@ -36,7 +36,7 @@ export function SetSecretDialog({ open, submitting, onClose, onSubmit }: Readonl
       <div className="w-full max-w-lg rounded-xl bg-white dark:bg-gray-800 shadow-xl border border-gray-100 dark:border-gray-700 p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Set Secret</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-          Value is encrypted in the browser and only encrypted payloads are sent to the vault API.
+          Value is transmitted over TLS and sealed server-side with the node key. Encrypted at rest; node-sealed (see custody disclosure).
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

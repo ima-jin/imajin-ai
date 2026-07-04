@@ -6,7 +6,7 @@ ed25519.etc.sha512Sync = (...messages) => sha512(ed25519.etc.concatBytes(...mess
 
 const PKCS8_ED25519_PREFIX = '302e020100300506032b657004220420';
 
-function extractPrivateKeySeed(privateKeyHex: string): string {
+export function extractPrivateKeySeed(privateKeyHex: string): string {
     const cleaned = privateKeyHex.toLowerCase().trim();
     if (cleaned.length === 64) {
         return cleaned;

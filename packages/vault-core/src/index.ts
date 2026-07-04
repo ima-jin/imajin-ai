@@ -60,3 +60,10 @@ export {
 export {
     createDefaultAdapters
 } from './adapters.js';
+export {
+    sealSecret,
+    unsealSecret
+} from './seal.js';
+export {
+    extractPrivateKeySeed
+} from './signature.js';
