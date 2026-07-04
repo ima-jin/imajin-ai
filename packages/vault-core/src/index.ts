@@ -62,7 +62,8 @@ export {
 } from './adapters.js';
 export {
     sealSecret,
-    unsealSecret
+    unsealSecret,
+    deriveSealKey
 } from './seal.js';
 export {
     extractPrivateKeySeed
