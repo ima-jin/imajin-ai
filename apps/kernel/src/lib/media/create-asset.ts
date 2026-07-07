@@ -11,6 +11,7 @@ import { getDefaultManifest, signManifest, canonicalize } from "@imajin/fair";
 import { publishContentEvent } from "@imajin/dfos";
 import { computeCid } from "@imajin/cid";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
+import { deriveArticleProjection, mergeArticleMetadata } from "@/src/lib/media/article-core";
 
 const log = createLogger("kernel");
 
@@ -336,6 +337,25 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
 
   // Auto-assign to a system folder based on context (non-fatal).
   await autoAssignContextFolder(assetId, ownerDid, context);
+
+  // ── Article frontmatter projection (#1244) ──────────────────────────────
+  // For markdown uploads, re-derive metadata.article from the file's YAML
+  // frontmatter (source of truth, #1193). Safe to call unconditionally for
+  // all .md files — the helper is a no-op when there is no valid article
+  // header (plain notes). Runs before the classification block so
+  // existingMeta already includes the article projection when classification
+  // merges its result.
+  if (mimeType === "text/markdown") {
+    try {
+      const fileContent = buffer.toString("utf8");
+      const { article } = await deriveArticleProjection(assetId, fileContent, record.metadata);
+      if (article !== null) {
+        record = { ...record, metadata: mergeArticleMetadata(record.metadata, article) };
+      }
+    } catch (err) {
+      log.error({ err: String(err), assetId }, "Article frontmatter projection failed (non-fatal)");
+    }
+  }
 
   // Fire-and-forget async classification.
   if (classify) {
