@@ -23,11 +23,13 @@ export interface NodeSigningIdentity {
 
 // HKDF info strings for X25519 key derivation — domain-separated from seal key and signing key.
 const NODE_X25519_INFO = 'vault-node-x25519-v1';
+const OWNER_X25519_INFO = 'vault-owner-x25519-v1';
 
 // Process-lifetime caches — reading AUTH_PRIVATE_KEY once per process is correct.
 let cachedSealKey: Buffer | undefined;
 let cachedIdentity: NodeSigningIdentity | undefined;
 let cachedNodeXKeypair: { privateKey: string; publicKey: string } | undefined;
+let cachedOwnerXKeypair: { privateKey: string; publicKey: string } | undefined;
 
 /**
  * Derive a 32-byte AES-256-GCM sealing key from AUTH_PRIVATE_KEY.
@@ -80,6 +82,46 @@ export function getNodeSigningIdentity(): NodeSigningIdentity {
 }
 
 /**
+ * Return the owner agent's X25519 public key (hex) for vault delegation (Tier 0).
+ *
+ * In Tier 0, the node acts as its own owner agent. The owner X25519 key is
+ * derived from AUTH_PRIVATE_KEY with info 'vault-owner-x25519-v1', intentionally
+ * distinct from the node X25519 key (vault-node-x25519-v1) so the two roles
+ * are always cryptographically separate — even when both are on the same server.
+ *
+ * When upgrading to Tier 1, the owner's vault X25519 key moves to the owner
+ * agent (imajin-cli vault serve / mobile app / Unit). The protocol and grant
+ * table structure stay identical; only the key holder changes.
+ */
+export function getOwnerXPublicKey(): string {
+    return getOwnerXKeypair().publicKey;
+}
+
+/**
+ * Return the owner agent's X25519 private key (hex) for vault delegation (Tier 0).
+ *
+ * Used only when creating a new delegation grant (sealing a v2 entry). Never
+ * logged or exposed. In Tier 1 this key lives exclusively on the owner agent.
+ */
+export function getOwnerXPrivateKey(): string {
+    return getOwnerXKeypair().privateKey;
+}
+
+function getOwnerXKeypair(): { privateKey: string; publicKey: string } {
+    if (cachedOwnerXKeypair !== undefined) {
+        return cachedOwnerXKeypair;
+    }
+    const rawKey = process.env.AUTH_PRIVATE_KEY;
+    if (rawKey) {
+        cachedOwnerXKeypair = deriveXKeypairFromEd25519(rawKey, OWNER_X25519_INFO);
+    } else {
+        const devSeed = createHash('sha256').update('dev-vault-signing-key-imajin').digest('hex');
+        cachedOwnerXKeypair = deriveXKeypairFromEd25519(devSeed, OWNER_X25519_INFO);
+    }
+    return cachedOwnerXKeypair;
+}
+
+/**
  * Return the node's X25519 public key (hex) for vault delegation.
  *
  * The key is derived from AUTH_PRIVATE_KEY via HKDF-SHA256 with a fixed info
@@ -126,4 +168,5 @@ export function _resetSealingCache(): void {
     cachedSealKey = undefined;
     cachedIdentity = undefined;
     cachedNodeXKeypair = undefined;
+    cachedOwnerXKeypair = undefined;
 }

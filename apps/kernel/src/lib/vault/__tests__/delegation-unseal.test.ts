@@ -9,10 +9,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { randomBytes } from 'node:crypto';
 
-// Mock the DB module so index.ts loads cleanly in the test environment.
-// _applyDelegationGrant and canonicalizeGrantPayload do not use the DB;
-// the live loadAndUnseal wrapper is covered by integration tests.
+// Mock kernel-level modules so index.ts loads cleanly in the test environment.
+// _applyDelegationGrant and canonicalizeGrantPayload do not use the DB or ID
+// generator; the live loadAndUnseal / sealAndStoreV2 wrappers are covered by
+// integration tests.
 vi.mock('@/src/db', () => ({ db: {}, vaultDelegationGrants: {} }));
+vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 import {
     FileVaultRepository,
     VaultEntryService,

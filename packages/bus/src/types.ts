@@ -558,6 +558,15 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'vault';
   };
+  /** Emitted when a vault_delegation_grants row is revoked (#1242). */
+  'vault.delegation.revoked': {
+    grantId: string;
+    field: string;
+    subject: string;     // ownerDid
+    grantedTo: string;   // nodeDid / agentDid
+    context_id: string;
+    context_type: 'vault.delegation';
+  };
   'broker.release': {
     releaseId: string;
     requester: string;

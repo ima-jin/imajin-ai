@@ -256,6 +256,9 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'vault-hot-reload', config: {}, enabled: true, await: true },
     { type: 'emit', config: {}, enabled: true },
   ],
+  'vault.delegation.revoked': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
   'broker.release': [
     { type: 'emit', config: {}, enabled: true },
   ],
