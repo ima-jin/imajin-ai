@@ -1,6 +1,28 @@
 import { IntegrityErrorCode, VaultIntegrityError } from '@imajin/vault-core';
 import { NextResponse } from 'next/server';
 
+/**
+ * Thrown by loadAndUnseal when a delegation-grant entry has no active grant
+ * for the requesting node, or when the grant's owner signature is invalid.
+ *
+ * Distinct from VaultIntegrityError so callers can handle "no grant" separately
+ * from "tampered entry" without catching a broad error type.
+ */
+export class VaultDelegationError extends Error {
+  public readonly field: string;
+  public readonly nodeDid: string;
+
+  constructor(
+    message: string,
+    context: { field: string; nodeDid: string },
+  ) {
+    super(message);
+    this.name = 'VaultDelegationError';
+    this.field = context.field;
+    this.nodeDid = context.nodeDid;
+  }
+}
+
 function statusForIntegrityCode(code: IntegrityErrorCode): number {
   switch (code) {
     case IntegrityErrorCode.SIGNATURE_INVALID:
@@ -32,6 +54,13 @@ export function toVaultErrorResponse(
         details: error.details ?? null,
       },
       { status: statusForIntegrityCode(error.code) }
+    );
+  }
+
+  if (error instanceof VaultDelegationError) {
+    return NextResponse.json(
+      { error: 'No active delegation grant', field: error.field },
+      { status: 403 }
     );
   }
 

@@ -1,6 +1,7 @@
 import { IntegrityErrorCode, VaultIntegrityError } from './errors.js';
 import {
     VAULT_ENTRY_VERSION_V1,
+    VAULT_ENTRY_VERSION_V2,
     type VaultEntry,
     type VaultSignedPayload
 } from './models.js';
@@ -70,14 +71,14 @@ export async function assertEntryIntegrity(
 ): Promise<VaultSignedPayload> {
     const entryField = entry.field;
 
-    if (entry.version !== VAULT_ENTRY_VERSION_V1) {
+    if (entry.version !== VAULT_ENTRY_VERSION_V1 && entry.version !== VAULT_ENTRY_VERSION_V2) {
         throw new VaultIntegrityError(
             IntegrityErrorCode.UNSUPPORTED_VERSION,
             `Unsupported vault entry version: ${String(entry.version)}`,
             {
                 entryField,
                 details: {
-                    expected: VAULT_ENTRY_VERSION_V1,
+                    supported: [VAULT_ENTRY_VERSION_V1, VAULT_ENTRY_VERSION_V2],
                     actual: entry.version
                 }
             }
@@ -165,9 +166,12 @@ export async function assertEntryIntegrity(
         senderPubkey: entry.senderPubkey,
         keyId: entry.keyId,
         timestamp: entry.timestamp,
+        // custodyScheme is included when defined so the canonical form matches
+        // what was signed — undefined values are stripped by canonicalizePayload.
+        ...(entry.custodyScheme === undefined ? {} : { custodyScheme: entry.custodyScheme }),
         ...(entry.previousCid === undefined  ? {} : { previousCid: entry.previousCid }),
         ...(entry.deleted === undefined  ? {} : { deleted: entry.deleted })
-    };
+    } as VaultSignedPayload;
     const signatureOk = adapters.verifySignature(payload, entry.signature, entry.senderPubkey);
     if (!signatureOk) {
         throw new VaultIntegrityError(
