@@ -663,6 +663,25 @@ export interface BusEventMap {
     status: string;
     date: string;
   };
+  /** Emitted after a GitHub issue is created on behalf of a DID (#1228). Non-fatal. */
+  'github.issue.created': {
+    ownerDid: string;
+    repo: string;
+    issueNumber: number;
+    issueUrl: string;
+    context_id: string;
+    context_type: 'github';
+  };
+  /** Emitted after a GitHub issue comment is created on behalf of a DID (#1228). Non-fatal. */
+  'github.comment.created': {
+    ownerDid: string;
+    repo: string;
+    issueNumber: number;
+    commentId: number;
+    commentUrl: string;
+    context_id: string;
+    context_type: 'github';
+  };
   // #1205 — authored-document change trigger (the control-plane "button").
   // issuer=ownerDid, subject=<assetId/doc-id>, scope=<service scope>.
   // Emitted only for tracked authored doc classes, never hot-state writes.
