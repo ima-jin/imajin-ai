@@ -1099,6 +1099,9 @@ importers:
       '@imajin/cid':
         specifier: workspace:*
         version: link:../cid
+      '@noble/curves':
+        specifier: ^1.8.1
+        version: 1.9.7
       '@noble/ed25519':
         specifier: ^2.3.0
         version: 2.3.0
@@ -9345,6 +9348,14 @@ snapshots:
       chai: 5.3.3
       tinyrainbow: 2.0.0
 
+  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@22.19.17))':
+    dependencies:
+      '@vitest/spy': 2.1.9
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 5.4.21(@types/node@22.19.17)
+
   '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@24.12.4))':
     dependencies:
       '@vitest/spy': 2.1.9
@@ -13398,7 +13409,7 @@ snapshots:
   vitest@2.1.9(@types/node@22.19.17):
     dependencies:
       '@vitest/expect': 2.1.9
-      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@24.12.4))
+      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@22.19.17))
       '@vitest/pretty-format': 2.1.9
       '@vitest/runner': 2.1.9
       '@vitest/snapshot': 2.1.9

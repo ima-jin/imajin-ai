@@ -10,7 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { crypto as authCrypto } from '@imajin/auth';
-import { deriveSealKey, extractPrivateKeySeed } from '@imajin/vault-core';
+import { deriveSealKey, extractPrivateKeySeed, deriveXKeypairFromEd25519 } from '@imajin/vault-core';
 
 export interface NodeSigningIdentity {
     /** Hex-encoded Ed25519 private key (raw 32-byte seed format). */
@@ -21,9 +21,13 @@ export interface NodeSigningIdentity {
     senderDid: string;
 }
 
+// HKDF info strings for X25519 key derivation — domain-separated from seal key and signing key.
+const NODE_X25519_INFO = 'vault-node-x25519-v1';
+
 // Process-lifetime caches — reading AUTH_PRIVATE_KEY once per process is correct.
 let cachedSealKey: Buffer | undefined;
 let cachedIdentity: NodeSigningIdentity | undefined;
+let cachedNodeXKeypair: { privateKey: string; publicKey: string } | undefined;
 
 /**
  * Derive a 32-byte AES-256-GCM sealing key from AUTH_PRIVATE_KEY.
@@ -75,8 +79,51 @@ export function getNodeSigningIdentity(): NodeSigningIdentity {
     return cachedIdentity;
 }
 
+/**
+ * Return the node's X25519 public key (hex) for vault delegation.
+ *
+ * The key is derived from AUTH_PRIVATE_KEY via HKDF-SHA256 with a fixed info
+ * string, domain-separated from the Ed25519 signing identity and the AES seal
+ * key so the same seed never serves two cryptographic purposes directly.
+ *
+ * Owner agents use this key as `recipientXPub` when wrapping a field key for
+ * this node. The node uses the corresponding private key to unwrap at unseal time.
+ *
+ * Dev fallback (AUTH_PRIVATE_KEY unset): a deterministic key derived from the
+ * same dev seed used by getSealKey, so wrap/unwrap is self-consistent in dev.
+ */
+export function getNodeXPublicKey(): string {
+    return getNodeXKeypair().publicKey;
+}
+
+/**
+ * Return the node's X25519 private key (hex) for vault delegation.
+ *
+ * Never log or expose this value. Used only inside loadAndUnseal to unwrap
+ * the per-field AES key from a vault_delegation_grants row.
+ */
+export function getNodeXPrivateKey(): string {
+    return getNodeXKeypair().privateKey;
+}
+
+function getNodeXKeypair(): { privateKey: string; publicKey: string } {
+    if (cachedNodeXKeypair !== undefined) {
+        return cachedNodeXKeypair;
+    }
+    const rawKey = process.env.AUTH_PRIVATE_KEY;
+    if (rawKey) {
+        cachedNodeXKeypair = deriveXKeypairFromEd25519(rawKey, NODE_X25519_INFO);
+    } else {
+        // Dev fallback: deterministic seed matching the dev seal key derivation.
+        const devSeed = createHash('sha256').update('dev-vault-signing-key-imajin').digest('hex');
+        cachedNodeXKeypair = deriveXKeypairFromEd25519(devSeed, NODE_X25519_INFO);
+    }
+    return cachedNodeXKeypair;
+}
+
 /** Reset caches — only for use in tests. */
 export function _resetSealingCache(): void {
     cachedSealKey = undefined;
     cachedIdentity = undefined;
+    cachedNodeXKeypair = undefined;
 }
