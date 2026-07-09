@@ -71,15 +71,19 @@ export async function assertEntryIntegrity(
 ): Promise<VaultSignedPayload> {
     const entryField = entry.field;
 
-    if (entry.version !== VAULT_ENTRY_VERSION_V1 && entry.version !== VAULT_ENTRY_VERSION_V2) {
+    // Defensive runtime guard against malformed/deserialized entries whose
+    // version is outside the supported set. Read through a widened local so the
+    // static union (1 | 2) does not narrow the block to `never`.
+    const entryVersion: number = entry.version;
+    if (entryVersion !== VAULT_ENTRY_VERSION_V1 && entryVersion !== VAULT_ENTRY_VERSION_V2) {
         throw new VaultIntegrityError(
             IntegrityErrorCode.UNSUPPORTED_VERSION,
-            `Unsupported vault entry version: ${String(entry.version)}`,
+            `Unsupported vault entry version: ${String(entryVersion)}`,
             {
                 entryField,
                 details: {
                     supported: [VAULT_ENTRY_VERSION_V1, VAULT_ENTRY_VERSION_V2],
-                    actual: entry.version
+                    actual: entryVersion
                 }
             }
         );

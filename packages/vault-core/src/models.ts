@@ -78,6 +78,13 @@ export interface VaultFile {
     entries: VaultEntry[];
 }
 
-export type UpsertVaultEntryInput = Omit<VaultEntry, 'previousCid'> & {
+/**
+ * Distributive Omit — applies Omit to each member of a union separately so the
+ * discriminated union (VaultEntryV1 | VaultEntryV2) is preserved rather than
+ * collapsed into a single object type with `version: 1 | 2`.
+ */
+type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
+
+export type UpsertVaultEntryInput = DistributiveOmit<VaultEntry, 'previousCid'> & {
     previousCid?: string;
 };
