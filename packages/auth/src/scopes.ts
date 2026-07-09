@@ -20,6 +20,10 @@ export const SCOPES = {
   'attestations:write': 'Issue attestations on your behalf',
   'availability:read':  'View your availability and coordination intents',
   'availability:write': 'Set and cancel availability intents on your behalf',
+  'github:read':        'Read your repos, issues and PRs on GitHub',
+  'github:write':       'Open and comment on issues & PRs on your GitHub repos',
+  'github:org':         'Act on repos owned by an org or other people on GitHub',
+  'github:actions':     'Trigger GitHub Actions / deploy / spend CI minutes',
 } as const;
 
 export type Scope = keyof typeof SCOPES;

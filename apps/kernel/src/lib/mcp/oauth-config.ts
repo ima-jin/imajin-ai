@@ -63,7 +63,16 @@ export function areRedirectUrisAllowed(uris: readonly string[]): boolean {
  * A given client only receives a scope if its registry.apps.requested_scopes
  * includes it — no existing client gains new capability implicitly.
  */
-export const MCP_SCOPES = ['media:read', 'media:write', 'media:share', 'connections:read'] as const;
+export const MCP_SCOPES = [
+  'media:read',
+  'media:write',
+  'media:share',
+  'connections:read',
+  'github:read',
+  'github:write',
+  'github:org',
+  'github:actions',
+] as const;
 const MCP_SCOPE_SET = new Set<string>(MCP_SCOPES);
 
 export const ACCESS_TOKEN_TTL_SECONDS = 600; // matches createAppToken (10 min)
