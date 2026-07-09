@@ -11,6 +11,7 @@ import { getDefaultManifest, signManifest, canonicalize } from "@imajin/fair";
 import { publishContentEvent } from "@imajin/dfos";
 import { computeCid } from "@imajin/cid";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
+import { deriveArticleProjection, mergeArticleMetadata } from "@/src/lib/media/article-core";
 
 const log = createLogger("kernel");
 
@@ -210,6 +211,30 @@ async function autoAssignContextFolder(assetId: string, ownerDid: string, contex
   }
 }
 
+/**
+ * Re-derive metadata.article from a markdown upload's YAML frontmatter (#1244).
+ *
+ * Frontmatter is the source of truth (#1193). Safe to call unconditionally for
+ * all markdown uploads — deriveArticleProjection is a no-op (returns
+ * { article: null }) when the file has no valid article header (plain notes).
+ * Non-fatal: on failure the original metadata is returned unchanged.
+ */
+async function applyArticleProjection(
+  assetId: string,
+  buffer: Buffer,
+  metadata: unknown,
+): Promise<unknown> {
+  try {
+    const fileContent = buffer.toString("utf8");
+    const { article } = await deriveArticleProjection(assetId, fileContent, metadata);
+    if (article === null) return metadata;
+    return mergeArticleMetadata(metadata, article);
+  } catch (err) {
+    log.error({ err: String(err), assetId }, "Article frontmatter projection failed (non-fatal)");
+    return metadata;
+  }
+}
+
 export async function createAsset(input: CreateAssetInput): Promise<CreateAssetResult> {
   const {
     ownerDid,
@@ -336,6 +361,17 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
 
   // Auto-assign to a system folder based on context (non-fatal).
   await autoAssignContextFolder(assetId, ownerDid, context);
+
+  // ── Article frontmatter projection (#1244) ──────────────────────────────
+  // For markdown uploads, re-derive metadata.article from the file's YAML
+  // frontmatter (source of truth, #1193). Safe to call unconditionally for
+  // all .md files — the helper is a no-op when there is no valid article
+  // header (plain notes). Runs before the classification block so
+  // existingMeta already includes the article projection when classification
+  // merges its result.
+  if (mimeType === "text/markdown") {
+    record = { ...record, metadata: await applyArticleProjection(assetId, buffer, record.metadata) };
+  }
 
   // Fire-and-forget async classification.
   if (classify) {
