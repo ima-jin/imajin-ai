@@ -211,6 +211,30 @@ async function autoAssignContextFolder(assetId: string, ownerDid: string, contex
   }
 }
 
+/**
+ * Re-derive metadata.article from a markdown upload's YAML frontmatter (#1244).
+ *
+ * Frontmatter is the source of truth (#1193). Safe to call unconditionally for
+ * all markdown uploads — deriveArticleProjection is a no-op (returns
+ * { article: null }) when the file has no valid article header (plain notes).
+ * Non-fatal: on failure the original metadata is returned unchanged.
+ */
+async function applyArticleProjection(
+  assetId: string,
+  buffer: Buffer,
+  metadata: unknown,
+): Promise<unknown> {
+  try {
+    const fileContent = buffer.toString("utf8");
+    const { article } = await deriveArticleProjection(assetId, fileContent, metadata);
+    if (article === null) return metadata;
+    return mergeArticleMetadata(metadata, article);
+  } catch (err) {
+    log.error({ err: String(err), assetId }, "Article frontmatter projection failed (non-fatal)");
+    return metadata;
+  }
+}
+
 export async function createAsset(input: CreateAssetInput): Promise<CreateAssetResult> {
   const {
     ownerDid,
@@ -346,15 +370,7 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
   // existingMeta already includes the article projection when classification
   // merges its result.
   if (mimeType === "text/markdown") {
-    try {
-      const fileContent = buffer.toString("utf8");
-      const { article } = await deriveArticleProjection(assetId, fileContent, record.metadata);
-      if (article !== null) {
-        record = { ...record, metadata: mergeArticleMetadata(record.metadata, article) };
-      }
-    } catch (err) {
-      log.error({ err: String(err), assetId }, "Article frontmatter projection failed (non-fatal)");
-    }
+    record = { ...record, metadata: await applyArticleProjection(assetId, buffer, record.metadata) };
   }
 
   // Fire-and-forget async classification.
