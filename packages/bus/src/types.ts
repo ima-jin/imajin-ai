@@ -699,6 +699,48 @@ export interface BusEventMap {
     cid: string;
     prevCid: string | null;
   };
+  // #1134 — supply.* pre-sale provenance events (free stages, no settlement).
+  // A lot is threaded declare -> collect -> process -> list via `lotId`; `priorCid`
+  // links each stage to the prior stage's content-addressed record (provenance).
+  'supply.declared': {
+    lotId: string;
+    supplierDid: string;
+    commodity: string;
+    quantity: number;
+    unit: string;
+    context_id: string;
+    context_type: string;
+  };
+  'supply.collected': {
+    lotId: string;
+    supplierDid: string;
+    commodity: string;
+    quantity: number;
+    unit: string;
+    priorCid?: string;
+    context_id: string;
+    context_type: string;
+  };
+  'supply.processed': {
+    lotId: string;
+    supplierDid: string;
+    commodity: string;
+    quantity: number;
+    unit: string;
+    priorCid?: string;
+    context_id: string;
+    context_type: string;
+  };
+  'supply.listed': {
+    lotId: string;
+    supplierDid: string;
+    commodity: string;
+    quantity: number;
+    unit: string;
+    priorCid?: string;
+    context_id: string;
+    context_type: string;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
