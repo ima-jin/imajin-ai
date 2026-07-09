@@ -52,36 +52,7 @@ export async function POST(request: NextRequest) {
 
   try {
     if (custodyScheme === 'delegation-grant') {
-      const { entry, grantId } = await sealAndStoreV2(field.trim(), value, { expiresAt: expiresAtDate });
-
-      let published = true;
-      try {
-        await publish('vault.secret.updated', {
-          issuer: entry.senderDid,
-          subject: nodeDid,
-          scope: 'vault',
-          payload: {
-            field: entry.field,
-            cid: entry.cid,
-            senderDid: entry.senderDid,
-            context_id: entry.field,
-            context_type: 'vault',
-          },
-        });
-      } catch (err) {
-        published = false;
-        log.error({ err: String(err) }, 'Bus publish error for vault.secret.updated (v2)');
-      }
-
-      return NextResponse.json({
-        field: entry.field,
-        cid: entry.cid,
-        timestamp: entry.timestamp,
-        senderDid: entry.senderDid,
-        custodyScheme: 'delegation-grant',
-        grantId,
-        status: published ? 'confirmed' : 'pending',
-      });
+      return await handleDelegationGrantSet(field.trim(), value, expiresAtDate);
     }
 
     const entry = await sealAndStore(field.trim(), value);
@@ -116,4 +87,41 @@ export async function POST(request: NextRequest) {
     log.error({ err: String(error), field }, 'Vault set error');
     return toVaultErrorResponse(error, 'Failed to seal and store secret', 400);
   }
+}
+
+async function handleDelegationGrantSet(
+  field: string,
+  value: string,
+  expiresAt: Date | null,
+): Promise<NextResponse> {
+  const { entry, grantId } = await sealAndStoreV2(field, value, { expiresAt });
+
+  let published = true;
+  try {
+    await publish('vault.secret.updated', {
+      issuer: entry.senderDid,
+      subject: nodeDid,
+      scope: 'vault',
+      payload: {
+        field: entry.field,
+        cid: entry.cid,
+        senderDid: entry.senderDid,
+        context_id: entry.field,
+        context_type: 'vault',
+      },
+    });
+  } catch (err) {
+    published = false;
+    log.error({ err: String(err) }, 'Bus publish error for vault.secret.updated (v2)');
+  }
+
+  return NextResponse.json({
+    field: entry.field,
+    cid: entry.cid,
+    timestamp: entry.timestamp,
+    senderDid: entry.senderDid,
+    custodyScheme: 'delegation-grant',
+    grantId,
+    status: published ? 'confirmed' : 'pending',
+  });
 }

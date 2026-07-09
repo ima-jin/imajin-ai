@@ -168,7 +168,7 @@ function deriveWrappingKey(sharedPoint: Uint8Array): Buffer {
 
 function assertHex(value: string, expectedBytes: number, name: string): void {
     const expectedChars = expectedBytes * 2;
-    if (!/^[0-9a-f]{1,}$/i.test(value) || value.length !== expectedChars) {
+    if (!/^[0-9a-f]+$/i.test(value) || value.length !== expectedChars) {
         throw new Error(`${name} must be ${expectedChars} hex chars; got ${value.length}`);
     }
 }
