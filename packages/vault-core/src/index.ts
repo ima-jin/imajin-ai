@@ -1,14 +1,24 @@
 export {
     VAULT_ENTRY_VERSION_V1,
+    VAULT_ENTRY_VERSION_V2,
     type VaultEntryVersion,
+    type VaultCustodyScheme,
     type VaultBlob,
     type VaultEntry,
     type VaultEntryV1,
+    type VaultEntryV2,
     type VaultSignedPayload,
     type VaultSignedPayloadV1,
+    type VaultSignedPayloadV2,
     type VaultFile,
     type UpsertVaultEntryInput
 } from './models.js';
+export {
+    wrapFieldKey,
+    unwrapFieldKey,
+    deriveXKeypairFromEd25519,
+    type DelegationWrappedKey,
+} from './delegation.js';
 export {
     IntegrityErrorCode,
     VaultIntegrityError

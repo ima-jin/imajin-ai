@@ -1,6 +1,7 @@
 import { IntegrityErrorCode, VaultIntegrityError } from './errors.js';
 import {
     VAULT_ENTRY_VERSION_V1,
+    VAULT_ENTRY_VERSION_V2,
     type VaultEntry,
     type VaultSignedPayload
 } from './models.js';
@@ -70,15 +71,19 @@ export async function assertEntryIntegrity(
 ): Promise<VaultSignedPayload> {
     const entryField = entry.field;
 
-    if (entry.version !== VAULT_ENTRY_VERSION_V1) {
+    // Defensive runtime guard against malformed/deserialized entries whose
+    // version is outside the supported set. Read through a widened local so the
+    // static union (1 | 2) does not narrow the block to `never`.
+    const entryVersion: number = entry.version;
+    if (entryVersion !== VAULT_ENTRY_VERSION_V1 && entryVersion !== VAULT_ENTRY_VERSION_V2) {
         throw new VaultIntegrityError(
             IntegrityErrorCode.UNSUPPORTED_VERSION,
-            `Unsupported vault entry version: ${String(entry.version)}`,
+            `Unsupported vault entry version: ${String(entryVersion)}`,
             {
                 entryField,
                 details: {
-                    expected: VAULT_ENTRY_VERSION_V1,
-                    actual: entry.version
+                    supported: [VAULT_ENTRY_VERSION_V1, VAULT_ENTRY_VERSION_V2],
+                    actual: entryVersion
                 }
             }
         );
@@ -165,9 +170,12 @@ export async function assertEntryIntegrity(
         senderPubkey: entry.senderPubkey,
         keyId: entry.keyId,
         timestamp: entry.timestamp,
+        // custodyScheme is included when defined so the canonical form matches
+        // what was signed — undefined values are stripped by canonicalizePayload.
+        ...(entry.custodyScheme === undefined ? {} : { custodyScheme: entry.custodyScheme }),
         ...(entry.previousCid === undefined  ? {} : { previousCid: entry.previousCid }),
         ...(entry.deleted === undefined  ? {} : { deleted: entry.deleted })
-    };
+    } as VaultSignedPayload;
     const signatureOk = adapters.verifySignature(payload, entry.signature, entry.senderPubkey);
     if (!signatureOk) {
         throw new VaultIntegrityError(

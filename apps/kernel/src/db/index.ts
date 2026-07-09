@@ -17,6 +17,7 @@ import * as matchSchema from './schemas/match';
 import * as consentSchema from './schemas/consent';
 import * as brokerAuditSchema from './schemas/broker-audit';
 import * as identityAliasesSchema from './schemas/identity-aliases';
+import * as vaultSchema from './schemas/vault';
 
 const schema = {
   ...authSchema,
@@ -36,6 +37,7 @@ const schema = {
   ...consentSchema,
   ...brokerAuditSchema,
   ...identityAliasesSchema,
+  ...vaultSchema,
 };
 
 export const db = createDb(schema);
@@ -58,6 +60,7 @@ export * from './schemas/match';
 export * from './schemas/consent';
 export * from './schemas/broker-audit';
 export * from './schemas/identity-aliases';
+export * from './schemas/vault';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";
