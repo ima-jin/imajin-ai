@@ -237,8 +237,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
             expand: ['latest_charge.balance_transaction'],
           });
-          const charge = pi.latest_charge;
-          const bt = charge?.balance_transaction;
+          const charge = pi.latest_charge as Stripe.Charge | null;
+          const bt = charge?.balance_transaction as Stripe.BalanceTransaction | null | undefined;
           if (bt?.fee) {
             actualStripeFeeCents = bt.fee;
             log.info({ transactionId: tx.id, stripeFee: bt.fee, feeDetails: bt.fee_details }, '[webhook] Actual Stripe fee from balance_transaction');
@@ -269,7 +269,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         issuer: process.env.PLATFORM_DID || 'system',
         subject: 'stripe:processor',
         scope: 'pay',
-        payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents: processingFeeCents, currency, estimated: actualStripeFeeCents === null },
+        payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents: processingFeeCents, currency },
       }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
 
       // Processing fee reconciliation: credit or debit MJNx based on estimate vs actual
@@ -612,7 +612,7 @@ async function notifyCoffeeService(
 }
 
 async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
-  log.info({ id: subscription.id, customerId: subscription.customer, status: subscription.status }, 'Subscription created');
+  log.info({ id: subscription.id, customerId: subscription.customer, subscriptionStatus: subscription.status }, 'Subscription created');
 
   // Create a new transaction for the subscription
   const amount = subscription.items.data[0]?.price.unit_amount || 0;
@@ -633,7 +633,7 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
 }
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
-  log.info({ id: subscription.id, customerId: subscription.customer, status: subscription.status }, 'Subscription updated');
+  log.info({ id: subscription.id, customerId: subscription.customer, subscriptionStatus: subscription.status }, 'Subscription updated');
 
   // Log the status change as a transaction metadata update
   // (no new transaction row — status changes are informational)

@@ -229,7 +229,6 @@ function mimeBucket(mimeType: string): 'text' | 'image' | 'audio' | 'video' | 'o
 
 // ─── Debounce hook ─────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useDebouncedCallback<T extends (...args: any[]) => void>(
   fn: T,
   delay: number

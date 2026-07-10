@@ -59,11 +59,11 @@ export async function resolveHandle(handle: string): Promise<AuthorInfo | null> 
 
 // Parse article metadata from a DB asset row
 function parseArticleMeta(row: {
-  metadata: Record<string, unknown> | null;
+  metadata: unknown;
   ownerDid: string;
   authorHandle?: string | null;
 }): ArticleMeta | null {
-  const article = row.metadata?.article as
+  const article = (row.metadata as Record<string, unknown> | null)?.article as
     | Record<string, unknown>
     | null;
   if (!article || typeof article !== 'object') return null;

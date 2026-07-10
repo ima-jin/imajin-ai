@@ -11,7 +11,7 @@ const INTERNAL_KEY = process.env.AUTH_INTERNAL_API_KEY;
 export type BumpWsEvent =
   | { type: 'bump:matched'; matchId: string; peer: { did: string; handle?: string; name?: string; avatar?: string }; expiresAt: string }
   | { type: 'bump:peer_confirmed'; matchId: string }
-  | { type: 'bump:connected'; matchId: string; connectionId: string; peer: { did: string; handle?: string } }
+  | { type: 'bump:connected'; matchId: string; connectionId: string; peer: { did: string; handle?: string; name?: string; avatar?: string }; redirectUrl?: string }
   | { type: 'bump:match_expired'; matchId: string; reason: 'timeout' | 'declined' }
   | { type: 'bump:already_connected'; peer: { did: string; handle?: string; name?: string; avatar?: string }; connectedAt: string };
 
