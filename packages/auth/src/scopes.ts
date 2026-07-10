@@ -14,6 +14,8 @@ export const SCOPES = {
   'connections:read':   'View your connections',
   'events:read':        'View events you attend or have created',
   'events:write':       'Create and manage events on your behalf',
+  'supply:read':        'View your supply-chain lots and their stage history',
+  'supply:write':       'Record supply-chain stages (declare, collect, process, list) on your behalf',
   'messages:read':      'Read messages in your conversations',
   'messages:write':     'Send messages on your behalf',
   'attestations:read':  'View your attestations and reputation',
