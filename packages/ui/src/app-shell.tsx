@@ -20,7 +20,7 @@ export interface AppShellProps extends React.HTMLAttributes<HTMLDivElement> {
   children?: React.ReactNode;
 }
 
-export const AppShell = React.forwardRef<HTMLDivElement, AppShellProps>(
+const AppShellRoot = React.forwardRef<HTMLDivElement, AppShellProps>(
   function AppShell({ className = '', children, ...props }, ref) {
     return (
       <div
@@ -139,16 +139,19 @@ export const AppShellPane = React.forwardRef<HTMLDivElement, AppShellPaneProps>(
   }
 );
 
-AppShell.displayName = 'AppShell';
+AppShellRoot.displayName = 'AppShell';
 AppShellHeader.displayName = 'AppShell.Header';
 AppShellBody.displayName = 'AppShell.Body';
 AppShellFooter.displayName = 'AppShell.Footer';
 AppShellSplit.displayName = 'AppShell.Split';
 AppShellPane.displayName = 'AppShell.Split.Pane';
 
-/* Attach subcomponents as static properties for compound API */
-(AppShell as unknown as Record<string, unknown>).Header = AppShellHeader;
-(AppShell as unknown as Record<string, unknown>).Body = AppShellBody;
-(AppShell as unknown as Record<string, unknown>).Footer = AppShellFooter;
-(AppShell as unknown as Record<string, unknown>).Split = AppShellSplit;
-(AppShellSplit as unknown as Record<string, unknown>).Pane = AppShellPane;
+/* Compound API — typed so consumers get AppShell.Header, AppShell.Split.Pane, etc. */
+const AppShellSplitCompound = Object.assign(AppShellSplit, { Pane: AppShellPane });
+
+export const AppShell = Object.assign(AppShellRoot, {
+  Header: AppShellHeader,
+  Body: AppShellBody,
+  Footer: AppShellFooter,
+  Split: AppShellSplitCompound,
+});

@@ -447,7 +447,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
                 </button>
               </div>
               <div className="flex gap-4 text-xs text-gray-400">
-                {transcript.language && (
+                {!!transcript.language && (
                   <span>Language: {String(transcript.language).toUpperCase()}</span>
                 )}
                 {transcript.durationSeconds != null && (

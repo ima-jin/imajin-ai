@@ -220,11 +220,11 @@ export function MediaManager({ session, search = '' }: Readonly<MediaManagerProp
               selectedAssetIds={selectedAssetIds}
               moveFolderId={moveFolderId}
               onSortChange={(s) => {
-                setSort(s);
+                setSort(s as SortKey);
                 localStorage.setItem("imajin-media-sort", s);
               }}
               onOrderChange={(o) => {
-                setOrder(o);
+                setOrder(o as "asc" | "desc");
                 localStorage.setItem("imajin-media-order", o);
               }}
               onTypeFilterChange={setTypeFilter}
