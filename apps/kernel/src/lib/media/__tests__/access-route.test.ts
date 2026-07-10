@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { patchAccess } from '../routes/access';
+import { mockIdentity, mockRequest } from './test-helpers';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -49,11 +50,7 @@ import { updateManifestFlow } from '@/src/lib/media/manifest-helpers';
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 function makeRequest(body: unknown, url = 'https://test.imajin.ai/media/api/assets/asset_test/access') {
-  return new Request(url, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  return mockRequest(body, url);
 }
 
 function setupAsset(overrides: Record<string, unknown> = {}) {
@@ -99,7 +96,7 @@ describe('PATCH /media/api/assets/[id]/access', () => {
   });
 
   it('returns 400 when access is missing', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
 
     const res = await patchAccess(makeRequest({}), 'asset_test');
     expect(res.status).toBe(400);
@@ -108,14 +105,14 @@ describe('PATCH /media/api/assets/[id]/access', () => {
   });
 
   it('returns 400 when access is invalid', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
 
     const res = await patchAccess(makeRequest({ access: 'super-secret' }), 'asset_test');
     expect(res.status).toBe(400);
   });
 
   it('returns 404 when asset not found', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     mockFrom.mockReturnValue({ where: mockWhere });
     mockWhere.mockReturnValue({ limit: mockLimit });
     mockLimit.mockResolvedValue([]);
@@ -125,7 +122,7 @@ describe('PATCH /media/api/assets/[id]/access', () => {
   });
 
   it('returns 403 when user does not own the asset', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:intruder', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity({ id: 'did:imajin:intruder' }) });
     setupAsset();
 
     const res = await patchAccess(makeRequest({ access: 'public' }), 'asset_test');
@@ -133,7 +130,7 @@ describe('PATCH /media/api/assets/[id]/access', () => {
   });
 
   it('updates access to public and runs manifest flow', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const asset = setupAsset();
     const updatedAsset = { ...asset, fairManifest: { ...asset.fairManifest, access: { type: 'public' } } };
 
@@ -167,7 +164,7 @@ describe('PATCH /media/api/assets/[id]/access', () => {
   });
 
   it('updates access to conversation', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const asset = setupAsset();
     const updatedAsset = { ...asset, fairManifest: { ...asset.fairManifest, access: { type: 'conversation' } } };
 
@@ -189,7 +186,7 @@ describe('PATCH /media/api/assets/[id]/access', () => {
   });
 
   it('handles missing manifest by creating a minimal v1.1 fallback', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const asset = setupAsset({ fairManifest: {} });
     const updatedAsset = { ...asset };
 
@@ -218,7 +215,7 @@ describe('PATCH /media/api/assets/[id]/access', () => {
 
   it('supports acting-as impersonation', async () => {
     vi.mocked(requireAuth).mockResolvedValueOnce({
-      identity: { id: 'did:imajin:agent', actingAs: 'did:imajin:owner', actingAsRole: 'admin' },
+      identity: mockIdentity({ id: 'did:imajin:agent', actingAs: 'did:imajin:owner', actingAsRole: 'admin' }),
     });
     const asset = setupAsset();
     const updatedAsset = { ...asset, fairManifest: { ...asset.fairManifest, access: { type: 'public' } } };
