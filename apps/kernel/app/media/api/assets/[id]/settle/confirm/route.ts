@@ -23,8 +23,8 @@ import { createLogger } from "@imajin/logger";
 const log = createLogger("kernel");
 
 // Cache signing key
-let signKeyPromise: Promise<import("jose").KeyLike> | null = null;
-function getSignKey(): Promise<import("jose").KeyLike> {
+let signKeyPromise: Promise<CryptoKey> | null = null;
+function getSignKey(): Promise<CryptoKey> {
   if (!signKeyPromise) {
     const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
     if (privateKeyHex) {

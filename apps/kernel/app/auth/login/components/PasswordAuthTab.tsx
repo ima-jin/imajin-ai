@@ -158,7 +158,7 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: R
       // Now do challenge-response login
       const ed = await import('@noble/ed25519');
       const { sha512 } = await import('@noble/hashes/sha2.js');
-      ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
+      (ed.etc as { sha512Sync?: (...m: Uint8Array[]) => Uint8Array }).sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
 
       const privateKeyBytes = hexToBytes(privateKeyHex);
       const publicKeyBytes = await ed.getPublicKeyAsync(privateKeyBytes);

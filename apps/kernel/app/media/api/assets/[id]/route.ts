@@ -85,8 +85,8 @@ function determineAction(request: NextRequest, mimeType: string): FairAction {
 }
 
 // Cache the verify key loaded from AUTH_PRIVATE_KEY
-let verifyKeyPromise: Promise<import('jose').KeyLike> | null = null;
-function getVerifyKey(): Promise<import('jose').KeyLike> {
+let verifyKeyPromise: Promise<CryptoKey> | null = null;
+function getVerifyKey(): Promise<CryptoKey> {
   if (!verifyKeyPromise) {
     const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
     if (privateKeyHex) {
