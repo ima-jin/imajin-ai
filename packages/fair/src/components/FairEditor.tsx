@@ -610,7 +610,7 @@ export function FairEditor({
 
   const update = useCallback(
     (patch: Partial<FairManifest>) => {
-      const next = { ...local, ...patch };
+      const next = { ...local, ...patch } as FairManifest;
       setLocal(next);
       onChange?.(next);
     },
@@ -640,7 +640,7 @@ export function FairEditor({
       <div className="flex items-center justify-between border-b border-gray-800 pb-3">
         <div className="flex items-center gap-2">
           <span className="text-orange-500 font-bold text-sm">.fair</span>
-          <span className="text-gray-600 text-xs">v{local.fair || (local as Record<string, unknown>).version || '1.0'}</span>
+          <span className="text-gray-600 text-xs">v{local.fair || (local as unknown as { version?: string }).version || '1.0'}</span>
         </div>
         <span className="text-xs text-gray-600 truncate max-w-[200px]">{local.id}</span>
       </div>

@@ -977,6 +977,9 @@ importers:
 
   packages/logger:
     dependencies:
+      '@imajin/db':
+        specifier: workspace:*
+        version: link:../db
       nanoid:
         specifier: ^5
         version: 5.1.7
@@ -1074,6 +1077,9 @@ importers:
       '@imajin/config':
         specifier: workspace:*
         version: link:../config
+      '@imajin/fair':
+        specifier: workspace:*
+        version: link:../fair
       '@mdxeditor/editor':
         specifier: ^3.52.4
         version: 3.54.0(@codemirror/language@6.12.3)(@lezer/highlight@1.2.3)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(yjs@13.6.30)
@@ -9348,14 +9354,6 @@ snapshots:
       chai: 5.3.3
       tinyrainbow: 2.0.0
 
-  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@22.19.17))':
-    dependencies:
-      '@vitest/spy': 2.1.9
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      vite: 5.4.21(@types/node@22.19.17)
-
   '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@24.12.4))':
     dependencies:
       '@vitest/spy': 2.1.9
@@ -13409,7 +13407,7 @@ snapshots:
   vitest@2.1.9(@types/node@22.19.17):
     dependencies:
       '@vitest/expect': 2.1.9
-      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@22.19.17))
+      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@24.12.4))
       '@vitest/pretty-format': 2.1.9
       '@vitest/runner': 2.1.9
       '@vitest/snapshot': 2.1.9

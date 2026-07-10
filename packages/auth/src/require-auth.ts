@@ -195,7 +195,7 @@ export async function requireAuth(
   // Handle X-Acting-As header or cookie for group identity impersonation
   if ("identity" in result && result.identity) {
     const actingAs = request.headers.get("x-acting-as")
-      || request.cookies?.get?.("x-acting-as")?.value
+      || (request as { cookies?: { get?: (name: string) => { value?: string } | undefined } }).cookies?.get?.("x-acting-as")?.value
       || parseCookieValue(request.headers.get("cookie"), "x-acting-as");
     if (actingAs) {
       const actingAsResult = await validateActingAs(
