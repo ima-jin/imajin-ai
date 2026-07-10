@@ -300,6 +300,25 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'release', config: {}, enabled: true },
     { type: 'audit', config: {}, enabled: true },
   ],
+  // #1134 — supply.* pre-sale provenance stages (declared -> collected -> processed -> listed).
+  // Free stages: NO `settle` reactor (that's the declarative "this stage is free").
+  // The paid stage reuses `order.completed`, already configured above.
+  'supply.declared': [
+    { type: 'attestation', config: { attestationType: 'supply.declared' }, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+    { type: 'notify', config: { scope: 'supply:declared' }, enabled: true },
+  ],
+  'supply.collected': [
+    { type: 'attestation', config: { attestationType: 'supply.collected' }, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'supply.processed': [
+    { type: 'attestation', config: { attestationType: 'supply.processed' }, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'supply.listed': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------
