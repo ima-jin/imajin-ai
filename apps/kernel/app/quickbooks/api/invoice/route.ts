@@ -3,6 +3,7 @@ import { requireAppAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createInvoice, type CreateInvoiceLine } from '@/src/lib/quickbooks/connector';
+import { buildSaleFairManifest, attachFairManifestToLot } from '@/src/lib/quickbooks/settlement';
 
 const log = createLogger('kernel');
 
@@ -47,7 +48,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const invoice = await createInvoice(userDid, { correlationId, customerRef, lines });
-    return NextResponse.json({ invoice }, { status: 201, headers: cors });
+    // The sale is now defined — build the .fair split manifest and attach it to
+    // the lot so settlement can execute it when the invoice is paid.
+    const fairManifest = buildSaleFairManifest(userDid, correlationId);
+    await attachFairManifestToLot(correlationId, fairManifest);
+    return NextResponse.json({ invoice, fairManifest }, { status: 201, headers: cors });
   } catch (err) {
     log.error({ err: String(err), userDid }, 'QuickBooks invoice creation failed');
     return NextResponse.json({ error: 'Invoice creation failed' }, { status: 502, headers: cors });
