@@ -10,12 +10,12 @@ import { eq, sql } from 'drizzle-orm';
 import { requireAdmin } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 
-export const POST = withLogger(async (
+export const POST = withLogger('kernel', async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) => {
-  const authResult = await requireAdmin(request);
-  if (authResult instanceof NextResponse) return authResult;
+  const session = await requireAdmin();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
 

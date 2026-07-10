@@ -10,9 +10,9 @@ import { eq, desc } from 'drizzle-orm';
 import { requireAdmin } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 
-export const GET = withLogger(async (request: NextRequest) => {
-  const authResult = await requireAdmin(request);
-  if (authResult instanceof NextResponse) return authResult;
+export const GET = withLogger('kernel', async (request: NextRequest) => {
+  const session = await requireAdmin();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
