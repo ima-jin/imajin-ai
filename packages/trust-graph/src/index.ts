@@ -1,11 +1,11 @@
 import { eq, isNull, and } from 'drizzle-orm';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import type { AnyDatabase } from '@imajin/db';
 import * as schema from './schema';
 
 export * from './schema';
 export * from './types';
 
-type DB = PostgresJsDatabase<typeof schema>;
+type DB = AnyDatabase;
 
 /**
  * Resolve all members of a pod, including members from linked child pods (recursive).
