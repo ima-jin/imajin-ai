@@ -8,6 +8,7 @@ import { settleReactor } from './reactors/settle';
 import { webhookReactor } from './reactors/webhook';
 import { matchEngineReactor } from './match/engine';
 import { notifyMatchDeliveryReactor } from './reactors/notify-match-delivery';
+import { supplyRecorderReactor } from './reactors/supply-recorder';
 
 // Auto-register built-in reactors on import
 registerReactor('attestation', attestationReactor);
@@ -19,12 +20,14 @@ registerReactor('settle', settleReactor);
 registerReactor('webhook', webhookReactor);
 registerReactor('match-engine', matchEngineReactor);
 registerReactor('notify-match-delivery', notifyMatchDeliveryReactor);
+registerReactor('supply-recorder', supplyRecorderReactor);
 
 export { publish } from './publish';
 export { broker } from './broker';
 export { registerReactor } from './registry';
 export { registerBrokerReactor, getBrokerReactor } from './broker-registry';
 export { getChainConfig, getBrokerChainConfig } from './config';
+export { getLotChain } from './supply-lots';
 export { EMISSION_SCHEDULE } from './emissions';
 export { resolveConsent } from './broker-config';
 export { isBrokerRelease, isBrokerRejection } from './types';
@@ -48,3 +51,4 @@ export type {
   BrokerEventType,
 } from './types';
 export type { ConsentEntry } from './broker-config';
+export type { LotChain, SupplyLotRecord, SupplyStageRecord } from './supply-lots';

@@ -19,3 +19,38 @@ export const busChainConfigs = busSchema.table('bus_chain_configs', {
 
 export type BusChainConfig = typeof busChainConfigs.$inferSelect;
 export type NewBusChainConfig = typeof busChainConfigs.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// #1136 — supply-chain lot + stage spine (kernel.supply_lots / supply_stages).
+// Materializes a lot and its ordered stages keyed by correlationId so a supply
+// chain (declared -> collected -> processed -> listed -> settled) is queryable
+// as one ordered history. Generic: commodity-specific detail lives in the stage
+// payload + attestations, not in columns.
+// ---------------------------------------------------------------------------
+
+export const supplyLots = busSchema.table('supply_lots', {
+  correlationId: text('correlation_id').primaryKey(),
+  originatingDid: text('originating_did').notNull(),
+  commodity: text('commodity'),
+  status: text('status').notNull().default('open'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const supplyStages = busSchema.table('supply_stages', {
+  id: text('id').primaryKey().default(sql`gen_random_uuid()::text`),
+  correlationId: text('correlation_id').notNull().references(() => supplyLots.correlationId),
+  stage: text('stage').notNull(),
+  actorDid: text('actor_did').notNull(),
+  attestationCid: text('attestation_cid'),
+  priorCid: text('prior_cid'),
+  payload: jsonb('payload'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  correlationCreatedIdx: index('idx_supply_stages_correlation_created').on(table.correlationId, table.createdAt),
+}));
+
+export type SupplyLot = typeof supplyLots.$inferSelect;
+export type NewSupplyLot = typeof supplyLots.$inferInsert;
+export type SupplyStage = typeof supplyStages.$inferSelect;
+export type NewSupplyStage = typeof supplyStages.$inferInsert;
