@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
   const correlationId = typeof body.correlationId === 'string' ? body.correlationId : null;
   const customerRef = typeof body.customerRef === 'string' ? body.customerRef : null;
   const lines = Array.isArray(body.lines) ? (body.lines as CreateInvoiceLine[]) : null;
+  const buyerDid = typeof body.buyerDid === 'string' ? body.buyerDid : undefined;
   if (!correlationId || !customerRef || !lines || lines.length === 0) {
     return NextResponse.json(
       { error: 'correlationId (string), customerRef (string) and a non-empty lines[] are required' },
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     // The sale is now defined — build the .fair split manifest and attach it to
     // the lot so settlement can execute it when the invoice is paid.
     const fairManifest = buildSaleFairManifest(userDid, correlationId);
-    await attachFairManifestToLot(correlationId, fairManifest);
+    await attachFairManifestToLot(correlationId, fairManifest, buyerDid);
     return NextResponse.json({ invoice, fairManifest }, { status: 201, headers: cors });
   } catch (err) {
     log.error({ err: String(err), userDid }, 'QuickBooks invoice creation failed');

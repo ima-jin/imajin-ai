@@ -34,6 +34,7 @@ export const supplyLots = busSchema.table('supply_lots', {
   commodity: text('commodity'),
   status: text('status').notNull().default('open'),
   fairManifest: jsonb('fair_manifest'),
+  buyerDid: text('buyer_did'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
