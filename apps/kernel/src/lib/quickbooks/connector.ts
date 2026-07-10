@@ -38,20 +38,42 @@ export const LOT_NOTE_PREFIX = 'imajin-lot:';
 const AUTHORIZE_URL = 'https://appcenter.intuit.com/connect/oauth2';
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
 
-/** Accounting API base differs by environment. */
-function apiBase(): string {
-  const env = process.env.QUICKBOOKS_ENVIRONMENT ?? 'sandbox';
-  return env === 'production'
-    ? 'https://quickbooks.api.intuit.com'
-    : 'https://sandbox-quickbooks.api.intuit.com';
+// ── Per-DID connection config (sealed in the vault, never global env) ─────────
+
+export interface QuickBooksConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  environment: 'sandbox' | 'production';
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`quickbooks_config: ${name} is not set`);
+/** Per-DID vault field for the QuickBooks app config. */
+export function configField(ownerDid: string): string {
+  return `quickbooks-config:${ownerDid}`;
+}
+
+/**
+ * Seal a DID's QuickBooks connection config in the vault. This is how a supplier
+ * configures the connector per-DID — credentials are never read from global env.
+ * The client secret is sealed immediately and never logged.
+ */
+export async function storeConfig(ownerDid: string, config: QuickBooksConfig): Promise<void> {
+  await sealAndStore(configField(ownerDid), JSON.stringify(config));
+}
+
+async function loadConfig(ownerDid: string): Promise<QuickBooksConfig> {
+  const raw = await loadAndUnseal(configField(ownerDid));
+  if (raw === undefined) {
+    throw new Error(`quickbooks_no_config: DID ${ownerDid} has not configured a QuickBooks connection`);
   }
-  return value;
+  return JSON.parse(raw) as QuickBooksConfig;
+}
+
+/** Accounting API base differs by the DID's configured environment. */
+function apiBase(config: QuickBooksConfig): string {
+  return config.environment === 'production'
+    ? 'https://quickbooks.api.intuit.com'
+    : 'https://sandbox-quickbooks.api.intuit.com';
 }
 
 // ── Token bundle (sealed per-DID) ─────────────────────────────────────────────
@@ -83,22 +105,21 @@ async function loadTokens(ownerDid: string): Promise<QuickBooksTokens | undefine
 
 // ── OAuth2 flows ──────────────────────────────────────────────────────────────
 
-/** Build the Intuit authorize URL for the connect route. `state` binds the DID. */
-export function buildAuthorizeUrl(state: string): string {
+/** Build the Intuit authorize URL for the connect route. Loads the DID's config. */
+export async function buildAuthorizeUrl(ownerDid: string, state: string): Promise<string> {
+  const config = await loadConfig(ownerDid);
   const params = new URLSearchParams({
-    client_id: requireEnv('QUICKBOOKS_CLIENT_ID'),
+    client_id: config.clientId,
     response_type: 'code',
     scope: QUICKBOOKS_OAUTH_SCOPE,
-    redirect_uri: requireEnv('QUICKBOOKS_REDIRECT_URI'),
+    redirect_uri: config.redirectUri,
     state,
   });
   return `${AUTHORIZE_URL}?${params.toString()}`;
 }
 
-function basicAuthHeader(): string {
-  const id = requireEnv('QUICKBOOKS_CLIENT_ID');
-  const secret = requireEnv('QUICKBOOKS_CLIENT_SECRET');
-  return `Basic ${Buffer.from(`${id}:${secret}`).toString('base64')}`;
+function basicAuthHeader(config: QuickBooksConfig): string {
+  return `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64')}`;
 }
 
 interface IntuitTokenResponse {
@@ -107,11 +128,11 @@ interface IntuitTokenResponse {
   expires_in: number;
 }
 
-async function postToken(body: URLSearchParams): Promise<IntuitTokenResponse> {
+async function postToken(config: QuickBooksConfig, body: URLSearchParams): Promise<IntuitTokenResponse> {
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: {
-      Authorization: basicAuthHeader(),
+      Authorization: basicAuthHeader(config),
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
     },
@@ -133,10 +154,11 @@ export async function exchangeCodeAndStore(
   code: string,
   realmId: string,
 ): Promise<void> {
-  const data = await postToken(new URLSearchParams({
+  const config = await loadConfig(ownerDid);
+  const data = await postToken(config, new URLSearchParams({
     grant_type: 'authorization_code',
     code,
-    redirect_uri: requireEnv('QUICKBOOKS_REDIRECT_URI'),
+    redirect_uri: config.redirectUri,
   }));
 
   await storeTokens(ownerDid, {
@@ -149,8 +171,8 @@ export async function exchangeCodeAndStore(
 }
 
 /** Refresh an expired access token and re-seal. Returns the fresh bundle. */
-async function refreshTokens(ownerDid: string, tokens: QuickBooksTokens): Promise<QuickBooksTokens> {
-  const data = await postToken(new URLSearchParams({
+async function refreshTokens(ownerDid: string, config: QuickBooksConfig, tokens: QuickBooksTokens): Promise<QuickBooksTokens> {
+  const data = await postToken(config, new URLSearchParams({
     grant_type: 'refresh_token',
     refresh_token: tokens.refreshToken,
   }));
@@ -200,7 +222,10 @@ export async function resolveActiveGrant(ownerDid: string, requiredScope: string
  *   - `quickbooks_no_grant` — no active channel_links row for ownerDid + scope.
  *   - `quickbooks_no_tokens` — no sealed tokens for ownerDid.
  */
-async function requireGrantAndTokens(ownerDid: string, scope: string): Promise<QuickBooksTokens> {
+async function requireGrantAndTokens(
+  ownerDid: string,
+  scope: string,
+): Promise<{ tokens: QuickBooksTokens; config: QuickBooksConfig }> {
   const hasGrant = await resolveActiveGrant(ownerDid, scope);
   if (!hasGrant) {
     throw new Error(
@@ -209,6 +234,7 @@ async function requireGrantAndTokens(ownerDid: string, scope: string): Promise<Q
     );
   }
 
+  const config = await loadConfig(ownerDid);
   const tokens = await loadTokens(ownerDid);
   if (tokens === undefined) {
     throw new Error(
@@ -218,9 +244,9 @@ async function requireGrantAndTokens(ownerDid: string, scope: string): Promise<Q
 
   // Refresh slightly ahead of expiry to avoid mid-request 401s.
   if (Date.now() >= tokens.expiresAt - 60_000) {
-    return refreshTokens(ownerDid, tokens);
+    return { tokens: await refreshTokens(ownerDid, config, tokens), config };
   }
-  return tokens;
+  return { tokens, config };
 }
 
 // ── Read: invoices as settlement signals ──────────────────────────────────────
@@ -275,11 +301,11 @@ function normalizeInvoice(raw: Readonly<RawInvoice>): QuickBooksInvoice {
  * (YYYY-MM-DD) optionally bounds the query. Gated by `quickbooks:read`.
  */
 export async function readInvoices(ownerDid: string, sinceIsoDate?: string): Promise<QuickBooksInvoice[]> {
-  const tokens = await requireGrantAndTokens(ownerDid, 'quickbooks:read');
+  const { tokens, config } = await requireGrantAndTokens(ownerDid, 'quickbooks:read');
 
   const where = sinceIsoDate ? ` WHERE TxnDate >= '${sinceIsoDate}'` : '';
   const query = `SELECT * FROM Invoice${where} ORDERBY TxnDate DESC MAXRESULTS 50`;
-  const url = `${apiBase()}/v3/company/${tokens.realmId}/query?query=${encodeURIComponent(query)}&minorversion=65`;
+  const url = `${apiBase(config)}/v3/company/${tokens.realmId}/query?query=${encodeURIComponent(query)}&minorversion=65`;
 
   const res = await fetch(url, {
     method: 'GET',
@@ -321,7 +347,7 @@ export interface CreateInvoiceParams {
  * (AgriFortress authors the invoice, so no fuzzy matching). Gated by `quickbooks:write`.
  */
 export async function createInvoice(ownerDid: string, params: CreateInvoiceParams): Promise<QuickBooksInvoice> {
-  const tokens = await requireGrantAndTokens(ownerDid, 'quickbooks:write');
+  const { tokens, config } = await requireGrantAndTokens(ownerDid, 'quickbooks:write');
 
   const body = {
     CustomerRef: { value: params.customerRef },
@@ -338,7 +364,7 @@ export async function createInvoice(ownerDid: string, params: CreateInvoiceParam
     })),
   };
 
-  const url = `${apiBase()}/v3/company/${tokens.realmId}/invoice?minorversion=65`;
+  const url = `${apiBase(config)}/v3/company/${tokens.realmId}/invoice?minorversion=65`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {

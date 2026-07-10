@@ -12,40 +12,49 @@ vi.mock('@/src/db', () => ({
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
 }));
 
-import { buildAuthorizeUrl, resolveActiveGrant, readInvoices, createInvoice, exchangeCodeAndStore, vaultField } from '../connector';
+import { buildAuthorizeUrl, resolveActiveGrant, readInvoices, createInvoice, exchangeCodeAndStore, storeConfig, vaultField, configField } from '../connector';
 
 const OWNER = 'did:imajin:scott';
+const CONFIG = { clientId: 'cid', clientSecret: 'csecret', redirectUri: 'https://imajin.test/quickbooks/callback', environment: 'sandbox' as const };
+
+let configResponse: string | undefined;
+let tokensResponse: string | undefined;
 
 function grant(scopes: string[]) {
   whereMock.mockResolvedValue([{ scopes }]);
 }
 
+function setConfig(present = true) {
+  configResponse = present ? JSON.stringify(CONFIG) : undefined;
+}
+
 function sealedTokens(overrides: Record<string, unknown> = {}) {
-  loadMock.mockResolvedValue(JSON.stringify({
+  tokensResponse = JSON.stringify({
     accessToken: 'at', refreshToken: 'rt', realmId: 'r1', expiresAt: Date.now() + 3_600_000, ...overrides,
-  }));
+  });
 }
 
 beforeEach(() => {
   sealMock.mockReset();
   sealMock.mockResolvedValue(undefined);
-  loadMock.mockReset();
   whereMock.mockReset();
-  vi.stubEnv('QUICKBOOKS_CLIENT_ID', 'cid');
-  vi.stubEnv('QUICKBOOKS_CLIENT_SECRET', 'csecret');
-  vi.stubEnv('QUICKBOOKS_REDIRECT_URI', 'https://imajin.test/quickbooks/callback');
-  vi.stubEnv('QUICKBOOKS_ENVIRONMENT', 'sandbox');
+  configResponse = undefined;
+  tokensResponse = undefined;
+  loadMock.mockReset();
+  loadMock.mockImplementation((field: string) =>
+    Promise.resolve(field.startsWith('quickbooks-config:') ? configResponse : tokensResponse),
+  );
   vi.stubGlobal('fetch', vi.fn());
 });
 
 afterEach(() => {
-  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
 describe('buildAuthorizeUrl (#1210)', () => {
-  it('includes client_id, redirect_uri, scope, and state', () => {
-    const url = buildAuthorizeUrl('state123');
+  it('includes client_id, redirect_uri, scope, and state (from per-DID config)', async () => {
+    setConfig();
+    const url = await buildAuthorizeUrl(OWNER, 'state123');
     expect(url).toContain('client_id=cid');
     expect(url).toContain('state=state123');
     expect(url).toContain('scope=com.intuit.quickbooks.accounting');
@@ -74,12 +83,13 @@ describe('readInvoices (#1210)', () => {
 
   it('fails closed when no tokens are sealed', async () => {
     grant(['quickbooks:read']);
-    loadMock.mockResolvedValue(undefined);
+    setConfig();
     await expect(readInvoices(OWNER)).rejects.toThrow(/no_tokens/);
   });
 
   it('returns normalized invoices from the sandbox API', async () => {
     grant(['quickbooks:read']);
+    setConfig();
     sealedTokens();
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
@@ -96,6 +106,7 @@ describe('readInvoices (#1210)', () => {
 
   it('refreshes an expired access token before reading', async () => {
     grant(['quickbooks:read']);
+    setConfig();
     sealedTokens({ expiresAt: Date.now() - 1000 });
     (fetch as unknown as ReturnType<typeof vi.fn>)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'at2', refresh_token: 'rt2', expires_in: 3600 }) })
@@ -111,6 +122,7 @@ describe('readInvoices (#1210)', () => {
 
 describe('exchangeCodeAndStore (#1210)', () => {
   it('exchanges the auth code and seals the token bundle per-DID', async () => {
+    setConfig();
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 }),
@@ -130,6 +142,7 @@ describe('exchangeCodeAndStore (#1210)', () => {
 describe('createInvoice (#1210 write-back)', () => {
   it('posts an invoice stamped with the lot correlationId and normalizes the result', async () => {
     grant(['quickbooks:write']);
+    setConfig();
     sealedTokens();
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
@@ -161,5 +174,15 @@ describe('createInvoice (#1210 write-back)', () => {
       createInvoice(OWNER, { correlationId: 'x', customerRef: '1', lines: [{ amount: 1, itemRef: '1' }] }),
     ).rejects.toThrow(/no_grant/);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('storeConfig (#1210 per-DID creds)', () => {
+  it('seals the app config under the per-DID config field', async () => {
+    await storeConfig(OWNER, CONFIG);
+    expect(sealMock).toHaveBeenCalledTimes(1);
+    const [field, blob] = sealMock.mock.calls[0];
+    expect(field).toBe(configField(OWNER));
+    expect(JSON.parse(blob as string)).toMatchObject({ clientId: 'cid', environment: 'sandbox' });
   });
 });

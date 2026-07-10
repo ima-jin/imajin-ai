@@ -14,5 +14,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
   const ownerDid = resolveActingDid(auth.identity);
-  return NextResponse.redirect(buildAuthorizeUrl(signState(ownerDid)));
+  return NextResponse.redirect(await buildAuthorizeUrl(ownerDid, signState(ownerDid)));
 }
