@@ -416,7 +416,7 @@ function RegisterPage() {
             </p>
             <div className="flex gap-2 mt-2">
               <button
-                onClick={() => router.push(profilePath(loggedInHandle || did))}
+                onClick={() => router.push(profilePath(loggedInHandle || did || ''))}
                 className="text-xs text-[#F59E0B] hover:underline"
               >
                 Go to profile

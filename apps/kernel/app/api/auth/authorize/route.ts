@@ -62,7 +62,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
 
   // Validate requested scopes against app's registered scopes
   const { valid: validScopes, invalid: invalidScopes } = validateScopes(scopes);
-  const disallowed = validScopes.filter(s => !app.requestedScopes.includes(s));
+  const disallowed = validScopes.filter(s => !(app.requestedScopes ?? []).includes(s));
   if (invalidScopes.length > 0) {
     return NextResponse.json({ error: `Unknown scopes: ${invalidScopes.join(', ')}` }, { status: 400 });
   }

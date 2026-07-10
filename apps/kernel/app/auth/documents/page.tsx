@@ -11,7 +11,7 @@ export default async function DocumentsPage({ searchParams }: Readonly<{ searchP
   const resolvedSearchParams = await searchParams;
   const { sessionDid, effectiveDid } = await getEffectiveDid();
 
-  if (!sessionDid) {
+  if (!sessionDid || !effectiveDid) {
     redirect('/auth');
   }
   const role = resolvedSearchParams.role === 'created' ? 'created' : 'needs-signature';
