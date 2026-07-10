@@ -69,7 +69,7 @@ export async function POST(
 
   // 4. Normalize pre-1.0 manifests (e.g. version 0.2.0 — no `type`, no `fair`,
   //    `createdAt` instead of `created`). Backfill from asset row when possible.
-  const raw = manifest as Record<string, unknown>;
+  const raw = manifest as unknown as Record<string, unknown>;
   const oldVersion = String(raw.version ?? raw.fair ?? "1.0");
   const normalized: Record<string, unknown> = {
     ...raw,

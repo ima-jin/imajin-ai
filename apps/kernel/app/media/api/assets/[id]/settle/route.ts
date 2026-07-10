@@ -15,7 +15,7 @@ import { db, assets, settlements } from "@/src/db";
 import { requireAuth, canonicalize, resolveActingDid } from "@imajin/auth";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { isFairManifestV1_1 } from "@imajin/fair";
-import type { FairManifestV1_1 } from "@imajin/fair";
+import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
@@ -78,7 +78,7 @@ export async function POST(
     asset.fairManifest &&
     typeof asset.fairManifest === "object" &&
     Object.keys(asset.fairManifest as object).length > 0 &&
-    isFairManifestV1_1(asset.fairManifest as Record<string, unknown>)
+    isFairManifestV1_1(asset.fairManifest as FairManifest)
   ) {
     manifest = asset.fairManifest as unknown as FairManifestV1_1;
   }

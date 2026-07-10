@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import { db, assets } from "@/src/db";
 import { eq } from "drizzle-orm";
+import type { FairManifest } from "@imajin/fair";
 
 const OG_MAX_WIDTH = 1200;
 const OG_MAX_HEIGHT = 630;
@@ -38,7 +39,7 @@ export async function GET(
   }
 
   // Only serve public assets via OG route (crawlers can't auth)
-  const manifest = asset.fairManifest;
+  const manifest = asset.fairManifest as FairManifest | null;
   const access = manifest?.access;
   const isPublic = access === "public" || (typeof access === "object" && access?.type === "public");
   if (!isPublic) {

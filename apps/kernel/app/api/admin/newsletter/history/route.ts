@@ -12,7 +12,7 @@ export const GET = withLogger('kernel', async (_req: NextRequest) => {
   const sends = await sql`
     SELECT id, subject, audience_type, audience_id, recipient_count, sent_at
     FROM registry.newsletter_sends
-    WHERE sender_did = ${session.actingAs}
+    WHERE sender_did = ${session.actingAs ?? ''}
     ORDER BY sent_at DESC
     LIMIT 20
   `;

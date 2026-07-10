@@ -54,7 +54,7 @@ export async function POST(
     }
 
     // Rate limit: max 1 rotation per hour
-    const lastUpdate = new Date(existingChain.updatedAt);
+    const lastUpdate = new Date(existingChain.updatedAt ?? 0);
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
     if (lastUpdate > hourAgo) {
       return NextResponse.json(

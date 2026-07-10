@@ -24,12 +24,14 @@ export async function OPTIONS(request: NextRequest) {
   return NextResponse.json({}, { headers: corsHeaders(request) });
 }
 
-export const POST = withLogger(async (request: NextRequest) => {
+export const POST = withLogger('kernel', async (request: NextRequest) => {
   const headers = corsHeaders(request);
 
   // Auth
   const authResult = await requireAuth(request);
-  if (authResult instanceof NextResponse) return authResult;
+  if ('error' in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers });
+  }
   const did = authResult.identity.actingAs || authResult.identity.id;
 
   // Parse body

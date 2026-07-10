@@ -50,7 +50,7 @@ export async function lookupIdentity(did: string): Promise<IdentityLookup | null
       avatarUrl: identity.avatarUrl,
       tier: identity.tier,
       metadata: identity.metadata,
-      createdAt: identity.createdAt,
+      createdAt: identity.createdAt ?? new Date(),
     };
   } catch (error) {
     log.error({ did, err: String(error) }, 'lookupIdentity error');

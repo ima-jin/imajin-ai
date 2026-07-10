@@ -5,6 +5,7 @@ import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { updateAssetContent } from "@/src/lib/media/update-asset";
 import { createLogger } from "@imajin/logger";
+import type { FairManifest } from "@imajin/fair";
 import { getAccessType } from "@/src/lib/media/read-access";
 import { authorizeAssetRead } from "@/src/lib/media/authorize-read";
 

@@ -106,6 +106,7 @@ export async function POST(
     const signKey = await getSignKey();
     receiptToken = await signReceipt(
       {
+        iss: 'node',
         aud: `asset:${settlement.assetId}`,
         sub: settlementId,
         buyer: settlement.buyerDid,

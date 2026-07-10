@@ -22,11 +22,12 @@ export async function POST(
 ) {
   const cors = corsHeaders(request);
   try {
-    const session = await requireAuth(request);
-    if (!session) return errorResponse('Unauthorized', 401, cors);
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) return errorResponse(authResult.error, authResult.status, cors);
+    const { identity } = authResult;
 
     const { did } = await params;
-    const effectiveDid = session.actingAs || session.id;
+    const effectiveDid = identity.actingAs || identity.id;
 
     // Check if user is owner/admin of this conversation
     const [membership] = await sql`
@@ -165,5 +166,5 @@ export async function POST(
  * OPTIONS — CORS preflight
  */
 export function OPTIONS(request: NextRequest) {
-  return new Response(null, { status: 204, headers: corsOptions(request) });
+  return corsOptions(request);
 }

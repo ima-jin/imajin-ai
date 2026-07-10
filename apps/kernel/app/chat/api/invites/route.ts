@@ -1,5 +1,6 @@
 ﻿import { eq, and, isNull } from 'drizzle-orm';
-import { db, invites } from '@/src/db';
+import { db } from '@/src/db';
+import { invites } from '@/src/db/schemas/chat';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
