@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { Folder } from "@/src/db/schema";
+import type { Folder } from "@/src/db/schemas/media";
 
 export interface FolderTreeProps {
   folders: Folder[];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import type { Asset, Folder } from "@/src/db/schema";
+import type { Asset, Folder } from "@/src/db/schemas/media";
 import { AssetCard, formatSize, getMimeIcon, getFairAccess, FairBadge } from "./AssetCard";
 import { UploadZone, type UploadZoneHandle } from "./UploadZone";
 import { SelectionToolbar } from "./SelectionToolbar";

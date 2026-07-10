@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import type { Asset } from "@/src/db/schema";
+import type { Asset } from "@/src/db/schemas/media";
 import { useLongPress } from "./useLongPress";
 
 interface AssetCardProps {

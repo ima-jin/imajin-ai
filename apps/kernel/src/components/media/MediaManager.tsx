@@ -5,7 +5,7 @@ import { AppShell } from "@imajin/ui";
 import { FolderTree } from "./FolderTree";
 import { AssetGrid } from "./AssetGrid";
 import { AssetDetail } from "./AssetDetail";
-import type { Asset, Folder } from "@/src/db/schema";
+import type { Asset, Folder } from "@/src/db/schemas/media";
 import type { Identity } from "@imajin/auth";
 
 interface FolderWithCount extends Folder {
