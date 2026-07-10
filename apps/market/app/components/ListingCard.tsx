@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { resolveMediaRef } from '@imajin/media';
 import PriceDisplay from './PriceDisplay';
 
-interface Listing {
+export interface Listing {
   id: string;
   title: string;
   price: number;
@@ -14,10 +14,10 @@ interface Listing {
   sellerTier: string;
   status?: string;
   type?: string;
-  createdAt: Date;
+  createdAt: string | Date;
 }
 
-function relativeTime(date: Date): string {
+function relativeTime(date: string | Date): string {
   const diff = Date.now() - new Date(date).getTime();
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return 'just now';

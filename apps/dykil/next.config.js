@@ -5,7 +5,7 @@ const nextConfig = {
   basePath: "/dykil",
   env: { NEXT_PUBLIC_BASE_PATH: "/dykil" },
   transpilePackages: ['@imajin/auth','@imajin/config','@imajin/db','@imajin/ui'],
-  typescript: { ignoreBuildErrors: true },
+  typescript: { ignoreBuildErrors: false },
   webpack: (config) => {
     config.plugins.push(
       new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {

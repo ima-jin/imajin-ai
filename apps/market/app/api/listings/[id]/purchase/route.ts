@@ -50,7 +50,7 @@ export async function POST(
       }
       buyerDid = authResult.identity.actingAs || authResult.identity.id;
     } else {
-      const session = await getSession(request);
+      const session = await getSession();
       buyerDid = session?.actingAs || session?.id;
     }
 
