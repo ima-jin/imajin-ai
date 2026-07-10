@@ -371,8 +371,10 @@ export interface BusEventMap {
   };
   'ticket.purchase': {
     eventId: string;
-    ticketTypeId: string;
-    quantity: number;
+    ticketTypeId?: string;
+    quantity?: number;
+    cart?: Array<{ ticketTypeId: string; quantity: number }>;
+    totalQuantity?: number;
     sellerDid: string;
   };
   'learn.enrolled': {
@@ -419,6 +421,7 @@ export interface BusEventMap {
   };
   'ticket.receipt': {
     email: string;
+    buyerName?: string;
     eventTitle: string;
     eventDate: string;
     eventTime: string;
@@ -433,13 +436,14 @@ export interface BusEventMap {
   };
   'ticket.confirmed': {
     email: string;
+    to?: string;
     eventTitle: string;
     eventDate: string;
     eventTime: string;
     isVirtual: boolean;
     venue?: string;
     price: string;
-    magicLink: string;
+    magicLink?: string;
     eventImageUrl?: string;
     eventUrl?: string;
     tickets?: Array<{ id: string; qrCodeDataUri: string }>;

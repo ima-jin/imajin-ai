@@ -804,7 +804,7 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
                       etransferEnabled={etransferEnabled}
                       isAuthenticated={!!session}
                       sessionEmail={session?.email ?? undefined}
-                      sessionContactEmail={sessionContactEmail}
+                      sessionContactEmail={sessionContactEmail ?? undefined}
                       sellerConnected={sellerConnected}
                       hasHiddenTiers={hasHiddenTiers}
                     />
