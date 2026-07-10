@@ -14,10 +14,10 @@ const SUPPLY_SCOPE = 'supply';
 
 describe('supply.* chains (#1134)', () => {
   it.each([
-    ['supply.declared', ['attestation', 'emit', 'notify']],
-    ['supply.collected', ['attestation', 'emit']],
-    ['supply.processed', ['attestation', 'emit']],
-    ['supply.listed', ['emit']],
+    ['supply.declared', ['supply-recorder', 'attestation', 'emit', 'notify']],
+    ['supply.collected', ['supply-recorder', 'attestation', 'emit']],
+    ['supply.processed', ['supply-recorder', 'attestation', 'emit']],
+    ['supply.listed', ['supply-recorder', 'emit']],
   ] as const)('seeds the %s chain', async (eventType, expected) => {
     const cfg = await getChainConfig(eventType, SUPPLY_SCOPE);
     const types = cfg.reactors.map((r) => r.type);

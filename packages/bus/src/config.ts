@@ -303,20 +303,26 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   // #1134 — supply.* pre-sale provenance stages (declared -> collected -> processed -> listed).
   // Free stages: NO `settle` reactor (that's the declarative "this stage is free").
   // The paid stage reuses `order.completed`, already configured above.
+  // #1136 — `supply-recorder` (awaited, runs first) materializes the lot + stage
+  // rows from the event's correlationId before the downstream reactors run.
   'supply.declared': [
+    { type: 'supply-recorder', config: {}, await: true, enabled: true },
     { type: 'attestation', config: { attestationType: 'supply.declared' }, enabled: true },
     { type: 'emit', config: {}, enabled: true },
     { type: 'notify', config: { scope: 'supply:declared' }, enabled: true },
   ],
   'supply.collected': [
+    { type: 'supply-recorder', config: {}, await: true, enabled: true },
     { type: 'attestation', config: { attestationType: 'supply.collected' }, enabled: true },
     { type: 'emit', config: {}, enabled: true },
   ],
   'supply.processed': [
+    { type: 'supply-recorder', config: {}, await: true, enabled: true },
     { type: 'attestation', config: { attestationType: 'supply.processed' }, enabled: true },
     { type: 'emit', config: {}, enabled: true },
   ],
   'supply.listed': [
+    { type: 'supply-recorder', config: {}, await: true, enabled: true },
     { type: 'emit', config: {}, enabled: true },
   ],
 };
