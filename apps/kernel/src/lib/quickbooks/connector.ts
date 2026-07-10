@@ -31,6 +31,9 @@ const QUICKBOOKS_CHANNEL = 'quickbooks';
 /** Intuit OAuth2 + Accounting API scope. */
 export const QUICKBOOKS_OAUTH_SCOPE = 'com.intuit.quickbooks.accounting';
 
+/** PrivateNote marker that stamps the lot correlationId onto an invoice (deterministic read-back). */
+export const LOT_NOTE_PREFIX = 'imajin-lot:';
+
 /** Intuit OAuth2 endpoints (same across environments). */
 const AUTHORIZE_URL = 'https://appcenter.intuit.com/connect/oauth2';
 const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
@@ -227,17 +230,31 @@ export interface QuickBooksInvoice {
   docNumber: string | null;
   customerName: string | null;
   totalAmount: number;
+  /** Outstanding balance; 0 means paid (the settlement trigger). */
+  balance: number | null;
   currency: string | null;
   txnDate: string | null;
+  /** Lot correlationId recovered from the PrivateNote stamp, if present. */
+  correlationId: string | null;
 }
 
 interface RawInvoice {
   Id: string;
   DocNumber?: string;
   TotalAmt?: number;
+  Balance?: number;
   CurrencyRef?: { value?: string };
   TxnDate?: string;
   CustomerRef?: { name?: string };
+  PrivateNote?: string;
+}
+
+function parseLotCorrelationId(privateNote: string | undefined): string | null {
+  if (privateNote === undefined) {
+    return null;
+  }
+  const marker = privateNote.split('\n').find((line) => line.startsWith(LOT_NOTE_PREFIX));
+  return marker ? marker.slice(LOT_NOTE_PREFIX.length).trim() : null;
 }
 
 function normalizeInvoice(raw: Readonly<RawInvoice>): QuickBooksInvoice {
@@ -246,8 +263,10 @@ function normalizeInvoice(raw: Readonly<RawInvoice>): QuickBooksInvoice {
     docNumber: raw.DocNumber ?? null,
     customerName: raw.CustomerRef?.name ?? null,
     totalAmount: typeof raw.TotalAmt === 'number' ? raw.TotalAmt : 0,
+    balance: typeof raw.Balance === 'number' ? raw.Balance : null,
     currency: raw.CurrencyRef?.value ?? null,
     txnDate: raw.TxnDate ?? null,
+    correlationId: parseLotCorrelationId(raw.PrivateNote),
   };
 }
 
@@ -277,4 +296,66 @@ export async function readInvoices(ownerDid: string, sinceIsoDate?: string): Pro
   const data = (await res.json()) as { QueryResponse?: { Invoice?: RawInvoice[] } };
   const invoices = data.QueryResponse?.Invoice ?? [];
   return invoices.map((inv) => normalizeInvoice(inv));
+}
+
+// ── Write: create an invoice stamped with the lot correlationId ───────────────
+
+export interface CreateInvoiceLine {
+  amount: number;
+  itemRef: string;
+  description?: string;
+  quantity?: number;
+  unitPrice?: number;
+}
+
+export interface CreateInvoiceParams {
+  /** Delivery lot's correlationId — stamped onto the invoice for deterministic read-back. */
+  correlationId: string;
+  customerRef: string;
+  lines: CreateInvoiceLine[];
+}
+
+/**
+ * Create a QuickBooks invoice on behalf of ownerDid, stamping the lot
+ * `correlationId` into PrivateNote so the paid read-back matches deterministically
+ * (AgriFortress authors the invoice, so no fuzzy matching). Gated by `quickbooks:write`.
+ */
+export async function createInvoice(ownerDid: string, params: CreateInvoiceParams): Promise<QuickBooksInvoice> {
+  const tokens = await requireGrantAndTokens(ownerDid, 'quickbooks:write');
+
+  const body = {
+    CustomerRef: { value: params.customerRef },
+    PrivateNote: `${LOT_NOTE_PREFIX}${params.correlationId}`,
+    Line: params.lines.map((line) => ({
+      Amount: line.amount,
+      DetailType: 'SalesItemLineDetail',
+      Description: line.description,
+      SalesItemLineDetail: {
+        ItemRef: { value: line.itemRef },
+        ...(line.quantity === undefined ? {} : { Qty: line.quantity }),
+        ...(line.unitPrice === undefined ? {} : { UnitPrice: line.unitPrice }),
+      },
+    })),
+  };
+
+  const url = `${apiBase()}/v3/company/${tokens.realmId}/invoice?minorversion=65`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${tokens.accessToken}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`quickbooks_api: invoice create ${res.status} ${res.statusText}: ${text}`);
+  }
+
+  const data = (await res.json()) as { Invoice?: RawInvoice };
+  if (!data.Invoice) {
+    throw new Error('quickbooks_api: invoice create returned no Invoice');
+  }
+  return normalizeInvoice(data.Invoice);
 }

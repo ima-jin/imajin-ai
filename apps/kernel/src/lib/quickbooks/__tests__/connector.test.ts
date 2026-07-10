@@ -12,7 +12,7 @@ vi.mock('@/src/db', () => ({
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
 }));
 
-import { buildAuthorizeUrl, resolveActiveGrant, readInvoices, exchangeCodeAndStore, vaultField } from '../connector';
+import { buildAuthorizeUrl, resolveActiveGrant, readInvoices, createInvoice, exchangeCodeAndStore, vaultField } from '../connector';
 
 const OWNER = 'did:imajin:scott';
 
@@ -124,5 +124,42 @@ describe('exchangeCodeAndStore (#1210)', () => {
     expect(JSON.parse(blob as string)).toMatchObject({ accessToken: 'at', refreshToken: 'rt', realmId: 'realm9' });
     const tokenBody = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string;
     expect(tokenBody).toContain('grant_type=authorization_code');
+  });
+});
+
+describe('createInvoice (#1210 write-back)', () => {
+  it('posts an invoice stamped with the lot correlationId and normalizes the result', async () => {
+    grant(['quickbooks:write']);
+    sealedTokens();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ Invoice: { Id: '55', DocNumber: '1042', TotalAmt: 42, Balance: 42, CurrencyRef: { value: 'CAD' }, TxnDate: '2026-07-10', CustomerRef: { name: 'David' }, PrivateNote: 'imajin-lot:lot_eggs_1' } }),
+    });
+
+    const invoice = await createInvoice(OWNER, {
+      correlationId: 'lot_eggs_1',
+      customerRef: '12',
+      lines: [{ amount: 42, itemRef: '7', quantity: 12, unitPrice: 3.5, description: 'Eggs' }],
+    });
+
+    expect(invoice).toMatchObject({ id: '55', balance: 42, correlationId: 'lot_eggs_1', customerName: 'David' });
+
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain('sandbox-quickbooks.api.intuit.com/v3/company/r1/invoice');
+    expect(init.method).toBe('POST');
+    const sent = JSON.parse(init.body as string);
+    expect(sent.CustomerRef).toEqual({ value: '12' });
+    expect(sent.PrivateNote).toBe('imajin-lot:lot_eggs_1');
+    expect(sent.Line[0].Amount).toBe(42);
+    expect(sent.Line[0].SalesItemLineDetail.ItemRef).toEqual({ value: '7' });
+  });
+
+  it('fails closed without a quickbooks:write grant', async () => {
+    grant(['quickbooks:read']);
+    sealedTokens();
+    await expect(
+      createInvoice(OWNER, { correlationId: 'x', customerRef: '1', lines: [{ amount: 1, itemRef: '1' }] }),
+    ).rejects.toThrow(/no_grant/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
