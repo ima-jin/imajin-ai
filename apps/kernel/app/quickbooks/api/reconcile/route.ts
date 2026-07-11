@@ -1,13 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAppAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders } from '@/src/lib/kernel/cors';
 import { settlePaidInvoices } from '@/src/lib/quickbooks/settlement';
+import { quickbooksPreflight, requireQuickBooksUser } from '@/src/lib/quickbooks/route-helpers';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+export function OPTIONS(request: NextRequest) {
+  return quickbooksPreflight(request);
 }
 
 /**
@@ -16,16 +15,9 @@ export async function OPTIONS(request: NextRequest) {
  * (`quickbooks:read`). Idempotent: lots already `settled` are skipped.
  */
 export async function POST(request: NextRequest) {
-  const cors = corsHeaders(request);
-
-  const appResult = await requireAppAuth(request, { scope: 'quickbooks:read' });
-  if ('error' in appResult) {
-    return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
-  }
-  const userDid = appResult.appAuth.userDid;
-  if (!userDid) {
-    return NextResponse.json({ error: 'App token has no delegating user' }, { status: 403, headers: cors });
-  }
+  const auth = await requireQuickBooksUser(request, 'quickbooks:read');
+  if ('response' in auth) return auth.response;
+  const { userDid, cors } = auth;
 
   try {
     const result = await settlePaidInvoices(userDid);
