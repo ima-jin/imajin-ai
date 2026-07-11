@@ -4,7 +4,7 @@ const nextConfig = {
   basePath: "/links",
   env: { NEXT_PUBLIC_BASE_PATH: "/links" },
   transpilePackages: ['@imajin/auth','@imajin/db','@imajin/ui'],
-  typescript: { ignoreBuildErrors: true },
+  typescript: { ignoreBuildErrors: false },
   reactStrictMode: true,
   webpack: (config) => {
     config.plugins.push(

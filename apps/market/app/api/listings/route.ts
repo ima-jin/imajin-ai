@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
         context_type: 'market',
         title,
         price,
-        currency: listing.currency,
+        currency: listing.currency ?? 'CAD',
         interestDids: [identity.id],
       },
     }).catch((err) => log.error({ err: String(err) }, 'Attestation emit error'));
@@ -172,7 +172,7 @@ export async function GET(request: NextRequest) {
 
     // Check if requester is the seller (can see all their own statuses)
     let authSellerDid: string | null = null;
-    const session = await getSession(request);
+    const session = await getSession();
     if (session) {
       authSellerDid = session.actingAs || session.id;
     }

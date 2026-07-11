@@ -545,6 +545,9 @@ importers:
       '@imajin/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@imajin/bus':
+        specifier: workspace:*
+        version: link:../../packages/bus
       '@imajin/config':
         specifier: workspace:*
         version: link:../../packages/config

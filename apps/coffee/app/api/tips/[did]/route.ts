@@ -72,7 +72,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return jsonResponse({
       tips: tipsList,
-      totals: totals.reduce((acc, t) => {
+      totals: totals.reduce<Record<string, { total: number; count: number }>>((acc, t) => {
         acc[t.currency] = { total: Number(t.total), count: Number(t.count) };
         return acc;
       }, {}),

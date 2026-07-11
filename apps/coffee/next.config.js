@@ -4,7 +4,7 @@ const nextConfig = {
   basePath: "/coffee",
   env: { NEXT_PUBLIC_BASE_PATH: "/coffee" },
   transpilePackages: ['@imajin/auth','@imajin/config','@imajin/db','@imajin/email','@imajin/ui'],
-  typescript: { ignoreBuildErrors: true },
+  typescript: { ignoreBuildErrors: false },
   reactStrictMode: true,
   webpack: (config) => {
     config.plugins.push(
