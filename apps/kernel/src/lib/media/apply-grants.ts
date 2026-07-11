@@ -2,7 +2,7 @@ import { db, assets } from '@/src/db';
 import type { Asset } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { isFairManifestV1_1 } from '@imajin/fair';
-import type { FairManifestV1_1 } from '@imajin/fair';
+import type { FairManifest, FairManifestV1_1 } from '@imajin/fair';
 import { createLogger } from '@imajin/logger';
 import { updateManifestFlow } from '@/src/lib/media/manifest-helpers';
 
@@ -56,7 +56,7 @@ export async function applyGrants(
     asset.fairManifest &&
     typeof asset.fairManifest === 'object' &&
     Object.keys(asset.fairManifest as object).length > 0 &&
-    isFairManifestV1_1(asset.fairManifest as Record<string, unknown>)
+    isFairManifestV1_1(asset.fairManifest as FairManifest)
   ) {
     manifest = { ...(asset.fairManifest as FairManifestV1_1) };
   } else {

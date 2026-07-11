@@ -42,7 +42,7 @@ export async function getProfile(handle: string): Promise<ProfileData | null> {
   const row = await db.query.profiles.findFirst({
     where: (profiles, { eq, or }) => or(eq(profiles.did, handle), eq(profiles.handle, handle)),
   });
-  return row ?? null;
+  return (row ?? null) as unknown as ProfileData | null;
 }
 
 export async function getProfileCounts(profileDid: string): Promise<ProfileCounts> {
@@ -150,7 +150,7 @@ export async function getForestConfig(groupDid: string): Promise<ForestConfigDat
       ? {
           enabledServices: config.enabledServices,
           landingService: config.landingService,
-          joinVisibility: config.joinVisibility ?? 'open',
+          joinVisibility: (config.joinVisibility ?? 'open') as 'open' | 'network' | 'invite',
           joinNetworkDepth: config.joinNetworkDepth ?? 2,
         }
       : null;

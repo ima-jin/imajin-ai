@@ -69,7 +69,7 @@ export const POST = withLogger('kernel', async (req, { log }) => {
     let targetEmail = testEmail?.trim() || null;
     if (!targetEmail) {
       const [profile] = await sql`
-        SELECT contact_email FROM profile.profiles WHERE did = ${session.actingAs} LIMIT 1
+        SELECT contact_email FROM profile.profiles WHERE did = ${session.actingAs ?? ''} LIMIT 1
       `;
       targetEmail = (profile?.contact_email as string | null) || null;
     }
@@ -112,11 +112,11 @@ export const POST = withLogger('kernel', async (req, { log }) => {
     const rows = await sql`
       SELECT DISTINCT
         CASE
-          WHEN c.did_a = ${session.actingAs} THEN c.did_b
+          WHEN c.did_a = ${session.actingAs ?? ''} THEN c.did_b
           ELSE c.did_a
         END AS connected_did
       FROM connections.connections c
-      WHERE (c.did_a = ${session.actingAs} OR c.did_b = ${session.actingAs})
+      WHERE (c.did_a = ${session.actingAs ?? ''} OR c.did_b = ${session.actingAs ?? ''})
         AND c.disconnected_at IS NULL
     `;
     const dids = rows.map((r) => r.connected_did as string).filter(Boolean);
@@ -138,7 +138,7 @@ export const POST = withLogger('kernel', async (req, { log }) => {
   // Record the send before dispatching (non-blocking send)
   await sql`
     INSERT INTO registry.newsletter_sends (id, sender_did, subject, audience_type, audience_id, recipient_count)
-    VALUES (${sendId}, ${session.actingAs}, ${subject}, ${audienceType}, ${audienceId ?? null}, ${emails.length})
+    VALUES (${sendId}, ${session.actingAs ?? ''}, ${subject}, ${audienceType}, ${audienceId ?? null}, ${emails.length})
   `;
 
   // Fire and forget

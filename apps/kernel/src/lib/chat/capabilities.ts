@@ -1,4 +1,4 @@
-import { isVerifiedTier } from "@imajin/auth";
+import { isVerifiedTier, type IdentityTier } from "@imajin/auth";
 
 export type Capability =
   | "send:text"
@@ -9,7 +9,7 @@ export type Capability =
   | "conversation:invite";
 
 export interface CapabilityContext {
-  tier: "soft" | "preliminary" | "established";
+  tier: IdentityTier;
   role?: string;
   inGraph?: boolean;
 }

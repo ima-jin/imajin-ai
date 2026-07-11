@@ -123,6 +123,7 @@ export interface FairTransferV1_1 {
   requiresAttribution?: boolean;
   price?: Money;
   resaleRoyaltyBps?: number;
+  splits?: DidShareList;
   // v1.0 backward compat padding
   refundable?: boolean;
   faceValueCap?: boolean;

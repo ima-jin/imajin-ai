@@ -1,4 +1,5 @@
 import { publish } from '@imajin/bus';
+import type { Logger } from '@imajin/logger';
 import { db, assets, identities, attestationSignatures, type NewAttestationSignature } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { verifyDocumentSignatureToken } from '@/src/lib/auth/document-signatures';
@@ -33,9 +34,7 @@ type DocumentValidationResult =
   | { ok: true; input: DocumentRequestInput }
   | { ok: false; failure: ValidationFailure };
 
-type LoggerLike = {
-  error: (data: unknown, message: string) => void;
-};
+type LoggerLike = Pick<Logger, 'error'>;
 
 export async function parseDocumentRequestBody(request: Request): Promise<DocumentBodyParseResult> {
   try {

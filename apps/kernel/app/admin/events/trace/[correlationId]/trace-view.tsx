@@ -52,8 +52,9 @@ export default function TraceView({ events, correlationId }: Readonly<{ events: 
   const totalMs = (() => {
     if (events.length === 0) return null;
     const first = new Date(events[0].created_at).getTime();
-    const last = new Date(events.at(-1).created_at).getTime();
-    const lastDur = events.at(-1).duration_ms ?? 0;
+    const lastEvent = events.at(-1)!;
+    const last = new Date(lastEvent.created_at).getTime();
+    const lastDur = lastEvent.duration_ms ?? 0;
     return last - first + lastDur;
   })();
 

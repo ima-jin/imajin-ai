@@ -11,9 +11,9 @@ import { eq } from 'drizzle-orm';
 import { requireAdmin } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 
-export const POST = withLogger(async (request: NextRequest) => {
-  const authResult = await requireAdmin(request);
-  if (authResult instanceof NextResponse) return authResult;
+export const POST = withLogger('kernel', async (request: NextRequest) => {
+  const session = await requireAdmin();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body: { did?: string; enabled?: boolean };
   try {

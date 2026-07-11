@@ -62,7 +62,7 @@ export default async function AdminSubscribersPage({
       COUNT(s.id) FILTER (WHERE s.status = 'subscribed') AS subscriber_count
     FROM www.mailing_lists ml
     LEFT JOIN www.subscriptions s ON s.mailing_list_id = ml.id
-    WHERE ml.owner_did IS NULL OR ml.owner_did = ${session.actingAs}
+    WHERE ml.owner_did IS NULL OR ml.owner_did = ${session.actingAs ?? ''}
     GROUP BY ml.id
     ORDER BY ml.created_at ASC
   `;

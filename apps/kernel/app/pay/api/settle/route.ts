@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify chain status for payer and all payees (non-blocking — don't fail payment)
-    const payeeDids = [...new Set(fair_manifest.chain.map((r) => r.did))];
+    const payeeDids = [...new Set((fair_manifest.chain as Array<{ did: string; amount: number; role: string }>).map((r) => r.did))];
     const [payerChainVerified, ...payeeVerifications] = await Promise.all([
       verifyChainStatus(from_did),
       ...payeeDids.map((did) => verifyChainStatus(did)),

@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { db, assets, settlements, accessLog, assetReferences } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq, and, sql } from "drizzle-orm";
-import type { FairManifest, FairAction } from "@imajin/fair";
+import type { FairManifest, FairManifestV1_1, FairAction } from "@imajin/fair";
 import { isFairManifestV1_1, build402Response, verifyReceipt, loadVerifyKey, canonicalize } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 
@@ -85,8 +85,8 @@ function determineAction(request: NextRequest, mimeType: string): FairAction {
 }
 
 // Cache the verify key loaded from AUTH_PRIVATE_KEY
-let verifyKeyPromise: Promise<import('jose').KeyLike> | null = null;
-function getVerifyKey(): Promise<import('jose').KeyLike> {
+let verifyKeyPromise: Promise<CryptoKey> | null = null;
+function getVerifyKey(): Promise<CryptoKey> {
   if (!verifyKeyPromise) {
     const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
     if (privateKeyHex) {
@@ -248,7 +248,7 @@ export async function GET(
         const publicBase = process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
         const baseUrl = `${publicBase}/media/api/assets`;
         const resp = build402Response({
-          manifest: manifest,
+          manifest: manifest as FairManifestV1_1,
           assetId: id,
           action,
           supportedSchemes: ['mjnx-direct'],

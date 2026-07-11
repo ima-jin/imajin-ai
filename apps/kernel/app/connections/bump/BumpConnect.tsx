@@ -568,9 +568,10 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
               return (
               <div className="space-y-2">
                 {nodes.map((node) => {
-                  const distanceLabel = node.distanceM < 1000
-                    ? `${Math.round(node.distanceM)}m`
-                    : `${(node.distanceM / 1000).toFixed(1)}km`;
+                  const dist = node.distanceM ?? 0;
+                  const distanceLabel = dist < 1000
+                    ? `${Math.round(dist)}m`
+                    : `${(dist / 1000).toFixed(1)}km`;
                   return (
                   <button
                     key={node.id}

@@ -37,7 +37,7 @@ export function NavBar({ currentService = 'Profile' }: Readonly<{ currentService
         handle,
         did,
         onLogout: () => { logout(); router.push('/'); },
-        onViewProfile: () => router.push(profilePath(handle || did)),
+        onViewProfile: () => router.push(profilePath(handle || did || '')),
         onEditProfile: () => router.push('/profile/edit'),
         onLogin: () => router.push('/auth/login'),
         onRegister: () => router.push('/auth/register'),

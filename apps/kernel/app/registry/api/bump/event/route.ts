@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
         .from(bumpSessions)
         .where(and(
           eq(bumpSessions.nodeId, session.nodeId),
-          ne(bumpSessions.id, sessionId),
+          ne(bumpSessions.id, sessionId!),
           isNull(bumpSessions.deactivatedAt),
           gt(bumpSessions.expiresAt, now),
         ));
@@ -139,8 +139,8 @@ export async function POST(request: NextRequest) {
         }
 
         const score = correlateBump(
-          waveform,
-          rotationRate,
+          waveform!,
+          rotationRate!,
           otherEvent.waveform as number[],
           otherEvent.rotationRate as number[],
         );

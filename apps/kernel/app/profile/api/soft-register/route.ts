@@ -42,14 +42,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     if (existing) {
       // Already exists - just add connection if source provided
       if (source && sourceId) {
-        await db.insert(connections).values({
-          id: `conn_${Date.now().toString(36)}`,
-          fromDid: did,
-          toDid: sourceId, // e.g., event DID
-          trustLevel: 0,
-          source,
-          sourceId,
-        }).onConflictDoNothing();
+        const [cDidA, cDidB] = [did, sourceId].sort((a, b) => a.localeCompare(b));
+        await db.insert(connections).values({ didA: cDidA, didB: cDidB }).onConflictDoNothing();
       }
 
       return NextResponse.json({
@@ -77,14 +71,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     // Create connection to source if provided
     if (source && sourceId) {
-      await db.insert(connections).values({
-        id: `conn_${Date.now().toString(36)}`,
-        fromDid: did,
-        toDid: sourceId,
-        trustLevel: 0,
-        source,
-        sourceId,
-      });
+      const [cDidA, cDidB] = [did, sourceId].sort((a, b) => a.localeCompare(b));
+      await db.insert(connections).values({ didA: cDidA, didB: cDidB }).onConflictDoNothing();
     }
 
     return NextResponse.json({

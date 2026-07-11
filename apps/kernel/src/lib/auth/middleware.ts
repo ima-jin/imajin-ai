@@ -43,9 +43,9 @@ export async function requireAuth(
 
   // Optional chain verification — OFF by default
   if (options?.verifyChain) {
-    const chainValid = await verifyIdentityChain(session.did);
+    const chainValid = await verifyIdentityChain(session.sub);
     if (!chainValid) {
-      log.error({ did: session.did }, 'chain verification failed');
+      log.error({ did: session.sub }, 'chain verification failed');
       return null;
     }
   }

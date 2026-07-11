@@ -74,7 +74,7 @@ export default function IdentityPicker({
   // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node | null)) {
         setOpen(false);
       }
     }

@@ -73,6 +73,9 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       // checkout session ID (cs_xxx). Resolve via Stripe API.
       try {
         const Stripe = (await import('stripe')).default;
+        if (!process.env.STRIPE_SECRET_KEY) {
+          throw new Error('STRIPE_SECRET_KEY not configured');
+        }
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-04-10' as any });
         const sessions = await stripe.checkout.sessions.list({
           payment_intent: paymentId,

@@ -125,7 +125,7 @@ function OnboardContent() {
   async function handleGenerateKeypair() {
     setFlow('keypair-confirm');
     setKeypairAck(false);
-    const privateKeyBytes = ed.utils.randomPrivateKey();
+    const privateKeyBytes = ed.utils.randomSecretKey();
     const publicKeyBytes = await ed.getPublicKeyAsync(privateKeyBytes);
     setKeypair({
       privateKey: bytesToHex(privateKeyBytes),

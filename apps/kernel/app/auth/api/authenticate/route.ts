@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, challenges, tokens } from '@/src/db';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
-import { verify as hexToBytes, TOKEN_TTL } from '@imajin/auth';
+import { TOKEN_TTL } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -141,7 +141,7 @@ async function verifyRawSignature(
     const ed = await import('@noble/ed25519');
     
     // Configure sha512 (required for @noble/ed25519 v2)
-    ed.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
+    (ed.etc as { sha512Sync?: (...m: Uint8Array[]) => Uint8Array }).sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
     
     // Convert hex strings to bytes
     const signature = hexToBytes(signatureHex);
@@ -155,4 +155,11 @@ async function verifyRawSignature(
   }
 }
 
-// Note: hexToBytes is now imported from @imajin/auth
+/** Decode a hex string to bytes. */
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}

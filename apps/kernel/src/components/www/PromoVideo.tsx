@@ -28,7 +28,7 @@ export function PromoVideo() {
     requestAnimationFrame(() => {
       const video = videoRef.current;
       if (!video) return;
-      video.src = getVideoSrc(assetId);
+      video.src = getVideoSrc(assetId!);
       video.play().catch(() => {});
     });
   }

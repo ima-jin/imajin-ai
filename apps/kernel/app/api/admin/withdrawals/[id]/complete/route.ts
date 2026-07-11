@@ -8,14 +8,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, withdrawalRequests } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
 import { requireAdmin } from '@imajin/auth';
-import { withLogger } from '@imajin/logger';
 
-export const POST = withLogger(async (
+export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
-) => {
-  const authResult = await requireAdmin(request);
-  if (authResult instanceof NextResponse) return authResult;
+) {
+  const session = await requireAdmin();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { id } = await params;
 
@@ -66,4 +65,4 @@ export const POST = withLogger(async (
   });
 
   return NextResponse.json({ success: true, id, status: 'sent' });
-});
+}

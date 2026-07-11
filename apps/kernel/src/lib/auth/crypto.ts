@@ -6,7 +6,7 @@ import { createLogger } from '@imajin/logger';
 const log = createLogger('kernel');
 
 // Configure ed25519 to use sha512
-ed.etc.sha512Sync = (...m) => sha512(ed.etc.concatBytes(...m));
+(ed.etc as { sha512Sync?: (...m: Uint8Array[]) => Uint8Array }).sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
 
 /**
  * Derive a DID from a public key
