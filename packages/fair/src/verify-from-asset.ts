@@ -115,7 +115,7 @@ export async function verifyManifestFromAsset(
     return { valid: false, reason: verifyResult.reason || 'Signature verification failed' };
   }
   if ('valid' in verifyResult && !verifyResult.valid) {
-    return { valid: false, reason: verifyResult.error || 'Signature verification failed' };
+    return { valid: false, reason: verifyResult.reason || 'Signature verification failed' };
   }
 
   const signedAt = sig && 'signedAt' in sig ? (sig as { signedAt?: string }).signedAt : undefined;
@@ -166,6 +166,6 @@ export async function verifyManifestFromAsset(
     valid: true,
     signedAt,
     anchorTimestamp,
-    owner: manifest.creator,
+    owner: manifest.owner,
   };
 }

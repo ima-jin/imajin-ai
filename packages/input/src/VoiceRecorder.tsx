@@ -21,7 +21,7 @@ export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRec
   const handleComplete = onRecordingComplete || onRecorded || (() => {});
   const [state, setState] = useState<RecordingState>('idle');
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [waveform, setWaveform] = useState<number[]>(Array.from<number>({ length: WAVEFORM_BARS }, () => 0));
+  const [waveform, setWaveform] = useState<number[]>(Array.from({ length: WAVEFORM_BARS }, () => 0));
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -65,7 +65,7 @@ export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRec
       cleanup();
       setState('idle');
       setElapsedMs(0);
-      setWaveform(Array.from<number>({ length: WAVEFORM_BARS }, () => 0));
+      setWaveform(Array.from({ length: WAVEFORM_BARS }, () => 0));
       onCancel();
       return;
     }
@@ -79,7 +79,7 @@ export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRec
       cleanup();
       setState('idle');
       setElapsedMs(0);
-      setWaveform(Array.from<number>({ length: WAVEFORM_BARS }, () => 0));
+      setWaveform(Array.from({ length: WAVEFORM_BARS }, () => 0));
       onCancel();
       return;
     }
@@ -132,13 +132,13 @@ export function VoiceRecorder({ onRecordingComplete, onRecorded, onCancel, onRec
         if (blob.size === 0) {
           setState('idle');
           setElapsedMs(0);
-          setWaveform(Array.from<number>({ length: WAVEFORM_BARS }, () => 0));
+          setWaveform(Array.from({ length: WAVEFORM_BARS }, () => 0));
           onCancel();
           return;
         }
 
         setState('processing');
-        setWaveform(Array.from<number>({ length: WAVEFORM_BARS }, () => 0));
+        setWaveform(Array.from({ length: WAVEFORM_BARS }, () => 0));
         // Fire completion, then reset to idle
         Promise.resolve(handleComplete(blob, durationMs)).finally(() => {
           setState('idle');

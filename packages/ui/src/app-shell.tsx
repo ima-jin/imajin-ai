@@ -151,4 +151,4 @@ AppShellPane.displayName = 'AppShell.Split.Pane';
 (AppShell as unknown as Record<string, unknown>).Body = AppShellBody;
 (AppShell as unknown as Record<string, unknown>).Footer = AppShellFooter;
 (AppShell as unknown as Record<string, unknown>).Split = AppShellSplit;
-AppShellSplit.Pane = AppShellPane;
+(AppShellSplit as unknown as Record<string, unknown>).Pane = AppShellPane;

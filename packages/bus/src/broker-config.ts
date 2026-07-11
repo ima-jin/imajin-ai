@@ -205,7 +205,7 @@ export async function resolveConsentFromDb(
       consent_ref: string;
     };
 
-    for (const row of classRows as ClassGrantRow[]) {
+    for (const row of [...classRows] as ClassGrantRow[]) {
       let admitted = false;
       switch (row.granted_to_class) {
         case 'connections':

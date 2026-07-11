@@ -106,7 +106,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
   };
   const rawAttribution = manifest?.attribution ?? [];
   const rawChain = manifest?.chain ?? [];
-  const resolvedChain = rawChain.map(e => ({ ...e, did: resolvePlaceholder(e.did) }));
+  const resolvedChain = rawChain.map(e => ({ ...e, did: resolvePlaceholder(e.did ?? '') }));
   const attribution = normalizeShares(rawAttribution);
   const chain = normalizeShares(resolvedChain);
 

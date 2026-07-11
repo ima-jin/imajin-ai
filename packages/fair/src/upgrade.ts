@@ -161,7 +161,7 @@ function convertAttribution(
 function convertDistribution(
   v1_0: FairManifestV1_0,
 ): NonNullable<FairManifestV1_1['distribution']> {
-  const oldDist = v1_0.distribution as Record<string, string> | undefined;
+  const oldDist = (v1_0 as { distribution?: Record<string, string> }).distribution;
   const defaults = buildDefaults(v1_0.type, v1_0.owner);
 
   const toRight = (key: string): FairDistributionRight => {

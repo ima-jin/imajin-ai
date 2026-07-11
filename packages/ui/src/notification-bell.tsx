@@ -54,7 +54,7 @@ export function NotificationBell() {
   useEffect(() => {
     if (!open) return;
     function handleClickOutside(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target)) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node | null)) {
         setOpen(false);
       }
     }
