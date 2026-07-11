@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { Asset } from "@/src/db/schema";
+import type { Asset } from "@/src/db/schemas/media";
 
 // Lazily loaded — prismjs is side-effectful and large
 let highlightCode: ((code: string, lang: "json" | "markdown" | "none") => string) | null = null;
