@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { patchGrants } from '../routes/grants';
+import { mockIdentity, mockRequest } from './test-helpers';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -47,11 +48,7 @@ import { updateManifestFlow } from '@/src/lib/media/manifest-helpers';
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 function makeRequest(body: unknown, url = 'https://test.imajin.ai/media/api/assets/asset_test/grants') {
-  return new Request(url, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  return mockRequest(body, url);
 }
 
 function setupAsset(overrides: Record<string, unknown> = {}) {
@@ -97,7 +94,7 @@ describe('PATCH /media/api/assets/[id]/grants', () => {
   });
 
   it('returns 400 when add and remove are both empty', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
 
     const res = await patchGrants(makeRequest({}), 'asset_test');
     expect(res.status).toBe(400);
@@ -106,7 +103,7 @@ describe('PATCH /media/api/assets/[id]/grants', () => {
   });
 
   it('returns 404 when asset not found', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     mockFrom.mockReturnValue({ where: mockWhere });
     mockWhere.mockReturnValue({ limit: mockLimit });
     mockLimit.mockResolvedValue([]);
@@ -116,7 +113,7 @@ describe('PATCH /media/api/assets/[id]/grants', () => {
   });
 
   it('returns 403 when user does not own the asset', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:intruder', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity({ id: 'did:imajin:intruder' }) });
     setupAsset();
 
     const res = await patchGrants(makeRequest({ add: ['did:imajin:friend'] }), 'asset_test');
@@ -124,7 +121,7 @@ describe('PATCH /media/api/assets/[id]/grants', () => {
   });
 
   it('adds DIDs to allowedDids and switches to trust-graph', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const asset = setupAsset();
     const updatedAsset = { ...asset };
 
@@ -155,7 +152,7 @@ describe('PATCH /media/api/assets/[id]/grants', () => {
   });
 
   it('merges add/remove with existing allowedDids, de-duping', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const asset = setupAsset({
       fairManifest: {
         fair: '1.1',
@@ -184,11 +181,11 @@ describe('PATCH /media/api/assets/[id]/grants', () => {
     expect(res.status).toBe(200);
 
     const callArgs = vi.mocked(updateManifestFlow).mock.calls[0];
-    expect(callArgs[1].access.allowedDids).toEqual(['did:imajin:alice', 'did:imajin:bob']);
+    expect((callArgs[1].access as { allowedDids?: string[] }).allowedDids).toEqual(['did:imajin:alice', 'did:imajin:bob']);
   });
 
   it('removes all grants and keeps original access type when empty', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const asset = setupAsset({
       fairManifest: {
         fair: '1.1',
@@ -224,7 +221,7 @@ describe('PATCH /media/api/assets/[id]/grants', () => {
   });
 
   it('filters non-string entries from add/remove arrays', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const asset = setupAsset();
 
     mockFrom.mockReturnValueOnce({ where: mockWhere });
@@ -247,6 +244,6 @@ describe('PATCH /media/api/assets/[id]/grants', () => {
     expect(res.status).toBe(200);
 
     const callArgs = vi.mocked(updateManifestFlow).mock.calls[0];
-    expect(callArgs[1].access.allowedDids).toEqual(['did:imajin:alice', 'did:imajin:bob']);
+    expect((callArgs[1].access as { allowedDids?: string[] }).allowedDids).toEqual(['did:imajin:alice', 'did:imajin:bob']);
   });
 });

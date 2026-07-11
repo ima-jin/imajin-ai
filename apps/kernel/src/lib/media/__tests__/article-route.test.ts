@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { patchArticle } from '../routes/article';
+import { mockIdentity, mockRequest } from './test-helpers';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -53,11 +54,7 @@ import { updateAssetContent } from '@/src/lib/media/update-asset';
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 function makeRequest(body: unknown, url = 'https://test.imajin.ai/media/api/assets/asset_test/article') {
-  return new Request(url, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  return mockRequest(body, url);
 }
 
 function setupAsset(overrides: Record<string, unknown> = {}) {
@@ -98,7 +95,7 @@ describe('PATCH /media/api/assets/[id]/article', () => {
   });
 
   it('returns 400 when slug is missing', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
 
     const res = await patchArticle(makeRequest({ title: 'Hello' }), 'asset_test');
     expect(res.status).toBe(400);
@@ -107,25 +104,25 @@ describe('PATCH /media/api/assets/[id]/article', () => {
   });
 
   it('returns 400 when slug has underscores', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const res = await patchArticle(makeRequest({ slug: 'hello_world', title: 'Hello' }), 'asset_test');
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when slug has uppercase', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const res = await patchArticle(makeRequest({ slug: 'Hello-World', title: 'Hello' }), 'asset_test');
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when slug has spaces', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const res = await patchArticle(makeRequest({ slug: 'hello world', title: 'Hello' }), 'asset_test');
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when title is missing', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
 
     const res = await patchArticle(makeRequest({ slug: 'hello' }), 'asset_test');
     expect(res.status).toBe(400);
@@ -134,7 +131,7 @@ describe('PATCH /media/api/assets/[id]/article', () => {
   });
 
   it('returns 404 when asset not found', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     mockFrom.mockReturnValue({ where: mockWhere });
     mockWhere.mockReturnValue({ limit: mockLimit });
     mockLimit.mockResolvedValue([]);
@@ -144,7 +141,7 @@ describe('PATCH /media/api/assets/[id]/article', () => {
   });
 
   it('returns 403 when user does not own the asset', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:intruder', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity({ id: 'did:imajin:intruder' }) });
     setupAsset();
 
     const res = await patchArticle(makeRequest({ slug: 'hello', title: 'Hello' }), 'asset_test');
@@ -152,7 +149,7 @@ describe('PATCH /media/api/assets/[id]/article', () => {
   });
 
   it('returns 400 when mime type is not text/markdown', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     setupAsset({ mimeType: 'image/png' });
 
     const res = await patchArticle(makeRequest({ slug: 'hello', title: 'Hello' }), 'asset_test');
@@ -162,7 +159,7 @@ describe('PATCH /media/api/assets/[id]/article', () => {
   });
 
   it('writes frontmatter, defaults status to DRAFT, and emits the bus event', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const asset = setupAsset();
     const updated = {
       ...asset,
@@ -202,7 +199,7 @@ describe('PATCH /media/api/assets/[id]/article', () => {
   });
 
   it('writes all supplied fields into the frontmatter and keeps an explicit status', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const asset = setupAsset();
     vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: true, asset } as never);
 
@@ -233,7 +230,7 @@ describe('PATCH /media/api/assets/[id]/article', () => {
   });
 
   it('replaces stale frontmatter but preserves the existing file body', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     const asset = setupAsset();
     vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: true, asset } as never);
     vi.mocked(readFile).mockResolvedValueOnce('---\nslug: "old"\nstatus: "POSTED"\n---\n\n# Body kept' as never);
@@ -248,7 +245,7 @@ describe('PATCH /media/api/assets/[id]/article', () => {
   });
 
   it('maps a failed content write to an error status', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:owner', actingAs: undefined } });
+    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
     setupAsset();
     vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: false, code: 'storage_failed', message: 'File write failed' } as never);
 
@@ -258,7 +255,7 @@ describe('PATCH /media/api/assets/[id]/article', () => {
 
   it('supports acting-as impersonation (writes as the represented owner)', async () => {
     vi.mocked(requireAuth).mockResolvedValueOnce({
-      identity: { id: 'did:imajin:agent', actingAs: 'did:imajin:owner', actingAsRole: 'admin' },
+      identity: mockIdentity({ id: 'did:imajin:agent', actingAs: 'did:imajin:owner', actingAsRole: 'admin' }),
     });
     const asset = setupAsset();
     vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: true, asset } as never);
