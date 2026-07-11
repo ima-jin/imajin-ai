@@ -11,7 +11,7 @@ export type LoggerContext = {
 export type LoggerHandler = (
   req: NextRequest,
   ctx: LoggerContext
-) => Promise<NextResponse>;
+) => Promise<Response>;
 
 /**
  * Paths excluded from DB request logging.
@@ -110,10 +110,10 @@ function writeRequestLog(entry: {
 export function withLogger(
   service: string,
   handler: LoggerHandler
-): (req: NextRequest) => Promise<NextResponse> {
+): (req: NextRequest) => Promise<Response> {
   const baseLogger = createLogger(service);
 
-  return async (req: NextRequest): Promise<NextResponse> => {
+  return async (req: NextRequest): Promise<Response> => {
     const correlationId =
       req.headers.get('x-correlation-id') || `cor_${nanoid(16)}`;
 
@@ -134,7 +134,7 @@ export function withLogger(
 
     const start = Date.now();
 
-    let response: NextResponse;
+    let response: Response;
     let errorMessage: string | undefined;
     try {
       response = await handler(req, { log, correlationId });

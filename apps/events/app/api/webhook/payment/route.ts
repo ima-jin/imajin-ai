@@ -450,6 +450,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     style: 'currency',
     currency: currency.toUpperCase(),
   }).format(amountTotal / 100);
+  const quantity = createdTickets.length;
   const unitPrice = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: currency.toUpperCase(),
@@ -545,7 +546,7 @@ async function handlePaymentFailed(payload: PaymentWebhookPayload) {
   await db
     .select()
     .from(ticketTypes)
-    .where(eq(ticketTypes.id, metadata.ticketTypeId))
+    .where(eq(ticketTypes.id, metadata.ticketTypeId ?? ''))
     .limit(1);
 
   log.info({ customerEmail, eventTitle: event.title }, 'Payment failed');

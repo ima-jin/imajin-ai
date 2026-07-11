@@ -50,7 +50,7 @@ export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWr
   useEffect(() => {
     const stored = localStorage.getItem(`eventChat_displayPref_${eventId}`);
     if (stored && ['real_name', 'handle', 'anonymous'].includes(stored)) {
-      setMyDisplayPref(stored);
+      setMyDisplayPref(stored as 'real_name' | 'handle' | 'anonymous');
     }
   }, [eventId]);
 
@@ -146,7 +146,7 @@ export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWr
   }, [nameDisplayPolicy, myDisplayPref, fetchProfile]);
 
   const handleDisplayPrefChange = useCallback((pref: string) => {
-    setMyDisplayPref(pref);
+    setMyDisplayPref(pref as 'real_name' | 'handle' | 'anonymous');
     localStorage.setItem(`eventChat_displayPref_${eventId}`, pref);
   }, [eventId]);
 
