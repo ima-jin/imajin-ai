@@ -31,7 +31,7 @@ function emitMatchSurfaced(
   matchId: string,
   overlapTags: string[],
   isSensitive: boolean,
-  policy: string
+  policy: 'named_nudge' | 'staged' | 'sensitive_staged'
 ): void {
   publish('availability.match.surfaced', {
     issuer: issuerDid,

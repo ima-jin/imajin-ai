@@ -45,7 +45,7 @@ async function classifyWithClip(buffer: Buffer, callerDid?: string): Promise<Cli
   if (!CLIP_URL) return null;
   try {
     const formData = new FormData();
-    formData.append('file', new Blob([buffer]), 'image.bin');
+    formData.append('file', new Blob([new Uint8Array(buffer)]), 'image.bin');
 
     const headers: Record<string, string> = {};
     if (callerDid) headers['X-Caller-DID'] = callerDid;

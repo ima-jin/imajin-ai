@@ -15,7 +15,7 @@ export function EmojiPicker({ onSelect, onClose, theme = 'dark' }: Readonly<Emoj
   // Close on click outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target)) {
+      if (ref.current && !ref.current.contains(e.target as Node | null)) {
         onClose();
       }
     }

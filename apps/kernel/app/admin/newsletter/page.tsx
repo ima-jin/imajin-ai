@@ -24,7 +24,7 @@ export default async function AdminNewsletterPage() {
       COUNT(s.id) FILTER (WHERE s.status = 'subscribed') AS subscriber_count
     FROM www.mailing_lists ml
     LEFT JOIN www.subscriptions s ON s.mailing_list_id = ml.id
-    WHERE ml.owner_did IS NULL OR ml.owner_did = ${session.actingAs}
+    WHERE ml.owner_did IS NULL OR ml.owner_did = ${session.actingAs ?? ''}
     GROUP BY ml.id
     ORDER BY ml.created_at ASC
   `;
@@ -32,7 +32,7 @@ export default async function AdminNewsletterPage() {
   const [connRow] = await sql`
     SELECT COUNT(*) AS total
     FROM connections.connections
-    WHERE (did_a = ${session.actingAs} OR did_b = ${session.actingAs})
+    WHERE (did_a = ${session.actingAs ?? ''} OR did_b = ${session.actingAs ?? ''})
     AND disconnected_at IS NULL
   `;
   const connectionCount = Number(connRow?.total ?? 0);
@@ -40,7 +40,7 @@ export default async function AdminNewsletterPage() {
   const recentSends = await sql`
     SELECT id, subject, audience_type, audience_id, recipient_count, sent_at
     FROM registry.newsletter_sends
-    WHERE sender_did = ${session.actingAs}
+    WHERE sender_did = ${session.actingAs ?? ''}
     ORDER BY sent_at DESC
     LIMIT 20
   `;

@@ -1,7 +1,7 @@
 import * as jose from 'jose';
 import { webcrypto } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
-import { normalizeTier } from '@imajin/auth';
+import { normalizeTier, type IdentityTier } from '@imajin/auth';
 
 const log = createLogger('kernel');
 
@@ -73,7 +73,7 @@ export interface SessionPayload {
   scope: string;    // 'actor' | 'family' | 'community' | 'business'
   subtype?: string; // scope-dependent: 'human' | 'agent' | 'device' | etc.
   name?: string;
-  tier?: 'soft' | 'preliminary' | 'established'; // identity tier
+  tier?: IdentityTier; // identity tier
   keyId?: string;   // which key created this session
   keyRole?: string; // 'auth' | 'assert' | 'controller'
 }

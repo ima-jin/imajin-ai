@@ -5,18 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ImajinFooter } from '@imajin/ui';
 import { apiFetch } from '@imajin/config';
-import ListingCard from './components/ListingCard';
-
-interface Listing {
-  id: string;
-  title: string;
-  price: number;
-  currency: string;
-  category: string | null;
-  images: string[];
-  sellerTier: string;
-  createdAt: string;
-}
+import ListingCard, { type Listing } from './components/ListingCard';
 
 interface ListingsResponse {
   listings: Listing[];

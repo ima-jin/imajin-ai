@@ -26,7 +26,7 @@ export function RotateSecretDialog({
   }
 
   async function handleRotate(): Promise<void> {
-    await onSubmit({ field, value, hint: hint.trim() });
+    await onSubmit({ field: field ?? '', value, hint: hint.trim() });
     setValue('');
     setHint('');
   }

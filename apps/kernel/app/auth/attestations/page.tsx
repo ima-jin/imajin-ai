@@ -17,7 +17,7 @@ export default async function AttestationsPage({ searchParams }: Readonly<{ sear
   const resolvedSearchParams = await searchParams;
   const { sessionDid, effectiveDid } = await getEffectiveDid();
 
-  if (!sessionDid) {
+  if (!sessionDid || !effectiveDid) {
     redirect('/auth');
   }
   const view = resolvedSearchParams.view === 'documents' ? 'documents' : 'attestations';

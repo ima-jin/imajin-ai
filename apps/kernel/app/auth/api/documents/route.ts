@@ -160,7 +160,7 @@ export async function GET(request: NextRequest) {
         or(
           eq(attestations.issuerDid, callerDid),
           attIds.length > 0 ? inArray(attestations.id, attIds) : sql`false`
-        )
+        )!
       );
     }
 

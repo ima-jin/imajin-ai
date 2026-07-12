@@ -145,7 +145,7 @@ function InlineDidPicker({
   // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node | null)) {
         setOpen(false);
       }
     }
@@ -306,7 +306,7 @@ export function DidShareListEditor({
   // Auto-resolve existing DIDs on mount / when resolveProfile changes
   useEffect(() => {
     if (!resolveProfile) return;
-    const dids = value.map((e) => e.did).filter(Boolean);
+    const dids = value.map((e) => e.did).filter((d): d is string => Boolean(d));
     const uniqueDids = [...new Set(dids)].filter((did) => !(did in resolvedCache));
     if (uniqueDids.length === 0) return;
 

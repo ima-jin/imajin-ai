@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { Folder } from "@/src/db/schema";
+import type { Folder } from "@/src/db/schemas/media";
 
 export interface FolderTreeProps {
   folders: Folder[];
@@ -197,7 +197,7 @@ export function FolderTree({
   useEffect(() => {
     if (!contextMenu) return;
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node | null)) {
         closeMenu();
       }
     };

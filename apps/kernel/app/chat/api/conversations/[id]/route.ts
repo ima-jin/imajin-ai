@@ -54,10 +54,10 @@ export async function GET(
         if (otherDid) {
           const profile = await db.query.profiles.findFirst({
             where: eq(profiles.did, otherDid),
-            columns: { did: true, handle: true, name: true },
+            columns: { did: true, handle: true, displayName: true },
           });
           if (profile) {
-            otherParticipant = { did: profile.did, handle: profile.handle, name: profile.name };
+            otherParticipant = { did: profile.did, handle: profile.handle, name: profile.displayName };
           }
         }
       } catch {

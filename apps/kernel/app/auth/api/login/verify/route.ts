@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     const identityResults = await db
       .select()
       .from(identities)
-      .where(eq(identities.id, challenge.identityId))
+      .where(eq(identities.id, challenge.identityId!))
       .limit(1);
 
     const identity = identityResults[0];

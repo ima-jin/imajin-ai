@@ -46,7 +46,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   if (!profile) {
     return new Response(JSON.stringify({ error: 'Profile not found' }), { status: 404 });
   }
-  if (!profile.inferenceEnabled) {
+  if (!profile.featureToggles?.inference_enabled) {
     return new Response(JSON.stringify({ error: 'Inference not enabled' }), { status: 403 });
   }
 

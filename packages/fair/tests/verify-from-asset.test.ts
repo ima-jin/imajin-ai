@@ -47,7 +47,7 @@ describe('verifyManifestFromAsset', () => {
       fair: '1.1',
       id: 'asset_test123',
       kind: 'image',
-      creator: signer.did,
+      owner: signer.did,
       created: '2026-05-10T20:00:00.000Z',
       access: { type: 'public' },
     };
@@ -122,7 +122,7 @@ describe('verifyManifestFromAsset', () => {
       fair: '1.1',
       id: 'asset_test123',
       kind: 'image',
-      creator: signer.did,
+      owner: signer.did,
       created: '2026-05-10T20:00:00.000Z',
       access: { type: 'public' },
     };
@@ -161,7 +161,7 @@ describe('verifyManifestFromAsset', () => {
       fair: '1.1',
       id: 'asset_test123',
       kind: 'image',
-      creator: signer.did,
+      owner: signer.did,
       created: '2026-05-10T20:00:00.000Z',
       access: { type: 'public' },
     };
@@ -197,7 +197,7 @@ describe('verifyManifestFromAsset', () => {
       fair: '1.1',
       id: 'asset_test123',
       kind: 'image',
-      creator: signer.did,
+      owner: signer.did,
       created: '2026-05-10T20:00:00.000Z',
       access: { type: 'public' },
     };
@@ -235,7 +235,7 @@ describe('verifyManifestFromAsset', () => {
       fair: '1.1',
       id: 'asset_test123',
       kind: 'image',
-      creator: signer.did,
+      owner: signer.did,
       created: '2026-05-10T20:00:00.000Z',
       access: { type: 'public' },
     };

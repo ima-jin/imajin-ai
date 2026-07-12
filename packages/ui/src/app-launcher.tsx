@@ -80,7 +80,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   useEffect(() => {
     if (!showPanel) return;
     function handleClickOutside(event: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(event.target)) {
+      if (panelRef.current && !panelRef.current.contains(event.target as Node | null)) {
         setShowPanel(false);
       }
     }

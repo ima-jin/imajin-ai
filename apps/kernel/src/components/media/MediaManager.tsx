@@ -5,7 +5,7 @@ import { AppShell } from "@imajin/ui";
 import { FolderTree } from "./FolderTree";
 import { AssetGrid } from "./AssetGrid";
 import { AssetDetail } from "./AssetDetail";
-import type { Asset, Folder } from "@/src/db/schema";
+import type { Asset, Folder } from "@/src/db/schemas/media";
 import type { Identity } from "@imajin/auth";
 
 interface FolderWithCount extends Folder {
@@ -220,11 +220,11 @@ export function MediaManager({ session, search = '' }: Readonly<MediaManagerProp
               selectedAssetIds={selectedAssetIds}
               moveFolderId={moveFolderId}
               onSortChange={(s) => {
-                setSort(s);
+                setSort(s as SortKey);
                 localStorage.setItem("imajin-media-sort", s);
               }}
               onOrderChange={(o) => {
-                setOrder(o);
+                setOrder(o as "asc" | "desc");
                 localStorage.setItem("imajin-media-order", o);
               }}
               onTypeFilterChange={setTypeFilter}

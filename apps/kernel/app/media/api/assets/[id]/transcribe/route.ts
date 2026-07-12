@@ -114,7 +114,7 @@ export async function GET(
     const formData = new FormData();
     formData.append(
       "file",
-      new Blob([fileBuffer], { type: mime }),
+      new Blob([new Uint8Array(fileBuffer)], { type: mime }),
       asset.filename
     );
 

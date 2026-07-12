@@ -157,7 +157,7 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
   }
 
   if (!isLoggedIn) {
-    const connectionsOrigin = `${SERVICE_PREFIX}connections.${DOMAIN}`;
+    const connectionsOrigin = buildPublicUrl('connections');
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
         <h1 className="text-2xl font-bold mb-4">Sign in required</h1>

@@ -34,7 +34,7 @@ export interface ReceiptPayload {
  */
 export async function signReceipt(
   payload: Omit<ReceiptPayload, 'iat' | 'exp'> & Partial<Pick<ReceiptPayload, 'iat' | 'exp'>>,
-  nodeKey: jose.KeyLike | Uint8Array,
+  nodeKey: CryptoKey | Uint8Array,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const jwt = await new jose.SignJWT({
@@ -64,7 +64,7 @@ export async function signReceipt(
  */
 export async function verifyReceipt(
   token: string,
-  nodePublicKey: jose.KeyLike | Uint8Array,
+  nodePublicKey: CryptoKey | Uint8Array,
 ): Promise<ReceiptPayload | null> {
   try {
     const { payload } = await jose.jwtVerify(token, nodePublicKey, {
@@ -157,7 +157,7 @@ function extractEd25519Seed(privateKeyHex: string): Buffer {
   throw new Error(`AUTH_PRIVATE_KEY must be 32- or 48-byte hex (got ${buf.length} bytes)`);
 }
 
-export async function loadSigningKey(privateKeyHex: string): Promise<jose.KeyLike> {
+export async function loadSigningKey(privateKeyHex: string): Promise<CryptoKey> {
   const seed = extractEd25519Seed(privateKeyHex);
   const pkcs8Der = Buffer.concat([PKCS8_ED25519_PREFIX, seed]);
   const pkcs8Pem = `-----BEGIN PRIVATE KEY-----\n${pkcs8Der.toString('base64')}\n-----END PRIVATE KEY-----`;
@@ -167,7 +167,7 @@ export async function loadSigningKey(privateKeyHex: string): Promise<jose.KeyLik
 /**
  * Derive the public verification key from a 32-byte hex-encoded private seed.
  */
-export async function loadVerifyKey(privateKeyHex: string): Promise<jose.KeyLike> {
+export async function loadVerifyKey(privateKeyHex: string): Promise<CryptoKey> {
   const seed = extractEd25519Seed(privateKeyHex);
   // Derive public key from seed using @noble/ed25519
   const pubKey = await ed.getPublicKeyAsync(new Uint8Array(seed));

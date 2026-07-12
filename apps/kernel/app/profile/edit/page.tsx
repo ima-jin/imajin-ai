@@ -230,7 +230,7 @@ function EditProfileContent() {
 
       // Redirect to profile after 1 second
       setTimeout(() => {
-        router.push(profilePath(handle || did));
+        router.push(profilePath(handle || did || ''));
       }, 1000);
     } catch (err: any) {
       console.error('Update failed:', err);
@@ -531,7 +531,7 @@ function EditProfileContent() {
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={() => router.push(profilePath(handle || did))}
+              onClick={() => router.push(profilePath(handle || did || ''))}
               className="flex-1 px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition font-semibold"
             >
               Cancel

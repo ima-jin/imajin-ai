@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import type { Asset, Folder } from "@/src/db/schema";
+import type { Asset, Folder } from "@/src/db/schemas/media";
 import { AssetCard, formatSize, getMimeIcon, getFairAccess, FairBadge } from "./AssetCard";
 import { UploadZone, type UploadZoneHandle } from "./UploadZone";
 import { SelectionToolbar } from "./SelectionToolbar";
@@ -212,7 +212,7 @@ export function AssetGrid({
 
   // Multi-select handlers
   const handleCardClick = useCallback(
-    (e: React.MouseEvent, asset: Asset, idx: number) => {
+    (e: React.MouseEvent | React.KeyboardEvent, asset: Asset, idx: number) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         setSelectedAssetIds((prev) => {
@@ -253,7 +253,7 @@ export function AssetGrid({
     [assets, onSelectAsset, selectionMode, lastClickIdxValue, onLastClickIdxChange]
   );
 
-  const handleCheckClick = useCallback((e: React.MouseEvent, assetId: string, idx: number) => {
+  const handleCheckClick = useCallback((e: React.MouseEvent | React.KeyboardEvent, assetId: string, idx: number) => {
     e.stopPropagation();
     setSelectedAssetIds((prev) => {
       const next = new Set(prev);

@@ -86,25 +86,25 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    // Transfer all connections FROM guest TO new account
+    // Connections are undirected (didA/didB). Re-point either side from the
+    // guest DID to the new account DID.
     await db
       .update(connections)
-      .set({ fromDid: newDid, updatedAt: new Date() })
-      .where(eq(connections.fromDid, guestDid));
+      .set({ didA: newDid })
+      .where(eq(connections.didA, guestDid));
 
-    // Transfer all connections TO guest TO new account
     await db
       .update(connections)
-      .set({ toDid: newDid, updatedAt: new Date() })
-      .where(eq(connections.toDid, guestDid));
+      .set({ didB: newDid })
+      .where(eq(connections.didB, guestDid));
 
     // Get count of transferred connections
     const transferredConnections = await db
       .select()
       .from(connections)
       .where(or(
-        eq(connections.fromDid, newDid),
-        eq(connections.toDid, newDid)
+        eq(connections.didA, newDid),
+        eq(connections.didB, newDid)
       ));
 
     // Delete guest profile

@@ -145,7 +145,7 @@ function DistributionRightEditor({
             checked={hasPrice}
             onChange={(checked) => {
               if (checked) {
-                onChange({ ...right, price: { amount: 100, currency: 'USD' } });
+                onChange({ ...right, mode, price: { amount: 100, currency: 'USD' } });
               } else {
                 // Remove price entirely — free access
                 const { price: _p, ...rest } = right ?? {};
@@ -178,7 +178,7 @@ function DistributionRightEditor({
       {showSplits && (
         <DidShareListEditor
           value={right?.splits ?? [{ role: 'creator', share: 1 }]}
-          onChange={(splits) => onChange({ ...right, splits })}
+          onChange={(splits) => onChange({ ...right, mode, splits })}
           readOnly={readOnly}
           connectionsUrl={connectionsUrl}
           resolveProfile={resolveProfile}
@@ -194,7 +194,7 @@ function DistributionRightEditor({
               value={right?.quote?.maxPercent ?? ''}
               onChange={(e) => {
                 const val = e.target.value ? Number.parseFloat(e.target.value) : undefined;
-                onChange({ ...right, quote: { ...right?.quote, maxPercent: val } });
+                onChange({ ...right, mode, quote: { ...right?.quote, maxPercent: val } });
               }}
               readOnly={readOnly}
               className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 read-only:opacity-60"
@@ -207,7 +207,7 @@ function DistributionRightEditor({
               value={right?.quote?.maxWords ?? ''}
               onChange={(e) => {
                 const val = e.target.value ? Number.parseInt(e.target.value) : undefined;
-                onChange({ ...right, quote: { ...right?.quote, maxWords: val } });
+                onChange({ ...right, mode, quote: { ...right?.quote, maxWords: val } });
               }}
               readOnly={readOnly}
               className="w-full bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 read-only:opacity-60"
@@ -229,7 +229,7 @@ function mimeBucket(mimeType: string): 'text' | 'image' | 'audio' | 'video' | 'o
 
 // ─── Debounce hook ─────────────────────────────────────────────────────────
 
-function useDebouncedCallback<T extends (...args: unknown[]) => void>(
+function useDebouncedCallback<T extends (...args: any[]) => void>(
   fn: T,
   delay: number
 ) {
@@ -355,7 +355,7 @@ export function FairManifestEditor({
               : 'unknown date'}
           </p>
           {/* DFOS anchoring — from #897 / #882 */}
-          {'fair_dfos_event_id' in local && (local as Record<string, unknown>).fair_dfos_event_id && (
+          {'fair_dfos_event_id' in local && !!(local as Record<string, unknown>).fair_dfos_event_id && (
             <p className="text-[10px] text-gray-500">
               Anchored on DFOS:{" "}
               <code className="text-gray-400">
@@ -592,6 +592,7 @@ export function FairManifestEditor({
                           ...distribution,
                           reproduction: {
                             ...distribution.reproduction,
+                            mode: distribution.reproduction?.mode ?? 'reserved',
                             quote: { ...distribution.reproduction?.quote, maxPercent: val },
                           },
                         },
@@ -613,6 +614,7 @@ export function FairManifestEditor({
                           ...distribution,
                           reproduction: {
                             ...distribution.reproduction,
+                            mode: distribution.reproduction?.mode ?? 'reserved',
                             quote: { ...distribution.reproduction?.quote, maxWords: val },
                           },
                         },
@@ -636,6 +638,7 @@ export function FairManifestEditor({
                       ...distribution,
                       derivative: {
                         ...distribution.derivative,
+                        mode: distribution.derivative?.mode ?? 'reserved',
                         sampling: {
                           allowed: checked ? 'allow-with-share' : 'reserved',
                           share: distribution.derivative?.sampling?.share ?? 0.05,
@@ -655,6 +658,7 @@ export function FairManifestEditor({
                       ...distribution,
                       derivative: {
                         ...distribution.derivative,
+                        mode: distribution.derivative?.mode ?? 'reserved',
                         sync: {
                           allowed: checked ? 'allowed' : 'reserved',
                         },
@@ -676,6 +680,7 @@ export function FairManifestEditor({
                     ...distribution,
                     derivative: {
                       ...distribution.derivative,
+                      mode: distribution.derivative?.mode ?? 'reserved',
                       sync: {
                         allowed: checked ? 'allowed' : 'reserved',
                       },

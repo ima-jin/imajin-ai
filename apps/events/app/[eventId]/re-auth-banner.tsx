@@ -1,4 +1,4 @@
-import { MagicLinkButton } from './magic-link-button';
+import { MagicLinkButton } from '../e/[eventId]/magic-link-button';
 import { ReAuthBannerShell } from '../components/ReAuthBannerShell';
 
 interface ReAuthBannerProps {

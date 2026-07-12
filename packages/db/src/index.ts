@@ -24,3 +24,12 @@ export function createDb<TSchema extends Record<string, unknown>>(schema: TSchem
 
 export { getClient };
 export type { PostgresJsDatabase };
+
+/**
+ * Database handle for consumers that receive an app `db` with many schemas
+ * registered. Drizzle's schema generic is invariant, so narrow parameters like
+ * `PostgresJsDatabase<typeof someSchema>` reject the full app db when another
+ * table is registered.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyDatabase = PostgresJsDatabase<any>;
