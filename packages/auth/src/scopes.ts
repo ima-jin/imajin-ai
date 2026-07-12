@@ -22,6 +22,8 @@ export const SCOPES = {
   'attestations:write': 'Issue attestations on your behalf',
   'availability:read':  'View your availability and coordination intents',
   'availability:write': 'Set and cancel availability intents on your behalf',
+  'quickbooks:read':    'Read your QuickBooks invoices as supply-chain settlement signals',
+  'quickbooks:write':   'Create QuickBooks invoices on your behalf (supply-chain settlement)',
   'github:read':        'Read your repos, issues and PRs on GitHub',
   'github:write':       'Open and comment on issues & PRs on your GitHub repos',
   'github:org':         'Act on repos owned by an org or other people on GitHub',
