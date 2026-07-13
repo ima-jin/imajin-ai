@@ -24,6 +24,9 @@ vi.mock('@/src/lib/media/update-asset', () => ({
 }));
 
 vi.mock('@imajin/bus', () => ({ publish: vi.fn() }));
+// Bypass the scope-manifest channel_links gate — unit tests for the gate
+// itself live in mcp-grant.test.ts; here we just want the tool logic.
+vi.mock('../mcp-grant', () => ({ requireMcpGrant: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@imajin/logger', () => ({
   createLogger: vi.fn(() => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() })),
 }));

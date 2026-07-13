@@ -1,5 +1,6 @@
 import type { McpTool, McpContent } from '../types';
 import { applyGrants } from '../../media/apply-grants';
+import { requireMcpGrant } from '../mcp-grant';
 
 /**
  * Media SHARE tool for the MCP connector (#1195).
@@ -48,6 +49,7 @@ const grantAccessTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
+    await requireMcpGrant(ctx.did, 'media:share');
     const assetId = str(args, 'id');
     if (!assetId) throw new Error('id is required');
     const targetDid = str(args, 'did');
