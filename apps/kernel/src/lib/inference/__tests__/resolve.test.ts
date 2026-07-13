@@ -59,6 +59,28 @@ vi.mock('@imajin/logger', () => ({
   createLogger: vi.fn(() => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() })),
 }));
 
+const { mockSignSync, mockGetNodeSigningIdentity, MOCK_NODE_IDENTITY } = vi.hoisted(() => {
+  const identity = {
+    privateKeyHex: 'aaaa'.repeat(16),
+    senderPubkey: 'bbbb'.repeat(16),
+    senderDid: 'did:imajin:bbbbbbbbbbbbbbbb',
+  };
+  return {
+    mockSignSync: vi.fn(() => 'deadsignature0123456789abcdef'),
+    mockGetNodeSigningIdentity: vi.fn(() => identity),
+    MOCK_NODE_IDENTITY: identity,
+  };
+});
+
+vi.mock('@imajin/auth', () => ({
+  canonicalize: vi.fn(() => 'canonical-attestation-payload'),
+  crypto: { signSync: mockSignSync },
+}));
+
+vi.mock('@/src/lib/vault/sealing', () => ({
+  getNodeSigningIdentity: mockGetNodeSigningIdentity,
+}));
+
 // ─── Subject ────────────────────────────────────────────────────────────────
 
 import { resolveIntent } from '../resolve';
@@ -129,6 +151,8 @@ beforeEach(() => {
   mockDbUpdate.mockImplementation(() => ({ set: mockUpdateSet }));
 
   vi.mocked(VOCAB.resolve).mockResolvedValue(MOCK_RECEIPT);
+  mockSignSync.mockReturnValue('deadsignature0123456789abcdef');
+  mockGetNodeSigningIdentity.mockReturnValue(MOCK_NODE_IDENTITY);
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -182,6 +206,16 @@ describe('resolveIntent', () => {
       expect(rowArg['consentTier']).toBe('deliberate');
       expect(rowArg['sourceCid']).toBe('bafyrecording');
       expect(rowArg['id']).toMatch(/^attest_/);
+    });
+
+    it('signs the attestation payload with node identity and stores signature + senderPubkey', async () => {
+      setupSelectSequence(MOCK_SESSION, 'bafyrecording');
+
+      await resolveIntent('session_abc', 'did:imajin:farmer', VOCAB);
+
+      const rowArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+      expect(rowArg['signature']).toBe('deadsignature0123456789abcdef');
+      expect(rowArg['senderPubkey']).toBe(MOCK_NODE_IDENTITY.senderPubkey);
     });
 
     it('publishes inference.resolved DFOS event', async () => {

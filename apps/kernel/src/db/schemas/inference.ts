@@ -70,6 +70,9 @@ export const inferenceAttestations = inferenceSchema.table(
     sourceAssetId: text('source_asset_id').notNull(),     // the recording / capture asset
     sourceCid: text('source_cid'),                        // CID of recording at action time
     dfosEventId: text('dfos_event_id'),                   // DFOS anchor for cross-chain verifiability
+    // Node signing — #1292
+    signature: text('signature'),                         // Ed25519 hex signature over the attestation payload
+    senderPubkey: text('sender_pubkey'),                  // hex-encoded Ed25519 public key of the signing node
     signedAt: timestamp('signed_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({
