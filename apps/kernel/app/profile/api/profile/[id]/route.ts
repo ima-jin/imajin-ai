@@ -268,7 +268,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         );
       result.maintainerCount = maintainerCount;
 
-      if (!viewerDid) viewerDid = await getViewerDid(request);
       if (viewerDid) {
         const [isMaintainerRow] = await db
           .select({ identityDid: identityMembers.identityDid })
