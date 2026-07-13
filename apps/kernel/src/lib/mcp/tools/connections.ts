@@ -1,4 +1,5 @@
-import type { McpTool, McpContent } from '../types';
+import type { McpTool } from '../types';
+import { json } from './utils';
 import { listConnections } from '../../connections/list';
 
 /**
@@ -11,9 +12,6 @@ import { listConnections } from '../../connections/list';
  * Gated by connections:read. Returns only the caller's own connections (ctx.did).
  */
 
-function json(value: unknown): McpContent[] {
-  return [{ type: 'text', text: JSON.stringify(value, null, 2) }];
-}
 
 const connectionsListTool: McpTool = {
   name: 'connections_list',
