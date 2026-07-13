@@ -24,3 +24,13 @@ gh api --method PATCH /repos/OWNER/REPO/pulls/NUMBER --input "C:\Users\RyanVetez
 ```
 
 This applies to ALL `gh` body content: PR descriptions, issue bodies, PR edits, and issue edits.
+
+## Viewing GitHub Issues
+
+The default `gh issue view` command fails with a GraphQL deprecation error due to Projects (classic). **ALWAYS** use `--json` with explicit fields instead:
+
+```powershell
+gh issue view {issueNum} --repo ima-jin/imajin-ai --json number,title,body,state,labels,assignees,author,createdAt,comments
+```
+
+This applies to any `gh issue view` call in this repo — never use the plain `gh issue view {issueNum}` form.

@@ -1,8 +1,9 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets, identities } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, ilike, like } from "drizzle-orm";
 import { rateLimit, getClientIP } from "@imajin/config";
 import { createLogger } from "@imajin/logger";
 import { createAsset, inferMime, isAllowedMime } from "@/src/lib/media/create-asset";
@@ -187,7 +188,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   let ownerDid: string;
   let isAgentQuery = false;
-  if (bearerToken && internalApiKey && bearerToken === internalApiKey) {
+  if (bearerToken && internalApiKey &&
+      bearerToken.length === internalApiKey.length &&
+      timingSafeEqual(Buffer.from(bearerToken), Buffer.from(internalApiKey))) {
     const ownerDidHeader = request.headers.get("X-Owner-DID");
     if (!ownerDidHeader) {
       return NextResponse.json({ error: "X-Owner-DID header required" }, { status: 400, headers: cors });
@@ -230,7 +233,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let rows = await db
+    // DB-level MIME prefix and filename filters
+    if (type) conditions.push(like(assets.mimeType, `${type}/%`));
+    if (search) conditions.push(ilike(assets.filename, `%${search}%`));
+
+    const rows = await db
       .select()
       .from(assets)
       .where(and(...conditions))
@@ -241,17 +248,6 @@ export async function GET(request: NextRequest) {
       )
       .limit(limit)
       .offset(offset);
-
-    // Post-filter by MIME prefix
-    if (type) {
-      rows = rows.filter((r) => r.mimeType.startsWith(`${type}/`));
-    }
-
-    // Post-filter by filename search
-    if (search) {
-      const q = search.toLowerCase();
-      rows = rows.filter((r) => r.filename.toLowerCase().includes(q));
-    }
 
     return NextResponse.json({ assets: rows, limit, offset, count: rows.length }, { headers: cors });
   } catch (err) {

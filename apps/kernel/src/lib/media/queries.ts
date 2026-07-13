@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { and, eq, inArray, asc, desc } from 'drizzle-orm';
+import { and, eq, inArray, asc, desc, ilike, like } from 'drizzle-orm';
 import { db, assets, folders, assetFolders, type Asset } from '@/src/db';
 import type { FairManifest } from '@imajin/fair';
 import { authorizeAssetRead } from './authorize-read';
@@ -41,37 +41,27 @@ export function assetAccess(asset: Asset): FairManifest['access'] {
   return (asset.fairManifest as FairManifest | null)?.access ?? 'private';
 }
 
-/** Apply the type/search post-filters the list route uses (filename + mime). */
-function postFilter(rows: Asset[], opts: ListOptions): Asset[] {
-  let out = rows;
-  if (opts.type) out = out.filter((r) => r.mimeType.startsWith(`${opts.type}/`));
-  if (opts.search) {
-    const q = opts.search.toLowerCase();
-    out = out.filter((r) => r.filename.toLowerCase().includes(q));
-  }
-  return out;
-}
-
 /** Active assets owned by `ownerDid` (the caller's own library). */
 export async function listOwnedAssets(ownerDid: string, opts: ListOptions = {}): Promise<Asset[]> {
   const limit = normLimit(opts.limit);
   const offset = normOffset(opts.offset);
   const order = opts.order === 'asc' ? asc(assets.createdAt) : desc(assets.createdAt);
-  const baseWhere = and(eq(assets.ownerDid, ownerDid), eq(assets.status, 'active'));
 
-  let idFilter: string[] | null = null;
+  const conditions = [eq(assets.ownerDid, ownerDid), eq(assets.status, 'active')];
+  if (opts.type) conditions.push(like(assets.mimeType, `${opts.type}/%`));
+  if (opts.search) conditions.push(ilike(assets.filename, `%${opts.search}%`));
+
   if (opts.folderId) {
     const links = await db
       .select({ assetId: assetFolders.assetId })
       .from(assetFolders)
       .where(eq(assetFolders.folderId, opts.folderId));
-    idFilter = links.map((l) => l.assetId);
-    if (idFilter.length === 0) return [];
+    const ids = links.map((l) => l.assetId);
+    if (ids.length === 0) return [];
+    conditions.push(inArray(assets.id, ids));
   }
 
-  const where = idFilter ? and(baseWhere, inArray(assets.id, idFilter)) : baseWhere;
-  const rows = await db.select().from(assets).where(where).orderBy(order).limit(limit).offset(offset);
-  return postFilter(rows, opts);
+  return db.select().from(assets).where(and(...conditions)).orderBy(order).limit(limit).offset(offset);
 }
 
 /** A single active asset by id (no authorization applied — caller must gate). */
