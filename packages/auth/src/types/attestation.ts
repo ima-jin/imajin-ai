@@ -45,6 +45,12 @@ export const ATTESTATION_TYPES = [
   'document.executed',
   'document.declined',
   'document.amended',
+  'github_account',
+  'contributor.issue.closed',
+  'contributor.pr.merged',
+  'contributor.rfc.authored',
+  'contributor.review',
+  'contributor.design',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
