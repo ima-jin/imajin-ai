@@ -695,6 +695,14 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'github';
   };
+  /** Emitted after a Discord message is posted on behalf of a DID (#18). Non-fatal. */
+  'discord.message.posted': {
+    ownerDid: string;
+    channelId: string;
+    messageId: string;
+    context_id: string;
+    context_type: 'discord';
+  };
   // #1205 — authored-document change trigger (the control-plane "button").
   // issuer=ownerDid, subject=<assetId/doc-id>, scope=<service scope>.
   // Emitted only for tracked authored doc classes, never hot-state writes.

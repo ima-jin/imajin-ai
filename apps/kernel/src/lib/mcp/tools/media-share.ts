@@ -1,4 +1,5 @@
-import type { McpTool, McpContent } from '../types';
+import type { McpTool } from '../types';
+import { str, json } from './utils';
 import { applyGrants } from '../../media/apply-grants';
 
 /**
@@ -20,14 +21,6 @@ import { applyGrants } from '../../media/apply-grants';
  * symmetric operation, minimal surface area).
  */
 
-function json(value: unknown): McpContent[] {
-  return [{ type: 'text', text: JSON.stringify(value, null, 2) }];
-}
-
-function str(args: Record<string, unknown>, key: string): string | undefined {
-  const v = args[key];
-  return typeof v === 'string' && v.length > 0 ? v : undefined;
-}
 
 const grantAccessTool: McpTool = {
   name: 'media_grant_access',

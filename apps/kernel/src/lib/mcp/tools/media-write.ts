@@ -1,4 +1,5 @@
-import type { McpTool, McpContent } from '../types';
+import type { McpTool } from '../types';
+import { str, json } from './utils';
 import * as bus from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { createAsset, inferMime, isAllowedMime } from '@/src/lib/media/create-asset';
@@ -30,14 +31,6 @@ const log = createLogger('kernel');
 const MAX_UPLOAD_MB = 10;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
-function str(args: Record<string, unknown>, key: string): string | undefined {
-  const v = args[key];
-  return typeof v === 'string' && v.length > 0 ? v : undefined;
-}
-
-function json(value: unknown): McpContent[] {
-  return [{ type: 'text', text: JSON.stringify(value, null, 2) }];
-}
 
 const createNoteTool: McpTool = {
   name: 'media_create_note',
