@@ -8,6 +8,10 @@ on:
         required: false
         default: 'https://dev-registry.imajin.ai/relay'
         type: string
+  schedule:
+    # Weekly safety net (Mondays 08:00 UTC) against the default dev relay.
+    # Manual `workflow_dispatch` remains the primary way we run these from live.
+    - cron: '0 8 * * 1'
 
 jobs:
   conformance:
@@ -23,23 +27,37 @@ jobs:
         run: git clone --depth 1 https://github.com/metalabel/dfos.git
 
       - name: Run conformance tests
-        working-directory: dfos/packages/dfos-web-relay
+        # Conformance suite moved to its own Go module: packages/relay-conformance
+        # (was packages/dfos-web-relay/conformance — that path is now empty and
+        # silently passed zero tests).
+        working-directory: dfos/packages/relay-conformance
         env:
-          RELAY_URL: ${{ inputs.relay_url }}
+          RELAY_URL: ${{ github.event.inputs.relay_url || 'https://dev-registry.imajin.ai/relay' }}
         run: |
           echo "🔍 Testing relay at: $RELAY_URL"
-          go test -v -count=1 ./conformance/ 2>&1 | tee results.txt
-          
+          go test -v -count=1 ./... 2>&1 | tee results.txt
+
           # Summary
           echo ""
           echo "=== SUMMARY ==="
           PASS=$(grep -c "^--- PASS:" results.txt || true)
           FAIL=$(grep -c "^--- FAIL:" results.txt || true)
+          TOTAL=$((PASS + FAIL))
           echo "✅ Passed: $PASS"
           echo "❌ Failed: $FAIL"
-          echo "📊 Total: $((PASS + FAIL))"
-          
-          # Fail the job if any tests failed
+          echo "📊 Total: $TOTAL"
+
+          # Fail if zero tests ran — an empty/moved suite must NOT report green.
+          # (This is the silent-green guard: no tests == broken CI, not success.)
+          if [ "$TOTAL" -eq 0 ]; then
+            echo ""
+            echo "=== ERROR: no conformance tests ran (0 total) ==="
+            echo "The suite path may have moved again, or 'go test' failed to build."
+            echo "Check dfos/packages/relay-conformance and the go.mod there."
+            exit 1
+          fi
+
+          # Fail the job if any tests failed.
           if [ "$FAIL" -gt 0 ]; then
             echo ""
             echo "=== FAILING TESTS ==="
