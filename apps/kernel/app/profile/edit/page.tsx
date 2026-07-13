@@ -68,6 +68,9 @@ function EditProfileContent() {
   const [tier, setTier] = useState<string>('soft');
   const [emailUpdates, setEmailUpdates] = useState(false);
   const [emailUpdatesLoading, setEmailUpdatesLoading] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [verifyingSent, setVerifyingSent] = useState(false);
+  const [verifyingLoading, setVerifyingLoading] = useState(false);
 
   const isSoftTier = tier === 'soft';
 
@@ -120,6 +123,21 @@ function EditProfileContent() {
       setHandle(profile.handle || '');
       setEmail(profile.contactEmail || '');
       setPhone(profile.phone || '');
+
+      // Check email_verified attestation
+      if (profile.did) {
+        fetch(`/auth/api/attestations?subject_did=${encodeURIComponent(profile.did)}&type=email_verified&limit=1`)
+          .then(r => r.ok ? r.json() : [])
+          .then((atts: unknown[]) => setEmailVerified(atts.length > 0))
+          .catch(() => {});
+      }
+
+      // Show toast if redirected back from email confirmation link
+      const verifiedParam = new URLSearchParams(globalThis.location?.search ?? '').get('verified');
+      if (verifiedParam === 'email') {
+        setEmailVerified(true);
+        setSuccess(true);
+      }
 
       // Load email subscription status
       if (profile.contactEmail) {
@@ -240,6 +258,17 @@ function EditProfileContent() {
     }
   }
 
+  const emailToggleColorClass = emailUpdates ? 'bg-[#F59E0B]' : 'bg-gray-700';
+  const emailToggleCursorClass = (!email || emailUpdatesLoading) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
+  let verifyLabel: string;
+  if (verifyingLoading) {
+    verifyLabel = 'Sending…';
+  } else if (verifyingSent) {
+    verifyLabel = '📧 Sent!';
+  } else {
+    verifyLabel = 'Verify →';
+  }
+
   if (loading) {
     return (
       <div className="max-w-md mx-auto text-center">
@@ -303,15 +332,49 @@ function EditProfileContent() {
 
           {/* Contact Info */}
           <div className="pt-2 border-t border-gray-800">
-            <p className="text-xs text-gray-500 mb-3">🔒 Contact info is only visible to your connections</p>
+            <p className="text-xs text-gray-500 mb-3">🔒 Contact info is stored encrypted. Your connections can see it based on your disclosure settings.</p>
             <div className="space-y-4">
               <div>
-                <label htmlFor="profile-edit-email" className="block text-sm font-medium mb-1 text-gray-300">Email</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label htmlFor="profile-edit-email" className="block text-sm font-medium text-gray-300">
+                    Email
+                    {emailVerified && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-400 font-normal">
+                        ✅ Verified
+                      </span>
+                    )}
+                  </label>
+                  {email && !emailVerified && (
+                    <button
+                      type="button"
+                      disabled={verifyingLoading || verifyingSent}
+                      onClick={async () => {
+                        setVerifyingLoading(true);
+                        try {
+                          const res = await fetch('/profile/api/contact/verify-email', {
+                            method: 'POST',
+                            credentials: 'include',
+                          });
+                          if (res.ok) {
+                            setVerifyingSent(true);
+                          } else {
+                            const data = await res.json().catch(() => ({}));
+                            setError((data as { error?: string }).error || 'Failed to send verification email');
+                          }
+                        } catch { setError('Failed to send verification email'); }
+                        setVerifyingLoading(false);
+                      }}
+                      className="text-xs text-[#F59E0B] hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {verifyLabel}
+                    </button>
+                  )}
+                </div>
                 <input
                   id="profile-edit-email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { setEmail(e.target.value); setEmailVerified(false); setVerifyingSent(false); }}
                   placeholder="you@example.com"
                   className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
                 />
@@ -353,9 +416,7 @@ function EditProfileContent() {
                     } catch { /* non-fatal */ }
                     setEmailUpdatesLoading(false);
                   }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    emailUpdates ? 'bg-[#F59E0B]' : 'bg-gray-700'
-                  } ${(!email || emailUpdatesLoading) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${emailToggleColorClass} ${emailToggleCursorClass}`}
                 >
                   <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
                     emailUpdates ? 'translate-x-6' : 'translate-x-1'
