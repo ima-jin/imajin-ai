@@ -5,6 +5,7 @@ import { mediaWriteTools } from './media-write';
 import { connectionTools } from './connections';
 import { mediaShareTools } from './media-share';
 import { githubTools } from './github';
+import { inferenceTools } from './inference';
 import { discordTools } from './discord';
 
 /**
@@ -27,6 +28,7 @@ export const ALL_TOOLS: McpTool[] = [
   ...connectionTools,
   ...mediaShareTools,
   ...githubTools,
+  ...inferenceTools,
   ...discordTools,
 ];
 

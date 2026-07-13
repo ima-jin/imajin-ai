@@ -18,6 +18,7 @@ import * as consentSchema from './schemas/consent';
 import * as brokerAuditSchema from './schemas/broker-audit';
 import * as identityAliasesSchema from './schemas/identity-aliases';
 import * as vaultSchema from './schemas/vault';
+import * as inferenceSchema from './schemas/inference';
 import * as contactSchema from './schemas/contact';
 
 const schema = {
@@ -39,6 +40,7 @@ const schema = {
   ...brokerAuditSchema,
   ...identityAliasesSchema,
   ...vaultSchema,
+  ...inferenceSchema,
   ...contactSchema,
 };
 
@@ -63,6 +65,7 @@ export * from './schemas/consent';
 export * from './schemas/broker-audit';
 export * from './schemas/identity-aliases';
 export * from './schemas/vault';
+export * from './schemas/inference';
 export * from './schemas/contact';
 
 // Aliases for backward-compatible imports
