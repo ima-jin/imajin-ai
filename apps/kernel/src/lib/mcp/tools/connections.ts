@@ -1,6 +1,7 @@
 import type { McpTool } from '../types';
 import { json } from './utils';
 import { listConnections } from '../../connections/list';
+import { requireMcpGrant } from '../mcp-grant';
 
 /**
  * Connections tool for the MCP connector (#1195).
@@ -24,6 +25,7 @@ const connectionsListTool: McpTool = {
     additionalProperties: false,
   },
   async handler(_args, ctx) {
+    await requireMcpGrant(ctx.did, 'connections:read');
     const conns = await listConnections(ctx.did);
     return json({
       count: conns.length,

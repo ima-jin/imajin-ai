@@ -15,6 +15,21 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 /** Public origin of the MCP server (Caddy → kernel). e.g. https://mcp.imajin.ai */
 export const MCP_ISSUER = process.env.MCP_PUBLIC_URL ?? 'https://mcp.imajin.ai';
 
+/**
+ * Connector app DID for the Claude/MCP connector (#1222).
+ *
+ * This is the DID that appears in the user's MCP scope-manifest as `connector:`
+ * and in `auth.channel_links.appDid` for media/connections grant rows. Mirrors
+ * GITHUB_CONNECTOR_DID in src/lib/github/connector.ts.
+ */
+export const MCP_CONNECTOR_DID = 'did:imajin:mcp-connector';
+
+/**
+ * Channel label for MCP connector rows in `auth.channel_links` (#1222).
+ * Matches the `channel:` field in the user's MCP scope-manifest.
+ */
+export const MCP_CHANNEL = 'mcp';
+
 /** RFC 8707 resource indicator == access-token `aud`. Also the JSON-RPC path. */
 export const MCP_RESOURCE = `${MCP_ISSUER}/mcp`;
 
