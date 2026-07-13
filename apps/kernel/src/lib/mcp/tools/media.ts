@@ -1,7 +1,9 @@
-import type { McpTool, McpContent } from '../types';
+import type { McpTool } from '../types';
+import { str, num, json } from './utils';
 import type { Asset } from '@/src/db';
 import { getAccessType } from '@/src/lib/media/read-access';
 import { authorizeAssetRead } from '@/src/lib/media/authorize-read';
+import { requireMcpGrant } from '../mcp-grant';
 import {
   listOwnedAssets,
   getActiveAsset,
@@ -24,19 +26,6 @@ import {
  * MCP `isError: true` result the model can see.
  */
 
-function str(args: Record<string, unknown>, key: string): string | undefined {
-  const v = args[key];
-  return typeof v === 'string' && v.length > 0 ? v : undefined;
-}
-
-function num(args: Record<string, unknown>, key: string): number | undefined {
-  const v = args[key];
-  return typeof v === 'number' ? v : undefined;
-}
-
-function json(value: unknown): McpContent[] {
-  return [{ type: 'text', text: JSON.stringify(value, null, 2) }];
-}
 
 /** Safe, non-sensitive metadata view of an asset (no storagePath/fairPath). */
 function summarize(asset: Asset) {
@@ -85,6 +74,7 @@ const listTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
+    await requireMcpGrant(ctx.did, 'media:read');
     const opts: ListOptions = {
       type: str(args, 'type'),
       search: str(args, 'search'),
@@ -108,8 +98,9 @@ const getTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
+    await requireMcpGrant(ctx.did, 'media:read');
     const id = str(args, 'id');
-    if (!id) throw new Error('id is required');
+    if (!id) throw new Error('Asset not found');
     const asset = await loadReadable(id, ctx.did);
     return json(summarize(asset));
   },
@@ -127,6 +118,7 @@ const getContentTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
+    await requireMcpGrant(ctx.did, 'media:read');
     const id = str(args, 'id');
     if (!id) throw new Error('id is required');
     const asset = await loadReadable(id, ctx.did);
@@ -154,6 +146,7 @@ const resolveTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
+    await requireMcpGrant(ctx.did, 'media:read');
     const folderId = str(args, 'folderId');
     const did = str(args, 'did');
     const opts: ListOptions = { limit: num(args, 'limit'), offset: num(args, 'offset') };

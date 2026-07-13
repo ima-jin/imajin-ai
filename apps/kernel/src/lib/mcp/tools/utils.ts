@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Shared argument-parsing and response helpers for MCP tools.
  *
  * All MCP tool files import from here instead of defining local copies,
