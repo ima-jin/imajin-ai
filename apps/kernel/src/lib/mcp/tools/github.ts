@@ -25,7 +25,8 @@
  * RFC-32 federated-growth contract: only this file + tools/index.ts change
  * when adding or removing a GitHub tool.
  */
-import type { McpTool, McpContent } from '../types';
+import type { McpTool } from '../types';
+import { str, num, json } from './utils';
 import {
   sealPat,
   createIssue,
@@ -33,20 +34,6 @@ import {
   listIssues,
   getIssue,
 } from '@/src/lib/github/connector';
-
-function str(args: Record<string, unknown>, key: string): string | undefined {
-  const v = args[key];
-  return typeof v === 'string' && v.length > 0 ? v : undefined;
-}
-
-function num(args: Record<string, unknown>, key: string): number | undefined {
-  const v = args[key];
-  return typeof v === 'number' ? v : undefined;
-}
-
-function json(value: unknown): McpContent[] {
-  return [{ type: 'text', text: JSON.stringify(value, null, 2) }];
-}
 
 // ── B4 — PAT ingestion ────────────────────────────────────────────────────────
 

@@ -34,3 +34,38 @@ gh issue view {issueNum} --repo ima-jin/imajin-ai --json number,title,body,state
 ```
 
 This applies to any `gh issue view` call in this repo — never use the plain `gh issue view {issueNum}` form.
+## Git worktree isolation
+
+**ALWAYS** work in a dedicated git worktree for any task that involves creating or modifying files. Never `git checkout` in the main working directory (`D:\Projects\imajin\imajin-ai`). That directory is the shared checkout — switching branches there clobbers every other concurrent session.
+
+### Setup at the start of every session
+
+**Step 1 — create a worktree off `main`** for the branch you are working on:
+```powershell
+git worktree add ../wt-<branch-slug> -b <branch-name> origin/main
+```
+If the branch already exists on the remote, omit `-b`:
+```powershell
+git worktree add ../wt-<branch-slug> <branch-name>
+```
+
+**Step 2 — do all work inside that directory:**
+```powershell
+cd ../wt-<branch-slug>
+```
+All file reads, edits, commits, and pushes happen here. Never touch the main checkout.
+
+**Step 3 — clean up after the PR merges:**
+```powershell
+git worktree remove ../wt-<branch-slug>
+```
+
+### Naming convention
+
+Use the issue/PR number as the slug, e.g.:
+- Issue #1198 → `../wt-1198`
+- Branch `feat/18-discord-connector` → `../wt-18`
+
+### Why this matters
+
+All agent sessions share the same machine and the same `D:\Projects\imajin\imajin-ai` directory. A `git checkout` in that directory instantly changes the working tree for every other session running concurrently, causing branch confusion, stale file reads, and CI failures from commits landing on the wrong branch — exactly what happened with the inference engine work ending up in PR #1284 instead of its own PR.

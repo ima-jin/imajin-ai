@@ -185,6 +185,49 @@ export async function sealAndStoreV2(
 }
 
 /**
+ * Write a signed tombstone (deleted: true) for a vault field, removing it
+ * from all future reads while preserving the audit chain.
+ *
+ * Safe to call on a field that does not exist — returns undefined without error.
+ * No plaintext is logged at any point.
+ */
+export async function deleteFromVault(field: string): Promise<VaultEntry | undefined> {
+  const existingEntry = await vaultService.get(field);
+  if (!existingEntry) {
+    return undefined;
+  }
+
+  const sealKey = getSealKey();
+  const identity = getNodeSigningIdentity();
+
+  // Seal a fresh tombstone payload so the CID is unique (not a re-hash of the
+  // existing blob). The plaintext 'DELETED' is semantically meaningless but
+  // gives each tombstone a distinct CID for the chain.
+  const blob = sealSecret('DELETED', sealKey);
+  const cid = await computeVaultCid(blob);
+  const keyId = deriveKeyId(identity.senderPubkey);
+  const timestamp = new Date().toISOString();
+
+  const payload = {
+    version: VAULT_ENTRY_VERSION_V1 as typeof VAULT_ENTRY_VERSION_V1,
+    field,
+    cid,
+    encrypted: blob.encrypted,
+    nonce: blob.nonce,
+    senderDid: identity.senderDid,
+    senderPubkey: identity.senderPubkey,
+    keyId,
+    timestamp,
+    previousCid: existingEntry.cid,
+    deleted: true as const,
+  };
+
+  const signature = signVaultPayload(payload, identity.privateKeyHex);
+  const entry: VaultEntry = { ...payload, signature };
+  return vaultService.set(entry);
+}
+
+/**
  * Re-seal a new plaintext value for an existing vault field, chaining the
  * previousCid for a tamper-evident history.
  *
