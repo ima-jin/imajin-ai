@@ -260,6 +260,14 @@ function EditProfileContent() {
 
   const emailToggleColorClass = emailUpdates ? 'bg-[#F59E0B]' : 'bg-gray-700';
   const emailToggleCursorClass = (!email || emailUpdatesLoading) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
+  let verifyLabel: string;
+  if (verifyingLoading) {
+    verifyLabel = 'Sending…';
+  } else if (verifyingSent) {
+    verifyLabel = '📧 Sent!';
+  } else {
+    verifyLabel = 'Verify →';
+  }
 
   if (loading) {
     return (
@@ -358,7 +366,7 @@ function EditProfileContent() {
                       }}
                       className="text-xs text-[#F59E0B] hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {verifyingLoading ? 'Sending…' : verifyingSent ? '📧 Sent!' : 'Verify →'}
+                      {verifyLabel}
                     </button>
                   )}
                 </div>
