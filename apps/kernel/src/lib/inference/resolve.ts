@@ -113,6 +113,8 @@ export async function resolveIntent(
       sourceCid: sourceAsset?.cid ?? null,
       signature,
       senderPubkey: signingIdentity.senderPubkey,
+      // Reference the owner's signed authorization (deliberate tier) — #1293
+      ownerAuthorization: session.ownerAuthorization ?? null,
     })
     .returning();
 

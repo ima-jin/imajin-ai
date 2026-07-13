@@ -118,7 +118,7 @@ async function gatherPriors(ownerDid: string): Promise<TelemetryPriors> {
   try {
     const conns = await listConnections(ownerDid);
     recentConnectionDids = conns
-      .sort((a, b) => b.connectedAt.getTime() - a.connectedAt.getTime())
+      .toSorted((a, b) => b.connectedAt.getTime() - a.connectedAt.getTime())
       .slice(0, MAX_PRIOR_CONNECTIONS)
       .map((c) => c.did);
   } catch (err) {

@@ -161,6 +161,21 @@ describe('infer — inference policy layer', () => {
     expect(candidates).toEqual([]);
   });
 
+  it('filters out candidates where intentType is an object (not a string)', async () => {
+    // S6551: String({nested: 'x'}) === '[object Object]' — the guard must reject non-strings.
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify([
+        { intentType: { nested: 'object' }, confidence: 0.95, metadata: {} },
+        { intentType: 'supply.received', confidence: 0.7, metadata: {} },
+      ]),
+    });
+
+    const candidates = await infer(CTX, VOCAB);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.intentType).toBe('supply.received');
+  });
+
   it('updates session with candidateIntents and status=policy_done on success', async () => {
     mockGenerateText.mockResolvedValueOnce({
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),

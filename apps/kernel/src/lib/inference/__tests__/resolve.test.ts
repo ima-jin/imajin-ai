@@ -122,6 +122,12 @@ const MOCK_SESSION = {
   candidateIntents: [SUPPLY_INTENT],
 };
 
+const MOCK_OWNER_AUTH = {
+  payload: { sessionId: 'session_abc', chosenIntentType: 'supply.received', candidateDigest: 'abc123', ts: '2026-07-13T12:00:00Z' },
+  signature: 'ownerauth_sig',
+  senderPubkey: 'bbbb'.repeat(16),
+};
+
 const MOCK_ATTESTATION = {
   id: 'attest_attestid123456',
   sessionId: 'session_abc',
@@ -216,6 +222,24 @@ describe('resolveIntent', () => {
       const rowArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
       expect(rowArg['signature']).toBe('deadsignature0123456789abcdef');
       expect(rowArg['senderPubkey']).toBe(MOCK_NODE_IDENTITY.senderPubkey);
+    });
+
+    it('copies ownerAuthorization from session into the attestation row', async () => {
+      setupSelectSequence({ ...MOCK_SESSION, ownerAuthorization: MOCK_OWNER_AUTH }, 'bafyrecording');
+
+      await resolveIntent('session_abc', 'did:imajin:farmer', VOCAB);
+
+      const rowArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+      expect(rowArg['ownerAuthorization']).toEqual(MOCK_OWNER_AUTH);
+    });
+
+    it('sets ownerAuthorization to null when session has none (silent tier)', async () => {
+      setupSelectSequence({ ...MOCK_SESSION, ownerAuthorization: null }, 'bafytest');
+
+      await resolveIntent('session_abc', 'did:imajin:farmer', VOCAB);
+
+      const rowArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+      expect(rowArg['ownerAuthorization']).toBeNull();
     });
 
     it('publishes inference.resolved DFOS event', async () => {

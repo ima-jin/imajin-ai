@@ -108,12 +108,12 @@ function parseCandidates(
     return parsed
       .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
       .map((item) => ({
-        intentType: String(item['intentType'] ?? ''),
+      intentType: typeof item['intentType'] === 'string' ? item['intentType'] : '',
         confidence: Number(item['confidence'] ?? 0),
         metadata: (typeof item['metadata'] === 'object' && item['metadata'] !== null)
           ? (item['metadata'] as Record<string, unknown>)
           : {},
-        consentTier: vocab.resolveConsentTier(String(item['intentType'] ?? '')),
+        consentTier: vocab.resolveConsentTier(typeof item['intentType'] === 'string' ? item['intentType'] : ''),
       }))
       .filter((c) => c.intentType !== '')
       .sort((a, b) => b.confidence - a.confidence);
