@@ -12,9 +12,12 @@
  * the human. The AgriFortress one-confirm tap IS this gate.
  */
 
+import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db, inferenceSessions } from '@/src/db';
 import { createLogger } from '@imajin/logger';
+import { canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import type { CandidateIntent } from './types';
 
 const log = createLogger('kernel:inference:consent');
@@ -88,10 +91,31 @@ export async function confirmIntent(sessionId: string, ownerDid: string): Promis
     throw new Error(`Session is not awaiting confirmation (status: ${session.status})`);
   }
 
+  // Build and sign the owner authorization.
+  // The node acts for the owner and signs what was authorized so the confirm
+  // tap is provably bound to the exact candidate set that was inferred.
+  const identity = getNodeSigningIdentity();
+  const ts = new Date().toISOString();
+  const candidateDigest = createHash('sha256')
+    .update(JSON.stringify(session.candidateIntents ?? []))
+    .digest('hex');
+  const authPayload = {
+    sessionId,
+    chosenIntentType: session.chosenIntentType ?? '',
+    candidateDigest,
+    ts,
+  };
+  const authSignature = authCrypto.signSync(canonicalize(authPayload), identity.privateKeyHex);
+  const ownerAuthorization = {
+    payload: authPayload,
+    signature: authSignature,
+    senderPubkey: identity.senderPubkey,
+  };
+
   await db
     .update(inferenceSessions)
-    .set({ status: 'resolving', updatedAt: new Date() })
+    .set({ status: 'resolving', updatedAt: new Date(), ownerAuthorization })
     .where(eq(inferenceSessions.id, sessionId));
 
-  log.info({ sessionId, ownerDid }, 'intent confirmed — advancing to resolving');
+  log.info({ sessionId, ownerDid, senderPubkey: identity.senderPubkey }, 'intent confirmed and authorization signed — advancing to resolving');
 }

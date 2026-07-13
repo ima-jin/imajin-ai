@@ -28,6 +28,8 @@ export const inferenceSessions = inferenceSchema.table(
     candidateIntents: jsonb('candidate_intents'),         // CandidateIntent[] (jsonb)
     chosenIntentType: text('chosen_intent_type'),         // set when gate fires
     consentTier: text('consent_tier'),                    // 'silent' | 'itemized' | 'deliberate'
+    // Signed owner authorization (deliberate tier) — stored at confirmIntent() time (#1293)
+    ownerAuthorization: jsonb('owner_authorization'),
     /**
      * State machine:
      *   capturing → (context) → inferring → (policy) →
@@ -70,6 +72,11 @@ export const inferenceAttestations = inferenceSchema.table(
     sourceAssetId: text('source_asset_id').notNull(),     // the recording / capture asset
     sourceCid: text('source_cid'),                        // CID of recording at action time
     dfosEventId: text('dfos_event_id'),                   // DFOS anchor for cross-chain verifiability
+    // Node signing — #1292
+    signature: text('signature'),                         // Ed25519 hex signature over the attestation payload
+    senderPubkey: text('sender_pubkey'),                  // hex-encoded Ed25519 public key of the signing node
+    // Owner authorization reference — #1293 (copied from session at resolution time)
+    ownerAuthorization: jsonb('owner_authorization'),
     signedAt: timestamp('signed_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({

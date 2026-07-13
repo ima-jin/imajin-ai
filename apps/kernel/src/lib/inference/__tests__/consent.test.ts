@@ -32,7 +32,36 @@ vi.mock('@imajin/logger', () => ({
   createLogger: vi.fn(() => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() })),
 }));
 
-// ─── Subject ────────────────────────────────────────────────────────────────
+vi.mock('node:crypto', () => ({
+  createHash: vi.fn(() => ({
+    update: vi.fn().mockReturnThis(),
+    digest: vi.fn(() => 'candidatedigest'),
+  })),
+}));
+
+const { mockAuthSignSync, mockGetNodeSigningIdentity: mockConsentNodeIdentity, MOCK_IDENTITY } = vi.hoisted(() => {
+  const identity = {
+    privateKeyHex: 'cccc'.repeat(16),
+    senderPubkey: 'dddd'.repeat(16),
+    senderDid: 'did:imajin:dddddddddddddddd',
+  };
+  return {
+    mockAuthSignSync: vi.fn(() => 'authsig0123456789abcdef'),
+    mockGetNodeSigningIdentity: vi.fn(() => identity),
+    MOCK_IDENTITY: identity,
+  };
+});
+
+vi.mock('@imajin/auth', () => ({
+  canonicalize: vi.fn(() => 'canonical-auth-payload'),
+  crypto: { signSync: mockAuthSignSync },
+}));
+
+vi.mock('@/src/lib/vault/sealing', () => ({
+  getNodeSigningIdentity: mockConsentNodeIdentity,
+}));
+
+// ─── Subject ────────────────────────────────────────────────────────────────────────────
 
 import { resolveConsentGate, confirmIntent } from '../consent';
 import type { CandidateIntent } from '../types';
@@ -48,6 +77,14 @@ function makeIntent(consentTier: CandidateIntent['consentTier']): CandidateInten
   };
 }
 
+const MOCK_PENDING_SESSION = {
+  id: 'session_x',
+  ownerDid: 'did:imajin:owner',
+  status: 'pending_confirm',
+  chosenIntentType: 'supply.received',
+  candidateIntents: [{ intentType: 'supply.received', confidence: 0.9, metadata: {}, consentTier: 'deliberate' }],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockUpdateSet.mockImplementation(() => ({ where: mockUpdateSetWhere }));
@@ -56,6 +93,8 @@ beforeEach(() => {
   mockSelectWhere.mockImplementation(() => ({ limit: mockSelectWhereLimit }));
   mockDbUpdate.mockImplementation(() => ({ set: mockUpdateSet }));
   mockDbSelect.mockImplementation(() => ({ from: mockSelectFrom }));
+  mockAuthSignSync.mockReturnValue('authsig0123456789abcdef');
+  mockConsentNodeIdentity.mockReturnValue(MOCK_IDENTITY);
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -120,16 +159,28 @@ describe('confirmIntent', () => {
   });
 
   it('advances session to resolving when ownership and status are valid', async () => {
-    mockSelectWhereLimit.mockResolvedValueOnce([{
-      id: 'session_x',
-      ownerDid: 'did:imajin:owner',
-      status: 'pending_confirm',
-    }]);
+    mockSelectWhereLimit.mockResolvedValueOnce([MOCK_PENDING_SESSION]);
 
     await confirmIntent('session_x', 'did:imajin:owner');
 
     expect(mockUpdateSet).toHaveBeenCalledOnce();
     const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
     expect(setArg['status']).toBe('resolving');
+  });
+
+  it('stores a signed ownerAuthorization on the session at confirm time', async () => {
+    mockSelectWhereLimit.mockResolvedValueOnce([MOCK_PENDING_SESSION]);
+
+    await confirmIntent('session_x', 'did:imajin:owner');
+
+    const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
+    const auth = setArg['ownerAuthorization'] as Record<string, unknown>;
+    expect(auth).toBeDefined();
+    expect(auth['signature']).toBe('authsig0123456789abcdef');
+    expect(auth['senderPubkey']).toBe(MOCK_IDENTITY.senderPubkey);
+    const payload = auth['payload'] as Record<string, unknown>;
+    expect(payload['sessionId']).toBe('session_x');
+    expect(payload['chosenIntentType']).toBe('supply.received');
+    expect(payload['candidateDigest']).toBe('candidatedigest');
   });
 });

@@ -59,6 +59,28 @@ vi.mock('@imajin/logger', () => ({
   createLogger: vi.fn(() => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() })),
 }));
 
+const { mockSignSync, mockGetNodeSigningIdentity, MOCK_NODE_IDENTITY } = vi.hoisted(() => {
+  const identity = {
+    privateKeyHex: 'aaaa'.repeat(16),
+    senderPubkey: 'bbbb'.repeat(16),
+    senderDid: 'did:imajin:bbbbbbbbbbbbbbbb',
+  };
+  return {
+    mockSignSync: vi.fn(() => 'deadsignature0123456789abcdef'),
+    mockGetNodeSigningIdentity: vi.fn(() => identity),
+    MOCK_NODE_IDENTITY: identity,
+  };
+});
+
+vi.mock('@imajin/auth', () => ({
+  canonicalize: vi.fn(() => 'canonical-attestation-payload'),
+  crypto: { signSync: mockSignSync },
+}));
+
+vi.mock('@/src/lib/vault/sealing', () => ({
+  getNodeSigningIdentity: mockGetNodeSigningIdentity,
+}));
+
 // ─── Subject ────────────────────────────────────────────────────────────────
 
 import { resolveIntent } from '../resolve';
@@ -100,6 +122,12 @@ const MOCK_SESSION = {
   candidateIntents: [SUPPLY_INTENT],
 };
 
+const MOCK_OWNER_AUTH = {
+  payload: { sessionId: 'session_abc', chosenIntentType: 'supply.received', candidateDigest: 'abc123', ts: '2026-07-13T12:00:00Z' },
+  signature: 'ownerauth_sig',
+  senderPubkey: 'bbbb'.repeat(16),
+};
+
 const MOCK_ATTESTATION = {
   id: 'attest_attestid123456',
   sessionId: 'session_abc',
@@ -129,6 +157,8 @@ beforeEach(() => {
   mockDbUpdate.mockImplementation(() => ({ set: mockUpdateSet }));
 
   vi.mocked(VOCAB.resolve).mockResolvedValue(MOCK_RECEIPT);
+  mockSignSync.mockReturnValue('deadsignature0123456789abcdef');
+  mockGetNodeSigningIdentity.mockReturnValue(MOCK_NODE_IDENTITY);
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -182,6 +212,34 @@ describe('resolveIntent', () => {
       expect(rowArg['consentTier']).toBe('deliberate');
       expect(rowArg['sourceCid']).toBe('bafyrecording');
       expect(rowArg['id']).toMatch(/^attest_/);
+    });
+
+    it('signs the attestation payload with node identity and stores signature + senderPubkey', async () => {
+      setupSelectSequence(MOCK_SESSION, 'bafyrecording');
+
+      await resolveIntent('session_abc', 'did:imajin:farmer', VOCAB);
+
+      const rowArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+      expect(rowArg['signature']).toBe('deadsignature0123456789abcdef');
+      expect(rowArg['senderPubkey']).toBe(MOCK_NODE_IDENTITY.senderPubkey);
+    });
+
+    it('copies ownerAuthorization from session into the attestation row', async () => {
+      setupSelectSequence({ ...MOCK_SESSION, ownerAuthorization: MOCK_OWNER_AUTH }, 'bafyrecording');
+
+      await resolveIntent('session_abc', 'did:imajin:farmer', VOCAB);
+
+      const rowArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+      expect(rowArg['ownerAuthorization']).toEqual(MOCK_OWNER_AUTH);
+    });
+
+    it('sets ownerAuthorization to null when session has none (silent tier)', async () => {
+      setupSelectSequence({ ...MOCK_SESSION, ownerAuthorization: null }, 'bafytest');
+
+      await resolveIntent('session_abc', 'did:imajin:farmer', VOCAB);
+
+      const rowArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+      expect(rowArg['ownerAuthorization']).toBeNull();
     });
 
     it('publishes inference.resolved DFOS event', async () => {
