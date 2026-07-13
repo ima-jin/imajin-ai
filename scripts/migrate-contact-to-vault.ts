@@ -29,6 +29,77 @@ interface ProfileRow {
   phone: string | null;
 }
 
+/** Migrate a single profile row: seal contact fields, hash, backfill credentials, verify, null columns. */
+async function migrateProfileRow(row: ProfileRow): Promise<void> {
+  const { did, contact_email, phone } = row;
+
+  if (contact_email) {
+    const emailField = `contact:email:${did}`;
+    const existing = await loadAndUnseal(emailField).catch(() => undefined);
+    if (!existing) {
+      await sealAndStore(emailField, contact_email);
+      console.log(`  [email] sealed for ${did.slice(0, 20)}…`);
+    } else {
+      console.log(`  [email] already in vault for ${did.slice(0, 20)}… — skipping seal`);
+    }
+
+    const emailHash = createHash('sha256').update(contact_email.toLowerCase().trim()).digest('hex');
+    await sql`
+      INSERT INTO profile.contact_hashes (did, email_hash, updated_at)
+      VALUES (${did}, ${emailHash}, now())
+      ON CONFLICT (did) DO UPDATE
+        SET email_hash = ${emailHash}, updated_at = now()
+    `;
+
+    const normalised = contact_email.toLowerCase().trim();
+    const credId = 'cred_' + createHash('sha256').update(did + normalised).digest('hex').slice(0, 24);
+    await sql`
+      INSERT INTO auth.credentials (id, did, type, value, verified_at)
+      VALUES (${credId}, ${did}, 'email', ${normalised}, now())
+      ON CONFLICT (type, value) DO NOTHING
+    `;
+  }
+
+  if (phone) {
+    const phoneField = `contact:phone:${did}`;
+    const existing = await loadAndUnseal(phoneField).catch(() => undefined);
+    if (!existing) {
+      await sealAndStore(phoneField, phone);
+      console.log(`  [phone] sealed for ${did.slice(0, 20)}…`);
+    } else {
+      console.log(`  [phone] already in vault for ${did.slice(0, 20)}… — skipping seal`);
+    }
+
+    const phoneHash = createHash('sha256').update(phone.toLowerCase().trim()).digest('hex');
+    await sql`
+      INSERT INTO profile.contact_hashes (did, phone_hash, updated_at)
+      VALUES (${did}, ${phoneHash}, now())
+      ON CONFLICT (did) DO UPDATE
+        SET phone_hash = ${phoneHash}, updated_at = now()
+    `;
+  }
+
+  // Verify round-trip before nulling plaintext columns
+  if (contact_email) {
+    const recovered = await loadAndUnseal(`contact:email:${did}`);
+    if (recovered !== contact_email) {
+      throw new Error(`Round-trip mismatch for email on ${did}: expected "${contact_email}", got "${recovered}"`);
+    }
+  }
+  if (phone) {
+    const recovered = await loadAndUnseal(`contact:phone:${did}`);
+    if (recovered !== phone) {
+      throw new Error(`Round-trip mismatch for phone on ${did}: expected "${phone}", got "${recovered}"`);
+    }
+  }
+
+  await sql`
+    UPDATE profile.profiles
+    SET contact_email = NULL, phone = NULL
+    WHERE did = ${did}
+  `;
+}
+
 async function main() {
   console.log('=== Contact vault migration ===');
 
@@ -45,83 +116,11 @@ async function main() {
   let failCount = 0;
 
   for (const row of rows) {
-    const { did, contact_email, phone } = row;
     try {
-      // Migrate email
-      if (contact_email) {
-        const emailField = `contact:email:${did}`;
-        const existing = await loadAndUnseal(emailField).catch(() => undefined);
-        if (!existing) {
-          await sealAndStore(emailField, contact_email);
-          console.log(`  [email] sealed for ${did.slice(0, 20)}…`);
-        } else {
-          console.log(`  [email] already in vault for ${did.slice(0, 20)}… — skipping seal`);
-        }
-
-        // Upsert email hash
-        const emailHash = createHash('sha256').update(contact_email.toLowerCase().trim()).digest('hex');
-        await sql`
-          INSERT INTO profile.contact_hashes (did, email_hash, updated_at)
-          VALUES (${did}, ${emailHash}, now())
-          ON CONFLICT (did) DO UPDATE
-            SET email_hash = ${emailHash}, updated_at = now()
-        `;
-
-        // Backfill auth.credentials for magic-link login continuity
-        const normalised = contact_email.toLowerCase().trim();
-        const credId = 'cred_' + createHash('sha256').update(did + normalised).digest('hex').slice(0, 24);
-        await sql`
-          INSERT INTO auth.credentials (id, did, type, value, verified_at)
-          VALUES (${credId}, ${did}, 'email', ${normalised}, now())
-          ON CONFLICT (type, value) DO NOTHING
-        `;
-      }
-
-      // Migrate phone
-      if (phone) {
-        const phoneField = `contact:phone:${did}`;
-        const existing = await loadAndUnseal(phoneField).catch(() => undefined);
-        if (!existing) {
-          await sealAndStore(phoneField, phone);
-          console.log(`  [phone] sealed for ${did.slice(0, 20)}…`);
-        } else {
-          console.log(`  [phone] already in vault for ${did.slice(0, 20)}… — skipping seal`);
-        }
-
-        // Upsert phone hash
-        const phoneHash = createHash('sha256').update(phone.toLowerCase().trim()).digest('hex');
-        await sql`
-          INSERT INTO profile.contact_hashes (did, phone_hash, updated_at)
-          VALUES (${did}, ${phoneHash}, now())
-          ON CONFLICT (did) DO UPDATE
-            SET phone_hash = ${phoneHash}, updated_at = now()
-        `;
-      }
-
-      // Verify round-trip before nulling
-      if (contact_email) {
-        const recovered = await loadAndUnseal(`contact:email:${did}`);
-        if (recovered !== contact_email) {
-          throw new Error(`Round-trip mismatch for email on ${did}: expected "${contact_email}", got "${recovered}"`);
-        }
-      }
-      if (phone) {
-        const recovered = await loadAndUnseal(`contact:phone:${did}`);
-        if (recovered !== phone) {
-          throw new Error(`Round-trip mismatch for phone on ${did}: expected "${phone}", got "${recovered}"`);
-        }
-      }
-
-      // Null out plaintext columns (migration complete for this row)
-      await sql`
-        UPDATE profile.profiles
-        SET contact_email = NULL, phone = NULL
-        WHERE did = ${did}
-      `;
-
+      await migrateProfileRow(row);
       successCount++;
     } catch (err) {
-      console.error(`  FAILED for ${did}:`, err);
+      console.error(`  FAILED for ${row.did}:`, err);
       failCount++;
       // Continue — do not abort the whole migration on a single failure
     }

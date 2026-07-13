@@ -258,6 +258,9 @@ function EditProfileContent() {
     }
   }
 
+  const emailToggleColorClass = emailUpdates ? 'bg-[#F59E0B]' : 'bg-gray-700';
+  const emailToggleCursorClass = (!email || emailUpdatesLoading) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
+
   if (loading) {
     return (
       <div className="max-w-md mx-auto text-center">
@@ -405,9 +408,7 @@ function EditProfileContent() {
                     } catch { /* non-fatal */ }
                     setEmailUpdatesLoading(false);
                   }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    emailUpdates ? 'bg-[#F59E0B]' : 'bg-gray-700'
-                  } ${(!email || emailUpdatesLoading) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${emailToggleColorClass} ${emailToggleCursorClass}`}
                 >
                   <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
                     emailUpdates ? 'translate-x-6' : 'translate-x-1'

@@ -5,18 +5,22 @@
  * confirmation link. On click the confirm endpoint issues an `email_verified`
  * attestation on the owner's DID.
  *
- * Token: HMAC-SHA256( AUTH_PRIVATE_KEY, "{did}:{email}:{exp}" ) where exp is
- * a Unix-ms timestamp 15 minutes from now. The raw token is URL-safe base64.
- * No plaintext email is exposed in the token itself — the email is re-read
- * from the vault at confirm time.
+ * Token: HMAC-SHA256( AUTH_PRIVATE_KEY, "{did}:{nonce}:{exp}" ) where exp is
+ * a Unix-ms timestamp 15 minutes from now and nonce is a random 16-byte hex
+ * string. The raw token is URL-safe base64. No plaintext email is exposed in
+ * the token — the email is re-read from the vault at confirm time.
+ *
+ * Single-use: the nonce is stored in the vault as
+ * `verify:email-nonce:{did}` and consumed (deleted) by the confirm handler.
+ * Any subsequent attempt with the same link returns `verified=invalid`.
  */
 
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
-import { loadAndUnseal } from '@/src/lib/vault';
+import { loadAndUnseal, sealAndStore } from '@/src/lib/vault';
 import { sendEmail } from '@imajin/email';
 import { createLogger } from '@imajin/logger';
 
@@ -26,9 +30,9 @@ const PROFILE_URL = process.env.NEXT_PUBLIC_PROFILE_URL ?? process.env.NEXT_PUBL
 /** 15-minute TTL in milliseconds */
 const TOKEN_TTL_MS = 15 * 60 * 1000;
 
-function buildToken(did: string, exp: number): string {
+function buildToken(did: string, nonce: string, exp: number): string {
   const privateKey = process.env.AUTH_PRIVATE_KEY ?? 'dev-verify-key';
-  const message = `${did}:${exp}`;
+  const message = `${did}:${nonce}:${exp}`;
   return createHmac('sha256', privateKey).update(message).digest('base64url');
 }
 
@@ -68,12 +72,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No email address found. Add an email to your profile first.' }, { status: 400, headers: cors });
   }
 
+  const nonce = randomBytes(16).toString('hex');
   const exp = Date.now() + TOKEN_TTL_MS;
-  const token = buildToken(ownerDid, exp);
 
-  // Encode {did, exp} in the URL so the confirm handler can re-derive and check the HMAC
+  // Store the nonce in the vault before sending — the confirm handler checks
+  // and consumes it, making the link single-use.
+  try {
+    await sealAndStore(`verify:email-nonce:${ownerDid}`, `${nonce}:${exp}`);
+  } catch (err) {
+    log.error({ err: String(err), did: ownerDid }, 'Failed to store email verification nonce');
+    return NextResponse.json({ error: 'Failed to initiate email verification' }, { status: 500, headers: cors });
+  }
+
+  const token = buildToken(ownerDid, nonce, exp);
+
+  // Encode {did, nonce, exp} in the URL so the confirm handler can verify the HMAC and consume the nonce
   const params = new URLSearchParams({
     did: ownerDid,
+    nonce,
     exp: String(exp),
     tok: token,
   });

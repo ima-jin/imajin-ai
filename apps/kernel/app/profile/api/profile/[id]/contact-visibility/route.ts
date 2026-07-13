@@ -13,7 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, profiles, consentGrants } from '@/src/db';
+import { db, consentGrants } from '@/src/db';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { eq, and } from 'drizzle-orm';
@@ -91,9 +91,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
   // action === 'grant'
   const specificDid = typeof grantedTo === 'string' ? grantedTo : null;
-  const targetClass = !specificDid && typeof grantedToClass === 'string' && ALLOWED_CLASSES.has(grantedToClass)
-    ? grantedToClass
-    : specificDid ? null : 'connections'; // default to connections
+  let targetClass: string | null;
+  if (specificDid) {
+    targetClass = null;
+  } else if (typeof grantedToClass === 'string' && ALLOWED_CLASSES.has(grantedToClass)) {
+    targetClass = grantedToClass;
+  } else {
+    targetClass = 'connections'; // default to connections
+  }
 
   // Revoke any existing active grant before creating the new one (replace semantics)
   await db
