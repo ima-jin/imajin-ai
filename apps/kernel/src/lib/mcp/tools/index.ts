@@ -6,6 +6,7 @@ import { connectionTools } from './connections';
 import { mediaShareTools } from './media-share';
 import { githubTools } from './github';
 import { discordTools } from './discord';
+import { inferenceTools } from './inference';
 
 /**
  * The MCP tool registry. To add a tool: create `./<tool>.ts` exporting an
@@ -28,6 +29,7 @@ export const ALL_TOOLS: McpTool[] = [
   ...mediaShareTools,
   ...githubTools,
   ...discordTools,
+  ...inferenceTools,
 ];
 
 const TOOLS_BY_NAME = new Map<string, McpTool>(ALL_TOOLS.map((t) => [t.name, t]));
