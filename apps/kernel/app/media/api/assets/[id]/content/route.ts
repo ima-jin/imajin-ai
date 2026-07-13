@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import { db, assets } from "@/src/db";
@@ -52,7 +53,9 @@ export async function GET(
   const authHeader = request.headers.get("Authorization");
   const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
-  if (bearerToken && internalApiKey && bearerToken === internalApiKey) {
+  if (bearerToken && internalApiKey &&
+      bearerToken.length === internalApiKey.length &&
+      timingSafeEqual(Buffer.from(bearerToken), Buffer.from(internalApiKey))) {
     if (accessType !== "public" && accessType !== "trust-graph") {
       return NextResponse.json(
         { error: "Access denied", reason: "Asset is private" },

@@ -24,6 +24,20 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+/** Generate the Available Tools section of the system prompt from registered tools.
+ * Replaces the old hardcoded list so the bootstrap stays in sync when tools are added or removed. */
+function buildToolBootstrap(tools: Record<string, { description?: string }>): string {
+  const toolLines = Object.entries(tools)
+    .map(([name, t]) => `- **${name}**: ${t.description ?? ''}`.trimEnd())
+    .join('\n');
+  return (
+    '\n\n## Available Tools\n' +
+    'You have tools to interact with the Imajin platform. ' +
+    "Do not say you lack access without trying the relevant tool first.\n\n" +
+    toolLines
+  );
+}
+
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { id: targetDid } = await params;
 
@@ -96,14 +110,30 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   };
   const { model, modelId } = resolveModel(presenceConfig);
 
-  // 6. System prompt
+  // 6. Tools (resolved before system prompt so bootstrap can be generated from them)
+  const tools = createPresenceTools({
+    eventsUrl: process.env.EVENTS_SERVICE_URL ?? '',
+    connectionsUrl: CONNECTIONS_URL,
+    authUrl: '',
+    payUrl: process.env.PAY_SERVICE_URL ?? '',
+    profileUrl: process.env.NEXT_PUBLIC_PROFILE_URL ?? '',
+    learnUrl: process.env.LEARN_SERVICE_URL ?? '',
+    mediaUrl: MEDIA_URL,
+    mediaApiKey: MEDIA_INTERNAL_API_KEY,
+    targetDid: resolvedTargetDid,
+    requesterDid,
+    trustDistance,
+    internalApiKey: TRUST_INTERNAL_API_KEY,
+  });
+
+  // 7. System prompt
   const soulMd = presenceData.soul ?? '';
   const contextMd = presenceData.context ?? '';
-  const bootstrap = '\n\n## Available Tools\nYou have tools to interact with the Imajin platform. When someone asks about essays, documents, or files — use searchAssets to find them, then readAsset to read their content. Do not say you lack access without searching first.\n\nAvailable: searchAssets (find files by name), readAsset (read text file content), getProfile, getEvents, getConnections, getAttestations.';
   const systemPrompt = ([soulMd, contextMd].filter(Boolean).join('\n\n') ||
-    `You are the presence of ${profile.displayName}. Answer questions helpfully and authentically.`) + bootstrap;
+    `You are the presence of ${profile.displayName}. Answer questions helpfully and authentically.`) +
+    buildToolBootstrap(tools);
 
-  // 7. Parse body — convert useChat format to plain messages for streamText
+  // 8. Parse body — convert useChat format to plain messages for streamText
   //    useChat sends messages with toolInvocations[] on assistant messages.
   //    We strip those and only keep user/assistant text for the model context.
   const body = await request.json();
@@ -124,22 +154,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       content: typeof msg.content === 'string' ? msg.content : '',
       // Explicitly exclude toolInvocations — streamText will re-invoke tools as needed
     }));
-
-  // 8. Tools
-  const tools = createPresenceTools({
-    eventsUrl: process.env.EVENTS_SERVICE_URL ?? '',
-    connectionsUrl: CONNECTIONS_URL,
-    authUrl: '',
-    payUrl: process.env.PAY_SERVICE_URL ?? '',
-    profileUrl: process.env.NEXT_PUBLIC_PROFILE_URL ?? '',
-    learnUrl: process.env.LEARN_SERVICE_URL ?? '',
-    mediaUrl: MEDIA_URL,
-    mediaApiKey: MEDIA_INTERNAL_API_KEY,
-    targetDid: resolvedTargetDid,
-    requesterDid,
-    trustDistance,
-    internalApiKey: TRUST_INTERNAL_API_KEY,
-  });
 
   // 9. Stream with custom SSE that includes tool call metadata
   const queryId = nanoid();
