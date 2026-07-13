@@ -51,6 +51,8 @@ export const ATTESTATION_TYPES = [
   'contributor.rfc.authored',
   'contributor.review',
   'contributor.design',
+  'email_verified',
+  'phone_verified',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];

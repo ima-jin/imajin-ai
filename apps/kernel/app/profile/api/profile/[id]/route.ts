@@ -1,16 +1,19 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
+import { NextRequest, NextResponse } from 'next/server';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
-import { db, profiles, connections, identityMembers } from '@/src/db';
+import { db, profiles, connections, identityMembers, contactHashes, consentGrants } from '@/src/db';
 import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { eq, or, and, isNull, count } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
-import { publish } from '@imajin/bus';
+import { publish, broker, isBrokerRelease } from '@imajin/bus';
 import { validateAgentPricingManifest } from '@imajin/fair';
 import { filterProfileFields, FIELD_VISIBILITY_LEVELS } from '@/src/lib/profile';
 import type { FieldVisibility } from '@/src/db/schemas/profile';
+import { sealAndStore, rotateAndStore, deleteFromVault, loadAndUnseal, vaultService } from '@/src/lib/vault';
+import { generateId } from '@/src/lib/kernel/id';
 
 const log = createLogger('kernel');
 
@@ -87,24 +90,60 @@ async function getViewerDid(request: NextRequest): Promise<string | null> {
   } catch { return null; }
 }
 
-/** Check if viewerDid is connected to targetDid */
-async function checkConnected(viewerDid: string, targetDid: string): Promise<boolean> {
-  try {
-    const [conn] = await db
-      .select({ id: connections.didA })
-      .from(connections)
-      .where(
-        and(
-          or(
-            and(eq(connections.didA, viewerDid), eq(connections.didB, targetDid)),
-            and(eq(connections.didA, targetDid), eq(connections.didB, viewerDid))
-          ),
-          isNull(connections.disconnectedAt)
-        )
+/** SHA-256 of a normalised (lowercased, trimmed) string for federation hashing. */
+function hashContactValue(value: string): string {
+  return createHash('sha256').update(value.toLowerCase().trim()).digest('hex');
+}
+
+/**
+ * Upsert contact hashes for a DID. Pass null for a field to clear its hash.
+ * No plaintext is ever stored here — hashes only.
+ */
+async function upsertContactHashes(
+  did: string,
+  emailHash: string | null,
+  phoneHash: string | null
+): Promise<void> {
+  await db
+    .insert(contactHashes)
+    .values({ did, emailHash, phoneHash })
+    .onConflictDoUpdate({
+      target: contactHashes.did,
+      set: { emailHash, phoneHash, updatedAt: new Date() },
+    });
+}
+
+/**
+ * Seed a connections-level consent grant for contact disclosure if one does
+ * not already exist. The owner can tighten/widen or revoke via the
+ * contact-visibility API. Idempotent — no-op if an active grant already exists.
+ */
+async function ensureContactConsentGrant(ownerDid: string): Promise<void> {
+  const [existing] = await db
+    .select({ id: consentGrants.id })
+    .from(consentGrants)
+    .where(
+      and(
+        eq(consentGrants.subject, ownerDid),
+        eq(consentGrants.purpose, 'contact.disclosure'),
+        eq(consentGrants.status, 'active')
       )
-      .limit(1);
-    return !!conn;
-  } catch { return false; }
+    )
+    .limit(1);
+
+  if (existing) return;
+
+  await db.insert(consentGrants).values({
+    id: generateId('cg'),
+    subject: ownerDid,
+    grantedTo: null,
+    grantedToClass: 'connections',
+    purpose: 'contact.disclosure',
+    allowedFields: ['email', 'phone'],
+    mode: 'raw',
+    status: 'active',
+    consentRef: generateId('cref'),
+  });
 }
 
 interface RouteParams {
@@ -154,22 +193,55 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
     }
 
-    // Gate contact info: only visible to self or connections
+    // Contact info is vault-stored; never return plaintext columns even if they
+    // still exist (legacy migration period). Always read from vault.
     const result: Record<string, any> = { ...profile };
-    let viewerDid: string | null = null;
-    if (profile.contactEmail || profile.phone) {
-      viewerDid = await getViewerDid(request);
-      const isSelf = viewerDid === profile.did;
-      const connected = viewerDid && !isSelf ? await checkConnected(viewerDid, profile.did) : false;
-      if (!isSelf && !connected) {
-        delete result.contactEmail;
-        delete result.phone;
+    delete result.contactEmail;
+    delete result.phone;
+
+    const viewerDid = await getViewerDid(request);
+
+    if (viewerDid === profile.did) {
+      // Owner: unseal directly from vault
+      const [vaultEmail, vaultPhone] = await Promise.all([
+        loadAndUnseal(`contact:email:${profile.did}`).catch(() => undefined),
+        loadAndUnseal(`contact:phone:${profile.did}`).catch(() => undefined),
+      ]);
+      if (vaultEmail) result.contactEmail = vaultEmail;
+      if (vaultPhone) result.phone = vaultPhone;
+    } else if (viewerDid) {
+      // Third-party: broker-gated release (consent → scope → release → audit)
+      const unsealed: Record<string, unknown> = {};
+      const [e, p] = await Promise.all([
+        loadAndUnseal(`contact:email:${profile.did}`).catch(() => undefined),
+        loadAndUnseal(`contact:phone:${profile.did}`).catch(() => undefined),
+      ]);
+      if (e) unsealed['email'] = e;
+      if (p) unsealed['phone'] = p;
+
+      if (Object.keys(unsealed).length > 0) {
+        try {
+          const release = await broker('profile.contact.request', {
+            type: 'profile.contact.request',
+            requester: viewerDid,
+            subject: profile.did,
+            fields: Object.keys(unsealed),
+            purpose: 'contact.disclosure',
+            scope: 'profile',
+            data: unsealed,
+          });
+          if (isBrokerRelease(release)) {
+            if (release.data['email']) result.contactEmail = release.data['email'];
+            if (release.data['phone']) result.phone = release.data['phone'];
+          }
+        } catch {
+          // Fail-closed: no contact info released on broker error
+        }
       }
     }
 
     // Per-field metadata visibility (#1003): non-owners get a broker-filtered metadata object.
     // Self-queries bypass filtering and see everything.
-    if (viewerDid === null) viewerDid = await getViewerDid(request);
     if (viewerDid !== profile.did) {
       result.metadata = await filterProfileFields(
         profile.metadata as Record<string, unknown> | null,
@@ -291,8 +363,60 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (avatar !== undefined) updates.avatar = avatar;
     if (avatarAssetId !== undefined) updates.avatarAssetId = avatarAssetId;
     if (bio !== undefined) updates.bio = bio;
-    if (email !== undefined) updates.contactEmail = email || null;
-    if (phone !== undefined) updates.phone = phone || null;
+
+    // Contact info is vault-stored — never write plaintext to DB columns.
+    // Always null out the legacy columns and delegate to vault.
+    const profileDid = existing?.did || id;
+    if (email !== undefined) {
+      updates.contactEmail = null; // ensure legacy column stays clear
+      if (email) {
+        const emailField = `contact:email:${profileDid}`;
+        const exists = await vaultService.get(emailField);
+        if (exists) {
+          await rotateAndStore(emailField, String(email));
+        } else {
+          await sealAndStore(emailField, String(email));
+        }
+        await upsertContactHashes(profileDid, hashContactValue(String(email)), null);
+        await ensureContactConsentGrant(profileDid).catch(() => {});
+      } else {
+        await deleteFromVault(`contact:email:${profileDid}`);
+        // Clear email hash; preserve phone hash
+        const existing_hashes = await db
+          .select({ phoneHash: contactHashes.phoneHash })
+          .from(contactHashes)
+          .where(eq(contactHashes.did, profileDid))
+          .limit(1);
+        await upsertContactHashes(profileDid, null, existing_hashes[0]?.phoneHash ?? null);
+      }
+    }
+    if (phone !== undefined) {
+      updates.phone = null; // ensure legacy column stays clear
+      if (phone) {
+        const phoneField = `contact:phone:${profileDid}`;
+        const exists = await vaultService.get(phoneField);
+        if (exists) {
+          await rotateAndStore(phoneField, String(phone));
+        } else {
+          await sealAndStore(phoneField, String(phone));
+        }
+        const existing_hashes = await db
+          .select({ emailHash: contactHashes.emailHash })
+          .from(contactHashes)
+          .where(eq(contactHashes.did, profileDid))
+          .limit(1);
+        await upsertContactHashes(profileDid, existing_hashes[0]?.emailHash ?? null, hashContactValue(String(phone)));
+        await ensureContactConsentGrant(profileDid).catch(() => {});
+      } else {
+        await deleteFromVault(`contact:phone:${profileDid}`);
+        const existing_hashes = await db
+          .select({ emailHash: contactHashes.emailHash })
+          .from(contactHashes)
+          .where(eq(contactHashes.did, profileDid))
+          .limit(1);
+        await upsertContactHashes(profileDid, existing_hashes[0]?.emailHash ?? null, null);
+      }
+    }
     if (feature_toggles !== undefined) {
       // Merge incoming feature_toggles over existing ones
       updates.featureToggles = { ...(existing?.featureToggles ?? {}), ...feature_toggles };
@@ -349,6 +473,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         .returning();
     } else {
       // Create new profile for bare identity
+      // Note: contactEmail and phone are vault-stored; never written to DB columns.
       [updated] = await db
         .insert(profiles)
         .values({
@@ -357,8 +482,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           avatar: avatar || null,
           bio: bio || null,
           handle: null,
-          contactEmail: email || null,
-          phone: phone || null,
+          contactEmail: null,
+          phone: null,
           visibility: visibility || 'public',
           featureToggles: feature_toggles || {},
           agentPricing: agentPricing || null,
@@ -366,7 +491,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         .returning();
     }
 
-    const profileDid = existing?.did || id;
     publish('profile.update', { issuer: identity.id, subject: identity.id, scope: 'profile', payload: { profileDid } }).catch(() => {});
 
     return NextResponse.json(updated, { headers: cors });
