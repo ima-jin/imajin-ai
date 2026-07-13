@@ -28,6 +28,8 @@ export const SCOPES = {
   'github:write':       'Open and comment on issues & PRs on your GitHub repos',
   'github:org':         'Act on repos owned by an org or other people on GitHub',
   'github:actions':     'Trigger GitHub Actions / deploy / spend CI minutes',
+  'discord:post':       'Post messages to Discord channels on your behalf',
+  'discord:read':       'Read messages from Discord channels on your behalf',
 } as const;
 
 export type Scope = keyof typeof SCOPES;
