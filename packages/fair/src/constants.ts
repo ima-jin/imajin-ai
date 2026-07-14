@@ -21,3 +21,4 @@ export const NODE_FEE_DEFAULT_BPS = 50;      // 0.5%
 export const BUYER_CREDIT_MIN_BPS = 25;
 export const BUYER_CREDIT_MAX_BPS = 200;
 export const BUYER_CREDIT_DEFAULT_BPS = 25;  // 0.25%
+export const SCOPE_FEE_DEFAULT_BPS = 25;     // 0.25%
