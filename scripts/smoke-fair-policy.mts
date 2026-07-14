@@ -17,10 +17,6 @@ process.env.NEXT_PUBLIC_DOMAIN = 'imajin.ai';
 process.env.NEXT_PUBLIC_SERVICE_PREFIX = 'https://';
 
 // ── Inline the route logic (mirrors route.ts exactly) ──────────────────────
-const FOUNDATION_SHARE = 0.10;
-const DEVELOPER_SHARE  = 0.10;
-const COMMUNITY_SHARE  = 0.80;
-
 function bpsToRate(bps: number): number { return bps / 10000; }
 
 function buildPolicy() {
@@ -35,11 +31,6 @@ function buildPolicy() {
       node:  { rateBps: NODE_FEE_DEFAULT_BPS,       rate: bpsToRate(NODE_FEE_DEFAULT_BPS) },
       buyer: { rateBps: BUYER_CREDIT_DEFAULT_BPS,   rate: bpsToRate(BUYER_CREDIT_DEFAULT_BPS) },
       scope: { rateBps: SCOPE_FEE_DEFAULT_BPS,      rate: bpsToRate(SCOPE_FEE_DEFAULT_BPS) },
-    },
-    policy: {
-      foundation: { share: FOUNDATION_SHARE, recipient: PROTOCOL_DID },
-      developers: { share: DEVELOPER_SHARE,  recipient: 'did:imajin:DEV_POOL' },
-      community:  { share: COMMUNITY_SHARE,  recipient: 'did:imajin:COMMUNITY_POOL' },
     },
     settlement: {
       methods: ['stripe', 'mjnx', 'usdc-base', 'usdc-solana'],
@@ -111,13 +102,6 @@ floats: {
   const feeTotal = policy.fees.mjn.rate + policy.fees.node.rate + policy.fees.buyer.rate + policy.fees.scope.rate;
   if (feeTotal > 1.0) fail('total fee cascade ≤ 1.0', feeTotal); else pass('total fee cascade ≤ 1.0');
   assertClose('total fee cascade ≈ 2.0%',         feeTotal, 0.02);
-
-  assertClose('policy.foundation.share ≈ 0.10',   policy.policy.foundation.share, FOUNDATION_SHARE);
-  assertClose('policy.developers.share ≈ 0.10',   policy.policy.developers.share, DEVELOPER_SHARE);
-  assertClose('policy.community.share ≈ 0.80',    policy.policy.community.share, COMMUNITY_SHARE);
-
-  const policyTotal = policy.policy.foundation.share + policy.policy.developers.share + policy.policy.community.share;
-  assertClose('policy splits sum to 1.0',          policyTotal, 1.0);
 }
 
 strings: {

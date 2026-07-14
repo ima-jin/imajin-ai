@@ -14,22 +14,15 @@ import {
  * Agents read this before transacting; .fair manifests on every subsequent
  * transaction enforce these terms; the chain proves compliance.
  *
+ * Declares the per-transaction fee cascade only — post-collection protocol
+ * distribution (governance/treasury split) is a separate governance surface.
+ *
  * Fee cascade (basis points → percentage):
  *   1% MJN protocol + 0.5% node + 0.25% buyer credit + 0.25% scope
- *
- * Community distribution of protocol fees:
- *   10% foundation · 10% developers · 80% community
  *
  * Related: RFC-32 (Agent Protocol Interoperability), RFC-01 (.fair Attribution)
  * Epic: #965 · Issue: #967
  */
-
-/** Foundation split of the collected protocol fee (10%). */
-const FOUNDATION_SHARE = 0.10;
-/** Developer pool split of the collected protocol fee (10%). */
-const DEVELOPER_SHARE = 0.10;
-/** Community remainder split of the collected protocol fee (80%). */
-const COMMUNITY_SHARE = 0.80;
 
 function bpsToRate(bps: number): number {
   return bps / 10000;
@@ -63,23 +56,6 @@ export function GET() {
         rateBps: SCOPE_FEE_DEFAULT_BPS,
         rate: bpsToRate(SCOPE_FEE_DEFAULT_BPS),
         description: 'Scope/group fee — only applied when content is created inside a scope',
-      },
-    },
-    policy: {
-      foundation: {
-        share: FOUNDATION_SHARE,
-        recipient: PROTOCOL_DID,
-        description: 'Imajin Foundation — protocol maintenance and governance',
-      },
-      developers: {
-        share: DEVELOPER_SHARE,
-        recipient: 'did:imajin:DEV_POOL',
-        description: 'Developer pool — contributors and ecosystem growth',
-      },
-      community: {
-        share: COMMUNITY_SHARE,
-        recipient: 'did:imajin:COMMUNITY_POOL',
-        description: 'Community remainder — creators, curators, and participants',
       },
     },
     settlement: {
