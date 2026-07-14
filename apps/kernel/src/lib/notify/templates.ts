@@ -572,6 +572,34 @@ export const templates: NotifyTemplate[] = [
       ),
     },
   },
+  {
+    scope: 'broker:consent-request',
+    urgency: 'urgent',
+    title: (data) => {
+      const did: string = typeof data.requesterDid === 'string' ? data.requesterDid : '';
+      const short = did.length > 30 ? `${did.slice(0, 20)}\u2026${did.slice(-6)}` : did;
+      return `${short || 'Someone'} requested your ${data.purpose ?? 'data'}`;
+    },
+    body: (data) => {
+      const fields: string[] = Array.isArray(data.fields) ? data.fields : [];
+      return fields.length > 0
+        ? `Fields requested: ${fields.join(', ')}`
+        : 'Tap to review and approve or deny.';
+    },
+  },
+  {
+    scope: 'broker:disclosure-receipt',
+    urgency: 'low',
+    title: (data) => {
+      const did: string = typeof data.requesterDid === 'string' ? data.requesterDid : '';
+      const short = did.length > 30 ? `${did.slice(0, 20)}\u2026${did.slice(-6)}` : did;
+      return `${short || 'A party'} accessed your ${data.purpose ?? 'data'}`;
+    },
+    body: (data) => {
+      const fields: string[] = Array.isArray(data.fields) ? data.fields : [];
+      return fields.length > 0 ? `Fields shared: ${fields.join(', ')}` : 'Your data was disclosed.';
+    },
+  },
 ];
 
 export function getTemplate(scope: string): NotifyTemplate | undefined {

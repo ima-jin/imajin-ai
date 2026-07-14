@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
-import { db, consentGrants, brokerAuditLog } from '@/src/db';
+import { db, consentGrants, brokerAuditLog, contactMetadata } from '@/src/db';
+
+export type RelationshipType = 'business' | 'group' | 'person' | 'collective';
 
 export interface ContactSummary {
   did: string;
+  label: string | null;
+  relationshipType: RelationshipType | null;
   activeGrants: number;
   revokedGrants: number;
   purposes: string[];
@@ -38,6 +42,13 @@ export async function getContacts(request: Request): Promise<Response> {
     .from(brokerAuditLog)
     .where(and(eq(brokerAuditLog.subject, subject), eq(brokerAuditLog.type, 'release')));
 
+  // Fetch all contact metadata for the subject in one query.
+  const metaRows = await db
+    .select({ did: contactMetadata.did, label: contactMetadata.label, relationshipType: contactMetadata.relationshipType })
+    .from(contactMetadata)
+    .where(eq(contactMetadata.subject, subject));
+  const metaByDid = new Map(metaRows.map((m) => [m.did, m]));
+
   const lastByRequester = new Map<string, number>();
   for (const r of releases) {
     const t = r.createdAt ? new Date(r.createdAt).getTime() : 0;
@@ -58,10 +69,16 @@ export async function getContacts(request: Request): Promise<Response> {
     acc.purposes.add(g.purpose);
   }
 
+  const VALID_TYPES = new Set<string>(['business', 'group', 'person', 'collective']);
+
   const contacts: ContactSummary[] = [...byContact.entries()].map(([did, acc]) => {
     const last = lastByRequester.get(did);
+    const meta = metaByDid.get(did);
+    const rawType = meta?.relationshipType ?? null;
     return {
       did,
+      label: meta?.label ?? null,
+      relationshipType: rawType !== null && VALID_TYPES.has(rawType) ? (rawType as RelationshipType) : null,
       activeGrants: acc.active,
       revokedGrants: acc.revoked,
       purposes: [...acc.purposes].sort((a, b) => a.localeCompare(b)),

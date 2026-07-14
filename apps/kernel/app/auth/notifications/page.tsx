@@ -44,6 +44,13 @@ const SCOPE_GROUPS = [
       { scope: 'connection:invite-accepted', label: 'Invitation accepted' },
     ],
   },
+  {
+    label: 'Privacy',
+    scopes: [
+      { scope: 'broker:consent-request', label: 'Consent request received' },
+      { scope: 'broker:disclosure-receipt', label: 'Data disclosed to a party' },
+    ],
+  },
 ];
 
 export default function NotificationsPage() {
