@@ -78,38 +78,32 @@ function assertStartsWith(label: string, actual: string, prefix: string): void {
 
 console.log('\n/.well-known/fair-policy.json — smoke test\n');
 
-equal: {
-  assertEqual('version is 1.0.0',              policy.version, '1.0.0');
-  assertEqual('node URL is https://imajin.ai',  policy.node, 'https://imajin.ai');
+assertEqual('version is 1.0.0',              policy.version, '1.0.0');
+assertEqual('node URL is https://imajin.ai',  policy.node, 'https://imajin.ai');
 
-  assertEqual('fees.mjn.rateBps === 100',       policy.fees.mjn.rateBps, 100);
-  assertEqual('fees.node.rateBps === 50',        policy.fees.node.rateBps, 50);
-  assertEqual('fees.buyer.rateBps === 25',       policy.fees.buyer.rateBps, 25);
-  assertEqual('fees.scope.rateBps === 25',       policy.fees.scope.rateBps, 25);
+assertEqual('fees.mjn.rateBps === 100',       policy.fees.mjn.rateBps, 100);
+assertEqual('fees.node.rateBps === 50',        policy.fees.node.rateBps, 50);
+assertEqual('fees.buyer.rateBps === 25',       policy.fees.buyer.rateBps, 25);
+assertEqual('fees.scope.rateBps === 25',       policy.fees.scope.rateBps, 25);
 
-  assertEqual('settlement method count === 4',   policy.settlement.methods.length, 4);
-  assertEqual('attribution.required === true',   policy.attribution.required, true);
-  assertEqual('attribution.manifest_format',     policy.attribution.manifest_format, 'fair-v1');
-  assertEqual('attribution.chain_inclusion',     policy.attribution.chain_inclusion, true);
-}
+assertEqual('settlement method count === 4',   policy.settlement.methods.length, 4);
+assertEqual('attribution.required === true',   policy.attribution.required, true);
+assertEqual('attribution.manifest_format',     policy.attribution.manifest_format, 'fair-v1');
+assertEqual('attribution.chain_inclusion',     policy.attribution.chain_inclusion, true);
 
-floats: {
-  assertClose('fees.mjn.rate ≈ 0.01',            policy.fees.mjn.rate, 0.01);
-  assertClose('fees.node.rate ≈ 0.005',           policy.fees.node.rate, 0.005);
-  assertClose('fees.buyer.rate ≈ 0.0025',         policy.fees.buyer.rate, 0.0025);
-  assertClose('fees.scope.rate ≈ 0.0025',         policy.fees.scope.rate, 0.0025);
+assertClose('fees.mjn.rate ≈ 0.01',            policy.fees.mjn.rate, 0.01);
+assertClose('fees.node.rate ≈ 0.005',           policy.fees.node.rate, 0.005);
+assertClose('fees.buyer.rate ≈ 0.0025',         policy.fees.buyer.rate, 0.0025);
+assertClose('fees.scope.rate ≈ 0.0025',         policy.fees.scope.rate, 0.0025);
 
-  const feeTotal = policy.fees.mjn.rate + policy.fees.node.rate + policy.fees.buyer.rate + policy.fees.scope.rate;
-  if (feeTotal > 1.0) fail('total fee cascade ≤ 1.0', feeTotal); else pass('total fee cascade ≤ 1.0');
-  assertClose('total fee cascade ≈ 2.0%',         feeTotal, 0.02);
-}
+const feeTotal = policy.fees.mjn.rate + policy.fees.node.rate + policy.fees.buyer.rate + policy.fees.scope.rate;
+if (feeTotal > 1.0) fail('total fee cascade ≤ 1.0', feeTotal); else pass('total fee cascade ≤ 1.0');
+assertClose('total fee cascade ≈ 2.0%',         feeTotal, 0.02);
 
-strings: {
-  assertStartsWith('fees.mjn.recipient is did:imajin:', policy.fees.mjn.recipient, 'did:imajin:');
-  assertIncludes('settlement includes stripe',    policy.settlement.methods, 'stripe');
-  assertIncludes('settlement includes mjnx',      policy.settlement.methods, 'mjnx');
-  assertIncludes('settlement includes usdc-base', policy.settlement.methods, 'usdc-base');
-}
+assertStartsWith('fees.mjn.recipient is did:imajin:', policy.fees.mjn.recipient, 'did:imajin:');
+assertIncludes('settlement includes stripe',    policy.settlement.methods, 'stripe');
+assertIncludes('settlement includes mjnx',      policy.settlement.methods, 'mjnx');
+assertIncludes('settlement includes usdc-base', policy.settlement.methods, 'usdc-base');
 
 console.log('\n' + String(passed) + ' passed, ' + String(failed) + ' failed\n');
 
