@@ -1,4 +1,5 @@
 const webpack = require('webpack');
+const { tier1Headers, tier2Headers, tier3Headers } = require('@imajin/config/next-headers');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: [
@@ -19,6 +20,21 @@ const nextConfig = {
     '@imajin/ui',
     '@imajin/vault-core',
   ],
+  async headers() {
+    return [
+      // Tier 3 — baseline hardening on every route
+      { source: '/:path*', headers: tier3Headers() },
+      // Tier 2 — kernel routes embedded by the auth hub as iframes
+      { source: '/pay',          headers: tier2Headers() },
+      { source: '/pay/:path*',   headers: tier2Headers() },
+      { source: '/media/:path*', headers: tier2Headers() },
+      // Tier 1 — credential / auth-sensitive pages: hard deny framing
+      { source: '/auth/login',              headers: tier1Headers() },
+      { source: '/auth/register',           headers: tier1Headers() },
+      { source: '/auth/security',           headers: tier1Headers() },
+      { source: '/auth/settings/security',  headers: tier1Headers() },
+    ];
+  },
   async rewrites() {
     return [
       // Public short URLs → internal route groups

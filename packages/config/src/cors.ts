@@ -4,6 +4,13 @@ import { NextRequest, NextResponse } from "next/server";
 const ORIGIN_PATTERN = /^https:\/\/(dev-)?[a-z-]+\.imajin\.ai$/;
 const LOCAL_PATTERN = /^http:\/\/localhost:\d+$/;
 
+/**
+ * CSP host-source list corresponding to ORIGIN_PATTERN (prod).
+ * Used by security-headers.ts to build frame-ancestors directives.
+ * If the allowed-origin set changes, update ORIGIN_PATTERN and this constant together.
+ */
+export const ALLOWED_FRAME_ORIGINS = 'https://*.imajin.ai https://imajin.ai';
+
 export function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
   if (ORIGIN_PATTERN.test(origin)) return true;
