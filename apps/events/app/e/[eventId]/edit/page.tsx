@@ -56,7 +56,9 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
         LIMIT 1
       `;
       isOrganizer = !!member;
-    } catch {}
+    } catch (err) {
+      console.error('[edit] Failed to check cohost membership:', err);
+    }
   }
   if (!isOrganizer) {
     return (
@@ -85,7 +87,9 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
   try {
     const [profile] = await sql`SELECT contact_email FROM profile.profiles WHERE did = ${event.creatorDid}`;
     creatorEmail = profile?.contact_email || null;
-  } catch {}
+  } catch (err) {
+    console.warn('[edit] Failed to fetch creator email:', err);
+  }
 
   // Fetch creator display info for the payout banner
   let creatorHandle: string | null = null;
@@ -94,7 +98,9 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
     const [creator] = await sql`SELECT handle, name FROM auth.identities WHERE id = ${event.creatorDid}`;
     creatorHandle = (creator?.handle as string) || null;
     creatorName = (creator?.name as string) || null;
-  } catch {}
+  } catch (err) {
+    console.warn('[edit] Failed to fetch creator display info:', err);
+  }
 
   // Gather all organizer DIDs (creator + cohosts) for survey dropdown
   const organizerDids = [event.creatorDid];
@@ -109,7 +115,9 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
           organizerDids.push(row.did as string);
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[edit] Failed to fetch cohosts for survey dropdown:', err);
+    }
   }
 
   return (

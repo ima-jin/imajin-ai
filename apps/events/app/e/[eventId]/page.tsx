@@ -322,7 +322,9 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
         LIMIT 1
       `;
       isCohost = !!member;
-    } catch {}
+    } catch (err) {
+      console.error('[event] Failed to check cohost membership:', err);
+    }
   }
   const isOrganizer = isCreator || isCohost;
 

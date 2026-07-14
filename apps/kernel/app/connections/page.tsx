@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useIdentity } from './context/IdentityContext';
 import InvitationsTab from './invitations-tab';
 import useSWR from 'swr';
+import { useToast } from '@imajin/ui';
 
 import { buildPublicUrl } from '@imajin/config';
 
@@ -121,6 +122,7 @@ function NicknameEditor({
 
 export default function ConnectionsPage() {
   const { did, isLoggedIn, loading } = useIdentity();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<'connections' | 'groups' | 'invitations'>('connections');
   const [invitePending, setInvitePending] = useState(0);
   const [inviteRemaining, setInviteRemaining] = useState<number | null>(null);
@@ -166,8 +168,12 @@ export default function ConnectionsPage() {
       const res = await fetch(`/connections/api/connections/${encodeURIComponent(connDid)}`, { method: 'DELETE' });
       if (res.ok) {
         mutateConnections();
+      } else {
+        toast.error('Failed to disconnect');
       }
-    } catch {}
+    } catch {
+      toast.error('Failed to disconnect');
+    }
   }
 
   async function createGroup() {
@@ -186,8 +192,12 @@ export default function ConnectionsPage() {
         setShowCreateGroup(false);
         mutatePods();
         globalThis.location.href = `/connections/pods/${data.pod.id}`;
+      } else {
+        toast.error('Failed to create group');
       }
-    } catch {} finally {
+    } catch {
+      toast.error('Failed to create group');
+    } finally {
       setCreatingGroup(false);
     }
   }

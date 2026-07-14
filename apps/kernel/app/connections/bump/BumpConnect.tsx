@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { buildPublicUrl } from '@imajin/config';
+import { useToast } from '@imajin/ui';
 import ProfileCard from './ProfileCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ const CHAT_URL = buildPublicUrl('chat');
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function BumpConnect({ onClose }: Readonly<Props>) {
+  const { toast } = useToast();
   const [state, setState] = useState<BumpState>('selecting');
 
   // Selecting state
@@ -458,14 +460,19 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
           location: locationRef.current ?? undefined,
         }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        toast.error('Failed to start bumping — please try again');
+        return;
+      }
       const data = await res.json();
       setSession(data);
       sessionRef.current = data;
       setState('active');
       vibrate(100);
       startAccelerometer();
-    } catch {}
+    } catch {
+      toast.error('Failed to start bumping — please try again');
+    }
   }
 
   // ─── Stop / deactivate ────────────────────────────────────────────────────────
@@ -503,13 +510,22 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
   async function handleConfirm(matchId: string, accept: boolean) {
     clearConfirmTimers();
     try {
-      await fetch(`${REGISTRY_URL}/confirm`, {
+      const res = await fetch(`${REGISTRY_URL}/confirm`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ matchId, accept }),
       });
-    } catch {}
+      if (!res.ok) {
+        toast.error('Failed to confirm — please try again');
+        setState(session ? 'active' : 'idle');
+        return;
+      }
+    } catch {
+      toast.error('Failed to confirm — please try again');
+      setState(session ? 'active' : 'idle');
+      return;
+    }
     if (!accept) {
       setState(session ? 'active' : 'idle');
     }
