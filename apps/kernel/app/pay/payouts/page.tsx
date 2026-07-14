@@ -3,6 +3,7 @@ import { getSession } from '@imajin/auth';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { createLogger } from '@imajin/logger';
+import { buildPublicUrl } from '@imajin/config';
 import { PayoutActions } from './PayoutActions';
 
 const log = createLogger('kernel');
@@ -19,7 +20,7 @@ interface ConnectStatus {
 
 async function getConnectStatus(did: string, cookieHeader: string): Promise<ConnectStatus | null> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+    const baseUrl = buildPublicUrl('pay');
     const response = await fetch(`${baseUrl}/api/connect/status?did=${did}`, {
       headers: {
         'Cookie': cookieHeader,
@@ -46,8 +47,8 @@ export default async function PayoutsPage() {
   const session = await getSession();
 
   if (!session) {
-    const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
-    const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+    const authUrl = buildPublicUrl('auth');
+    const payUrl = buildPublicUrl('pay');
     const payoutsUrl = `${payUrl}/payouts`;
     redirect(`${authUrl}/login?next=${encodeURIComponent(payoutsUrl)}`);
   }

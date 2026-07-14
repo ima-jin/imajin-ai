@@ -314,7 +314,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
     return () => clearTimeout(timer);
   }, [identity, nameParam, nameSet, did]);
 
-  const chatUrl = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
+  const chatUrl = buildPublicUrl('chat');
   // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
   const authUrl = '/chat';  // kernel: access route is at /chat/api/access/[did]
   const mediaUrl = MEDIA_URL;

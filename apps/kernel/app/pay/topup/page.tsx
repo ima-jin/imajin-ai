@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
+import { buildPublicUrl } from '@imajin/config';
 
 const PRESET_AMOUNTS = [20, 50, 100, 250, 1000];
 const MIN_TOPUP = 20;
@@ -52,8 +53,8 @@ export default function TopupPage() {
     fetch('/api/session', { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
-          const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
-          const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+          const authUrl = buildPublicUrl('auth');
+          const payUrl = buildPublicUrl('pay');
           const topupUrl = `${payUrl}/topup`;
           globalThis.location.href = `${authUrl}/login?next=${encodeURIComponent(topupUrl)}`;
           return;

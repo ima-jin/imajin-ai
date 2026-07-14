@@ -6,6 +6,7 @@ import { useIdentity, LoginPrompt } from '@/src/contexts/IdentityContext';
 import { NewChatModal } from '@/app/chat/components/NewChatModal';
 import { conversationPath } from '@/src/lib/chat/conversation-did';
 import { useWebSocket } from '@/src/hooks/useWebSocket';
+import { buildPublicUrl } from '@imajin/config';
 
 interface Conversation {
   did: string;
@@ -128,7 +129,7 @@ export default function ConversationsPage() {
       setConversations(convs);
 
       // Fetch online status for DM participants
-      const profileUrl = process.env.NEXT_PUBLIC_PROFILE_URL || 'http://localhost:3005';
+      const profileUrl = buildPublicUrl('profile');
       const didsToCheck = new Set<string>();
       convs.forEach((conv) => {
         if (conv.type === 'dm' && conv.otherParticipant?.did) {
