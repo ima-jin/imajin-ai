@@ -11,6 +11,7 @@ import { consentReactor } from './reactors/consent';
 import { scopeReactor } from './reactors/scope';
 import { releaseReactor } from './reactors/release';
 import { auditReactor, auditRejection } from './reactors/audit';
+import { sendConsentRequestNotification } from './reactors/consent-request-notify';
 import { getBrokerChainConfig } from './config';
 import { getBrokerReactor, registerBrokerReactor } from './broker-registry';
 
@@ -146,6 +147,10 @@ export async function broker<T extends BrokerEventType>(
 
         // Fire audit for rejection (skipped in preview by auditRejection)
         await auditRejection(request, result);
+        // Notify subject of inbound consent request on no_consent (fire-and-forget).
+        sendConsentRequestNotification(request, result.reason).catch((err: unknown) => {
+          log.error({ err: String(err) }, 'sendConsentRequestNotification failed');
+        });
         return { ...result, enforced };
       }
 

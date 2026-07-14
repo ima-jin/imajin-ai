@@ -6,6 +6,43 @@ import type { BrokerPipelineState, BrokerReactor, BrokerResult } from '../types'
 const log = createLogger('bus:broker:audit');
 
 /**
+ * Fire a disclosure receipt notification to the subject via the notify service.
+ * Called after a real (non-shadow, non-preview) release is audited.
+ * Fire-and-forget — never throws.
+ */
+export async function sendDisclosureReceipt(opts: {
+  subjectDid: string;
+  requesterDid: string;
+  purpose: string;
+  fields: string[];
+  releasedAt: string;
+}): Promise<void> {
+  const notifyUrl = process.env.NOTIFY_SERVICE_URL;
+  const secret = process.env.NOTIFY_WEBHOOK_SECRET;
+  if (!notifyUrl || !secret) return;
+
+  try {
+    await fetch(`${notifyUrl}/api/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-webhook-secret': secret },
+      body: JSON.stringify({
+        to: opts.subjectDid,
+        scope: 'broker:disclosure-receipt',
+        urgency: 'low',
+        data: {
+          requesterDid: opts.requesterDid,
+          purpose: opts.purpose,
+          fields: opts.fields,
+          releasedAt: opts.releasedAt,
+        },
+      }),
+    });
+  } catch (err) {
+    log.error({ err: String(err) }, 'sendDisclosureReceipt fetch failed');
+  }
+}
+
+/**
  * Write a row to kernel.broker_audit_log (fire-and-forget).
  * Uses the same dynamic @imajin/db import pattern as packages/bus/src/config.ts.
  */
@@ -64,6 +101,8 @@ export const auditReactor: BrokerReactor = async (state) => {
   log.info({ releaseId: envelope.releaseId }, 'Firing broker.release audit event');
 
   // Persist to queryable audit log (fire-and-forget).
+  const releasedFields = Object.keys(filteredData || {});
+  const releasedAt = envelope.issuedAt;
   writeAuditLogRow({
     type: 'release',
     requester: request.requester,
@@ -71,7 +110,7 @@ export const auditReactor: BrokerReactor = async (state) => {
     purpose: request.purpose,
     scope: request.scope,
     fieldsRequested: request.fields,
-    fieldsReleased: Object.keys(filteredData || {}),
+    fieldsReleased: releasedFields,
     status: 'RELEASED',
     mode: envelope.mode,
     consentRef: envelope.consentReference ?? null,
@@ -80,6 +119,19 @@ export const auditReactor: BrokerReactor = async (state) => {
   }).catch((err: unknown) => {
     log.error({ err: String(err) }, 'writeAuditLogRow (release) failed');
   });
+
+  // Notify the subject of the disclosure (non-shadow releases only).
+  if (!shadow) {
+    sendDisclosureReceipt({
+      subjectDid: request.subject,
+      requesterDid: request.requester,
+      purpose: request.purpose,
+      fields: releasedFields,
+      releasedAt,
+    }).catch((err: unknown) => {
+      log.error({ err: String(err) }, 'sendDisclosureReceipt failed');
+    });
+  }
 
   publish('broker.release', {
     issuer: request.requester,

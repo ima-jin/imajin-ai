@@ -8,6 +8,8 @@ export interface Notification {
   title: string;
   body?: string;
   urgency?: 'normal' | 'urgent';
+  scope?: string;
+  data?: Record<string, unknown>;
   read: boolean;
   createdAt: string;
 }

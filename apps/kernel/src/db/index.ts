@@ -20,6 +20,7 @@ import * as identityAliasesSchema from './schemas/identity-aliases';
 import * as vaultSchema from './schemas/vault';
 import * as inferenceSchema from './schemas/inference';
 import * as contactSchema from './schemas/contact';
+import * as contactMetadataSchema from './schemas/contact-metadata';
 
 const schema = {
   ...authSchema,
@@ -42,6 +43,7 @@ const schema = {
   ...vaultSchema,
   ...inferenceSchema,
   ...contactSchema,
+  ...contactMetadataSchema,
 };
 
 export const db = createDb(schema);
@@ -67,6 +69,7 @@ export * from './schemas/identity-aliases';
 export * from './schemas/vault';
 export * from './schemas/inference';
 export * from './schemas/contact';
+export * from './schemas/contact-metadata';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";
