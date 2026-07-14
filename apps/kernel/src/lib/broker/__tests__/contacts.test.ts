@@ -8,6 +8,7 @@ vi.mock('@/src/db', () => ({
   db: { select: vi.fn(() => ({ from: mockFrom })) },
   consentGrants: {},
   brokerAuditLog: {},
+  contactMetadata: {},
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -47,7 +48,7 @@ describe('GET /api/broker/contacts', () => {
       { requester: 'did:imajin:kai', createdAt: new Date('2026-06-15T19:00:00Z') },
       { requester: 'did:imajin:kai', createdAt: new Date('2026-06-10T19:00:00Z') },
     ];
-    mockWhere.mockResolvedValueOnce(grants).mockResolvedValueOnce(releases);
+    mockWhere.mockResolvedValueOnce(grants).mockResolvedValueOnce(releases).mockResolvedValueOnce([]);
 
     const res = await getContacts(new Request(URL));
     expect(res.status).toBe(200);
@@ -71,7 +72,7 @@ describe('GET /api/broker/contacts', () => {
 
   it('scopes the grants query to the acting DID (fail-closed)', async () => {
     vi.mocked(requireAuth).mockResolvedValueOnce({ identity: { id: 'did:imajin:me' } } as any);
-    mockWhere.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    mockWhere.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     await getContacts(new Request(URL));
     expect(JSON.stringify(mockWhere.mock.calls[0][0])).toContain('did:imajin:me');
   });

@@ -118,6 +118,19 @@ const RELATIONSHIP_ORDER: Array<RelationshipType | null> = [
   null,
 ];
 
+const RELATIONSHIP_ICONS: Record<RelationshipType, string> = {
+  business: '\uD83C\uDFE2',
+  group: '\uD83D\uDC65',
+  person: '\uD83D\uDC64',
+  collective: '\uD83C\uDF10',
+};
+
+const TAB_LABELS: Record<'contacts' | 'grants' | 'preview', string> = {
+  contacts: 'By Contact',
+  grants: 'By Grant',
+  preview: 'Preview',
+};
+
 // ─── ContactDetail ────────────────────────────────────────────────────────────
 
 type TimelineItem =
@@ -268,12 +281,8 @@ function ContactCard({
   }
 
   const displayName = contact.label ?? shortDid(contact.did);
-  const typeIcon =
-    contact.relationshipType === 'business' ? '\uD83C\uDFE2'
-    : contact.relationshipType === 'group' ? '\uD83D\uDC65'
-    : contact.relationshipType === 'person' ? '\uD83D\uDC64'
-    : contact.relationshipType === 'collective' ? '\uD83C\uDF10'
-    : '\uD83E\uDD1D';
+  const typeIcon = contact.relationshipType ? RELATIONSHIP_ICONS[contact.relationshipType] : '\uD83E\uDD1D';
+  const fieldPrefix = `contact-meta-${CSS.escape(contact.did)}`;
 
   return (
     <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
@@ -322,8 +331,9 @@ function ContactCard({
       {editing && (
         <div className="mt-3 pt-3 border-t border-white/10 space-y-3">
           <div>
-            <label className="text-xs text-gray-400 block mb-1">Display name</label>
+            <label htmlFor={`${fieldPrefix}-label`} className="text-xs text-gray-400 block mb-1">Display name</label>
             <input
+              id={`${fieldPrefix}-label`}
               type="text"
               value={labelDraft}
               onChange={(e) => setLabelDraft(e.target.value)}
@@ -332,8 +342,9 @@ function ContactCard({
             />
           </div>
           <div>
-            <label className="text-xs text-gray-400 block mb-1">Relationship type</label>
+            <label htmlFor={`${fieldPrefix}-type`} className="text-xs text-gray-400 block mb-1">Relationship type</label>
             <select
+              id={`${fieldPrefix}-type`}
               value={typeDraft}
               onChange={(e) => setTypeDraft(e.target.value as RelationshipType | '')}
               className="w-full px-3 py-1.5 text-sm bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-amber-500/50"
@@ -415,8 +426,9 @@ function PreviewTab({ contacts }: Readonly<{ contacts: ContactSummary[] }>) {
 
       <div className="space-y-4">
         <div>
-          <label className="text-xs text-gray-400 block mb-1">Requester DID</label>
+          <label htmlFor="preview-requester-did" className="text-xs text-gray-400 block mb-1">Requester DID</label>
           <select
+            id="preview-requester-did"
             value={selectedDid}
             onChange={(e) => { setSelectedDid(e.target.value); setPurpose(''); setResult(null); }}
             className="w-full px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-amber-500/50"
@@ -440,8 +452,9 @@ function PreviewTab({ contacts }: Readonly<{ contacts: ContactSummary[] }>) {
 
         {(selectedDid || customDid) && (
           <div>
-            <label className="text-xs text-gray-400 block mb-1">Purpose</label>
+            <label htmlFor="preview-purpose" className="text-xs text-gray-400 block mb-1">Purpose</label>
             <select
+              id="preview-purpose"
               value={purpose}
               onChange={(e) => { setPurpose(e.target.value); setResult(null); }}
               className="w-full px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-amber-500/50"
@@ -588,7 +601,7 @@ export default function DisclosuresPage() {
               tab === t ? 'border-amber-500 text-amber-400' : 'border-transparent text-gray-400 hover:text-white'
             }`}
           >
-            {t === 'contacts' ? 'By Contact' : t === 'grants' ? 'By Grant' : 'Preview'}
+            {TAB_LABELS[t]}
             {t === 'contacts' && contacts.length > 0 && (
               <span className="ml-2 px-1.5 py-0.5 text-xs bg-white/10 rounded-full">{contacts.length}</span>
             )}
