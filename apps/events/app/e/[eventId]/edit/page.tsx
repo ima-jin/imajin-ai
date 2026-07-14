@@ -3,7 +3,10 @@ import { getSession } from '@imajin/auth';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
+import { createLogger } from '@imajin/logger';
 import EventEditForm from './form';
+
+const log = createLogger('events');
 
 const sql = getClient();
 
@@ -56,7 +59,9 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
         LIMIT 1
       `;
       isOrganizer = !!member;
-    } catch {}
+    } catch (err) {
+      log.error({ err: String(err) }, '[edit] Failed to check cohost membership');
+    }
   }
   if (!isOrganizer) {
     return (
@@ -85,7 +90,9 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
   try {
     const [profile] = await sql`SELECT contact_email FROM profile.profiles WHERE did = ${event.creatorDid}`;
     creatorEmail = profile?.contact_email || null;
-  } catch {}
+  } catch (err) {
+    log.warn({ err: String(err) }, '[edit] Failed to fetch creator email');
+  }
 
   // Fetch creator display info for the payout banner
   let creatorHandle: string | null = null;
@@ -94,7 +101,9 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
     const [creator] = await sql`SELECT handle, name FROM auth.identities WHERE id = ${event.creatorDid}`;
     creatorHandle = (creator?.handle as string) || null;
     creatorName = (creator?.name as string) || null;
-  } catch {}
+  } catch (err) {
+    log.warn({ err: String(err) }, '[edit] Failed to fetch creator display info');
+  }
 
   // Gather all organizer DIDs (creator + cohosts) for survey dropdown
   const organizerDids = [event.creatorDid];
@@ -109,7 +118,9 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
           organizerDids.push(row.did as string);
         }
       }
-    } catch {}
+    } catch (err) {
+      log.warn({ err: String(err) }, '[edit] Failed to fetch cohosts for survey dropdown');
+    }
   }
 
   return (
