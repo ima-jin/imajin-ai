@@ -1,10 +1,11 @@
 'use client';
 
 import { Chat, ChatProvider } from '@imajin/chat';
+import { buildPublicUrl } from '@imajin/config';
 
-const CHAT_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
+const CHAT_URL = buildPublicUrl('chat');
 const AUTH_URL = '';  // same-origin proxy
-const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || 'http://localhost:3009';
+const MEDIA_URL = buildPublicUrl('media');
 
 interface CommunityChatProps {
   communityDid: string;

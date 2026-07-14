@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { buildPublicUrl } from '@imajin/config';
 
 interface Preference {
   id: string;
@@ -46,7 +47,7 @@ const SCOPE_GROUPS = [
   },
 ];
 
-const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'https://dev-auth.imajin.ai';
+const AUTH_URL = buildPublicUrl('auth');
 
 export default function SettingsPage() {
   const [prefs, setPrefs] = useState<Record<string, Preference>>({});

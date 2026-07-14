@@ -9,8 +9,9 @@ import type {
 } from '@imajin/fair';
 import { validateManifest } from '@imajin/fair';
 import { DidShareListEditor, MoneyInput } from '@imajin/ui';
+import { buildPublicUrl } from '@imajin/config';
 
-const CONNECTIONS_URL_BASE = process.env.NEXT_PUBLIC_CONNECTIONS_URL || 'https://jin.imajin.ai/connections';
+const CONNECTIONS_URL_BASE = buildPublicUrl('connections');
 const CONNECTIONS_API_URL = `${CONNECTIONS_URL_BASE}/api/connections`;
 
 const PROFILE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX
