@@ -480,6 +480,14 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  'order.refunded': {
+    orderId: string;
+    eventId: string;
+    ticketIds: string[];
+    amountTotal: number;
+    currency: string;
+    isStripe: boolean;
+  };
   'ticket.registration.completed': {
     email: string;
     eventTitle: string;

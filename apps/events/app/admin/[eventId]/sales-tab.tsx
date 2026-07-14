@@ -230,6 +230,7 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [confirmETransferOrder, setConfirmETransferOrder] = useState<string | null>(null);
+  const [confirmRefundOrder, setConfirmRefundOrder] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -269,6 +270,25 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
     } finally {
       setActionLoading(null);
       setConfirmETransferOrder(null);
+    }
+  };
+
+  const handleRefundOrder = async (orderId: string) => {
+    setConfirmRefundOrder(null);
+    setActionLoading(orderId);
+    try {
+      const res = await apiFetch(`/api/orders/${orderId}/refund`, { method: 'POST' });
+      if (res.ok) {
+        toast.success('Order refunded');
+        load();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error || 'Refund failed');
+      }
+    } catch {
+      toast.error('Refund failed');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -460,6 +480,15 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
                           {actionLoading === sale.orderId ? '…' : 'Confirm e-Transfer'}
                         </button>
                       )}
+                      {sale.status === 'completed' && sale.paymentMethod === 'stripe' && (
+                        <button
+                          onClick={() => setConfirmRefundOrder(sale.orderId)}
+                          disabled={actionLoading === sale.orderId}
+                          className="px-3 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-red-100 dark:hover:bg-red-900/40 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition disabled:opacity-50"
+                        >
+                          {actionLoading === sale.orderId ? '…' : 'Refund Order'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -581,6 +610,35 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order-level refund confirmation dialog */}
+      {confirmRefundOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-2">Refund Entire Order</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+              Refund all tickets in order{' '}
+              <span className="font-mono text-xs">{confirmRefundOrder}</span>?{' '}
+              This will issue a full Stripe refund and cancel every ticket in the order. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmRefundOrder(null)}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleRefundOrder(confirmRefundOrder)}
+                disabled={!!actionLoading}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition"
+              >
+                {actionLoading === confirmRefundOrder ? 'Refunding…' : 'Refund Order'}
+              </button>
             </div>
           </div>
         </div>

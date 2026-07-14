@@ -13,7 +13,7 @@ export const transactions = paySchema.table('transactions', {
   toDid: text('to_did').notNull(),                       // who received
   amount: numeric('amount', { precision: 20, scale: 8 }).notNull(),
   currency: text('currency').notNull().default('CAD'),
-  status: text('status').notNull().default('pending'),   // pending | completed | failed | refunded
+  status: text('status').notNull().default('pending'),   // pending | completed | failed | refunded | partially_refunded
   source: text('source').notNull().default('fiat'),      // 'fiat' | 'credit' | 'mixed'
   stripeId: text('stripe_id'),                           // payment intent / invoice / checkout session
   metadata: jsonb('metadata').default({}),

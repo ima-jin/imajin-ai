@@ -23,7 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
 import { db, transactions, balances } from '@/src/db';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
@@ -103,7 +103,34 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
 
     if (originalTx.status === 'refunded') {
       return NextResponse.json(
-        { error: 'Transaction already refunded' },
+        { error: 'Transaction already fully refunded' },
+        { status: 400, headers: cors }
+      );
+    }
+
+    // Compute amounts up front so the guard can use them.
+    const txAmountDollars = Number.parseFloat(originalTx.amount);
+    const requestedRefundDollars = amount ? amount / 100 : txAmountDollars;
+
+    // For partially-refunded txs, sum all existing refund entries and verify
+    // the new request doesn't exceed the remaining balance.
+    const existingRefundTxs = await db
+      .select()
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.type, 'refund'),
+          sql`${transactions.metadata}->>'originalTxId' = ${originalTx.id}`
+        )
+      );
+    const totalRefundedDollars = existingRefundTxs.reduce(
+      (sum, r) => sum + Number.parseFloat(r.amount),
+      0
+    );
+
+    if (totalRefundedDollars + requestedRefundDollars > txAmountDollars + 0.005) {
+      return NextResponse.json(
+        { error: 'Refund would exceed original transaction amount' },
         { status: 400, headers: cors }
       );
     }
@@ -112,14 +139,18 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
     const pay = getPaymentService();
     const refundResult = await pay.refund({ paymentId, amount, reason });
 
-    // Convert tx amount (dollars) back to cents for response consistency
-    const txAmountDollars = Number.parseFloat(originalTx.amount);
-    const refundedDollars = amount ? amount / 100 : txAmountDollars;
+    // Determine whether this refund fully settles the original transaction.
+    const newTotalRefunded = totalRefundedDollars + requestedRefundDollars;
+    const isFullRefund = newTotalRefunded >= txAmountDollars - 0.005;
+    const newTxStatus = isFullRefund ? 'refunded' : 'partially_refunded';
 
-    // Mark original transaction as refunded
+    // Alias for clarity in the rest of the function (dollars).
+    const refundedDollars = requestedRefundDollars;
+
+    // Mark original transaction as refunded / partially_refunded
     await db
       .update(transactions)
-      .set({ status: 'refunded' })
+      .set({ status: newTxStatus })
       .where(eq(transactions.id, originalTx.id));
 
     // Create reversal transaction entry
@@ -181,15 +212,24 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
         .from(transactions)
         .where(sql`${transactions.metadata}->>'stripeSessionId' = ${checkoutStripeId}`);
 
+      // Reverse settlement entries proportionally: each entry is wound back by
+      // (requestedRefundDollars / txAmountDollars) of its original amount so that
+      // N per-ticket refunds each reclaim their fair share without over-reversing.
+      const refundFraction = requestedRefundDollars / txAmountDollars;
+
       for (const stx of settlementTxs) {
         if (stx.status === 'refunded') continue;
 
         const stxAmount = Number.parseFloat(stx.amount);
+        // Proportional reversal amount, rounded to 8 decimal places.
+        const stxReversalAmount = Math.round(stxAmount * refundFraction * 1e8) / 1e8;
+        if (stxReversalAmount <= 0) continue;
 
-        // Mark settlement entry as refunded
+        // Mark settlement entry as fully or partially refunded.
+        const newSettlementStatus = isFullRefund ? 'refunded' : 'partially_refunded';
         await db
           .update(transactions)
-          .set({ status: 'refunded' })
+          .set({ status: newSettlementStatus })
           .where(eq(transactions.id, stx.id));
 
         // Create reversal entry for this settlement
@@ -200,7 +240,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
           type: 'refund',
           fromDid: stx.toDid,
           toDid: stx.fromDid ?? 'unknown',
-          amount: stxAmount.toString(),
+          amount: stxReversalAmount.toString(),
           currency: stx.currency,
           status: 'completed',
           source: 'fiat',
@@ -212,12 +252,12 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
           },
         });
 
-        // Debit the recipient (host or platform)
+        // Debit the recipient (host or platform) proportionally.
         if (stx.toDid) {
           await db
             .update(balances)
             .set({
-              cashAmount: sql`GREATEST(${balances.cashAmount} - ${stxAmount}, 0)`,
+              cashAmount: sql`GREATEST(${balances.cashAmount} - ${stxReversalAmount}, 0)`,
               updatedAt: new Date(),
             })
             .where(eq(balances.did, stx.toDid));
