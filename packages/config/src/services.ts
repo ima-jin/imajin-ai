@@ -172,6 +172,45 @@ export function buildPublicUrl(
   return getPublicUrl(name, { prefix: match, domain: d });
 }
 
+/**
+ * Build an ABSOLUTE public URL for a service — for use OUTSIDE the browser
+ * origin: email links, Stripe/webhook return/success URLs, externally shared
+ * links, and cross-node links. Unlike buildPublicUrl(), this never returns a
+ * relative path.
+ *
+ * Resolution order:
+ *   1. explicit NEXT_PUBLIC_{NAME}_URL env var (only if already absolute)
+ *   2. localhost dev → http://localhost:{devPort} from the canonical port map
+ *   3. otherwise an absolute https URL derived from NEXT_PUBLIC_SERVICE_PREFIX
+ *      + NEXT_PUBLIC_DOMAIN via getPublicUrl()
+ *
+ * @example
+ *   buildPublicUrlAbsolute('chat')   → https://jin.imajin.ai/chat (single-domain)
+ *   buildPublicUrlAbsolute('kernel') → https://jin.imajin.ai (node root)
+ */
+export function buildPublicUrlAbsolute(name: string): string {
+  // 1. Explicit per-service override wins if it is already absolute.
+  if (typeof process !== "undefined") {
+    const explicit = process.env[`NEXT_PUBLIC_${name.toUpperCase()}_URL`];
+    if (explicit && /^https?:\/\//.test(explicit)) return explicit;
+  }
+
+  const prefix =
+    (typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_SERVICE_PREFIX) ?? "https://";
+  const domain =
+    (typeof process === "undefined" ? undefined : process.env.NEXT_PUBLIC_DOMAIN) ?? "imajin.ai";
+
+  // 2. Localhost dev → canonical dev port.
+  if (prefix.includes("localhost") || domain.includes("localhost")) {
+    const port = getPort(name, "dev");
+    return port ? `http://localhost:${port}` : "http://localhost:3000";
+  }
+
+  // 3. Force absolute construction (getPublicUrl never returns a relative path).
+  const match = prefix.replace(/^https?:\/\//, "").replace(/-$/, "") || undefined;
+  return getPublicUrl(name, { prefix: match, domain });
+}
+
 /** All service names */
 export const SERVICE_NAMES = SERVICES.map((s) => s.name);
 

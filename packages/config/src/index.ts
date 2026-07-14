@@ -9,6 +9,7 @@ export {
   getServiceUrl,
   getPublicUrl,
   buildPublicUrl,
+  buildPublicUrlAbsolute,
   servicesByTier,
   servicesByVisibility,
   buildServiceUrlMap,
