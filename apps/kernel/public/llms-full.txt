@@ -1,6 +1,6 @@
 # Imajin Network (MJN Protocol)
 # llms-full.txt — Complete technical reference for AI consumption
-# v0.7 · May 2026
+# v0.8 · July 2026
 # Ryan Veteze · ryan@imajin.ai · github.com/ima-jin/imajin-ai
 #
 # This document is the single source of truth for the Imajin architecture.
@@ -10,6 +10,16 @@
 ---
 
 ## 1. What This Is
+
+**For 2,000 years the money was in the lie.** Information asymmetry — I know what you
+don't, I hide it, I profit from the gap — is the business model under advertising,
+finance, platforms, and supply chains. Imajin is the **light web**: a sovereign,
+auditable layer where the signed record IS the value, so honesty becomes the profitable
+move. Be honest. Make money.
+
+You do a human thing — send a voice note, take a photo, drop a file. An agent infers
+what you meant, acts on your behalf, asks before anything crosses a boundary, and signs
+a record of what it did. The machinery recedes; the proof remains.
 
 Imajin is a cryptographic operating system. One kernel, a federated userspace, and four
 infrastructure layers that make user-authored actions verifiable and relationships bilateral.
@@ -25,18 +35,18 @@ DID resolution at scale are roadmap milestones, not shipped guarantees — the "
 property is real for a single node and a stated direction for the network, not a finished
 multi-node claim. See SECURITY.md for the honest list of current gaps.
 
-The kernel (`apps/kernel`) consolidates auth, payments, messaging, media, trust graph, and
-registry into one Next.js application. One domain, one cookie, one build. Userspace apps
-(events, market, learn, coffee, links, dykil) are independent, replaceable, and disposable.
-They inherit the full trust graph by importing `@imajin/auth`. The value is never in the app
-layer — it's in the substrate underneath.
+The kernel (`apps/kernel`) consolidates auth, payments, messaging, media, trust graph,
+broker, MCP connector, calendar, and registry into one Next.js application. One domain,
+one cookie, one build. Userspace apps (events, market, learn, coffee, links, dykil) are
+independent, replaceable, and disposable. They inherit the full trust graph by importing
+`@imajin/auth`. The value is never in the app layer — it's in the substrate underneath.
 
 No service mesh. No orchestration framework. No API gateway. No Kubernetes. No Docker.
 Just Next.js apps behind Caddy on a single server with pm2.
 
-**Build stats (May 2026):**
-~134,000 lines of TypeScript across 20 shared packages. 2,467 commits in 110 days.
-Monorepo v0.6.1. One developer with AI agents. The constraint is intentional —
+**Build stats (July 2026):**
+~101,500 lines of TypeScript across 22 shared packages. 2,844 commits in 153 days.
+70 database migrations. One developer with AI agents. The constraint is intentional —
 if the architecture can't be maintained by a small team, it's the wrong architecture.
 
 ---
@@ -47,20 +57,21 @@ Four infrastructure layers. The kernel runs the substrate. The bus moves events.
 encrypts data. The broker mediates access. Everything else is userspace.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Userspace (disposable, replaceable)                        │
-│  events · market · learn · coffee · links · dykil           │
-├─────────────────────────────────────────────────────────────┤
-│  Kernel                                                     │
-│  auth · pay · chat · media · profile · connections · registry│
-├─────────────────────────────────────────────────────────────┤
-│  Bus ─ reactor chains (side effects are composable)          │
-│  Vault ─ encrypted store (data encrypted at rest, always)   │
-│  Broker ─ consent gate (data released only with permission) │
-├─────────────────────────────────────────────────────────────┤
-│  Cryptographic Substrate                                    │
-│  Ed25519 · CID · dag-cbor · DFOS chains · .fair manifests   │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│  Userspace (disposable, replaceable)                           │
+│  events · market · learn · coffee · links · dykil              │
+├────────────────────────────────────────────────────────────────┤
+│  Kernel                                                        │
+│  auth · pay · chat · media · profile · connections · registry  │
+│  calendar · mcp · oauth · supply · inference                   │
+├────────────────────────────────────────────────────────────────┤
+│  Bus ─ reactor chains (side effects are composable)            │
+│  Vault ─ encrypted store (AES-256-GCM, node-sealed)            │
+│  Broker ─ consent gate (data released only with permission)    │
+├────────────────────────────────────────────────────────────────┤
+│  Cryptographic Substrate                                       │
+│  Ed25519 · CID · dag-cbor · DFOS chains · .fair manifests      │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 **Why one kernel, not 15 services:**
@@ -78,11 +89,17 @@ same identity substrate.
 | `/auth/*` | DIDs, sessions, attestations, challenges, registration, agents, apps |
 | `/pay/*` | Stripe checkout, settlement, .fair splits, MJNx ledger |
 | `/chat/*` | DID-based messaging, WebSocket tokens, conversations |
-| `/media/*` | Asset storage, .fair sidecars, on-the-fly resizing |
+| `/media/*` | Asset storage, .fair sidecars, CID versioning, scope-manifest projection |
 | `/profile/*` | Public profiles, handles, presence |
 | `/connections/*` | Trust graph, pods, invites |
 | `/registry/*` | Node federation, app manifests, DFOS relay |
 | `/input/*` | Voice transcription, file processing |
+| `/calendar/*` | Scheduling, broker-gated availability, consent-scoped entries |
+| `/mcp/*` | Sovereign connector door (OAuth 2.1 + DCR, per-DID scopes, JSON-RPC) |
+| `/oauth/*` | Authorization server for connectors (authorize, token, register) |
+| `/supply/*` | Supply domain — lots, chains, recorder |
+| `/inference/*` | Gesture capture, intention inference, vocabulary-mounted routing |
+| `/broker/*` | HTTP broker API — consent grant CRUD, field-level selective disclosure |
 
 Chat's WebSocket server (`ws-server.js`) runs as a separate process. Caddy routes `/chat/ws` to it.
 
@@ -154,19 +171,24 @@ const actingFor = request.headers.get("x-acting-for");
 // Validates that caller has role='agent' for the target identity
 ```
 
+### Actor-DID Convention for External Integrations
+
+External connectors (GitHub, Discord, QuickBooks) are registered as first-class **actor DIDs**
+via protocol adapters. Each connector is a `did:imajin:*-connector` with its own identity row
+and scope vocabulary. It authenticates as itself and acts `onBehalfOf` the human's DID using
+`X-Acting-For`. Work produced by a connector (issues opened, invoices created) is owner-pinned
+to the human's DID — authorship and provenance accrue to the human, not the connector.
+
 ### Lazy Minting
 
 DIDs are minted on first use. No batch import. No onboarding step. No registration form.
 
-A traveler books a trip → Tripian calls `POST /auth/api/onboard` with their email → soft DID
-created. A restaurant is referenced for the first time → Tripian calls `POST /registry/identity`
-→ DID minted under `did:tripian:` namespace. A buyer checks out on market → soft DID created
-from their email at checkout time.
+An integration partner calls `POST /registry/identity` the first time it references an external
+entity → DID minted under the partner's namespace. A buyer checks out → soft DID created from
+their email at checkout time.
 
 The pattern is always the same: get-or-create on first reference. The DID is the anchor;
-properties accrue over time as interactions happen. The entity can later claim/upgrade their
-identity, or never — the audit trail is valid either way because the DID exists from the
-first moment it was needed.
+properties accrue over time as interactions happen.
 
 ```
 POST /auth/api/onboard
@@ -441,6 +463,7 @@ Built-in reactors:
 | `emit` | Emits structured log/event for analytics |
 | `dfos` | Phase 2: direct DFOS chain append (currently deferred to attestation path) |
 | `webhook` | POSTs event payload to configured external URL |
+| `project` | Release-gated projection reactor (§11 — control-plane pattern) |
 
 ### The listing.purchased Flow (Cleanest Example)
 
@@ -473,6 +496,13 @@ Chain execution:
 3. **settle reactor** → resolves .fair chain, deducts Stripe processing fee from seller share, POSTs to pay service `/api/settle`
 4. **notify reactor** → sends `market:purchase` notification to seller, emits interest signals to both DIDs
 
+### Broker Integration
+
+`@imajin/bus` also exposes `bus.broker()` — the consent gate for selective disclosure (§8).
+The bus and broker share the same package but are separate surfaces: `publish` moves events
+through reactor chains; `broker()` evaluates a consent→scope→release→audit latch and returns
+a filtered release envelope. Both are in-process; no HTTP round-trip.
+
 ### Reactor Registry
 
 ```typescript
@@ -499,47 +529,51 @@ await publish('identity.created', {
 
 ## 6. Vault
 
-The vault exists because SSH-ing into a server to edit `.env` files doesn't scale, has no
-audit trail, and requires direct access to the machine. The vault is an encrypted key-value
-store: encrypt a secret to the node's public key from anywhere (phone, laptop, agent), store
-it as a CID-addressed blob, decrypt only on the node. No plaintext at rest. No SSH required.
+The vault is an encrypted key-value store: seal a secret to the node's signing key from
+anywhere, persist it as a CID-addressed blob, unseal only on the node. No plaintext at rest.
+No SSH required. First production consumer: connector PATs (GitHub, Discord, QuickBooks).
 
-Same cryptographic primitive as selective disclosure (§7) — both are "signed, scoped,
-encrypted data with controlled release." The vault is the simplest form: encrypt to one
-recipient (the node). The broker is the general form: encrypt to the subject, release to
-authorized requesters.
+**Custody disclosure:** The vault is **node-sealed (v1)** — secrets are encrypted with a key
+derived from the node's `AUTH_PRIVATE_KEY`. The node operator *can technically decrypt*
+stored secrets. The system is encrypted at rest and access-controlled, but this is NOT
+zero-custody. Owner-sealed (zero-custody) storage is a tracked hardening milestone. See
+SECURITY.md for the full honest-gaps list.
 
 ### Cryptography
 
-- **Ed25519 → X25519 key derivation** using `@noble/curves/ed25519` Montgomery conversion
-- **XSalsa20-Poly1305** authenticated encryption via `tweetnacl` (NaCl box/secretbox)
+- **AES-256-GCM** authenticated encryption (`node:crypto`)
+- **HKDF-SHA256** seal-key derivation from the `AUTH_PRIVATE_KEY` Ed25519 seed — the sealing key is domain-separated from the signing key (salt `imajin-vault`, info `seal-v1`)
 - **CID addressing** — every encrypted blob gets a deterministic `dag-cbor + SHA-256` CID
 
 ```typescript
-import {
-  encrypt, decrypt, serializeBlob, deserializeBlob, computeCid,
-  ed25519ToX25519Keys, ed25519PublicToX25519
-} from '@imajin/cli/crypto/vault-crypto';
+import { sealSecret, unsealSecret, deriveSealKey } from '@imajin/vault-core';
 
-// Encrypt a secret to a recipient's Ed25519 public key
-const encryptedBlob = encrypt(plaintext, recipientEd25519PublicKeyHex, senderEd25519SecretKeyHex);
-const serialized = serializeBlob(encryptedBlob);
-const cid = await computeCid(serialized);
+// Derive the 32-byte seal key from the node's AUTH_PRIVATE_KEY
+const keyBytes = deriveSealKey(process.env.AUTH_PRIVATE_KEY);
 
-// Decrypt
-const blob = deserializeBlob(serialized);
-const plaintext = decrypt(blob, senderEd25519PublicKeyHex, recipientEd25519SecretKeyHex);
+// Seal a plaintext string → { encrypted: base64(authTag||ciphertext), nonce: base64 }
+const blob = sealSecret(plaintext, keyBytes);
+
+// Unseal — throws on integrity failure (wrong key or tampered ciphertext)
+const plaintext = unsealSecret(blob, keyBytes);
 ```
 
-### CLI Interface
+### Server-Callable Vault Service (`apps/kernel/src/lib/vault`)
 
-```bash
-imajin vault set <KEY> <VALUE>     # Encrypt and store
-imajin vault get <KEY>             # Retrieve and decrypt
-imajin vault list                  # List all entries
+```typescript
+import { sealAndStore, loadAndUnseal } from '@/src/lib/vault';
+
+// Seal and persist under a per-DID field name
+await sealAndStore(`github-pat:${ownerDid}`, pat);
+
+// Load, verify entry integrity, and unseal
+const pat = await loadAndUnseal(`github-pat:${ownerDid}`);
+// Returns undefined if not found; throws on integrity violation
 ```
 
-Storage: `~/.imajin/vault.json`. Each entry tracks field, CID, encrypted blob, nonce, sender DID, sender pubkey, timestamp, and `previousCid` for history chaining.
+Per-DID isolation is structural: the field name encodes the owner DID (`github-pat:${ownerDid}`),
+so different DIDs cannot read each other's secrets. Cross-DID reads fail at the field-name gate
+before any decryption is attempted.
 
 ### Why CIDs
 
@@ -550,12 +584,49 @@ history. Config references a CID, not a raw path — portable, content-verified.
 ### Bus Integration
 
 Vault changes emit `vault.secret.updated` bus events. Services subscribe to the secrets they
-consume and hot-reload on change — no restart, no deploy, no SSH. A GitHub token expires at
-3am? Rotate it from your phone. The service picks it up in seconds.
+consume and hot-reload on change — no restart, no deploy, no SSH. A token expires at 3am?
+Rotate it from your phone. The service picks it up in seconds.
 
 ---
 
-## 7. Selective Disclosure & Data Broker
+## 7. Content-Addressed Media Versioning
+
+Every media asset has a content-addressed identity: a `dag-cbor + SHA-256` CID derived from
+its canonical form. Editing a document is not an in-place mutation — it creates a new signed
+version with a `previousCid` pointer, forming an auditable content chain.
+
+### CID Chain per Asset
+
+```
+asset v1: cid = bafyrei...A  (no previousCid)
+         ↓ update
+asset v2: cid = bafyrei...B, previousCid = bafyrei...A
+         ↓ update
+asset v3: cid = bafyrei...C, previousCid = bafyrei...B
+```
+
+The current CID is stored in `assets.cid`. The full chain is walkable via `previousCid`
+pointers. A consumer verifying content computes the CID from the payload and checks it
+against the stored CID — no trust in the transport layer required.
+
+### Per-DID Workspace Manifest
+
+Each DID has a workspace manifest: a `.fair`-signed snapshot of all current asset CIDs owned
+by that DID. The manifest enables:
+- **Snapshot / rollback** — restore a previous state from the signed manifest
+- **Branch** — fork the manifest to a new DID-owned workspace
+- **Version badges** — UI surfaces the content chain depth as a version indicator
+
+### Document-Changed Trigger
+
+When `updateAssetContent()` persists a new content version, it:
+1. Re-signs the asset as `.fair` (signed by `AUTH_PRIVATE_KEY` on-behalf-of the owner DID)
+2. Publishes `document.changed` to the bus with `{ path, previousCid, newCid }`
+3. The `project` reactor runs the release-gated projection pipeline (§11)
+
+---
+
+## 8. Selective Disclosure & Data Broker
 
 This is the layer that makes the whole system worth building.
 
@@ -564,9 +635,8 @@ configured correctly. The broker inverts this: data is encrypted at rest, and on
 to specific requesters when the subject has granted consent for a specific purpose. Every
 release is audited. Every denial is logged. The default state is locked.
 
-Specced in #786/#1003. The bus infrastructure, vault crypto, and identity model are all
-production. The broker is a new entry point (`bus.broker()`) on existing plumbing —
-not a greenfield build.
+The broker is **complete and in production**: consent grant CRUD, DB-backed consent reactor,
+profile selective disclosure, HTTP broker API, and full audit trail are all shipped.
 
 ### The Problem It Solves
 
@@ -607,15 +677,14 @@ not present in response. Every field, every purpose, every release mode is expli
 ### The Request Flow
 
 ```
-Tripian app              Imajin Broker             Traveler's Data
+Requester app           Imajin Broker             Subject's Data
     |                         |                         |
     | broker.request({        |                         |
-    |   requester: restaurant,|                         |
-    |   subject: traveler,    |                         |
+    |   requester: ...,       |                         |
+    |   subject: ...,         |                         |
     |   fields: [dietary,     |                         |
     |     allergies, budget], |                         |
-    |   purpose: restaurant_  |                         |
-    |     reservation         |                         |
+    |   purpose: restaurant   |                         |
     | })                      |                         |
     |                         |                         |
     |                         | check consent grants    |
@@ -631,37 +700,35 @@ Tripian app              Imajin Broker             Traveler's Data
     |   allergies: {has:true} |                         |
     |   budget: [omitted]     |                         |
     |                         |                         |
-    |   audit log written     |                         |
+    |   audit log written     |
 ```
 
 Every request and release is logged with requester DID, subject DID, fields requested, fields
-released, fields denied, purpose, and timestamp. The traveler can see their full audit trail.
+released, fields denied, purpose, and timestamp. The subject can see their full audit trail.
 
-### Shadow Mode (PoC)
+### HTTP Broker API
 
-For the Hawaii PoC, the broker runs in shadow mode: consent checks and field filtering
-execute and log decisions, but nothing is gated. The app continues to work. Logs show what
-WOULD have been denied. After PoC, shadow mode flips to enforcement — same logic, now binding.
+```
+POST /broker/api/request
+{ requester: did, subject: did, fields: [...], purpose: "..." }
+→ { released: { field: value | { attestation: true } }, denied: [...] }
 
-This is the right way to validate a consent model without blocking the user experience.
+POST /broker/api/consent
+{ grantorDid: did, grantedTo: did, field: "dietary_restrictions", purpose: "...", release: "raw" }
+→ { consentId: "..." }
 
-### Lazy DID Minting for Integration
+DELETE /broker/api/consent/{consentId}
+→ 204
+```
 
-Integrating partners (like Tripian) don't need to batch-import their inventory. Every entity
-gets a DID on first reference:
+### Broker Audit Log
 
-1. First time Tripian references a restaurant → `POST /registry/identity` → get back `did:tripian:9aRk...`
-2. Store locally, use in all subsequent broker requests
-3. First time a traveler books → same pattern → `did:tripian:7xKm...` stored in their TCO
-4. Preferences encrypted via vault API, keyed to traveler DID
-5. Broker requests use both DIDs — the requester (restaurant) and the subject (traveler)
-
-Zero migration. Tripian's existing systems don't change. The DID layer wraps around them —
-one API call per entity, on first use, cached forever after.
+Every consent decision writes a `broker_audit_log` row (consent→scope→release→audit latch).
+The subject can query their full history: who asked for what, what was released, what was denied.
 
 ---
 
-## 8. Attestations
+## 9. Attestations
 
 Attestations are how trust is built. Not granted by an admin, not assumed by default —
 earned through signed, verifiable claims. "Alice vouched for Bob." "Bob bought a ticket."
@@ -691,7 +758,8 @@ const ATTESTATION_TYPES = [
   'scope.onboard', 'event.created', 'event.attendance', 'handle.claimed',
   'learn.enrolled', 'learn.completed', 'stub.created', 'asset.fair.upgraded',
   'document.created', 'document.signed', 'document.executed', 'document.declined',
-  'app.authorized',
+  'app.authorized', 'asset.article.published',
+  'github.issue.created', 'github.comment.created',
 ] as const;
 ```
 
@@ -752,7 +820,7 @@ Transitions status from `pending` → `bilateral`. Only the subject can counters
 
 ---
 
-## 9. .fair Attribution
+## 10. .fair Attribution
 
 Every asset carries a `.fair` manifest: who contributed, in what proportion, under what terms.
 This is the answer to "who gets paid?" — not as a policy document, but as a machine-readable
@@ -864,7 +932,291 @@ The `settleReactor` (`packages/bus/src/reactors/settle.ts`):
 
 ---
 
-## 10. Settlement
+## 11. Control-Plane Pattern: Scope-Manifest → Release-Gated Projection
+
+This is the pattern by which human-authored signed documents govern what connectors and
+agents can do. The human edits a document they own; the system reads it and enforces it.
+No admin panel. No API call. Grant by editing. Revoke by deleting a line.
+
+### The Pattern
+
+A **scope-manifest** is a `.fair`-signed media asset with `metadata.kind: scope-manifest`.
+It declares which scopes a connector is permitted to use, with a `release:` header per scope
+derived from the 2×2 consent taxonomy (§11.4):
+
+```markdown
+---
+connector: did:imajin:github-connector
+channel: github
+---
+
+## github:read
+release: silent
+verb: read
+surface: repos/issues/PRs
+label: Read your repos and issues
+
+## github:write
+release: on-consent
+verb: write
+surface: issues/PRs
+label: Open and comment on issues and PRs
+```
+
+### Release-Gated Projection Reactor (`project` reactor)
+
+On `document.changed`, the `project` reactor:
+1. Reads the authored document at `payload.path`
+2. Parses each field's `release:` header via `parseReleasePolicy()`
+3. For each declared field, calls the broker's consent→scope→release→audit latch
+4. **Released fields** are passed to registered `ProjectionSurface.apply()` implementations
+5. **Gated/removed fields** trigger `ProjectionSurface.remove()` — de-materializing the row and firing downstream revocation
+
+The broker's audit reactor writes a `broker_audit_log` row for every consent-gated decision.
+
+### Projection Surfaces
+
+Surfaces plug in via `registerProjectionSurface()` — adding a new connector never touches
+the reactor core:
+
+```typescript
+import { registerProjectionSurface } from '@/src/lib/media/projection-reactor';
+
+registerProjectionSurface({
+  name: 'channel-links',
+  async apply(ctx, released) {
+    // Upsert an active auth.channel_links row for each released scope
+  },
+  async remove(ctx, removedFields) {
+    // Flip status → 'revoked' + publish channel.link.revoked
+  },
+});
+```
+
+### Grant / Revoke Flow
+
+```
+Human edits scope-manifest (adds github:write line)
+  → updateAssetContent() re-signs the .fair asset
+  → document.changed published to bus
+  → project reactor runs broker latch for github:write
+  → consent grant exists → RELEASED
+  → channel-links surface upserts active auth.channel_links row
+  → GitHub connector can now call github:write surface
+
+Human deletes github:write line from manifest
+  → document.changed published
+  → project reactor: github:write not in declared fields → REMOVED
+  → channel-links surface: status → 'revoked', publishes channel.link.revoked
+  → GitHub connector physically cannot reach github:write surface
+```
+
+Delete = revoke. The file (signed) is the authority. No separate revocation API call needed.
+
+### 2×2 Scope Taxonomy
+
+```
+                  read        write
+only-you         silent      itemized / on-consent
+touches-others   on-consent  deliberate (never silent)
+```
+
+A connector scope is classified by `(read|write) × (only-you|touches-others)`. The
+`touches-others` column can never be `silent` — this falls out of the taxonomy and is
+enforced by `deriveReleaseTier()`, not hand-assigned per scope.
+
+---
+
+## 12. MCP Connector Surface
+
+The kernel exposes a sovereign connector door at `mcp.imajin.ai`. Claude Desktop and any
+MCP-compatible client can connect to it. The MCP surface is the agent-protocol-interop
+entry point: a human's Imajin identity plus their consented scope-manifests determine
+exactly what the connected agent can do.
+
+### OAuth 2.1 Authorization Server
+
+The MCP surface implements a full OAuth 2.1 AS (RFC 8414 discovery, RFC 7591 DCR, RFC 7636
+PKCE, RFC 8707 resource indicators):
+
+```
+GET  /.well-known/openid-configuration   → RFC 8414 AS metadata
+GET  /.well-known/oauth-protected-resource → RFC 9728 protected-resource metadata
+POST /oauth/register                     → RFC 7591 Dynamic Client Registration
+GET  /oauth/authorize                    → authorization code flow (PKCE required)
+POST /oauth/token                        → code → access token + refresh token
+POST /mcp                                → JSON-RPC 2.0 tool dispatch
+```
+
+**Dynamic Client Registration (DCR):** Claude Desktop requires DCR — it rejects an AS with
+no `registration_endpoint`. Registration is accepted ONLY for exact Anthropic callback URIs
+(`claude.ai/api/mcp/auth_callback`, `claude.com/api/mcp/auth_callback`). No wildcards.
+A registered client is inert until a real DID consents.
+
+**Token lifetimes:** access token 10 minutes, authorization code 60 seconds (single-use),
+refresh token 90 days.
+
+### Per-DID Scope Gate
+
+Every `tools/call` JSON-RPC invocation is checked against the caller's granted scopes:
+```
+tool.requiredScope && !ctx.scopes.has(tool.requiredScope)
+→ { isError: true, content: [{ text: "insufficient_scope" }] }
+```
+
+### MCP Tools Registry
+
+Tools are registered in `apps/kernel/src/lib/mcp/tools/index.ts`. Adding a new tool is a
+single entry in the registry — the `/mcp` route handler and JSON-RPC dispatch never change.
+
+| Tool | Required scope | Purpose |
+|------|---------------|---------|
+| `media_list` | `media:read` | List the caller's media assets |
+| `media_get` | `media:read` | Get a single asset |
+| `media_write` | `media:write` | Create or update a media asset |
+| `media_share` | `media:share` | Add/remove allowedDids on an asset |
+| `connections_list` | `connections:read` | List trust-graph connections |
+| `github_create_issue` | `github:write` | Create a GitHub issue on behalf of DID |
+| `github_create_comment` | `github:write` | Create a GitHub issue comment |
+| `github_list_issues` | `github:read` | List issues in a repo |
+| `github_get_issue` | `github:read` | Get a single issue |
+| `github_connect` | `github:write` | Seal a GitHub PAT in the vault |
+| `discord_send_message` | `discord:write` | Send a Discord message |
+| `discord_connect` | `discord:write` | Seal a Discord bot token in the vault |
+
+### Scope Vocabulary (MCP ceiling)
+
+Scopes in `MCP_SCOPES` and `packages/auth/src/scopes.ts`:
+
+```
+media:read, media:write, media:share, connections:read
+github:read (silent), github:write (on-consent)
+github:org (on-consent — touches others), github:actions (never)
+discord:read (silent), discord:write (on-consent)
+```
+
+---
+
+## 13. Connectors
+
+Connectors are external integrations registered as actor DIDs, with credentials sealed in
+the vault and scopes governed by the owner's scope-manifest (§11). The pattern is uniform:
+connector DID + scope-manifest + vault-sealed credential + MCP tools.
+
+### GitHub Connector
+
+- **Connector DID:** `did:imajin:github-connector`
+- **Credential:** fine-grained GitHub PAT, sealed in the vault under `github-pat:${ownerDid}`
+- **Scope fixture:** `apps/kernel/src/lib/media/__tests__/fixtures/github-scope-manifest.md`
+- **Tools:** `github_create_issue`, `github_create_comment`, `github_list_issues`, `github_get_issue`, `github_connect`
+- **Attribution:** work is owner-pinned to the human's DID (authorship accrues to the human, not the connector)
+- **Bus events:** `github.issue.created`, `github.comment.created` (non-fatal, post-action)
+- **Fail-closed:** no active `channel_links` row OR no sealed PAT → throw, no GitHub API call
+
+### Discord Connector
+
+- **Connector DID:** `did:imajin:discord-connector`
+- **Credential:** Discord bot token, sealed in vault under `discord-token:${ownerDid}`
+- **Tools:** `discord_send_message`, `discord_connect`
+- **Same vault/scope-manifest/MCP pattern as GitHub connector**
+
+### QuickBooks Connector
+
+- **Per-DID config:** OAuth-based, config stored per DID
+- **Capabilities:** invoice write/read, settlement integration
+- **Tools:** registered in the kernel `/quickbooks/*` route group
+- **Settlement:** integrates with the .fair settlement reactor for invoice flows
+
+### Adding a New Connector
+
+1. Register a connector DID (`did:imajin:<name>-connector`)
+2. Add scope vocabulary to `packages/auth/src/scopes.ts` and `mcp/oauth-config.ts`
+3. Create a backend lib in `apps/kernel/src/lib/<name>/connector.ts` — seal/unseal credentials via `sealAndStore`/`loadAndUnseal`, resolve active grant via `channel_links`, act `onBehalfOf` the human's DID
+4. Register a `ProjectionSurface` for `channel_links` management — do NOT modify `projection-reactor.ts` core
+5. Add MCP tools to `mcp/tools/<name>.ts` and register in `ALL_TOOLS`
+6. Create a `.fair`-signed scope-manifest fixture under `__tests__/fixtures/`
+
+---
+
+## 14. Intention Inference Engine
+
+The inference engine is the "you do a human thing" surface. A human sends a voice note,
+takes a photo, or drops a file. The engine infers intent, routes to the right vocabulary
+of actions, and proposes what to do next. The human confirms before anything crosses a
+boundary. The engine signs a record of what it inferred and what was authorized.
+
+### Pipeline
+
+```
+Gesture (voice/photo/file/text)
+  → captureGesture(): DID-pinned asset + inference_sessions row + DFOS capture event
+  → gatherContext(): resolve identity, connections, recent assets, calendar state
+  → classifyIntent(): vocabulary-mounted LLM routing (intent → action candidates)
+  → resolvePolicy(): consent + scope + release latch — inferred action validated
+  → propose / execute: human confirms, engine executes on their behalf
+```
+
+### Capture Surface
+
+```typescript
+import { captureGesture } from '@/src/lib/inference/capture';
+
+const captureEvent = await captureGesture({
+  buffer,            // raw audio/image/file bytes
+  filename,          // original filename
+  mimeType,          // audio/* → voice, image/* → photo, text/* → text, else file
+  ownerDid,
+  vocabularyName,    // mounted vocabulary — governs intent classification routing
+});
+// → { sessionId, assetId, kind, ownerDid }
+```
+
+Captures are always `access: private` until explicitly shared. `inference.capture` DFOS
+event published (best-effort, non-fatal).
+
+### Vocabulary Mount
+
+A **vocabulary** is a named set of action templates. Mounting a vocabulary tells the engine
+what actions are available for this gesture source. The vocabulary name is stored on the
+`inference_sessions` row and drives LLM routing.
+
+### Session Lifecycle
+
+```
+status: capturing → classifying → proposing → executing → completed | failed
+```
+
+The session ID chains the entire pipeline from raw gesture to executed action. Every
+transition is signed and auditable.
+
+---
+
+## 15. Calendar
+
+The calendar primitive provides broker-gated temporal scheduling. Availability is not
+exposed by default — it is released only to requesters with an explicit consent grant
+scoped to the purpose and relationship class.
+
+### Route Surface
+
+```
+GET  /calendar/api/availability/{did}   → broker-gated availability slots
+POST /calendar/api/entries              → create a temporal entry
+GET  /calendar/api/entries              → list own entries (requires auth)
+```
+
+### Relationship-Class Consent
+
+Calendar consent grants carry a `relationship_class`:
+- `personal` — release to explicit personal connections only
+- `professional` — release to business-context requesters
+- `public` — release to any DID with a consent grant for this purpose
+
+The broker latch checks relationship class before releasing any slot data.
+
+---
+
+## 16. Settlement
 
 Money comes in through wire schemes (Stripe, Interac e-Transfer, eventually Solana Pay,
 Lightning). The .fair manifest says where it goes. The settle reactor does the math. The
@@ -931,7 +1283,7 @@ Configured per manifest in `settlement.schemes`.
 
 ---
 
-## 11. Chat
+## 17. Chat
 
 DID-based messaging. Every conversation is a DID.
 
@@ -1038,7 +1390,7 @@ Group chats use a shared group key re-encrypted to each member's X25519 public k
 
 ---
 
-## 12. Connections & Trust Graph
+## 18. Connections & Trust Graph
 
 Pods are the unit of trust. Two people in a pod are connected. Connections form a graph.
 Trust is measured in hops. This is how the system knows "Alice is 2 hops from Bob" without
@@ -1077,7 +1429,7 @@ Link invite limits by role: admin (unlimited), legendary (10), trusted (5), memb
 
 ---
 
-## 13. Agent Identity
+## 19. Agent Identity
 
 Agents are first-class identities, not API keys. An agent has a DID, a keypair, a trust
 history, and scoped delegation to act on behalf of its principal. It authenticates the same
@@ -1105,14 +1457,6 @@ GET /auth/api/agents
 → { agents: [{ did, handle, displayName, name, tier, status, role }] }
 ```
 
-### OpenClaw Plugin Integration
-
-Agents authenticate via the same challenge-response flow as humans. The OpenClaw Imajin channel plugin (`extensions/imajin`) uses:
-
-1. **Agent DID** — stored in plugin config
-2. **Challenge-response** — agent signs challenges with its Ed25519 key
-3. **X-Acting-For header** — after auth, the agent includes this header to act on behalf of its principal
-
 ### Agent Challenge-Response
 
 Same as human challenge-response, but the agent's DID is used:
@@ -1127,11 +1471,12 @@ POST /auth/api/authenticate
 
 ---
 
-## 14. DFOS Integration
+## 20. DFOS Integration
 
 ### Relay
 
 DFOS relay runs at `registry.imajin.ai/relay/`. Every node runs an embedded relay.
+DFOS relay 0.13.5: `/proof/v1` route surface, 133/133 conformance tests passing.
 
 ### Bridge
 
@@ -1163,7 +1508,7 @@ const event = await publishContentEvent({
 
 ---
 
-## 15. Integration Patterns
+## 21. Integration Patterns
 
 ### Adding a New Userspace App
 
@@ -1195,6 +1540,7 @@ CHAT_SERVICE_URL=https://jin.imajin.ai/chat
 ATTESTATION_INTERNAL_API_KEY=...
 AUTH_PRIVATE_KEY=64-char-hex...
 NODE_DID=did:imajin:node_xxx
+MCP_PUBLIC_URL=https://mcp.imajin.ai
 ```
 
 ### Cross-Service Calls
@@ -1222,20 +1568,27 @@ import { createDb } from '@imajin/db';
 const db = createDb(schema);
 ```
 
+**Circular dependency constraint:** `packages/bus` MUST NOT import `apps/kernel`. The bus
+package is a shared substrate; the kernel consumes it. Any kernel-side reactor logic lives
+in `apps/kernel/src/lib/*/` and self-registers via `registerReactor()` /
+`registerProjectionSurface()` from `@imajin/bus`.
+
 ---
 
-## 16. Cryptographic Stack
+## 22. Cryptographic Stack
 
 | Primitive | Purpose |
 |-----------|---------|
-| Ed25519 | DID keypairs, attestation signing, .fair signing, session auth |
-| SHA-256 | Content hashing, hard DID derivation |
+| Ed25519 | DID keypairs, attestation signing, .fair signing, session auth, vault identity signing |
+| SHA-256 | Content hashing, hard DID derivation, HKDF operations |
+| HKDF-SHA256 | Vault seal-key derivation from Ed25519 seed (domain-separated from signing key) |
+| AES-256-GCM | Vault secret encryption (node-sealed, authenticated) |
 | X25519 | Chat key agreement (derived from Ed25519) |
 | XChaCha20-Poly1305 | Chat message encryption |
-| XSalsa20-Poly1305 | Vault encryption (NaCl box) |
-| dag-cbor + CID | DFOS content addressing, attestation CIDs |
+| dag-cbor + CID | DFOS content addressing, attestation CIDs, asset versioning |
 | JWS | DFOS signature format for chain operations |
 | JWT | Session cookies (HS256, signed by auth service) |
+| PKCE S256 | OAuth 2.1 authorization code protection (MCP connector) |
 
 Key encodings:
 - Ed25519 private key: 32-byte seed, hex-encoded (64 chars) or PKCS#8 DER (96 chars)
@@ -1247,10 +1600,11 @@ The same Ed25519 keypair produces both `did:imajin:xxx` and `did:dfos:xxx`. Byte
 
 ---
 
-## 17. Quick Reference
+## 23. Quick Reference
 
 - Source: github.com/ima-jin/imajin-ai
-- Kernel: jin.imajin.ai (consolidated auth/pay/chat/media/profile/connections/registry)
+- Kernel: jin.imajin.ai (consolidated auth/pay/chat/media/profile/connections/registry/mcp)
+- MCP connector: mcp.imajin.ai
 - DFOS relay: registry.imajin.ai/relay/
 - OpenAPI specs: https://jin.imajin.ai/api/spec (kernel), https://{app}.imajin.ai/api/spec (userspace)
 
@@ -1285,12 +1639,15 @@ curl -b cookies.txt -X POST "https://jin.imajin.ai/chat/api/d/did:imajin:dm:abc1
 curl -b cookies.txt -X POST https://jin.imajin.ai/chat/api/ws-token
 → { "token": "wst_xxx" }
 
-# 8. Create listing (userspace: market app)
-curl -b cookies.txt -X POST https://market.imajin.ai/api/listings \
+# 8. Broker consent grant
+curl -b cookies.txt -X POST https://jin.imajin.ai/broker/api/consent \
   -H "Content-Type: application/json" \
-  -d '{"title":"Jacket","price":15000,"currency":"CAD","sellerTier":"public_onplatform"}'
+  -d '{"grantorDid":"did:imajin:...","grantedTo":"did:imajin:restaurant...","field":"dietary_restrictions","purpose":"restaurant_reservation","release":"raw"}'
 
-# 9. Create invite
+# 9. MCP OAuth discovery
+curl https://mcp.imajin.ai/.well-known/openid-configuration
+
+# 10. Create invite
 curl -b cookies.txt -X POST https://jin.imajin.ai/connections/api/invites \
   -H "Content-Type: application/json" -d '{"delivery":"link"}'
 ```
