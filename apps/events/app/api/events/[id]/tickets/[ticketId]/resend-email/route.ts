@@ -11,9 +11,10 @@ import { getClient } from '@imajin/db';
 import { generateQRCode } from '@/src/lib/email';
 import { publish } from '@imajin/bus';
 
+import { eventUrl, eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
+
 const AUTH_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL || 'https://auth.imajin.ai';
-const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
-import { eventUrl, eventRegisterUrl, eventMyTicketsUrl } from '@imajin/config';
+const EVENTS_URL = buildPublicUrlAbsolute('events');
 
 function redactEmail(email: string): string {
   const atIdx = email.indexOf('@');

@@ -8,7 +8,7 @@ import { requireAuth, getEmailForDid } from '@imajin/auth';
 import { eq, sql } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
-import { eventUrl } from '@imajin/config';
+import { eventUrl, buildPublicUrlAbsolute } from '@imajin/config';
 
 const sqlClient = getClient();
 
@@ -156,7 +156,7 @@ export async function POST(
           refundMessage = `Your ticket for **${event.title}** has been cancelled and refunded.`;
         }
 
-        const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+        const EVENTS_URL = buildPublicUrlAbsolute('events');
         let imageUrl: string | null = null;
         if (event.imageUrl) {
           imageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;

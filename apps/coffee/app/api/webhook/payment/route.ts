@@ -6,8 +6,6 @@ import { eq } from 'drizzle-orm';
 import { settleTip } from '@/lib/settle';
 import { publish } from '@imajin/bus';
 
-const COFFEE_URL = process.env.NEXT_PUBLIC_COFFEE_URL || 'https://coffee.imajin.ai';
-
 /**
  * POST /api/webhook/payment - Receives payment callbacks from pay service
  */

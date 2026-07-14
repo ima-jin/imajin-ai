@@ -18,7 +18,7 @@ import { generateQRCode } from '@/src/lib/email';
 import { backfillContactEmail } from '@/src/lib/contact-email';
 import { createOrderWithTickets } from '@/src/lib/checkout-common';
 import { randomBytes } from 'node:crypto';
-import { eventUrl, eventRegisterUrl, eventMyTicketsUrl } from '@imajin/config';
+import { eventUrl, eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
 import * as bus from '@imajin/bus';
@@ -378,8 +378,8 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
 
   // Send confirmation email with onboard verification link
   const eventDate = new Date(event.startsAt);
-  const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || 'https://auth.imajin.ai';
-  const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+  const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || buildPublicUrlAbsolute('auth');
+  const EVENTS_URL = buildPublicUrlAbsolute('events');
 
   // Determine registration-pending tickets early so the onboard token can
   // redirect to the register page when applicable.

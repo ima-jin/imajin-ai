@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { createLogger } from '@imajin/logger';
+import { buildPublicUrlAbsolute } from '@imajin/config';
 
 const log = createLogger('learn');
 
@@ -10,7 +11,7 @@ interface PageProps {
 
 async function getCreatorCourses(handle: string) {
   const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3103';
+  const baseUrl = buildPublicUrlAbsolute('learn');
 
   try {
     // Resolve handle → DID

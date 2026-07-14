@@ -12,9 +12,9 @@ import { generateQRCode } from '@/src/lib/email';
 import { eq, sql, and, inArray } from 'drizzle-orm';
 
 const log = createLogger('events');
-const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || 'https://auth.imajin.ai';
-const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
-import { eventUrl, eventRegisterUrl, eventMyTicketsUrl } from '@imajin/config';
+import { eventUrl, eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
+const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || buildPublicUrlAbsolute('auth');
+const EVENTS_URL = buildPublicUrlAbsolute('events');
 
 export interface ConfirmPaymentResult {
   confirmedTickets: (typeof tickets.$inferSelect)[];

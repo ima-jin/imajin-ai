@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { MarkdownContent } from '@imajin/ui';
+import { buildPublicUrlAbsolute } from '@imajin/config';
 
 interface Props {
   searchParams: { type?: string; handle?: string };
 }
 
 async function getCreatorPage(handle: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3009';
+  const baseUrl = buildPublicUrlAbsolute('coffee');
   try {
     const res = await fetch(`${baseUrl}/api/pages/${handle}`, { cache: 'no-store' });
     if (!res.ok) return null;

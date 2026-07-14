@@ -5,7 +5,7 @@ import { requireAuth } from '@imajin/auth';
 const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
-import { eventUrl } from '@imajin/config';
+import { eventUrl, buildPublicUrlAbsolute } from '@imajin/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -197,7 +197,7 @@ export async function POST(
   } catch {}
 
   // Forward to notify broadcast with event-contextualized HTML
-  const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'http://localhost:3006';
+  const EVENTS_URL = buildPublicUrlAbsolute('events');
 
   let broadcastResult: { sent: number; skipped: number; errors: number };
   try {

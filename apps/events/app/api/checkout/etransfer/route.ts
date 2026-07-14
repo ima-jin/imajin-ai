@@ -20,7 +20,7 @@ import {
   CheckoutValidationError,
   type CartItem,
 } from '@/src/lib/checkout-common';
-import { eventUrl, eventMyTicketsUrl } from '@imajin/config';
+import { eventUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const HOLD_HOURS = 72;
@@ -104,7 +104,7 @@ export const POST = withLogger('events', async (request, { log }) => {
       // or send any reservation email.
       // Tab-A-canonical: redirect goes to a simple affirmation page; cart stays
       // in component state and tab A picks up verification via polling.
-      const eventsBase = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+      const eventsBase = buildPublicUrlAbsolute('events');
       const redirectUrl = `${eventUrl(eventsBase, body.eventId)}${
         body.invite ? `?invite=${encodeURIComponent(body.invite)}` : ''
       }`;
@@ -281,7 +281,7 @@ export const POST = withLogger('events', async (request, { log }) => {
     // Send the buyer a 'reserved — not yet confirmed' email so they have a
     // record of the hold, the memo, and the address to send to.
     if (buyerEmail) {
-      const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+      const EVENTS_URL = buildPublicUrlAbsolute('events');
       const eventDate = new Date(event.startsAt);
       let eventImageUrl: string | undefined;
       if (event.imageUrl) {
