@@ -1,4 +1,5 @@
-export { isAllowedOrigin, corsHeaders, corsOptions, withCors, validateOrigin } from "./cors";
+export { isAllowedOrigin, corsHeaders, corsOptions, withCors, validateOrigin, ALLOWED_FRAME_ORIGINS } from "./cors";
+export { tier1Headers, tier2Headers, tier3Headers } from './security-headers';
 
 export {
   SERVICES,
