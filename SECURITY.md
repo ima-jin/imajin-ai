@@ -76,6 +76,11 @@ close them as the work lands. As of this writing:
 - **`.fair` manifests are machine-readable commercial instructions, not legal instruments.** They
   do not by themselves establish copyright ownership, resolve disputes, or carry tax/jurisdiction
   semantics.
+- **Vault-sealed secrets are node-sealed (v1), not zero-custody.** Connector credentials (GitHub PATs,
+  Discord bot tokens, etc.) are encrypted with a key derived from the node's `AUTH_PRIVATE_KEY`.
+  The node operator *can technically decrypt* secrets stored on behalf of users. The system is
+  encrypted at rest and access-controlled, but this is NOT zero-custody. Owner-sealed
+  (zero-custody) storage is a tracked hardening milestone.
 - **Rate limiting is per-process.** In multi-worker deployments, in-memory limits apply per worker.
   A shared backing store is planned.
 
