@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { ChatProvider, useChatWebSocket } from '@imajin/chat';
-import { apiFetch } from '@imajin/config';
+import { apiFetch, buildPublicUrl } from '@imajin/config';
 import { EventChatWrapper } from './components/EventChatWrapper';
 
-const CHAT_URL = process.env.NEXT_PUBLIC_CHAT_URL || 'http://localhost:3007';
+const CHAT_URL = buildPublicUrl('chat');
 // Use same-origin proxy for access checks (cross-origin cookie forwarding is unreliable)
 const AUTH_URL = '';  // empty = same origin, proxied via /api/access/[did]
-const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || 'http://localhost:3009';
+const MEDIA_URL = buildPublicUrl('media');
 
 interface AccordionContentProps {
   eventId: string;

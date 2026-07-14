@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@imajin/auth';
+import { buildPublicUrl } from '@imajin/config';
 import EventCreateForm from './form';
 
 export default async function CreateEventPage() {
@@ -7,8 +8,8 @@ export default async function CreateEventPage() {
   
   if (!session) {
     // Redirect to auth with return URL
-    const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
-    const eventsUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+    const authUrl = buildPublicUrl('auth');
+    const eventsUrl = buildPublicUrl('events');
     const createUrl = `${eventsUrl}/create`;
     redirect(`${authUrl}/login?next=${encodeURIComponent(createUrl)}`);
   }
