@@ -208,26 +208,18 @@ Apps don't need Stripe keys. They call the node's pay service. Pay uses Stripe C
 ## Quick Start
 
 ```bash
-# Clone
 git clone https://github.com/ima-jin/imajin-ai.git
 cd imajin-ai
-
-# Install
-pnpm install
-
-# Configure (copy and edit .env.local for each app you want to run)
-# Each app needs at minimum: DATABASE_URL
-
-# Start a service in dev mode
-pnpm --filter @imajin/auth dev       # localhost:3001
-pnpm --filter @imajin/events dev     # localhost:3006
-
-# Build
-pnpm --filter @imajin/kernel build
-
-# Push database schemas (requires DATABASE_URL)
-cd apps/auth && pnpm db:push
+bash scripts/setup-local.sh
 ```
+
+The script checks prerequisites, installs dependencies, creates the `imajin_dev` database, generates `.env.local` files for every service with all secrets wired together, and runs migrations. When it finishes, start kernel:
+
+```bash
+pnpm --filter @imajin/kernel dev   # http://localhost:3000
+```
+
+Then open `http://localhost:3000/register` to create your first identity. See [docs/DEVELOPER.md](./docs/DEVELOPER.md) for the full developer guide.
 
 ---
 

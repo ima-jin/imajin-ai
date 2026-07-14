@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@imajin/auth';
+import { buildPublicUrl } from '@imajin/config';
 import { db, transactions } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import Link from 'next/link';
@@ -12,8 +13,8 @@ export default async function TopupSuccessPage({ searchParams }: Readonly<Succes
   const session = await getSession();
 
   if (!session) {
-    const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
-    const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+    const authUrl = buildPublicUrl('auth');
+    const payUrl = buildPublicUrl('pay');
     const successUrl = `${payUrl}/topup/success`;
     redirect(`${authUrl}/login?next=${encodeURIComponent(successUrl)}`);
   }

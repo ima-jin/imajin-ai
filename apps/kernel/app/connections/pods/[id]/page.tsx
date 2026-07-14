@@ -84,8 +84,12 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
         const data = await res.json();
         setPod((prev) => prev ? { ...prev, ...data.pod } : null);
         setEditing(false);
+      } else {
+        toast.error('Failed to save changes');
       }
-    } catch {} finally {
+    } catch {
+      toast.error('Failed to save changes');
+    } finally {
       setSaving(false);
     }
   }
@@ -105,7 +109,9 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
         const data = await res.json();
         toast.error(data.error || 'Failed to add member');
       }
-    } catch {} finally {
+    } catch {
+      toast.error('Failed to add member');
+    } finally {
       setAdding(false);
     }
   }
@@ -127,7 +133,9 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
         const data = await res.json();
         toast.error(data.error || 'Failed to remove member');
       }
-    } catch {}
+    } catch {
+      toast.error('Failed to remove member');
+    }
   }
 
   async function deleteGroup() {
@@ -139,7 +147,9 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
       } else {
         toast.error('Failed to delete group');
       }
-    } catch {}
+    } catch {
+      toast.error('Failed to delete group');
+    }
   }
 
   const isOwner = pod?.ownerDid === did;

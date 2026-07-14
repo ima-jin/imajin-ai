@@ -194,7 +194,9 @@ export async function POST(
       const contactData = await contactRes.json();
       organizerEmail = contactData.email;
     }
-  } catch {}
+  } catch (err) {
+    log.warn({ err: String(err) }, '[message] Failed to resolve organizer email for reply-to');
+  }
 
   // Forward to notify broadcast with event-contextualized HTML
   const EVENTS_URL = buildPublicUrlAbsolute('events');

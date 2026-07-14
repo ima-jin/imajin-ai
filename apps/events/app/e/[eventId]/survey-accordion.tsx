@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { buildPublicUrl } from '@imajin/config';
 
 interface SurveyAccordionProps {
   eventId: string;
@@ -33,7 +34,7 @@ export function SurveyAccordion({
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
+  const DYKIL_URL = buildPublicUrl('dykil');
   const ticketQuery = ticketId ? `?ticketId=${ticketId}` : '';
   const embedUrl = `${DYKIL_URL}/embed/${surveyId}${ticketQuery}`;
 

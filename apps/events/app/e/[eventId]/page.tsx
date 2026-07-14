@@ -10,7 +10,7 @@ import { CampaignSection } from './campaign-section';
 import { generateQRCode } from '@/src/lib/email';
 import { getClient } from '@imajin/db';
 import { getContactEmail } from '@/src/lib/contact-email';
-import { eventUrl, eventAdminPath, eventEditPath, buildPublicUrlAbsolute } from '@imajin/config';
+import { eventUrl, eventAdminPath, eventEditPath, buildPublicUrl, buildPublicUrlAbsolute } from '@imajin/config';
 
 const sql = getClient();
 
@@ -322,7 +322,9 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
         LIMIT 1
       `;
       isCohost = !!member;
-    } catch {}
+    } catch (err) {
+      log.error({ err: String(err) }, '[event] Failed to check cohost membership');
+    }
   }
   const isOrganizer = isCreator || isCohost;
 
@@ -405,7 +407,7 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
   const isCompleted = eventEndDate ? eventEndDate < now : false;
 
   // Fetch surveys from event metadata (source of truth for linked surveys)
-  const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
+  const DYKIL_URL = buildPublicUrl('dykil');
   const linkedSurveysMeta: Array<{ id: string; visibility: string; paywall: boolean; requiredForTickets: boolean }> = (event.metadata as any)?.linkedSurveys || [];
   const linkedSurveySettings: Record<string, { visibility: string; paywall: boolean; requiredForTickets: boolean }> = {};
   for (const ls of linkedSurveysMeta) {
@@ -717,7 +719,7 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
               </p>
             </div>
             <a
-              href={`${process.env.NEXT_PUBLIC_LEARN_URL || 'https://learn.imajin.ai'}/course/${event.courseSlug}`}
+              href={`${buildPublicUrl('learn')}/course/${event.courseSlug}`}
               className="shrink-0 px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium text-sm no-underline"
             >
               View Course →

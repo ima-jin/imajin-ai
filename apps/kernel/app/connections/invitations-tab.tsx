@@ -136,7 +136,9 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
         const err = await res.json();
         toast.error(err.error || 'Failed to generate invite');
       }
-    } catch {} finally {
+    } catch {
+      toast.error('Failed to generate invite');
+    } finally {
       setGenerating(false);
     }
   }
@@ -171,9 +173,15 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
 
   async function deleteInvite(code: string) {
     try {
-      await fetch(`/connections/api/invites/${code}`, { method: 'DELETE' });
-      fetchSentInvites();
-    } catch {}
+      const res = await fetch(`/connections/api/invites/${code}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchSentInvites();
+      } else {
+        toast.error('Failed to delete invite');
+      }
+    } catch {
+      toast.error('Failed to delete invite');
+    }
   }
 
   function copyLink(url: string, code: string) {

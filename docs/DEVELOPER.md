@@ -10,41 +10,38 @@ Getting started with the imajin-ai monorepo.
 
 ## Quickstart (Local Dev from Zero)
 
+The setup script handles everything automatically:
+
 ```bash
-# 1. Clone and install
+# 1. Clone
 git clone https://github.com/ima-jin/imajin-ai.git
 cd imajin-ai
-pnpm install
 
-# 2. Create a local database
-createdb imajin_dev
+# 2. Run setup (checks prereqs, installs deps, creates DB, writes .env.local files, runs migrations)
+bash scripts/setup-local.sh
 
-# 3. Set up env files — copy from examples
-cp apps/kernel/.env.example apps/kernel/.env.local 2>/dev/null
-for app in events coffee dykil links learn market; do
-  cp apps/$app/.env.example apps/$app/.env.local 2>/dev/null
-done
+# 3. Start kernel
+pnpm --filter @imajin/kernel dev    # http://localhost:3000
 
-# 4. Edit DATABASE_URL in each .env.local to point to your local Postgres
-#    e.g. DATABASE_URL="postgresql://your_user:your_pass@localhost:5432/imajin_dev"
-
-# 5. Generate an Ed25519 private key for auth (PKCS#8 format, used to sign JWTs)
-node -e "const kp = require('crypto').generateKeyPairSync('ed25519'); console.log(kp.privateKey.export({type:'pkcs8',format:'der'}).toString('hex'))"
-#    Put the output (96 hex chars) in apps/auth/.env.local as AUTH_PRIVATE_KEY=<hex>
-
-# 6. Disable invite gate for local dev (in apps/auth/.env.local)
-#    NEXT_PUBLIC_DISABLE_INVITE_GATE=true
-
-# 7. Run all database migrations
-./scripts/migrate.sh
-
-# 8. Start kernel (core platform service)
-pnpm --filter @imajin/kernel dev    # localhost:3000
-
-# 9. Register at http://localhost:3000/register
-#    This generates a keypair in your browser and creates your identity.
+# 4. Register at http://localhost:3000/register
 #    SAVE YOUR KEY FILE — it's your only copy.
 ```
+
+The script accepts options for non-default Postgres connections:
+
+```bash
+bash scripts/setup-local.sh --db-user=postgres --db-host=localhost --db-port=5432
+```
+
+Run with `--help` for all options. Use `--force` to regenerate `.env.local` files (rotates all secrets).
+
+**What the script does:**
+- Checks Node.js 22+, pnpm, and PostgreSQL tools
+- Runs `pnpm install`
+- Creates the `imajin_dev` database (skip if it already exists)
+- Generates an Ed25519 keypair (`AUTH_PRIVATE_KEY`) and all internal API keys
+- Writes `.env.local` for kernel and every vertical (events, coffee, dykil, links, learn, market) with secrets wired together and service URLs pointing to the consolidated kernel at `:3000`
+- Runs all migrations via `./scripts/migrate.sh`
 
 ### Minimum Services for Local Dev
 
