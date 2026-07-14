@@ -4,6 +4,7 @@ import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-
 import { sendEmail } from '@imajin/email';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
 import { requireAdmin } from '@imajin/auth';
+import { buildPublicUrlAbsolute } from '@imajin/config';
 
 const sql = getClient();
 
@@ -26,7 +27,7 @@ export async function POST(
   const expiresAt = verifyTokenExpiry();
   const token = generateVerifyToken(email, expiresAt);
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? 'https://imajin.ai';
+  const baseUrl = buildPublicUrlAbsolute('kernel');
   const verifyUrl = `${baseUrl}/api/subscribe/verify?email=${encodeURIComponent(email)}&token=${token}&expires=${expiresAt}`;
 
   await sendEmail({

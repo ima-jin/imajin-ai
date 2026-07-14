@@ -13,10 +13,10 @@ import { sendEmail } from '@imajin/email';
 import { getClient } from '@imajin/db';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
+import { corsHeaders, rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-const AUTH_URL = process.env.AUTH_URL || process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
+const AUTH_URL = buildPublicUrlAbsolute('auth');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });

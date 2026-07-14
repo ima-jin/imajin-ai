@@ -5,6 +5,7 @@ import { eq, desc } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { randomBytes } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
+import { buildPublicUrlAbsolute } from '@imajin/config';
 
 const log = createLogger('kernel');
 
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to create link token' }, { status: 500 });
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.APP_URL || 'http://localhost:3007';
+  const baseUrl = buildPublicUrlAbsolute('kernel');
   const url = `${baseUrl}/auth/channel-link/${token}`;
 
   log.info({ id, channel, channelUid, appDid }, 'Channel link token created');

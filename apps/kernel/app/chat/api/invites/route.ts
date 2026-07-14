@@ -5,6 +5,7 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { withLogger } from '@imajin/logger';
+import { buildPublicUrlAbsolute } from '@imajin/config';
 
 // TODO(#435-followup): The invites table still references chat.conversations.id (v1 FK).
 // The conversationId field here now accepts a conversation DID as a plain text column
@@ -59,7 +60,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
 
     return jsonResponse({
       invite,
-      link: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://chat.imajin.ai'}/join/${inviteId}`,
+      link: `${buildPublicUrlAbsolute('chat')}/join/${inviteId}`,
     }, 201);
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to create invite');

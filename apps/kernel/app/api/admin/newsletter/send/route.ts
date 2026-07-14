@@ -5,11 +5,12 @@ import { withLogger } from '@imajin/logger';
 import { requireAdmin } from '@imajin/auth';
 import { generateUnsubscribeToken } from '@/src/lib/www/subscribe-tokens';
 import { randomUUID } from 'node:crypto';
+import { buildPublicUrlAbsolute } from '@imajin/config';
 
 const sql = getClient();
 
 function buildUnsubscribeUrl(email: string, listSlug: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://jin.imajin.ai';
+  const baseUrl = buildPublicUrlAbsolute('kernel');
   const token = generateUnsubscribeToken(email, listSlug);
   return `${baseUrl}/api/subscribe/unsubscribe?email=${encodeURIComponent(email)}&list=${encodeURIComponent(listSlug)}&token=${token}`;
 }
