@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
 import { MarkdownEditor, PayoutSetupBanner } from '@imajin/ui';
 import { FairEditor } from '@imajin/fair';
-import { apiFetch, eventPath } from '@imajin/config';
+import { apiFetch, buildPublicUrl, eventPath } from '@imajin/config';
 import type { FairManifest } from '@imajin/fair';
 import type { Event, TicketType } from '@/src/db/schema';
 import { CampaignDashboard } from './campaign-dashboard';
@@ -87,7 +87,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
   const [emtEmail, setEmtEmail] = useState((event as any).emtEmail || creatorEmail || '');
 
   // Dykil integration
-  const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
+  const DYKIL_URL = buildPublicUrl('dykil');
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loadingSurveys, setLoadingSurveys] = useState(true);
   interface LinkedSurvey {
@@ -321,7 +321,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
     }
   }
 
-  const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+  const PAY_URL = buildPublicUrl('pay');
   const linkedSurveyIds = new Set(linkedSurveys.map((linkedSurvey) => linkedSurvey.id));
 
   return (

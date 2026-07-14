@@ -3,12 +3,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TicketType } from '@/src/db/schema';
-import { apiFetch } from '@imajin/config';
+import { apiFetch, buildPublicUrl } from '@imajin/config';
 import { TicketPurchase } from './ticket-purchase';
 import { SurveyAccordion } from './survey-accordion';
 import { useToast } from '@imajin/ui';
 
-const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
+const AUTH_URL = buildPublicUrl('auth');
 
 function timeAgo(dateStr: string): string {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);

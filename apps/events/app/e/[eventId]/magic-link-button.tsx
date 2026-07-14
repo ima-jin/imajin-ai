@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { buildPublicUrl } from '@imajin/config';
 
-const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
+const AUTH_URL = buildPublicUrl('auth');
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 15 * 60 * 1000; // matches onboard token TTL
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Chat } from '@imajin/chat';
-import { apiFetch } from '@imajin/config';
+import { apiFetch, buildPublicUrl } from '@imajin/config';
 import type { NameDisplayPolicy } from '@imajin/chat';
 
 const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
@@ -28,7 +28,7 @@ export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWr
   const nextIndex = useRef(0);
   const fetchingRef = useRef<Set<string>>(new Set());
 
-  const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002';
+  const authUrl = buildPublicUrl('auth');
 
   // Get current user's DID
   useEffect(() => {

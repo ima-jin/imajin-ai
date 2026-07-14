@@ -3,7 +3,7 @@ import { db, ticketTypes, events, orders } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { AutoRedirect } from './auto-redirect';
-import { eventCheckoutSuccessPath } from '@imajin/config';
+import { buildPublicUrl, eventCheckoutSuccessPath } from '@imajin/config';
 
 interface Props {
   searchParams: Promise<{ session_id?: string; event?: string }>;
@@ -59,7 +59,7 @@ export default async function SuccessPage({ searchParams }: Readonly<Props>) {
         `;
 
         if (rows.length > 0) {
-          const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || 'https://auth.imajin.ai';
+          const authUrl = buildPublicUrl('auth');
           magicLink = `${authUrl}/api/onboard/verify?token=${rows[0].token}`;
         }
       }
