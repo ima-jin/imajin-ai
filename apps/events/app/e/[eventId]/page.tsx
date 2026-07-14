@@ -10,7 +10,7 @@ import { CampaignSection } from './campaign-section';
 import { generateQRCode } from '@/src/lib/email';
 import { getClient } from '@imajin/db';
 import { getContactEmail } from '@/src/lib/contact-email';
-import { buildPublicUrl, eventUrl, eventAdminPath, eventEditPath } from '@imajin/config';
+import { eventUrl, eventAdminPath, eventEditPath, buildPublicUrl, buildPublicUrlAbsolute } from '@imajin/config';
 
 const sql = getClient();
 
@@ -78,7 +78,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     : `Join us for ${event.title} on ${formattedDate}`;
   // Note: inner ternary (length > 200) is inside string concatenation, not inside another ternary
   
-  const baseUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+  const baseUrl = buildPublicUrlAbsolute('events');
   const url = eventUrl(baseUrl, event.id);
   
   // Ensure event image is an absolute URL for OG tags (relative paths resolve to localhost in SSR)

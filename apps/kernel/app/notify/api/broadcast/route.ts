@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders, corsOptions } from '@imajin/config';
+import { corsHeaders, corsOptions, buildPublicUrlAbsolute } from '@imajin/config';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 
@@ -15,7 +15,7 @@ import { sendEmail, renderBroadcastEmail } from '@imajin/email';
 const REGISTRY_URL = process.env.REGISTRY_URL;
 const UNSUBSCRIBE_HMAC_SECRET = process.env.UNSUBSCRIBE_HMAC_SECRET;
 
-const NOTIFY_URL = process.env.NEXT_PUBLIC_NOTIFY_URL || 'https://notify.imajin.ai';
+const NOTIFY_URL = buildPublicUrlAbsolute('notify');
 
 /** Max recipients per batch to avoid SendGrid rate limits */
 const BATCH_SIZE = 100;

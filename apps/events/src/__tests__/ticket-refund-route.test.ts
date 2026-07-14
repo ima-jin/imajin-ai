@@ -90,6 +90,7 @@ vi.mock('@imajin/bus', () => ({
 
 vi.mock('@imajin/config', () => ({
   eventUrl: () => 'https://events.test/e/evt_1',
+  buildPublicUrlAbsolute: () => 'https://events.test',
 }));
 
 // ─── Subject ────────────────────────────────────────────────────────────────

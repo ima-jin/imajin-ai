@@ -13,7 +13,7 @@ import { db, events, eventInvites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { publish } from '@imajin/bus';
 import { getClient } from '@imajin/db';
-import { rateLimit, getClientIP, eventUrl } from '@imajin/config';
+import { rateLimit, getClientIP, eventUrl, buildPublicUrlAbsolute } from '@imajin/config';
 import {
   validateCart,
   validateInviteAccess,
@@ -217,7 +217,7 @@ export const POST = withLogger('events', async (request, { log }) => {
     // Send confirmation email if we have an email
     if (buyerEmail) {
       try {
-        const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+        const EVENTS_URL = buildPublicUrlAbsolute('events');
         const eventDate = new Date(event.startsAt);
         let eventImageUrl: string | undefined;
         if (event.imageUrl) {

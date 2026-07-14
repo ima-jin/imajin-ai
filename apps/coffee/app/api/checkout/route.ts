@@ -7,9 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('coffee');
-import { rateLimit, getClientIP } from '@imajin/config';
+import { rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3009';
+const BASE_URL = buildPublicUrlAbsolute('coffee');
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
 
 export async function POST(request: NextRequest) {

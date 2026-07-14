@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
+import { buildPublicUrlAbsolute } from '@imajin/config';
 import {
   getViewerDid,
   getProfile,
@@ -35,7 +36,7 @@ export async function generateMetadata({ params }: Readonly<PageProps>): Promise
     ? profile.bio.slice(0, 200) + (profile.bio.length > 200 ? '...' : '')
     : `${emoji} ${identity.subtype ?? identity.scope} on the Imajin network`;
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://profile.imajin.ai';
+  const baseUrl = buildPublicUrlAbsolute('profile');
   const url = `${baseUrl}/${handle}`;
 
   return {

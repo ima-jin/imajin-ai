@@ -17,9 +17,9 @@ import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
 import { generateQRCode } from '@/src/lib/email';
-import { eventUrl } from '@imajin/config';
+import { eventUrl, buildPublicUrlAbsolute } from '@imajin/config';
 
-const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+const EVENTS_URL = buildPublicUrlAbsolute('events');
 
 export const POST = withLogger('events', async (request, { log }) => {
   const ticketId = request.nextUrl.pathname.split('/').pop()!;
