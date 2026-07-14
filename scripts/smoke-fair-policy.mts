@@ -53,55 +53,80 @@ function buildPolicy() {
 const policy = buildPolicy();
 let passed = 0;
 let failed = 0;
+const EPS = 1e-9;
 
-function assert(label: string, condition: boolean, got?: unknown) {
-  if (condition) {
-    console.log(`  ✓  ${label}`);
-    passed++;
-  } else {
-    console.error(`  ✗  ${label}${got !== undefined ? ` — got: ${JSON.stringify(got)}` : ''}`);
-    failed++;
-  }
+// S2301: split boolean-parameter assert into two focused helpers
+function pass(label: string): void {
+  console.log('  ✓  ' + label);
+  passed++;
+}
+
+function fail(label: string, got?: unknown): void {
+  // S4624: avoid nested template literals — use concatenation for the detail
+  const detail = got !== undefined ? ' — got: ' + JSON.stringify(got) : '';
+  console.error('  ✗  ' + label + detail);
+  failed++;
+}
+
+function assertEqual<T>(label: string, actual: T, expected: T): void {
+  if (actual === expected) pass(label); else fail(label, actual);
+}
+
+// S1244: never compare floats with ===; always use a range
+function assertClose(label: string, actual: number, expected: number): void {
+  if (Math.abs(actual - expected) < EPS) pass(label); else fail(label, actual);
+}
+
+function assertIncludes(label: string, arr: string[], value: string): void {
+  if (arr.includes(value)) pass(label); else fail(label, arr);
+}
+
+function assertStartsWith(label: string, actual: string, prefix: string): void {
+  if (actual.startsWith(prefix)) pass(label); else fail(label, actual);
 }
 
 console.log('\n/.well-known/fair-policy.json — smoke test\n');
 
-assert('version is 1.0.0',               policy.version === '1.0.0', policy.version);
-assert('node URL is https://imajin.ai',   policy.node === 'https://imajin.ai', policy.node);
+equal: {
+  assertEqual('version is 1.0.0',              policy.version, '1.0.0');
+  assertEqual('node URL is https://imajin.ai',  policy.node, 'https://imajin.ai');
 
-assert('fees.mjn.rateBps === 100',        policy.fees.mjn.rateBps === 100, policy.fees.mjn.rateBps);
-assert('fees.mjn.rate === 0.01',          policy.fees.mjn.rate === 0.01,   policy.fees.mjn.rate);
-assert('fees.mjn.recipient set',          typeof policy.fees.mjn.recipient === 'string' && policy.fees.mjn.recipient.startsWith('did:imajin:'));
+  assertEqual('fees.mjn.rateBps === 100',       policy.fees.mjn.rateBps, 100);
+  assertEqual('fees.node.rateBps === 50',        policy.fees.node.rateBps, 50);
+  assertEqual('fees.buyer.rateBps === 25',       policy.fees.buyer.rateBps, 25);
+  assertEqual('fees.scope.rateBps === 25',       policy.fees.scope.rateBps, 25);
 
-assert('fees.node.rateBps === 50',        policy.fees.node.rateBps === 50,   policy.fees.node.rateBps);
-assert('fees.node.rate === 0.005',        policy.fees.node.rate === 0.005,   policy.fees.node.rate);
+  assertEqual('settlement method count === 4',   policy.settlement.methods.length, 4);
+  assertEqual('attribution.required === true',   policy.attribution.required, true);
+  assertEqual('attribution.manifest_format',     policy.attribution.manifest_format, 'fair-v1');
+  assertEqual('attribution.chain_inclusion',     policy.attribution.chain_inclusion, true);
+}
 
-assert('fees.buyer.rateBps === 25',       policy.fees.buyer.rateBps === 25,  policy.fees.buyer.rateBps);
-assert('fees.buyer.rate === 0.0025',      policy.fees.buyer.rate === 0.0025, policy.fees.buyer.rate);
+floats: {
+  assertClose('fees.mjn.rate ≈ 0.01',            policy.fees.mjn.rate, 0.01);
+  assertClose('fees.node.rate ≈ 0.005',           policy.fees.node.rate, 0.005);
+  assertClose('fees.buyer.rate ≈ 0.0025',         policy.fees.buyer.rate, 0.0025);
+  assertClose('fees.scope.rate ≈ 0.0025',         policy.fees.scope.rate, 0.0025);
 
-assert('fees.scope.rateBps === 25',       policy.fees.scope.rateBps === 25,  policy.fees.scope.rateBps);
-assert('fees.scope.rate === 0.0025',      policy.fees.scope.rate === 0.0025, policy.fees.scope.rate);
+  const feeTotal = policy.fees.mjn.rate + policy.fees.node.rate + policy.fees.buyer.rate + policy.fees.scope.rate;
+  if (feeTotal > 1.0) fail('total fee cascade ≤ 1.0', feeTotal); else pass('total fee cascade ≤ 1.0');
+  assertClose('total fee cascade ≈ 2.0%',         feeTotal, 0.02);
 
-const feeTotal = policy.fees.mjn.rate + policy.fees.node.rate + policy.fees.buyer.rate + policy.fees.scope.rate;
-assert('total fee cascade ≤ 1.0',         feeTotal <= 1.0, feeTotal);
-assert('total fee cascade = 2.0%',        Math.abs(feeTotal - 0.02) < 0.000001, feeTotal);
+  assertClose('policy.foundation.share ≈ 0.10',   policy.policy.foundation.share, FOUNDATION_SHARE);
+  assertClose('policy.developers.share ≈ 0.10',   policy.policy.developers.share, DEVELOPER_SHARE);
+  assertClose('policy.community.share ≈ 0.80',    policy.policy.community.share, COMMUNITY_SHARE);
 
-assert('policy.foundation.share === 0.10', policy.policy.foundation.share === FOUNDATION_SHARE);
-assert('policy.developers.share === 0.10', policy.policy.developers.share === DEVELOPER_SHARE);
-assert('policy.community.share === 0.80',  policy.policy.community.share === COMMUNITY_SHARE);
+  const policyTotal = policy.policy.foundation.share + policy.policy.developers.share + policy.policy.community.share;
+  assertClose('policy splits sum to 1.0',          policyTotal, 1.0);
+}
 
-const policyTotal = policy.policy.foundation.share + policy.policy.developers.share + policy.policy.community.share;
-assert('policy splits sum to 1.0',        Math.abs(policyTotal - 1.0) < 0.000001, policyTotal);
+strings: {
+  assertStartsWith('fees.mjn.recipient is did:imajin:', policy.fees.mjn.recipient, 'did:imajin:');
+  assertIncludes('settlement includes stripe',    policy.settlement.methods, 'stripe');
+  assertIncludes('settlement includes mjnx',      policy.settlement.methods, 'mjnx');
+  assertIncludes('settlement includes usdc-base', policy.settlement.methods, 'usdc-base');
+}
 
-assert('settlement has 4 methods',        policy.settlement.methods.length === 4, policy.settlement.methods);
-assert('settlement includes stripe',      policy.settlement.methods.includes('stripe'));
-assert('settlement includes mjnx',        policy.settlement.methods.includes('mjnx'));
-assert('settlement includes usdc-base',   policy.settlement.methods.includes('usdc-base'));
-
-assert('attribution.required === true',   policy.attribution.required === true);
-assert('attribution.manifest_format',     policy.attribution.manifest_format === 'fair-v1');
-assert('attribution.chain_inclusion',     policy.attribution.chain_inclusion === true);
-
-console.log(`\n${passed} passed, ${failed} failed\n`);
+console.log('\n' + String(passed) + ' passed, ' + String(failed) + ' failed\n');
 
 if (failed > 0) process.exit(1);
