@@ -7,7 +7,7 @@ import PriceDisplay from '../components/PriceDisplay';
 import { resolveMediaRef } from '@imajin/media';
 import { PayoutSetupBanner } from '@imajin/ui';
 
-const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+const PAY_URL = buildPublicUrl('pay');
 
 interface Listing {
   id: string;

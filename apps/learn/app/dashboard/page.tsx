@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useToast, PayoutSetupBanner } from '@imajin/ui';
-import { apiFetch, apiUrl } from '@imajin/config';
+import { apiFetch, apiUrl, buildPublicUrl } from '@imajin/config';
 
-const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+const PAY_URL = buildPublicUrl('pay');
 
 interface Course {
   id: string;

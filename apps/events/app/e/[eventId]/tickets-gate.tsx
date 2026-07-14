@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, type ReactNode } from 'react';
+import { buildPublicUrl } from '@imajin/config';
 
 interface Props {
   children: ReactNode;
@@ -9,7 +10,7 @@ interface Props {
   requiredSurveyIds: string[];
 }
 
-const DYKIL_URL = process.env.NEXT_PUBLIC_DYKIL_URL || 'https://dykil.imajin.ai';
+const DYKIL_URL = buildPublicUrl('dykil');
 
 async function checkSurveyCompletion(surveyId: string): Promise<boolean> {
   try {

@@ -5,8 +5,9 @@ import { useSearchParams } from 'next/navigation';
 import KeyAuthTab from './components/KeyAuthTab';
 import PasswordAuthTab from './components/PasswordAuthTab';
 import MfaGate from './components/MfaGate';
+import { buildPublicUrl } from '@imajin/config';
 
-const WWW_URL = process.env.NEXT_PUBLIC_WWW_URL || 'https://imajin.ai';
+const WWW_URL = buildPublicUrl('kernel');
 
 function NewsletterSignup() {
   const [email, setEmail] = useState('');

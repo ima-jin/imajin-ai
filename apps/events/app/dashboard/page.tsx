@@ -5,8 +5,9 @@ import { eq, desc } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import Link from 'next/link';
 import { PayoutSetupBanner } from '@imajin/ui';
+import { buildPublicUrl } from '@imajin/config';
 
-const PAY_URL = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+const PAY_URL = buildPublicUrl('pay');
 import { EventCard } from './event-card';
 
 interface EventWithStats {
@@ -24,8 +25,8 @@ export default async function DashboardPage() {
   const session = await getSession();
 
   if (!session) {
-    const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 'https://auth.imajin.ai';
-    const eventsUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+    const authUrl = buildPublicUrl('auth');
+    const eventsUrl = buildPublicUrl('events');
     const dashboardUrl = `${eventsUrl}/dashboard`;
     redirect(`${authUrl}/login?next=${encodeURIComponent(dashboardUrl)}`);
   }

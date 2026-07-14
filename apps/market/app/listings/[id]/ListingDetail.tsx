@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { resolveMediaRef } from '@imajin/media';
-import { apiFetch } from '@imajin/config';
+import { apiFetch, buildPublicUrl } from '@imajin/config';
 import PriceDisplay from '../../components/PriceDisplay';
 import { OnboardGate } from '@imajin/onboard';
 import { FairAccordion } from '@imajin/fair';
@@ -213,7 +213,7 @@ export default function ListingDetail() {
 
         // Check if seller has Stripe Connect enabled
         try {
-          const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+          const payUrl = buildPublicUrl('pay');
           const connectRes = await fetch(
             `${payUrl}/api/connect/check?did=${encodeURIComponent(data.sellerDid)}`
           );

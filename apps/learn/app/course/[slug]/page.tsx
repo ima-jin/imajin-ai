@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { OnboardGate } from '@imajin/onboard';
 import { useToast } from '@imajin/ui';
-import { apiFetch } from '@imajin/config';
+import { apiFetch, buildPublicUrl } from '@imajin/config';
 
 interface Lesson {
   id: string;
@@ -83,7 +83,7 @@ export default function CourseDetailPage() {
           // Check if course creator has Stripe Connect enabled
           if (data.price > 0 && data.creatorDid) {
             try {
-              const payUrl = process.env.NEXT_PUBLIC_PAY_URL || 'https://pay.imajin.ai';
+              const payUrl = buildPublicUrl('pay');
               const connectRes = await fetch(
                 `${payUrl}/api/connect/check?did=${encodeURIComponent(data.creatorDid)}`
               );
@@ -99,7 +99,7 @@ export default function CourseDetailPage() {
           }
 
           // Fetch next upcoming event for this course
-          const eventsUrl = process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai';
+          const eventsUrl = buildPublicUrl('events');
           try {
             const evRes = await fetch(`${eventsUrl}/api/events?courseSlug=${encodeURIComponent(data.slug)}&upcoming=true&limit=1`);
             if (evRes.ok) {
@@ -308,7 +308,7 @@ export default function CourseDetailPage() {
               </p>
             </div>
             <a
-              href={`${process.env.NEXT_PUBLIC_EVENTS_URL || 'https://events.imajin.ai'}/${upcomingEvent.id}`}
+              href={`${buildPublicUrl('events')}/${upcomingEvent.id}`}
               className="shrink-0 px-5 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium text-sm no-underline"
             >
               Get tickets →
