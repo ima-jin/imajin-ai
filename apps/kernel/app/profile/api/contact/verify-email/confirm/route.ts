@@ -19,11 +19,12 @@ import { getClient } from '@imajin/db';
 import { loadAndUnseal, deleteFromVault } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { createLogger } from '@imajin/logger';
+import { buildPublicUrlAbsolute } from '@imajin/config';
 
 const log = createLogger('kernel');
 
-const AUTH_INTERNAL_URL = process.env.AUTH_INTERNAL_URL ?? process.env.NEXT_PUBLIC_AUTH_URL ?? 'https://auth.imajin.ai';
-const PROFILE_URL = process.env.NEXT_PUBLIC_PROFILE_URL ?? process.env.NEXT_PUBLIC_AUTH_URL ?? 'https://auth.imajin.ai';
+const AUTH_INTERNAL_URL = process.env.AUTH_INTERNAL_URL ?? buildPublicUrlAbsolute('kernel');
+const PROFILE_URL = buildPublicUrlAbsolute('kernel');
 const ATTESTATION_INTERNAL_API_KEY = process.env.ATTESTATION_INTERNAL_API_KEY ?? '';
 
 function verifyToken(did: string, nonce: string, exp: number, tok: string): boolean {

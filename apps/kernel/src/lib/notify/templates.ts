@@ -1,4 +1,5 @@
 import { emailWrapper, renderBroadcastEmail, stripHtml } from "@imajin/email";
+import { buildPublicUrlAbsolute } from "@imajin/config";
 
 export interface NotifyTemplate {
   scope: string;
@@ -533,7 +534,7 @@ export const templates: NotifyTemplate[] = [
     email: {
       subject: (data) => `${data.senderName || "Someone"} mentioned you — Imajin Chat`,
       html: (data) => {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_WWW_URL || 'https://jin.imajin.ai';
+        const baseUrl = buildPublicUrlAbsolute('kernel');
         let chatUrl: string | null = null;
         if (data.conversationId) {
           // Parse DID: did:imajin:dm:abc123 → /chat/conversations/dm/abc123

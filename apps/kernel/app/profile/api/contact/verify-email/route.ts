@@ -19,13 +19,13 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { rateLimit, getClientIP } from '@imajin/config';
+import { rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
 import { loadAndUnseal, sealAndStore } from '@/src/lib/vault';
 import { sendEmail } from '@imajin/email';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-const PROFILE_URL = process.env.NEXT_PUBLIC_PROFILE_URL ?? process.env.NEXT_PUBLIC_AUTH_URL ?? 'https://auth.imajin.ai';
+const PROFILE_URL = buildPublicUrlAbsolute('kernel');
 
 /** 15-minute TTL in milliseconds */
 const TOKEN_TTL_MS = 15 * 60 * 1000;
