@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       '@/': resolve(__dirname, 'apps/kernel/'),
       '@imajin/cid': resolve(__dirname, 'packages/cid/src/index.ts'),
+      '@imajin/config': resolve(__dirname, 'packages/config/src/index.ts'),
       '@imajin/vault-core': resolve(__dirname, 'packages/vault-core/src/index.ts'),
     },
   },
