@@ -31,6 +31,9 @@ jobs:
       - name: Run migrations
         run: node scripts/migrate.mjs
 
+      - name: Reap orphaned port squatters
+        run: ./scripts/reap-orphans.sh dev
+
       - name: Restart dev services
         run: |
           DEV_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('dev-')).map(p => p.name).join(' '));")

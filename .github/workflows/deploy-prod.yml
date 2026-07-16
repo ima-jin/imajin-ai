@@ -31,6 +31,9 @@ jobs:
       - name: Run migrations
         run: node scripts/migrate.mjs
 
+      - name: Reap orphaned port squatters
+        run: ./scripts/reap-orphans.sh prod
+
       - name: Restart prod services
         run: |
           # Restart all pm2 processes whose name starts with prod-
