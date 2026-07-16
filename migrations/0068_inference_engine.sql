@@ -1,4 +1,4 @@
--- Migration: 0067_inference_engine
+-- Migration: 0068_inference_engine
 -- Creates the inference schema for the Intention Inference Engine (#1198).
 --
 -- inference.sessions  — one row per gesture pipeline run (capture → resolve).

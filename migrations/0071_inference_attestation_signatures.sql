@@ -1,4 +1,4 @@
--- Migration: 0068_inference_attestation_signatures
+-- Migration: 0071_inference_attestation_signatures
 -- Adds Ed25519 signing fields to inference.attestations (#1292).
 --
 -- The row was previously described as "Signed proof-of-history" but contained
