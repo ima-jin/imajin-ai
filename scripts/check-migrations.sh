@@ -56,6 +56,17 @@ for file in "${FILES[@]}"; do
   NUM=$(echo "$basename" | grep -oP '^\d+' | sed 's/^0*//' )
   [[ -z "$NUM" ]] && NUM=0
 
+  # Check for duplicate numbers — HARD FAIL. Two files sharing a number is
+  # never intentional and sort order decides apply order (see the 0068
+  # inference collision: attestation_signatures sorted before the engine
+  # migration that creates the schema it ALTERs → deploy broke).
+  if [[ "$NUM" -eq "$PREV_NUM" ]]; then
+    echo "❌ $basename: duplicate migration number $(printf '%04d' $NUM) (collides with previous file)"
+    FAILED=1
+    PREV_NUM=$NUM
+    continue
+  fi
+
   # Check for gaps
   EXPECTED=$((PREV_NUM + 1))
   if [[ "$PREV_NUM" -ge 0 ]] && [[ "$NUM" -ne "$EXPECTED" ]]; then
