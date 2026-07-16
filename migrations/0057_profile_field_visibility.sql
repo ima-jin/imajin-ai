@@ -1,4 +1,4 @@
--- 0056_profile_field_visibility.sql
+-- 0057_profile_field_visibility.sql
 -- Per-field visibility controls for profile metadata (Issue #1003).
 -- First concrete consumer of the broker pipeline: proves it releases real data.
 --
@@ -12,7 +12,7 @@
 -- Shape: { fieldName: { level: 'public' | 'connections' | 'selective' | 'private', allowedDids?: string[] } }
 -- Default '{}' means every metadata field is treated as public (no rule = pass through).
 ALTER TABLE profile.profiles
-  ADD COLUMN field_visibility JSONB NOT NULL DEFAULT '{}';
+  ADD COLUMN IF NOT EXISTS field_visibility JSONB NOT NULL DEFAULT '{}';
 
 -- ---------------------------------------------------------------------------
 -- Broker pipeline chain — profile field request

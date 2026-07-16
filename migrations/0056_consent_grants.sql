@@ -1,4 +1,4 @@
--- 0055_consent_grants.sql
+-- 0056_consent_grants.sql
 -- Consent grant store for the broker pipeline (Issue #1049).
 --
 -- Turns the consent reactor from hardcoded fail-closed defaults into a
@@ -8,7 +8,7 @@
 -- `granted_to_class` is included now (NULL by default) so reach-ring class
 -- grants (#1189) can extend this table without a schema migration.
 
-CREATE TABLE kernel.consent_grants (
+CREATE TABLE IF NOT EXISTS kernel.consent_grants (
   id               TEXT PRIMARY KEY,
   subject          TEXT NOT NULL,
   granted_to       TEXT,               -- specific DID or '*'; NULL when granted_to_class is set
@@ -23,12 +23,12 @@ CREATE TABLE kernel.consent_grants (
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_consent_grants_subject ON kernel.consent_grants (subject);
+CREATE INDEX IF NOT EXISTS idx_consent_grants_subject ON kernel.consent_grants (subject);
 
-CREATE INDEX idx_consent_grants_lookup ON kernel.consent_grants (subject, granted_to, purpose)
+CREATE INDEX IF NOT EXISTS idx_consent_grants_lookup ON kernel.consent_grants (subject, granted_to, purpose)
   WHERE status = 'active';
 
-CREATE INDEX idx_consent_grants_expires ON kernel.consent_grants (expires_at)
+CREATE INDEX IF NOT EXISTS idx_consent_grants_expires ON kernel.consent_grants (expires_at)
   WHERE expires_at IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
