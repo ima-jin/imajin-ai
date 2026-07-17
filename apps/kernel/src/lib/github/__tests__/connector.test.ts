@@ -22,12 +22,19 @@ import {
   listIssues,
   getIssue,
   vaultField,
+  oauthVaultField,
+  configField,
+  storeConfig,
+  buildAuthorizeUrl,
+  exchangeCodeAndStore,
   GITHUB_CONNECTOR_DID,
+  GITHUB_OAUTH_SCOPE,
 } from '../connector';
 
 const OWNER = 'did:imajin:eric';
 const REPO = 'a-r-t-i-f-a-c-t/artifactagent';
 const PAT = 'ghp_REDACTED';
+const CONFIG = { clientId: 'cid', clientSecret: 'csecret', redirectUri: 'https://imajin.test/github/api/callback' };
 
 const MOCK_ISSUE = {
   number: 42,
@@ -56,11 +63,30 @@ function noGrant() {
   whereMock.mockResolvedValue([]);
 }
 
+// Per-field vault responses. Default: no OAuth bundle / no config, so the PAT
+// fallback path is exercised (keeping the #1228 assertions valid).
+let oauthResponse: string | undefined;
+let configResponse: string | undefined;
+
+function setConfig(present = true) {
+  configResponse = present ? JSON.stringify(CONFIG) : undefined;
+}
+
+function sealedOAuth(overrides: Record<string, unknown> = {}) {
+  oauthResponse = JSON.stringify({ accessToken: 'gho_at', ...overrides });
+}
+
 beforeEach(() => {
   sealMock.mockReset();
   sealMock.mockResolvedValue(undefined);
+  oauthResponse = undefined;
+  configResponse = undefined;
   loadMock.mockReset();
-  loadMock.mockResolvedValue(PAT);
+  loadMock.mockImplementation((field: string) => {
+    if (field.startsWith('github-oauth:')) return Promise.resolve(oauthResponse);
+    if (field.startsWith('github-config:')) return Promise.resolve(configResponse);
+    return Promise.resolve(PAT);
+  });
   whereMock.mockReset();
   publishMock.mockReset();
   publishMock.mockResolvedValue(undefined);
@@ -119,10 +145,10 @@ describe('createIssue (#1228)', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('fails closed when no PAT is sealed', async () => {
+  it('fails closed when no credential is sealed', async () => {
     grant(['github:write']);
     loadMock.mockResolvedValue(undefined);
-    await expect(createIssue(OWNER, REPO, 'Title', 'Body')).rejects.toThrow(/github_no_pat/);
+    await expect(createIssue(OWNER, REPO, 'Title', 'Body')).rejects.toThrow(/github_no_credential/);
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -193,10 +219,10 @@ describe('createComment (#1228)', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('fails closed when no PAT is sealed', async () => {
+  it('fails closed when no credential is sealed', async () => {
     grant(['github:write']);
     loadMock.mockResolvedValue(undefined);
-    await expect(createComment(OWNER, REPO, 42, 'comment')).rejects.toThrow(/github_no_pat/);
+    await expect(createComment(OWNER, REPO, 42, 'comment')).rejects.toThrow(/github_no_credential/);
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -267,10 +293,10 @@ describe('listIssues (#1228)', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('fails closed when no PAT is sealed', async () => {
+  it('fails closed when no credential is sealed', async () => {
     grant(['github:read']);
     loadMock.mockResolvedValue(undefined);
-    await expect(listIssues(OWNER, REPO)).rejects.toThrow(/github_no_pat/);
+    await expect(listIssues(OWNER, REPO)).rejects.toThrow(/github_no_credential/);
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -314,10 +340,10 @@ describe('getIssue (#1228)', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('fails closed when no PAT is sealed', async () => {
+  it('fails closed when no credential is sealed', async () => {
     grant(['github:read']);
     loadMock.mockResolvedValue(undefined);
-    await expect(getIssue(OWNER, REPO, 42)).rejects.toThrow(/github_no_pat/);
+    await expect(getIssue(OWNER, REPO, 42)).rejects.toThrow(/github_no_credential/);
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -353,5 +379,118 @@ describe('security invariants (#1228)', () => {
     expect(fieldA).not.toBe(fieldB);
     expect(fieldA).toBe(`github-pat:${didA}`);
     expect(fieldB).toBe(`github-pat:${didB}`);
+  });
+
+  it('OAuth + config vault fields encode the ownerDid per-DID', () => {
+    expect(oauthVaultField(OWNER)).toBe(`github-oauth:${OWNER}`);
+    expect(configField(OWNER)).toBe(`github-config:${OWNER}`);
+  });
+});
+
+// ── OAuth2 config + flows (#1333) ─────────────────────────────────────────
+
+describe('storeConfig (#1333 per-DID OAuth app creds)', () => {
+  it('seals the app config under the per-DID config field', async () => {
+    await storeConfig(OWNER, CONFIG);
+    expect(sealMock).toHaveBeenCalledOnce();
+    const [field, blob] = sealMock.mock.calls[0];
+    expect(field).toBe(configField(OWNER));
+    expect(JSON.parse(blob as string)).toMatchObject({ clientId: 'cid', redirectUri: CONFIG.redirectUri });
+  });
+});
+
+describe('buildAuthorizeUrl (#1333)', () => {
+  it('includes client_id, redirect_uri, scope, and state (from per-DID config)', async () => {
+    setConfig();
+    const url = await buildAuthorizeUrl(OWNER, 'state123');
+    expect(url).toContain('https://github.com/login/oauth/authorize');
+    expect(url).toContain('client_id=cid');
+    expect(url).toContain('state=state123');
+    expect(url).toContain(`scope=${GITHUB_OAUTH_SCOPE}`);
+    expect(url).toContain(encodeURIComponent(CONFIG.redirectUri));
+  });
+});
+
+describe('exchangeCodeAndStore (#1333)', () => {
+  it('exchanges the auth code and seals the token bundle per-DID', async () => {
+    setConfig();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'gho_at', scope: 'repo', token_type: 'bearer' }),
+    });
+
+    await exchangeCodeAndStore(OWNER, 'code123');
+
+    const oauthCall = sealMock.mock.calls.find(([field]) => field === oauthVaultField(OWNER));
+    expect(oauthCall).toBeDefined();
+    expect(JSON.parse(oauthCall![1] as string)).toMatchObject({ accessToken: 'gho_at', scope: 'repo' });
+
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('https://github.com/login/oauth/access_token');
+    expect((init.headers as Record<string, string>).Accept).toBe('application/json');
+    const tokenBody = init.body as string;
+    expect(tokenBody).toContain('grant_type=authorization_code');
+    expect(tokenBody).toContain('client_id=cid');
+    expect(tokenBody).toContain('client_secret=csecret');
+  });
+
+  it('throws when GitHub answers 200 with an error body', async () => {
+    setConfig();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ error: 'bad_verification_code', error_description: 'expired' }),
+    });
+    await expect(exchangeCodeAndStore(OWNER, 'code123')).rejects.toThrow(/bad_verification_code/);
+  });
+});
+
+describe('OAuth credential preference (#1333)', () => {
+  it('uses the sealed OAuth access token instead of the PAT', async () => {
+    grant(['github:read']);
+    sealedOAuth(); // accessToken gho_at, non-expiring
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_ISSUE,
+    });
+
+    await getIssue(OWNER, REPO, 42);
+
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(init.headers['Authorization']).toBe('Bearer gho_at');
+  });
+
+  it('refreshes an expired OAuth token before calling the API', async () => {
+    grant(['github:read']);
+    setConfig();
+    sealedOAuth({ refreshToken: 'grt', expiresAt: Date.now() - 1000 });
+    (fetch as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'gho_at2', refresh_token: 'grt2', expires_in: 28800, scope: 'repo' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => MOCK_ISSUE });
+
+    await getIssue(OWNER, REPO, 42);
+
+    // First fetch is the refresh; second is the API call with the fresh token.
+    const refreshBody = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string;
+    expect(refreshBody).toContain('grant_type=refresh_token');
+    const apiInit = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[1][1];
+    expect(apiInit.headers['Authorization']).toBe('Bearer gho_at2');
+    // Refreshed bundle re-sealed at the OAuth field.
+    expect(sealMock.mock.calls.some(([field]) => field === oauthVaultField(OWNER))).toBe(true);
+  });
+
+  it('does not refresh a non-expiring OAuth token (no refresh token)', async () => {
+    grant(['github:read']);
+    sealedOAuth(); // no refreshToken, no expiresAt
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_ISSUE,
+    });
+
+    await getIssue(OWNER, REPO, 42);
+
+    // Only the API call happened — no token-endpoint refresh.
+    expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+    const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe(`https://api.github.com/repos/${REPO}/issues/42`);
   });
 });

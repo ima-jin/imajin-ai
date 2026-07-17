@@ -1,120 +1,116 @@
 /**
- * GitHub connector backend library (#1228, Stage B2).
+ * GitHub connector backend library (#1228, Stage B2; OAuth2 #1333).
  *
- * Connects a human DID's GitHub PAT (sealed in imajin-vault) to the GitHub
- * REST API, gated by an active `auth.channel_links` row for the github
- * connector app DID + the required scope.
+ * Connects a human DID's GitHub account (OAuth2 or PAT fallback) to the
+ * GitHub REST API, gated by an active `auth.channel_links` row. The OAuth2
+ * plumbing is provided by `createConnectorOAuth` (#1333); only GitHub-specific
+ * details live here: the repo scope, body-param token auth, optional-expiry
+ * token shape, PAT fallback, and issue/comment bus events.
  *
- * Custody disclosure: the PAT is sealed with the node's AES-256-GCM seal key
- * (node-sealed v1). The node operator can decrypt it. Zero-custody migration
- * is tracked under a later hardening issue.
- *
- * ── Security invariants ───────────────────────────────────────────────────────
- * - Fail-closed on every gate: no active grant OR no sealed PAT ⇒ throw.
- * - PAT is NEVER logged, NEVER returned to callers, NEVER echoed.
- * - Per-DID vault field isolation: `github-pat:${ownerDid}`.
- * - Cross-DID reads are structurally impossible: `loadAndUnseal` uses the
- *   node's signing identity for integrity; the field name encodes the owner DID.
- *
- * ── Attribution ───────────────────────────────────────────────────────────────
- * After each successful GitHub mutation, a `github.issue.created` /
- * `github.comment.created` bus event is published non-fatally (mirroring
- * the `asset.article.published` pattern in media-write.ts).
+ * Security invariants:
+ * - Fail-closed: no grant OR no sealed credential ⇒ throw.
+ * - Tokens/PAT are NEVER logged, NEVER returned to callers, NEVER echoed.
+ * - Per-DID isolation: `github-pat:${did}`, `github-oauth:${did}`, `github-config:${did}`.
  */
 import { createLogger } from '@imajin/logger';
 import * as bus from '@imajin/bus';
-import { and, eq } from 'drizzle-orm';
-import { db, channelLinks } from '@/src/db';
 import { sealAndStore, loadAndUnseal } from '@/src/lib/vault';
+import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../kernel/connector-oauth';
 
 const log = createLogger('kernel');
 
 /** Connector app DID — matches the scope-manifest fixture (github-scope-manifest.md). */
 export const GITHUB_CONNECTOR_DID = 'did:imajin:github-connector';
 
-/** Channel name — matches the scope-manifest fixture `channel:` field. */
-const GITHUB_CHANNEL = 'github';
-
-/** GitHub REST API base URL. */
+/** GitHub REST API constants. */
 const GITHUB_API_BASE = 'https://api.github.com';
-
-/** GitHub API version header per GitHub's REST API versioning docs. */
 const GITHUB_API_VERSION = '2022-11-28';
 
-// ── Vault field helpers ───────────────────────────────────────────────────────
-
 /**
- * Per-DID vault field name for a GitHub PAT.
- *
- * Encoding the ownerDid in the field name ensures per-DID isolation at the
- * vault layer: different DIDs cannot share or cross-read each other's PATs.
+ * GitHub OAuth scope requested at authorize time — a GitHub scope string,
+ * distinct from the imajin channel scopes (github:read / github:write).
  */
+export const GITHUB_OAUTH_SCOPE = 'repo';
+
+// ── GitHub-specific types ─────────────────────────────────────────────────────────
+
+/** GitHub OAuth app config (no `environment` field — GitHub has one API). */
+export interface GitHubConfig extends BaseOAuthConfig {}
+
+export interface GitHubTokens {
+  accessToken: string;
+  /** Present only when the OAuth App has token expiration enabled. */
+  refreshToken?: string;
+  /** GitHub scope string granted to the token. */
+  scope?: string;
+  /** epoch ms at which the access token expires; absent for non-expiring tokens. */
+  expiresAt?: number;
+}
+
+// ── Factory ───────────────────────────────────────────────────────────────────────────
+
+const gh = createConnectorOAuth<GitHubConfig, GitHubTokens>({
+  name: 'github',
+  configPrefix: 'github-config',
+  tokenPrefix: 'github-oauth',
+  connectorDid: GITHUB_CONNECTOR_DID,
+  channel: 'github',
+  authorizeUrl: 'https://github.com/login/oauth/authorize',
+  tokenUrl: 'https://github.com/login/oauth/access_token',
+  oauthScope: GITHUB_OAUTH_SCOPE,
+  // GitHub uses client credentials in the POST body (not HTTP Basic).
+  tokenAuth: 'body',
+  parseConfig: (raw) => raw as GitHubConfig,
+  buildTokens: (data: OAuthTokenResponse, _extra, previous) => ({
+    accessToken: data.access_token as string,
+    // GitHub rotates refresh tokens on expiring-token apps; keep the newest.
+    refreshToken: (data.refresh_token as string | undefined) ?? previous?.refreshToken,
+    scope: (data.scope as string | undefined) ?? previous?.scope,
+    // Default GitHub OAuth Apps issue non-expiring tokens (no expires_in).
+    expiresAt: typeof data.expires_in === 'number' ? Date.now() + data.expires_in * 1000 : undefined,
+  }),
+  // Only refresh when the app issues expiring tokens (both fields present).
+  shouldRefresh: (tokens) =>
+    tokens.refreshToken !== undefined &&
+    tokens.expiresAt !== undefined &&
+    Date.now() >= tokens.expiresAt - 60_000,
+});
+
+// ── Public exports (shared interface unchanged) ─────────────────────────────────
+
+/** Per-DID vault field for a GitHub PAT (separate from the OAuth bundle). */
 export function vaultField(ownerDid: string): string {
   return `github-pat:${ownerDid}`;
 }
 
+export const configField = gh.configField;
+export const oauthVaultField = gh.tokenField;
+export const storeConfig = gh.storeConfig;
+export const buildAuthorizeUrl = gh.buildAuthorizeUrl;
+export const exchangeCodeAndStore = gh.exchangeCodeAndStore;
+export const resolveActiveGrant = gh.resolveActiveGrant;
+
 /**
- * Seal and store a GitHub PAT for the given DID.
- *
- * Uses v1 node-sealed storage (sealAndStore). The plaintext PAT is never
- * logged or returned; the only observable output is the sealed VaultEntry.
- *
- * Callers (github_connect tool) must ensure the PAT string has been validated
- * (non-empty) before calling; this function does not validate PAT format.
+ * Seal and store a GitHub PAT for the given DID. The PAT is never logged or
+ * returned; the only observable output is the sealed VaultEntry.
  */
 export async function sealPat(ownerDid: string, pat: string): Promise<void> {
   await sealAndStore(vaultField(ownerDid), pat);
 }
 
-// ── Grant resolution ──────────────────────────────────────────────────────────
+// ── Gate helper ──────────────────────────────────────────────────────────────────
 
 /**
- * Check whether an active `channel_links` row exists for this DID + scope.
- *
- * An active row is created by the scope-manifest projection surface when the
- * owner grants the scope via their scope-manifest asset (#1209/#1204). The
- * row is revoked (status → 'revoked') when the scope is deleted from the
- * manifest or the manifest asset is deleted.
- *
- * Returns `true` only when at least one ACTIVE row for the github channel
- * and the github connector app DID contains the requested scope.
- * Fail-closed: any DB error propagates as a thrown exception.
- */
-export async function resolveActiveGrant(ownerDid: string, requiredScope: string): Promise<boolean> {
-  const rows = await db
-    .select({ scopes: channelLinks.scopes })
-    .from(channelLinks)
-    .where(
-      and(
-        eq(channelLinks.channel, GITHUB_CHANNEL),
-        eq(channelLinks.did, ownerDid),
-        eq(channelLinks.appDid, GITHUB_CONNECTOR_DID),
-        eq(channelLinks.status, 'active'),
-      ),
-    );
-
-  return rows.some((row) => {
-    const scopes = Array.isArray(row.scopes) ? (row.scopes as string[]) : [];
-    return scopes.includes(requiredScope);
-  });
-}
-
-// ── Gate helper ───────────────────────────────────────────────────────────────
-
-/**
- * Resolve the connector grant and unseal the PAT. Fail-closed on both gates.
- *
- * This is the single mandatory entry point for all GitHub mutation tools.
- * The resolved PAT is returned only to the calling scope; it must not be
- * logged, stored in plaintext, or returned to external callers.
+ * Resolve the connector grant and a usable bearer token. Prefers the OAuth
+ * access token (refreshed ahead of expiry when the app issues expiring tokens)
+ * and falls back to the sealed PAT. Fail-closed on both gates.
  *
  * Throws:
- *   - `github_no_grant` — no active channel_links row for ownerDid + scope.
- *   - `github_no_pat`   — no sealed PAT in the vault for ownerDid.
- *   - Any vault integrity error from loadAndUnseal.
+ *   - `github_no_grant`      — no active channel_links row for ownerDid + scope.
+ *   - `github_no_credential` — no sealed OAuth bundle and no sealed PAT.
  */
-async function requireGrantAndPat(ownerDid: string, scope: string): Promise<string> {
-  const hasGrant = await resolveActiveGrant(ownerDid, scope);
+async function requireGrantAndToken(ownerDid: string, scope: string): Promise<string> {
+  const hasGrant = await gh.resolveActiveGrant(ownerDid, scope);
   if (!hasGrant) {
     throw new Error(
       `github_no_grant: DID ${ownerDid} has no active '${scope}' grant — ` +
@@ -122,37 +118,39 @@ async function requireGrantAndPat(ownerDid: string, scope: string): Promise<stri
     );
   }
 
+  const oauthToken = await gh.loadAccessToken(ownerDid);
+  if (oauthToken !== undefined) return oauthToken;
+
   const pat = await loadAndUnseal(vaultField(ownerDid));
   if (pat === undefined) {
     throw new Error(
-      `github_no_pat: no GitHub PAT sealed for DID ${ownerDid} — ` +
-      `use github_connect to store a PAT first`,
+      `github_no_credential: no GitHub OAuth token or PAT sealed for DID ${ownerDid} — ` +
+      `authorize via /github/api/connect or use github_connect first`,
     );
   }
-
   return pat;
 }
 
-// ── GitHub REST API helper ────────────────────────────────────────────────────
+// ── GitHub REST API helper ─────────────────────────────────────────────
 
 interface GitHubApiOptions {
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   path: string;
-  pat: string;
+  token: string;
   body?: Record<string, unknown>;
 }
 
 /**
  * Call the GitHub REST API. Throws a descriptive error on non-2xx responses.
  *
- * The PAT is only used in the Authorization header; it is never logged.
- * The returned value is the parsed JSON response body.
+ * The bearer token (OAuth access token or PAT) is only used in the Authorization
+ * header; it is never logged. The returned value is the parsed JSON response body.
  */
 async function callGitHubApi(opts: Readonly<GitHubApiOptions>): Promise<unknown> {
   const url = `${GITHUB_API_BASE}${opts.path}`;
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
-    Authorization: `Bearer ${opts.pat}`,
+    Authorization: `Bearer ${opts.token}`,
     'X-GitHub-Api-Version': GITHUB_API_VERSION,
     'User-Agent': 'imajin-mcp/1.0',
   };
@@ -205,12 +203,12 @@ export async function createIssue(
   title: string,
   body: string,
 ): Promise<GitHubIssue> {
-  const pat = await requireGrantAndPat(ownerDid, 'github:write');
+  const token = await requireGrantAndToken(ownerDid, 'github:write');
 
   const data = await callGitHubApi({
     method: 'POST',
     path: `/repos/${repo}/issues`,
-    pat,
+    token,
     body: { title, body },
   }) as GitHubIssue;
 
@@ -247,12 +245,12 @@ export async function createComment(
   issueNumber: number,
   body: string,
 ): Promise<GitHubComment> {
-  const pat = await requireGrantAndPat(ownerDid, 'github:write');
+  const token = await requireGrantAndToken(ownerDid, 'github:write');
 
   const data = await callGitHubApi({
     method: 'POST',
     path: `/repos/${repo}/issues/${issueNumber}/comments`,
-    pat,
+    token,
     body: { body },
   }) as GitHubComment;
 
@@ -288,12 +286,12 @@ export async function listIssues(
   repo: string,
   state: 'open' | 'closed' | 'all' = 'open',
 ): Promise<GitHubIssue[]> {
-  const pat = await requireGrantAndPat(ownerDid, 'github:read');
+  const token = await requireGrantAndToken(ownerDid, 'github:read');
 
   return callGitHubApi({
     method: 'GET',
     path: `/repos/${repo}/issues?state=${state}&per_page=50`,
-    pat,
+    token,
   }) as Promise<GitHubIssue[]>;
 }
 
@@ -307,11 +305,11 @@ export async function getIssue(
   repo: string,
   issueNumber: number,
 ): Promise<GitHubIssue> {
-  const pat = await requireGrantAndPat(ownerDid, 'github:read');
+  const token = await requireGrantAndToken(ownerDid, 'github:read');
 
   return callGitHubApi({
     method: 'GET',
     path: `/repos/${repo}/issues/${issueNumber}`,
-    pat,
+    token,
   }) as Promise<GitHubIssue>;
 }
