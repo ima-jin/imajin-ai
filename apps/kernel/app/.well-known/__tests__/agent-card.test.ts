@@ -11,9 +11,14 @@ vi.mock('next/server', () => ({
   },
 }));
 
-// Mock oauth-config to keep test hermetic
+// Mock oauth-config to keep test hermetic. The route reads the issuer via the
+// lazy getMcpIssuer() getter (#1336); mock the getter, keep the deprecated const
+// alias for any remaining const consumers.
 vi.mock('@/src/lib/mcp/oauth-config', () => ({
+  getMcpIssuer: () => 'https://mcp.test.example',
+  getMcpResource: () => 'https://mcp.test.example/mcp',
   MCP_ISSUER: 'https://mcp.test.example',
+  MCP_RESOURCE: 'https://mcp.test.example/mcp',
 }));
 
 // Import AFTER mocks are registered
