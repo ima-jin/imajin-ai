@@ -86,37 +86,31 @@ export const DCR_ALLOWED_REDIRECT_URIS: readonly string[] = [
 ];
 
 /**
- * Local-dev redirect URIs for the MCP Inspector
- * (`npx @modelcontextprotocol/inspector`), used to invoke connector tools like
- * `github_connect` WITHOUT routing a raw credential through a hosted chat
- * client. These are OFF by default — prod stays locked to the exact Anthropic
- * callbacks above. An operator opts in for a single Inspector session by setting
- * `MCP_ALLOW_LOCAL_DCR=1`, then unsets it. Still exact-match (no wildcard): an
- * attacker would need to already control a listener on the victim's own
- * loopback port, and the flag must be explicitly on.
+ * True iff the URI is an RFC 8252 §7.3 loopback redirect.
+ *
+ * Loopback redirects are safe to allow on any port because OAuth 2.1
+ * mandates PKCE S256 — the authorization code is bound to the code
+ * challenge and cannot be exchanged by an attacker even if they race
+ * the legitimate client on the same loopback interface.
  */
-export const DCR_LOCAL_DEV_REDIRECT_URIS: readonly string[] = [
-  'http://localhost:6274/oauth/callback',
-  'http://127.0.0.1:6274/oauth/callback',
-];
-
-/** True iff local-dev DCR (MCP Inspector) is explicitly enabled via env. */
-export function isLocalDcrEnabled(): boolean {
-  return process.env.MCP_ALLOW_LOCAL_DCR === '1';
+export function isLoopbackRedirectUri(uri: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'http:') return false;
+  if (url.pathname !== '/oauth/callback') return false;
+  const host = url.hostname;
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
 }
 
-/** The active exact-match allowlist: Anthropic always, local-dev only when opted in. */
-export function activeRedirectAllowlist(): readonly string[] {
-  return isLocalDcrEnabled()
-    ? [...DCR_ALLOWED_REDIRECT_URIS, ...DCR_LOCAL_DEV_REDIRECT_URIS]
-    : DCR_ALLOWED_REDIRECT_URIS;
-}
-
-/** True iff EVERY requested redirect_uri is on the active exact-match allowlist. */
+/** True iff EVERY requested redirect_uri is allowed. */
 export function areRedirectUrisAllowed(uris: readonly string[]): boolean {
   if (uris.length === 0) return false;
-  const allow = new Set(activeRedirectAllowlist());
-  return uris.every((u) => allow.has(u));
+  const allow = new Set(DCR_ALLOWED_REDIRECT_URIS);
+  return uris.every((u) => allow.has(u) || isLoopbackRedirectUri(u));
 }
 
 /**
