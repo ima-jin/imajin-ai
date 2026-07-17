@@ -55,10 +55,37 @@ export const DCR_ALLOWED_REDIRECT_URIS: readonly string[] = [
   'https://claude.com/api/mcp/auth_callback',
 ];
 
-/** True iff EVERY requested redirect_uri is on the exact-match allowlist. */
+/**
+ * Local-dev redirect URIs for the MCP Inspector
+ * (`npx @modelcontextprotocol/inspector`), used to invoke connector tools like
+ * `github_connect` WITHOUT routing a raw credential through a hosted chat
+ * client. These are OFF by default — prod stays locked to the exact Anthropic
+ * callbacks above. An operator opts in for a single Inspector session by setting
+ * `MCP_ALLOW_LOCAL_DCR=1`, then unsets it. Still exact-match (no wildcard): an
+ * attacker would need to already control a listener on the victim's own
+ * loopback port, and the flag must be explicitly on.
+ */
+export const DCR_LOCAL_DEV_REDIRECT_URIS: readonly string[] = [
+  'http://localhost:6274/oauth/callback',
+  'http://127.0.0.1:6274/oauth/callback',
+];
+
+/** True iff local-dev DCR (MCP Inspector) is explicitly enabled via env. */
+export function isLocalDcrEnabled(): boolean {
+  return process.env.MCP_ALLOW_LOCAL_DCR === '1';
+}
+
+/** The active exact-match allowlist: Anthropic always, local-dev only when opted in. */
+export function activeRedirectAllowlist(): readonly string[] {
+  return isLocalDcrEnabled()
+    ? [...DCR_ALLOWED_REDIRECT_URIS, ...DCR_LOCAL_DEV_REDIRECT_URIS]
+    : DCR_ALLOWED_REDIRECT_URIS;
+}
+
+/** True iff EVERY requested redirect_uri is on the active exact-match allowlist. */
 export function areRedirectUrisAllowed(uris: readonly string[]): boolean {
   if (uris.length === 0) return false;
-  const allow = new Set(DCR_ALLOWED_REDIRECT_URIS);
+  const allow = new Set(activeRedirectAllowlist());
   return uris.every((u) => allow.has(u));
 }
 
