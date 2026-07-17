@@ -65,6 +65,7 @@ async function initRelay(): Promise<Hono> {
       const result = await createCustomRelay({
         store,
         identity: { did: RELAY_DID, profileArtifactJws: RELAY_PROFILE_JWS },
+        content: true,
         peers,
       });
       relaySyncFromPeers = result.syncFromPeers;
@@ -84,6 +85,7 @@ async function initRelay(): Promise<Hono> {
       const result = await createCustomRelay({
         store,
         identity: { did: config.did, profileArtifactJws: config.profileArtifactJws },
+        content: true,
         peers,
       });
       relaySyncFromPeers = result.syncFromPeers;
@@ -94,7 +96,7 @@ async function initRelay(): Promise<Hono> {
   }
 
   // 3. Bootstrap fresh — library creates identity + ingests chain
-  const result = await createCustomRelay({ store, peers });
+  const result = await createCustomRelay({ store, content: true, peers });
   relaySyncFromPeers = result.syncFromPeers;
   if (peers.length > 0) startSyncInterval();
 

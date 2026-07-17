@@ -1,8 +1,11 @@
 import { hexToMultibase } from '@imajin/auth';
+import { verifyChain, createSigner } from '@imajin/dfos';
+import { signContentOperation, dagCborCanonicalEncode } from '@metalabel/dfos-protocol';
 import { db, identities, identityChains, credentials } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { verifyChainLog } from './chain-providers';
+import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -261,4 +264,105 @@ export async function checkAllChainConsistency(): Promise<Array<{
   }
 
   return issues;
+}
+
+/**
+ * Emit an attestation as a DFOS content chain genesis entry.
+ *
+ * Uses the node's DFOS DID (looked up from identity_chains via getNodeDid())
+ * and AUTH_PRIVATE_KEY to sign a content chain genesis operation, then ingests
+ * it into the local relay. The DB remains the operational store — the chain
+ * provides the verifiable, portable proof.
+ *
+ * Non-fatal: returns false (with a logged warning) if the node has no DFOS
+ * chain or if any step fails. Never throws.
+ *
+ * Bilateral note: per-party chains (issuer/subject each owning their own
+ * content chain) require custodial UCAN authorization and are deferred.
+ * For now, one genesis entry per attestation is signed by the node DID.
+ */
+export async function createAttestationEntry(params: {
+  issuer_did: string;
+  subject_did: string;
+  type: string;
+  context_id: string | null | undefined;
+  context_type: string | null | undefined;
+  payload: Record<string, unknown> | null | undefined;
+  issued_at: Date;
+}): Promise<boolean> {
+  const privateKey = process.env.AUTH_PRIVATE_KEY;
+  if (!privateKey) {
+    log.warn({}, 'createAttestationEntry: AUTH_PRIVATE_KEY not set — skipping chain entry');
+    return false;
+  }
+
+  const nodeDid = await getNodeDid();
+  if (!nodeDid) {
+    log.warn({}, 'createAttestationEntry: no node DID — skipping chain entry');
+    return false;
+  }
+
+  const chain = await getChainByImajinDid(nodeDid);
+  if (!chain) {
+    log.warn(
+      { nodeDid },
+      'createAttestationEntry: node has no DFOS identity chain — skipping chain entry',
+    );
+    return false;
+  }
+
+  try {
+    const verified = await verifyChain(chain.log as string[]);
+    const keyId = verified.authKeys[0]?.id;
+    if (!keyId) {
+      log.warn({ dfosDid: chain.dfosDid }, 'createAttestationEntry: no auth keys in chain');
+      return false;
+    }
+
+    const kid = `${chain.dfosDid}#${keyId}`;
+    const signer = createSigner(privateKey);
+
+    // Build the attestation content document (schema from issue #640)
+    const content = {
+      $schema: 'imajin:attestation:v1',
+      issuer: params.issuer_did,
+      subject: params.subject_did,
+      type: params.type,
+      context: (params.context_id != null)
+        ? { id: params.context_id, type: params.context_type ?? null }
+        : null,
+      payload: params.payload ?? null,
+      timestamp: params.issued_at.toISOString(),
+    };
+
+    // Compute document CID from canonical DAG-CBOR encoding
+    const block = await dagCborCanonicalEncode(content);
+    const documentCID = block.cid.toString();
+
+    // Sign a content chain genesis operation (node DID is the creator)
+    const { jwsToken } = await signContentOperation({
+      operation: {
+        version: 1,
+        type: 'create',
+        did: chain.dfosDid,
+        documentCID,
+        baseDocumentCID: null,
+        createdAt: params.issued_at.toISOString(),
+      },
+      signer,
+      kid,
+    });
+
+    // TODO(#640): upload attestation bytes as blob to relay so documents are
+    // retrievable via getDocuments(). For now the chain entry proves existence.
+
+    const ok = await ingestToRelay([jwsToken]);
+    if (!ok) {
+      log.warn({ type: params.type }, 'createAttestationEntry: relay ingest failed');
+    }
+    return ok;
+  } catch (err) {
+    log.error({ err: String(err), type: params.type }, 'createAttestationEntry: error');
+    return false;
+  }
 }
