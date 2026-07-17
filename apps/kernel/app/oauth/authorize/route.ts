@@ -7,8 +7,8 @@ import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import { createLogger } from '@imajin/logger';
 import { rateLimit, getClientIP } from '@imajin/config';
 import {
-  MCP_ISSUER,
-  MCP_RESOURCE,
+  getMcpIssuer,
+  getMcpResource,
   AUTHORIZATION_CODE_TTL_MS,
   filterGrantedScopes,
   generateOpaqueToken,
@@ -26,12 +26,13 @@ export const dynamic = 'force-dynamic';
  * The kernel sits behind Caddy, so `request.url` reports the internal proxy
  * target (http://localhost:3000) — redirecting off that dead-ends the user's
  * browser (the #1185 "redirect to localhost:3000" bug). The OAuth ceremony is
- * advertised on the configured issuer origin (MCP_ISSUER === MCP_PUBLIC_URL),
+ * advertised on the configured issuer origin (getMcpIssuer() === MCP_PUBLIC_URL),
  * and Claude arrived on exactly that origin, so we anchor all browser redirects
  * to it. Fall back to the forwarded host, then request.url, if unset.
  */
 function publicOrigin(request: NextRequest): string {
-  if (MCP_ISSUER) return MCP_ISSUER;
+  const issuer = getMcpIssuer();
+  if (issuer) return issuer;
   const fwHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
   const fwProto = request.headers.get('x-forwarded-proto') ?? 'https';
   if (fwHost) return `${fwProto}://${fwHost}`;
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
   if (!codeChallenge || codeChallengeMethod !== 'S256') {
     return errorRedirect(redirectUri, state, 'invalid_request', 'PKCE code_challenge with S256 required');
   }
-  if (resource && resource !== MCP_RESOURCE) {
+  if (resource && resource !== getMcpResource()) {
     return errorRedirect(redirectUri, state, 'invalid_target', 'unknown resource');
   }
 
@@ -152,7 +153,7 @@ export async function GET(request: NextRequest) {
   consentUrl.searchParams.set('scope', scope);
   consentUrl.searchParams.set('code_challenge', codeChallenge);
   consentUrl.searchParams.set('code_challenge_method', 'S256');
-  consentUrl.searchParams.set('resource', resource ?? MCP_RESOURCE);
+  consentUrl.searchParams.set('resource', resource ?? getMcpResource());
   if (state) consentUrl.searchParams.set('state', state);
   return NextResponse.redirect(consentUrl);
 }
@@ -239,7 +240,7 @@ async function validateConsentRequest(
   if (!codeChallenge || codeChallengeMethod !== 'S256') {
     return { error: NextResponse.json({ error: 'invalid_request', error_description: 'PKCE code_challenge with S256 required' }, { status: 400 }) };
   }
-  if (resource && resource !== MCP_RESOURCE) {
+  if (resource && resource !== getMcpResource()) {
     return { error: NextResponse.json({ error: 'invalid_target', error_description: 'unknown resource' }, { status: 400 }) };
   }
 
@@ -340,7 +341,7 @@ export async function POST(request: NextRequest) {
     scope,
     codeChallenge,
     codeChallengeMethod: 'S256',
-    resource: MCP_RESOURCE, // helper validated request resource === MCP_RESOURCE (or absent)
+    resource: getMcpResource(), // helper validated request resource === getMcpResource() (or absent)
     attestationId,
     expiresAt: new Date(Date.now() + AUTHORIZATION_CODE_TTL_MS),
   });
