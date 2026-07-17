@@ -1,5 +1,123 @@
 <!-- Build Log — newest first. Source: Discord dev channel + git history. -->
 
+## July 2026 — Delegation Wired End-to-End, MCP Connectors & the Software-Factory Loop
+
+**Acting-for delegation landed across the kernel, the MCP surface grew real connectors, and we built an autonomous sprint loop — human-gated by design.**
+
+### 🔑 Delegation, canonicalized (#1088, #1114)
+
+`resolveActingDid` became the one canonical precedence helper for "who is this action *for*" — wired through chat, connections, pay, notify, registry, and profile. Every delegated write now records the actor and the principal separately: the agent acts, the human owns, and the signed record says so honestly.
+
+### 🔌 MCP connectors — one door, scoped by config (#1166, #1170, #1204)
+
+- **OAuth 2.1 authorization server + an extensible `/mcp` surface** — one endpoint, connectors surface as projection surfaces behind it.
+- **RFC 7591 Dynamic Client Registration** so real MCP clients (Claude Desktop) can connect without hand-provisioning.
+- **Media read + write tools** with DID-scoped authorization — the agent can create and update content, always owner-pinned.
+- **Userspace documents as the control plane (#1204→#1219):** scopes live as editable documents — grant-by-edit, revoke-by-delete — not hardcoded constants. First live production use: a sovereign GitHub connector path.
+- **Claude promoted to a first-class actor DID (#1171)** — a machine identity that acts under consent, with its OAuth refresh-token chain revocable on app-authorization revoke.
+
+### 🛡 Security surface hardened (#1247, #967, #966)
+
+Route-aware `frame-ancestors` CSP + baseline security headers. Served `/.well-known/security.txt` (RFC 9116), `/.well-known/fair-policy.json`, and an A2A Agent Card at `/.well-known/agent.json`. Partial refunds for multi-ticket orders (#949). Media API hardening — timing-safe auth, DB-backed search, dynamic tool bootstrap (#351).
+
+### 🖥 Local inference — the 5090 came online
+
+The inference node moved to an RTX 5090 (32GB). A working deck of local models — a coding model, an agentic coding model, two reasoners, a fast router/summarizer, and embeddings — hot-swapped one at a time. Free, private, on-network. Serving-stack verdict: the daily driver for model management + on-demand load; a batched-throughput specialist held in reserve for firehose workloads.
+
+### 🔁 The software-factory loop (Epic #1327)
+
+An autonomous sprint loop over a tenant repo: a Product Owner agent proposes features, coder agents build the picks, CI runs the checks, and a **human gate** approves merge and deploy. The load-bearing invariant: *green CI ≠ good feature* — the loop can reach "PRs that pass every mechanical check," but the judgment "is this the right thing, built right" stays human until we have evidence to trust it. Every step is a signed event attributable to a specific identity — our dev process becomes an honest record of who did what. Graded against the public RSI ladder, it's a Level-0 delegation loop by design, and the deliberate ceiling is a feature.
+
+### 🧯 Infrastructure made visible (#1322, #1323)
+
+Hunted down a class of failure where processes ran outside process-manager control and config files had drifted from what was actually deployed — orphaned servers squatting ports while the real service crash-looped invisibly. Fixed with restart guardrails, an orphan-reaper wired into deploy, and a healthcheck cron. Reconciled both dev and prod process manifests to reality. The whole incident class is now *visible* instead of silent. Also: idempotent-migration fixes and a numbering-collision guard.
+
+---
+
+## June 2026 — The Broker, Per-DID Workspaces & the Intent Engine
+
+**Consent-gated data release became a first-class primitive, media grew a full version history, and the kernel learned to infer intent.**
+
+### 🤝 The broker — nobody goes first alone (#1049, #1003, #1048, #1050, #1102)
+
+Completed `bus.broker()`: a standing-note model where a match only fires when a second, independent party arrives — and nothing leaves the broker unless a match already exists. Consent grants, profile disclosure, an HTTP API, and a full audit trail. The bilateral match engine intersects sealed standing notes; the calendar/availability intent rides the same rail (a sealed standing note, released only on consent). A disclosure dashboard (by-contact / by-grant, bulk revoke) puts the human in control of what they've shared and lets them take it back.
+
+### 📁 Media as a versioned, signed workspace (#1122, #1123, #1146)
+
+- **Content versioning** — every edit mints a new content-addressed identifier and a new reference; a history resolver + content-verify path; a version badge in the thumbnail (and *no* badge for single-version assets — clean by default).
+- **Per-DID workspace manifest** — snapshot, rollback, branch.
+- **Markdown frontmatter as the source of truth (#1193)** — the database row is a derived projection, not the record.
+- **Per-DID sharing fixed** — "share this asset with <DID>" is one command; `resolveActingDid` threaded through grants, access, and article routes so the agent can share on the human's behalf.
+
+### 🧠 The intent engine (#1198)
+
+The kernel learned the shape of the app: a gesture (a voice note, a photo, a file) → infer intent → resolve to primitives on the human's behalf → sign. Interface simple, engine hard. The first inference-engine slice merged, node-signing its attestation payload so the provenance of an inferred action is itself on the record.
+
+### 🌐 DFOS relay 0.13.5 (#1159, #1111)
+
+Bumped the relay across dev and prod, removed the beacon primitive, moved to the `/proof/v1` routes, and re-minted the v1 corpus with foreign-gossip pruning. Peered on production — the wire layer is live, and the proof surface is ours to build the glass on.
+
+### 🔗 Messenger identity linking & the conversational surface (#1100, #1101)
+
+Messenger identity linking into the auth vocabulary, plus a conversational agent surface over Telegram — the broker made talkable.
+
+### 📐 RFCs
+
+RFC-34 (community-needs brokerage) and RFC-35 (context-bound connection) written — the design record keeping pace with the code.
+
+---
+
+## May 2026 — Vault, the Bus & a Clean-Code Reckoning
+
+**Server-side secret storage got real, the bus/broker primitive was born, and we paid down a mountain of static-analysis debt in one concerted push.**
+
+### 🔐 The vault — honest custody (#1005, #1006, #1010, #1012)
+
+Built a server-side vault: canonicalization, content-addressing, identity, signatures, locking, rotation, and storage adapters, wired to live API endpoints, bus events, and hot-reload subscriptions. The custody model is stated plainly — node-sealed, signed provenance, *not* zero-custody — the honest shippable state, with zero-custody kept as a separate hardening track rather than an overclaim.
+
+### 🚌 The bus & broker core (#1014)
+
+`broker()` — consent-gated data release — landed as a bus primitive. The pattern that later generalized across every coordination problem started here: publish an intent, release only on consent, record everything.
+
+### ✍️ Document signing & .fair normalization (#1017, #1018)
+
+Document-signing UX with signer notifications, and a normalized `.fair` manifest shape that fixed settlement receipts — the attribution layer getting its edges squared.
+
+### 🧹 The SonarCloud campaign (#1028–#1046)
+
+A sustained pass to get and stay static-analysis clean: negated conditions, nested ternaries, array-index keys, label accessibility, dead stores, nested templates — batched and remediated across the monorepo, plus automation to keep new issues from creeping in. Also consolidated markdown rendering from four libraries down to three. Unglamorous, load-bearing: clean code the first time is a policy now, not an aspiration.
+
+### 💬 Chat & notifications polish (#1019–#1025)
+
+Typeahead @mention picker with conversation context, deep links to conversations in mention emails, profile-level email/notification preferences, and settlement-receipt fixes.
+
+### 📐 RFC-34
+
+Community-needs brokerage drafted — the brokerage thesis written down.
+
+---
+
+## April 9–30, 2026 — Delegation Foundations, Availability & the Match Engine
+
+**After the kernel merge, the work turned to the primitives that make an agent act *for* someone: delegation precedence, sealed intents, and the match engine that only fires with a second party.**
+
+### 🔑 Acting-for delegation, phased in (#1088, #1114)
+
+`resolveActingDid` — the canonical "who is this for" precedence helper — rolled through the services in waves: chat and connections first, then pay, notify, registry, and profile. The audit trail records the acting identity distinctly from the principal, so a delegated action is always attributable to both the hand and the owner.
+
+### 📅 Availability as a sealed standing note (#1098, #1099)
+
+Availability intent shipped as a *sealed* standing note — you declare when you're free without broadcasting it, and it's released only when the broker finds a genuine match. Calendar and broker chain configs were seeded as data, so the flow is a configurable row, not bespoke code.
+
+### 🎯 The bilateral match engine (#1102)
+
+Standing-note intersection: two sealed intents meet, and only then does anything surface. Nobody goes first alone — the safety property is built into the mechanism, not bolted on.
+
+### 🏗 Build & deploy hardening
+
+Missing environment files became warnings rather than fatal errors for daemon services; daemon services skip the Next build step; the deploy path got steadier. The unglamorous plumbing that keeps the lights on.
+
+
 ## April 6–8, 2026 — The Kernel Merge & MJN Emissions
 
 **Nine services became one process. 40,000 lines deleted. Then we built a token economy in one evening.**
