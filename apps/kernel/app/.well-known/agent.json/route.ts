@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { SERVICES } from '@imajin/config';
-import { MCP_ISSUER } from '@/src/lib/mcp/oauth-config';
+import { getMcpIssuer } from '@/src/lib/mcp/oauth-config';
 
 /**
  * /.well-known/agent.json — A2A Agent Card (RFC-32 / epic #965, issue #966).
@@ -45,7 +45,7 @@ export function GET() {
   const nodeUrl = `${protocol}${domain}`;
 
   const isFederated = !!process.env.RELAY_DID;
-  const mcpEndpoint = `${MCP_ISSUER}/mcp`;
+  const mcpEndpoint = `${getMcpIssuer()}/mcp`;
 
   const card = {
     /** A2A Agent Card schema version */
@@ -70,9 +70,9 @@ export function GET() {
     authentication: {
       schemes: ['did-imajin', 'oauth2'],
       oauth2: {
-        authorizationUrl: `${MCP_ISSUER}/oauth/authorize`,
-        tokenUrl: `${MCP_ISSUER}/oauth/token`,
-        discoveryUrl: `${MCP_ISSUER}/.well-known/oauth-authorization-server`,
+        authorizationUrl: `${getMcpIssuer()}/oauth/authorize`,
+        tokenUrl: `${getMcpIssuer()}/oauth/token`,
+        discoveryUrl: `${getMcpIssuer()}/.well-known/oauth-authorization-server`,
       },
     },
 

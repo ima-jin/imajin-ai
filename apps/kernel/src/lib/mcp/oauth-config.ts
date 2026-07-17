@@ -13,7 +13,12 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 /** Public origin of the MCP server (Caddy → kernel). e.g. https://mcp.imajin.ai */
-export const MCP_ISSUER = process.env.MCP_PUBLIC_URL ?? 'https://mcp.imajin.ai';
+export function getMcpIssuer(): string {
+  return process.env.MCP_PUBLIC_URL ?? 'https://mcp.imajin.ai';
+}
+
+/** @deprecated Use getMcpIssuer() to avoid stale env capture at module-eval time. */
+export const MCP_ISSUER = getMcpIssuer();
 
 /**
  * Connector app DID for the Claude/MCP connector (#1222).
@@ -31,12 +36,37 @@ export const MCP_CONNECTOR_DID = 'did:imajin:mcp-connector';
 export const MCP_CHANNEL = 'mcp';
 
 /** RFC 8707 resource indicator == access-token `aud`. Also the JSON-RPC path. */
-export const MCP_RESOURCE = `${MCP_ISSUER}/mcp`;
+export function getMcpResource(): string {
+  return `${getMcpIssuer()}/mcp`;
+}
 
-export const OAUTH_AUTHORIZATION_ENDPOINT = `${MCP_ISSUER}/oauth/authorize`;
-export const OAUTH_TOKEN_ENDPOINT = `${MCP_ISSUER}/oauth/token`;
-export const OAUTH_REGISTRATION_ENDPOINT = `${MCP_ISSUER}/oauth/register`;
-export const PROTECTED_RESOURCE_METADATA_URL = `${MCP_ISSUER}/.well-known/oauth-protected-resource`;
+/** @deprecated Use getMcpResource() to avoid stale env capture at module-eval time. */
+export const MCP_RESOURCE = getMcpResource();
+
+export function getAuthorizationEndpoint(): string {
+  return `${getMcpIssuer()}/oauth/authorize`;
+}
+
+export function getTokenEndpoint(): string {
+  return `${getMcpIssuer()}/oauth/token`;
+}
+
+export function getRegistrationEndpoint(): string {
+  return `${getMcpIssuer()}/oauth/register`;
+}
+
+export function getProtectedResourceMetadataUrl(): string {
+  return `${getMcpIssuer()}/.well-known/oauth-protected-resource`;
+}
+
+/** @deprecated Use getAuthorizationEndpoint() to avoid stale env capture. */
+export const OAUTH_AUTHORIZATION_ENDPOINT = getAuthorizationEndpoint();
+/** @deprecated Use getTokenEndpoint() to avoid stale env capture. */
+export const OAUTH_TOKEN_ENDPOINT = getTokenEndpoint();
+/** @deprecated Use getRegistrationEndpoint() to avoid stale env capture. */
+export const OAUTH_REGISTRATION_ENDPOINT = getRegistrationEndpoint();
+/** @deprecated Use getProtectedResourceMetadataUrl() to avoid stale env capture. */
+export const PROTECTED_RESOURCE_METADATA_URL = getProtectedResourceMetadataUrl();
 
 /**
  * Redirect-URI allowlist for Dynamic Client Registration (RFC 7591, #1185).
@@ -56,37 +86,31 @@ export const DCR_ALLOWED_REDIRECT_URIS: readonly string[] = [
 ];
 
 /**
- * Local-dev redirect URIs for the MCP Inspector
- * (`npx @modelcontextprotocol/inspector`), used to invoke connector tools like
- * `github_connect` WITHOUT routing a raw credential through a hosted chat
- * client. These are OFF by default — prod stays locked to the exact Anthropic
- * callbacks above. An operator opts in for a single Inspector session by setting
- * `MCP_ALLOW_LOCAL_DCR=1`, then unsets it. Still exact-match (no wildcard): an
- * attacker would need to already control a listener on the victim's own
- * loopback port, and the flag must be explicitly on.
+ * True iff the URI is an RFC 8252 §7.3 loopback redirect.
+ *
+ * Loopback redirects are safe to allow on any port because OAuth 2.1
+ * mandates PKCE S256 — the authorization code is bound to the code
+ * challenge and cannot be exchanged by an attacker even if they race
+ * the legitimate client on the same loopback interface.
  */
-export const DCR_LOCAL_DEV_REDIRECT_URIS: readonly string[] = [
-  'http://localhost:6274/oauth/callback',
-  'http://127.0.0.1:6274/oauth/callback',
-];
-
-/** True iff local-dev DCR (MCP Inspector) is explicitly enabled via env. */
-export function isLocalDcrEnabled(): boolean {
-  return process.env.MCP_ALLOW_LOCAL_DCR === '1';
+export function isLoopbackRedirectUri(uri: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'http:') return false;
+  if (url.pathname !== '/oauth/callback') return false;
+  const host = url.hostname;
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
 }
 
-/** The active exact-match allowlist: Anthropic always, local-dev only when opted in. */
-export function activeRedirectAllowlist(): readonly string[] {
-  return isLocalDcrEnabled()
-    ? [...DCR_ALLOWED_REDIRECT_URIS, ...DCR_LOCAL_DEV_REDIRECT_URIS]
-    : DCR_ALLOWED_REDIRECT_URIS;
-}
-
-/** True iff EVERY requested redirect_uri is on the active exact-match allowlist. */
+/** True iff EVERY requested redirect_uri is allowed. */
 export function areRedirectUrisAllowed(uris: readonly string[]): boolean {
   if (uris.length === 0) return false;
-  const allow = new Set(activeRedirectAllowlist());
-  return uris.every((u) => allow.has(u));
+  const allow = new Set(DCR_ALLOWED_REDIRECT_URIS);
+  return uris.every((u) => allow.has(u) || isLoopbackRedirectUri(u));
 }
 
 /**
@@ -115,7 +139,7 @@ export const MCP_SCOPES = [
   'github:org',
   'github:actions',
 ] as const;
-const MCP_SCOPE_SET = new Set<string>(MCP_SCOPES);
+export const MCP_SCOPE_SET = new Set<string>(MCP_SCOPES);
 
 export const ACCESS_TOKEN_TTL_SECONDS = 600; // matches createAppToken (10 min)
 export const AUTHORIZATION_CODE_TTL_MS = 60_000; // 60s, single-use

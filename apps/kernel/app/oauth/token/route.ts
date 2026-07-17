@@ -6,7 +6,7 @@ import { createAppToken } from '@/src/lib/auth/jwt';
 import { createLogger } from '@imajin/logger';
 import { rateLimit, getClientIP } from '@imajin/config';
 import {
-  MCP_RESOURCE,
+  getMcpResource,
   ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_TOKEN_TTL_MS,
   pkceChallengeFromVerifier,
@@ -50,7 +50,7 @@ function mintAccessToken(opts: { userDid: string; appDid: string; scope: string;
     sub: opts.userDid,
     azp: opts.appDid,
     scope: opts.scope,
-    aud: MCP_RESOURCE,
+    aud: getMcpResource(),
     attestationId: opts.attestationId,
   });
 }

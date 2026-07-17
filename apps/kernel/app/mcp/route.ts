@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAppToken } from '@/src/lib/auth/jwt';
-import { MCP_RESOURCE, PROTECTED_RESOURCE_METADATA_URL } from '@/src/lib/mcp/oauth-config';
+import { getMcpResource, getProtectedResourceMetadataUrl, MCP_SCOPE_SET } from '@/src/lib/mcp/oauth-config';
 import { handleMcpRpc } from '@/src/lib/mcp/server';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,7 @@ function unauthorized(error = 'invalid_token') {
     {
       status: 401,
       headers: {
-        'WWW-Authenticate': `Bearer resource_metadata="${PROTECTED_RESOURCE_METADATA_URL}"`,
+        'WWW-Authenticate': `Bearer resource_metadata="${getProtectedResourceMetadataUrl()}"`,
       },
     },
   );
@@ -28,7 +28,7 @@ function unauthorized(error = 'invalid_token') {
  * THIS SKETCH ONLY does the auth gate, per the build sequence in #1166:
  *   1. unauthenticated → 401 + WWW-Authenticate pointer (above)
  *   2. bearer present → verify IN-PROCESS via verifyAppToken (EdDSA, no
- *      round-trip), then enforce `aud === MCP_RESOURCE` (RFC 8707 audience
+ *      round-trip), then enforce `aud === getMcpResource()` (RFC 8707 audience
  *      binding) and the read scope.
  *
  * Token-seam note: we deliberately do NOT call requireAuth() here. Its Bearer
@@ -56,17 +56,18 @@ export async function POST(request: NextRequest) {
   if (!payload) {
     return unauthorized();
   }
-  if (!payload.sub || payload.aud !== MCP_RESOURCE) {
+  if (!payload.sub || payload.aud !== getMcpResource()) {
     return unauthorized();
   }
 
-  // Surface gate: the token must carry at least one media scope to reach the MCP
-  // surface at all. The authoritative read-vs-write decision is per-tool in
+  // Surface gate: the token must carry at least one recognized MCP scope to reach
+  // the MCP surface at all. The authoritative read-vs-write decision is per-tool in
   // handleMcpRpc (each McpTool.requiredScope), so a write-only token can reach the
-  // write tools and a read-only token cannot call them (#1170). (Set is the
-  // existence-check idiom here.)
+  // write tools and a read-only token cannot call them (#1170).
   const scopes = new Set(payload.scope ? payload.scope.split(' ') : []);
-  if (!scopes.has('media:read') && !scopes.has('media:write')) {
+  const tokenScopes = Array.from(scopes);
+  const hasRecognizedScope = tokenScopes.some((s) => MCP_SCOPE_SET.has(s));
+  if (!hasRecognizedScope) {
     return NextResponse.json(
       { error: 'insufficient_scope' },
       { status: 403, headers: { 'WWW-Authenticate': 'Bearer error="insufficient_scope"' } },
