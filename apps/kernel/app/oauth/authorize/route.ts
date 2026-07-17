@@ -14,6 +14,7 @@ import {
   generateOpaqueToken,
   hashToken,
 } from '@/src/lib/mcp/oauth-config';
+import { anchorToOrigin } from '@/src/lib/mcp/oauth-redirect';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 
 const log = createLogger('kernel');
@@ -126,15 +127,17 @@ export async function GET(request: NextRequest) {
   //    connector can never be minted against a group the user is impersonating.
   const { sessionDid } = await getEffectiveDid();
   const origin = publicOrigin(request);
-  const originUrl = new URL(origin);
   if (!sessionDid) {
     // Anchor login + the post-login `next` to the PUBLIC origin, not the internal
-    // localhost:3000 that request.url reports behind Caddy (#1185 redirect bug).
-    const publicAuthorizeUrl = new URL(request.url);
-    publicAuthorizeUrl.protocol = originUrl.protocol;
-    publicAuthorizeUrl.host = originUrl.host;
+    // localhost:3000/7000 that request.url reports behind Caddy (#1185 redirect bug).
+    //
+    // Rebuild path+search ONTO the issuer origin rather than mutating a URL parsed
+    // from request.url: assigning `.host` (without a port) to a WHATWG URL does NOT
+    // clear an existing explicit port, so `localhost:3000` + `.host='mcp.imajin.ai'`
+    // leaked `mcp.imajin.ai:3000` into `next=` and dead-ended the browser.
+    const publicAuthorizeUrl = anchorToOrigin(request.url, origin);
     const loginUrl = new URL('/auth/login', origin);
-    loginUrl.searchParams.set('next', publicAuthorizeUrl.toString()); // return to /authorize after login
+    loginUrl.searchParams.set('next', publicAuthorizeUrl); // return to /authorize after login
     return NextResponse.redirect(loginUrl);
   }
 
