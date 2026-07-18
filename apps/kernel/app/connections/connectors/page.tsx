@@ -124,6 +124,16 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
     }
   }, [entry.statusEndpoint]);
 
+  // Background refresh — does not blank the card (no statusLoading = true).
+  const refreshStatus = useCallback(async () => {
+    try {
+      const r = await fetch(entry.statusEndpoint!);
+      if (!r.ok) return;
+      setStatus(await r.json() as GitHubStatus);
+      setStatusError(null);
+    } catch { /* non-fatal */ }
+  }, [entry.statusEndpoint]);
+
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
   const activeSet = new Set(status?.activeScopes ?? []);
@@ -148,7 +158,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       setShowConfigure(false);
       setClientId('');
       setClientSecret('');
-      await fetchStatus();
+      void refreshStatus();
     } catch (err: unknown) {
       setConfigError(String(err));
     } finally {
@@ -161,7 +171,6 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
     setGrantingScope(scopeName);
     setGrantError(null);
     try {
-      // Build the new desired scope set: preserve other active scopes, add/remove this one.
       const current = new Set(status?.activeScopes ?? []);
       if (enable) current.add(scopeName);
       else current.delete(scopeName);
@@ -171,11 +180,16 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scopes: [...current] }),
       });
-      if (!r.ok) {
-        const data = await r.json().catch(() => ({})) as { error?: string };
-        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      // Read the body once regardless of success/failure.
+      const data = await r.json().catch(() => ({})) as { error?: string; activeScopes?: string[] };
+      if (!r.ok) throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+
+      // Apply the POST response directly — no card blank-out, no reactor race.
+      if (Array.isArray(data.activeScopes)) {
+        setStatus(prev => prev ? { ...prev, activeScopes: data.activeScopes! } : prev);
       }
-      await fetchStatus();
+      // Background sync for manifestAssetId and other fields.
+      void refreshStatus();
     } catch (err: unknown) {
       setGrantError(String(err));
     } finally {
@@ -440,6 +454,15 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
     }
   }, [entry.statusEndpoint]);
 
+  const refreshStatus = useCallback(async () => {
+    try {
+      const r = await fetch(entry.statusEndpoint!);
+      if (!r.ok) return;
+      setStatus(await r.json() as DiscordStatus);
+      setStatusError(null);
+    } catch { /* non-fatal */ }
+  }, [entry.statusEndpoint]);
+
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
   const activeSet = new Set(status?.activeScopes ?? []);
@@ -461,7 +484,7 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       }
       setTokenInput('');
       setShowTokenInput(false);
-      await fetchStatus();
+      void refreshStatus();
     } catch (err: unknown) {
       setSealError(String(err));
     } finally {
@@ -481,11 +504,12 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scopes: [...current] }),
       });
-      if (!r.ok) {
-        const data = await r.json().catch(() => ({})) as { error?: string };
-        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      const data = await r.json().catch(() => ({})) as { error?: string; activeScopes?: string[] };
+      if (!r.ok) throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      if (Array.isArray(data.activeScopes)) {
+        setStatus(prev => prev ? { ...prev, activeScopes: data.activeScopes! } : prev);
       }
-      await fetchStatus();
+      void refreshStatus();
     } catch (err: unknown) {
       setGrantError(String(err));
     } finally {
@@ -675,6 +699,15 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
     finally { setStatusLoading(false); }
   }, [entry.statusEndpoint]);
 
+  const refreshStatus = useCallback(async () => {
+    try {
+      const r = await fetch(entry.statusEndpoint!);
+      if (!r.ok) return;
+      setStatus(await r.json() as QuickBooksStatus);
+      setStatusError(null);
+    } catch { /* non-fatal */ }
+  }, [entry.statusEndpoint]);
+
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
   const activeSet = new Set(status?.activeScopes ?? []);
@@ -689,7 +722,7 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
       });
       if (!r.ok) { const d = await r.json().catch(() => ({})) as { error?: string }; throw new Error(d.error ?? `${r.status}`); }
       setShowConfigure(false); setClientId(''); setClientSecret('');
-      await fetchStatus();
+      void refreshStatus();
     } catch (err: unknown) { setConfigError(String(err)); }
     finally { setConfiguring(false); }
   }
@@ -703,8 +736,12 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scopes: [...current] }),
       });
-      if (!r.ok) { const d = await r.json().catch(() => ({})) as { error?: string }; throw new Error(d.error ?? `${r.status}`); }
-      await fetchStatus();
+      const data = await r.json().catch(() => ({})) as { error?: string; activeScopes?: string[] };
+      if (!r.ok) throw new Error(data.error ?? `${r.status}`);
+      if (Array.isArray(data.activeScopes)) {
+        setStatus(prev => prev ? { ...prev, activeScopes: data.activeScopes! } : prev);
+      }
+      void refreshStatus();
     } catch (err: unknown) { setGrantError(String(err)); }
     finally { setGrantingScope(null); }
   }
