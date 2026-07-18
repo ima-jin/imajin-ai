@@ -29,9 +29,9 @@ describe('DCR redirect-URI allowlist', () => {
     expect(areRedirectUrisAllowed(['http://[::1]:9999/oauth/callback'])).toBe(true);
   });
 
-  it('rejects loopback redirect URIs with wrong path', () => {
-    expect(areRedirectUrisAllowed(['http://127.0.0.1:6274/evil'])).toBe(false);
-    expect(areRedirectUrisAllowed(['http://localhost:8080/not-callback'])).toBe(false);
+  it('accepts loopback redirect URIs with any path (RFC 8252 pins host, not path)', () => {
+    expect(areRedirectUrisAllowed(['http://127.0.0.1:6274/evil'])).toBe(true);
+    expect(areRedirectUrisAllowed(['http://localhost:8080/not-callback'])).toBe(true);
   });
 
   it('rejects https on loopback (RFC 8252 loopback is http-only)', () => {
@@ -54,6 +54,15 @@ describe('DCR redirect-URI allowlist', () => {
     ).toBe(false);
   });
 
+  it('accepts the MCP Inspector two-URI loopback set (/oauth/callback + /oauth/callback/debug)', () => {
+    expect(
+      areRedirectUrisAllowed([
+        'http://localhost:6274/oauth/callback',
+        'http://localhost:6274/oauth/callback/debug',
+      ]),
+    ).toBe(true);
+  });
+
   it('rejects an empty redirect-URI list', () => {
     expect(areRedirectUrisAllowed([])).toBe(false);
   });
@@ -67,8 +76,13 @@ describe('isLoopbackRedirectUri', () => {
     expect(isLoopbackRedirectUri('http://[::1]:9999/oauth/callback')).toBe(true);
   });
 
-  it('returns false for wrong path', () => {
-    expect(isLoopbackRedirectUri('http://127.0.0.1:6274/evil')).toBe(false);
+  it('returns true for loopback hosts with ANY path (RFC 8252 pins host, not path)', () => {
+    // MCP Inspector registers both /oauth/callback and /oauth/callback/debug;
+    // every entry must pass, so the extra path must be accepted. Security is
+    // PKCE + loopback host, not the path.
+    expect(isLoopbackRedirectUri('http://localhost:6274/oauth/callback/debug')).toBe(true);
+    expect(isLoopbackRedirectUri('http://127.0.0.1:6274/callback')).toBe(true);
+    expect(isLoopbackRedirectUri('http://127.0.0.1:6274/')).toBe(true);
   });
 
   it('returns false for https on loopback', () => {
