@@ -129,7 +129,7 @@ export function isLoopbackRedirectUri(uri: string): boolean {
  * This is a narrow bridge until a proper multi-redirect_uri manager lands
  * (stores + matches the full registered set). See the tracking issue.
  */
-export function redirectUriMatches(incoming: string | null | undefined, registered: string): boolean {
+export function redirectUriMatches(incoming: string | null | undefined, registered: string): incoming is string {
   if (!incoming) return false;
   if (incoming === registered) return true;
   if (!isLoopbackRedirectUri(incoming) || !isLoopbackRedirectUri(registered)) return false;
