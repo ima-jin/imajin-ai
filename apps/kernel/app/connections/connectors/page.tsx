@@ -80,6 +80,98 @@ function Badge({ children, variant }: Readonly<{ children: React.ReactNode; vari
   );
 }
 
+// ── Shared subcomponents ──────────────────────────────────────────────────────
+
+/** Header badge for connector cards — eliminates nested ternary duplication. */
+function ConnectorStatusBadge({ loading, error, ready }: Readonly<{
+  loading: boolean; error: boolean; ready: boolean;
+}>) {
+  if (loading) return <Badge variant="info">Checking…</Badge>;
+  if (error) return <Badge variant="inactive">Unavailable</Badge>;
+  if (ready) return <Badge variant="active">● Connected</Badge>;
+  return <Badge variant="inactive">○ Not configured</Badge>;
+}
+
+/** One scope row inside a ScopeGrantSection. */
+function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onToggle }: Readonly<{
+  scope: ConnectorScope; isActive: boolean; isGranting: boolean;
+  isAnyGranting: boolean; tokenSealed: boolean;
+  onToggle: (name: string, enable: boolean) => void;
+}>) {
+  const isLocked = scope.releaseClass === 'never';
+  let badge: React.ReactNode;
+  if (isGranting) badge = <Badge variant="info">Saving…</Badge>;
+  else if (isLocked) badge = <Badge variant="inactive">N/A</Badge>;
+  else if (isActive) badge = <Badge variant="active">Active</Badge>;
+  else badge = (
+    <Badge variant="inactive">
+      <span className={RELEASE_CLASS_COLOR[scope.releaseClass]}>
+        {RELEASE_CLASS_LABEL[scope.releaseClass]}
+      </span>
+    </Badge>
+  );
+  return (
+    <div className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
+      <label
+        className={`flex items-center gap-3 min-w-0 ${isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+        aria-label={scope.label}
+      >
+        <input
+          type="checkbox"
+          checked={isActive}
+          disabled={isLocked || !tokenSealed || isGranting || isAnyGranting}
+          onChange={(e) => { onToggle(scope.name, e.target.checked); }}
+          className="w-4 h-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
+        />
+        <div className="min-w-0">
+          <span className={`text-sm font-mono block ${isActive ? 'text-white' : 'text-gray-400'}`}>
+            {scope.name}
+          </span>
+          <span className="text-xs text-gray-600 truncate block">{scope.label}</span>
+        </div>
+      </label>
+      <div className="flex items-center gap-2 shrink-0 ml-4">{badge}</div>
+    </div>
+  );
+}
+
+/** Shared scope-grant section — used by GitHub, Discord, and QuickBooks. */
+function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantError, tokenSealed, noTokenHint, onToggle }: Readonly<{
+  entry: ConnectorEntry; activeSet: Set<string>; stepNumber: string | number;
+  grantingScope: string | null; grantError: string | null;
+  tokenSealed: boolean; noTokenHint: string;
+  onToggle: (name: string, enable: boolean) => void;
+}>) {
+  const hasActive = activeSet.size > 0;
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+          hasActive ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+        }`}>
+          {hasActive ? '✓' : stepNumber}
+        </span>
+        {'  '}Scope grants
+      </h3>
+      {grantError && <p className="text-red-400 text-xs mb-2">{grantError}</p>}
+      <div className="space-y-1">
+        {entry.scopes.map((scope) => (
+          <ScopeRow
+            key={scope.name}
+            scope={scope}
+            isActive={activeSet.has(scope.name)}
+            isGranting={grantingScope === scope.name}
+            isAnyGranting={grantingScope !== null}
+            tokenSealed={tokenSealed}
+            onToggle={onToggle}
+          />
+        ))}
+      </div>
+      {!tokenSealed && <p className="text-xs text-gray-600 mt-2">{noTokenHint}</p>}
+    </div>
+  );
+}
+
 // ── GitHub card (interactive: configure → connect → grant) — #1352 ─────────
 
 function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
@@ -208,17 +300,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             <p className="text-sm text-gray-400">{entry.description}</p>
           </div>
         </div>
-        <div>
-          {statusLoading ? (
-            <Badge variant="info">Checking…</Badge>
-          ) : statusError ? (
-            <Badge variant="inactive">Unavailable</Badge>
-          ) : readyForRead ? (
-            <Badge variant="active">● Connected</Badge>
-          ) : (
-            <Badge variant="inactive">○ Not configured</Badge>
-          )}
-        </div>
+        <ConnectorStatusBadge loading={statusLoading} error={!!statusError} ready={readyForRead} />
       </div>
 
       {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
@@ -240,6 +322,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
               </h3>
               {status.configSealed && !showConfigure && (
                 <button
+                  type="button"
                   onClick={() => setShowConfigure(true)}
                   className="text-xs text-gray-600 hover:text-gray-400 transition"
                 >
@@ -282,7 +365,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                     disabled={configuring || !clientId.trim() || !clientSecret.trim() || !redirectUri.trim()}
                     className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition"
                   >
-                    {configuring ? 'Saving…' : status.configSealed ? 'Update config' : 'Save config'}
+                    {configuring ? 'Saving…' : (status.configSealed ? 'Update config' : 'Save config')}
                   </button>
                   {showConfigure && (
                     <button
@@ -344,72 +427,16 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
           </div>
 
           {/* ── Step 3: Grant scopes ── */}
-          <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
-              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
-                activeSet.size > 0 ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
-              }`}>
-                {activeSet.size > 0 ? '✓' : '3'}
-              </span>
-              Scope grants
-            </h3>
-
-            {grantError && <p className="text-red-400 text-xs mb-2">{grantError}</p>}
-
-            <div className="space-y-1">
-              {entry.scopes.map((scope) => {
-                const isActive = activeSet.has(scope.name);
-                const isLocked = scope.releaseClass === 'never';
-                const isThisGranting = grantingScope === scope.name;
-
-                return (
-                  <div
-                    key={scope.name}
-                    className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0"
-                  >
-                    <label className={`flex items-center gap-3 min-w-0 ${
-                      isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-                    }`}>
-                      <input
-                        type="checkbox"
-                        checked={isActive}
-                        disabled={isLocked || !status.tokenSealed || isThisGranting || grantingScope !== null}
-                        onChange={(e) => { void handleToggleScope(scope.name, e.target.checked); }}
-                        className="w-4 h-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
-                      />
-                      <div className="min-w-0">
-                        <span className={`text-sm font-mono block ${
-                          isActive ? 'text-white' : 'text-gray-400'
-                        }`}>
-                          {scope.name}
-                        </span>
-                        <span className="text-xs text-gray-600 truncate block">{scope.label}</span>
-                      </div>
-                    </label>
-                    <div className="flex items-center gap-2 shrink-0 ml-4">
-                      {isThisGranting ? (
-                        <Badge variant="info">Saving…</Badge>
-                      ) : isLocked ? (
-                        <Badge variant="inactive">N/A</Badge>
-                      ) : isActive ? (
-                        <Badge variant="active">Active</Badge>
-                      ) : (
-                        <Badge variant="inactive">
-                          <span className={RELEASE_CLASS_COLOR[scope.releaseClass]}>
-                            {RELEASE_CLASS_LABEL[scope.releaseClass]}
-                          </span>
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {!status.tokenSealed && (
-              <p className="text-xs text-gray-600 mt-2">Connect your account (step 2) to enable scope grants.</p>
-            )}
-          </div>
+          <ScopeGrantSection
+            entry={entry}
+            activeSet={activeSet}
+            stepNumber={3}
+            grantingScope={grantingScope}
+            grantError={grantError}
+            tokenSealed={status.tokenSealed}
+            noTokenHint="Connect your account (step 2) to enable scope grants."
+            onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
+          />
 
           {/* Asset anchor */}
           {status.manifestAssetId && (
@@ -528,17 +555,7 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             <p className="text-sm text-gray-400">{entry.description}</p>
           </div>
         </div>
-        <div>
-          {statusLoading ? (
-            <Badge variant="info">Checking…</Badge>
-          ) : statusError ? (
-            <Badge variant="inactive">Unavailable</Badge>
-          ) : readyForPost ? (
-            <Badge variant="active">● Connected</Badge>
-          ) : (
-            <Badge variant="inactive">○ Not configured</Badge>
-          )}
-        </div>
+        <ConnectorStatusBadge loading={statusLoading} error={!!statusError} ready={readyForPost} />
       </div>
 
       {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
@@ -603,60 +620,17 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
           </div>
 
           {/* ── Step 2: Scope grants ── */}
-          <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
-              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
-                activeSet.size > 0 ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
-              }`}>
-                {activeSet.size > 0 ? '✓' : '2'}
-              </span>
-              Scope grants
-            </h3>
+          <ScopeGrantSection
+            entry={entry}
+            activeSet={activeSet}
+            stepNumber={2}
+            grantingScope={grantingScope}
+            grantError={grantError}
+            tokenSealed={status.tokenSealed}
+            noTokenHint="Seal a bot token (step 1) to enable scope grants."
+            onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
+          />
 
-            {grantError && <p className="text-red-400 text-xs mb-2">{grantError}</p>}
-
-            <div className="space-y-1">
-              {entry.scopes.map((scope) => {
-                const isActive = activeSet.has(scope.name);
-                const isThisGranting = grantingScope === scope.name;
-                return (
-                  <div key={scope.name} className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
-                    <label className="flex items-center gap-3 min-w-0 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isActive}
-                        disabled={!status.tokenSealed || isThisGranting || grantingScope !== null}
-                        onChange={(e) => { void handleToggleScope(scope.name, e.target.checked); }}
-                        className="w-4 h-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
-                      />
-                      <div className="min-w-0">
-                        <span className={`text-sm font-mono block ${isActive ? 'text-white' : 'text-gray-400'}`}>
-                          {scope.name}
-                        </span>
-                        <span className="text-xs text-gray-600 truncate block">{scope.label}</span>
-                      </div>
-                    </label>
-                    <div className="flex items-center gap-2 shrink-0 ml-4">
-                      {isThisGranting ? (
-                        <Badge variant="info">Saving…</Badge>
-                      ) : isActive ? (
-                        <Badge variant="active">Active</Badge>
-                      ) : (
-                        <Badge variant="inactive">
-                          <span className={RELEASE_CLASS_COLOR[scope.releaseClass]}>
-                            {RELEASE_CLASS_LABEL[scope.releaseClass]}
-                          </span>
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {!status.tokenSealed && (
-              <p className="text-xs text-gray-600 mt-2">Seal a bot token (step 1) to enable scope grants.</p>
-            )}
-          </div>
 
           {status.manifestAssetId && (
             <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
@@ -754,11 +728,7 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
           <div><h2 className="text-lg font-semibold text-white">{entry.name}</h2>
             <p className="text-sm text-gray-400">{entry.description}</p></div>
         </div>
-        <div>{statusLoading ? <Badge variant="info">Checking…</Badge>
-          : statusError ? <Badge variant="inactive">Unavailable</Badge>
-          : readyForRead ? <Badge variant="active">● Connected</Badge>
-          : <Badge variant="inactive">○ Not configured</Badge>}
-        </div>
+        <ConnectorStatusBadge loading={statusLoading} error={!!statusError} ready={readyForRead} />
       </div>
 
       {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
@@ -774,10 +744,10 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
                   status.configSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
                   {status.configSealed ? '✓' : '1'}
                 </span>
-                OAuth App (Intuit)
+                {' '}OAuth App (Intuit)
               </h3>
               {status.configSealed && !showConfigure && (
-                <button onClick={() => setShowConfigure(true)} className="text-xs text-gray-600 hover:text-gray-400 transition">Update</button>
+                <button type="button" onClick={() => setShowConfigure(true)} className="text-xs text-gray-600 hover:text-gray-400 transition">Update</button>
               )}
             </div>
             {!status.configSealed || showConfigure ? (
@@ -797,7 +767,7 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
                 <div className="flex gap-2 pt-1">
                   <button type="submit" disabled={configuring || !clientId.trim() || !clientSecret.trim()}
                     className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition">
-                    {configuring ? 'Saving…' : status.configSealed ? 'Update config' : 'Save config'}
+                    {configuring ? 'Saving…' : (status.configSealed ? 'Update config' : 'Save config')}
                   </button>
                   {showConfigure && (
                     <button type="button" onClick={() => { setShowConfigure(false); setConfigError(null); }}
@@ -817,7 +787,7 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
                 status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
                 {status.tokenSealed ? '✓' : '2'}
               </span>
-              QuickBooks Account
+              {' '}QuickBooks Account
             </h3>
             {status.tokenSealed ? (
               <div className="flex items-center justify-between text-sm">
@@ -838,44 +808,16 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
           </div>
 
           {/* Step 3: Scope grants */}
-          <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
-              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
-                activeSet.size > 0 ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                {activeSet.size > 0 ? '✓' : '3'}
-              </span>
-              Scope grants
-            </h3>
-            {grantError && <p className="text-red-400 text-xs mb-2">{grantError}</p>}
-            <div className="space-y-1">
-              {entry.scopes.map((scope) => {
-                const isActive = activeSet.has(scope.name);
-                const isLocked = scope.releaseClass === 'never';
-                const isThisGranting = grantingScope === scope.name;
-                return (
-                  <div key={scope.name} className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
-                    <label className={`flex items-center gap-3 min-w-0 ${isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-                      <input type="checkbox" checked={isActive}
-                        disabled={isLocked || !status.tokenSealed || isThisGranting || grantingScope !== null}
-                        onChange={(e) => { void handleToggleScope(scope.name, e.target.checked); }}
-                        className="w-4 h-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed" />
-                      <div className="min-w-0">
-                        <span className={`text-sm font-mono block ${isActive ? 'text-white' : 'text-gray-400'}`}>{scope.name}</span>
-                        <span className="text-xs text-gray-600 truncate block">{scope.label}</span>
-                      </div>
-                    </label>
-                    <div className="flex items-center gap-2 shrink-0 ml-4">
-                      {isThisGranting ? <Badge variant="info">Saving…</Badge>
-                        : isLocked ? <Badge variant="inactive">N/A</Badge>
-                        : isActive ? <Badge variant="active">Active</Badge>
-                        : <Badge variant="inactive"><span className={RELEASE_CLASS_COLOR[scope.releaseClass]}>{RELEASE_CLASS_LABEL[scope.releaseClass]}</span></Badge>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {!status.tokenSealed && <p className="text-xs text-gray-600 mt-2">Connect your account (step 2) to enable scope grants.</p>}
-          </div>
+          <ScopeGrantSection
+            entry={entry}
+            activeSet={activeSet}
+            stepNumber={3}
+            grantingScope={grantingScope}
+            grantError={grantError}
+            tokenSealed={status.tokenSealed}
+            noTokenHint="Connect your account (step 2) to enable scope grants."
+            onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
+          />
 
           {status.manifestAssetId && (
             <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
