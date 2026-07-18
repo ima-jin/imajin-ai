@@ -88,10 +88,18 @@ export const DCR_ALLOWED_REDIRECT_URIS: readonly string[] = [
 /**
  * True iff the URI is an RFC 8252 §7.3 loopback redirect.
  *
- * Loopback redirects are safe to allow on any port because OAuth 2.1
- * mandates PKCE S256 — the authorization code is bound to the code
- * challenge and cannot be exchanged by an attacker even if they race
+ * Loopback redirects are safe to allow on any port AND any path because
+ * OAuth 2.1 mandates PKCE S256 — the authorization code is bound to the
+ * code challenge and cannot be exchanged by an attacker even if they race
  * the legitimate client on the same loopback interface.
+ *
+ * RFC 8252 pins only the HOST to loopback (127.0.0.1 / ::1 / localhost); it
+ * places no constraint on the port or path. We previously hard-required
+ * pathname === '/oauth/callback', which rejected clients that register a
+ * second loopback callback — e.g. MCP Inspector registers BOTH
+ * `/oauth/callback` and `/oauth/callback/debug`, and areRedirectUrisAllowed()
+ * requires EVERY entry to pass, so the whole DCR was rejected. Security comes
+ * from PKCE + the loopback host, not from the path, so we accept any path.
  */
 export function isLoopbackRedirectUri(uri: string): boolean {
   let url: URL;
@@ -101,7 +109,6 @@ export function isLoopbackRedirectUri(uri: string): boolean {
     return false;
   }
   if (url.protocol !== 'http:') return false;
-  if (url.pathname !== '/oauth/callback') return false;
   const host = url.hostname;
   return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
 }
