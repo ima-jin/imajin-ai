@@ -167,9 +167,8 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
         releaseClass: 'on-consent',
       },
     ],
-    // Backend pending: scope-manifest route (#1356)
-    statusEndpoint: null,
-    backendPending: true,
+    statusEndpoint: '/quickbooks/api/scope-manifest',
+    backendPending: false,
     connectRoute: '/quickbooks/api/connect',
     configureRoute: '/quickbooks/api/configure',
     tokenRoute: null,
