@@ -150,6 +150,12 @@ ECOSYSTEM_FILE="$(dirname "$BASE_DIR")/ecosystem.config.js"
 # Restart each one individually so a single missing/unknown process can't abort
 # the whole batch. If pm2 has never seen the process (new service), fall back to
 # starting it from the ecosystem config.
+#
+# TODO (Day 170 bug): an orphaned `node server.js` can survive `pm2 delete` (reparented
+# to init) and hold the app's port, so the pm2 restart below starts a process that then
+# fails to bind. Before restarting, the restart path should reap any orphan holding the
+# target port (e.g. `fuser -k <port>/tcp` or match+kill the stray `node server.js`) and/or
+# verify the port is free. Tracked in work-orders/exec-approvals-telegram-gate.md §B.
 if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
   RESTART_LIST=""
   for app in "${SUCCEEDED[@]}"; do
