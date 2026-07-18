@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * /connections/connectors — Connectors page (#1352 / #1354).
+ * /auth/connectors — Connectors page (#1354).
  *
  * Registry-driven: every connector in CONNECTOR_REGISTRY gets a card. Each
  * live connector drives the full three-step flow in-app (no URL knowledge
@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CONNECTOR_REGISTRY,
   type ConnectorEntry,
+  type ConnectorScope,
   type ReleaseClass,
 } from '@/src/lib/kernel/connector-registry';
 
