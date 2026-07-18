@@ -280,8 +280,9 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       if (Array.isArray(data.activeScopes)) {
         setStatus(prev => prev ? { ...prev, activeScopes: data.activeScopes! } : prev);
       }
-      // Background sync for manifestAssetId and other fields.
-      void refreshStatus();
+      // No refreshStatus() here: configSealed/tokenSealed don't change on a scope
+      // toggle, and an immediate GET races the projection reactor (may return stale
+      // activeScopes before the channel_links row is committed).
     } catch (err: unknown) {
       setGrantError(String(err));
     } finally {
@@ -536,7 +537,9 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       if (Array.isArray(data.activeScopes)) {
         setStatus(prev => prev ? { ...prev, activeScopes: data.activeScopes! } : prev);
       }
-      void refreshStatus();
+      // No refreshStatus() here — configSealed/tokenSealed don't change on a
+      // scope toggle, and firing a GET immediately races the projection reactor
+      // (the GET may return stale activeScopes before channel_links commits).
     } catch (err: unknown) {
       setGrantError(String(err));
     } finally {
@@ -715,7 +718,9 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
       if (Array.isArray(data.activeScopes)) {
         setStatus(prev => prev ? { ...prev, activeScopes: data.activeScopes! } : prev);
       }
-      void refreshStatus();
+      // No refreshStatus() here — configSealed/tokenSealed don't change on a
+      // scope toggle, and firing a GET immediately races the projection reactor
+      // (the GET may return stale activeScopes before channel_links commits).
     } catch (err: unknown) { setGrantError(String(err)); }
     finally { setGrantingScope(null); }
   }
