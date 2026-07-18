@@ -19,7 +19,7 @@ const h = vi.hoisted(() => {
 
   const F = {
     assets: { id: 'id', ownerDid: 'ownerDid', status: 'status', metadata: 'metadata' },
-    channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
+    channelLinks: { channel: 'channel', channelUid: 'channelUid', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes', revokedAt: 'revokedAt', createdAt: 'createdAt' },
     consentGrants: {
       id: 'id', subject: 'subject', grantedTo: 'grantedTo', purpose: 'purpose',
       allowedFields: 'allowedFields', mode: 'mode', status: 'status',
@@ -64,7 +64,19 @@ const h = vi.hoisted(() => {
       values: (v: Row) => {
         insertCalls.push({ table, values: v });
         if (table === F.consentGrants) state.consentRows.push({ ...v });
-        return Promise.resolve();
+        return {
+          onConflictDoUpdate: ({ set }: { set: Row }) => {
+            if (table === F.channelLinks) {
+              const key = `${v.channel}|${v.channelUid}|${v.appDid}`;
+              const existing = state.channelRows.find(
+                (r) => `${r.channel}|${r.channelUid}|${r.appDid}` === key,
+              );
+              if (existing) Object.assign(existing, set);
+              else state.channelRows.push({ ...v });
+            }
+            return Promise.resolve();
+          },
+        };
       },
     }),
     update: (table: unknown) => ({
@@ -73,6 +85,7 @@ const h = vi.hoisted(() => {
           updateCalls.push({ table, set: v, pred });
           if (table === F.assets) for (const r of state.assetRows) if (match(r, pred)) Object.assign(r, v);
           if (table === F.consentGrants) for (const r of state.consentRows) if (match(r, pred)) Object.assign(r, v);
+          if (table === F.channelLinks) for (const r of state.channelRows) if (match(r, pred)) Object.assign(r, v);
           return Promise.resolve();
         },
       }),

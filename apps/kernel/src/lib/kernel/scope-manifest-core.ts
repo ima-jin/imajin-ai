@@ -263,5 +263,65 @@ export async function publishConnectorScopeManifest(opts: {
     throw new Error(`${connectorDid} scope-manifest update failed (${result.code}): ${result.message}`);
   }
 
+  // Belt-and-suspenders: directly upsert channel_links rows for every scope in
+  // this manifest. The projection reactor (document.changed) should handle this
+  // automatically, but if it fails silently (its errors are non-fatal inside
+  // updateAssetContent) the scope would never materialise. This direct write is
+  // idempotent — if the reactor already ran it is a no-op via onConflictDoUpdate.
+  //
+  // Silent scopes: always upserted (no consent barrier).
+  // On-consent scopes: upserted here too — syncConnectorConsentGrants above
+  // already wrote the consent_grants row, so the broker would release them;
+  // writing the channel_links row directly skips the broker indirection while
+  // still being correct (consent was explicitly granted by the owner's POST).
+  const SCOPE_UID_SEP = '#' as const;
+  const requestedSet = new Set(scopes);
+  const now = new Date();
+
+  // Upsert an active row for each scope in this manifest.
+  for (const scopeName of scopes) {
+    const channelUid = `${assetId}${SCOPE_UID_SEP}${scopeName}`;
+    const linkId = `clink_${assetId}_${scopeName.replaceAll(':', '_')}`;
+    await db
+      .insert(channelLinks)
+      .values({
+        id: linkId,
+        channel,
+        channelUid,
+        did: ownerDid,
+        appDid: connectorDid,
+        scopes: [scopeName],
+        status: 'active',
+        createdAt: now,
+        revokedAt: null,
+      })
+      .onConflictDoUpdate({
+        target: [channelLinks.channel, channelLinks.channelUid, channelLinks.appDid],
+        set: { scopes: [scopeName], status: 'active', revokedAt: null },
+      });
+  }
+
+  // Revoke active rows for scopes tied to this manifest that are no longer requested.
+  const existingLinks = await db
+    .select({ id: channelLinks.id, channelUid: channelLinks.channelUid })
+    .from(channelLinks)
+    .where(
+      and(
+        eq(channelLinks.did, ownerDid),
+        eq(channelLinks.appDid, connectorDid),
+        eq(channelLinks.status, 'active'),
+        like(channelLinks.channelUid, `${assetId}${SCOPE_UID_SEP}%`),
+      ),
+    );
+  for (const row of existingLinks) {
+    const scopeName = row.channelUid.slice(assetId.length + SCOPE_UID_SEP.length);
+    if (!requestedSet.has(scopeName)) {
+      await db
+        .update(channelLinks)
+        .set({ status: 'revoked', revokedAt: now })
+        .where(eq(channelLinks.id, row.id));
+    }
+  }
+
   return assetId;
 }
