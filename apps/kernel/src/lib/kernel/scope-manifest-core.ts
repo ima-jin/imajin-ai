@@ -14,6 +14,10 @@
  */
 import { and, eq, like, sql } from 'drizzle-orm';
 import { db, assets, channelLinks, consentGrants, type Asset } from '@/src/db';
+
+// Re-exported so connector wrappers (github/discord/quickbooks) can type their
+// manifest-asset return values against the same source without importing @/src/db.
+export type { Asset };
 import { createAsset } from '@/src/lib/media/create-asset';
 import { updateAssetContent } from '@/src/lib/media/update-asset';
 import { generateId } from '@/src/lib/kernel/id';
