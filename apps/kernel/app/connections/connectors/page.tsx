@@ -1,20 +1,22 @@
 'use client';
 
 /**
- * /connections/connectors — Connectors status dashboard (#1354, read-only cut).
+ * /connections/connectors — Connectors page (#1352 / #1354).
  *
  * Registry-driven: every connector in CONNECTOR_REGISTRY gets a card. GitHub
- * shows live status from GET /github/api/scope-manifest (config sealed, token
- * sealed, active scopes). Discord and QuickBooks render as "backend pending"
- * until their scope-manifest routes land (#1355, #1356).
+ * shows live status and exposes the three write surfaces needed to complete
+ * the #1352 end-to-end flow:
  *
- * Write actions (configure form, connect button, scope toggles) are OUT OF
- * SCOPE for this cut. The write-toggle for on-consent scopes (github:write)
- * is blocked on #1357 (consent_grants writer). The page is structured so all
- * write surfaces can be added per-card without touching the registry or layout.
+ *   Step 1 — Configure OAuth App  (POST /github/api/configure)
+ *   Step 2 — Connect account       (GET  /github/api/connect → OAuth redirect)
+ *   Step 3 — Grant scopes          (POST /github/api/scope-manifest)
+ *
+ * github:read (silent) is toggleable immediately. github:write / github:org
+ * (on-consent) are shown locked pending #1357 (consent_grants writer).
+ * Discord and QuickBooks render as "backend pending" (#1355, #1356).
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useIdentity } from '../context/IdentityContext';
 import {
   CONNECTOR_REGISTRY,
@@ -69,37 +71,113 @@ function Badge({ children, variant }: Readonly<{ children: React.ReactNode; vari
   );
 }
 
-// ── GitHub card (live data) ───────────────────────────────────────────────────
+// ── GitHub card (interactive: configure → connect → grant) — #1352 ─────────
 
 function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const [status, setStatus] = useState<GitHubStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
+  // Configure form state
+  const [showConfigure, setShowConfigure] = useState(false);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [redirectUri, setRedirectUri] = useState('');
+  const [configuring, setConfiguring] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const clientIdRef = useRef<HTMLInputElement>(null);
+
+  // Scope grant state
+  const [grantingScope, setGrantingScope] = useState<string | null>(null);
+  const [grantError, setGrantError] = useState<string | null>(null);
+
+  // Prefill redirectUri from current origin (only in browser)
   useEffect(() => {
-    fetch(entry.statusEndpoint!)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-        return r.json() as Promise<GitHubStatus>;
-      })
-      .then(setStatus)
-      .catch((err: unknown) => setError(String(err)))
-      .finally(() => setLoading(false));
+    setRedirectUri(`${window.location.origin}/github/api/callback`);
+  }, []);
+
+  // Focus first field when form opens
+  useEffect(() => {
+    if (showConfigure) clientIdRef.current?.focus();
+  }, [showConfigure]);
+
+  const fetchStatus = useCallback(async () => {
+    setStatusLoading(true);
+    setStatusError(null);
+    try {
+      const r = await fetch(entry.statusEndpoint!);
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      setStatus(await r.json() as GitHubStatus);
+    } catch (err: unknown) {
+      setStatusError(String(err));
+    } finally {
+      setStatusLoading(false);
+    }
   }, [entry.statusEndpoint]);
 
-  const activeSet = new Set(status?.activeScopes ?? []);
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
-  // Derive an overall connection health: all three steps must be green for tools to work
+  const activeSet = new Set(status?.activeScopes ?? []);
   const readyForRead =
-    status !== null &&
-    status.configSealed &&
-    status.tokenSealed &&
-    activeSet.has('github:read');
+    status !== null && status.configSealed && status.tokenSealed && activeSet.has('github:read');
+
+  // ── Step 1: Configure OAuth App ────────────────────────────────────────────
+  async function handleConfigure(e: React.FormEvent) {
+    e.preventDefault();
+    setConfiguring(true);
+    setConfigError(null);
+    try {
+      const r = await fetch('/github/api/configure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: clientId.trim(), clientSecret: clientSecret.trim(), redirectUri: redirectUri.trim() }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+      setShowConfigure(false);
+      setClientId('');
+      setClientSecret('');
+      await fetchStatus();
+    } catch (err: unknown) {
+      setConfigError(String(err));
+    } finally {
+      setConfiguring(false);
+    }
+  }
+
+  // ── Step 3: Toggle a scope in the manifest ─────────────────────────────────
+  async function handleToggleScope(scopeName: string, enable: boolean) {
+    setGrantingScope(scopeName);
+    setGrantError(null);
+    try {
+      // Build the new desired scope set: preserve other active scopes, add/remove this one.
+      const current = new Set(status?.activeScopes ?? []);
+      if (enable) current.add(scopeName);
+      else current.delete(scopeName);
+
+      const r = await fetch('/github/api/scope-manifest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scopes: [...current] }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+      await fetchStatus();
+    } catch (err: unknown) {
+      setGrantError(String(err));
+    } finally {
+      setGrantingScope(null);
+    }
+  }
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl p-6">
       {/* Header */}
-      <div className="flex items-start justify-between mb-5">
+      <div className="flex items-start justify-between mb-6">
         <div className="flex items-center gap-3">
           <span className="text-3xl">{entry.icon}</span>
           <div>
@@ -108,9 +186,9 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
           </div>
         </div>
         <div>
-          {loading ? (
+          {statusLoading ? (
             <Badge variant="info">Checking…</Badge>
-          ) : error ? (
+          ) : statusError ? (
             <Badge variant="inactive">Unavailable</Badge>
           ) : readyForRead ? (
             <Badge variant="active">● Connected</Badge>
@@ -120,86 +198,185 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
         </div>
       </div>
 
-      {loading && (
-        <p className="text-gray-500 text-sm">Loading status…</p>
-      )}
+      {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
+      {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
 
-      {error && (
-        <p className="text-red-400 text-sm">Could not load status: {error}</p>
-      )}
+      {!statusLoading && !statusError && status && (
+        <div className="space-y-6">
 
-      {!loading && !error && status && (
-        <>
-          {/* ── Credential status ── */}
-          <div className="mb-5">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-              Credential
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-400">OAuth App config</span>
-                <StatusDot ok={status.configSealed} label={status.configSealed ? 'Sealed' : 'Not configured'} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-400">Access token</span>
-                <StatusDot ok={status.tokenSealed} label={status.tokenSealed ? 'Connected' : 'Not connected'} />
-              </div>
+          {/* ── Step 1: Configure OAuth App ── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                  status.configSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+                }`}>
+                  {status.configSealed ? '✓' : '1'}
+                </span>
+                OAuth App
+              </h3>
+              {status.configSealed && !showConfigure && (
+                <button
+                  onClick={() => setShowConfigure(true)}
+                  className="text-xs text-gray-600 hover:text-gray-400 transition"
+                >
+                  Update
+                </button>
+              )}
             </div>
 
-            {!status.configSealed && (
-              <div className="mt-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg text-xs text-amber-300/80">
-                Configure your GitHub OAuth App to continue:
-                <code className="block mt-1 font-mono text-amber-200/60">
-                  POST /github/api/configure {'{'} clientId, clientSecret, redirectUri {'}'}
-                </code>
-              </div>
-            )}
-
-            {status.configSealed && !status.tokenSealed && (
-              <div className="mt-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg text-xs text-amber-300/80">
-                Connect your GitHub account via OAuth:
-                <code className="block mt-1 font-mono text-amber-200/60">
-                  GET /github/api/connect  (open in browser with active session)
-                </code>
+            {!status.configSealed || showConfigure ? (
+              <form onSubmit={(e) => { void handleConfigure(e); }} className="space-y-2">
+                <input
+                  ref={clientIdRef}
+                  type="text"
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  placeholder="OAuth App Client ID"
+                  required
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
+                />
+                <input
+                  type="password"
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder="Client Secret"
+                  required
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
+                />
+                <input
+                  type="url"
+                  value={redirectUri}
+                  onChange={(e) => setRedirectUri(e.target.value)}
+                  placeholder="Redirect URI"
+                  required
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
+                />
+                {configError && <p className="text-red-400 text-xs">{configError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={configuring || !clientId.trim() || !clientSecret.trim() || !redirectUri.trim()}
+                    className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition"
+                  >
+                    {configuring ? 'Saving…' : status.configSealed ? 'Update config' : 'Save config'}
+                  </button>
+                  {showConfigure && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowConfigure(false); setConfigError(null); }}
+                      className="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-gray-400 text-sm rounded-lg transition"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+            ) : (
+              <div className="flex items-center gap-2 text-sm">
+                <StatusDot ok={true} label="OAuth App config sealed" />
               </div>
             )}
           </div>
 
-          {/* ── Scope grants ── */}
-          <div className="mb-5">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+          {/* ── Step 2: Connect GitHub Account ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {status.tokenSealed ? '✓' : '2'}
+              </span>
+              GitHub Account
+            </h3>
+
+            {status.tokenSealed ? (
+              <div className="flex items-center justify-between text-sm">
+                <StatusDot ok={true} label="Account connected" />
+                <a
+                  href={entry.connectRoute!}
+                  className="text-xs text-gray-600 hover:text-gray-400 transition"
+                >
+                  Reconnect
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <a
+                  href={entry.connectRoute!}
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                    status.configSealed
+                      ? 'bg-amber-500 hover:bg-amber-600 text-black'
+                      : 'bg-white/5 text-gray-600 cursor-not-allowed pointer-events-none'
+                  }`}
+                  aria-disabled={!status.configSealed}
+                >
+                  Connect GitHub Account →
+                </a>
+                {!status.configSealed && (
+                  <p className="text-xs text-gray-600">Complete step 1 first.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Step 3: Grant scopes ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                activeSet.size > 0 ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {activeSet.size > 0 ? '✓' : '3'}
+              </span>
               Scope grants
             </h3>
-            <div className="space-y-2">
+
+            {grantError && <p className="text-red-400 text-xs mb-2">{grantError}</p>}
+
+            <div className="space-y-1">
               {entry.scopes.map((scope) => {
                 const isActive = activeSet.has(scope.name);
-                const isOnConsent = scope.releaseClass === 'on-consent';
+                const isSilent = scope.releaseClass === 'silent';
+                const isLocked = !isSilent; // on-consent scopes need #1357
+                const isThisGranting = grantingScope === scope.name;
+
                 return (
                   <div
                     key={scope.name}
-                    className="flex items-center justify-between py-2 border-b border-white/5 last:border-0"
+                    className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={`text-base ${isActive ? '' : 'opacity-30'}`}>
-                        {isActive ? '✓' : '○'}
-                      </span>
+                    <label className={`flex items-center gap-3 min-w-0 ${
+                      isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={isActive}
+                        disabled={isLocked || !status.tokenSealed || isThisGranting || grantingScope !== null}
+                        onChange={(e) => { void handleToggleScope(scope.name, e.target.checked); }}
+                        className="w-4 h-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
+                      />
                       <div className="min-w-0">
-                        <span className={`text-sm font-mono ${isActive ? 'text-white' : 'text-gray-500'}`}>
+                        <span className={`text-sm font-mono block ${
+                          isActive ? 'text-white' : 'text-gray-400'
+                        }`}>
                           {scope.name}
                         </span>
-                        <p className="text-xs text-gray-500 truncate">{scope.label}</p>
+                        <span className="text-xs text-gray-600 truncate block">{scope.label}</span>
                       </div>
-                    </div>
+                    </label>
                     <div className="flex items-center gap-2 shrink-0 ml-4">
-                      <span className={`text-xs ${RELEASE_CLASS_COLOR[scope.releaseClass]}`}>
-                        {RELEASE_CLASS_LABEL[scope.releaseClass]}
-                      </span>
-                      {isActive ? (
-                        <Badge variant="active">Active</Badge>
-                      ) : isOnConsent ? (
+                      {isThisGranting ? (
+                        <Badge variant="info">Saving…</Badge>
+                      ) : isLocked ? (
                         <Badge variant="pending">Pending #1357</Badge>
+                      ) : isActive ? (
+                        <Badge variant="active">Active</Badge>
                       ) : (
-                        <Badge variant="inactive">Not granted</Badge>
+                        <Badge variant="inactive">
+                          <span className={RELEASE_CLASS_COLOR[scope.releaseClass]}>
+                            {RELEASE_CLASS_LABEL[scope.releaseClass]}
+                          </span>
+                        </Badge>
                       )}
                     </div>
                   </div>
@@ -207,23 +384,18 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
               })}
             </div>
 
-            {status.tokenSealed && status.activeScopes.length === 0 && (
-              <div className="mt-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg text-xs text-amber-300/80">
-                No scopes granted yet. Grant <code className="font-mono">github:read</code> to enable read tools:
-                <code className="block mt-1 font-mono text-amber-200/60">
-                  POST /github/api/scope-manifest {'{"scopes":["github:read"]}'}
-                </code>
-              </div>
+            {!status.tokenSealed && (
+              <p className="text-xs text-gray-600 mt-2">Connect your account (step 2) to enable scope grants.</p>
             )}
           </div>
 
-          {/* ── Asset anchor ── */}
+          {/* Asset anchor */}
           {status.manifestAssetId && (
-            <div className="text-xs text-gray-600 font-mono truncate" title="Scope-manifest asset ID">
+            <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
               manifest: {status.manifestAssetId}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -332,7 +504,7 @@ export default function ConnectorsPage() {
 
       {/* Footer note */}
       <p className="text-center text-xs text-gray-700 mt-8">
-        Write actions (configure, connect, scope grants) land in the next cut after #1357 (consent backend).
+        <code className="font-mono">github:write</code> and <code className="font-mono">github:org</code> toggles unlock after #1357 (consent_grants backend).
       </p>
     </div>
   );
