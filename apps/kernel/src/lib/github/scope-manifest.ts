@@ -21,10 +21,11 @@
  *   github:org     → on-consent (requires consent; touches others)
  *   github:actions → never     (structural drop; never materialises)
  */
-import { and, eq, sql } from 'drizzle-orm';
-import { db, assets, channelLinks, type Asset } from '@/src/db';
+import { and, eq, like, sql } from 'drizzle-orm';
+import { db, assets, channelLinks, consentGrants, type Asset } from '@/src/db';
 import { createAsset } from '@/src/lib/media/create-asset';
 import { updateAssetContent } from '@/src/lib/media/update-asset';
+import { generateId } from '@/src/lib/kernel/id';
 import { GITHUB_CONNECTOR_DID } from './connector';
 
 // ── Scope registry ────────────────────────────────────────────────────────────
@@ -133,6 +134,131 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   return lines.join('\n') + '\n';
 }
 
+// ── Consent grants sync (#1357) ──────────────────────────────────────────────
+
+/**
+ * Purpose constant — must match `PROJECTION_PURPOSE` in projection-reactor.ts.
+ * The broker consent gate queries with this exact string.
+ */
+const PROJECTION_PURPOSE = 'document.projection' as const;
+
+/**
+ * Separator used to embed the scope name inside the consentRef.
+ * `${manifestAssetId}:${scopeName}` — stable per scope per manifest for
+ * idempotent upsert and precise revoke.
+ */
+const CONSENT_REF_SEP = ':' as const;
+
+/** Build the consentRef for one scope of a given manifest asset. */
+function manifestConsentRef(manifestAssetId: string, scopeName: string): string {
+  return `${manifestAssetId}${CONSENT_REF_SEP}${scopeName}`;
+}
+
+/**
+ * Derive the effective release class for a GitHub scope from its descriptor.
+ * The explicit `release` override (if present) takes precedence; otherwise the
+ * class is derived from the #1196 consent 2×2.
+ */
+function githubScopeReleaseClass(
+  scopeName: string,
+): 'silent' | 'on-consent' | 'owner-only' | 'never' {
+  const desc = GITHUB_SCOPE_DESCRIPTORS[scopeName];
+  if (!desc) return 'never';
+  const r = desc.release;
+  if (r.release) return r.release;
+  // 2×2: discloses_others × sensitive
+  if (!r.discloses_others && !r.sensitive) return 'silent';
+  if (r.discloses_others && !r.sensitive) return 'on-consent';
+  if (!r.discloses_others && r.sensitive) return 'owner-only';
+  return 'never';
+}
+
+/**
+ * Sync `kernel.consent_grants` rows for a scope-manifest publish (#1357).
+ *
+ * The owner explicitly submitting a scope-manifest POST that includes an
+ * `on-consent` scope IS the consent act (grant-by-edit thesis). This function
+ * materialises that act into the DB row the broker's consent reactor reads.
+ *
+ * MUST be called BEFORE `updateAssetContent` fires `document.changed` so the
+ * projection reactor finds the consent row when it calls `broker()` during the
+ * on-consent release gate.
+ *
+ * Grant path: for each on-consent scope in `requestedScopes`, upsert an active
+ * `consent_grants` row (`grantedTo = GITHUB_CONNECTOR_DID`,
+ * `purpose = 'document.projection'`, `allowedFields = [scopeName]`).
+ *
+ * Revoke path: for any existing active row tied to this manifest (identified by
+ * the `${manifestAssetId}:` consentRef prefix) whose scope is no longer in
+ * `requestedScopes`, flip status to `'revoked'`. The channel-links footprint-
+ * reconcile will then revoke the corresponding `channel_links` row on the next
+ * `document.changed` processing pass.
+ */
+export async function syncConsentGrants(
+  ownerDid: string,
+  manifestAssetId: string,
+  requestedScopes: readonly string[],
+): Promise<void> {
+  const requestedSet = new Set(requestedScopes);
+
+  // ── Grant: upsert active row for each on-consent scope ──────────────────
+  for (const scopeName of requestedScopes) {
+    if (githubScopeReleaseClass(scopeName) !== 'on-consent') continue;
+
+    const ref = manifestConsentRef(manifestAssetId, scopeName);
+
+    const [existing] = await db
+      .select({ id: consentGrants.id })
+      .from(consentGrants)
+      .where(eq(consentGrants.consentRef, ref))
+      .limit(1);
+
+    if (existing) {
+      // Re-activate if the row was previously revoked (re-grant path).
+      await db
+        .update(consentGrants)
+        .set({ status: 'active', updatedAt: new Date() })
+        .where(eq(consentGrants.id, existing.id));
+    } else {
+      await db.insert(consentGrants).values({
+        id: generateId('cgrant'),
+        subject: ownerDid,
+        grantedTo: GITHUB_CONNECTOR_DID,
+        purpose: PROJECTION_PURPOSE,
+        allowedFields: [scopeName],
+        mode: 'attestation',
+        status: 'active',
+        consentRef: ref,
+      });
+    }
+  }
+
+  // ── Revoke: flip rows for scopes removed from the manifest ───────────────
+  const existingRows = await db
+    .select({ id: consentGrants.id, consentRef: consentGrants.consentRef })
+    .from(consentGrants)
+    .where(
+      and(
+        eq(consentGrants.subject, ownerDid),
+        eq(consentGrants.grantedTo, GITHUB_CONNECTOR_DID),
+        eq(consentGrants.purpose, PROJECTION_PURPOSE),
+        eq(consentGrants.status, 'active'),
+        like(consentGrants.consentRef, `${manifestAssetId}${CONSENT_REF_SEP}%`),
+      ),
+    );
+
+  for (const row of existingRows) {
+    // Extract the scope name from the stable consentRef.
+    const scopeName = row.consentRef.slice(manifestAssetId.length + CONSENT_REF_SEP.length);
+    if (!requestedSet.has(scopeName)) {
+      await db
+        .update(consentGrants)
+        .set({ status: 'revoked', updatedAt: new Date() })
+        .where(eq(consentGrants.id, row.id));
+    }
+  }
+}
+
 // ── Asset lookup ──────────────────────────────────────────────────────────────
 
 /**
@@ -218,6 +344,10 @@ export async function publishGitHubScopeManifest(
 
     assetId = asset.id;
   }
+
+  // Sync consent_grants rows for on-consent scopes BEFORE firing document.changed
+  // so the projection release gate finds them when broker() is called (#1357).
+  await syncConsentGrants(ownerDid, assetId, scopes);
 
   // Write the content (creates a new file version) and fire document.changed →
   // projection reactor → channel-links surface → auth.channel_links upsert.

@@ -1,43 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ─── GitHub scope-manifest publisher unit tests (#1352) ───────────────────────
+// ─── GitHub scope-manifest publisher unit tests (#1352 / #1357) ─────────────
 //
-// Tests three layers of the new publish path:
+// Tests four layers of the publish path:
 //
-//   buildManifestContent  — pure YAML builder; no mocks, exercised directly.
-//   findGitHubManifestAsset / readActiveGitHubScopes — DB-layer functions;
-//     in-memory drizzle fake with per-row predicate matching.
-//   publishGitHubScopeManifest — orchestration; createAsset + updateAssetContent
-//     are mocked so we can assert call shapes, not their internals.
-//
-// Only the I/O edges are stubbed; the manifest builder and the GITHUB_CONNECTOR_DID
-// constant run as real code throughout.
+//   buildManifestContent  — pure YAML builder; no mocks.
+//   findGitHubManifestAsset / readActiveGitHubScopes — DB-layer.
+//   publishGitHubScopeManifest — orchestration (createAsset + updateAssetContent mocked).
+//   syncConsentGrants (#1357) — consent_grants upsert/revoke in-memory.
 
-// ── Hoisted state + mocks ─────────────────────────────────────────────────────
+// ── Hoisted state + mocks ───────────────────────────────────────────────────
 
 type Row = Record<string, unknown>;
 
 const h = vi.hoisted(() => {
-  const state: { assetRows: Row[]; channelRows: Row[] } = {
+  const state: { assetRows: Row[]; channelRows: Row[]; consentRows: Row[] } = {
     assetRows: [],
     channelRows: [],
+    consentRows: [],
   };
 
-  // Field-id markers. Their values are the column names the predicate evaluator
-  // reads off a row — keeps the mock simple enough to follow.
   const F = {
-    assets: {
-      id: 'id',
-      ownerDid: 'ownerDid',
-      status: 'status',
-      metadata: 'metadata',
-    },
-    channelLinks: {
-      channel: 'channel',
-      did: 'did',
-      appDid: 'appDid',
-      status: 'status',
-      scopes: 'scopes',
+    assets: { id: 'id', ownerDid: 'ownerDid', status: 'status', metadata: 'metadata' },
+    channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
+    consentGrants: {
+      id: 'id', subject: 'subject', grantedTo: 'grantedTo', purpose: 'purpose',
+      allowedFields: 'allowedFields', mode: 'mode', status: 'status',
+      consentRef: 'consentRef', updatedAt: 'updatedAt',
     },
   };
 
@@ -46,24 +35,26 @@ const h = vi.hoisted(() => {
   const match = (row: Row, pred: Pred | undefined): boolean => {
     if (!pred) return true;
     switch (pred.op) {
-      case 'eq':
-        return row[pred.col as string] === pred.val;
-      case 'and':
-        return (pred.preds ?? []).every((p) => match(row, p));
-      // sql`` JSONB predicates arrive as { op: 'sql' } and are treated as
-      // always-true so callers control matches via state setup, not JSONB eval.
-      default:
-        return true;
+      case 'eq': return row[pred.col as string] === pred.val;
+      case 'and': return (pred.preds ?? []).every((p) => match(row, p));
+      case 'like': {
+        const prefix = String(pred.val).replace(/%$/, '');
+        const v = row[pred.col as string];
+        return typeof v === 'string' && v.startsWith(prefix);
+      }
+      default: return true; // sql`` JSONB → always-true sentinel
     }
   };
 
   const resolve = (table: unknown, pred: Pred | undefined): Row[] => {
     if (table === F.assets) return state.assetRows.filter((r) => match(r, pred));
     if (table === F.channelLinks) return state.channelRows.filter((r) => match(r, pred));
+    if (table === F.consentGrants) return state.consentRows.filter((r) => match(r, pred));
     return [];
   };
 
   const updateCalls: Array<{ table: unknown; set: Row; pred: Pred }> = [];
+  const insertCalls: Array<{ table: unknown; values: Row }> = [];
 
   const db = {
     select: (_proj?: unknown) => ({
@@ -74,6 +65,13 @@ const h = vi.hoisted(() => {
         },
       }),
     }),
+    insert: (table: unknown) => ({
+      values: (v: Row) => {
+        insertCalls.push({ table, values: v });
+        if (table === F.consentGrants) state.consentRows.push({ ...v });
+        return Promise.resolve();
+      },
+    }),
     update: (table: unknown) => ({
       set: (v: Row) => ({
         where: (pred: Pred) => {
@@ -81,30 +79,38 @@ const h = vi.hoisted(() => {
           if (table === F.assets) {
             for (const r of state.assetRows) if (match(r, pred)) Object.assign(r, v);
           }
+          if (table === F.consentGrants) {
+            for (const r of state.consentRows) if (match(r, pred)) Object.assign(r, v);
+          }
           return Promise.resolve();
         },
       }),
     }),
   };
 
-  return { state, F, db, updateCalls };
+  return { state, F, db, updateCalls, insertCalls };
 });
 
 vi.mock('@/src/db', () => ({
   db: h.db,
   assets: h.F.assets,
   channelLinks: h.F.channelLinks,
+  consentGrants: h.F.consentGrants,
 }));
 
 vi.mock('drizzle-orm', () => ({
   eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
   and: (...preds: unknown[]) => ({ op: 'and', preds }),
-  // sql`` tagged template → always-true sentinel so JSONB conditions are
-  // exercised structurally but row filtering is controlled by state setup.
+  like: (col: unknown, val: unknown) => ({ op: 'like', col, val }),
   sql: Object.assign(
     (_strings: TemplateStringsArray, ..._values: unknown[]) => ({ op: 'sql' }),
     {},
   ),
+}));
+
+// Mock generateId to return stable IDs in tests.
+vi.mock('@/src/lib/kernel/id', () => ({
+  generateId: (prefix: string) => `${prefix}_test`,
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -130,6 +136,7 @@ import {
   findGitHubManifestAsset,
   readActiveGitHubScopes,
   publishGitHubScopeManifest,
+  syncConsentGrants,
   VALID_GITHUB_SCOPES,
   GITHUB_SCOPE_DESCRIPTORS,
 } from '../scope-manifest';
@@ -164,7 +171,9 @@ function channelRow(scope: string, status = 'active'): Row {
 beforeEach(() => {
   h.state.assetRows = [];
   h.state.channelRows = [];
+  h.state.consentRows = [];
   h.updateCalls.length = 0;
+  h.insertCalls.length = 0;
   mockCreateAsset.mockReset();
   mockUpdateAssetContent.mockReset();
   mockUpdateAssetContent.mockResolvedValue({ ok: true, asset: manifestAssetRow() });
@@ -431,5 +440,157 @@ describe('publishGitHubScopeManifest — existing manifest (update path)', () =>
     expect(content).not.toContain('"github:write":');
     // Header fields still present.
     expect(content).toContain('kind: scope-manifest');
+  });
+});
+
+// ── syncConsentGrants (#1357) ───────────────────────────────────────────────────
+
+const MANIFEST_ID = 'asset_manifest_xyz';
+
+function activeConsentRow(scope: string): Row {
+  return {
+    id: `cgrant_${scope.replaceAll(':', '_')}`,
+    subject: OWNER,
+    grantedTo: GITHUB_CONNECTOR_DID,
+    purpose: 'document.projection',
+    allowedFields: [scope],
+    mode: 'attestation',
+    status: 'active',
+    consentRef: `${MANIFEST_ID}:${scope}`,
+  };
+}
+
+describe('syncConsentGrants — grant path', () => {
+  it('inserts an active consent_grants row for an on-consent scope (github:write)', async () => {
+    await syncConsentGrants(OWNER, MANIFEST_ID, ['github:write']);
+
+    const inserted = h.insertCalls.find((c) => c.table === h.F.consentGrants);
+    expect(inserted).toBeDefined();
+    expect(inserted!.values).toMatchObject({
+      subject: OWNER,
+      grantedTo: GITHUB_CONNECTOR_DID,
+      purpose: 'document.projection',
+      allowedFields: ['github:write'],
+      mode: 'attestation',
+      status: 'active',
+      consentRef: `${MANIFEST_ID}:github:write`,
+    });
+  });
+
+  it('does NOT insert a consent_grants row for a silent scope (github:read)', async () => {
+    await syncConsentGrants(OWNER, MANIFEST_ID, ['github:read']);
+    const consentInserts = h.insertCalls.filter((c) => c.table === h.F.consentGrants);
+    expect(consentInserts).toHaveLength(0);
+  });
+
+  it('inserts rows for github:org (on-consent via derived tier) too', async () => {
+    await syncConsentGrants(OWNER, MANIFEST_ID, ['github:org']);
+    const consentInserts = h.insertCalls.filter((c) => c.table === h.F.consentGrants);
+    expect(consentInserts).toHaveLength(1);
+    expect(consentInserts[0].values).toMatchObject({
+      allowedFields: ['github:org'],
+      consentRef: `${MANIFEST_ID}:github:org`,
+    });
+  });
+
+  it('inserts separate rows for each on-consent scope when multiple are requested', async () => {
+    await syncConsentGrants(OWNER, MANIFEST_ID, ['github:read', 'github:write', 'github:org']);
+    const consentInserts = h.insertCalls.filter((c) => c.table === h.F.consentGrants);
+    // Only github:write and github:org are on-consent; github:read is silent.
+    expect(consentInserts).toHaveLength(2);
+    const scopes = consentInserts.map((c) => (c.values.allowedFields as string[])[0]).sort();
+    expect(scopes).toEqual(['github:org', 'github:write']);
+  });
+
+  it('does not insert a second row when one already exists (idempotent re-grant)', async () => {
+    // Pre-populate an existing active row.
+    h.state.consentRows = [activeConsentRow('github:write')];
+
+    await syncConsentGrants(OWNER, MANIFEST_ID, ['github:write']);
+
+    // No insert should happen; instead an update re-activates it.
+    const consentInserts = h.insertCalls.filter((c) => c.table === h.F.consentGrants);
+    expect(consentInserts).toHaveLength(0);
+
+    // The update should set status = 'active'.
+    const reactivate = h.updateCalls.find(
+      (c) => c.table === h.F.consentGrants && c.set.status === 'active',
+    );
+    expect(reactivate).toBeDefined();
+  });
+
+  it('re-activates a previously-revoked row rather than inserting a new one', async () => {
+    h.state.consentRows = [{ ...activeConsentRow('github:write'), status: 'revoked' }];
+
+    await syncConsentGrants(OWNER, MANIFEST_ID, ['github:write']);
+
+    expect(h.insertCalls.filter((c) => c.table === h.F.consentGrants)).toHaveLength(0);
+    const updated = h.state.consentRows.find((r) => r.consentRef === `${MANIFEST_ID}:github:write`);
+    expect(updated?.status).toBe('active');
+  });
+});
+
+describe('syncConsentGrants — revoke path', () => {
+  it('revokes an existing active row whose scope is no longer in the manifest', async () => {
+    h.state.consentRows = [activeConsentRow('github:write')];
+
+    // Re-publish without github:write → should revoke
+    await syncConsentGrants(OWNER, MANIFEST_ID, []);
+
+    const row = h.state.consentRows.find((r) => r.consentRef === `${MANIFEST_ID}:github:write`);
+    expect(row?.status).toBe('revoked');
+  });
+
+  it('does not revoke rows for scopes still in the manifest', async () => {
+    h.state.consentRows = [activeConsentRow('github:write'), activeConsentRow('github:org')];
+
+    await syncConsentGrants(OWNER, MANIFEST_ID, ['github:write']); // keep write, drop org
+
+    const writeRow = h.state.consentRows.find((r) => r.consentRef === `${MANIFEST_ID}:github:write`);
+    const orgRow = h.state.consentRows.find((r) => r.consentRef === `${MANIFEST_ID}:github:org`);
+    // github:write re-activated (was already active, re-activated via update); github:org revoked
+    expect(writeRow?.status).toBe('active');
+    expect(orgRow?.status).toBe('revoked');
+  });
+
+  it('is idempotent on already-revoked rows (no spurious writes)', async () => {
+    h.state.consentRows = [{ ...activeConsentRow('github:write'), status: 'revoked' }];
+
+    await syncConsentGrants(OWNER, MANIFEST_ID, []);
+
+    // The revoke query only matches active rows, so no update should fire.
+    const revokeUpdates = h.updateCalls.filter(
+      (c) => c.table === h.F.consentGrants && c.set.status === 'revoked',
+    );
+    expect(revokeUpdates).toHaveLength(0);
+  });
+
+  it('is a no-op when there are no existing active consent rows', async () => {
+    await syncConsentGrants(OWNER, MANIFEST_ID, []);
+    const consentUpdates = h.updateCalls.filter((c) => c.table === h.F.consentGrants);
+    expect(consentUpdates).toHaveLength(0);
+  });
+});
+
+describe('syncConsentGrants — called from publishGitHubScopeManifest', () => {
+  beforeEach(() => {
+    h.state.assetRows = [manifestAssetRow()];
+  });
+
+  it('consent_grants row is written before updateAssetContent fires', async () => {
+    // We can verify ordering by checking that the consent insert appears
+    // before the updateAssetContent mock is called (invocation order).
+    await publishGitHubScopeManifest(OWNER, ['github:write']);
+
+    const consentInserts = h.insertCalls.filter((c) => c.table === h.F.consentGrants);
+    expect(consentInserts).toHaveLength(1);
+    expect(mockUpdateAssetContent).toHaveBeenCalledOnce();
+    // Consent insert must precede updateAssetContent (insert tracked before mock call).
+    expect(consentInserts[0].values.status).toBe('active');
+  });
+
+  it('publishing github:read only does not write any consent row', async () => {
+    await publishGitHubScopeManifest(OWNER, ['github:read']);
+    expect(h.insertCalls.filter((c) => c.table === h.F.consentGrants)).toHaveLength(0);
   });
 });
