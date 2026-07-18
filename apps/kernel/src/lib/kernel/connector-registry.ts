@@ -61,7 +61,7 @@ export interface ConnectorEntry {
   scopes: ConnectorScope[];
   /**
    * Route for the scope-manifest status GET endpoint.
-   * `null` when the backend publish path is not yet implemented (#1355, #1356).
+   * `null` for future connectors whose backend is not yet implemented.
    */
   statusEndpoint: string | null;
   /**

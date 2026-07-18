@@ -3,17 +3,10 @@
 /**
  * /connections/connectors — Connectors page (#1352 / #1354).
  *
- * Registry-driven: every connector in CONNECTOR_REGISTRY gets a card. GitHub
- * shows live status and exposes the three write surfaces needed to complete
- * the #1352 end-to-end flow:
- *
- *   Step 1 — Configure OAuth App  (POST /github/api/configure)
- *   Step 2 — Connect account       (GET  /github/api/connect → OAuth redirect)
- *   Step 3 — Grant scopes          (POST /github/api/scope-manifest)
- *
- * github:read (silent) is toggleable immediately. github:write / github:org
- * (on-consent) are shown locked pending #1357 (consent_grants writer).
- * Discord and QuickBooks render as "backend pending" (#1355, #1356).
+ * Registry-driven: every connector in CONNECTOR_REGISTRY gets a card. Each
+ * live connector drives the full three-step flow in-app (no URL knowledge
+ * required). All on-consent scopes use grant-by-edit — checking a scope in
+ * the UI writes the consent_grants row automatically.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -209,7 +202,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
           ) : readyForRead ? (
             <Badge variant="active">● Connected</Badge>
           ) : (
-            <Badge variant="inactive">○ Not ready</Badge>
+            <Badge variant="inactive">○ Not configured</Badge>
           )}
         </div>
       </div>
@@ -352,9 +345,6 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             <div className="space-y-1">
               {entry.scopes.map((scope) => {
                 const isActive = activeSet.has(scope.name);
-                // 'never' scopes can never materialise — hide them from the toggle list
-                // rather than showing a broken checkbox. on-consent scopes are now fully
-                // functional since #1357 shipped the consent_grants writer.
                 const isLocked = scope.releaseClass === 'never';
                 const isThisGranting = grantingScope === scope.name;
 
@@ -522,7 +512,7 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
           ) : readyForPost ? (
             <Badge variant="active">● Connected</Badge>
           ) : (
-            <Badge variant="inactive">○ Not ready</Badge>
+            <Badge variant="inactive">○ Not configured</Badge>
           )}
         </div>
       </div>
@@ -730,7 +720,7 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
         <div>{statusLoading ? <Badge variant="info">Checking…</Badge>
           : statusError ? <Badge variant="inactive">Unavailable</Badge>
           : readyForRead ? <Badge variant="active">● Connected</Badge>
-          : <Badge variant="inactive">○ Not ready</Badge>}
+          : <Badge variant="inactive">○ Not configured</Badge>}
         </div>
       </div>
 
@@ -864,7 +854,6 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
 // ── Pending connector card (no backend yet) ─────────────────────────────────────────────────────
 
 function PendingConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
-  const issueRef = entry.id === 'discord' ? '#1355' : entry.id === 'quickbooks' ? '#1356' : null;
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl p-6 opacity-60">
       <div className="flex items-start justify-between mb-5">
@@ -875,7 +864,7 @@ function PendingConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             <p className="text-sm text-gray-400">{entry.description}</p>
           </div>
         </div>
-        <Badge variant="pending">Backend pending</Badge>
+        <Badge variant="inactive">Coming soon</Badge>
       </div>
 
       <div className="space-y-1 mb-4">
@@ -889,12 +878,6 @@ function PendingConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
         ))}
       </div>
 
-      {issueRef && (
-        <p className="text-xs text-gray-600">
-          Scope-manifest publish route and credential ingestion land in {issueRef}.
-          The Connectors page will show live status once that backend ships.
-        </p>
-      )}
     </div>
   );
 }
