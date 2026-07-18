@@ -61,7 +61,7 @@ export interface ConnectorEntry {
   scopes: ConnectorScope[];
   /**
    * Route for the scope-manifest status GET endpoint.
-   * `null` when the backend publish path is not yet implemented (#1355, #1356).
+   * `null` for future connectors whose backend is not yet implemented.
    */
   statusEndpoint: string | null;
   /**
@@ -80,6 +80,11 @@ export interface ConnectorEntry {
    * (clientId, clientSecret, redirectUri).
    */
   configureRoute: string | null;
+  /**
+   * For token-paste connectors (Pattern B): the POST route for sealing the
+   * credential token in-app. `null` for OAuth connectors.
+   */
+  tokenRoute: string | null;
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -114,6 +119,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     backendPending: false,
     connectRoute: '/github/api/connect',
     configureRoute: '/github/api/configure',
+    tokenRoute: null,
   },
   {
     id: 'discord',
@@ -127,15 +133,19 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       {
         name: 'discord:post',
         label: 'Post messages to Discord channels',
-        // discord:post touches a server owned by others → on-consent (#1355)
+        releaseClass: 'on-consent',
+      },
+      {
+        name: 'discord:read',
+        label: 'Read messages from Discord channels',
         releaseClass: 'on-consent',
       },
     ],
-    // Backend pending: scope-manifest route + token-paste ingestion route (#1355)
-    statusEndpoint: null,
-    backendPending: true,
+    statusEndpoint: '/discord/api/scope-manifest',
+    backendPending: false,
     connectRoute: null,
     configureRoute: null,
+    tokenRoute: '/discord/api/token',
   },
   {
     id: 'quickbooks',
@@ -157,11 +167,11 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
         releaseClass: 'on-consent',
       },
     ],
-    // Backend pending: scope-manifest route (#1356)
-    statusEndpoint: null,
-    backendPending: true,
+    statusEndpoint: '/quickbooks/api/scope-manifest',
+    backendPending: false,
     connectRoute: '/quickbooks/api/connect',
     configureRoute: '/quickbooks/api/configure',
+    tokenRoute: null,
   },
 ] as const;
 
