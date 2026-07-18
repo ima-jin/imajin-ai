@@ -13,6 +13,7 @@ import {
   filterGrantedScopes,
   generateOpaqueToken,
   hashToken,
+  redirectUriMatches,
 } from '@/src/lib/mcp/oauth-config';
 import { anchorToOrigin } from '@/src/lib/mcp/oauth-redirect';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
@@ -97,9 +98,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized_client', error_description: 'Unknown or inactive client' }, { status: 400 });
   }
 
-  // 2. Exact redirect_uri allowlist match — no prefix/substring matching.
-  //    (Pre-registered: Claude's callback is https://claude.ai/api/mcp/auth_callback.)
-  if (!redirectUri || redirectUri !== client.callbackUrl) {
+  // 2. redirect_uri must match the registered callbackUrl exactly, OR be a
+  //    same-origin loopback redirect (path may differ — DCR stored only the
+  //    first of several loopback callbacks). See redirectUriMatches().
+  if (!redirectUriMatches(redirectUri, client.callbackUrl)) {
     return NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri mismatch' }, { status: 400 });
   }
 
@@ -234,7 +236,7 @@ async function validateConsentRequest(
   if (!client) {
     return { error: NextResponse.json({ error: 'unauthorized_client', error_description: 'Unknown or inactive client' }, { status: 400 }) };
   }
-  if (!redirectUri || redirectUri !== client.callbackUrl) {
+  if (!redirectUriMatches(redirectUri, client.callbackUrl)) {
     return { error: NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri mismatch' }, { status: 400 }) };
   }
   if (!codeChallenge || codeChallengeMethod !== 'S256') {

@@ -113,6 +113,33 @@ export function isLoopbackRedirectUri(uri: string): boolean {
   return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
 }
 
+/**
+ * True iff an incoming authorize/token `redirect_uri` matches the client's
+ * registered `callbackUrl`.
+ *
+ * DCR stores only the FIRST registered redirect_uri as the canonical
+ * `callbackUrl`, but a client may register several loopback callbacks and then
+ * authorize with a different one (e.g. MCP Inspector stores `/oauth/callback`
+ * but authorizes with `/oauth/callback/debug`). Accept the incoming URI when:
+ *   1. it EXACTLY equals the stored callbackUrl (the normal case), OR
+ *   2. BOTH are loopback redirects on the SAME origin (scheme+host+port) — the
+ *      path may differ. Safe because the code is PKCE-bound and the origin is a
+ *      loopback interface the legitimate client controls.
+ *
+ * This is a narrow bridge until a proper multi-redirect_uri manager lands
+ * (stores + matches the full registered set). See the tracking issue.
+ */
+export function redirectUriMatches(incoming: string | null | undefined, registered: string): boolean {
+  if (!incoming) return false;
+  if (incoming === registered) return true;
+  if (!isLoopbackRedirectUri(incoming) || !isLoopbackRedirectUri(registered)) return false;
+  try {
+    return new URL(incoming).origin === new URL(registered).origin;
+  } catch {
+    return false;
+  }
+}
+
 /** True iff EVERY requested redirect_uri is allowed. */
 export function areRedirectUrisAllowed(uris: readonly string[]): boolean {
   if (uris.length === 0) return false;

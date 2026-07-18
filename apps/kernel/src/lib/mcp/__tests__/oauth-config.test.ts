@@ -5,6 +5,7 @@ import {
   DCR_ALLOWED_REDIRECT_URIS,
   areRedirectUrisAllowed,
   isLoopbackRedirectUri,
+  redirectUriMatches,
   getMcpIssuer,
   getMcpResource,
   getAuthorizationEndpoint,
@@ -52,6 +53,26 @@ describe('DCR redirect-URI allowlist', () => {
         'http://evil.example:6274/oauth/callback',
       ]),
     ).toBe(false);
+  });
+
+  it('redirectUriMatches: exact match', () => {
+    expect(redirectUriMatches('https://claude.ai/api/mcp/auth_callback', 'https://claude.ai/api/mcp/auth_callback')).toBe(true);
+  });
+
+  it('redirectUriMatches: same-origin loopback with different path (Inspector /oauth/callback vs /debug)', () => {
+    // registered = /oauth/callback (DCR stored first), authorize with /oauth/callback/debug
+    expect(redirectUriMatches('http://localhost:6274/oauth/callback/debug', 'http://localhost:6274/oauth/callback')).toBe(true);
+    expect(redirectUriMatches('http://127.0.0.1:6274/oauth/callback', 'http://127.0.0.1:6274/oauth/callback/debug')).toBe(true);
+  });
+
+  it('redirectUriMatches: rejects different loopback PORT', () => {
+    expect(redirectUriMatches('http://localhost:9999/oauth/callback', 'http://localhost:6274/oauth/callback')).toBe(false);
+  });
+
+  it('redirectUriMatches: rejects cross-origin and non-loopback', () => {
+    expect(redirectUriMatches('https://evil.example/cb', 'https://claude.ai/api/mcp/auth_callback')).toBe(false);
+    expect(redirectUriMatches('http://evil.example:6274/x', 'http://localhost:6274/oauth/callback')).toBe(false);
+    expect(redirectUriMatches(null, 'http://localhost:6274/oauth/callback')).toBe(false);
   });
 
   it('accepts the MCP Inspector two-URI loopback set (/oauth/callback + /oauth/callback/debug)', () => {
