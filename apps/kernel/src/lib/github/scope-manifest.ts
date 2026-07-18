@@ -110,27 +110,22 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   // Scope data rows
   for (const scope of scopes) {
     const d = GITHUB_SCOPE_DESCRIPTORS[scope];
-    lines.push(`"${scope}":`);
-    lines.push(`  verb: ${d.verb}`);
-    lines.push(`  surface: ${d.surface}`);
-    lines.push(`  label: "${d.label}"`);
+    lines.push(`"${scope}":`, `  verb: ${d.verb}`, `  surface: ${d.surface}`, `  label: "${d.label}"`);
   }
 
   // Release policy block
   lines.push('release:');
   for (const scope of scopes) {
     const r = GITHUB_SCOPE_DESCRIPTORS[scope].release;
-    lines.push(`  "${scope}":`);
-    lines.push(`    discloses_others: ${r.discloses_others}`);
-    lines.push(`    sensitive: ${r.sensitive}`);
+    lines.push(`  "${scope}":`, `    discloses_others: ${r.discloses_others}`, `    sensitive: ${r.sensitive}`);
     if (r.release !== undefined) lines.push(`    release: ${r.release}`);
     if (r.viewer !== undefined) lines.push(`    viewer: "${r.viewer}"`);
   }
 
-  lines.push('---');
-  lines.push('# GitHub connector — scope manifest');
-  lines.push('');
   lines.push(
+    '---',
+    '# GitHub connector — scope manifest',
+    '',
     'Edit this document to grant or revoke GitHub connector scopes. ' +
       'Saving it projects into the live permission DB through the release-gated reactor (#1207).',
   );
