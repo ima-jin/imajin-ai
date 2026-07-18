@@ -8,9 +8,6 @@ import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { withLogger, type Logger } from '@imajin/logger';
 
-const GPU_NODE_URL = process.env.GPU_NODE_URL;
-const GPU_AUTH_TOKEN = process.env.GPU_AUTH_TOKEN;
-
 export const dynamic = 'force-dynamic';
 
 export async function OPTIONS(request: NextRequest) {
@@ -43,8 +40,9 @@ type ParsedBody = UrlBody | FileBody;
 
 function buildGpuHeaders(callerDid: string): Record<string, string> {
   const headers: Record<string, string> = { 'X-Caller-DID': callerDid };
-  if (GPU_AUTH_TOKEN) {
-    headers['Authorization'] = `Bearer ${GPU_AUTH_TOKEN}`;
+  const token = process.env.GPU_AUTH_TOKEN;
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
 }
@@ -175,7 +173,8 @@ async function transcribeFile(
  */
 export const POST = withLogger('kernel', async (request, { log }) => {
   const cors = corsHeaders(request);
-  if (!GPU_NODE_URL) {
+  const gpuNodeUrl = process.env.GPU_NODE_URL;
+  if (!gpuNodeUrl) {
     log.error({}, 'GPU_NODE_URL is not configured');
     return NextResponse.json(
       { error: 'Transcription service unavailable' },
@@ -206,7 +205,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   const gpuHeaders = buildGpuHeaders(callerDid);
 
   if (body.kind === 'url') {
-    return transcribeUrl(body, GPU_NODE_URL, gpuHeaders, cors, log);
+    return transcribeUrl(body, gpuNodeUrl, gpuHeaders, cors, log);
   }
-  return transcribeFile(body, GPU_NODE_URL, gpuHeaders, cors, log);
+  return transcribeFile(body, gpuNodeUrl, gpuHeaders, cors, log);
 });
