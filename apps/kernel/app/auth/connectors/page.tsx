@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * /connections/connectors — Connectors page (#1352 / #1354).
+ * /auth/connectors — Connectors page (#1354).
  *
  * Registry-driven: every connector in CONNECTOR_REGISTRY gets a card. Each
  * live connector drives the full three-step flow in-app (no URL knowledge
@@ -10,10 +10,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useIdentity } from '../context/IdentityContext';
 import {
   CONNECTOR_REGISTRY,
   type ConnectorEntry,
+  type ConnectorScope,
   type ReleaseClass,
 } from '@/src/lib/kernel/connector-registry';
 
@@ -875,9 +875,19 @@ function ConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ConnectorsPage() {
-  const { isLoggedIn, loading } = useIdentity();
+  // Auth is handled server-side by the auth layout. We do a lightweight
+  // client check so the page can show a loading state while the status
+  // fetches resolve, and handle the unauthenticated edge case gracefully.
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  if (loading) {
+  useEffect(() => {
+    fetch('/auth/api/session')
+      .then((r) => { setIsLoggedIn(r.ok); setSessionLoading(false); })
+      .catch(() => { setIsLoggedIn(false); setSessionLoading(false); });
+  }, []);
+
+  if (sessionLoading) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center text-gray-400">
         Loading…
@@ -890,9 +900,9 @@ export default function ConnectorsPage() {
       <div className="max-w-2xl mx-auto py-16 text-center">
         <div className="text-6xl mb-6">🔌</div>
         <h1 className="text-3xl font-bold mb-3">Connectors</h1>
-        <p className="text-gray-400 mb-8">Sign in to view your connector status.</p>
+        <p className="text-gray-400 mb-8">Sign in to manage your connector grants.</p>
         <a
-          href="/auth/api/login"
+          href="/auth/login"
           className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition"
         >
           Sign In
@@ -912,10 +922,10 @@ export default function ConnectorsPage() {
           </p>
         </div>
         <a
-          href="/connections"
+          href="/auth"
           className="text-sm text-gray-500 hover:text-gray-300 transition"
         >
-          ← Connections
+          ← Account
         </a>
       </div>
 
