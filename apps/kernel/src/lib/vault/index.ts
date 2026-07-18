@@ -256,6 +256,18 @@ export async function rotateAndStore(field: string, plaintext: string): Promise<
 }
 
 /**
+ * Return true when the vault field exists and has not been deleted (tombstoned).
+ *
+ * Reads only the vault metadata (no crypto operations) — safe to use for
+ * status checks where the plaintext value is not needed. Returns false when
+ * the field is absent or has been tombstoned via {@link deleteFromVault}.
+ */
+export async function vaultFieldExists(field: string): Promise<boolean> {
+  const entry = await vaultService.get(field);
+  return entry !== undefined && entry !== null && entry.deleted !== true;
+}
+
+/**
  * Load a vault field and unseal it to plaintext.
  *
  * Dispatches on custodyScheme:
