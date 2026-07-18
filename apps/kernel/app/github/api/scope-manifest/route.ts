@@ -27,6 +27,8 @@ import {
   findGitHubManifestAsset,
   VALID_GITHUB_SCOPES,
 } from '@/src/lib/github/scope-manifest';
+import { configField, oauthVaultField, vaultField } from '@/src/lib/github/connector';
+import { vaultFieldExists } from '@/src/lib/vault';
 
 const log = createLogger('kernel');
 
@@ -37,11 +39,14 @@ export async function OPTIONS(request: NextRequest) {
 // ── GET /github/api/scope-manifest ───────────────────────────────────────────
 
 /**
- * Return the current state of the GitHub connector grant for the session owner:
- *   - `manifestAssetId`  — the stable id of the scope-manifest document (null
- *                          when none has been published yet).
+ * Return the current state of the GitHub connector for the session owner:
+ *   - `manifestAssetId`  — stable id of the scope-manifest asset (null = none yet).
  *   - `activeScopes`     — connector scopes currently active in channel_links.
- *   - `validScopes`      — all scopes this route accepts for POST.
+ *   - `validScopes`      — all scopes accepted by POST.
+ *   - `configSealed`     — whether the OAuth App config (clientId/Secret) is sealed.
+ *   - `tokenSealed`      — whether an OAuth token OR PAT is sealed for this DID.
+ *
+ * Booleans only — sealed values are NEVER returned. (#1354 flag #3)
  */
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -52,16 +57,23 @@ export async function GET(request: NextRequest) {
   }
   const ownerDid = resolveActingDid(auth.identity);
 
-  const [manifestAsset, activeScopes] = await Promise.all([
-    findGitHubManifestAsset(ownerDid),
-    readActiveGitHubScopes(ownerDid),
-  ]);
+  const [manifestAsset, activeScopes, configSealed, oauthTokenSealed, patSealed] =
+    await Promise.all([
+      findGitHubManifestAsset(ownerDid),
+      readActiveGitHubScopes(ownerDid),
+      vaultFieldExists(configField(ownerDid)),
+      vaultFieldExists(oauthVaultField(ownerDid)),
+      vaultFieldExists(vaultField(ownerDid)),
+    ]);
 
   return NextResponse.json(
     {
       manifestAssetId: manifestAsset?.id ?? null,
       activeScopes,
       validScopes: VALID_GITHUB_SCOPES,
+      configSealed,
+      // Token is satisfied by either the OAuth bundle or a PAT fallback.
+      tokenSealed: oauthTokenSealed || patSealed,
     },
     { headers: cors },
   );

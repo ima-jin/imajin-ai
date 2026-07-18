@@ -1,0 +1,511 @@
+'use client';
+
+/**
+ * /connections/connectors — Connectors page (#1352 / #1354).
+ *
+ * Registry-driven: every connector in CONNECTOR_REGISTRY gets a card. GitHub
+ * shows live status and exposes the three write surfaces needed to complete
+ * the #1352 end-to-end flow:
+ *
+ *   Step 1 — Configure OAuth App  (POST /github/api/configure)
+ *   Step 2 — Connect account       (GET  /github/api/connect → OAuth redirect)
+ *   Step 3 — Grant scopes          (POST /github/api/scope-manifest)
+ *
+ * github:read (silent) is toggleable immediately. github:write / github:org
+ * (on-consent) are shown locked pending #1357 (consent_grants writer).
+ * Discord and QuickBooks render as "backend pending" (#1355, #1356).
+ */
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useIdentity } from '../context/IdentityContext';
+import {
+  CONNECTOR_REGISTRY,
+  type ConnectorEntry,
+  type ReleaseClass,
+} from '@/src/lib/kernel/connector-registry';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface GitHubStatus {
+  manifestAssetId: string | null;
+  activeScopes: string[];
+  validScopes: string[];
+  configSealed: boolean;
+  tokenSealed: boolean;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const RELEASE_CLASS_LABEL: Record<ReleaseClass, string> = {
+  silent: 'auto-grant',
+  'on-consent': 'requires consent',
+  never: 'never active',
+};
+
+const RELEASE_CLASS_COLOR: Record<ReleaseClass, string> = {
+  silent: 'text-green-400',
+  'on-consent': 'text-amber-400',
+  never: 'text-gray-600',
+};
+
+function StatusDot({ ok, label }: Readonly<{ ok: boolean; label: string }>) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={`inline-block w-2 h-2 rounded-full ${ok ? 'bg-green-400' : 'bg-gray-600'}`} />
+      <span className={ok ? 'text-white' : 'text-gray-500'}>{label}</span>
+    </span>
+  );
+}
+
+function Badge({ children, variant }: Readonly<{ children: React.ReactNode; variant: 'pending' | 'active' | 'inactive' | 'info' }>) {
+  const styles = {
+    pending: 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30',
+    active: 'bg-green-500/10 text-green-400 border border-green-500/30',
+    inactive: 'bg-white/5 text-gray-500 border border-white/10',
+    info: 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
+  };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${styles[variant]}`}>
+      {children}
+    </span>
+  );
+}
+
+// ── GitHub card (interactive: configure → connect → grant) — #1352 ─────────
+
+function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+  const [status, setStatus] = useState<GitHubStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  // Configure form state
+  const [showConfigure, setShowConfigure] = useState(false);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [redirectUri, setRedirectUri] = useState('');
+  const [configuring, setConfiguring] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const clientIdRef = useRef<HTMLInputElement>(null);
+
+  // Scope grant state
+  const [grantingScope, setGrantingScope] = useState<string | null>(null);
+  const [grantError, setGrantError] = useState<string | null>(null);
+
+  // Prefill redirectUri from current origin (only in browser)
+  useEffect(() => {
+    setRedirectUri(`${window.location.origin}/github/api/callback`);
+  }, []);
+
+  // Focus first field when form opens
+  useEffect(() => {
+    if (showConfigure) clientIdRef.current?.focus();
+  }, [showConfigure]);
+
+  const fetchStatus = useCallback(async () => {
+    setStatusLoading(true);
+    setStatusError(null);
+    try {
+      const r = await fetch(entry.statusEndpoint!);
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      setStatus(await r.json() as GitHubStatus);
+    } catch (err: unknown) {
+      setStatusError(String(err));
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [entry.statusEndpoint]);
+
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+
+  const activeSet = new Set(status?.activeScopes ?? []);
+  const readyForRead =
+    status !== null && status.configSealed && status.tokenSealed && activeSet.has('github:read');
+
+  // ── Step 1: Configure OAuth App ────────────────────────────────────────────
+  async function handleConfigure(e: React.FormEvent) {
+    e.preventDefault();
+    setConfiguring(true);
+    setConfigError(null);
+    try {
+      const r = await fetch('/github/api/configure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: clientId.trim(), clientSecret: clientSecret.trim(), redirectUri: redirectUri.trim() }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+      setShowConfigure(false);
+      setClientId('');
+      setClientSecret('');
+      await fetchStatus();
+    } catch (err: unknown) {
+      setConfigError(String(err));
+    } finally {
+      setConfiguring(false);
+    }
+  }
+
+  // ── Step 3: Toggle a scope in the manifest ─────────────────────────────────
+  async function handleToggleScope(scopeName: string, enable: boolean) {
+    setGrantingScope(scopeName);
+    setGrantError(null);
+    try {
+      // Build the new desired scope set: preserve other active scopes, add/remove this one.
+      const current = new Set(status?.activeScopes ?? []);
+      if (enable) current.add(scopeName);
+      else current.delete(scopeName);
+
+      const r = await fetch('/github/api/scope-manifest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scopes: [...current] }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+      await fetchStatus();
+    } catch (err: unknown) {
+      setGrantError(String(err));
+    } finally {
+      setGrantingScope(null);
+    }
+  }
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">{entry.icon}</span>
+          <div>
+            <h2 className="text-lg font-semibold text-white">{entry.name}</h2>
+            <p className="text-sm text-gray-400">{entry.description}</p>
+          </div>
+        </div>
+        <div>
+          {statusLoading ? (
+            <Badge variant="info">Checking…</Badge>
+          ) : statusError ? (
+            <Badge variant="inactive">Unavailable</Badge>
+          ) : readyForRead ? (
+            <Badge variant="active">● Connected</Badge>
+          ) : (
+            <Badge variant="inactive">○ Not ready</Badge>
+          )}
+        </div>
+      </div>
+
+      {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
+      {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
+
+      {!statusLoading && !statusError && status && (
+        <div className="space-y-6">
+
+          {/* ── Step 1: Configure OAuth App ── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                  status.configSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+                }`}>
+                  {status.configSealed ? '✓' : '1'}
+                </span>
+                OAuth App
+              </h3>
+              {status.configSealed && !showConfigure && (
+                <button
+                  onClick={() => setShowConfigure(true)}
+                  className="text-xs text-gray-600 hover:text-gray-400 transition"
+                >
+                  Update
+                </button>
+              )}
+            </div>
+
+            {!status.configSealed || showConfigure ? (
+              <form onSubmit={(e) => { void handleConfigure(e); }} className="space-y-2">
+                <input
+                  ref={clientIdRef}
+                  type="text"
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  placeholder="OAuth App Client ID"
+                  required
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
+                />
+                <input
+                  type="password"
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder="Client Secret"
+                  required
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
+                />
+                <input
+                  type="url"
+                  value={redirectUri}
+                  onChange={(e) => setRedirectUri(e.target.value)}
+                  placeholder="Redirect URI"
+                  required
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
+                />
+                {configError && <p className="text-red-400 text-xs">{configError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={configuring || !clientId.trim() || !clientSecret.trim() || !redirectUri.trim()}
+                    className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition"
+                  >
+                    {configuring ? 'Saving…' : status.configSealed ? 'Update config' : 'Save config'}
+                  </button>
+                  {showConfigure && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowConfigure(false); setConfigError(null); }}
+                      className="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-gray-400 text-sm rounded-lg transition"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+            ) : (
+              <div className="flex items-center gap-2 text-sm">
+                <StatusDot ok={true} label="OAuth App config sealed" />
+              </div>
+            )}
+          </div>
+
+          {/* ── Step 2: Connect GitHub Account ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {status.tokenSealed ? '✓' : '2'}
+              </span>
+              GitHub Account
+            </h3>
+
+            {status.tokenSealed ? (
+              <div className="flex items-center justify-between text-sm">
+                <StatusDot ok={true} label="Account connected" />
+                <a
+                  href={entry.connectRoute!}
+                  className="text-xs text-gray-600 hover:text-gray-400 transition"
+                >
+                  Reconnect
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <a
+                  href={entry.connectRoute!}
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                    status.configSealed
+                      ? 'bg-amber-500 hover:bg-amber-600 text-black'
+                      : 'bg-white/5 text-gray-600 cursor-not-allowed pointer-events-none'
+                  }`}
+                  aria-disabled={!status.configSealed}
+                >
+                  Connect GitHub Account →
+                </a>
+                {!status.configSealed && (
+                  <p className="text-xs text-gray-600">Complete step 1 first.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Step 3: Grant scopes ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                activeSet.size > 0 ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {activeSet.size > 0 ? '✓' : '3'}
+              </span>
+              Scope grants
+            </h3>
+
+            {grantError && <p className="text-red-400 text-xs mb-2">{grantError}</p>}
+
+            <div className="space-y-1">
+              {entry.scopes.map((scope) => {
+                const isActive = activeSet.has(scope.name);
+                const isSilent = scope.releaseClass === 'silent';
+                const isLocked = !isSilent; // on-consent scopes need #1357
+                const isThisGranting = grantingScope === scope.name;
+
+                return (
+                  <div
+                    key={scope.name}
+                    className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0"
+                  >
+                    <label className={`flex items-center gap-3 min-w-0 ${
+                      isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={isActive}
+                        disabled={isLocked || !status.tokenSealed || isThisGranting || grantingScope !== null}
+                        onChange={(e) => { void handleToggleScope(scope.name, e.target.checked); }}
+                        className="w-4 h-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
+                      />
+                      <div className="min-w-0">
+                        <span className={`text-sm font-mono block ${
+                          isActive ? 'text-white' : 'text-gray-400'
+                        }`}>
+                          {scope.name}
+                        </span>
+                        <span className="text-xs text-gray-600 truncate block">{scope.label}</span>
+                      </div>
+                    </label>
+                    <div className="flex items-center gap-2 shrink-0 ml-4">
+                      {isThisGranting ? (
+                        <Badge variant="info">Saving…</Badge>
+                      ) : isLocked ? (
+                        <Badge variant="pending">Pending #1357</Badge>
+                      ) : isActive ? (
+                        <Badge variant="active">Active</Badge>
+                      ) : (
+                        <Badge variant="inactive">
+                          <span className={RELEASE_CLASS_COLOR[scope.releaseClass]}>
+                            {RELEASE_CLASS_LABEL[scope.releaseClass]}
+                          </span>
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {!status.tokenSealed && (
+              <p className="text-xs text-gray-600 mt-2">Connect your account (step 2) to enable scope grants.</p>
+            )}
+          </div>
+
+          {/* Asset anchor */}
+          {status.manifestAssetId && (
+            <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
+              manifest: {status.manifestAssetId}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Pending connector card (no backend yet) ───────────────────────────────────
+
+function PendingConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+  const issueRef = entry.id === 'discord' ? '#1355' : entry.id === 'quickbooks' ? '#1356' : null;
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-xl p-6 opacity-60">
+      <div className="flex items-start justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">{entry.icon}</span>
+          <div>
+            <h2 className="text-lg font-semibold text-white">{entry.name}</h2>
+            <p className="text-sm text-gray-400">{entry.description}</p>
+          </div>
+        </div>
+        <Badge variant="pending">Backend pending</Badge>
+      </div>
+
+      <div className="space-y-1 mb-4">
+        {entry.scopes.map((scope) => (
+          <div key={scope.name} className="flex items-center gap-2 text-sm text-gray-600">
+            <span>○</span>
+            <span className="font-mono text-xs">{scope.name}</span>
+            <span className="text-gray-700">—</span>
+            <span className="text-xs">{scope.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {issueRef && (
+        <p className="text-xs text-gray-600">
+          Scope-manifest publish route and credential ingestion land in {issueRef}.
+          The Connectors page will show live status once that backend ships.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Dispatcher ────────────────────────────────────────────────────────────────
+
+function ConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+  if (entry.backendPending) return <PendingConnectorCard entry={entry} />;
+  if (entry.id === 'github') return <GitHubConnectorCard entry={entry} />;
+  // Future: each connector with a backend gets its own card component here.
+  return <PendingConnectorCard entry={entry} />;
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
+export default function ConnectorsPage() {
+  const { isLoggedIn, loading } = useIdentity();
+
+  if (loading) {
+    return (
+      <div className="max-w-2xl mx-auto py-16 text-center text-gray-400">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div className="max-w-2xl mx-auto py-16 text-center">
+        <div className="text-6xl mb-6">🔌</div>
+        <h1 className="text-3xl font-bold mb-3">Connectors</h1>
+        <p className="text-gray-400 mb-8">Sign in to view your connector status.</p>
+        <a
+          href="/auth/api/login"
+          className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-600 text-black font-semibold rounded-lg transition"
+        >
+          Sign In
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Connectors</h1>
+          <p className="text-gray-400 text-sm mt-1">
+            Connect third-party services to enable AI tools acting on your behalf.
+          </p>
+        </div>
+        <a
+          href="/connections"
+          className="text-sm text-gray-500 hover:text-gray-300 transition"
+        >
+          ← Connections
+        </a>
+      </div>
+
+      {/* Connector cards */}
+      <div className="space-y-4">
+        {CONNECTOR_REGISTRY.map((entry) => (
+          <ConnectorCard key={entry.id} entry={entry} />
+        ))}
+      </div>
+
+      {/* Footer note */}
+      <p className="text-center text-xs text-gray-700 mt-8">
+        <code className="font-mono">github:write</code> and <code className="font-mono">github:org</code> toggles unlock after #1357 (consent_grants backend).
+      </p>
+    </div>
+  );
+}
