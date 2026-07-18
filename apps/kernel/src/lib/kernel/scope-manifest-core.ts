@@ -20,6 +20,9 @@ import { generateId } from '@/src/lib/kernel/id';
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
+/** Re-exported so connector wrappers can import Asset from this module. */
+export type { Asset } from '@/src/db';
+
 export interface ConnectorScopeDescriptor {
   verb: string;
   surface: string;
