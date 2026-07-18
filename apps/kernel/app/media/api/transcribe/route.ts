@@ -6,7 +6,7 @@ import { writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
-import { withLogger } from '@imajin/logger';
+import { withLogger, type Logger } from '@imajin/logger';
 
 const GPU_NODE_URL = process.env.GPU_NODE_URL;
 const GPU_AUTH_TOKEN = process.env.GPU_AUTH_TOKEN;
@@ -87,7 +87,7 @@ async function parseRequestBody(request: NextRequest): Promise<ParsedBody | null
 async function handleGpuResponse(
   gpuRes: Response,
   cors: Record<string, string>,
-  log: { error: (obj: object, msg: string) => void },
+  log: Logger,
 ): Promise<NextResponse> {
   if (!gpuRes.ok) {
     const errorText = await gpuRes.text();
@@ -107,14 +107,22 @@ async function transcribeUrl(
   gpuNodeUrl: string,
   gpuHeaders: Record<string, string>,
   cors: Record<string, string>,
-  log: { error: (obj: object, msg: string) => void },
+  log: Logger,
 ): Promise<NextResponse> {
-  const gpuRes = await fetch(`${gpuNodeUrl}/api/stream2text/transcribe`, {
-    method: 'POST',
-    headers: { ...gpuHeaders, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: body.url, language: body.language }),
-  });
-  return handleGpuResponse(gpuRes, cors, log);
+  try {
+    const gpuRes = await fetch(`${gpuNodeUrl}/api/stream2text/transcribe`, {
+      method: 'POST',
+      headers: { ...gpuHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: body.url, language: body.language }),
+    });
+    return handleGpuResponse(gpuRes, cors, log);
+  } catch (error) {
+    log.error({ err: String(error) }, 'GPU node unreachable');
+    return NextResponse.json(
+      { error: 'Transcription service unavailable' },
+      { status: 503, headers: cors },
+    );
+  }
 }
 
 async function transcribeFile(
@@ -122,7 +130,7 @@ async function transcribeFile(
   gpuNodeUrl: string,
   gpuHeaders: Record<string, string>,
   cors: Record<string, string>,
-  log: { error: (obj: object, msg: string) => void },
+  log: Logger,
 ): Promise<NextResponse> {
   const fileBytes = Buffer.from(await body.file.arrayBuffer());
   const tmpPath = join(tmpdir(), `transcribe-${randomBytes(8).toString('hex')}-${body.fileName}`);
