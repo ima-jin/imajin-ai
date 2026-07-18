@@ -27,10 +27,26 @@ if [[ -f "$LAST_SHA_FILE" ]]; then
   fi
 
   echo "Detecting changes since $(echo $LAST_SHA | cut -c1-7)..."
-  CHANGED_APPS=$(pnpm --filter "...[${LAST_SHA}]" ls --depth -1 2>/dev/null \
+
+  # (1) Dependency-graph walk: catches transitive changes (packages/db changed →
+  #     every app that imports it). This is the pnpm --filter "...[SHA]" set.
+  GRAPH_APPS=$(pnpm --filter "...[${LAST_SHA}]" ls --depth -1 2>/dev/null \
     | grep -oP '(?<=/imajin-ai/)apps/\S+' \
     | sed 's|apps/||; s| .*||' \
     | sort -u || true)
+
+  # (2) Direct path detection: catches an app whose OWN source changed but that the
+  #     graph walk can miss (e.g. apps/kernel app-source edits that don't surface as a
+  #     dependency-graph delta). Map any changed apps/<name>/** path → <name>.
+  #     This is the fix for the stale-kernel / broken-MCP-connector bug (Day 170):
+  #     build-changed.sh was skipping @imajin/kernel after kernel source changed.
+  PATH_APPS=$(git diff --name-only "${LAST_SHA}" "${CURRENT_SHA}" 2>/dev/null \
+    | grep -oP '^apps/[^/]+' \
+    | sed 's|apps/||' \
+    | sort -u || true)
+
+  # UNION the two so a changed app is never dropped.
+  CHANGED_APPS=$(printf '%s\n%s\n' "$GRAPH_APPS" "$PATH_APPS" | grep -v '^$' | sort -u || true)
 else
   echo "No previous build SHA — all apps need building"
   CHANGED_APPS=$(ls apps/*/package.json 2>/dev/null | cut -d/ -f2)
