@@ -24,13 +24,20 @@ import {
   type ReleaseClass,
 } from '@/src/lib/kernel/connector-registry';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────
 
 interface GitHubStatus {
   manifestAssetId: string | null;
   activeScopes: string[];
   validScopes: string[];
   configSealed: boolean;
+  tokenSealed: boolean;
+}
+
+interface DiscordStatus {
+  manifestAssetId: string | null;
+  activeScopes: string[];
+  validScopes: string[];
   tokenSealed: boolean;
 }
 
@@ -336,8 +343,10 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             <div className="space-y-1">
               {entry.scopes.map((scope) => {
                 const isActive = activeSet.has(scope.name);
-                const isSilent = scope.releaseClass === 'silent';
-                const isLocked = !isSilent; // on-consent scopes need #1357
+                // 'never' scopes can never materialise — hide them from the toggle list
+                // rather than showing a broken checkbox. on-consent scopes are now fully
+                // functional since #1357 shipped the consent_grants writer.
+                const isLocked = scope.releaseClass === 'never';
                 const isThisGranting = grantingScope === scope.name;
 
                 return (
@@ -368,7 +377,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                       {isThisGranting ? (
                         <Badge variant="info">Saving…</Badge>
                       ) : isLocked ? (
-                        <Badge variant="pending">Pending #1357</Badge>
+                        <Badge variant="inactive">N/A</Badge>
                       ) : isActive ? (
                         <Badge variant="active">Active</Badge>
                       ) : (
@@ -401,7 +410,243 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   );
 }
 
-// ── Pending connector card (no backend yet) ───────────────────────────────────
+// ── Discord card (token-paste, Pattern B) ───────────────────────────────────────────
+
+function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+  const [status, setStatus] = useState<DiscordStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  // Token paste state
+  const [tokenInput, setTokenInput] = useState('');
+  const [sealing, setSealing] = useState(false);
+  const [sealError, setSealError] = useState<string | null>(null);
+  const [showTokenInput, setShowTokenInput] = useState(false);
+
+  // Scope grant state
+  const [grantingScope, setGrantingScope] = useState<string | null>(null);
+  const [grantError, setGrantError] = useState<string | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    setStatusLoading(true);
+    setStatusError(null);
+    try {
+      const r = await fetch(entry.statusEndpoint!);
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      setStatus(await r.json() as DiscordStatus);
+    } catch (err: unknown) {
+      setStatusError(String(err));
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [entry.statusEndpoint]);
+
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+
+  const activeSet = new Set(status?.activeScopes ?? []);
+  const readyForPost = status !== null && status.tokenSealed && activeSet.has('discord:post');
+
+  async function handleSealToken(e: React.FormEvent) {
+    e.preventDefault();
+    setSealing(true);
+    setSealError(null);
+    try {
+      const r = await fetch(entry.tokenRoute!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: tokenInput.trim() }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+      setTokenInput('');
+      setShowTokenInput(false);
+      await fetchStatus();
+    } catch (err: unknown) {
+      setSealError(String(err));
+    } finally {
+      setSealing(false);
+    }
+  }
+
+  async function handleToggleScope(scopeName: string, enable: boolean) {
+    setGrantingScope(scopeName);
+    setGrantError(null);
+    try {
+      const current = new Set(status?.activeScopes ?? []);
+      if (enable) current.add(scopeName);
+      else current.delete(scopeName);
+      const r = await fetch(entry.statusEndpoint!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scopes: [...current] }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+      await fetchStatus();
+    } catch (err: unknown) {
+      setGrantError(String(err));
+    } finally {
+      setGrantingScope(null);
+    }
+  }
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">{entry.icon}</span>
+          <div>
+            <h2 className="text-lg font-semibold text-white">{entry.name}</h2>
+            <p className="text-sm text-gray-400">{entry.description}</p>
+          </div>
+        </div>
+        <div>
+          {statusLoading ? (
+            <Badge variant="info">Checking…</Badge>
+          ) : statusError ? (
+            <Badge variant="inactive">Unavailable</Badge>
+          ) : readyForPost ? (
+            <Badge variant="active">● Connected</Badge>
+          ) : (
+            <Badge variant="inactive">○ Not ready</Badge>
+          )}
+        </div>
+      </div>
+
+      {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
+      {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
+
+      {!statusLoading && !statusError && status && (
+        <div className="space-y-6">
+
+          {/* ── Step 1: Bot Token ── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                  status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+                }`}>
+                  {status.tokenSealed ? '✓' : '1'}
+                </span>
+                Bot Token
+              </h3>
+              {status.tokenSealed && !showTokenInput && (
+                <button
+                  onClick={() => setShowTokenInput(true)}
+                  className="text-xs text-gray-600 hover:text-gray-400 transition"
+                >
+                  Replace
+                </button>
+              )}
+            </div>
+
+            {!status.tokenSealed || showTokenInput ? (
+              <form onSubmit={(e) => { void handleSealToken(e); }} className="space-y-2">
+                <input
+                  type="password"
+                  value={tokenInput}
+                  onChange={(e) => setTokenInput(e.target.value)}
+                  placeholder="Discord Bot Token"
+                  required
+                  autoComplete="off"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 font-mono"
+                />
+                <p className="text-xs text-gray-700">Token is sealed server-side and never returned. Found in Discord Developer Portal → Bot → Token.</p>
+                {sealError && <p className="text-red-400 text-xs">{sealError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={sealing || !tokenInput.trim()}
+                    className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition"
+                  >
+                    {sealing ? 'Sealing…' : status.tokenSealed ? 'Replace token' : 'Seal token'}
+                  </button>
+                  {showTokenInput && (
+                    <button type="button" onClick={() => { setShowTokenInput(false); setSealError(null); }}
+                      className="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-gray-400 text-sm rounded-lg transition">
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+            ) : (
+              <StatusDot ok={true} label="Bot token sealed" />
+            )}
+          </div>
+
+          {/* ── Step 2: Scope grants ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                activeSet.size > 0 ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {activeSet.size > 0 ? '✓' : '2'}
+              </span>
+              Scope grants
+            </h3>
+
+            {grantError && <p className="text-red-400 text-xs mb-2">{grantError}</p>}
+
+            <div className="space-y-1">
+              {entry.scopes.map((scope) => {
+                const isActive = activeSet.has(scope.name);
+                const isThisGranting = grantingScope === scope.name;
+                return (
+                  <div key={scope.name} className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
+                    <label className="flex items-center gap-3 min-w-0 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isActive}
+                        disabled={!status.tokenSealed || isThisGranting || grantingScope !== null}
+                        onChange={(e) => { void handleToggleScope(scope.name, e.target.checked); }}
+                        className="w-4 h-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
+                      />
+                      <div className="min-w-0">
+                        <span className={`text-sm font-mono block ${isActive ? 'text-white' : 'text-gray-400'}`}>
+                          {scope.name}
+                        </span>
+                        <span className="text-xs text-gray-600 truncate block">{scope.label}</span>
+                      </div>
+                    </label>
+                    <div className="flex items-center gap-2 shrink-0 ml-4">
+                      {isThisGranting ? (
+                        <Badge variant="info">Saving…</Badge>
+                      ) : isActive ? (
+                        <Badge variant="active">Active</Badge>
+                      ) : (
+                        <Badge variant="inactive">
+                          <span className={RELEASE_CLASS_COLOR[scope.releaseClass]}>
+                            {RELEASE_CLASS_LABEL[scope.releaseClass]}
+                          </span>
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {!status.tokenSealed && (
+              <p className="text-xs text-gray-600 mt-2">Seal a bot token (step 1) to enable scope grants.</p>
+            )}
+          </div>
+
+          {status.manifestAssetId && (
+            <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
+              manifest: {status.manifestAssetId}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Pending connector card (no backend yet) ───────────────────────────────────────────────
 
 function PendingConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const issueRef = entry.id === 'discord' ? '#1355' : entry.id === 'quickbooks' ? '#1356' : null;
@@ -444,7 +689,8 @@ function PendingConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
 function ConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   if (entry.backendPending) return <PendingConnectorCard entry={entry} />;
   if (entry.id === 'github') return <GitHubConnectorCard entry={entry} />;
-  // Future: each connector with a backend gets its own card component here.
+  if (entry.id === 'discord') return <DiscordConnectorCard entry={entry} />;
+  // Future connectors: add a card component per id, then remove backendPending.
   return <PendingConnectorCard entry={entry} />;
 }
 
