@@ -6,6 +6,7 @@ import KeyAuthTab from './components/KeyAuthTab';
 import PasswordAuthTab from './components/PasswordAuthTab';
 import MfaGate from './components/MfaGate';
 import { buildPublicUrl } from '@imajin/config';
+import { isSafeNext as safeNext } from '@/src/lib/auth/safe-next';
 
 const WWW_URL = buildPublicUrl('kernel');
 
@@ -63,9 +64,9 @@ function NewsletterSignup() {
   );
 }
 
-/** Allow same-origin relative paths only — blocks open redirects via absolute or protocol-relative URLs */
+/** Same-origin `next=` guard (relative path OR same-origin absolute URL). See src/lib/auth/safe-next.ts. */
 function isSafeNext(url: string | null): url is string {
-  return typeof url === 'string' && url.startsWith('/') && !url.startsWith('//');
+  return safeNext(url, globalThis.location.origin);
 }
 
 type Tab = 'key' | 'password';
