@@ -53,13 +53,24 @@ export const supplyRecorderReactor: ReactorHandler = async (event) => {
     }
 
     // Resolve prior_cid from the most recent stage so the settled row links the chain.
+    // ORDER BY created_at DESC, seq DESC: seq is a BIGSERIAL (0072_supply_stages_seq)
+    // that provides a monotonic insertion-order tiebreaker, replacing the former
+    // id DESC which was non-monotonic (gen_random_uuid / UUID v4).
     const priorRows = (await sql`
       SELECT attestation_cid AS "attestationCid", id
       FROM kernel.supply_stages
       WHERE correlation_id = ${correlationId}
-      ORDER BY created_at DESC, id DESC
+      ORDER BY created_at DESC, seq DESC
       LIMIT 1
     `) as unknown as Array<{ attestationCid: string | null; id: string }>;
+
+    if (priorRows.length === 0) {
+      log.warn(
+        { correlationId },
+        'settling lot with no prior stages — order.completed arrived before any supply.* event; lot gap',
+      );
+    }
+
     const lastStage = priorRows[0] ?? null;
     const resolvedPriorCid = lastStage?.attestationCid ?? lastStage?.id ?? null;
 

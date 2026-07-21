@@ -1,4 +1,4 @@
-import { pgSchema, text, boolean, timestamp, jsonb, index, unique } from 'drizzle-orm/pg-core';
+import { pgSchema, text, boolean, timestamp, jsonb, index, unique, bigserial } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const busSchema = pgSchema('kernel');
@@ -41,6 +41,9 @@ export const supplyLots = busSchema.table('supply_lots', {
 
 export const supplyStages = busSchema.table('supply_stages', {
   id: text('id').primaryKey().default(sql`gen_random_uuid()::text`),
+  // seq is a monotonic insertion-order tiebreaker (0072_supply_stages_seq).
+  // Use seq DESC in ORDER BY instead of the non-monotonic random-UUID id.
+  seq: bigserial('seq', { mode: 'bigint' }).notNull(),
   correlationId: text('correlation_id').notNull().references(() => supplyLots.correlationId),
   stage: text('stage').notNull(),
   actorDid: text('actor_did').notNull(),
@@ -50,6 +53,7 @@ export const supplyStages = busSchema.table('supply_stages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   correlationCreatedIdx: index('idx_supply_stages_correlation_created').on(table.correlationId, table.createdAt),
+  correlationSeqIdx: index('idx_supply_stages_correlation_seq').on(table.correlationId, table.seq),
 }));
 
 export type SupplyLot = typeof supplyLots.$inferSelect;
