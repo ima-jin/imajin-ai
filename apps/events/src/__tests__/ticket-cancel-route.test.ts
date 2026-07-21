@@ -60,6 +60,8 @@ vi.mock('@/src/db', () => ({
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: mocks.requireAuthMock,
+  resolveActingDid: (identity: { actingFor?: string; actingAs?: string | null; id: string }) =>
+    identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
 
 vi.mock('@/src/lib/organizer', () => ({
