@@ -7,6 +7,9 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
+const SUPPLY_SCOPE = 'supply' as const;
+const SUPPLY_PREFIX = 'supply.' as const;
+
 /**
  * #1135 — the four pre-sale supply stages this API can publish. Explicit
  * allowlist: an external app can never fire a non-supply.* event through these
@@ -115,7 +118,7 @@ export async function publishSupplyStage(
     quantity,
     unit,
     context_id: correlationId,
-    context_type: 'supply',
+    context_type: SUPPLY_SCOPE,
   };
   const payload = (priorCid ? { ...base, priorCid } : base) as BusEventMap[SupplyStageEvent];
 
@@ -124,13 +127,13 @@ export async function publishSupplyStage(
   await publish(eventType, {
     issuer: userDid,
     subject: userDid,
-    scope: 'supply',
+    scope: SUPPLY_SCOPE,
     payload,
     correlationId,
   }).catch((err: unknown) => log.error({ err: String(err), eventType }, 'supply stage publish failed'));
 
   return NextResponse.json(
-    { ok: true, correlationId, stage: eventType.slice('supply.'.length) },
+    { ok: true, correlationId, stage: eventType.slice(SUPPLY_PREFIX.length) },
     { status: 201, headers: cors },
   );
 }
@@ -163,14 +166,14 @@ export async function publishReceiptStage(request: NextRequest): Promise<NextRes
     quantity,
     unit,
     context_id: correlationId,
-    context_type: 'supply',
+    context_type: SUPPLY_SCOPE,
   };
   const payload = (priorCid ? { ...base, priorCid } : base) as BusEventMap['supply.received'];
 
   await publish('supply.received', {
     issuer: userDid,
     subject: userDid,
-    scope: 'supply',
+    scope: SUPPLY_SCOPE,
     payload,
     correlationId,
   }).catch((err: unknown) => log.error({ err: String(err) }, 'supply.received publish failed'));
