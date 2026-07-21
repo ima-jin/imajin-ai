@@ -99,6 +99,77 @@ export async function publishSupplyStage(
 }
 
 /**
+ * #1384 — handler for `POST /supply/api/received`. App-auth-gated (`supply:write`);
+ * publishes `supply.received` on behalf of the downstream recipient — the recipient
+ * DID is `issuer`/`subject` (the party who signs the delivery receipt, not the supplier).
+ * Commodity is product-agnostic: eggs, seeds, fertiliser, etc. are all the same primitive.
+ */
+export async function publishReceiptStage(request: NextRequest): Promise<NextResponse> {
+  const cors = corsHeaders(request);
+
+  const appResult = await requireAppAuth(request, { scope: 'supply:write' });
+  if ('error' in appResult) {
+    return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+  }
+
+  const userDid = appResult.appAuth.userDid;
+  if (!userDid) {
+    return NextResponse.json({ error: 'App token has no delegating user' }, { status: 403, headers: cors });
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
+  }
+
+  // lotId is required: supply.received always threads onto an existing lot.
+  const correlationId = typeof body.lotId === 'string' && body.lotId.length > 0 ? body.lotId : null;
+  if (!correlationId) {
+    return NextResponse.json(
+      { error: 'lotId is required (obtain it from supply.declared)' },
+      { status: 400, headers: cors },
+    );
+  }
+
+  const commodity = typeof body.commodity === 'string' ? body.commodity : null;
+  const unit = typeof body.unit === 'string' ? body.unit : null;
+  const quantity = typeof body.quantity === 'number' ? body.quantity : null;
+  if (!commodity || !unit || quantity === null) {
+    return NextResponse.json(
+      { error: 'commodity (string), quantity (number) and unit (string) are required' },
+      { status: 400, headers: cors },
+    );
+  }
+
+  const priorCid = typeof body.priorCid === 'string' ? body.priorCid : undefined;
+  const base = {
+    lotId: correlationId,
+    recipientDid: userDid,
+    commodity,
+    quantity,
+    unit,
+    context_id: correlationId,
+    context_type: 'supply',
+  };
+  const payload = (priorCid ? { ...base, priorCid } : base) as BusEventMap['supply.received'];
+
+  await publish('supply.received', {
+    issuer: userDid,
+    subject: userDid,
+    scope: 'supply',
+    payload,
+    correlationId,
+  }).catch((err: unknown) => log.error({ err: String(err) }, 'supply.received publish failed'));
+
+  return NextResponse.json(
+    { ok: true, correlationId, stage: 'received' },
+    { status: 201, headers: cors },
+  );
+}
+
+/**
  * Shared handler for `GET /supply/api/lot/[correlationId]`. App-auth-gated
  * (`supply:read`); returns the lot + its ordered stage history via #1136's
  * `getLotChain`.

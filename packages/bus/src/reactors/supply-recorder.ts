@@ -111,10 +111,19 @@ export const supplyRecorderReactor: ReactorHandler = async (event) => {
     VALUES (${correlationId}, ${event.type.slice(SUPPLY_PREFIX.length)}, ${event.issuer}, ${priorCid}, ${JSON.stringify(payload)}::jsonb)
   `;
 
+  // Advance lot status on stage milestones.
   if (event.type === 'supply.listed') {
     await sql`
       UPDATE kernel.supply_lots
       SET status = 'listed', updated_at = now()
+      WHERE correlation_id = ${correlationId}
+    `;
+  }
+  // #1384 — delivery receipt: recipient signs they received the lot.
+  if (event.type === 'supply.received') {
+    await sql`
+      UPDATE kernel.supply_lots
+      SET status = 'received', updated_at = now()
       WHERE correlation_id = ${correlationId}
     `;
   }

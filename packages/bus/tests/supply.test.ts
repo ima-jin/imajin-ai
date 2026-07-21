@@ -12,12 +12,13 @@ import type { BusEventMap } from '../src/types';
 
 const SUPPLY_SCOPE = 'supply';
 
-describe('supply.* chains (#1134/#1375)', () => {
+describe('supply.* chains (#1134/#1375/#1384)', () => {
   it.each([
     ['supply.declared', ['supply-recorder', 'attestation', 'emit', 'notify']],
     ['supply.collected', ['supply-recorder', 'attestation', 'emit']],
     ['supply.processed', ['supply-recorder', 'attestation', 'emit']],
     ['supply.listed', ['supply-recorder', 'emit']],
+    ['supply.received', ['supply-recorder', 'attestation', 'emit']],
   ] as const)('seeds the %s chain', async (eventType, expected) => {
     const cfg = await getChainConfig(eventType, SUPPLY_SCOPE);
     const types = cfg.reactors.map((r) => r.type);
@@ -34,11 +35,18 @@ describe('supply.* chains (#1134/#1375)', () => {
     expect(recorder?.await).toBe(true);
   });
 
+  it('supply.received supply-recorder is awaited (stage row durable before downstream)', async () => {
+    const cfg = await getChainConfig('supply.received', SUPPLY_SCOPE);
+    const recorder = cfg.reactors.find((r) => r.type === 'supply-recorder');
+    expect(recorder?.await).toBe(true);
+  });
+
   it.each([
     'supply.declared',
     'supply.collected',
     'supply.processed',
     'supply.listed',
+    'supply.received',
   ] as const)('has no settle reactor in the %s chain (free stage)', async (eventType) => {
     const cfg = await getChainConfig(eventType, SUPPLY_SCOPE);
     const types = cfg.reactors.map((r) => r.type);
@@ -61,7 +69,20 @@ describe('supply.* chains (#1134/#1375)', () => {
       priorCid: 'bafy-declared-record',
     } satisfies BusEventMap['supply.collected'];
 
+    // #1384 — supply.received uses recipientDid (not supplierDid); commodity-agnostic.
+    const received = {
+      lotId: 'lot_eggs_001',
+      recipientDid: 'did:imajin:david',
+      commodity: 'eggs',
+      quantity: 12,
+      unit: 'dozen',
+      priorCid: 'bafy-listed-record',
+      context_id: 'lot_eggs_001',
+      context_type: 'supply',
+    } satisfies BusEventMap['supply.received'];
+
     expect(declared.lotId).toBe('lot_eggs_001');
     expect(collected.priorCid).toBeDefined();
+    expect(received.recipientDid).toBe('did:imajin:david');
   });
 });
