@@ -46,7 +46,7 @@ export const supplyRecorderReactor: ReactorHandler = async (event) => {
       SELECT 1 FROM kernel.supply_lots
       WHERE correlation_id = ${correlationId} AND status = 'settled'
       LIMIT 1
-    `) as unknown[];
+    `) as unknown as unknown[];
     if (settled.length > 0) {
       log.info({ correlationId }, 'lot already settled; skipping duplicate settle');
       return;
