@@ -11,10 +11,13 @@ export default async function SettingsPage() {
     redirect('/auth');
   }
 
+  // effectiveDid is non-null whenever sessionDid is non-null
+  const did = effectiveDid ?? sessionDid!;
+
   const [identity] = await db
     .select({ scope: identities.scope })
     .from(identities)
-    .where(eq(identities.id, effectiveDid))
+    .where(eq(identities.id, did))
     .limit(1);
 
   // Actor scope: security is now accessible via the Security tab
@@ -32,7 +35,7 @@ export default async function SettingsPage() {
     .from(identityMembers)
     .where(
       and(
-        eq(identityMembers.identityDid, effectiveDid),
+        eq(identityMembers.identityDid, did),
         eq(identityMembers.memberDid, sessionDid),
         isNull(identityMembers.removedAt)
       )
@@ -47,5 +50,5 @@ export default async function SettingsPage() {
     );
   }
 
-  return <IdentitySettingsPanel groupDid={effectiveDid} />;
+  return <IdentitySettingsPanel groupDid={did} />;
 }

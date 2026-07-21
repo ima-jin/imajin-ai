@@ -11,10 +11,13 @@ export default async function MembersPage() {
     redirect('/auth');
   }
 
+  // effectiveDid is non-null whenever sessionDid is non-null
+  const did = effectiveDid ?? sessionDid!;
+
   const [identity] = await db
     .select({ scope: identities.scope })
     .from(identities)
-    .where(eq(identities.id, effectiveDid))
+    .where(eq(identities.id, did))
     .limit(1);
 
   if (!identity || identity.scope === 'actor') {
@@ -30,7 +33,7 @@ export default async function MembersPage() {
     .from(identityMembers)
     .where(
       and(
-        eq(identityMembers.identityDid, effectiveDid),
+        eq(identityMembers.identityDid, did),
         eq(identityMembers.memberDid, sessionDid),
         isNull(identityMembers.removedAt)
       )
@@ -45,5 +48,5 @@ export default async function MembersPage() {
     );
   }
 
-  return <IdentityMembersPanel groupDid={effectiveDid} />;
+  return <IdentityMembersPanel groupDid={did} />;
 }

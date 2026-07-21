@@ -19,6 +19,9 @@ export default async function DocumentDetailPage({ params }: Readonly<PageProps>
     redirect('/auth');
   }
 
+  // effectiveDid is non-null whenever sessionDid is non-null
+  const did = effectiveDid ?? sessionDid!;
+
   const [attestation] = await db
     .select()
     .from(attestations)
@@ -37,13 +40,13 @@ export default async function DocumentDetailPage({ params }: Readonly<PageProps>
         .where(
           and(
             eq(attestationSignatures.attestationId, attestation.id),
-            eq(attestationSignatures.signerDid, effectiveDid)
+            eq(attestationSignatures.signerDid, did)
           )
         )
         .limit(1)
     : [];
 
-  const canAccess = !!attestation && (attestation.issuerDid === effectiveDid || !!mySignature);
+  const canAccess = !!attestation && (attestation.issuerDid === did || !!mySignature);
 
   if (!canAccess || !attestation) {
     return (
@@ -94,7 +97,7 @@ export default async function DocumentDetailPage({ params }: Readonly<PageProps>
       <DocumentSigningCard
         attestation={cardAttestation}
         signatures={signaturesWithIdentity}
-        sessionDid={effectiveDid}
+        sessionDid={did}
         defaultExpanded
       />
     </div>

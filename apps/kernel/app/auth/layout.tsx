@@ -15,6 +15,9 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
     return <>{children}</>;
   }
 
+  // effectiveDid is non-null whenever sessionDid is non-null
+  const did = effectiveDid ?? sessionDid!;
+
   // Fetch personal identity info for the switcher (always on raw session DID — never delegated)
   const [personalIdentity] = await db
     .select({ name: identities.name, handle: identities.handle })
@@ -29,7 +32,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
   const [effectiveIdentity] = await db
     .select({ scope: identities.scope })
     .from(identities)
-    .where(eq(identities.id, effectiveDid))
+    .where(eq(identities.id, did))
     .limit(1);
 
   let showSettings = false;
@@ -44,7 +47,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
     const [forestRow] = await db
       .select({ enabledServices: forestConfig.enabledServices, landingService: forestConfig.landingService })
       .from(forestConfig)
-      .where(eq(forestConfig.groupDid, effectiveDid))
+      .where(eq(forestConfig.groupDid, did))
       .limit(1);
     enabledServices = forestRow?.enabledServices ?? [];
     landingService = forestRow?.landingService ?? null;
@@ -54,7 +57,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
       .from(identityMembers)
       .where(
         and(
-          eq(identityMembers.identityDid, effectiveDid),
+          eq(identityMembers.identityDid, did),
           eq(identityMembers.memberDid, sessionDid),
           isNull(identityMembers.removedAt)
         )
@@ -85,7 +88,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
     </>
   );
 
-  const identityDetail = <IdentityDetail did={effectiveDid} sessionDid={sessionDid} />;
+  const identityDetail = <IdentityDetail did={did} sessionDid={sessionDid} />;
   const tabBar = (
     <IdentityTabBar
       showSettings={showSettings}
