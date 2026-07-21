@@ -12,7 +12,7 @@ import type { BusEventMap } from '../src/types';
 
 const SUPPLY_SCOPE = 'supply';
 
-describe('supply.* chains (#1134)', () => {
+describe('supply.* chains (#1134/#1375)', () => {
   it.each([
     ['supply.declared', ['supply-recorder', 'attestation', 'emit', 'notify']],
     ['supply.collected', ['supply-recorder', 'attestation', 'emit']],
@@ -22,6 +22,16 @@ describe('supply.* chains (#1134)', () => {
     const cfg = await getChainConfig(eventType, SUPPLY_SCOPE);
     const types = cfg.reactors.map((r) => r.type);
     expect(types).toEqual([...expected]);
+  });
+
+  it('order.completed (scope=supply) runs supply-recorder before settle (#1375)', async () => {
+    const cfg = await getChainConfig('order.completed', SUPPLY_SCOPE);
+    const types = cfg.reactors.map((r) => r.type);
+    expect(types).toEqual(['supply-recorder', 'settle']);
+    // supply-recorder must be awaited so the settled stage row is durable before
+    // the settle reactor executes the .fair split.
+    const recorder = cfg.reactors.find((r) => r.type === 'supply-recorder');
+    expect(recorder?.await).toBe(true);
   });
 
   it.each([

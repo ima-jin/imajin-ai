@@ -62,7 +62,11 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'ticket.registration.reminder': [
     { type: 'notify', config: { scope: 'event:ticket-registration-reminder' }, enabled: true },
   ],
+  // #1375 — supply-recorder runs first (awaited) to write the settled stage row
+  // before settle executes the .fair split. The recorder is a no-op for non-supply
+  // order.completed events (scope !== 'supply').
   'order.completed': [
+    { type: 'supply-recorder', config: {}, await: true, enabled: true },
     { type: 'settle', config: {}, await: true, enabled: true },
   ],
   'settlement.completed': [
