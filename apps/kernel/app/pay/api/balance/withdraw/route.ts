@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/balance/withdraw
  *
  * Withdraw cash balance to a connected Stripe account.
@@ -19,7 +19,7 @@ import { db, balances, transactions } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
@@ -52,7 +52,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     );
   }
 
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
 
   try {
     const body = await request.json();

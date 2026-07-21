@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { db, events, ticketTypes } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { eq, desc } from 'drizzle-orm';
 
 /**
@@ -15,7 +15,7 @@ export const GET = withLogger('events', async (request, { log }) => {
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   try {
     // Get all events created by this user

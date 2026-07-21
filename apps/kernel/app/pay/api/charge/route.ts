@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/charge
  * 
  * Create a direct payment charge.
@@ -30,7 +30,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
-import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth , resolveActingDid } from '@imajin/auth';
 import type { ChargeRequest, Currency, Recipient } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
@@ -91,7 +91,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     } else {
       const authResult = await requireAuth(request);
       if (!('error' in authResult)) {
-        fromDid = authResult.identity.actingAs || authResult.identity.id;
+        fromDid = resolveActingDid(authResult.identity);
       }
     }
     

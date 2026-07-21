@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('coffee');
 import { db, tips } from '@/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, sql } from 'drizzle-orm';
 
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
-  const effectiveDid = identity.actingAs || identity.id;
+  const effectiveDid = resolveActingDid(identity);
 
   // Check ownership — allow viewing tips for the effective DID (scope's income)
   if (effectiveDid !== did) {

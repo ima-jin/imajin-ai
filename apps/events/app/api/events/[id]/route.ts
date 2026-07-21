@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { revalidatePath } from 'next/cache';
@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 const log = createLogger('events');
 
 import { db, events, ticketTypes } from '@/src/db';
-import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth , resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@imajin/config';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq } from 'drizzle-orm';
@@ -128,7 +128,7 @@ export async function PATCH(
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
     const { identity } = authResult;
-    did = identity.actingAs || identity.id;
+    did = resolveActingDid(identity);
   }
 
   const { id } = await params;
@@ -211,7 +211,7 @@ export async function PUT(
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
     const { identity } = authResult;
-    did = identity.actingAs || identity.id;
+    did = resolveActingDid(identity);
   }
 
   const { id } = await params;

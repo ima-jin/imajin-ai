@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, modules } from '@/db/schema';
-import { requireHardDID } from '@imajin/auth';
+import { requireHardDID , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and } from 'drizzle-orm';
 
@@ -29,7 +29,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const authResult = await requireHardDID(request);
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
   const result = await getOwnerCourseModule(slug, moduleId, did);
   if ('error' in result) return errorResponse(result.error, result.status);
 
@@ -56,7 +56,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const authResult = await requireHardDID(request);
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
   const result = await getOwnerCourseModule(slug, moduleId, did);
   if ('error' in result) return errorResponse(result.error, result.status);
 

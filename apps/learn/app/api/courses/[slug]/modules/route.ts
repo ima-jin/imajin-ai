@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, modules } from '@/db/schema';
-import { requireHardDID } from '@imajin/auth';
+import { requireHardDID , resolveActingDid } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, asc, sql } from 'drizzle-orm';
 
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   const course = await getCourseBySlug(slug);
   if (!course) return errorResponse('Course not found', 404);
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
   if (course.creatorDid !== did) return errorResponse('Not authorized', 403);
 
   const body = await request.json();

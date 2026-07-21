@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+﻿import { NextResponse } from 'next/server';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { db, calendarEntries } from '@/src/db';
 import { and, eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
@@ -32,7 +32,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const did = auth.identity.actingAs || auth.identity.id;
+  const did = resolveActingDid(auth.identity);
 
   let body: Record<string, unknown>;
   try {
@@ -72,7 +72,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const did = auth.identity.actingAs || auth.identity.id;
+  const did = resolveActingDid(auth.identity);
 
   const [deleted] = await db
     .delete(calendarEntries)

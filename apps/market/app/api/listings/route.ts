@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('market');
 import { db, listings } from '@/db';
-import { requireAuth, getSession } from '@imajin/auth';
+import { requireAuth, getSession , resolveActingDid } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
 import { getClient } from '@imajin/db';
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const did = identity.actingAs || identity.id;
+    const did = resolveActingDid(identity);
 
     // Load node config and optional scope config for fair manifest
     const rawSql = getClient();
@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
     let authSellerDid: string | null = null;
     const session = await getSession();
     if (session) {
-      authSellerDid = session.actingAs || session.id;
+      authSellerDid = resolveActingDid(session);
     }
 
     // Build where conditions

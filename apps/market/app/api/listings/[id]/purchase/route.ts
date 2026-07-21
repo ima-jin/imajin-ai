@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/listings/:id/purchase
  *
  * Initiates a checkout session via the pay service.
@@ -9,7 +9,7 @@ import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('market');
 import { db, listings } from '@/db';
-import { getSession, requireHardDID } from '@imajin/auth';
+import { getSession, requireHardDID , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { publish } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
@@ -48,10 +48,10 @@ export async function POST(
       if ('error' in authResult) {
         return errorResponse('This listing requires a verified identity to purchase', 403);
       }
-      buyerDid = authResult.identity.actingAs || authResult.identity.id;
+      buyerDid = resolveActingDid(authResult.identity);
     } else {
       const session = await getSession();
-      buyerDid = session?.actingAs || session?.id;
+      buyerDid = session ? resolveActingDid(session) : undefined;
     }
 
     // 3. Parse body for quantity

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/balance/event-topup
  *
  * Multiplier-based gifting for events.
@@ -23,7 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances, transactions } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
@@ -44,7 +44,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    const effectiveDid = authResult.identity.actingAs || authResult.identity.id;
+    const effectiveDid = resolveActingDid(authResult.identity);
 
     const body = await request.json();
     const { from_did, event_id, multiplier, recipient_dids, metadata = {} } = body;

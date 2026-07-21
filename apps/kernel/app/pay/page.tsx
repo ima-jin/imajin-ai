@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
-import { getSession } from '@imajin/auth';
+﻿import { redirect } from 'next/navigation';
+import { getSession , resolveActingDid } from '@imajin/auth';
 import { buildPublicUrl } from '@imajin/config';
 import { db, balances, transactions } from '@/src/db';
 import { eq, or, desc } from 'drizzle-orm';
@@ -26,7 +26,7 @@ export default async function Home() {
     redirect(`${authUrl}/login?next=${encodeURIComponent(payUrl)}`);
   }
 
-  const did = session.actingAs || session.id;
+  const did = resolveActingDid(session);
 
   const [balanceRows, recentTxs] = await Promise.all([
     db.select().from(balances).where(eq(balances.did, did)).limit(1),

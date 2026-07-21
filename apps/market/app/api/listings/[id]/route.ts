@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('market');
 import { db, listings } from '@/db';
-import { requireAuth, getSession } from '@imajin/auth';
+import { requireAuth, getSession , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
 import { buildFairManifest } from '@imajin/fair';
@@ -73,7 +73,7 @@ export async function PATCH(
       return errorResponse('Listing not found', 404);
     }
 
-    const did = identity.actingAs || identity.id;
+    const did = resolveActingDid(identity);
     if (listing.sellerDid !== did) {
       return errorResponse('Forbidden', 403);
     }
@@ -143,7 +143,7 @@ export async function PATCH(
     // Recalculate .fair manifest if price, sellerTier, or seller DID changes
     const priceChanged = price !== undefined && price !== listing.price;
     const tierChanged = sellerTier !== undefined && sellerTier !== listing.sellerTier;
-    const currentDid = identity.actingAs || identity.id;
+    const currentDid = resolveActingDid(identity);
     const sellerDidChanged = currentDid !== listing.sellerDid;
 
     if (priceChanged || tierChanged || sellerDidChanged) {
@@ -218,7 +218,7 @@ export async function DELETE(
       return errorResponse('Listing not found', 404);
     }
 
-    const did = identity.actingAs || identity.id;
+    const did = resolveActingDid(identity);
     if (listing.sellerDid !== did) {
       return errorResponse('Forbidden', 403);
     }

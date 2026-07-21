@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('links');
 import { db, linkPages, links } from '@/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, asc, and } from 'drizzle-orm';
 
@@ -62,7 +62,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   try {
     // Fetch existing page
@@ -122,7 +122,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   try {
     // Fetch existing page

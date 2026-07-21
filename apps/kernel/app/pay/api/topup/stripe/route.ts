@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /pay/api/topup/stripe
  *
  * Create a Stripe Checkout session for MJNx top-up.
@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { db, transactions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
@@ -45,7 +45,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     );
   }
 
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
   const handle = authResult.identity.handle || '';
 
   let body: { amount?: number; absorbFees?: boolean };

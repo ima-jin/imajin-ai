@@ -1,5 +1,5 @@
-import { notFound, redirect } from 'next/navigation';
-import { getSession } from '@imajin/auth';
+﻿import { notFound, redirect } from 'next/navigation';
+import { getSession , resolveActingDid } from '@imajin/auth';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
@@ -47,7 +47,7 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
     notFound();
   }
 
-  const did = session.actingAs || session.id;
+  const did = resolveActingDid(session);
 
   // Check authorization - creator or cohost can edit
   let isOrganizer = event.creatorDid === did;

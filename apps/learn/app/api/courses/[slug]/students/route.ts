@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, enrollments, lessonProgress, lessons, modules } from '@/db/schema';
-import { requireHardDID } from '@imajin/auth';
+import { requireHardDID , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and, sql, asc, count } from 'drizzle-orm';
 
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return errorResponse(authResult.error, authResult.status);
   }
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   // Get course
   const [course] = await db.select()

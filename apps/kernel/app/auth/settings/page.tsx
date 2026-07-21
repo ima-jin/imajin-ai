@@ -1,27 +1,15 @@
-import { cookies } from 'next/headers';
-import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { db, identities, identityMembers } from '@/src/db';
+import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import { eq, and, isNull } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import IdentitySettingsPanel from '../components/IdentitySettingsPanel';
 
 export default async function SettingsPage() {
-  const cookieConfig = getSessionCookieOptions();
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(cookieConfig.name)?.value;
-
-  let sessionDid: string | null = null;
-  if (sessionToken) {
-    const session = await verifySessionToken(sessionToken);
-    sessionDid = session?.sub ?? null;
-  }
+  const { sessionDid, effectiveDid } = await getEffectiveDid();
 
   if (!sessionDid) {
     redirect('/auth');
   }
-
-  const actingAs = cookieStore.get('x-acting-as')?.value || null;
-  const effectiveDid = actingAs || sessionDid;
 
   const [identity] = await db
     .select({ scope: identities.scope })

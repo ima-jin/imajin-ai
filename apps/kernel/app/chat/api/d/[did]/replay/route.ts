@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { getClient } from '@imajin/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { createLogger } from '@imajin/logger';
@@ -27,7 +27,7 @@ export async function POST(
     const { identity } = authResult;
 
     const { did } = await params;
-    const effectiveDid = identity.actingAs || identity.id;
+    const effectiveDid = resolveActingDid(identity);
 
     // Check if user is owner/admin of this conversation
     const [membership] = await sql`

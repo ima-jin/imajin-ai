@@ -1,11 +1,11 @@
-/**
+﻿/**
  * DELETE /api/events/[id]/invites/[inviteId] - Revoke invite (owner only)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, eventInvites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 
 export async function DELETE(
@@ -18,7 +18,7 @@ export async function DELETE(
   }
 
   const { id, inviteId } = await params;
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
 
   const check = await isEventOrganizer(id, did);
   if (!check.authorized) {

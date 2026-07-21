@@ -1,22 +1,13 @@
-import { cookies } from 'next/headers';
-import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { db, profiles, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 
 import Link from 'next/link';
 import { profilePath } from '@imajin/config';
 import Image from 'next/image';
+import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 
 export default async function AuthPage() {
-  const cookieConfig = getSessionCookieOptions();
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(cookieConfig.name)?.value;
-
-  let sessionDid: string | null = null;
-  if (sessionToken) {
-    const session = await verifySessionToken(sessionToken);
-    sessionDid = session?.sub ?? null;
-  }
+  const { sessionDid, effectiveDid } = await getEffectiveDid();
 
   if (!sessionDid) {
     return (
@@ -36,10 +27,6 @@ export default async function AuthPage() {
     );
   }
 
-  // Effective DID: actingAs cookie OR personal DID
-  const actingAs = cookieStore.get('x-acting-as')?.value || null;
-  const effectiveDid = actingAs || sessionDid;
-
   // Fetch profile + identity data
   const [[profile], [identityRow]] = await Promise.all([
     db
@@ -55,7 +42,7 @@ export default async function AuthPage() {
   ]);
 
   if (!profile) {
-    const editQuery = actingAs ? `?did=${encodeURIComponent(actingAs)}` : '';
+    const editQuery = effectiveDid !== sessionDid ? `?did=${encodeURIComponent(effectiveDid!)}` : '';
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
         <p className="text-zinc-400 text-sm">No profile found for this identity.</p>

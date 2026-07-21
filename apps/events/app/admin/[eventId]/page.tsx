@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Admin view for event ticket management
  * /admin/[eventId]
  */
@@ -6,7 +6,7 @@
 import { db, events, tickets, ticketTypes } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { notFound } from 'next/navigation';
-import { getSession } from '@imajin/auth';
+import { getSession , resolveActingDid } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { AdminTabs } from './admin-tabs';
 
@@ -32,7 +32,7 @@ export default async function AdminPage({ params }: Readonly<Props>) {
 
   // Auth check: viewer must be owner or cohost
   const session = await getSession();
-  const actingDid = session ? (session.actingAs || session.id) : null;
+  const actingDid = session ? (resolveActingDid(session)) : null;
   const isCreator = session?.id === event.creatorDid || session?.actingAs === event.creatorDid;
 
   // Auth gate: creator, acting-as creator, or cohost

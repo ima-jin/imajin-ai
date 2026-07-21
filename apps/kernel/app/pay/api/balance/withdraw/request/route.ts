@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /pay/api/balance/withdraw/request
  *
  * Request an EMT withdrawal of cash balance.
@@ -15,7 +15,7 @@ import { db, balances, transactions, withdrawalRequests } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 
 const MIN_WITHDRAWAL = 10; // $10.00 minimum
@@ -32,7 +32,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers });
   }
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
 
   // Parse body
   let body: { amount?: number; emt_email?: string };

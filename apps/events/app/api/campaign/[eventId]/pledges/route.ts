@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET /api/campaign/{eventId}/pledges
  *
  * Returns all pledges for a campaign event.
@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { db, events, pledges } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
@@ -27,7 +27,7 @@ export const GET = withLogger('events', async (request: NextRequest, { log }) =>
     );
   }
 
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
 
   try {
     const url = new URL(request.url);

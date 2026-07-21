@@ -1,9 +1,9 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('learn');
 import { db } from '@/db';
 import { courses, enrollments, lessons, modules, lessonProgress } from '@/db/schema';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { publish } from '@imajin/bus';
 import { eq, and } from 'drizzle-orm';
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   const courseResult = await db.select().from(courses).where(eq(courses.slug, slug)).limit(1);
   if (!courseResult[0]) return errorResponse('Course not found', 404);

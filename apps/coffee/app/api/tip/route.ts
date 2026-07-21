@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('coffee');
 import { db, tips } from '@/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import * as bus from '@imajin/bus';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 import { rateLimit, getClientIP, buildPublicUrl } from '@imajin/config';
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     let fromHumanDid: string | null = null;
     const authResult = await requireAuth(request as any);
     if ('identity' in authResult) {
-      fromDid = authResult.identity.actingAs || authResult.identity.id;
+      fromDid = resolveActingDid(authResult.identity);
       fromHumanDid = authResult.identity.id;
     }
 

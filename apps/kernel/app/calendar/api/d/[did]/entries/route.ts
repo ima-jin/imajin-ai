@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+﻿import { NextResponse } from 'next/server';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { db, calendarEntries } from '@/src/db';
 import { and, eq, gte, gt, isNull, lte, or } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
@@ -24,7 +24,7 @@ export async function GET(request: Request, { params }: { params: { did: string 
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const requesterDid = auth.identity.actingFor || auth.identity.actingAs || auth.identity.id;
+  const requesterDid = auth.identity.actingFor || resolveActingDid(auth.identity);
   const targetDid = params.did;
 
   const url = new URL(request.url);

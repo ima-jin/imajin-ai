@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { requireAuth, requireAppAuth } from '@imajin/auth';
+import { requireAuth, requireAppAuth , resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@imajin/config';
 
 const log = createLogger('events');
@@ -53,7 +53,7 @@ export async function GET(
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
     const { identity } = authResult;
-    did = identity.actingAs || identity.id;
+    did = resolveActingDid(identity);
   }
 
   const { id } = await params;

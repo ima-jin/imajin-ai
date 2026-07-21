@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET  /api/events/[id]/invites - List invites (owner/cohost only)
  * POST /api/events/[id]/invites - Create invite link (owner/cohost only)
  */
@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, eventInvites } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { randomBytes } from 'node:crypto';
 import { eventUrl, buildPublicUrlAbsolute } from '@imajin/config';
@@ -23,7 +23,7 @@ export async function GET(
   }
 
   const { id } = await params;
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
   const check = await isEventOrganizer(id, did);
   if (!check.authorized) {
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
@@ -52,7 +52,7 @@ export async function POST(
   }
 
   const { id } = await params;
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
   const check = await isEventOrganizer(id, did);
   if (!check.authorized) {
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });

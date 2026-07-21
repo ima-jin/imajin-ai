@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('dykil');
 import { db, surveys } from '@/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Only return published surveys to non-owners
     const authResult = await requireAuth(request);
-    const isOwner = !('error' in authResult) && (authResult.identity.actingAs || authResult.identity.id) === survey.did;
+    const isOwner = !('error' in authResult) && (resolveActingDid(authResult.identity)) === survey.did;
 
     if (!isOwner && survey.status !== 'published') {
       return errorResponse('Survey not found', 404, cors);
@@ -61,7 +61,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   try {
     const existing = await db.query.surveys.findFirst({
@@ -115,7 +115,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   try {
     const existing = await db.query.surveys.findFirst({

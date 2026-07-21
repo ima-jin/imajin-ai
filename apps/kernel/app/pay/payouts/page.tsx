@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
-import { getSession } from '@imajin/auth';
+﻿import { redirect } from 'next/navigation';
+import { getSession , resolveActingDid } from '@imajin/auth';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { createLogger } from '@imajin/logger';
@@ -53,7 +53,7 @@ export default async function PayoutsPage() {
     redirect(`${authUrl}/login?next=${encodeURIComponent(payoutsUrl)}`);
   }
 
-  const did = session.actingAs || session.id;
+  const did = resolveActingDid(session);
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
   const status = await getConnectStatus(did, cookieHeader);

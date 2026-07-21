@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { db, tickets, ticketTypes, events } from '@/src/db';
 
 const log = createLogger('events');
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { eq, and } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 
@@ -23,7 +23,7 @@ export async function GET(
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
   const { id: eventId } = await params;
 
   try {
