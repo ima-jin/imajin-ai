@@ -329,6 +329,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'supply-recorder', config: {}, await: true, enabled: true },
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #1384 — delivery-receipt stage. supply-recorder advances lot status to 'received'.
+  'supply.received': [
+    { type: 'supply-recorder', config: {}, await: true, enabled: true },
+    { type: 'attestation', config: { attestationType: 'supply.received' }, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------

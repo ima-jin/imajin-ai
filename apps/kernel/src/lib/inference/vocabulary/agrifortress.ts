@@ -39,7 +39,7 @@ export const agrifortressVocabulary: IntentVocabulary = {
 You are the AgriFortress supply-chain inference engine. A farmer speaks a voice note
 describing supply activity. Extract the intent from the following vocabulary:
 
-- supply.received   → farmer received a delivery of inputs (seeds, fertiliser, chemicals, tools)
+- supply.received   → a party received a delivery (lot) and signs to confirm receipt (commodity-agnostic: eggs, seeds, fertiliser, tools, etc.)
 - lot.opened        → farmer is opening a new batch or lot for tracking
 - delivery.noted    → farmer is noting a delivery for later reconciliation (no immediate action)
 

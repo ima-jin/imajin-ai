@@ -12,7 +12,7 @@ vi.mock('@imajin/bus', () => ({ publish: publishMock, getLotChain: getLotChainMo
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: () => 'lot_test' }));
 
-import { publishSupplyStage, handleLotGet } from '../supply';
+import { publishSupplyStage, publishReceiptStage, handleLotGet } from '../supply';
 
 const SCOTT = 'did:imajin:scott';
 
@@ -90,6 +90,66 @@ describe('publishSupplyStage (#1135)', () => {
     requireAppAuthMock.mockResolvedValue({ error: 'insufficient scope', status: 403 });
     const res = await publishSupplyStage(req({ commodity: 'eggs', quantity: 12, unit: 'dozen' }), 'supply.declared');
     expect(res.status).toBe(403);
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('publishReceiptStage (#1384)', () => {
+  const DAVID = 'did:imajin:david';
+
+  function grantWriteAs(did: string) {
+    requireAppAuthMock.mockResolvedValue({ appAuth: { appDid: 'did:app', userDid: did, scopes: ['supply:write'] } });
+  }
+
+  it('publishes supply.received pinned to the recipient DID', async () => {
+    grantWriteAs(DAVID);
+    const res = await publishReceiptStage(
+      req({ lotId: 'lot_eggs_1', commodity: 'eggs', quantity: 12, unit: 'dozen' }),
+    );
+
+    expect(res.status).toBe(201);
+    const json = await res.json();
+    expect(json.stage).toBe('received');
+    expect(json.correlationId).toBe('lot_eggs_1');
+
+    expect(publishMock).toHaveBeenCalledTimes(1);
+    const [type, event] = publishMock.mock.calls[0];
+    expect(type).toBe('supply.received');
+    expect(event.issuer).toBe(DAVID);
+    expect(event.correlationId).toBe('lot_eggs_1');
+    expect(event.payload.recipientDid).toBe(DAVID);
+    expect(event.payload.commodity).toBe('eggs');
+  });
+
+  it('requires lotId (no minting — receipt always threads an existing lot)', async () => {
+    grantWriteAs(DAVID);
+    const res = await publishReceiptStage(
+      req({ commodity: 'eggs', quantity: 12, unit: 'dozen' }),
+    );
+    expect(res.status).toBe(400);
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('validates required payload fields', async () => {
+    grantWriteAs(DAVID);
+    const res = await publishReceiptStage(req({ lotId: 'lot_1', commodity: 'eggs' }));
+    expect(res.status).toBe(400);
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('threads priorCid when provided', async () => {
+    grantWriteAs(DAVID);
+    await publishReceiptStage(
+      req({ lotId: 'lot_eggs_1', commodity: 'eggs', quantity: 12, unit: 'dozen', priorCid: 'bafy-listed' }),
+    );
+    const [, event] = publishMock.mock.calls[0];
+    expect(event.payload.priorCid).toBe('bafy-listed');
+  });
+
+  it('returns 401 when app-auth fails', async () => {
+    requireAppAuthMock.mockResolvedValue({ error: 'unauthorized', status: 401 });
+    const res = await publishReceiptStage(req({ lotId: 'lot_1', commodity: 'eggs', quantity: 12, unit: 'dozen' }));
+    expect(res.status).toBe(401);
     expect(publishMock).not.toHaveBeenCalled();
   });
 });

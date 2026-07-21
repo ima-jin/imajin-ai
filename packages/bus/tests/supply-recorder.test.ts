@@ -100,6 +100,24 @@ describe('supplyRecorderReactor (#1136)', () => {
     );
     expect(calls).toHaveLength(0);
   });
+
+  it('advances lot status to received on supply.received (#1384)', async () => {
+    await supplyRecorderReactor(
+      makeEvent({
+        type: 'supply.received',
+        issuer: 'did:imajin:david',
+        payload: { commodity: 'eggs', quantity: 12, unit: 'dozen', priorCid: 'bafy-listed' },
+      }),
+      {},
+    );
+
+    expect(calls).toHaveLength(3); // lot upsert + stage + status UPDATE
+    expect(calls[1].values[1]).toBe('received');
+    expect(calls[1].values[3]).toBe('bafy-listed'); // priorCid threaded
+    expect(calls[2].text).toContain('UPDATE kernel.supply_lots');
+    expect(calls[2].text).toContain("status = 'received'");
+    expect(calls[2].values).toEqual([CORRELATION_ID]);
+  });
 });
 
 describe('supplyRecorderReactor — settled stage (#1375)', () => {

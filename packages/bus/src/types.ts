@@ -761,6 +761,18 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  // #1384 — delivery-receipt stage: downstream recipient signs they received the lot.
+  // commodity is a payload field (product-agnostic); recipientDid is the signer.
+  'supply.received': {
+    lotId: string;
+    recipientDid: string;
+    commodity: string;
+    quantity: number;
+    unit: string;
+    priorCid?: string;
+    context_id: string;
+    context_type: string;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
