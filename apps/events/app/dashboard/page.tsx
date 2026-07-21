@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
-import { getSession } from '@imajin/auth';
+﻿import { redirect } from 'next/navigation';
+import { getSession , resolveActingDid } from '@imajin/auth';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq, desc } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
@@ -31,7 +31,7 @@ export default async function DashboardPage() {
     redirect(`${authUrl}/login?next=${encodeURIComponent(dashboardUrl)}`);
   }
 
-  const did = session.actingAs || session.id;
+  const did = resolveActingDid(session);
 
   // Resolve scope name for acting-as context
   let scopeLabel: string | null = null;

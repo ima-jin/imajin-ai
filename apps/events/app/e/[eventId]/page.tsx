@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { createLogger } from '@imajin/logger';
 
@@ -23,7 +23,7 @@ import { TicketsGate } from './tickets-gate';
 import { MagicLinkButton } from './magic-link-button';
 import { ReAuthBanner } from './re-auth-banner';
 import { ShareButton } from './share-button';
-import { getSession } from '@imajin/auth';
+import { getSession , resolveActingDid } from '@imajin/auth';
 import { MarkdownContent } from '@imajin/ui';
 import type { Metadata } from 'next';
 import { getLocationType } from '@/src/lib/location';
@@ -304,7 +304,7 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
   }
 
   const session = await getSession();
-  const did = session ? (session.actingAs || session.id) : null;
+  const did = session ? (resolveActingDid(session)) : null;
 
   // Issue #4: fetch canonical contact_email for the session DID
   const sessionContactEmail = did

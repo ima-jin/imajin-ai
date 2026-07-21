@@ -1,6 +1,5 @@
-import { cookies } from 'next/headers';
-import { getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { redirect } from 'next/navigation';
+import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import Link from 'next/link';
 import { and, eq, inArray } from 'drizzle-orm';
 import { attestations, attestationSignatures, db, identities } from '@/src/db';
@@ -14,23 +13,14 @@ const DOCUMENT_TYPES = ['document.created', 'document.amended'] as const;
 
 export default async function DocumentDetailPage({ params }: Readonly<PageProps>) {
   const { id } = await params;
-
-  const cookieConfig = getSessionCookieOptions();
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(cookieConfig.name)?.value;
-
-  let sessionDid: string | null = null;
-  if (sessionToken) {
-    const session = await verifySessionToken(sessionToken);
-    sessionDid = session?.sub ?? null;
-  }
+  const { sessionDid, effectiveDid } = await getEffectiveDid();
 
   if (!sessionDid) {
     redirect('/auth');
   }
 
-  const actingAs = cookieStore.get('x-acting-as')?.value || null;
-  const effectiveDid = actingAs || sessionDid;
+  // effectiveDid is non-null whenever sessionDid is non-null
+  const did = effectiveDid ?? sessionDid!;
 
   const [attestation] = await db
     .select()
@@ -50,13 +40,13 @@ export default async function DocumentDetailPage({ params }: Readonly<PageProps>
         .where(
           and(
             eq(attestationSignatures.attestationId, attestation.id),
-            eq(attestationSignatures.signerDid, effectiveDid)
+            eq(attestationSignatures.signerDid, did)
           )
         )
         .limit(1)
     : [];
 
-  const canAccess = !!attestation && (attestation.issuerDid === effectiveDid || !!mySignature);
+  const canAccess = !!attestation && (attestation.issuerDid === did || !!mySignature);
 
   if (!canAccess || !attestation) {
     return (
@@ -107,7 +97,7 @@ export default async function DocumentDetailPage({ params }: Readonly<PageProps>
       <DocumentSigningCard
         attestation={cardAttestation}
         signatures={signaturesWithIdentity}
-        sessionDid={effectiveDid}
+        sessionDid={did}
         defaultExpanded
       />
     </div>

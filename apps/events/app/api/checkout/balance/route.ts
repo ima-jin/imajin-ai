@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/checkout/balance
  *
  * Pays for tickets using the buyer's MJNx balance. Transfers funds from
@@ -8,7 +8,7 @@
 
 import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { db, events, eventInvites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { publish } from '@imajin/bus';
@@ -49,7 +49,7 @@ export const POST = withLogger('events', async (request, { log }) => {
     if ('error' in authResult) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
-    const buyerDid = authResult.identity.actingAs || authResult.identity.id;
+    const buyerDid = resolveActingDid(authResult.identity);
 
     const body: BalanceCheckoutRequest = await request.json();
 

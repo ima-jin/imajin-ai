@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, enrollments, lessonProgress, lessons, modules } from '@/db/schema';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and, asc } from 'drizzle-orm';
 
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   const courseResult = await db.select().from(courses).where(eq(courses.slug, slug)).limit(1);
   if (!courseResult[0]) return errorResponse('Course not found', 404);

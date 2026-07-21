@@ -1,6 +1,5 @@
-import { cookies } from 'next/headers';
-import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { db, identities, identityMembers, forestConfig } from '@/src/db';
+import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import { eq, and, isNull } from 'drizzle-orm';
 import IdentitySwitcher from './components/IdentitySwitcher';
 import IdentityDetail from './components/IdentityDetail';
@@ -9,22 +8,17 @@ import IdentityTabBar from './components/IdentityTabBar';
 import AuthLayoutShell from './components/AuthLayoutShell';
 
 export default async function AuthLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const cookieConfig = getSessionCookieOptions();
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(cookieConfig.name)?.value;
-
-  let sessionDid: string | null = null;
-  if (sessionToken) {
-    const session = await verifySessionToken(sessionToken);
-    sessionDid = session?.sub ?? null;
-  }
+  const { sessionDid, effectiveDid } = await getEffectiveDid();
 
   // Unauthenticated: just render children (login/register/onboard work normally)
   if (!sessionDid) {
     return <>{children}</>;
   }
 
-  // Fetch personal identity info for the switcher
+  // effectiveDid is non-null whenever sessionDid is non-null
+  const did = effectiveDid ?? sessionDid!;
+
+  // Fetch personal identity info for the switcher (always on raw session DID — never delegated)
   const [personalIdentity] = await db
     .select({ name: identities.name, handle: identities.handle })
     .from(identities)
@@ -34,15 +28,11 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
   const personalName = personalIdentity?.name ?? null;
   const personalHandle = personalIdentity?.handle ?? null;
 
-  // Effective DID: actingAs cookie OR personal DID
-  const actingAs = cookieStore.get('x-acting-as')?.value || null;
-  const effectiveDid = actingAs || sessionDid;
-
   // Check if Settings/Members tabs should show (non-actor scope + owner/admin role)
   const [effectiveIdentity] = await db
     .select({ scope: identities.scope })
     .from(identities)
-    .where(eq(identities.id, effectiveDid))
+    .where(eq(identities.id, did))
     .limit(1);
 
   let showSettings = false;
@@ -57,7 +47,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
     const [forestRow] = await db
       .select({ enabledServices: forestConfig.enabledServices, landingService: forestConfig.landingService })
       .from(forestConfig)
-      .where(eq(forestConfig.groupDid, effectiveDid))
+      .where(eq(forestConfig.groupDid, did))
       .limit(1);
     enabledServices = forestRow?.enabledServices ?? [];
     landingService = forestRow?.landingService ?? null;
@@ -67,7 +57,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
       .from(identityMembers)
       .where(
         and(
-          eq(identityMembers.identityDid, effectiveDid),
+          eq(identityMembers.identityDid, did),
           eq(identityMembers.memberDid, sessionDid),
           isNull(identityMembers.removedAt)
         )
@@ -98,7 +88,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
     </>
   );
 
-  const identityDetail = <IdentityDetail did={effectiveDid} sessionDid={sessionDid} />;
+  const identityDetail = <IdentityDetail did={did} sessionDid={sessionDid} />;
   const tabBar = (
     <IdentityTabBar
       showSettings={showSettings}

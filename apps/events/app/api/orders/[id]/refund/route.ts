@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/orders/[id]/refund
  *
  * Refunds an entire order atomically (organizer-only).
@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { db, tickets, orders, ticketTypes } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { publish } from '@imajin/bus';
@@ -34,7 +34,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
   const { id: orderId } = await params;
 
   try {

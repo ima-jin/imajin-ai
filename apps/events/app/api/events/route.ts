@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, events, ticketTypes } from '@/src/db';
-import { requireHardDID, requireAppAuth } from '@imajin/auth';
+import { requireHardDID, requireAppAuth, resolveActingDid, type Identity } from '@imajin/auth';
 import { corsHeaders } from '@imajin/config';
 import { getClient } from '@imajin/db';
 import { buildFairManifest } from '@imajin/fair';
@@ -18,7 +18,7 @@ const AUTH_URL = process.env.AUTH_SERVICE_URL!;
 export const POST = withLogger('events', async (request, { log, correlationId }) => {
   const cors = corsHeaders(request);
   let did: string;
-  let identity: { id: string; actingAs?: string | null };
+  let identity: Identity;
 
   // App auth path
   if (request.headers.get('x-app-did')) {
@@ -27,7 +27,7 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
     }
     did = appResult.appAuth.userDid;
-    identity = { id: did, actingAs: null };
+    identity = { id: did, scope: 'actor' };
   } else {
     // Require hard DID authentication
     const authResult = await requireHardDID(request);
@@ -35,7 +35,7 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
     identity = authResult.identity;
-    did = identity.actingAs || identity.id;
+    did = resolveActingDid(identity);
   }
 
   try {

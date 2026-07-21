@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/connect/onboard
  *
  * Create a Stripe Connect Express account for the authenticated DID
@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { db, connectedAccounts } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
@@ -58,7 +58,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     const stripe = getStripe();
-    const did = identity.actingAs || identity.id;
+    const did = resolveActingDid(identity);
 
     // Check if DID already has a connected account
     const existing = await db

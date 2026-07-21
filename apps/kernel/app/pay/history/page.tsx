@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
-import { getSession } from '@imajin/auth';
+﻿import { redirect } from 'next/navigation';
+import { getSession , resolveActingDid } from '@imajin/auth';
 import { buildPublicUrl } from '@imajin/config';
 import { db, transactions } from '@/src/db';
 import { eq, and, or, desc, gte, lte, inArray } from 'drizzle-orm';
@@ -40,7 +40,7 @@ export default async function HistoryPage({
     redirect(`${authUrl}/login?next=${encodeURIComponent(historyUrl)}`);
   }
 
-  const did = session.actingAs || session.id;
+  const did = resolveActingDid(session);
   const { service, currency, from, to } = searchParams;
   const page = Math.max(1, Number.parseInt(searchParams.page || '1'));
   const offset = (page - 1) * PAGE_SIZE;

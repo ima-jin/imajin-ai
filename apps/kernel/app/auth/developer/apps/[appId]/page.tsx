@@ -1,9 +1,8 @@
-import { cookies } from 'next/headers';
-import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { db, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
+import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import AppDetailClient from './components/AppDetailClient';
 
 export default async function AppDetailPage({
@@ -11,15 +10,7 @@ export default async function AppDetailPage({
 }: Readonly<{
   params: { appId: string };
 }>) {
-  const cookieConfig = getSessionCookieOptions();
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(cookieConfig.name)?.value;
-
-  let sessionDid: string | null = null;
-  if (sessionToken) {
-    const session = await verifySessionToken(sessionToken);
-    sessionDid = session?.sub ?? null;
-  }
+  const { sessionDid, effectiveDid } = await getEffectiveDid();
 
   if (!sessionDid) {
     redirect('/auth/login');
@@ -34,7 +25,9 @@ export default async function AppDetailPage({
     notFound();
   }
 
-  if (app.ownerDid !== sessionDid) {
+  // Ownership is scoped to the acting DID (x-acting-as), matching the list
+  // page and the ownerDid written at registration via resolveActingDid().
+  if (app.ownerDid !== effectiveDid) {
     redirect('/auth/developer/apps');
   }
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET /api/events/:id/tickets/:ticketId/registration-status
  *
  * Returns the authoritative registration status for a ticket from the DB.
@@ -8,7 +8,7 @@ import { createLogger } from '@imajin/logger';
 import { eq, and } from 'drizzle-orm';
 
 const log = createLogger('events');
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { db, tickets, ticketTypes } from '@/src/db';
 
@@ -22,7 +22,7 @@ export async function GET(
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
   const { id: eventId, ticketId } = await params;
 
   try {

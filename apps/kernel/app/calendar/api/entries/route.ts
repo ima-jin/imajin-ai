@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+﻿import { NextResponse } from 'next/server';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { db, calendarEntries } from '@/src/db';
 import { and, eq, gte, lte, gt, isNull, or, desc } from 'drizzle-orm';
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const did = auth.identity.actingAs || auth.identity.id;
+  const did = resolveActingDid(auth.identity);
   const url = new URL(request.url);
   const type = url.searchParams.get('type');
   const from = url.searchParams.get('from');
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const did = auth.identity.actingAs || auth.identity.id;
+  const did = resolveActingDid(auth.identity);
 
   let body: Record<string, unknown>;
   try {

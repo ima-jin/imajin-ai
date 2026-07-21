@@ -1,22 +1,13 @@
-import { cookies } from 'next/headers';
-import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { db, profiles, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 
 import Link from 'next/link';
 import { profilePath } from '@imajin/config';
 import Image from 'next/image';
+import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 
 export default async function AuthPage() {
-  const cookieConfig = getSessionCookieOptions();
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(cookieConfig.name)?.value;
-
-  let sessionDid: string | null = null;
-  if (sessionToken) {
-    const session = await verifySessionToken(sessionToken);
-    sessionDid = session?.sub ?? null;
-  }
+  const { sessionDid, effectiveDid } = await getEffectiveDid();
 
   if (!sessionDid) {
     return (
@@ -36,26 +27,25 @@ export default async function AuthPage() {
     );
   }
 
-  // Effective DID: actingAs cookie OR personal DID
-  const actingAs = cookieStore.get('x-acting-as')?.value || null;
-  const effectiveDid = actingAs || sessionDid;
+  // effectiveDid is non-null whenever sessionDid is non-null
+  const did = effectiveDid ?? sessionDid!;
 
   // Fetch profile + identity data
   const [[profile], [identityRow]] = await Promise.all([
     db
       .select()
       .from(profiles)
-      .where(eq(profiles.did, effectiveDid))
+      .where(eq(profiles.did, did))
       .limit(1),
     db
       .select({ handle: identities.handle })
       .from(identities)
-      .where(eq(identities.id, effectiveDid))
+      .where(eq(identities.id, did))
       .limit(1),
   ]);
 
   if (!profile) {
-    const editQuery = actingAs ? `?did=${encodeURIComponent(actingAs)}` : '';
+    const editQuery = did !== sessionDid ? `?did=${encodeURIComponent(did)}` : '';
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
         <p className="text-zinc-400 text-sm">No profile found for this identity.</p>
@@ -170,13 +160,13 @@ export default async function AuthPage() {
         {/* Actions */}
         <div className="flex items-center gap-3 pt-2 border-t border-zinc-800">
           <Link
-            href={`/profile/edit?did=${encodeURIComponent(effectiveDid)}`}
+          href={`/profile/edit?did=${encodeURIComponent(did)}`}
             className="inline-block px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-black text-sm font-semibold rounded-lg transition-colors"
           >
             Edit Profile
           </Link>
           <Link
-            href={profilePath(encodeURIComponent(profile.handle || identityRow?.handle || effectiveDid))}
+            href={profilePath(encodeURIComponent(profile.handle || identityRow?.handle || did))}
             className="inline-block px-4 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-semibold rounded-lg transition-colors"
           >
             View Public Profile

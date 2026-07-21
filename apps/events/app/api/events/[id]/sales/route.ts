@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET /api/events/[id]/sales
  *
  * Returns all sales (orders) for an event, joined with buyer identity info
@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
@@ -56,7 +56,7 @@ export async function GET(
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
   const { id: eventId } = await params;
 
   try {

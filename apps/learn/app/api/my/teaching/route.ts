@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, enrollments, modules, lessons } from '@/db/schema';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, sql, desc } from 'drizzle-orm';
 
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   const myCourses = await db.select()
     .from(courses)

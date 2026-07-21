@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('links');
 import { db, linkPages } from '@/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, isValidHandle, generateId, themePresets } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   try {
     const body = await request.json();

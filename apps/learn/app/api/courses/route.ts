@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, modules, lessons } from '@/db/schema';
-import { requireHardDID } from '@imajin/auth';
+import { requireHardDID , resolveActingDid } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { buildFairManifest } from '@imajin/fair';
 import { generateId, slugify, jsonResponse, errorResponse } from '@/lib/utils';
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
   const body = await request.json();
 
   const { title, description, slug, price, currency, visibility, imageUrl, imageAssetId, tags, metadata } = body;

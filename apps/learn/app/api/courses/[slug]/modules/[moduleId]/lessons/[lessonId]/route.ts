@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, lessons, enrollments } from '@/db/schema';
-import { requireHardDID, optionalAuth } from '@imajin/auth';
+import { requireHardDID, optionalAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and } from 'drizzle-orm';
 
@@ -66,7 +66,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const courseResult = await db.select().from(courses).where(eq(courses.slug, slug)).limit(1);
   if (!courseResult[0]) return errorResponse('Course not found', 404);
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
   if (courseResult[0].creatorDid !== did) return errorResponse('Not authorized', 403);
 
   const body = await request.json();
@@ -97,7 +97,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
   const courseResult = await db.select().from(courses).where(eq(courses.slug, slug)).limit(1);
   if (!courseResult[0]) return errorResponse('Course not found', 404);
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
   if (courseResult[0].creatorDid !== did) return errorResponse('Not authorized', 403);
 
   await db.delete(lessons).where(eq(lessons.id, lessonId));

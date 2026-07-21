@@ -1,5 +1,5 @@
-import { NextRequest } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+﻿import { NextRequest } from 'next/server';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { jsonResponse } from '@/lib/utils';
 
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     return jsonResponse({ did: null });
   }
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
 
   // If acting as a scope, resolve its display name
   let scopeLabel: string | null = null;

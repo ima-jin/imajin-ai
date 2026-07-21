@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { db, events, ticketTypes } from '@/src/db';
 import { isEventOrganizer } from '@/src/lib/organizer';
 
 const log = createLogger('events');
-import { requireAuth, getEmailForDid } from '@imajin/auth';
+import { requireAuth, getEmailForDid , resolveActingDid } from '@imajin/auth';
 import { eq, sql } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
@@ -33,7 +33,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
-  const did = identity.actingAs || identity.id;
+  const did = resolveActingDid(identity);
   const { id, ticketId } = await params;
 
   try {

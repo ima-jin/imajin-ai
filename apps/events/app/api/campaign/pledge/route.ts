@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/campaign/pledge
  *
  * Create a pledge for a campaign event.
@@ -18,7 +18,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { db, events, pledges } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
@@ -51,7 +51,7 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
     );
   }
 
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
 
   try {
     const body = await request.json();

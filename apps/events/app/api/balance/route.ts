@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET /api/balance
  *
  * Proxy route that fetches the authenticated buyer's MJNx balance from the
@@ -8,7 +8,7 @@
 
 import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 
@@ -18,7 +18,7 @@ export const GET = withLogger('events', async (request, { log }) => {
     if ('error' in authResult) {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
-    const buyerDid = authResult.identity.actingAs || authResult.identity.id;
+    const buyerDid = resolveActingDid(authResult.identity);
 
     const payRes = await fetch(
       `${PAY_SERVICE_URL}/pay/api/balance/${encodeURIComponent(buyerDid)}`,

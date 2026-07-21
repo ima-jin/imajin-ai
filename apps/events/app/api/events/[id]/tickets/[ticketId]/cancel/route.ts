@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/events/[id]/tickets/[ticketId]/cancel
  *
  * Cancels a held or available (unconfirmed) ticket.
@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and } from 'drizzle-orm';
 import { db, tickets } from '@/src/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { createLogger } from '@imajin/logger';
 
@@ -23,7 +23,7 @@ export async function POST(
   }
 
   const { identity } = authResult;
-  const actingDid = identity.actingAs || identity.id;
+  const actingDid = resolveActingDid(identity);
   const { id: eventId, ticketId } = await params;
 
   // Verify event ownership (creator or cohost)

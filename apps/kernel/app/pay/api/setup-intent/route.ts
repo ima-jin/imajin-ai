@@ -1,4 +1,4 @@
-/**
+﻿/**
  * POST /api/setup-intent
  *
  * Create a Stripe SetupIntent to save a payment method for later charging.
@@ -20,7 +20,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
@@ -51,7 +51,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     );
   }
 
-  const did = authResult.identity.actingAs || authResult.identity.id;
+  const did = resolveActingDid(authResult.identity);
 
   try {
     const body = await request.json();

@@ -1,8 +1,8 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('market');
 import { db, listings } from '@/db';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and, desc, asc, sql } from 'drizzle-orm';
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, Math.max(1, Number.parseInt(searchParams.get('limit') || '20', 10)));
     const offset = (page - 1) * limit;
 
-    const did = identity.actingAs || identity.id;
+    const did = resolveActingDid(identity);
     const conditions = [eq(listings.sellerDid, did)];
 
     if (status) {

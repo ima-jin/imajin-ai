@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
-import { getSession } from '@imajin/auth';
+﻿import { redirect } from 'next/navigation';
+import { getSession , resolveActingDid } from '@imajin/auth';
 import { buildPublicUrl } from '@imajin/config';
 import EventCreateForm from './form';
 
@@ -14,7 +14,7 @@ export default async function CreateEventPage() {
     redirect(`${authUrl}/login?next=${encodeURIComponent(createUrl)}`);
   }
 
-  const did = session.actingAs || session.id;
+  const did = resolveActingDid(session);
 
   return (
     <div className="min-h-screen">
