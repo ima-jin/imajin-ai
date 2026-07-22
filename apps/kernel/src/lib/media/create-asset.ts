@@ -3,7 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { nanoid } from "nanoid";
 import { eq, and, sql } from "drizzle-orm";
-import { db, assets, folders, assetFolders, type Asset } from "@/src/db";
+import { db, assets, assetFolders, type Asset } from "@/src/db";
+import { getOrCreateSystemFolder } from '@/src/lib/media/folders';
 import { hexToBytes } from "@imajin/auth";
 import { classifyAsset } from "@/src/lib/media/classify";
 import { createLogger } from "@imajin/logger";
@@ -169,32 +170,6 @@ async function findDedupTarget(cid: string, hash: string, ownerDid: string): Pro
     .limit(1);
 
   return existingByHash ?? null;
-}
-
-/** Resolve (get-or-create, race-safe) a system folder id for the given name. */
-async function getOrCreateSystemFolder(ownerDid: string, name: string, icon: string): Promise<string> {
-  const [existing] = await db
-    .select()
-    .from(folders)
-    .where(and(eq(folders.ownerDid, ownerDid), eq(folders.name, name), eq(folders.isSystem, true)))
-    .limit(1);
-  if (existing) return existing.id;
-
-  const folderId = `folder_${nanoid(16)}`;
-  const [inserted] = await db
-    .insert(folders)
-    .values({ id: folderId, ownerDid, name, icon, isSystem: true })
-    .onConflictDoNothing()
-    .returning();
-  if (inserted) return folderId;
-
-  // Lost the insert race — re-read.
-  const [retry] = await db
-    .select()
-    .from(folders)
-    .where(and(eq(folders.ownerDid, ownerDid), eq(folders.name, name), eq(folders.isSystem, true)))
-    .limit(1);
-  return retry?.id ?? folderId;
 }
 
 /** Auto-assign a freshly-created asset to a system folder based on context (non-fatal). */

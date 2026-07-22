@@ -20,7 +20,7 @@
  */
 
 /** How the connector ingests credentials. */
-export type IngestionPattern = 'oauth' | 'token-paste';
+export type IngestionPattern = 'oauth' | 'token-paste' | 'native';
 
 /** Release class from the #1196 consent 2×2. */
 export type ReleaseClass = 'silent' | 'on-consent' | 'never';
@@ -90,6 +90,42 @@ export interface ConnectorEntry {
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
+  {
+    id: 'mcp',
+    name: 'Claude / MCP',
+    description: 'Grant Claude Desktop access to your media, connections, and other Imajin capabilities.',
+    icon: '🤖',
+    ingestionPattern: 'native',
+    channel: 'mcp',
+    connectorDid: 'did:imajin:mcp-connector',
+    scopes: [
+      {
+        name: 'media:read',
+        label: 'Read your media assets',
+        releaseClass: 'silent',
+      },
+      {
+        name: 'media:write',
+        label: 'Create and update your media assets',
+        releaseClass: 'on-consent',
+      },
+      {
+        name: 'media:share',
+        label: "Grant or revoke other people's access to your assets",
+        releaseClass: 'on-consent',
+      },
+      {
+        name: 'connections:read',
+        label: 'Read your trust-graph connections',
+        releaseClass: 'silent',
+      },
+    ],
+    statusEndpoint: '/mcp/api/scope-manifest',
+    backendPending: false,
+    connectRoute: null,
+    configureRoute: null,
+    tokenRoute: null,
+  },
   {
     id: 'github',
     name: 'GitHub',

@@ -21,6 +21,7 @@ export type { Asset };
 import { createAsset } from '@/src/lib/media/create-asset';
 import { updateAssetContent } from '@/src/lib/media/update-asset';
 import { generateId } from '@/src/lib/kernel/id';
+import { addAssetToGrantsFolder } from '@/src/lib/media/folders';
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -254,6 +255,9 @@ export async function publishConnectorScopeManifest(opts: {
       .where(eq(assets.id, asset.id));
 
     assetId = asset.id;
+
+    // Route this manifest asset into the .grants system folder (#1394 child 4).
+    await addAssetToGrantsFolder(ownerDid, assetId);
   }
 
   await syncConnectorConsentGrants(ownerDid, connectorDid, assetId, scopes, isOnConsent);
