@@ -1,12 +1,15 @@
 'use client';
 
 /**
- * /auth/connectors — Connectors page (#1354).
+ * /auth/connectors — Connectors page (#1354 + #1397).
  *
- * Registry-driven: every connector in CONNECTOR_REGISTRY gets a card. Each
- * live connector drives the full three-step flow in-app (no URL knowledge
- * required). All on-consent scopes use grant-by-edit — checking a scope in
- * the UI writes the consent_grants row automatically.
+ * Registry-driven: every connector in CONNECTOR_REGISTRY gets a card.
+ * Class-aware dispatch (#1397):
+ *   ingestionPattern === 'native'      → NativeConnectorCard (scope toggles only)
+ *   ingestionPattern === 'oauth'       → per-connector OAuth card
+ *   ingestionPattern === 'token-paste' → per-connector token-paste card
+ * All on-consent scopes use grant-by-edit — toggling in the UI writes the
+ * consent_grants row automatically.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -41,6 +44,16 @@ interface QuickBooksStatus {
   validScopes: string[];
   configSealed: boolean;
   tokenSealed: boolean;
+}
+
+/**
+ * Native connector status — no credential booleans.
+ * The connector is credential-free; enabling it is purely scope toggles.
+ */
+interface NativeStatus {
+  manifestAssetId: string | null;
+  activeScopes: string[];
+  validScopes: string[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -835,6 +848,112 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
   );
 }
 
+// ── Native connector card (scope toggles only — no credential step) — #1397 ────────────────────
+
+/**
+ * Card for ingestionPattern === 'native' connectors (e.g. MCP / Claude Desktop).
+ *
+ * Native connectors need no credential — enabling one is purely toggling scopes.
+ * There is no configure step and no connect step. Scope toggles are always
+ * available (tokenSealed is effectively always true).
+ */
+function NativeConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+  const [status, setStatus] = useState<NativeStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [grantingScope, setGrantingScope] = useState<string | null>(null);
+  const [grantError, setGrantError] = useState<string | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    setStatusLoading(true);
+    setStatusError(null);
+    try {
+      const r = await fetch(entry.statusEndpoint!);
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      setStatus(await r.json() as NativeStatus);
+    } catch (err: unknown) {
+      setStatusError(String(err));
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [entry.statusEndpoint]);
+
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+
+  const activeSet = new Set(status?.activeScopes ?? []);
+  // Ready = at least one scope is active (no credential threshold for native connectors).
+  const hasAnyActive = activeSet.size > 0;
+
+  async function handleToggleScope(scopeName: string, enable: boolean) {
+    setGrantingScope(scopeName);
+    setGrantError(null);
+    try {
+      const current = new Set(status?.activeScopes ?? []);
+      if (enable) current.add(scopeName);
+      else current.delete(scopeName);
+      const r = await fetch(entry.statusEndpoint!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scopes: [...current] }),
+      });
+      const data = await r.json().catch(() => ({})) as { error?: string; activeScopes?: string[] };
+      if (!r.ok) throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      // Apply POST response directly — avoids a GET that would race the projection reactor.
+      if (Array.isArray(data.activeScopes)) {
+        setStatus(prev => prev ? { ...prev, activeScopes: data.activeScopes! } : prev);
+      }
+    } catch (err: unknown) {
+      setGrantError(String(err));
+    } finally {
+      setGrantingScope(null);
+    }
+  }
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">{entry.icon}</span>
+          <div>
+            <h2 className="text-lg font-semibold text-white">{entry.name}</h2>
+            <p className="text-sm text-gray-400">{entry.description}</p>
+          </div>
+        </div>
+        <ConnectorStatusBadge loading={statusLoading} error={!!statusError} ready={hasAnyActive} />
+      </div>
+
+      {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
+      {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
+
+      {!statusLoading && !statusError && status && (
+        <div className="space-y-4">
+          {/*
+           * Native connectors skip the configure + connect steps entirely.
+           * Scope toggles are always available — no credential is required.
+           */}
+          <ScopeGrantSection
+            entry={entry}
+            activeSet={activeSet}
+            stepNumber={1}
+            grantingScope={grantingScope}
+            grantError={grantError}
+            tokenSealed={true}
+            noTokenHint=""
+            onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
+          />
+
+          {status.manifestAssetId && (
+            <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
+              manifest: {status.manifestAssetId}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Pending connector card (no backend yet) ─────────────────────────────────────────────────────
 
 function PendingConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
@@ -868,12 +987,25 @@ function PendingConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
+/**
+ * Class-aware card dispatcher (#1397).
+ *
+ * Routing priority:
+ *   1. backendPending → PendingConnectorCard (no API calls)
+ *   2. ingestionPattern === 'native' → NativeConnectorCard (scope toggles only)
+ *   3. Per-connector OAuth / token-paste cards (id-keyed)
+ *   4. PendingConnectorCard fallback for unknown future connectors
+ *
+ * Adding a new native connector: set ingestionPattern: 'native' in the registry
+ * — no code change needed here.
+ * Adding a new OAuth/token-paste connector: add an id branch below.
+ */
 function ConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   if (entry.backendPending) return <PendingConnectorCard entry={entry} />;
+  if (entry.ingestionPattern === 'native') return <NativeConnectorCard entry={entry} />;
   if (entry.id === 'github') return <GitHubConnectorCard entry={entry} />;
   if (entry.id === 'discord') return <DiscordConnectorCard entry={entry} />;
   if (entry.id === 'quickbooks') return <QuickBooksConnectorCard entry={entry} />;
-  // Future connectors: add a card component per id, then remove backendPending.
   return <PendingConnectorCard entry={entry} />;
 }
 
