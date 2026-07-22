@@ -1,17 +1,96 @@
-﻿import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { sealMock, loadMock, whereMock, publishMock } = vi.hoisted(() => ({
+/**
+ * Hoisted mocks — evaluated before any module imports.
+ *
+ * Mock architecture:
+ *   whereMock          — terminal for channelLinks select().from().where() (grant check)
+ *   proposalLimitMock  — terminal for proposals select().from().where().limit() (live grant rows)
+ *   proposalCountMock  — terminal for proposals select({count}).from().where() (rate-limit count)
+ *   proposalInsertMock — terminal for proposals insert().values() (insert pending/done row)
+ *   proposalUpdateMock — terminal for proposals update().set().where() (mark done)
+ */
+const {
+  sealMock, loadMock, publishMock,
+  whereMock,
+  proposalLimitMock,
+  proposalCountMock,
+  proposalInsertMock,
+  proposalUpdateMock,
+} = vi.hoisted(() => ({
   sealMock: vi.fn(),
   loadMock: vi.fn(),
-  whereMock: vi.fn(),
   publishMock: vi.fn(),
+  whereMock: vi.fn(),           // channelLinks grant check
+  proposalLimitMock: vi.fn(),   // proposals select().where().limit()
+  proposalCountMock: vi.fn(),   // proposals select({count}).where()
+  proposalInsertMock: vi.fn(),  // proposals insert().values()
+  proposalUpdateMock: vi.fn(),  // proposals update().set().where()
 }));
 
-vi.mock('@/src/lib/vault', () => ({ sealAndStore: sealMock, loadAndUnseal: loadMock }));
-vi.mock('@/src/db', () => ({
-  db: { select: () => ({ from: () => ({ where: whereMock }) }) },
-  channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
+vi.mock('nanoid', () => ({ nanoid: () => 'test-id-0001' }));
+// drizzle-orm is an ESM package; mock the query-builder helpers the connector uses.
+// The mock DB ignores all conditions, so these just need to be callable.
+vi.mock('drizzle-orm', () => ({
+  and: (...args: unknown[]) => args,
+  eq: (col: unknown, val: unknown) => ({ col, val }),
+  gt: (col: unknown, val: unknown) => ({ col, val }),
+  sql: Object.assign(
+    (strings: TemplateStringsArray, ...values: unknown[]) => ({ raw: strings.join('?'), values }),
+    { mapWith: (fn: unknown) => fn },
+  ),
 }));
+vi.mock('@/src/lib/vault', () => ({ sealAndStore: sealMock, loadAndUnseal: loadMock }));
+
+/**
+ * @/src/db mock — routes select().from(table) to the correct terminal mock
+ * based on which table is passed and whether a projection was provided.
+ *
+ * channelLinks queries   → whereMock (terminal)
+ * proposals row queries  → proposalLimitMock (via .where().limit())
+ * proposals count queries → proposalCountMock (terminal at .where())
+ */
+vi.mock('@/src/db', () => {
+  const channelLinks = {
+    channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes',
+  };
+  const githubActionProposals = {
+    id: 'id', ownerDid: 'owner_did', agentDid: 'agent_did',
+    scope: 'scope', tool: 'tool', riskTier: 'risk_tier',
+    target: 'target', argsSummary: 'args_summary',
+    status: 'status', approvedUntil: 'approved_until',
+    ownerAuthorization: 'owner_authorization',
+    createdAt: 'created_at', updatedAt: 'updated_at',
+  };
+
+  // Closure state: updated synchronously in select() before from() is called.
+  let _isCountQuery = false;
+
+  return {
+    db: {
+      select: (proj?: Record<string, unknown>) => {
+        _isCountQuery = proj !== undefined && 'count' in proj;
+        return {
+          from: (table: unknown) => {
+            if (table === channelLinks) {
+              return { where: whereMock };
+            }
+            // githubActionProposals
+            if (_isCountQuery) {
+              return { where: proposalCountMock };
+            }
+            return { where: () => ({ limit: proposalLimitMock }) };
+          },
+        };
+      },
+      insert: () => ({ values: proposalInsertMock }),
+      update: () => ({ set: () => ({ where: proposalUpdateMock }) }),
+    },
+    channelLinks,
+    githubActionProposals,
+  };
+});
+
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
 
 import {
@@ -21,6 +100,7 @@ import {
   createComment,
   listIssues,
   getIssue,
+  updateIssue,
   vaultField,
   oauthVaultField,
   configField,
@@ -90,6 +170,15 @@ beforeEach(() => {
   whereMock.mockReset();
   publishMock.mockReset();
   publishMock.mockResolvedValue(undefined);
+  // Proposal mocks — default: no live grant, zero done writes, operations succeed.
+  proposalLimitMock.mockReset();
+  proposalLimitMock.mockResolvedValue([]);
+  proposalCountMock.mockReset();
+  proposalCountMock.mockResolvedValue([{ count: 0 }]);
+  proposalInsertMock.mockReset();
+  proposalInsertMock.mockResolvedValue([]);
+  proposalUpdateMock.mockReset();
+  proposalUpdateMock.mockResolvedValue([]);
   vi.stubGlobal('fetch', vi.fn());
 });
 
@@ -492,5 +581,170 @@ describe('OAuth credential preference (#1333)', () => {
     expect((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
     const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toBe(`https://api.github.com/repos/${REPO}/issues/42`);
+  });
+});
+
+// ── updateIssue: confirm rail (#1366) ───────────────────────────────────────────────
+
+describe('updateIssue confirm rail (#1366)', () => {
+  // Helper: put a live approved row for 'mutate' risk tier in the mock.
+  function liveApprovalGrant(overrides: { approvedUntil?: Date | null } = {}) {
+    proposalLimitMock.mockResolvedValue([{
+      id: 'proposal_approved',
+      ownerDid: OWNER,
+      status: 'approved',
+      riskTier: 'mutate',
+      approvedUntil: overrides.approvedUntil !== undefined ? overrides.approvedUntil : null,
+    }]);
+  }
+
+  it('fails closed on no channel_links grant — throws github_no_grant, never reaches the confirm gate', async () => {
+    noGrant();
+    await expect(updateIssue(OWNER, REPO, 42, { state: 'closed' }))
+      .rejects.toThrow(/github_no_grant/);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(proposalInsertMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on missing credential — throws github_no_credential, confirm gate never reached', async () => {
+    grant(['github:write']);
+    loadMock.mockResolvedValue(undefined);
+    await expect(updateIssue(OWNER, REPO, 42, { state: 'closed' }))
+      .rejects.toThrow(/github_no_credential/);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(proposalInsertMock).not.toHaveBeenCalled();
+  });
+
+  it('no live approval grant → returns pending + publishes action.proposed + never calls the API', async () => {
+    grant(['github:write']);
+    // Default: proposalLimitMock returns [] (no live grant), proposalCountMock returns [{count:0}].
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('pending');
+    expect(fetch).not.toHaveBeenCalled();
+
+    // A pending proposal was inserted.
+    expect(proposalInsertMock).toHaveBeenCalledOnce();
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(insertedRow.ownerDid).toBe(OWNER);
+    expect(insertedRow.tool).toBe('github_update_issue');
+    expect(insertedRow.riskTier).toBe('mutate');
+    expect(insertedRow.status).toBe('pending');
+    expect(insertedRow.id).toMatch(/^proposal_/);
+
+    // action.proposed was published.
+    const proposedCall = publishMock.mock.calls.find(([type]) => type === 'action.proposed');
+    expect(proposedCall).toBeDefined();
+    expect(proposedCall![1].payload.proposalId).toBe(insertedRow.id);
+    expect(proposedCall![1].payload.tool).toBe('github_update_issue');
+    expect(proposedCall![1].payload.riskTier).toBe('mutate');
+
+    // The returned pending result carries the proposalId.
+    if (result.status === 'pending') {
+      expect(result.proposalId).toBe(insertedRow.id);
+    }
+  });
+
+  it('single-call live grant → executes PATCH, marks proposal done, publishes action.done', async () => {
+    grant(['github:write']);
+    liveApprovalGrant({ approvedUntil: null }); // single-call (approvedUntil IS NULL)
+    const UPDATED_ISSUE = { ...MOCK_ISSUE, state: 'closed', updated_at: '2026-07-22T00:00:00.000Z' };
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => UPDATED_ISSUE,
+    });
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('done');
+    if (result.status === 'done') {
+      expect(result.data.state).toBe('closed');
+    }
+
+    // PATCH was sent to the correct URL.
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe(`https://api.github.com/repos/${REPO}/issues/42`);
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body as string)).toMatchObject({ state: 'closed' });
+
+    // Single-call: proposal updated to 'done' via update mock.
+    expect(proposalUpdateMock).toHaveBeenCalledOnce();
+
+    // action.done was published.
+    const doneCall = publishMock.mock.calls.find(([type]) => type === 'action.done');
+    expect(doneCall).toBeDefined();
+    expect(doneCall![1].payload.tool).toBe('github_update_issue');
+  });
+
+  it('windowed live grant → executes PATCH, inserts done row for rate counting, does not mark original proposal done', async () => {
+    grant(['github:write']);
+    liveApprovalGrant({ approvedUntil: new Date(Date.now() + 5 * 60 * 1000) }); // windowed 5m
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('done');
+
+    // Windowed: a 'done' row was inserted for rate accounting.
+    expect(proposalInsertMock).toHaveBeenCalledOnce();
+    const insertedDone = proposalInsertMock.mock.calls[0][0];
+    expect(insertedDone.status).toBe('done');
+
+    // The original approved row was NOT updated (windowed stays active).
+    expect(proposalUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('global write ceiling exceeded → re-proposes even inside a live windowed grant', async () => {
+    grant(['github:write']);
+    liveApprovalGrant({ approvedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) }); // live 24h window
+    // Ceiling: 30 done writes in the last hour.
+    proposalCountMock.mockResolvedValue([{ count: 30 }]);
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    // Still pending despite the live window.
+    expect(result.status).toBe('pending');
+    expect(fetch).not.toHaveBeenCalled();
+
+    // A new pending proposal was inserted with the RATE_LIMIT annotation.
+    expect(proposalInsertMock).toHaveBeenCalledOnce();
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(insertedRow.argsSummary).toContain('[RATE_LIMIT]');
+    expect(insertedRow.status).toBe('pending');
+
+    // action.proposed was still published (for dashboard surfacing).
+    const proposedCall = publishMock.mock.calls.find(([type]) => type === 'action.proposed');
+    expect(proposedCall).toBeDefined();
+    expect(proposedCall![1].payload.argsSummary).toContain('[RATE_LIMIT]');
+  });
+
+  it('updateIssue requires at least one field to update', async () => {
+    grant(['github:write']);
+    // The MCP tool enforces this; the connector accepts an empty object but the
+    // tool handler would have thrown first. Test that the gate runs fine with an
+    // empty patchBody if called directly (no API field sent).
+    // This test validates updateIssue still calls the confirm gate, not the API shape.
+    const result = await updateIssue(OWNER, REPO, 42, {});
+    // No live grant → pending.
+    expect(result.status).toBe('pending');
+  });
+
+  it('does not echo the bearer token in the updateIssue return value', async () => {
+    grant(['github:write']);
+    liveApprovalGrant({ approvedUntil: null });
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_ISSUE,
+    });
+
+    const result = await updateIssue(OWNER, REPO, 42, { title: 'new title' });
+
+    expect(result.status).toBe('done');
+    // The result carries the GitHub API response — it must not contain the PAT.
+    expect(JSON.stringify(result)).not.toContain(PAT);
   });
 });

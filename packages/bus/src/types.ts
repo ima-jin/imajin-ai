@@ -684,6 +684,58 @@ export interface BusEventMap {
     status: string;
     date: string;
   };
+  /**
+   * Emitted by requireMutateGate() when a mutating tool has no live approval
+   * grant and must wait for human authorization (#1366).
+   * issuer = ownerDid, subject = ownerDid, scope = 'github'.
+   */
+  'action.proposed': {
+    proposalId: string;
+    ownerDid: string;
+    /** DID of the acting agent, if different from the owner */
+    agentDid?: string;
+    /** Connector scope, e.g. 'github:write' */
+    scope: string;
+    /** Tool name, e.g. 'github_update_issue' */
+    tool: string;
+    /** 'append' | 'mutate' */
+    riskTier: string;
+    /** Human-readable write target, e.g. 'owner/repo#42' */
+    target: string;
+    /** Human-readable args summary */
+    argsSummary: string;
+    context_id: string;
+    context_type: 'github';
+  };
+  /**
+   * Emitted when the human approves a pending proposal via the confirm endpoint
+   * (#1366). The ownerAuthorization is the signed record.
+   * issuer = ownerDid, subject = ownerDid, scope = 'github'.
+   */
+  'action.approved': {
+    proposalId: string;
+    ownerDid: string;
+    tool: string;
+    target: string;
+    /** ISO 8601 string, or null for single-call approvals */
+    approvedUntil: string | null;
+    ownerAuthorization: Record<string, unknown>;
+    context_id: string;
+    context_type: 'github';
+  };
+  /**
+   * Emitted after a write action executes successfully under an approved grant
+   * (#1366). Non-fatal bus publish.
+   * issuer = ownerDid, subject = ownerDid, scope = 'github'.
+   */
+  'action.done': {
+    proposalId: string;
+    ownerDid: string;
+    tool: string;
+    target: string;
+    context_id: string;
+    context_type: 'github';
+  };
   /** Emitted after a GitHub issue is created on behalf of a DID (#1228). Non-fatal. */
   'github.issue.created': {
     ownerDid: string;
