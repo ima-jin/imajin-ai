@@ -114,6 +114,10 @@ const { mockCreate, mockUpdate } = vi.hoisted(() => ({
 }));
 vi.mock('@/src/lib/media/create-asset', () => ({ createAsset: mockCreate }));
 vi.mock('@/src/lib/media/update-asset', () => ({ updateAssetContent: mockUpdate }));
+vi.mock('@/src/lib/media/folders', () => ({
+  addAssetToGrantsFolder: vi.fn().mockResolvedValue(undefined),
+  getOrCreateSystemFolder: vi.fn().mockResolvedValue('folder_test'),
+}));
 
 import {
   buildConnectorManifestContent,
