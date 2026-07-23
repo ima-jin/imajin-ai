@@ -30,7 +30,10 @@ vi.mock('@imajin/logger', () => ({
   createLogger: vi.fn(() => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() })),
 }));
 
-vi.mock('@/src/lib/auth/document-signing-payload', () => ({
+vi.mock('@/src/lib/auth/document-signing-payload', async (importOriginal) => ({
+  // Keep the real, deterministic builder the test uses to construct payloads;
+  // only the parser is stubbed so the route's parse step is controllable.
+  ...(await importOriginal<typeof import('../document-signing-payload')>()),
   parseDocumentSigningPayload: mocks.parseDocumentSigningPayloadMock,
 }));
 
