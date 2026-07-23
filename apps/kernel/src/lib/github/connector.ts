@@ -1,5 +1,5 @@
 /**
- * GitHub connector backend library (#1228, Stage B2; OAuth2 #1333; confirm rail #1366).
+ * GitHub connector backend library (#1228, Stage B2; OAuth2 #1333; confirm rail #1366, #1370).
  *
  * Connects a human DID's GitHub account (OAuth2 or PAT fallback) to the
  * GitHub REST API, gated by an active `auth.channel_links` row. The OAuth2
@@ -7,18 +7,24 @@
  * details live here: the repo scope, body-param token auth, optional-expiry
  * token shape, PAT fallback, and issue/comment bus events.
  *
- * ── Confirm rail (#1366) ────────────────────────────────────────────────────
- * All mutating writes (risk_tier='mutate') go through `requireMutateGate()`
- * AFTER the existing `requireGrantAndToken()` credential check.
+ * ── Confirm rail + append/mutate tiering (#1366, #1370) ────────────────────────
+ * All writes go through `requireWriteGate()` (via tier-specific wrappers) AFTER
+ * `requireGrantAndToken()`. The gate is parameterised by `risk`:
  *
- * requireMutateGate() returns:
+ *   'append'  — additive / reversible (create_issue, create_comment).
+ *              Proceed under a live append window; propose on no window.
+ *   'mutate'  — alters existing state (update_issue / close / reopen).
+ *              Always propose unless covered by a live mutate window.
+ *              A live append window does NOT satisfy a mutate write.
+ *
+ * requireWriteGate() returns:
  *   { status: 'approved', token, singleProposalId }  — proceed with the write
  *   { status: 'pending', proposalId }                — human must approve first
  *
  * The gate is fail-closed:
  *   1. requireGrantAndToken() still throws on no grant / no credential.
  *   2. If no live approval row exists → insert pending proposal, emit
- *      action.proposed, return pending (does NOT throw; caller surfaces to agent).
+ *      action.proposed, return pending (never throws; caller surfaces to agent).
  *   3. Global write ceiling exceeded even inside a live window → re-propose.
  *
  * Security invariants:
@@ -153,23 +159,24 @@ async function requireGrantAndToken(ownerDid: string, scope: string): Promise<st
   return pat;
 }
 
-// ── Confirm rail (#1366) ─────────────────────────────────────────────────────────
+// ── Confirm rail + append/mutate tiering (#1366, #1370) ──────────────────────────
 
 /**
- * Result type for mutate-tier write operations.
+ * Shared result type for both append- and mutate-tier write gates.
  *
- * - `approved`: the write may proceed; `token` is the bearer token;
- *   `singleProposalId` is non-null only for single-call approvals and must be
- *   marked 'done' after the API call succeeds.
- * - `pending`: no live approval grant exists; the proposal has been recorded
- *   and action.proposed published. The caller must surface this to the agent.
+ * - `approved`: write may proceed; `token` is the bearer token;
+ *   `singleProposalId` is non-null only for single-call approvals (mark done after write).
+ * - `pending`: no live approval grant; proposal recorded, action.proposed published.
  */
-export type MutateGateResult =
+export type WriteGateResult =
   | { status: 'approved'; token: string; singleProposalId: string | null }
   | { status: 'pending'; proposalId: string };
 
+/** Alias kept for backward compatibility with existing call sites. */
+export type MutateGateResult = WriteGateResult;
+
 /**
- * The discriminated-union result returned from mutate write operations.
+ * The discriminated-union result returned from all write operations.
  * The MCP tool handler checks `status` before building its response.
  */
 export type GitHubWriteResult<T> =
@@ -197,7 +204,7 @@ async function insertDoneRow(
   ownerDid: string,
   scope: string,
   tool: string,
-  riskTier: string,
+  riskTier: 'append' | 'mutate',
   target: string,
   argsSummary: string,
   agentDid?: string,
@@ -218,29 +225,28 @@ async function insertDoneRow(
 }
 
 /**
- * The mutate-tier confirm gate. Called by all write operations with
- * risk_tier='mutate' AFTER requireGrantAndToken() has resolved the credential.
+ * Shared write gate used by both append- and mutate-tier operations.
+ * NEVER throws for the pending case — it is a valid expected outcome.
  *
  * Flow:
- * 1. Look for a live 'approved' row (status=approved + not expired).
+ * 1. Look for a live 'approved' row matching ownerDid + scope + riskTier.
+ *    An append-approved row does NOT satisfy a mutate lookup, and vice versa.
  * 2. Check the global write ceiling — enforced even inside a live window.
  * 3a. Ceiling ok + live grant:  return approved (insert done row if windowed).
  * 3b. No live grant OR ceiling exceeded:  insert pending proposal, publish
- *     action.proposed, return pending.
- *
- * This function NEVER throws for the pending case — it is a valid expected
- * outcome. Callers must check result.status before proceeding.
+ *     action.proposed with the correct risk field, return pending.
  */
-export async function requireMutateGate(
+async function requireWriteGate(
   ownerDid: string,
   scope: string,
   tool: string,
+  risk: 'append' | 'mutate',
   target: string,
   argsSummary: string,
   token: string,
   agentDid?: string,
-): Promise<MutateGateResult> {
-  // ── 1. Look for a live approval grant ────────────────────────────────────
+): Promise<WriteGateResult> {
+  // ── 1. Look for a live approval grant for this exact risk tier ────────────
   const now = new Date();
   const liveGrants = await db
     .select()
@@ -249,14 +255,15 @@ export async function requireMutateGate(
       and(
         eq(githubActionProposals.ownerDid, ownerDid),
         eq(githubActionProposals.scope, scope),
-        eq(githubActionProposals.riskTier, 'mutate'),
+        eq(githubActionProposals.riskTier, risk),
         eq(githubActionProposals.status, 'approved'),
       ),
     )
     .limit(1);
 
   const liveGrant = liveGrants[0];
-  const isLive = liveGrant !== undefined &&
+  const isLive =
+    liveGrant !== undefined &&
     (liveGrant.approvedUntil === null || liveGrant.approvedUntil > now);
 
   // ── 2. Global write ceiling check ────────────────────────────────────────
@@ -267,7 +274,7 @@ export async function requireMutateGate(
     // ── 3a. Approved path ─────────────────────────────────────────────────
     if (liveGrant!.approvedUntil !== null) {
       // Windowed: insert a done row for rate counting; leave the grant active.
-      await insertDoneRow(ownerDid, scope, tool, 'mutate', target, argsSummary, agentDid);
+      await insertDoneRow(ownerDid, scope, tool, risk, target, argsSummary, agentDid);
       return { status: 'approved', token, singleProposalId: null };
     }
     // Single-call: the grant row itself becomes 'done' after the write.
@@ -276,17 +283,16 @@ export async function requireMutateGate(
 
   // ── 3b. Pending path: insert proposal + emit action.proposed ─────────────
   const proposalId = `proposal_${nanoid()}`;
+  const effectiveSummary = ceilingExceeded ? `[RATE_LIMIT] ${argsSummary}` : argsSummary;
   await db.insert(githubActionProposals).values({
     id: proposalId,
     ownerDid,
     agentDid: agentDid ?? null,
     scope,
     tool,
-    riskTier: 'mutate',
+    riskTier: risk,
     target,
-    argsSummary: ceilingExceeded
-      ? `[RATE_LIMIT] ${argsSummary}`
-      : argsSummary,
+    argsSummary: effectiveSummary,
     status: 'pending',
   });
 
@@ -301,23 +307,55 @@ export async function requireMutateGate(
         agentDid,
         scope,
         tool,
-        riskTier: 'mutate',
+        risk,
         target,
-        argsSummary: ceilingExceeded ? `[RATE_LIMIT] ${argsSummary}` : argsSummary,
+        argsSummary: effectiveSummary,
         context_id: proposalId,
         context_type: 'github' as const,
       },
     });
   } catch (err) {
-    log.error({ err: String(err), proposalId, tool }, 'action.proposed publish failed (non-fatal)');
+    log.error({ err: String(err), proposalId, tool, risk }, 'action.proposed publish failed (non-fatal)');
   }
 
   const reason = ceilingExceeded
     ? `Global write ceiling (${GLOBAL_WRITE_CEILING_PER_HOUR}/hr) exceeded — re-raised to human even inside active window`
-    : 'No live approval grant — human confirmation required';
-  log.info({ proposalId, ownerDid, tool, target, ceilingExceeded }, reason);
+    : `No live ${risk}-tier approval grant — human confirmation required`;
+  log.info({ proposalId, ownerDid, tool, target, risk, ceilingExceeded }, reason);
 
   return { status: 'pending', proposalId };
+}
+
+/**
+ * Public wrapper: confirm gate for append-tier writes (create_issue, create_comment).
+ * Queries only for risk_tier='append' — a live mutate window does NOT satisfy this.
+ */
+export async function requireAppendGate(
+  ownerDid: string,
+  scope: string,
+  tool: string,
+  target: string,
+  argsSummary: string,
+  token: string,
+  agentDid?: string,
+): Promise<WriteGateResult> {
+  return requireWriteGate(ownerDid, scope, tool, 'append', target, argsSummary, token, agentDid);
+}
+
+/**
+ * Public wrapper: confirm gate for mutate-tier writes (update_issue / close / reopen).
+ * Queries only for risk_tier='mutate' — a live append window does NOT satisfy this.
+ */
+export async function requireMutateGate(
+  ownerDid: string,
+  scope: string,
+  tool: string,
+  target: string,
+  argsSummary: string,
+  token: string,
+  agentDid?: string,
+): Promise<WriteGateResult> {
+  return requireWriteGate(ownerDid, scope, tool, 'mutate', target, argsSummary, token, agentDid);
 }
 
 /**
@@ -420,26 +458,52 @@ export interface GitHubComment {
 }
 
 /**
- * Create a GitHub issue on behalf of ownerDid.
+ * Create a GitHub issue on behalf of ownerDid (append tier — confirm rail required).
  *
- * Gates: active `github:write` channel_links row + sealed PAT.
- * Attribution: publishes `github.issue.created` bus event (non-fatal).
+ * Gates:
+ *  1. active `github:write` channel_links row + sealed credential (fail-closed, throws).
+ *  2. requireAppendGate() confirm rail (fail-pending on no live append-approval).
+ *
+ * Returns GitHubWriteResult<GitHubIssue>:
+ *  - { status: 'done', data }    — write executed; action.done emitted.
+ *  - { status: 'pending', ... }  — proposal recorded; action.proposed emitted.
  */
 export async function createIssue(
   ownerDid: string,
   repo: string,
   title: string,
   body: string,
-): Promise<GitHubIssue> {
+): Promise<GitHubWriteResult<GitHubIssue>> {
+  // Step 1: credential gate (fail-closed — throws on no grant / no credential).
   const token = await requireGrantAndToken(ownerDid, 'github:write');
 
+  const target = repo;
+  const argsSummary = `create_issue ${repo}: "${title.slice(0, 80)}"`;
+
+  // Step 2: append confirm gate.
+  const gate = await requireAppendGate(
+    ownerDid, 'github:write', 'github_create_issue', target, argsSummary, token,
+  );
+
+  if (gate.status === 'pending') {
+    return {
+      status: 'pending',
+      proposalId: gate.proposalId,
+      message:
+        `Action proposed (proposalId: ${gate.proposalId}). ` +
+        `Approve at /github/api/confirm/${gate.proposalId} then retry this tool call.`,
+    };
+  }
+
+  // Step 3: execute the write.
   const data = await callGitHubApi({
     method: 'POST',
     path: `/repos/${repo}/issues`,
-    token,
+    token: gate.token,
     body: { title, body },
   }) as GitHubIssue;
 
+  // Step 4: attribution bus event (non-fatal).
   try {
     await bus.publish('github.issue.created', {
       issuer: ownerDid,
@@ -458,30 +522,79 @@ export async function createIssue(
     log.error({ err: String(err), repo, issueNumber: data.number }, 'github.issue.created publish failed (non-fatal)');
   }
 
-  return data;
+  // Step 5: close out the proposal lifecycle.
+  if (gate.singleProposalId !== null) {
+    await markProposalDone(gate.singleProposalId, ownerDid, 'github_create_issue', target);
+  } else {
+    try {
+      await bus.publish('action.done', {
+        issuer: ownerDid,
+        subject: ownerDid,
+        scope: 'github',
+        payload: {
+          proposalId: 'windowed',
+          ownerDid,
+          tool: 'github_create_issue',
+          target,
+          context_id: target,
+          context_type: 'github' as const,
+        },
+      });
+    } catch (err) {
+      log.error({ err: String(err), target }, 'action.done (windowed) publish failed (non-fatal)');
+    }
+  }
+
+  return { status: 'done', data };
 }
 
 /**
- * Create a GitHub issue comment on behalf of ownerDid.
+ * Create a GitHub issue comment on behalf of ownerDid (append tier — confirm rail required).
  *
- * Gates: active `github:write` channel_links row + sealed PAT.
- * Attribution: publishes `github.comment.created` bus event (non-fatal).
+ * Gates:
+ *  1. active `github:write` channel_links row + sealed credential (fail-closed, throws).
+ *  2. requireAppendGate() confirm rail (fail-pending on no live append-approval).
+ *
+ * Returns GitHubWriteResult<GitHubComment>:
+ *  - { status: 'done', data }    — write executed; action.done emitted.
+ *  - { status: 'pending', ... }  — proposal recorded; action.proposed emitted.
  */
 export async function createComment(
   ownerDid: string,
   repo: string,
   issueNumber: number,
   body: string,
-): Promise<GitHubComment> {
+): Promise<GitHubWriteResult<GitHubComment>> {
+  // Step 1: credential gate (fail-closed — throws on no grant / no credential).
   const token = await requireGrantAndToken(ownerDid, 'github:write');
 
+  const target = `${repo}#${issueNumber}`;
+  const argsSummary = `create_comment ${target}: "${body.slice(0, 60)}"`;
+
+  // Step 2: append confirm gate.
+  const gate = await requireAppendGate(
+    ownerDid, 'github:write', 'github_create_comment', target, argsSummary, token,
+  );
+
+  if (gate.status === 'pending') {
+    return {
+      status: 'pending',
+      proposalId: gate.proposalId,
+      message:
+        `Action proposed (proposalId: ${gate.proposalId}). ` +
+        `Approve at /github/api/confirm/${gate.proposalId} then retry this tool call.`,
+    };
+  }
+
+  // Step 3: execute the write.
   const data = await callGitHubApi({
     method: 'POST',
     path: `/repos/${repo}/issues/${issueNumber}/comments`,
-    token,
+    token: gate.token,
     body: { body },
   }) as GitHubComment;
 
+  // Step 4: attribution bus event (non-fatal).
   try {
     await bus.publish('github.comment.created', {
       issuer: ownerDid,
@@ -501,7 +614,30 @@ export async function createComment(
     log.error({ err: String(err), repo, issueNumber, commentId: data.id }, 'github.comment.created publish failed (non-fatal)');
   }
 
-  return data;
+  // Step 5: close out the proposal lifecycle.
+  if (gate.singleProposalId !== null) {
+    await markProposalDone(gate.singleProposalId, ownerDid, 'github_create_comment', target);
+  } else {
+    try {
+      await bus.publish('action.done', {
+        issuer: ownerDid,
+        subject: ownerDid,
+        scope: 'github',
+        payload: {
+          proposalId: 'windowed',
+          ownerDid,
+          tool: 'github_create_comment',
+          target,
+          context_id: target,
+          context_type: 'github' as const,
+        },
+      });
+    } catch (err) {
+      log.error({ err: String(err), target }, 'action.done (windowed) publish failed (non-fatal)');
+    }
+  }
+
+  return { status: 'done', data };
 }
 
 /**
@@ -560,8 +696,8 @@ export interface GitHubUpdateIssueParams {
  *  - { status: 'pending', ... }  — proposal recorded; action.proposed emitted.
  *                                  The MCP tool must surface this to the agent.
  *
- * Append-tier rate limiting (#1366 child-4) will hook here once createIssue / createComment
- * are wired through the confirm rail.
+ * Both append-tier tools (createIssue / createComment) are now gated via requireAppendGate().
+ * Per-tool sub-limits (#1371) will hook into countDoneProposals with a tool filter.
  */
 export async function updateIssue(
   ownerDid: string,
