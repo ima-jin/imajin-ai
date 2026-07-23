@@ -78,6 +78,11 @@ vi.mock('@/src/lib/media/blob-store-lore', () => ({
 }));
 
 const mockDeriveArticleProjection = vi.hoisted(() => vi.fn());
+vi.mock('@/src/lib/media/folders', () => ({
+  getOrCreateSystemFolder: vi.fn().mockResolvedValue('folder_test'),
+  addAssetToGrantsFolder: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('@/src/lib/media/article-core', () => ({
   deriveArticleProjection: mockDeriveArticleProjection,
   // Real-implementation stand-in: mergeArticleMetadata is a pure merge helper.
