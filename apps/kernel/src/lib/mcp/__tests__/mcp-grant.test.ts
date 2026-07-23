@@ -38,6 +38,11 @@ vi.mock('drizzle-orm', () => ({
   eq:  (col: unknown, val: unknown) => ({ op: 'eq',  col, val }),
   and: (...preds: unknown[])        => ({ op: 'and', preds }),
 }));
+vi.mock('../oauth-config', () => ({
+  MCP_CONNECTOR_DID: 'did:imajin:mcp-connector',
+  MCP_CHANNEL: 'mcp',
+  getMcpIssuer: () => 'https://mcp.imajin.ai',
+}));
 
 import { resolveActiveMcpGrant, requireMcpGrant } from '../mcp-grant';
 
@@ -92,10 +97,11 @@ describe('requireMcpGrant', () => {
     await expect(requireMcpGrant(OWNER, 'media:write')).rejects.toThrow('mcp_no_grant');
   });
 
-  it('error message names the missing scope and the connector DID', async () => {
+  it('error message names the missing scope and includes a deep-link URL', async () => {
     h.rows.splice(0);
     await expect(requireMcpGrant(OWNER, 'media:share')).rejects.toThrow('media:share');
-    await expect(requireMcpGrant(OWNER, 'media:share')).rejects.toThrow(MCP_DID);
+    await expect(requireMcpGrant(OWNER, 'media:share')).rejects.toThrow('/auth/connectors');
+    await expect(requireMcpGrant(OWNER, 'media:share')).rejects.toThrow('connector=mcp');
   });
 
   it('throws when the only row is revoked', async () => {
