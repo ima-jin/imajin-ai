@@ -6,7 +6,8 @@
  * configSealed, tokenSealed }. POST validates scopes fail-closed, publishes,
  * returns { published, assetId, activeScopes }.
  */
-import { createConnectorScopeManifestRoute } from '@/src/lib/kernel/scope-manifest-route';
+import { createConnectorScopeManifestRoute, OPTIONS } from '@/src/lib/kernel/scope-manifest-route';
+export { OPTIONS };
 import {
   publishQuickBooksScopeManifest,
   readActiveQuickBooksScopes,
@@ -16,7 +17,7 @@ import {
   VALID_QUICKBOOKS_SCOPES,
 } from '@/src/lib/quickbooks/scope-manifest';
 
-export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
+export const { GET, POST } = createConnectorScopeManifestRoute({
   name: 'QuickBooks',
   validScopes: VALID_QUICKBOOKS_SCOPES,
   findManifestAsset: findQuickBooksManifestAsset,

@@ -11,7 +11,8 @@
  *   github:org     → on-consent  (same)
  *   github:actions → never       (never materialises)
  */
-import { createConnectorScopeManifestRoute } from '@/src/lib/kernel/scope-manifest-route';
+import { createConnectorScopeManifestRoute, OPTIONS } from '@/src/lib/kernel/scope-manifest-route';
+export { OPTIONS };
 import {
   publishGitHubScopeManifest,
   readActiveGitHubScopes,
@@ -21,7 +22,7 @@ import {
 import { configField, oauthVaultField, vaultField } from '@/src/lib/github/connector';
 import { vaultFieldExists } from '@/src/lib/vault';
 
-export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
+export const { GET, POST } = createConnectorScopeManifestRoute({
   name: 'GitHub',
   validScopes: VALID_GITHUB_SCOPES,
   findManifestAsset: findGitHubManifestAsset,

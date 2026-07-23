@@ -6,7 +6,8 @@
  * validScopes, tokenSealed }. POST validates scopes fail-closed, publishes,
  * returns { published, assetId, activeScopes }.
  */
-import { createConnectorScopeManifestRoute } from '@/src/lib/kernel/scope-manifest-route';
+import { createConnectorScopeManifestRoute, OPTIONS } from '@/src/lib/kernel/scope-manifest-route';
+export { OPTIONS };
 import {
   publishDiscordScopeManifest,
   readActiveDiscordScopes,
@@ -15,7 +16,7 @@ import {
   VALID_DISCORD_SCOPES,
 } from '@/src/lib/discord/scope-manifest';
 
-export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
+export const { GET, POST } = createConnectorScopeManifestRoute({
   name: 'Discord',
   validScopes: VALID_DISCORD_SCOPES,
   findManifestAsset: findDiscordManifestAsset,

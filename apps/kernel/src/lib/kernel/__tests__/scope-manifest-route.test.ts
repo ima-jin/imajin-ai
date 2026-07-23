@@ -36,8 +36,8 @@ vi.mock('@imajin/auth', () => ({
   resolveActingDid: vi.fn(() => h.actingDid),
 }));
 
-// Import factory after mocks
-import { createConnectorScopeManifestRoute } from '../scope-manifest-route';
+// Import factory and module-scope OPTIONS after mocks
+import { createConnectorScopeManifestRoute, OPTIONS } from '../scope-manifest-route';
 
 // ── Shared connector stubs ────────────────────────────────────────────────────
 
@@ -75,10 +75,7 @@ const VALID_SCOPES = ['test:read', 'test:write'] as const;
 // ── OPTIONS ───────────────────────────────────────────────────────────────────
 
 describe('OPTIONS', () => {
-  it('delegates to corsOptions', async () => {
-    const { OPTIONS } = createConnectorScopeManifestRoute({
-      name: 'Test', validScopes: VALID_SCOPES, ...makeStubs(),
-    });
+  it('delegates to corsOptions (module-scope export, not factory-closure)', async () => {
     const { corsOptions } = await import('@/src/lib/kernel/cors');
     const req = makeRequest();
     await OPTIONS(req);

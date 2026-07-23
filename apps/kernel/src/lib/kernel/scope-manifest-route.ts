@@ -66,27 +66,33 @@ export interface ConnectorRouteHandlers {
   OPTIONS: RouteHandler;
 }
 
+// ── CORS pre-flight (shared across all connector routes) ─────────────────────
+
+/**
+ * OPTIONS handler shared by every connector scope-manifest route.
+ * Does not close over any factory state — defined at module scope so Sonar
+ * does not flag it as a nested function that should be lifted.
+ */
+export async function OPTIONS(request: NextRequest): Promise<NextResponse> {
+  return corsOptions(request) as NextResponse;
+}
+
 // ── Factory ───────────────────────────────────────────────────────────────────
 
 /**
- * Build the three Next.js route handlers for a connector scope-manifest
- * endpoint. The returned object is designed to be re-exported directly from
- * the connector's `app/.../scope-manifest/route.ts` file:
+ * Build the GET + POST route handlers for a connector scope-manifest endpoint.
+ * OPTIONS is exported separately at module scope and re-exported from each
+ * connector's route file alongside these handlers:
  *
  * ```ts
- * export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({ … });
+ * export { OPTIONS } from '@/src/lib/kernel/scope-manifest-route';
+ * export const { GET, POST } = createConnectorScopeManifestRoute({ … });
  * ```
  */
 export function createConnectorScopeManifestRoute(
   opts: ConnectorRouteOpts,
-): ConnectorRouteHandlers {
+): Omit<ConnectorRouteHandlers, 'OPTIONS'> {
   const validScopeSet = new Set<string>(opts.validScopes);
-
-  // ── OPTIONS ────────────────────────────────────────────────────────────────
-
-  async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-    return corsOptions(request) as NextResponse;
-  }
 
   // ── GET ────────────────────────────────────────────────────────────────────
 
@@ -188,5 +194,5 @@ export function createConnectorScopeManifestRoute(
     );
   }
 
-  return { GET, POST, OPTIONS };
+  return { GET, POST };
 }
