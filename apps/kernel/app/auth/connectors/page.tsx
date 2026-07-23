@@ -12,13 +12,22 @@
  * consent_grants row automatically.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   CONNECTOR_REGISTRY,
   type ConnectorEntry,
   type ConnectorScope,
   type ReleaseClass,
 } from '@/src/lib/kernel/connector-registry';
+
+// ── Deep-link highlight context (#1399) ──────────────────────────────────────
+
+/**
+ * Scope name to highlight, passed down from the URL `?scope=` param.
+ * Consumed by ScopeRow without threading through every card component.
+ * null = no highlight active.
+ */
+const ScopeHighlightContext = createContext<string | null>(null);
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -149,6 +158,10 @@ function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onT
   isAnyGranting: boolean; tokenSealed: boolean;
   onToggle: (name: string, enable: boolean) => void;
 }>) {
+  // Highlight this row when the page was opened from a *_no_grant deep-link (#1399).
+  const highlightScope = useContext(ScopeHighlightContext);
+  const highlighted = highlightScope === scope.name;
+
   const isLocked = scope.releaseClass === 'never';
   let badge: React.ReactNode;
   if (isGranting) badge = <Badge variant="info">Saving…</Badge>;
@@ -162,7 +175,9 @@ function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onT
     </Badge>
   );
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0">
+    <div className={`flex items-center justify-between py-2.5 border-b border-white/5 last:border-0${
+      highlighted ? ' bg-amber-500/10 ring-1 ring-inset ring-amber-500/30 rounded-lg' : ''
+    }`}>
       <label
         className={`flex items-center gap-3 min-w-0 ${isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
         aria-label={scope.label}
@@ -1003,6 +1018,25 @@ export default function ConnectorsPage() {
   const [sessionLoading, setSessionLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
+  // Deep-link highlight state (#1399) — read from ?connector=mcp&scope=connections:read
+  const [highlightConnector, setHighlightConnector] = useState<string | null>(null);
+  const [highlightScope, setHighlightScope] = useState<string | null>(null);
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    setHighlightConnector(p.get('connector'));
+    setHighlightScope(p.get('scope'));
+  }, []);
+
+  // Scroll the targeted connector card into view after the page renders.
+  useEffect(() => {
+    if (!highlightConnector) return;
+    const t = setTimeout(() => {
+      document.getElementById(`connector-${highlightConnector}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [highlightConnector]);
+
   useEffect(() => {
     fetch('/auth/api/session')
       .then((r) => { setIsLoggedIn(r.ok); setSessionLoading(false); })
@@ -1052,11 +1086,15 @@ export default function ConnectorsPage() {
       </div>
 
       {/* Connector cards */}
-      <div className="space-y-4">
-        {CONNECTOR_REGISTRY.map((entry) => (
-          <ConnectorCard key={entry.id} entry={entry} />
-        ))}
-      </div>
+      <ScopeHighlightContext.Provider value={highlightScope}>
+        <div className="space-y-4">
+          {CONNECTOR_REGISTRY.map((entry) => (
+            <div key={entry.id} id={`connector-${entry.id}`}>
+              <ConnectorCard entry={entry} />
+            </div>
+          ))}
+        </div>
+      </ScopeHighlightContext.Provider>
 
       {/* Footer note */}
       <p className="text-center text-xs text-gray-700 mt-8">

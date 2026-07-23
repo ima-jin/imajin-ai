@@ -33,7 +33,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
-import { MCP_CONNECTOR_DID, MCP_CHANNEL } from './oauth-config';
+import { MCP_CONNECTOR_DID, MCP_CHANNEL, getMcpIssuer } from './oauth-config';
 
 /**
  * Return `true` iff an active `auth.channel_links` row exists for this DID +
@@ -76,10 +76,10 @@ export async function resolveActiveMcpGrant(ownerDid: string, scope: string): Pr
 export async function requireMcpGrant(ownerDid: string, scope: string): Promise<void> {
   const hasGrant = await resolveActiveMcpGrant(ownerDid, scope);
   if (!hasGrant) {
+    const enableUrl = `${getMcpIssuer()}/auth/connectors?connector=mcp&scope=${encodeURIComponent(scope)}`;
     throw new Error(
-      `mcp_no_grant: DID ${ownerDid} has no active '${scope}' grant — ` +
-      `edit the MCP scope-manifest (metadata.kind: scope-manifest, connector: ${MCP_CONNECTOR_DID}) ` +
-      `to enable this scope`,
+      `mcp_no_grant: '${scope}' is not enabled for this account. ` +
+      `Enable it at: ${enableUrl}`,
     );
   }
 }
