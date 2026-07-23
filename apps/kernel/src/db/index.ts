@@ -21,6 +21,7 @@ import * as vaultSchema from './schemas/vault';
 import * as inferenceSchema from './schemas/inference';
 import * as contactSchema from './schemas/contact';
 import * as contactMetadataSchema from './schemas/contact-metadata';
+import * as githubSchema from './schemas/github';
 
 const schema = {
   ...authSchema,
@@ -44,6 +45,7 @@ const schema = {
   ...inferenceSchema,
   ...contactSchema,
   ...contactMetadataSchema,
+  ...githubSchema,
 };
 
 export const db = createDb(schema);
@@ -70,6 +72,7 @@ export * from './schemas/vault';
 export * from './schemas/inference';
 export * from './schemas/contact';
 export * from './schemas/contact-metadata';
+export * from './schemas/github';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";

@@ -33,6 +33,7 @@ import {
   createComment,
   listIssues,
   getIssue,
+  updateIssue,
 } from '@/src/lib/github/connector';
 
 // ── B4 — PAT ingestion ────────────────────────────────────────────────────────
@@ -250,10 +251,84 @@ const getIssueTool: McpTool = {
   },
 };
 
+const updateIssueTool: McpTool = {
+  name: 'github_update_issue',
+  requiredScope: 'github:write',
+  description:
+    'Update an existing GitHub issue (title, body, and/or state) on your behalf using your sealed ' +
+    'credential. This is a mutating write — the first call proposes the action and returns a pending ' +
+    'response. After you approve at /github/api/confirm/{proposalId}, retry this call to execute. ' +
+    'Requires an active github:write grant in your scope-manifest and a stored credential from ' +
+    'github_connect. repo format: "owner/repo".',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      repo: {
+        type: 'string',
+        description: 'Repository in "owner/repo" format',
+      },
+      issue_number: {
+        type: 'number',
+        description: 'Issue number to update',
+      },
+      title: {
+        type: 'string',
+        description: 'New issue title (optional)',
+      },
+      body: {
+        type: 'string',
+        description: 'New issue body in Markdown (optional)',
+      },
+      state: {
+        type: 'string',
+        enum: ['open', 'closed'],
+        description: 'New issue state (optional)',
+      },
+    },
+    required: ['repo', 'issue_number'],
+    additionalProperties: false,
+  },
+  async handler(args, ctx) {
+    const repo = str(args, 'repo');
+    if (repo === undefined) throw new Error('repo is required');
+    const issueNumber = num(args, 'issue_number');
+    if (issueNumber === undefined) throw new Error('issue_number is required');
+
+    const updates: { title?: string; body?: string; state?: 'open' | 'closed' } = {};
+    const title = str(args, 'title');
+    if (title !== undefined) updates.title = title;
+    const body = str(args, 'body');
+    if (body !== undefined) updates.body = body;
+    const rawState = str(args, 'state');
+    if (rawState === 'open' || rawState === 'closed') updates.state = rawState;
+
+    if (Object.keys(updates).length === 0) throw new Error('at least one of title, body, or state is required');
+
+    const result = await updateIssue(ctx.did, repo, issueNumber, updates);
+
+    if (result.status === 'pending') {
+      return json({
+        pending: true,
+        proposalId: result.proposalId,
+        message: result.message,
+      });
+    }
+
+    return json({
+      number: result.data.number,
+      url: result.data.html_url,
+      title: result.data.title,
+      state: result.data.state,
+      updated_at: result.data.updated_at,
+    });
+  },
+};
+
 export const githubTools: McpTool[] = [
   connectTool,
   createIssueTool,
   createCommentTool,
   listIssuesTool,
   getIssueTool,
+  updateIssueTool,
 ];
