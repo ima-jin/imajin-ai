@@ -75,10 +75,12 @@ const createIssueTool: McpTool = {
   name: 'github_create_issue',
   requiredScope: 'github:write',
   description:
-    'Create a GitHub issue on your behalf using your sealed PAT. ' +
-    'The issue is authored as you (your GitHub account owns the PAT). ' +
+    'Create a GitHub issue on your behalf using your sealed credential (append tier). ' +
+    'The first call proposes the action and returns a pending response if no live append ' +
+    'approval window exists. After approving at /github/api/confirm/{proposalId}, retry ' +
+    'this call to execute. ' +
     'Requires an active github:write grant in your scope-manifest and a ' +
-    'stored PAT from github_connect. ' +
+    'stored credential from github_connect. ' +
     'repo format: "owner/repo" (e.g. "a-r-t-i-f-a-c-t/artifactagent").',
   inputSchema: {
     type: 'object',
@@ -106,14 +108,18 @@ const createIssueTool: McpTool = {
     if (title === undefined) throw new Error('title is required');
     const body = typeof args.body === 'string' ? args.body : '';
 
-    const issue = await createIssue(ctx.did, repo, title, body);
+    const result = await createIssue(ctx.did, repo, title, body);
+
+    if (result.status === 'pending') {
+      return json({ pending: true, proposalId: result.proposalId, message: result.message });
+    }
 
     return json({
-      number: issue.number,
-      url: issue.html_url,
-      title: issue.title,
-      state: issue.state,
-      created_at: issue.created_at,
+      number: result.data.number,
+      url: result.data.html_url,
+      title: result.data.title,
+      state: result.data.state,
+      created_at: result.data.created_at,
     });
   },
 };
@@ -122,8 +128,10 @@ const createCommentTool: McpTool = {
   name: 'github_create_comment',
   requiredScope: 'github:write',
   description:
-    'Add a comment to an existing GitHub issue on your behalf using your sealed PAT. ' +
-    'Requires an active github:write grant in your scope-manifest and a stored PAT from github_connect. ' +
+    'Add a comment to an existing GitHub issue on your behalf using your sealed credential (append tier). ' +
+    'The first call proposes the action and returns a pending response if no live append ' +
+    'approval window exists. After approving at /github/api/confirm/{proposalId}, retry this call. ' +
+    'Requires an active github:write grant in your scope-manifest and a stored credential from github_connect. ' +
     'repo format: "owner/repo" (e.g. "a-r-t-i-f-a-c-t/artifactagent").',
   inputSchema: {
     type: 'object',
@@ -151,12 +159,16 @@ const createCommentTool: McpTool = {
     if (issueNumber === undefined) throw new Error('issue_number is required');
     const body = typeof args.body === 'string' ? args.body : '';
 
-    const comment = await createComment(ctx.did, repo, issueNumber, body);
+    const result = await createComment(ctx.did, repo, issueNumber, body);
+
+    if (result.status === 'pending') {
+      return json({ pending: true, proposalId: result.proposalId, message: result.message });
+    }
 
     return json({
-      id: comment.id,
-      url: comment.html_url,
-      created_at: comment.created_at,
+      id: result.data.id,
+      url: result.data.html_url,
+      created_at: result.data.created_at,
     });
   },
 };

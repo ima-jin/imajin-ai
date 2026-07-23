@@ -685,8 +685,10 @@ export interface BusEventMap {
     date: string;
   };
   /**
-   * Emitted by requireMutateGate() when a mutating tool has no live approval
-   * grant and must wait for human authorization (#1366).
+   * Emitted by requireWriteGate() when a write tool has no live approval grant
+   * and must wait for human authorization (#1366, #1370).
+   * `risk` distinguishes additive writes (append) from state-mutating writes (mutate);
+   * the /jin dashboard uses it to decide confirmation urgency.
    * issuer = ownerDid, subject = ownerDid, scope = 'github'.
    */
   'action.proposed': {
@@ -698,8 +700,8 @@ export interface BusEventMap {
     scope: string;
     /** Tool name, e.g. 'github_update_issue' */
     tool: string;
-    /** 'append' | 'mutate' */
-    riskTier: string;
+    /** Write tier: append = additive/reversible; mutate = alters existing state */
+    risk: 'append' | 'mutate';
     /** Human-readable write target, e.g. 'owner/repo#42' */
     target: string;
     /** Human-readable args summary */
