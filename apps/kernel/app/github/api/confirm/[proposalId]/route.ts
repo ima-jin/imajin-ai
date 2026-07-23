@@ -18,8 +18,7 @@
  */
 import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
-import { canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { requireAuth, resolveActingDid, canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { and, eq } from 'drizzle-orm';

@@ -560,7 +560,8 @@ export interface GitHubUpdateIssueParams {
  *  - { status: 'pending', ... }  — proposal recorded; action.proposed emitted.
  *                                  The MCP tool must surface this to the agent.
  *
- * TODO(#1366 child-4): hook append-tier rate limit into createIssue / createComment.
+ * Append-tier rate limiting (#1366 child-4) will hook here once createIssue / createComment
+ * are wired through the confirm rail.
  */
 export async function updateIssue(
   ownerDid: string,
