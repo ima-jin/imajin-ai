@@ -3,8 +3,10 @@
 **Status:** Draft
 **Authors:** Ryan Veteze, Jin
 **Created:** May 14, 2026
+**Updated:** July 24, 2026 — KYA-OS (DIF) actor model, corrected AP2 mandate vocabulary, and the credential field-mapping (§4.7)
 **Discussion:** TBD
-**Related:** RFC-27 (Multi-Agent Coordination), RFC-31 (Agent Execution Sandbox), RFC-23 (Multi-Chain Settlement), RFC-05 (Intent-Bearing Transactions), RFC-01 (.fair Attribution)
+**Related:** RFC-27 (Multi-Agent Coordination), RFC-31 (Agent Execution Sandbox), RFC-23 (Multi-Chain Settlement), RFC-05 (Intent-Bearing Transactions), RFC-01 (.fair Attribution), RFC-39 (Verifiable Skills)
+**Tracking:** epic #965 (interop), #971 (AP2 mandate from .fair), #394 (agent sub-identity VC delegation)
 
 ---
 
@@ -30,7 +32,8 @@ Each protocol solves one piece. None solve the whole:
 |----------|---------------|----------------|
 | **MCP** | Agent ↔ tools/data discovery | No portable identity. No settlement. No attribution. |
 | **A2A** | Agent discovery, capability negotiation, task lifecycle | No verifiable identity chain. No settlement mechanism. No audit trail. |
-| **AP2** | Cryptographic proof of delegation for spending | No attribution of *what* the agent did. No settlement layer. No portable identity beyond the mandate. |
+| **AP2** | Cryptographic proof of delegation for spending (Cart + Payment Mandates as VDCs) | No attribution of *what* the agent did. No settlement layer. No portable identity beyond the mandate. |
+| **KYA-OS** (ex-MCP-I, now DIF) | Agent identity + delegation credential + verifier role (the four KYA questions) | No settlement. No attribution of *what* was done. Verifies the authority chain; doesn't record the outcome. |
 | **MPP** | HTTP-native agent billing (402 → pay → retry) | No identity. No proof of work. No audit trail of what was purchased. |
 | **x402** | Crypto micropayments via HTTP 402 | No identity. No attribution. No proof of service delivery. |
 | **UCP** | Agent checkout flows, merchant feeds | No portable agent identity. No cross-merchant attribution. No settlement transparency. |
@@ -206,25 +209,37 @@ An external agent reads this before transacting. The `.fair` manifest on every s
 
 ### 3.4 AP2 Manifest (`/.well-known/ap2-manifest`)
 
-AP2 uses Verifiable Credentials as "Mandates" for spending authorization. The Imajin node generates mandate templates from `.fair` manifests:
+AP2 uses **Verifiable Digital Credentials (VDCs)** as "Mandates" for spending authorization. As of the current AP2 spec (`ap2-protocol.org`, an open extension of A2A + UCP), there are **two mandate types, each in two stages**:
+
+- **Cart Mandate** (a.k.a. Checkout Mandate) — references the specific items + purchase details negotiated with the merchant. Shared with the merchant.
+  - *Open* stage: the user's constraints/goals before a cart is finalized (autonomous execution).
+  - *Closed* stage: authorization for a specific, finalized checkout.
+- **Payment Mandate** — authorizes payment against a specific instrument. Shared with the credential provider, networks, and merchant PSP.
+  - *Open* stage: constraints on payment (budget, allowed instruments).
+  - *Closed* stage: authorization for a specific amount bound to a finalized checkout.
+
+The Imajin node generates mandate templates from `.fair` manifests. The node's `.fair` delegation record maps onto the **Open Cart Mandate** (the standing authorization + constraints); a finalized transaction maps onto the **Closed** stages:
 
 ```json
 {
-  "mandate_type": "spending_authorization",
-  "issuer": "did:imajin:NODE_OPERATOR",
+  "mandate_type": "cart_mandate",
+  "stage": "open",
+  "issuer": "did:imajin:OWNER",
   "delegation_chain": ["did:imajin:OWNER", "did:imajin:AGENT"],
-  "spending_limits": {
+  "constraints": {
     "per_transaction": "100.00 USD",
     "per_day": "500.00 USD",
-    "per_month": "2000.00 USD"
+    "per_month": "2000.00 USD",
+    "authorized_merchants": ["*"]
   },
-  "authorized_merchants": ["*"],
   "attribution_required": true,
   "fair_policy_url": "https://imajin.ai/.well-known/fair-policy.json"
 }
 ```
 
-The mandate is a Verifiable Credential signed by the owner's DID. The agent presents it when initiating payment. The `.fair` manifest on the resulting transaction is the receipt.
+The mandate is a VDC signed by the owner's DID. The agent presents it when initiating payment. The `.fair` manifest on the resulting transaction is the receipt — and it is the *richer* record (see §4.7 for the exact field-level mapping and the signature-curve caveat).
+
+> **Note (Jul 2026):** the earlier draft named a single `spending_authorization` mandate. That predates the current AP2 Cart/Payment × Open/Closed model. AP2 also natively supports `x402` as a payment rail, which we already speak (§4.4).
 
 ---
 
@@ -300,6 +315,30 @@ Imajin .fair + delegation:
 
 The `.fair` manifest is the richer record — it includes not just *that* spending was authorized, but *what* was purchased, *who* gets attributed, and *how* value is distributed.
 
+### 4.3a KYA-OS (DIF): the Verifier reads our chain
+
+**KYA-OS** ("Know Your Agent Operating System," formerly MCP-I) was donated by Vouched to the **Decentralized Identity Foundation** and is now developed under DIF's Trusted AI Agents Working Group. It extends MCP with a full identity + delegation layer and answers the **four KYA questions**:
+
+1. **Who is the agent?** — a cryptographically anchored identifier (a DID), not a session token or API key.
+2. **Who authorized the agent?** — the human principal, ideally with direct-interaction confidence.
+3. **What is the agent permitted to do?** — scope of delegation (not binary).
+4. **Can the agent be trusted?** — reputation / track record.
+
+KYA-OS defines four actors: **User (Principal)**, **Agent**, **Service**, and a **Verifier** — typically an edge proxy that checks credentials against policy *at runtime* before a request reaches the Service.
+
+This is our kernel described from the outside. The mapping is one-to-one:
+
+| KYA-OS question | Imajin primitive that answers it |
+|-----------------|----------------------------------|
+| Who is the agent? | Agent `did:imajin:...` (resolvable DID Document) |
+| Who authorized it? | Principal DID in the delegation record + `actingFor` signed field |
+| What may it do? | `identity_members.allowedServices` scope → serialized as a scoped delegation credential |
+| Can it be trusted? | Attestations + `.fair` track record on the chain (proof-of-history) |
+
+**The one thing KYA-OS leaves open, we already have.** KYA-OS verifies the *authority chain* up to the moment of action; it does not record *what the agent did* afterward. The `.fair` manifest + signed action log is exactly that missing outcome record. So Imajin is not a competitor to KYA-OS — it is the **Service + record** side that makes a KYA-OS verification *auditable after the fact*. An Imajin node can present as a KYA-OS-conformant Service, and the Verifier (edge proxy) resolves `did:imajin` and validates our delegation credential without any prior relationship — which is the whole point of the `has-a` (portable credential) model.
+
+> This is the same boundary community reviewer **0xbrainkid** drew on #394: row-based `identity_members` is enough when the verifier lives *inside* Imajin services, but a **portable delegation credential** is required the moment the verifier sits across a service/org boundary. KYA-OS *is* that cross-boundary case. See §4.7 for the credential we emit.
+
 ### 4.4 MPP / x402: 402 as the Universal Settlement Surface
 
 Imajin already implements HTTP 402 settlement (RFC-05). Adding MPP and x402 is adding wire schemes, not new infrastructure:
@@ -365,6 +404,56 @@ The registration is an attestation on the Imajin chain:
 ```
 
 When the agent transacts through Visa or Mastercard, the `.fair` manifest links back to the Imajin chain for full attribution.
+
+---
+
+### 4.7 Field-Level Mapping: Imajin Primitives ↔ KYA-OS / AP2
+
+This is the concrete adapter contract. It is what makes "speak everything" real at the wire, and it is the artifact intended to be shareable in the DIF Trusted AI Agents WG. **We are not adopting KYA-OS or AP2 as our internal model — we already implement the substance (DID + scoped, revocable delegation + signed record). What we lack is (a) a W3C-VC/VDC serialization and (b) a public `did:imajin` resolver.** Those are an adapter, not a rebuild.
+
+#### 4.7.1 The delegation credential (KYA-OS `has-a` model)
+
+When an Imajin node must be verified by an outside party (edge-proxy Verifier), we emit a portable delegation credential. Field mapping:
+
+| W3C VC / KYA-OS field | Imajin source | Notes |
+|-----------------------|---------------|-------|
+| `issuer` | Principal (human) `did:imajin` | The authorizing self |
+| `credentialSubject.id` | Agent `did:imajin` | The acting agent (e.g. Jin) |
+| `credentialSubject.allowedServices` | `identity_members.allowedServices` | Existing row-based scope, serialized |
+| `credentialSubject.actions` / `excludes` | delegation constraints | Positive + negative scope |
+| `expirationDate` | delegation expiry | Must be present for cross-boundary use |
+| `credentialStatus` (revocation pointer) | revocation list endpoint | The gap: needs a public status endpoint |
+| `type: ["VerifiableCredential", "AgentDelegation"]` | — | New serialization wrapper |
+| `proof` | signature over the above | **See §4.7.3 (curve caveat)** |
+| signed message `type: "agent"` | `SignedMessage.type` | Already a signed field |
+
+This is exactly the field set **0xbrainkid** enumerated on #394 (parent human DID, agent DID, allowed service/action set, expiry/revocation pointer, `type: agent`, issuer/countersignature chain). The row model stays for first-party services; the VC is emitted only when the verifier is external.
+
+#### 4.7.2 The AP2 mandate (from a `.fair` manifest) — issue #971
+
+| AP2 VDC field | Imajin source | Notes |
+|---------------|---------------|-------|
+| Cart Mandate — *open* (constraints) | `.fair` delegation record + spending constraints | The standing authorization |
+| Cart Mandate — *closed* (finalized cart) | finalized transaction items | What was actually purchased |
+| Payment Mandate — *open* (budget/instruments) | settlement method policy (`fair-policy.json`) | Allowed rails: stripe / mjnx / usdc |
+| Payment Mandate — *closed* (amount bound to cart) | settlement record | The receipt |
+| VDC `proof` | DID keypair signature | **See §4.7.3** |
+| audit trail | `.fair` manifest + signed action log | Our record is *richer*: adds attribution + distribution |
+
+The `.fair` manifest carries everything AP2's four-VDC chain carries **plus** *what was purchased, who is attributed, and how value distributes.* AP2 proves the spend was authorized; `.fair` proves the spend was authorized **and** where the money went.
+
+#### 4.7.3 The one real snag: signature curve (Ed25519 vs P-256)
+
+Imajin's identity spine is **Ed25519** (the DFOS federation contract — we cannot unilaterally swap it). AP2 VDCs are specified as **ECDSA P-256 / SHA-256**. KYA-OS is curve-agnostic (any DID method / VC proof suite), so **KYA-OS interop needs no curve change** — our Ed25519 `did:imajin` + Ed25519-signed VC is conformant.
+
+**AP2 is the only surface with a curve requirement, and it lives on the money leg only.** The resolution is the same pattern as the EternaX/PQ decision: the identity/proof spine stays Ed25519; a VDC emitted *specifically for AP2 payment interop* can carry a P-256 signature on the money leg, bridged by an Imajin attestation that binds the P-256 payment key to the Ed25519 principal DID. `.fair` = the record (Ed25519); the AP2 VDC = the wire format for one counterparty (P-256). The spine never moves.
+
+#### 4.7.4 The missing pieces (honest gap list)
+
+1. **Public `did:imajin` resolver** — a `did:imajin` DID method + resolver endpoint so any external Verifier resolves our DIDs "without prior coordination." Today resolution is internal. *(This is the single biggest unlock — it's what turns every mapping above from theory into something an outside proxy can actually check.)*
+2. **W3C-VC serialization layer** — emit attestations/delegations as JSON-LD Verifiable Credentials (candidate `@imajin/vc` package, already floated in #394). Precedent: closed issue #562 (EUDI Wallet W3C VC + OpenID4VP layer) explored the same serialization for a different consumer.
+3. **Public revocation/status endpoint** — `credentialStatus` needs to resolve for cross-boundary verifiers.
+4. **P-256 money-leg signing + attestation bridge** — for AP2 only (§4.7.3).
 
 ---
 
@@ -504,7 +593,11 @@ Protocols evolve. A node speaking A2A v1.0 and an agent speaking A2A v1.1 might 
 
 3. **Cross-protocol session sharing:** If an agent authenticates via MCP, should that session be valid for A2A tasks on the same node? Probably yes — shared DID-based session — but needs careful scope management.
 
-4. **AP2 mandate lifecycle:** AP2 mandates can expire, be revoked, or have spending limits. How does this interact with long-running A2A tasks that span multiple payment events?
+4. **AP2 mandate lifecycle:** AP2 mandates can expire, be revoked, or have spending limits. How does this interact with long-running A2A tasks that span multiple payment events? *(Partially framed in §4.7.2: the Cart Mandate open/closed split maps a standing `.fair` delegation to per-cart finalizations — a long task holds one open mandate and finalizes closed mandates per payment event. The revocation-pointer gap in §4.7.4(3) is the missing piece.)*
+
+8. **`did:imajin` DID method registration:** to be resolvable by external KYA-OS Verifiers we need a published DID method. Do we register `did:imajin` formally (W3C DID method registry) or expose resolution via the existing `.well-known` + DFOS federation surface first? (§4.7.4(1).)
+
+9. **DIF WG posture:** RFC-32 §4.7 is drop-in-shareable in DIF's Trusted AI Agents / KYA-OS task force. Do we enter as an implementer presenting a conformant Service + portable-credential adapter, or stay heads-down until the resolver ships? (Prove-the-net-first discipline suggests: ship the resolver + VC layer against the spec, *then* present.)
 
 5. **Visa/Mastercard sandbox:** Do we build against their sandbox environments first, or wait for production APIs? Sandbox integration is lower risk but may not reflect production behavior.
 
@@ -521,7 +614,14 @@ Protocols evolve. A node speaking A2A v1.0 and an agent speaking A2A v1.1 might 
 - **RFC-23** — Multi-Chain Settlement: Pluggable wire schemes (Stripe, MJNx, USDC)
 - **RFC-27** — Multi-Agent Coordination: Agent identity, delegation, task routing
 - **RFC-31** — Agent Execution Sandbox: Tool surface, permissions, scoped execution
+- **RFC-39** — Verifiable Skills & the Invokable Agent: the verification layer pointed at the agent's own capabilities; §4.7's credential-emission discipline is the same prove-against-the-signed-record model applied to delegation
 - **DFOS Specification** — Federation protocol, existing `.well-known/dfos` endpoint
+
+### External specifications referenced (Jul 2026)
+
+- **KYA-OS** (ex-MCP-I) — DIF Trusted AI Agents Working Group. Four KYA questions, four-actor model (Principal / Agent / Service / Verifier), DID + VC delegation, curve-agnostic. Donated by Vouched.
+- **AP2** (Agent Payments Protocol, `ap2-protocol.org`) — open extension of A2A + UCP. Cart + Payment Mandates as VDCs, each Open/Closed. ECDSA P-256 / SHA-256. Native x402 support.
+- **W3C Verifiable Credentials / DIDs** — the underlying serialization both of the above build on, and our target wire format (§4.7.4(2)).
 
 ---
 

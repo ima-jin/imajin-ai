@@ -35,7 +35,7 @@ Canonical location for all Imajin protocol and architecture RFCs. Each RFC has a
 | [29](./RFC-29-biometric-trust-escalation.md) | Biometric Trust Escalation | Draft | — |
 | [30](./RFC-30-the-judgment-token-thesis.md) | The Judgment Token Thesis | Draft | — |
 | [31](./RFC-31-agent-execution-sandbox.md) | Agent Execution Sandbox | Draft | — |
-| [32](./RFC-32-agent-protocol-interop.md) | Agent Protocol Interoperability | Draft | — |
+| [32](./RFC-32-agent-protocol-interop.md) | Agent Protocol Interoperability | Draft | [#965](https://github.com/ima-jin/imajin-ai/issues/965) |
 | [33](./RFC-33-agent-ci-pipeline.md) | Agent CI Pipeline | Draft | — |
 | [34](./RFC-34-community-needs-brokerage.md) | Community Needs Brokerage | Draft | — |
 | [35](./RFC-35-context-bound-connection.md) | Context-Bound Connection | Draft | — |
