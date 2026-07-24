@@ -411,6 +411,20 @@ When the agent transacts through Visa or Mastercard, the `.fair` manifest links 
 
 This is the concrete adapter contract. It is what makes "speak everything" real at the wire, and it is the artifact intended to be shareable in the DIF Trusted AI Agents WG. **We are not adopting KYA-OS or AP2 as our internal model — we already implement the substance (DID + scoped, revocable delegation + signed record). What we lack is (a) a W3C-VC/VDC serialization and (b) a public `did:imajin` resolver.** Those are an adapter, not a rebuild.
 
+#### 4.7.0 Framing: the credential is a passport; the row is a projection
+
+The cleanest way to hold the `has-a` (portable credential) vs row-based model is a passport:
+
+- **The signed credential is the passport.** It is the source of truth — a self-contained, cryptographically verifiable document the agent *carries*: its DID, its delegation (who authorized it, for what, until when), its attestations, and its `.fair` track record, all signed. Any border guard can read it and its stamps and decide, **without phoning our head office.**
+- **The `identity_members` row is not the passport — it is the local border terminal's cache.** For a first-party (in-Imajin) verifier, reading the row is legitimate and faster: it is inside the same country, with direct registry access. That is a correct optimization, not a lesser thing. But it is a *projection* of the credential, never the source. The moment the verifier is foreign, the cache is inaccessible and only the passport travels.
+
+This is the same inversion Imajin arrived at from three other directions, before KYA-OS gave it a name:
+- **"Artifacts are the business"** — the minted, signed object is the real thing; every DB view is a projection of it.
+- **DFOS credentials** (the wire spec we already peer on) — UCAN-style delegation where the `prf` field embeds the full parent JWS: *the credential IS the proof*, self-contained and offline-verifiable, no CID lookups.
+- **RFC-39 (Verifiable Skills)** — the working copy is verified against the *signed record*, not a cloud. The record is truth; the local copy is a projection.
+
+KYA-OS / AgentFolio / SATP are the outside world converging on the same shape. Two things turn "native in concept" into "works across a border": a **public resolver** (§4.7.4.1 — the passport office answers when a foreign guard looks us up) and a **revocation/status endpoint** (§4.7.4.3 — a passport nobody can cancel is a forger's dream). Both are on the gap list; neither is built.
+
 #### 4.7.1 The delegation credential (KYA-OS `has-a` model)
 
 When an Imajin node must be verified by an outside party (edge-proxy Verifier), we emit a portable delegation credential. Field mapping:
