@@ -873,3 +873,128 @@ describe('createComment append tiering (#1370)', () => {
     expect(result.status).toBe('pending');
   });
 });
+
+// ── Per-tool sub-limits (#1371) ───────────────────────────────────────────────────
+
+/**
+ * proposalCountMock is called in sequence by requireWriteGate:
+ *   call 1: global count (all tools, 1hr)
+ *   call 2+: per-tool count entries (in PER_TOOL_LIMITS order for this tool)
+ *
+ * Use mockResolvedValueOnce to control each call independently.
+ */
+describe('per-tool sub-limits (#1371)', () => {
+  // Helper: live mutate window so the approval path is reachable.
+  function liveWindow() {
+    proposalLimitMock.mockResolvedValue([{
+      id: 'proposal_approved',
+      ownerDid: OWNER,
+      status: 'approved',
+      riskTier: 'mutate',
+      approvedUntil: new Date(Date.now() + 60 * 60 * 1000),
+    }]);
+  }
+
+  it('global under limit + per-tool under limit → approved (writes proceed)', async () => {
+    grant(['github:write']);
+    liveWindow();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+    // All count calls return 0 (default: proposalCountMock.mockResolvedValue([{count:0}])).
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('done');
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('global under limit + per-tool (github_update_issue 20/hr) exceeded → re-proposes inside window', async () => {
+    grant(['github:write']);
+    liveWindow();
+    // global call → 0 (under 30/hr); per-tool call → 20 (at 20/hr ceiling).
+    proposalCountMock
+      .mockResolvedValueOnce([{ count: 0 }])   // global
+      .mockResolvedValueOnce([{ count: 20 }]);  // github_update_issue 20/hr
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('pending');
+    expect(fetch).not.toHaveBeenCalled();
+
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(insertedRow.argsSummary).toContain('[TOOL_RATE_LIMIT:20/hr]');
+    expect(insertedRow.status).toBe('pending');
+
+    const proposedCall = publishMock.mock.calls.find(([type]) => type === 'action.proposed');
+    expect(proposedCall).toBeDefined();
+    expect(proposedCall![1].payload.argsSummary).toContain('[TOOL_RATE_LIMIT:20/hr]');
+  });
+
+  it('global under limit + github_create_issue hourly (5/hr) exceeded → pending', async () => {
+    grant(['github:write']);
+    appendLiveGrant();
+    // global → 0; github_create_issue 5/hr check → 5 (at ceiling).
+    proposalCountMock
+      .mockResolvedValueOnce([{ count: 0 }])  // global
+      .mockResolvedValueOnce([{ count: 5 }]); // github_create_issue 5/hr
+
+    const result = await createIssue(OWNER, REPO, 'New Issue', 'Body');
+
+    expect(result.status).toBe('pending');
+    expect(fetch).not.toHaveBeenCalled();
+
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(insertedRow.argsSummary).toContain('[TOOL_RATE_LIMIT:5/hr]');
+  });
+
+  it('global under limit + github_create_comment per-minute burst (10/min) exceeded → pending', async () => {
+    grant(['github:write']);
+    appendLiveGrant();
+    // global → 0; burst check (10/min) → 10 (at ceiling); hourly never reached.
+    proposalCountMock
+      .mockResolvedValueOnce([{ count: 0 }])   // global
+      .mockResolvedValueOnce([{ count: 10 }]); // burst 10/min
+
+    const result = await createComment(OWNER, REPO, 42, 'Spam comment');
+
+    expect(result.status).toBe('pending');
+    expect(fetch).not.toHaveBeenCalled();
+
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(insertedRow.argsSummary).toContain('[TOOL_RATE_LIMIT:10/min burst]');
+  });
+
+  it('global under limit + comment burst under limit + hourly (60/hr) exceeded → pending', async () => {
+    grant(['github:write']);
+    appendLiveGrant();
+    // global → 0; burst → 5 (under 10/min); hourly → 60 (at ceiling).
+    proposalCountMock
+      .mockResolvedValueOnce([{ count: 0 }])   // global
+      .mockResolvedValueOnce([{ count: 5 }])   // burst 10/min: under
+      .mockResolvedValueOnce([{ count: 60 }]); // hourly 60/hr: at ceiling
+
+    const result = await createComment(OWNER, REPO, 42, 'A comment');
+
+    expect(result.status).toBe('pending');
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(insertedRow.argsSummary).toContain('[TOOL_RATE_LIMIT:60/hr]');
+  });
+
+  it('global ceiling exceeded → per-tool is never checked (global trip takes priority)', async () => {
+    grant(['github:write']);
+    liveWindow();
+    // All count calls return 30 (global at ceiling).
+    proposalCountMock.mockResolvedValue([{ count: 30 }]);
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('pending');
+    // proposalCountMock called exactly ONCE (global check only; per-tool skipped).
+    expect(proposalCountMock).toHaveBeenCalledTimes(1);
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(insertedRow.argsSummary).toContain('[RATE_LIMIT]');
+    expect(insertedRow.argsSummary).not.toContain('[TOOL_RATE_LIMIT]');
+  });
+});
