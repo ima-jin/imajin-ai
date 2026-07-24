@@ -35,10 +35,12 @@ Canonical location for all Imajin protocol and architecture RFCs. Each RFC has a
 | [29](./RFC-29-biometric-trust-escalation.md) | Biometric Trust Escalation | Draft | — |
 | [30](./RFC-30-the-judgment-token-thesis.md) | The Judgment Token Thesis | Draft | — |
 | [31](./RFC-31-agent-execution-sandbox.md) | Agent Execution Sandbox | Draft | — |
-| [32](./RFC-32-agent-protocol-interop.md) | Agent Protocol Interoperability | Draft | — |
+| [32](./RFC-32-agent-protocol-interop.md) | Agent Protocol Interoperability | Draft | [#965](https://github.com/ima-jin/imajin-ai/issues/965) |
 | [33](./RFC-33-agent-ci-pipeline.md) | Agent CI Pipeline | Draft | — |
 | [34](./RFC-34-community-needs-brokerage.md) | Community Needs Brokerage | Draft | — |
 | [35](./RFC-35-context-bound-connection.md) | Context-Bound Connection | Draft | — |
 | [36](./RFC-36-deterministic-hooks.md) | Deterministic Hooks | Draft | — |
 | [37](./RFC-37-corroboration-escrow.md) | Corroboration Escrow | Draft | — |
 | [39](./RFC-39-verifiable-skills-invokable-agent.md) | Verifiable Skills & the Invokable Agent | Draft | — |
+| [40](./RFC-40-did-imajin-resolution.md) | `did:imajin` Resolution (Chain-Verified, Transport-Agnostic) | Draft | [#1427](https://github.com/ima-jin/imajin-ai/issues/1427) |
+| [41](./RFC-41-composable-gate.md) | The Composable Gate (signed-predicate reactor primitive) | Draft — build deferred | [#965](https://github.com/ima-jin/imajin-ai/issues/965) |
