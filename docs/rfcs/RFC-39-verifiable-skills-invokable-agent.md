@@ -19,6 +19,19 @@ This RFC reframes a skill as a **signed artifact** and an agent as an **invokabl
 
 This is the honest-record thesis pointed at the agent's own tooling. Proof-of-history already answers "what did the agent do." This answers the prior question: **"what is this agent allowed and able to do, and is it the real one?"** — the precondition for trusting an agent you did not personally configure, which is the precondition for agent-to-agent coordination (RFC-27), protocol interop (RFC-32, Buzz/Nostr, DFOS), and the multi-Jin sandbox (RFC-31).
 
+## Generalization — "skill" is the worked example, not the boundary
+
+This RFC is written concretely around **skills** because that is where the need entered (loose, drifting, unverifiable skill files). But the primitive is **agnostic to the word "skill."** The mechanism — *a working copy verified against a signed record, resolved from a DID* — does not care what it wraps. A skill is one instance of a **verifiable capability artifact**. Others instantiate it identically:
+
+- a **tool** or MCP server an agent exposes
+- a **prompt / soul / config** (the `.imajin/` stack in #366 is literally this)
+- a **model** or model manifest
+- a **procedure / workflow** (an autonomous sprint loop, an automation epic)
+- a **memory band** (the generated projections of #1418 — signed, versioned views over the record)
+- any **capability image** at all (#366's forkable `image`)
+
+The concrete "skill" framing is kept deliberately — it is what makes the design legible rather than abstract. But the ceiling is intentionally left open: the reader should map this onto whatever capability artifact *they* are trying to make trustworthy. **Concrete body, open ceiling.** Where this document says "skill," read "any DID-resolved, hash-verified capability artifact."
+
 ## Motivation
 
 The trigger is concrete (2026-07-23): skills such as `karaoke`, `imajin-deploy`, and `artifact` live under `~/.openclaw/workspace/skills/*` and `~/.local/share/pnpm/.../skills/*`. They are excellent, but:
