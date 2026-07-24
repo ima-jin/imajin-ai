@@ -464,7 +464,7 @@ Imajin's identity spine is **Ed25519** (the DFOS federation contract — we cann
 
 #### 4.7.4 The missing pieces (honest gap list)
 
-1. **Public `did:imajin` resolver** — a `did:imajin` DID method + resolver endpoint so any external Verifier resolves our DIDs "without prior coordination." Today resolution is internal. *(This is the single biggest unlock — it's what turns every mapping above from theory into something an outside proxy can actually check.)*
+1. **Public `did:imajin` resolver** — a `did:imajin` DID method + resolver endpoint so any external Verifier resolves our DIDs "without prior coordination." Today resolution is internal. *(This is the single biggest unlock — it's what turns every mapping above from theory into something an outside proxy can actually check.)* **Specified in [RFC-40](./RFC-40-did-imajin-resolution.md)** (chain-verified, transport-agnostic — the sovereign version, where trust is derived from verifying the chain, not from trusting whoever served it).
 2. **W3C-VC serialization layer** — emit attestations/delegations as JSON-LD Verifiable Credentials (candidate `@imajin/vc` package, already floated in #394). Precedent: closed issue #562 (EUDI Wallet W3C VC + OpenID4VP layer) explored the same serialization for a different consumer.
 3. **Public revocation/status endpoint** — `credentialStatus` needs to resolve for cross-boundary verifiers.
 4. **P-256 money-leg signing + attestation bridge** — for AP2 only (§4.7.3).

@@ -42,3 +42,4 @@ Canonical location for all Imajin protocol and architecture RFCs. Each RFC has a
 | [36](./RFC-36-deterministic-hooks.md) | Deterministic Hooks | Draft | — |
 | [37](./RFC-37-corroboration-escrow.md) | Corroboration Escrow | Draft | — |
 | [39](./RFC-39-verifiable-skills-invokable-agent.md) | Verifiable Skills & the Invokable Agent | Draft | — |
+| [40](./RFC-40-did-imajin-resolution.md) | `did:imajin` Resolution (Chain-Verified, Transport-Agnostic) | Draft | [#1427](https://github.com/ima-jin/imajin-ai/issues/1427) |
