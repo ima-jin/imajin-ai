@@ -1,6 +1,6 @@
 # RFC-41: The Composable Gate — A Signed-Predicate Reactor Primitive
 
-**Status:** Draft — **falsifiable claim, build deferred**
+**Status:** Draft — **pattern confirmed (5 instances), abstraction deferred by priority, not doubt**
 **Authors:** Ryan Veteze, Jin
 **Created:** July 24, 2026
 **Discussion:** TBD
@@ -11,17 +11,19 @@
 
 ## 0. Status note — why this RFC does not authorize a build
 
-This RFC **normalizes a pattern we have built ~4 times** and **explicitly defers implementing the abstraction.** It exists to write the shape down precisely enough that the *next* real need can either snap onto it or visibly break it — the break being the valuable outcome.
+This RFC **normalizes a pattern we have now built five times** and **defers implementing the abstraction — by priority, not by doubt about the shape.** It exists to write the shape down precisely enough that when convergence is worth the focus, each existing instance can convert to the abstraction and either snap onto it or visibly break it — the break being the valuable outcome.
+
+**Why deferred (updated 2026-07-24):** the pattern is no longer unproven — `supply.*` (the Catalyst/AgriFortress chain, actively shipping on the Aug 17 XPRIZE clock: `supply.declared`/`supply.received`/`settled` reactors, #1375/#1384) is the fifth bespoke instance. The shape is confirmed. What is deferred is the **exit**: a strangler-fig migration where each of the five instances converts to the `Predicate` interface *on its own clock*, and a convergence epic closes only when all five run on the abstraction. That epic is **not filed yet — deliberately.** With XPRIZE, Artifact/Bedrock, and several other threads in flight, extracting a cross-cutting primitive now would be a shiny distraction competing with real deadlines. **This RFC is the tripwire:** the next time someone reaches for a bespoke gate, RFC-41 catches it, and *that* real need is what should make the migration earn priority — not our enthusiasm for the pattern. The migration is the falsification test; it runs when a live need pays for it.
 
 The honest constraint is stated up front because it is the whole point of filing this now rather than coding it:
 
-> **An abstraction extracted from four instances that all live in the same two heads is not proven. It is proven when a fifth need — ideally one we did not design — either fits the interface cleanly or breaks it.**
+> **An abstraction is not proven by counting instances — it is proven when each instance converts onto the interface and either fits cleanly or breaks it.** Five bespoke instances confirm the *pattern*; they do not yet test the *abstraction*. Every one of them, including `supply.*` shipping this week, is hand-rolled — none has been built against `Predicate`.
 
-All four current instances (delegation, ad-eligibility, cultural DID, consent-tier) were designed within one worldview. That is not four independent confirmations of a shape; it is one worldview expressed four times. The shape *feels* inevitable precisely because we made it feel that way — which is exactly the condition under which premature abstraction feels most justified and is most dangerous.
+The five instances (delegation, ad-eligibility, cultural DID, consent-tier, supply.*) were designed within one worldview. That is not five independent confirmations of an abstraction; it is one worldview expressed five times. The shape *feels* inevitable precisely because we made it feel that way — which is exactly the condition under which premature abstraction feels most justified and is most dangerous. The strangler migration (each instance converts at will; epic closes at five) is what turns confirmation into test.
 
 So RFC-41 is a **falsifiable claim**, in the same discipline as conformance (prove against a runnable test) and RFC-39 (verify against the signed record), pointed this time at our own architectural instinct. An RFC that can only be confirmed and never falsified is a manifesto, not a spec. This one is designed to be broken by instance five.
 
-**Receipt that deferral has been the right call twice already:** `ReactorConfig.condition` exists in `packages/bus/src/types.ts` (`condition?: string; // optional: future use for conditional execution`) and is evaluated **nowhere** (confirmed: absent from `config.ts` / `index.ts` evaluation paths). We designed the hook for gated composition and correctly did not build the evaluator. This RFC does not change that. It specifies what the evaluator *would* be, and waits.
+**Receipt that deferral has been the right call repeatedly:** `ReactorConfig.condition` exists in `packages/bus/src/types.ts` (`condition?: string; // optional: future use for conditional execution`) and is evaluated **nowhere** (confirmed: absent from `config.ts` / `index.ts` evaluation paths). We designed the hook for gated composition and correctly did not build the evaluator. This RFC does not change that. It specifies what the evaluator *would* be, names the exit (strangler migration onto `Predicate`), and waits for a live need to pay for the focus.
 
 ---
 
@@ -37,7 +39,7 @@ The purest single statement is the **cultural gate** (RFC-07): `belongs-to(subje
 
 ---
 
-## 2. The four instances (stable shape, unproven abstraction)
+## 2. The five instances (stable shape, unproven abstraction)
 
 | Instance | Predicate | Author of the condition | Where evaluated | Status in code |
 |----------|-----------|-------------------------|-----------------|----------------|
@@ -45,12 +47,13 @@ The purest single statement is the **cultural gate** (RFC-07): `belongs-to(subje
 | **Delegation / authority lineage** (RFC-40, RFC-32 §4.7) | `derives-authority-from(agent, principal)` within scope | the principal | resource / KYA-OS Verifier | resolver spec'd, delegation rows live (`identity_members`) |
 | **Ad-eligibility / consent** (artifactagent #16, #5) | `consented-to-use(household, flight)` | the person (subject-authored) | eligibility store, per-flight | design note |
 | **Consent-tier / broker** (bus broker: `consent.ts`, closed #1214/#1196) | `consent-exists(subject, requester, purpose)` | the subject | broker latch, fail-closed | **shipped** — closest to the real primitive today |
+| **Supply custody** (Catalyst `supply.*`, #1375/#1384) | `custody-derives-from(lot, supplier-DID)` | the supplier | supply-recorder, per-movement | **shipping now** — Aug 17 XPRIZE clock, bespoke |
 
 Two supporting mechanics that are *part of* the primitive, not separate:
 - **Match-without-disclosure** (artifactagent #18) — the rule that a gate emits only a boolean, never its inputs. This is **what makes composition non-leaking.** Without it, chaining gates leaks.
 - **Stub / claim** (the Trojan-horse mechanic) — a *pre-signed* membership mark that activates on claim. A cultural gate whose boolean is authored ahead of time and switched on by the subject's claim.
 
-The broker (`consent.ts`) is the honest anchor: it is already `resolve → allow/reject`, **fail-closed**, composing overlapping grants as a union of fields. It is the primitive, built once, for one domain, not knowing it has three siblings.
+The broker (`consent.ts`) is the honest anchor: it is already `resolve → allow/reject`, **fail-closed**, composing overlapping grants as a union of fields. It is the primitive, built once, for one domain, not knowing it has four siblings.
 
 ---
 
@@ -117,22 +120,28 @@ A centralized gate and a sovereign gate are the *same logic gate*. The only diff
 
 ---
 
-## 5. How to falsify this (the point of the RFC)
+## 5. How to falsify this — the exit IS the test (strangler migration)
 
-RFC-41 is confirmed or broken by **instance five** — a real need, not a designed one. Candidates on the board that will test it:
+The pattern is confirmed (5 instances). The abstraction is tested by **converting each instance onto `Predicate`**, one at a time, each on its own clock. A convergence epic (NOT filed yet — deferred by priority) would close only when all five run on the abstraction. Each conversion is a falsification test: it snaps on, or it fights the interface and *amends this RFC*.
 
-1. **RFC-37 corroboration escrow** — the surfacing gate ("reveal only when an independent account names the same subject"). Does `Predicate` express a gate whose condition is *another gate firing on a different subject*? If it needs a fundamentally different shape (cross-subject correlation, not single-subject membership), the abstraction is one worldview wide.
-2. **A Tripian journey-state gate** — "traveler is eligible for this touchpoint." Different domain, not designed by us against this spec.
-3. **RFC-17 governance** — role/scope gates. Does governance decompose into composed `Predicate`s or is it categorically different?
+The five conversions, in the order risk suggests (safest first, deadline-bound last):
 
-**Success is not "all five fit."** Success is that the spec is precise enough that the fifth case *clearly* either fits or breaks — and if it breaks, we learn the abstraction's true width instead of pouring concrete on the rung we happen to be standing on.
+1. **Broker / consent** (`packages/bus/reactors/consent.ts`) — already `resolve → boolean, fail-closed`; the reference conversion, lowest risk. The first real build unit when convergence earns priority: wire the dead `condition` field + ship `Predicate` against this one consumer.
+2. **Cultural DID** (RFC-07) — the purest form; converts when it is built.
+3. **Delegation / authority lineage** (RFC-40, `identity_members`).
+4. **Ad-eligibility** (artifactagent #16/#5) — cross-repo; Artifact's clock.
+5. **`supply.*`** (Catalyst) — **blocked-by the XPRIZE ship (Aug 17); converts *after*.** Never make a deadline demo the guinea pig for a new abstraction.
+
+**Success is not "all five fit."** Success is that the spec is precise enough that each conversion *clearly* either fits or breaks — and if it breaks, we learn the abstraction's true width instead of pouring concrete on the rung we happen to be standing on. **Until a live need pays for the migration, this section is a plan, not a work order.**
+
+> Candidate *future* instances that would also test the shape if they arrive first: RFC-37 corroboration escrow (a cross-subject gate — does `Predicate` hold when the condition is another gate firing on a *different* subject?), a Tripian journey-state gate, RFC-17 governance.
 
 ---
 
 ## 6. Non-goals
 
 - **Not authorizing implementation.** No `evaluateGate`, no `Predicate` package, no `condition`-evaluator ships on the strength of this RFC. Build waits for a fifth need that tests the interface.
-- Not deprecating the four bespoke gates. They work. Extraction happens (if ever) when a real consumer can't be served by the bespoke approach.
+- Not deprecating the five bespoke gates. They work. Extraction happens (if ever) when a real consumer can't be served by the bespoke approach — or, more precisely, when a live need makes the strangler migration worth the focus (§5).
 - Not a new subsystem. If built, it is `bus_chain_configs` + a `condition` evaluator + a `Predicate` interface the existing gates implement — finishing the machine we half-built, not a new one.
 
 ---
