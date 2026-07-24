@@ -337,6 +337,18 @@ If you want to run your own node or build on the stack, start with the [Develope
 
 Found a vulnerability, or want to know what we do and don't guarantee yet? See [SECURITY.md](SECURITY.md) for the responsible-disclosure process and an honest list of known limitations. We're pre-1.0 sovereign plumbing — not claiming to be unhackable, just claiming to be honest about where we are.
 
+## A note on use
+
+Imajin is open source. We're not going to stop you — the license means what it says, run it for anything you like, no permission required. That's the point of a sovereign system.
+
+But know what you're running. Imajin signs everything. Every action leaves an attributable, non-repudiable record — that's not a feature we bolted on, it's the whole thesis. For two thousand years the money was in the lie; Imajin is built so that hiding stops paying and disclosure starts.
+
+So we'll be honest about the uses we don't jive with: surveillance, targeting, anything built to act on people in the dark. We're not going to forbid them. We're going to do something we think is stronger — make them *legible*. If you use this system to do something you'd rather not have on the record, understand that the system's job is to put it on the record. That's not a bug we'll fix for you.
+
+We hold ourselves to the same thing. Imajin is built in the open, its actions signed, its history auditable — including ours. We're prepared to be on the record. That's the deal we're offering everyone else, and we took it first.
+
+Have at it. Careful what you wish for.
+
 ## License
 
 MIT
