@@ -121,10 +121,40 @@ export async function sealPat(ownerDid: string, pat: string): Promise<void> {
   await sealAndStore(vaultField(ownerDid), pat);
 }
 
-// ── Rate-limit constants (tune-later per #1366 child-5) ──────────────────────────
+// ── Rate-limit constants (tune-later per #1371) ────────────────────────────────
 
-/** Hard cap on done writes per owner per rolling hour — enforced even inside live windows. */
+/** Hard cap on ALL done writes per owner per rolling hour. Enforced even inside live windows. */
 const GLOBAL_WRITE_CEILING_PER_HOUR = 30;
+
+/**
+ * Per-tool sub-limits enforced within the global ceiling (#1371).
+ * Each tool may have multiple entries (e.g. burst + hourly).
+ * Checked in order; the first exceeded entry trips the pending path.
+ *
+ * All numbers are tune-later placeholders matching the #1366 epic design.
+ */
+const PER_TOOL_LIMITS: Record<string, ReadonlyArray<{
+  /** Max `done` rows for this tool within the rolling window. */
+  ceiling: number;
+  /** Rolling window size in hours (use 1/60 for per-minute). */
+  windowHours: number;
+  /** Label used in log messages and argsSummary annotation. */
+  label: string;
+}>> = {
+  // Additive writes — loosest, but burst-capped to prevent comment floods.
+  'github_create_comment': [
+    { ceiling: 10, windowHours: 1 / 60, label: '10/min burst' },
+    { ceiling: 60, windowHours: 1,      label: '60/hr' },
+  ],
+  // Additive writes — tighter than comments; issues are higher-signal.
+  'github_create_issue': [
+    { ceiling: 5, windowHours: 1, label: '5/hr' },
+  ],
+  // Mutate writes — tightest; always require confirm anyway.
+  'github_update_issue': [
+    { ceiling: 20, windowHours: 1, label: '20/hr' },
+  ],
+};
 
 // ── Gate helper ──────────────────────────────────────────────────────────────────
 
@@ -183,19 +213,28 @@ export type GitHubWriteResult<T> =
   | { status: 'done'; data: T }
   | { status: 'pending'; proposalId: string; message: string };
 
-/** Count done writes for ownerDid in the last `windowHours` hours (rate-limit check). */
-async function countDoneProposals(ownerDid: string, windowHours: number): Promise<number> {
+/**
+ * Count done writes for ownerDid in the last `windowHours` hours.
+ * When `tool` is provided, counts only done rows for that specific tool
+ * (per-tool sub-limit check). Without `tool`, counts across all tools
+ * (global ceiling check).
+ */
+async function countDoneProposals(
+  ownerDid: string,
+  windowHours: number,
+  tool?: string,
+): Promise<number> {
   const cutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+  const conditions = [
+    eq(githubActionProposals.ownerDid, ownerDid),
+    eq(githubActionProposals.status, 'done'),
+    gt(githubActionProposals.createdAt, cutoff),
+    ...(tool !== undefined ? [eq(githubActionProposals.tool, tool)] : []),
+  ];
   const rows = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(githubActionProposals)
-    .where(
-      and(
-        eq(githubActionProposals.ownerDid, ownerDid),
-        eq(githubActionProposals.status, 'done'),
-        gt(githubActionProposals.createdAt, cutoff),
-      ),
-    );
+    .where(and(...conditions));
   return rows[0]?.count ?? 0;
 }
 
@@ -231,9 +270,12 @@ async function insertDoneRow(
  * Flow:
  * 1. Look for a live 'approved' row matching ownerDid + scope + riskTier.
  *    An append-approved row does NOT satisfy a mutate lookup, and vice versa.
- * 2. Check the global write ceiling — enforced even inside a live window.
- * 3a. Ceiling ok + live grant:  return approved (insert done row if windowed).
- * 3b. No live grant OR ceiling exceeded:  insert pending proposal, publish
+ * 2. Check the global write ceiling (all tools, 1hr window).
+ *    Trips even inside a live window — no exceptions.
+ * 3. If global ok: check per-tool sub-limits from PER_TOOL_LIMITS.
+ *    Trips even inside a live window.
+ * 4a. Live grant + no limit exceeded: return approved.
+ * 4b. No live grant OR any limit exceeded: insert pending proposal, publish
  *     action.proposed with the correct risk field, return pending.
  */
 async function requireWriteGate(
@@ -268,10 +310,25 @@ async function requireWriteGate(
 
   // ── 2. Global write ceiling check ────────────────────────────────────────
   const recentDone = await countDoneProposals(ownerDid, 1);
-  const ceilingExceeded = recentDone >= GLOBAL_WRITE_CEILING_PER_HOUR;
+  const globalExceeded = recentDone >= GLOBAL_WRITE_CEILING_PER_HOUR;
 
-  if (isLive && !ceilingExceeded) {
-    // ── 3a. Approved path ─────────────────────────────────────────────────
+  // ── 3. Per-tool sub-limit check (only when global is ok) ────────────────
+  let toolLimitLabel: string | null = null;
+  if (!globalExceeded) {
+    const toolLimits = PER_TOOL_LIMITS[tool] ?? [];
+    for (const limit of toolLimits) {
+      const toolCount = await countDoneProposals(ownerDid, limit.windowHours, tool);
+      if (toolCount >= limit.ceiling) {
+        toolLimitLabel = limit.label;
+        break;
+      }
+    }
+  }
+
+  const anyLimitExceeded = globalExceeded || toolLimitLabel !== null;
+
+  if (isLive && !anyLimitExceeded) {
+    // ── 4a. Approved path ─────────────────────────────────────────────────
     if (liveGrant!.approvedUntil !== null) {
       // Windowed: insert a done row for rate counting; leave the grant active.
       await insertDoneRow(ownerDid, scope, tool, risk, target, argsSummary, agentDid);
@@ -281,9 +338,16 @@ async function requireWriteGate(
     return { status: 'approved', token, singleProposalId: liveGrant!.id };
   }
 
-  // ── 3b. Pending path: insert proposal + emit action.proposed ─────────────
+  // ── 4b. Pending path: insert proposal + emit action.proposed ─────────────
   const proposalId = `proposal_${nanoid()}`;
-  const effectiveSummary = ceilingExceeded ? `[RATE_LIMIT] ${argsSummary}` : argsSummary;
+  const limitAnnotation = globalExceeded
+    ? '[RATE_LIMIT]'
+    : toolLimitLabel !== null
+    ? `[TOOL_RATE_LIMIT:${toolLimitLabel}]`
+    : null;
+  const effectiveSummary = limitAnnotation !== null
+    ? `${limitAnnotation} ${argsSummary}`
+    : argsSummary;
   await db.insert(githubActionProposals).values({
     id: proposalId,
     ownerDid,
@@ -318,10 +382,12 @@ async function requireWriteGate(
     log.error({ err: String(err), proposalId, tool, risk }, 'action.proposed publish failed (non-fatal)');
   }
 
-  const reason = ceilingExceeded
+  const reason = globalExceeded
     ? `Global write ceiling (${GLOBAL_WRITE_CEILING_PER_HOUR}/hr) exceeded — re-raised to human even inside active window`
+    : toolLimitLabel !== null
+    ? `Per-tool sub-limit (${toolLimitLabel}) exceeded for ${tool} — re-raised to human`
     : `No live ${risk}-tier approval grant — human confirmation required`;
-  log.info({ proposalId, ownerDid, tool, target, risk, ceilingExceeded }, reason);
+  log.info({ proposalId, ownerDid, tool, target, risk, globalExceeded, toolLimitLabel }, reason);
 
   return { status: 'pending', proposalId };
 }
