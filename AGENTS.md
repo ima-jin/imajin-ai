@@ -69,3 +69,22 @@ Use the issue/PR number as the slug, e.g.:
 ### Why this matters
 
 All agent sessions share the same machine and the same `D:\Projects\imajin\imajin-ai` directory. A `git checkout` in that directory instantly changes the working tree for every other session running concurrently, causing branch confusion, stale file reads, and CI failures from commits landing on the wrong branch — exactly what happened with the inference engine work ending up in PR #1284 instead of its own PR.
+
+## Issue & label conventions
+
+Repo conventions (issue-label taxonomy + lifecycle rules) are canonical in
+**[`ima-jin/conventions`](https://github.com/ima-jin/conventions)** — consumed, not forked. This repo carries the
+`universal` **and** `platform` label sets.
+
+**Seed / reconcile labels** (idempotent):
+```bash
+# from a checkout of ima-jin/conventions
+scripts/init-taxonomy.sh ima-jin/imajin-ai --set universal --set platform
+```
+
+**Lifecycle rules** (full text: `ima-jin/conventions/ISSUE-CONVENTIONS.md`):
+- `Closes #N` / `Fixes #N` in a PR is the **only** thing that auto-closes an issue — a body mention or `Phase N — #N:`
+  closes nothing.
+- Don't close-and-icebox real ideas — a genuine idea not being worked now stays **open** (shelved), not closed.
+- Use GitHub's **native sub-issues / blocked-by** (GraphQL `addSubIssue` / `addBlockedBy`) over `- [ ]` body checklists.
+- Labels are for **type/topic**; Status/Priority/Vertical live on the org [Roadmap board](https://github.com/orgs/ima-jin/projects/5), not as labels.
