@@ -2,46 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const {
-  dbSelectMock,
-  dbUpdateMock,
-  sealAndGrantMock,
-  loadAndUnsealByGranteeMock,
-  revokeStaticSecretGrantMock,
-} = vi.hoisted(() => {
-  // DB select chain: .select().from().where().orderBy().limit()
-  const dbSelectLimitMock = vi.fn();
-  const dbSelectOrderByMock = vi.fn(() => ({ limit: dbSelectLimitMock }));
-  const dbSelectWhereMock = vi.fn(() => ({ orderBy: dbSelectOrderByMock }));
-  const dbSelectFromMock = vi.fn(() => ({ where: dbSelectWhereMock }));
-  const dbSelectMock = vi.fn(() => ({ from: dbSelectFromMock }));
-
-  // DB update chain: .update().set().where()
-  const dbUpdateWhereMock = vi.fn().mockResolvedValue(undefined);
-  const dbUpdateSetMock = vi.fn(() => ({ where: dbUpdateWhereMock }));
-  const dbUpdateMock = vi.fn(() => ({ set: dbUpdateSetMock }));
-
-  const sealAndGrantMock = vi.fn();
-  const loadAndUnsealByGranteeMock = vi.fn();
-  const revokeStaticSecretGrantMock = vi.fn();
-
-  return {
-    dbSelectMock,
-    dbSelectLimitMock,
-    dbSelectOrderByMock,
-    dbSelectWhereMock,
-    dbSelectFromMock,
-    dbUpdateMock,
-    dbUpdateSetMock,
-    dbUpdateWhereMock,
-    sealAndGrantMock,
-    loadAndUnsealByGranteeMock,
-    revokeStaticSecretGrantMock,
-  };
-});
+const { dbSelectMock, sealAndGrantMock, loadAndUnsealByGranteeMock, revokeStaticSecretGrantMock } = vi.hoisted(() => ({
+  // loadSecret calls db.select(); vault functions (sealAndGrantStaticSecret,
+  // loadAndUnsealByGrantee, revokeStaticSecretGrant) are fully mocked so
+  // db.update is never exercised in these unit tests.
+  dbSelectMock: vi.fn(),
+  sealAndGrantMock: vi.fn(),
+  loadAndUnsealByGranteeMock: vi.fn(),
+  revokeStaticSecretGrantMock: vi.fn(),
+}));
 
 vi.mock('@/src/db', () => ({
-  db: { select: dbSelectMock, update: dbUpdateMock },
+  db: { select: dbSelectMock, update: vi.fn() },
   vaultDelegationGrants: {},
 }));
 
@@ -96,9 +68,6 @@ describe('createConnectorStaticSecret', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    sealAndGrantMock.mockReset();
-    loadAndUnsealByGranteeMock.mockReset();
-    revokeStaticSecretGrantMock.mockReset();
   });
 
   // ── secretField ────────────────────────────────────────────────────────────

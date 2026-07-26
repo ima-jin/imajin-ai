@@ -121,18 +121,18 @@ describe('infer — inference policy layer', () => {
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
     });
     mockLoadSecret.mockRejectedValue(new Error('inference-model-key_no_credential'));
-    const originalVal = globalThis.process?.env.INFERENCE_DEV_ALLOW_ENV_KEY;
+    const originalVal = process.env.INFERENCE_DEV_ALLOW_ENV_KEY;
     try {
-      globalThis.process.env.INFERENCE_DEV_ALLOW_ENV_KEY = 'true';
+      process.env.INFERENCE_DEV_ALLOW_ENV_KEY = 'true';
       const vocabWithDid = { ...VOCAB, ownerAppDid: 'did:imajin:agrifortress' };
       await infer(CTX, vocabWithDid);
       // Falls back to env: getModel called with undefined apiKey config.
       expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash', undefined);
     } finally {
       if (originalVal === undefined) {
-        delete globalThis.process.env.INFERENCE_DEV_ALLOW_ENV_KEY;
+        delete process.env.INFERENCE_DEV_ALLOW_ENV_KEY;
       } else {
-        globalThis.process.env.INFERENCE_DEV_ALLOW_ENV_KEY = originalVal;
+        process.env.INFERENCE_DEV_ALLOW_ENV_KEY = originalVal;
       }
     }
   });

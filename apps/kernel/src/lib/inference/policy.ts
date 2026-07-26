@@ -38,7 +38,7 @@ async function resolveModelApiKey(vocab: IntentVocabulary): Promise<string | und
   if (vocab.ownerAppDid === undefined) {
     return undefined;
   }
-  const devFallback = globalThis.process?.env.INFERENCE_DEV_ALLOW_ENV_KEY === 'true';
+  const devFallback = process.env.INFERENCE_DEV_ALLOW_ENV_KEY === 'true';
   try {
     return await inferenceModelKeyConnector.loadSecret(vocab.ownerAppDid);
   } catch (err) {
