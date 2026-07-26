@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { resolveInferenceOwnerDid } from '@/src/lib/inference/route-auth';
 import { createLogger } from '@imajin/logger';
 import { db, inferenceSessions } from '@/src/db';
 import { eq } from 'drizzle-orm';
@@ -33,27 +33,9 @@ export async function POST(
   const cors = corsHeaders(request);
   const { sessionId } = params;
 
-  let ownerDid: string;
-
-  // App-auth path: service token acting on behalf of a user
-  const appAuthResult = await requireAppAuth(request, { scope: 'inference:write' });
-  if ('appAuth' in appAuthResult) {
-    const actingFor = request.headers.get('x-acting-for') ?? appAuthResult.appAuth.userDid;
-    if (!actingFor) {
-      return NextResponse.json(
-        { error: 'X-Acting-For header (or delegating user) required for app auth' },
-        { status: 400, headers: cors },
-      );
-    }
-    ownerDid = actingFor;
-  } else {
-    // Session auth path (UNCHANGED)
-    const authResult = await requireAuth(request);
-    if ('error' in authResult) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
-    }
-    ownerDid = resolveActingDid(authResult.identity);
-  }
+  const ownerResult = await resolveInferenceOwnerDid(request, 'inference:write', cors);
+  if (!('ownerDid' in ownerResult)) return ownerResult;
+  const { ownerDid } = ownerResult;
 
   try {
     // Validate ownership + status, advance to 'resolving'.
