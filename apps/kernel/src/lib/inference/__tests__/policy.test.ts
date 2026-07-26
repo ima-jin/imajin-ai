@@ -25,6 +25,11 @@ vi.mock('@imajin/llm', () => ({
   generateText: mockGenerateText,
 }));
 
+const mockLoadSecret = vi.hoisted(() => vi.fn());
+vi.mock('@/src/lib/kernel/connector-static-secret', () => ({
+  inferenceModelKeyConnector: { loadSecret: mockLoadSecret },
+}));
+
 vi.mock('@imajin/logger', () => ({
   createLogger: vi.fn(() => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() })),
 }));
@@ -61,6 +66,7 @@ const MOCK_MODEL = {};
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetModel.mockReturnValue(MOCK_MODEL);
+  mockLoadSecret.mockReset();
   mockUpdateSet.mockImplementation(() => ({ where: mockUpdateSetWhere }));
   mockUpdateSetWhere.mockResolvedValue(undefined);
   mockDbUpdate.mockImplementation(() => ({ set: mockUpdateSet }));
@@ -69,14 +75,66 @@ beforeEach(() => {
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('infer — inference policy layer', () => {
-  it('calls getModel with the vocab modelProvider and modelId', async () => {
+  it('calls getModel with the vocab modelProvider and modelId (no ownerAppDid)', async () => {
     mockGenerateText.mockResolvedValueOnce({
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.95, metadata: { product: 'maize' } }]),
     });
 
     await infer(CTX, VOCAB);
 
-    expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash');
+    // VOCAB has no ownerAppDid — no vault lookup, no apiKey config passed.
+    expect(mockLoadSecret).not.toHaveBeenCalled();
+    expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash', undefined);
+  });
+
+  it('resolves the API key from the vault when vocab.ownerAppDid is set', async () => {
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
+    });
+    mockLoadSecret.mockResolvedValue('vault-resolved-api-key');
+
+    const vocabWithDid = { ...VOCAB, ownerAppDid: 'did:imajin:agrifortress' };
+    await infer(CTX, vocabWithDid);
+
+    expect(mockLoadSecret).toHaveBeenCalledWith('did:imajin:agrifortress');
+    expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash', { apiKey: 'vault-resolved-api-key' });
+  });
+
+  it('fails closed when ownerAppDid is set but no active grant exists', async () => {
+    mockLoadSecret.mockRejectedValue(new Error('inference-model-key_no_credential: no active grant'));
+
+    const vocabWithDid = { ...VOCAB, ownerAppDid: 'did:imajin:agrifortress' };
+    await expect(infer(CTX, vocabWithDid)).rejects.toThrow('inference-model-key_no_credential');
+    expect(mockGetModel).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the grant is revoked (VaultDelegationError)', async () => {
+    mockLoadSecret.mockRejectedValue(new Error('vault loadAndUnsealByGrantee: no active delegation grant'));
+
+    const vocabWithDid = { ...VOCAB, ownerAppDid: 'did:imajin:agrifortress' };
+    await expect(infer(CTX, vocabWithDid)).rejects.toThrow('vault loadAndUnsealByGrantee');
+    expect(mockGetModel).not.toHaveBeenCalled();
+  });
+
+  it('falls back to env (getModel with undefined apiKey) when INFERENCE_DEV_ALLOW_ENV_KEY=true and no grant', async () => {
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
+    });
+    mockLoadSecret.mockRejectedValue(new Error('inference-model-key_no_credential'));
+    const originalVal = globalThis.process?.env.INFERENCE_DEV_ALLOW_ENV_KEY;
+    try {
+      globalThis.process.env.INFERENCE_DEV_ALLOW_ENV_KEY = 'true';
+      const vocabWithDid = { ...VOCAB, ownerAppDid: 'did:imajin:agrifortress' };
+      await infer(CTX, vocabWithDid);
+      // Falls back to env: getModel called with undefined apiKey config.
+      expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash', undefined);
+    } finally {
+      if (originalVal === undefined) {
+        delete globalThis.process.env.INFERENCE_DEV_ALLOW_ENV_KEY;
+      } else {
+        globalThis.process.env.INFERENCE_DEV_ALLOW_ENV_KEY = originalVal;
+      }
+    }
   });
 
   it('calls generateText with the vocab systemPrompt injected', async () => {

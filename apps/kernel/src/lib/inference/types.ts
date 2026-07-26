@@ -118,6 +118,15 @@ export interface IntentVocabulary {
   /** Model ID for the inference call, e.g. 'claude-sonnet-4-20250514'. */
   modelId: string;
   /**
+   * App DID of the vocabulary's owner (e.g. `'did:imajin:agrifortress'`).
+   *
+   * When set, policy.ts resolves the model API key from the vault via the
+   * active delegation grant issued to this app DID (grant-based key, #1437).
+   * Omit to fall back to env (only for vocabs that have no sealed credential
+   * or are running in local dev with `INFERENCE_DEV_ALLOW_ENV_KEY=true`).
+   */
+  ownerAppDid?: string;
+  /**
    * Vocab-specific system prompt fragment injected into the policy call.
    * Should describe the available intent types and the expected JSON output
    * schema in terms meaningful to this vocabulary.

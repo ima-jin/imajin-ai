@@ -20,7 +20,7 @@
  */
 
 /** How the connector ingests credentials. */
-export type IngestionPattern = 'oauth' | 'token-paste' | 'native';
+export type IngestionPattern = 'oauth' | 'token-paste' | 'native' | 'static-secret';
 
 /** Release class from the #1196 consent 2×2. */
 export type ReleaseClass = 'silent' | 'on-consent' | 'never';
@@ -85,6 +85,16 @@ export interface ConnectorEntry {
    * credential token in-app. `null` for OAuth connectors.
    */
   tokenRoute: string | null;
+  /**
+   * For static-secret connectors: the POST route for sealing a provider secret
+   * and issuing a delegation grant. `null` for non-static-secret connectors.
+   */
+  secretRoute: string | null;
+  /**
+   * For static-secret connectors: the POST route for revoking an active
+   * delegation grant. `null` for non-static-secret connectors.
+   */
+  revokeSecretRoute: string | null;
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -125,6 +135,8 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: null,
     configureRoute: null,
     tokenRoute: null,
+    secretRoute: null,
+    revokeSecretRoute: null,
   },
   {
     id: 'github',
@@ -156,6 +168,8 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: '/github/api/connect',
     configureRoute: '/github/api/configure',
     tokenRoute: null,
+    secretRoute: null,
+    revokeSecretRoute: null,
   },
   {
     id: 'discord',
@@ -182,6 +196,8 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: null,
     configureRoute: null,
     tokenRoute: '/discord/api/token',
+    secretRoute: null,
+    revokeSecretRoute: null,
   },
   {
     id: 'quickbooks',
@@ -208,6 +224,31 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: '/quickbooks/api/connect',
     configureRoute: '/quickbooks/api/configure',
     tokenRoute: null,
+    secretRoute: null,
+    revokeSecretRoute: null,
+  },
+  {
+    id: 'inference',
+    name: 'Inference Engine',
+    description: 'Seal a provider API key under a principal DID and grant its use to an app DID for model inference.',
+    icon: '🧠',
+    ingestionPattern: 'static-secret',
+    channel: 'inference',
+    connectorDid: 'did:imajin:inference-connector',
+    scopes: [
+      {
+        name: 'inference:model-key',
+        label: 'Use a sealed model API key for inference',
+        releaseClass: 'never',
+      },
+    ],
+    statusEndpoint: null,
+    backendPending: false,
+    connectRoute: null,
+    configureRoute: null,
+    tokenRoute: null,
+    secretRoute: '/inference/api/secret',
+    revokeSecretRoute: '/inference/api/secret/revoke',
   },
 ] as const;
 

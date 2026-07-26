@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm';
 import { db, inferenceSessions } from '@/src/db';
 import { getModel, generateText } from '@imajin/llm';
 import { createLogger } from '@imajin/logger';
+import { inferenceModelKeyConnector } from '@/src/lib/kernel/connector-static-secret';
 import type { CandidateIntent, InferenceContext, IntentVocabulary } from './types';
 
 const log = createLogger('kernel:inference:policy');
@@ -27,16 +28,48 @@ Return ONLY the JSON array, no surrounding text.
 `.trim();
 
 /**
+ * Resolve the model API key from the vault delegation grant for this vocabulary.
+ *
+ * Fail-closed by default: throws when `vocab.ownerAppDid` is set but no active
+ * grant exists. Falls back to env only when `INFERENCE_DEV_ALLOW_ENV_KEY=true`
+ * (local dev escape hatch — never set in production).
+ */
+async function resolveModelApiKey(vocab: IntentVocabulary): Promise<string | undefined> {
+  if (vocab.ownerAppDid === undefined) {
+    return undefined;
+  }
+  const devFallback = globalThis.process?.env.INFERENCE_DEV_ALLOW_ENV_KEY === 'true';
+  try {
+    return await inferenceModelKeyConnector.loadSecret(vocab.ownerAppDid);
+  } catch (err) {
+    if (devFallback) {
+      log.warn(
+        { appDid: vocab.ownerAppDid },
+        'inference: no vault grant — falling back to env key (INFERENCE_DEV_ALLOW_ENV_KEY=true)',
+      );
+      return undefined;
+    }
+    throw err;
+  }
+}
+
+/**
  * Run the inference policy: transcript + priors + vocab → ranked CandidateIntent[].
  *
  * Updates the session row with the resulting candidate intents and advances
- * status to ready for consent gate.
+ * status to ready for consent gate. Resolves the model API key from the vault
+ * via the vocabulary's delegation grant when `vocab.ownerAppDid` is set (#1437).
  */
 export async function infer(
   ctx: InferenceContext,
   vocab: IntentVocabulary,
 ): Promise<CandidateIntent[]> {
-  const model = getModel(vocab.modelProvider, vocab.modelId);
+  const apiKey = await resolveModelApiKey(vocab);
+  const model = getModel(
+    vocab.modelProvider,
+    vocab.modelId,
+    apiKey !== undefined ? { apiKey } : undefined,
+  );
 
   const systemPrompt = `${vocab.systemPrompt}\n\n${SYSTEM_SUFFIX}`;
   const userMessage = buildUserMessage(ctx);

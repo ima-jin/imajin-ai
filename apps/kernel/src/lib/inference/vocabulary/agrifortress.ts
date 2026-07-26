@@ -26,14 +26,18 @@ import type { IntentVocabulary, CandidateIntent, ConsentTier, ResolutionReceipt 
 const SUPPLY_API_URL = process.env.AGRIFORTRESS_SUPPLY_API_URL ?? '';
 const SUPPLY_API_KEY = process.env.AGRIFORTRESS_SUPPLY_API_KEY ?? '';
 
+/** Stable app DID for AgriFortress — the grantee in vault delegation grants (#1437). */
+export const AGRIFORTRESS_APP_DID = 'did:imajin:agrifortress' as const;
+
 export const agrifortressVocabulary: IntentVocabulary = {
   name: 'agrifortress',
   // Gemini via OpenAI-compat. GEMINI_BASE_URL must point to the Gemini
   // OpenAI-compatible endpoint (e.g. https://generativelanguage.googleapis.com/v1beta/openai).
-  // GEMINI_API_KEY is picked up by the OpenAI SDK from OPENAI_API_KEY env var;
-  // set OPENAI_API_KEY=$GEMINI_API_KEY in the kernel env when using this vocab.
+  // The model API key is resolved from the vault via the active delegation grant
+  // issued to AGRIFORTRESS_APP_DID (#1437) — not from a plaintext env var.
   modelProvider: 'openai',
   modelId: process.env.GEMINI_MODEL_ID ?? 'gemini-2.0-flash',
+  ownerAppDid: AGRIFORTRESS_APP_DID,
 
   systemPrompt: `
 You are the AgriFortress supply-chain inference engine. A farmer speaks a voice note

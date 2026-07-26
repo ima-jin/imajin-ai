@@ -315,6 +315,155 @@ export async function loadAndUnseal(field: string): Promise<string | undefined> 
   return unsealSecret(entry, sealKey);
 }
 
+/**
+ * Seal a plaintext secret as a v2 delegation-grant entry with an explicit
+ * principal-to-grantee grant (the static-secret pattern, #1437).
+ *
+ * Unlike `sealAndStoreV2` (which self-grants to the node), this function
+ * records `subject = principalDid` and `grantedTo = granteeDid` in the grant
+ * row. In Tier 0, the per-field AES key is still wrapped to the node's X25519
+ * key — the grant row carries the custody metadata, not a different crypto
+ * principal. Upgrading to Tier 1 requires only a key-custody change.
+ *
+ * Use `loadAndUnsealByGrantee` to retrieve, and `revokeStaticSecretGrant` to
+ * revoke the grant (making all subsequent unseals fail closed).
+ */
+export async function sealAndGrantStaticSecret(
+  field: string,
+  plaintext: string,
+  opts: Readonly<{ principalDid: string; granteeDid: string; expiresAt?: Date | null }>,
+): Promise<{ entry: VaultEntry; grantId: string }> {
+  const identity = getNodeSigningIdentity();
+  const fieldKey = randomBytes(32);
+
+  const blob = sealSecret(plaintext, fieldKey);
+  const cid = await computeVaultCid(blob);
+  const keyId = deriveKeyId(identity.senderPubkey);
+  const timestamp = new Date().toISOString();
+
+  const existingEntry = await vaultService.get(field);
+  const previousCid = existingEntry?.cid;
+
+  const payload = {
+    version: VAULT_ENTRY_VERSION_V2 as typeof VAULT_ENTRY_VERSION_V2,
+    field,
+    cid,
+    encrypted: blob.encrypted,
+    nonce: blob.nonce,
+    senderDid: identity.senderDid,
+    senderPubkey: identity.senderPubkey,
+    keyId,
+    timestamp,
+    custodyScheme: 'delegation-grant' as const,
+    ...(previousCid === undefined ? {} : { previousCid }),
+  };
+
+  const signature = signVaultPayload(payload, identity.privateKeyHex);
+  const entry: VaultEntry = { ...payload, signature };
+
+  await assertEntryIntegrity(entry, vaultAdapters);
+  await vaultService.set(entry);
+
+  // Wrap the per-field AES key to the node's X25519 key (Tier 0).
+  const wrapped = wrapFieldKey(fieldKey, getNodeXPublicKey(), getOwnerXPrivateKey());
+  const expiresAt = opts.expiresAt ?? null;
+
+  const grantRaw = {
+    subject: opts.principalDid,
+    grantedTo: opts.granteeDid,
+    field,
+    ownerXPub: getOwnerXPublicKey(),
+    wrappedKey: wrapped.encryptedKey,
+    wrappedNonce: wrapped.nonce,
+    keyId,
+    expiresAt,
+  };
+
+  const ownerSignature = authCrypto.signSync(
+    canonicalizeGrantPayload(grantRaw),
+    identity.privateKeyHex,
+  );
+
+  // Supersede any existing active grant for (principalDid, granteeDid, field).
+  if (existingEntry?.custodyScheme === 'delegation-grant') {
+    await db
+      .update(vaultDelegationGrants)
+      .set({ status: 'superseded' })
+      .where(
+        and(
+          eq(vaultDelegationGrants.subject, opts.principalDid),
+          eq(vaultDelegationGrants.grantedTo, opts.granteeDid),
+          eq(vaultDelegationGrants.field, field),
+          eq(vaultDelegationGrants.status, 'active'),
+        ),
+      );
+  }
+
+  const grantId = generateId('vdg');
+  await db.insert(vaultDelegationGrants).values({
+    id: grantId,
+    ...grantRaw,
+    ownerSignature,
+    status: 'active',
+  });
+
+  return { entry, grantId };
+}
+
+/**
+ * Load a v2 vault field and unseal it using an active delegation grant for a
+ * specific grantee DID (the static-secret pattern, #1437).
+ *
+ * The grantee is typically an app DID (e.g. `did:imajin:agrifortress`) whose
+ * active grant was issued by a principal. Fails closed — throws
+ * `VaultDelegationError` if no active, non-expired grant exists for this
+ * (field, granteeDid) pair, or if the entry does not exist.
+ */
+export async function loadAndUnsealByGrantee(
+  field: string,
+  granteeDid: string,
+): Promise<string> {
+  const entry = await vaultService.get(field);
+  if (!entry) {
+    throw new VaultDelegationError(
+      `vault loadAndUnsealByGrantee: no vault entry for field '${field}'`,
+      { field, nodeDid: granteeDid },
+    );
+  }
+
+  const grant = await fetchActiveGrantForGrantee(field, granteeDid);
+  if (!grant) {
+    throw new VaultDelegationError(
+      `vault loadAndUnsealByGrantee: no active delegation grant for field '${field}' grantee ${granteeDid}`,
+      { field, nodeDid: granteeDid },
+    );
+  }
+
+  return _applyDelegationGrant(entry, grant, getNodeXPrivateKey());
+}
+
+/**
+ * Revoke the active delegation grant for (field, granteeDid), making all
+ * subsequent `loadAndUnsealByGrantee` calls fail closed.
+ *
+ * Safe to call when no active grant exists — silently no-ops.
+ */
+export async function revokeStaticSecretGrant(
+  field: string,
+  granteeDid: string,
+): Promise<void> {
+  await db
+    .update(vaultDelegationGrants)
+    .set({ status: 'revoked', revokedAt: new Date() })
+    .where(
+      and(
+        eq(vaultDelegationGrants.grantedTo, granteeDid),
+        eq(vaultDelegationGrants.field, field),
+        eq(vaultDelegationGrants.status, 'active'),
+      ),
+    );
+}
+
 // ── Delegation helpers ────────────────────────────────────────────────────────
 
 /**
@@ -331,6 +480,32 @@ async function fetchActiveGrant(
     .where(
       and(
         eq(vaultDelegationGrants.grantedTo, nodeDid),
+        eq(vaultDelegationGrants.field, field),
+        eq(vaultDelegationGrants.status, 'active'),
+        or(
+          isNull(vaultDelegationGrants.expiresAt),
+          gt(vaultDelegationGrants.expiresAt, new Date()),
+        ),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Fetch the most-recently-created active delegation grant for (field, granteeDid).
+ * Returns null if no active, non-expired grant exists.
+ */
+async function fetchActiveGrantForGrantee(
+  field: string,
+  granteeDid: string,
+): Promise<VaultDelegationGrant | null> {
+  const rows = await db
+    .select()
+    .from(vaultDelegationGrants)
+    .where(
+      and(
+        eq(vaultDelegationGrants.grantedTo, granteeDid),
         eq(vaultDelegationGrants.field, field),
         eq(vaultDelegationGrants.status, 'active'),
         or(
