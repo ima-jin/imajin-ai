@@ -98,7 +98,7 @@ const inferenceCaptureTool: McpTool = {
       inferCtx.transcript = text;
     }
 
-    const candidates = await infer(inferCtx, vocab);
+    const candidates = await infer(inferCtx, vocab, ctx.did);
     const topIntent = candidates[0];
     if (!topIntent) {
       return json({ sessionId, assetId: resolvedAssetId, status: 'failed', error: 'No candidates inferred' });

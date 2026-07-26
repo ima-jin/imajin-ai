@@ -28,11 +28,13 @@ const SUPPLY_API_KEY = process.env.AGRIFORTRESS_SUPPLY_API_KEY ?? '';
 
 export const agrifortressVocabulary: IntentVocabulary = {
   name: 'agrifortress',
-  // Gemini via OpenAI-compat. GEMINI_BASE_URL must point to the Gemini
-  // OpenAI-compatible endpoint (e.g. https://generativelanguage.googleapis.com/v1beta/openai).
-  // GEMINI_API_KEY is picked up by the OpenAI SDK from OPENAI_API_KEY env var;
-  // set OPENAI_API_KEY=$GEMINI_API_KEY in the kernel env when using this vocab.
+  // Gemini via OpenAI-compatible endpoint.
+  // Credentials are resolved in priority order:
+  //   1. Per-DID sealed Gemini connector (gemini:infer grant + sealed API key).
+  //   2. GEMINI_API_KEY + GEMINI_BASE_URL env vars (local-dev fallback).
+  // No OPENAI_API_KEY assumption — set GEMINI_API_KEY / GEMINI_BASE_URL instead.
   modelProvider: 'openai',
+  modelChannel: 'gemini',
   modelId: process.env.GEMINI_MODEL_ID ?? 'gemini-2.0-flash',
 
   systemPrompt: `
