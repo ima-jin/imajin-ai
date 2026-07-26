@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAppAuth } from '@imajin/auth';
-import { publish, getLotChain, type BusEventMap } from '@imajin/bus';
+import { publish, getLotChain, recentLotsBySupplier, type BusEventMap } from '@imajin/bus';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
@@ -136,6 +136,38 @@ export async function publishSupplyStage(
     { ok: true, correlationId, stage: eventType.slice(SUPPLY_PREFIX.length) },
     { status: 201, headers: cors },
   );
+}
+
+/**
+ * #1435 — handler for `GET /supply/api/lots?supplier={did}&limit={n}`. App-auth-gated
+ * (`supply:read`); returns the supplier's most recent lots newest-first via
+ * `recentLotsBySupplier`.
+ */
+export async function handleLotsBySupplierGet(request: NextRequest): Promise<NextResponse> {
+  const cors = corsHeaders(request);
+
+  const appResult = await requireAppAuth(request, { scope: 'supply:read' });
+  if ('error' in appResult) {
+    return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+  }
+
+  const url = new URL(request.url);
+  const supplier = url.searchParams.get('supplier');
+  if (!supplier) {
+    return NextResponse.json({ error: 'supplier (DID) query param is required' }, { status: 400, headers: cors });
+  }
+
+  const rawLimit = url.searchParams.get('limit');
+  const parsedLimit = rawLimit !== null ? Number.parseInt(rawLimit, 10) : 5;
+  const limit = Math.min(Math.max(Number.isNaN(parsedLimit) ? 5 : parsedLimit, 1), 50);
+
+  try {
+    const lots = await recentLotsBySupplier(supplier, limit);
+    return NextResponse.json({ lots }, { headers: cors });
+  } catch (err) {
+    log.error({ err: String(err), supplier }, 'recent lots by supplier read failed');
+    return NextResponse.json({ error: 'Failed to load recent lots' }, { status: 500, headers: cors });
+  }
 }
 
 /**

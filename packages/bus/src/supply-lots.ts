@@ -33,6 +33,35 @@ export interface LotChain {
   stages: SupplyStageRecord[];
 }
 
+export interface RecentLot {
+  correlationId: string;
+  originatingDid: string;
+  commodity: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Recent lots for a supplier, newest first. Reads kernel.supply_lots by originating_did. */
+export async function recentLotsBySupplier(supplierDid: string, limit = 5): Promise<RecentLot[]> {
+  const clampedLimit = Math.min(Math.max(Number.isNaN(limit) ? 5 : limit, 1), 50);
+  const { getClient } = await import('@imajin/db');
+  const sql = getClient();
+
+  return (await sql`
+    SELECT correlation_id  AS "correlationId",
+           originating_did AS "originatingDid",
+           commodity,
+           status,
+           created_at      AS "createdAt",
+           updated_at      AS "updatedAt"
+    FROM kernel.supply_lots
+    WHERE originating_did = ${supplierDid}
+    ORDER BY created_at DESC
+    LIMIT ${clampedLimit}
+  `) as unknown as RecentLot[];
+}
+
 export async function getLotChain(correlationId: string): Promise<LotChain> {
   const { getClient } = await import('@imajin/db');
   const sql = getClient();

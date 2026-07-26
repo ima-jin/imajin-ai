@@ -27,7 +27,7 @@ export { broker } from './broker';
 export { registerReactor } from './registry';
 export { registerBrokerReactor, getBrokerReactor } from './broker-registry';
 export { getChainConfig, getBrokerChainConfig } from './config';
-export { getLotChain } from './supply-lots';
+export { getLotChain, recentLotsBySupplier } from './supply-lots';
 export { EMISSION_SCHEDULE } from './emissions';
 export { resolveConsent } from './broker-config';
 export { isBrokerRelease, isBrokerRejection } from './types';
@@ -51,4 +51,4 @@ export type {
   BrokerEventType,
 } from './types';
 export type { ConsentEntry } from './broker-config';
-export type { LotChain, SupplyLotRecord, SupplyStageRecord } from './supply-lots';
+export type { LotChain, SupplyLotRecord, SupplyStageRecord, RecentLot } from './supply-lots';
