@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { db, inferenceSessions } from '@/src/db';
 import { eq, and, desc } from 'drizzle-orm';
@@ -21,11 +21,27 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+  let ownerDid: string;
+
+  // App-auth path: service token acting on behalf of a user
+  const appAuthResult = await requireAppAuth(request, { scope: 'inference:read' });
+  if ('appAuth' in appAuthResult) {
+    const actingFor = request.headers.get('x-acting-for') ?? appAuthResult.appAuth.userDid;
+    if (!actingFor) {
+      return NextResponse.json(
+        { error: 'X-Acting-For header (or delegating user) required for app auth' },
+        { status: 400, headers: cors },
+      );
+    }
+    ownerDid = actingFor;
+  } else {
+    // Session auth path (UNCHANGED)
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+    }
+    ownerDid = resolveActingDid(authResult.identity);
   }
-  const ownerDid = resolveActingDid(authResult.identity);
 
   const { searchParams } = new URL(request.url);
   const statusFilter = searchParams.get('status');

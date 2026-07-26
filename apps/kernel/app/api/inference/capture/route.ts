@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
@@ -49,11 +49,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+  let ownerDid: string;
+
+  // App-auth path: service token acting on behalf of a user
+  const appAuthResult = await requireAppAuth(request, { scope: 'inference:write' });
+  if ('appAuth' in appAuthResult) {
+    const actingFor = request.headers.get('x-acting-for') ?? appAuthResult.appAuth.userDid;
+    if (!actingFor) {
+      return NextResponse.json(
+        { error: 'X-Acting-For header (or delegating user) required for app auth' },
+        { status: 400, headers: cors },
+      );
+    }
+    ownerDid = actingFor;
+  } else {
+    // Session auth path (UNCHANGED)
+    const authResult = await requireAuth(request);
+    if ('error' in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+    }
+    ownerDid = resolveActingDid(authResult.identity);
   }
-  const ownerDid = resolveActingDid(authResult.identity);
 
   let formData: FormData;
   try {
@@ -103,7 +119,7 @@ export async function POST(request: NextRequest) {
     const ctx = await gatherContext(captureEvent.sessionId, captureEvent.assetId, ownerDid);
 
     // 3. Run inference policy.
-    const candidates = await infer(ctx, vocab);
+    const candidates = await infer(ctx, vocab, ownerDid);
     const topIntent = candidates[0];
 
     if (!topIntent) {
