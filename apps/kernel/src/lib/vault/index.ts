@@ -89,14 +89,14 @@ export async function sealAndStore(field: string, plaintext: string): Promise<Va
 /**
  * Seal a plaintext secret as a v2 delegation-grant entry and store it.
  *
+ * Tier 0 self-grant: the node acts as both principal (subject) and grantee.
+ * This is the established callers' API; the generalised principal-to-grantee
+ * form is `sealAndGrantStaticSecret` (#1437).
+ *
  * Unlike sealAndStore (v1), the plaintext is encrypted with a random per-field
  * AES-256-GCM key (not the node-derived seal key). That field key is then
  * ECDH-wrapped to the node's X25519 public key by the owner agent (Tier 0:
  * the node's own owner X25519 key) and stored as a vault_delegation_grants row.
- *
- * This makes the entry revocable, scoped, and owner-signed without custody
- * change in Tier 0. Upgrading to Tier 1 moves only the owner agent key out
- * of the server — the protocol and DB structure are identical.
  *
  * Returns the persisted VaultEntry and the new delegation grant id.
  * No plaintext is logged at any point.
@@ -106,82 +106,14 @@ export async function sealAndStoreV2(
   plaintext: string,
   options: { expiresAt?: Date | null } = {},
 ): Promise<{ entry: VaultEntry; grantId: string }> {
-  const identity = getNodeSigningIdentity();
-  const fieldKey = randomBytes(32);
-
-  const blob = sealSecret(plaintext, fieldKey);
-  const cid = await computeVaultCid(blob);
-  const keyId = deriveKeyId(identity.senderPubkey);
-  const timestamp = new Date().toISOString();
-
-  const existingEntry = await vaultService.get(field);
-  const previousCid = existingEntry?.cid;
-
-  const payload = {
-    version: VAULT_ENTRY_VERSION_V2 as typeof VAULT_ENTRY_VERSION_V2,
-    field,
-    cid,
-    encrypted: blob.encrypted,
-    nonce: blob.nonce,
-    senderDid: identity.senderDid,
-    senderPubkey: identity.senderPubkey,
-    keyId,
-    timestamp,
-    custodyScheme: 'delegation-grant' as const,
-    ...(previousCid === undefined ? {} : { previousCid }),
-  };
-
-  const signature = signVaultPayload(payload, identity.privateKeyHex);
-  const entry: VaultEntry = { ...payload, signature };
-
-  await assertEntryIntegrity(entry, vaultAdapters);
-  await vaultService.set(entry);
-
-  // Wrap the field key: owner (this node in Tier 0) wraps to the node's X25519 pubkey.
-  const wrapped = wrapFieldKey(fieldKey, getNodeXPublicKey(), getOwnerXPrivateKey());
-  const expiresAt = options.expiresAt ?? null;
-
-  const grantRaw = {
-    subject: identity.senderDid,
-    grantedTo: identity.senderDid,  // self-grant in Tier 0; Tier 1: external owner agent sets this
-    field,
-    ownerXPub: getOwnerXPublicKey(),
-    wrappedKey: wrapped.encryptedKey,
-    wrappedNonce: wrapped.nonce,
-    keyId,
-    expiresAt,
-  };
-
-  const ownerSignature = authCrypto.signSync(
-    canonicalizeGrantPayload(grantRaw),
-    identity.privateKeyHex,
-  );
-
-  // Supersede any existing active delegation grant for this (field, node) pair.
-  // This handles re-sealing: the old ciphertext+grant become orphaned together.
-  if (existingEntry?.custodyScheme === 'delegation-grant') {
-    await db
-      .update(vaultDelegationGrants)
-      .set({ status: 'superseded' })
-      .where(
-        and(
-          eq(vaultDelegationGrants.subject, identity.senderDid),
-          eq(vaultDelegationGrants.grantedTo, identity.senderDid),
-          eq(vaultDelegationGrants.field, field),
-          eq(vaultDelegationGrants.status, 'active'),
-        ),
-      );
-  }
-
-  const grantId = generateId('vdg');
-  await db.insert(vaultDelegationGrants).values({
-    id: grantId,
-    ...grantRaw,
-    ownerSignature,
-    status: 'active',
+  // Self-grant: principal = grantee = node DID (Tier 0).
+  // Tier 1 upgrade: move only the owner-agent X25519 key out of the server.
+  const { senderDid } = getNodeSigningIdentity();
+  return sealAndGrantStaticSecret(field, plaintext, {
+    principalDid: senderDid,
+    granteeDid: senderDid,
+    expiresAt: options.expiresAt ?? null,
   });
-
-  return { entry, grantId };
 }
 
 /**
