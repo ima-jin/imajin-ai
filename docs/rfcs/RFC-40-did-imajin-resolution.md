@@ -4,7 +4,7 @@
 **Authors:** Ryan Veteze, Jin
 **Created:** July 24, 2026
 **Discussion:** TBD
-**Related:** RFC-32 (Agent Protocol Interop — §4.7.4 names this as the biggest unlock), RFC-06 (Identity Portability), RFC-13 (Progressive Trust), RFC-22 (Federated Authentication), RFC-39 (Verifiable Skills — same verify-against-the-signed-record discipline)
+**Related:** RFC-32 (Agent Protocol Interop — §4.7.4 names this as the biggest unlock; §3.5 Resource-Level Discovery hands a cold client the owner/creator DID and calls RFC-40 as its resolution hinge), RFC-06 (Identity Portability), RFC-13 (Progressive Trust), RFC-22 (Federated Authentication), RFC-39 (Verifiable Skills — same verify-against-the-signed-record discipline)
 **Tracking:** #1427 (honest-record promise), epic #965 (interop — resolution is shared infrastructure)
 **Depends on / composes with:** DFOS resolution (`did:dfos`) — see §7 (open item for Brandon)
 
