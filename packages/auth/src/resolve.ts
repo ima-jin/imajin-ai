@@ -50,20 +50,28 @@ export function createDbResolver(
 }
 
 /**
- * Create an HTTP-backed resolver.
- * Calls GET {authServiceUrl}/api/identity/{did}
+ * Create an HTTP-backed resolver targeting the public registry endpoint.
+ *
+ * Primary path: GET {serviceUrl}/registry/api/identity/{did} (#1443).
+ * This is the canonical transport for did:imajin resolution (RFC-40 §4, transport #1).
+ *
+ * Interim fallback for callers without HTTP access to the registry:
+ *   GET {relay}/proof/v1/identities/:did  (DFOS relay, relay 0.13.5)
+ *
+ * Trust comes from verifying the chain log, never from this transport alone.
  */
-export function createHttpResolver(authServiceUrl: string): PublicKeyResolver {
+export function createHttpResolver(serviceUrl: string): PublicKeyResolver {
   return async (did: string): Promise<ResolvedIdentity | null> => {
     try {
       const encodedDid = encodeURIComponent(did);
-      const res = await fetch(`${authServiceUrl}/api/identity/${encodedDid}`, {
+      const res = await fetch(`${serviceUrl}/registry/api/identity/${encodedDid}`, {
         cache: 'no-store',
       });
 
       if (!res.ok) return null;
 
       const data = await res.json();
+      // Soft/stub DIDs return { verifiable: false } — not resolvable to a key.
       if (!data.did || !data.publicKey) return null;
 
       return {
