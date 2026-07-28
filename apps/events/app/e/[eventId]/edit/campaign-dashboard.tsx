@@ -187,7 +187,7 @@ export function CampaignDashboard({ eventId }: Readonly<Props>) {
 
       {/* Actions */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <button
+        <button type="button"
           onClick={handleSettle}
           disabled={settling || !status?.isFullyFunded}
           className={`px-6 py-3 rounded-lg font-semibold transition ${
@@ -198,7 +198,7 @@ export function CampaignDashboard({ eventId }: Readonly<Props>) {
         >
           {settling ? 'Charging...' : '💰 Charge All Backers'}
         </button>
-        <button
+        <button type="button"
           onClick={handleCancel}
           disabled={cancelling}
           className="px-6 py-3 rounded-lg font-semibold bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white transition"

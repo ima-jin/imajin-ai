@@ -94,7 +94,7 @@ export default function DashboardPage() {
           <p className="text-gray-600 dark:text-gray-400 mb-6">
             Unable to load stats. Please try again.
           </p>
-          <button
+          <button type="button"
             onClick={() => router.push('/edit')}
             className="px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
           >
@@ -126,7 +126,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex gap-3">
-            <button
+            <button type="button"
               onClick={() => {
                 navigator.clipboard.writeText(`${globalThis.location.origin}/${handle}`);
                 toast.success('Link copied!');
@@ -135,7 +135,7 @@ export default function DashboardPage() {
             >
               📋 Copy Link
             </button>
-            <button
+            <button type="button"
               onClick={() => router.push('/edit')}
               className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
             >

@@ -387,20 +387,20 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
       </div>
       <div className="flex items-center gap-2">
         {!autoExpand && (
-          <button
+          <button type="button"
             onClick={() => setExpanded(v => !v)}
             className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
           >
             {expanded ? 'Hide Attendees' : 'Show Attendees'}
           </button>
         )}
-        <button
+        <button type="button"
           onClick={() => setScannerOpen(v => !v)}
           className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
         >
           {scannerOpen ? '✕ Close Scanner' : '📷 Scan Tickets'}
         </button>
-        <button
+        <button type="button"
           onClick={() => { globalThis.location.href = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/api/events/${eventId}/guests/export.csv`; }}
           className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600"
         >
@@ -461,7 +461,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
               {filteredGuests.length} of {guests.length} ticket{guests.length === 1  ? '' : 's'}
             </span>
             {uniqueTypes.map(type => (
-              <button
+              <button type="button"
                 key={type}
                 onClick={() => toggleFilter('type', type)}
                 className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium transition ${
@@ -474,7 +474,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
               </button>
             ))}
             {uniqueStatuses.map(status => (
-              <button
+              <button type="button"
                 key={status}
                 onClick={() => toggleFilter('status', status)}
                 className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium transition ${
@@ -487,7 +487,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
               </button>
             ))}
             {filterKey && (
-              <button
+              <button type="button"
                 onClick={() => { setFilterKey(null); setFilterValue(null); }}
                 className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/60 transition"
               >
@@ -553,7 +553,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
                       {' — '}
                       <span className="text-gray-500 dark:text-gray-400">{formatCurrency(guest.pricePaid, guest.currency)}</span>
                       {guest.fairSettlement && (
-                        <button
+                        <button type="button"
                           onClick={() => setExpandedReceipt(prev => prev === guest.id ? null : guest.id)}
                           className="ml-1 text-base leading-none hover:scale-110 transition-transform"
                           title=".fair settlement receipt"
@@ -623,7 +623,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-lg w-full max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Registration Answers</h3>
-              <button
+              <button type="button"
                 onClick={() => setSurveyModalTicketId(null)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition text-xl leading-none"
               >
@@ -655,7 +655,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
               })()}
             </div>
             <div className="mt-4 flex justify-end">
-              <button
+              <button type="button"
                 onClick={() => setSurveyModalTicketId(null)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
               >
@@ -689,13 +689,13 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
               .
             </p>
             <div className="flex items-center justify-between gap-3">
-              <button
+              <button type="button"
                 onClick={() => setManualRefundInfo(null)}
                 className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
               >
                 I&apos;ll do it later
               </button>
-              <button
+              <button type="button"
                 onClick={() => handleMarkRefundSent(manualRefundInfo.ticketId)}
                 disabled={markSentLoading}
                 className="px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition disabled:opacity-50"
@@ -716,13 +716,13 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
               Cancel this unconfirmed e-Transfer ticket? No payment was received, so there&apos;s nothing to refund.
             </p>
             <div className="flex gap-3 justify-end">
-              <button
+              <button type="button"
                 onClick={() => setConfirmCancel(null)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
               >
                 Keep
               </button>
-              <button
+              <button type="button"
                 onClick={() => handleCancel(confirmCancel)}
                 className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition"
               >
@@ -742,13 +742,13 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
               Are you sure you want to refund this ticket? This action cannot be undone.
             </p>
             <div className="flex gap-3 justify-end">
-              <button
+              <button type="button"
                 onClick={() => setConfirmRefund(null)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={() => handleRefund(confirmRefund)}
                 className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition"
               >
@@ -847,7 +847,7 @@ function RegistrationCell({ status, attendeeName, onViewSurvey }: Readonly<{ sta
   if (status === 'complete') {
     return (
       <div>
-        <button
+        <button type="button"
           onClick={onViewSurvey}
           disabled={!onViewSurvey}
           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/60 transition disabled:cursor-default"
@@ -964,7 +964,7 @@ function ResendEmailButton({ loading, resendState, lastEmailSentAt, onResendEmai
   }
 
   return (
-    <button
+    <button type="button"
       onClick={onResendEmail}
       disabled={disabled}
       className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg transition disabled:opacity-50"
@@ -1006,7 +1006,7 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCa
 
   if (isRefundPending && isOwner) {
     return (
-      <button
+      <button type="button"
         onClick={onMarkSent}
         disabled={markSentLoading}
         className="px-3 py-1.5 text-xs font-medium bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 rounded-lg transition disabled:opacity-50"
@@ -1026,7 +1026,7 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCa
 
   if ((isHeld || isAvailable) && isOwner) {
     return (
-      <button
+      <button type="button"
         onClick={onCancelRequest}
         disabled={loading}
         className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-red-100 dark:hover:bg-red-900/40 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition disabled:opacity-50"
@@ -1042,7 +1042,7 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCa
 
   return (
     <div className="flex items-center gap-2">
-      <button
+      <button type="button"
         onClick={onCheckIn}
         disabled={loading}
         className="px-3 py-1.5 text-xs font-medium bg-green-500 hover:bg-green-600 text-white rounded-lg transition disabled:opacity-50"
@@ -1050,7 +1050,7 @@ function ActionsCell({ guest, isOwner, loading, onCheckIn, onRefundRequest, onCa
         {loading ? '…' : 'Check In'}
       </button>
       {isOwner && !isFree && (
-        <button
+        <button type="button"
           onClick={onRefundRequest}
           disabled={loading}
           className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-red-100 dark:hover:bg-red-900/40 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition disabled:opacity-50"

@@ -6,7 +6,7 @@ export function ShareButton() {
   const [copied, setCopied] = useState(false);
 
   return (
-    <button
+    <button type="button"
       onClick={() => {
         navigator.clipboard.writeText(globalThis.location.href);
         setCopied(true);

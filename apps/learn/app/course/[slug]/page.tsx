@@ -271,7 +271,7 @@ export default function CourseDetailPage() {
               </p>
               );
               if (course.isAuthenticated) return (
-              <button
+              <button type="button"
                 onClick={handleEnroll}
                 disabled={enrolling}
                 className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
@@ -286,7 +286,7 @@ export default function CourseDetailPage() {
                 onIdentity={() => handleEnroll()}
                 authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
               >
-                <button
+                <button type="button"
                   disabled={enrolling}
                   className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
                 >

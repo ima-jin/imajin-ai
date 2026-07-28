@@ -170,7 +170,7 @@ function MarketPageContent() {
           if (error) return (
           <div className="text-center py-16">
             <p className="text-red-500 mb-4">{error}</p>
-            <button
+            <button type="button"
               onClick={fetchListings}
               className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
             >
@@ -197,7 +197,7 @@ function MarketPageContent() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 mt-8">
-            <button
+            <button type="button"
               disabled={page <= 1}
               onClick={() => updateParams({ page: String(page - 1) })}
               className="px-4 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm font-medium disabled:opacity-40 hover:border-orange-500 hover:text-orange-500 transition"
@@ -209,7 +209,7 @@ function MarketPageContent() {
               {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                 const p = i + 1;
                 return (
-                  <button
+                  <button type="button"
                     key={p}
                     onClick={() => updateParams({ page: String(p) })}
                     className={`w-9 h-9 rounded-lg text-sm font-medium transition ${
@@ -224,7 +224,7 @@ function MarketPageContent() {
               })}
             </div>
 
-            <button
+            <button type="button"
               disabled={page >= totalPages}
               onClick={() => updateParams({ page: String(page + 1) })}
               className="px-4 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm font-medium disabled:opacity-40 hover:border-orange-500 hover:text-orange-500 transition"

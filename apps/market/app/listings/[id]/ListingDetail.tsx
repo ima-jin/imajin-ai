@@ -380,7 +380,7 @@ export default function ListingDetail() {
                 Edit
               </Link>
               {listing.status === 'active' && (
-                <button
+                <button type="button"
                   onClick={() => updateStatus('paused')}
                   disabled={!!actionLoading}
                   className="px-3 py-1.5 text-sm rounded-lg bg-yellow-900/50 text-yellow-400 hover:bg-yellow-900 border border-yellow-700/50 transition disabled:opacity-50"
@@ -389,7 +389,7 @@ export default function ListingDetail() {
                 </button>
               )}
               {listing.status === 'paused' && (
-                <button
+                <button type="button"
                   onClick={() => updateStatus('active')}
                   disabled={!!actionLoading}
                   className="px-3 py-1.5 text-sm rounded-lg bg-green-900/50 text-green-400 hover:bg-green-900 border border-green-700/50 transition disabled:opacity-50"
@@ -398,7 +398,7 @@ export default function ListingDetail() {
                 </button>
               )}
               {listing.type === 'sale' && listing.status === 'active' && (
-                <button
+                <button type="button"
                   onClick={() => updateStatus('sold')}
                   disabled={!!actionLoading}
                   className="px-3 py-1.5 text-sm rounded-lg bg-blue-900/50 text-blue-400 hover:bg-blue-900 border border-blue-700/50 transition disabled:opacity-50"
@@ -407,7 +407,7 @@ export default function ListingDetail() {
                 </button>
               )}
               {listing.type === 'rental' && listing.status === 'active' && (
-                <button
+                <button type="button"
                   onClick={() => updateStatus('rented')}
                   disabled={!!actionLoading}
                   className="px-3 py-1.5 text-sm rounded-lg bg-purple-900/50 text-purple-400 hover:bg-purple-900 border border-purple-700/50 transition disabled:opacity-50"
@@ -416,7 +416,7 @@ export default function ListingDetail() {
                 </button>
               )}
               {(listing.status === 'active' || listing.status === 'paused') && (
-                <button
+                <button type="button"
                   onClick={() => updateStatus('unavailable')}
                   disabled={!!actionLoading}
                   className="px-3 py-1.5 text-sm rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600 transition disabled:opacity-50"
@@ -466,7 +466,7 @@ export default function ListingDetail() {
             {hasImages && detailImages.length > 1 && (
               <div className="flex gap-2 flex-wrap">
                 {thumbImages.map((src, i) => (
-                  <button
+                  <button type="button"
                     key={src}
                     onClick={() => setActiveImage(i)}
                     aria-label={`Select image ${i + 1}`}
@@ -575,7 +575,7 @@ export default function ListingDetail() {
                   authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
                 >
                   <div className="flex flex-col gap-2">
-                    <button
+                    <button type="button"
                       disabled={buyLoading}
                       className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
                     >
@@ -597,7 +597,7 @@ export default function ListingDetail() {
                 </p>
               ) : (
                 <div className="flex flex-col gap-2">
-                  <button
+                  <button type="button"
                     onClick={handleBuyNow}
                     disabled={buyLoading}
                     className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"

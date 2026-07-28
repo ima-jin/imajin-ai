@@ -286,7 +286,7 @@ export function CampaignSection({ eventId, eventTitle, isAuthenticated }: Readon
           </div>
 
           {/* Pledge button */}
-          <button
+          <button type="button"
             onClick={handlePledge}
             disabled={pledging || (!selectedAmount && !customAmount)}
             className="w-full py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-semibold rounded-lg transition"

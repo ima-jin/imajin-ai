@@ -311,7 +311,7 @@ export default function EditPage() {
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               Failed to set up your links page. Please try refreshing.
             </p>
-            <button
+            <button type="button"
               onClick={() => { setAutoCreateError(false); setLoading(true); fetchPage(); }}
               className="px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
             >
@@ -348,7 +348,7 @@ export default function EditPage() {
             >
               Go to Stats
             </a>
-            <button
+            <button type="button"
               onClick={() => {
                 setFormData({ theme: 'dark' });
                 setShowEditForm(true);
@@ -401,7 +401,7 @@ export default function EditPage() {
         {/* Links Section */}
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-2xl font-bold">Links ({page.links.length})</h2>
-          <button
+          <button type="button"
             onClick={() => setShowLinkForm(true)}
             className="px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition"
           >
@@ -536,21 +536,21 @@ export default function EditPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button
+                  <button type="button"
                     onClick={() => moveLink(link.id, 'up')}
                     disabled={index === 0}
                     className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     ↑
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => moveLink(link.id, 'down')}
                     disabled={index === page.links.length - 1}
                     className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     ↓
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => {
                       setEditingLink(link);
                       setLinkFormData({
@@ -565,7 +565,7 @@ export default function EditPage() {
                   >
                     Edit
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => deleteLink(link.id)}
                     className="px-3 py-1 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
                   >

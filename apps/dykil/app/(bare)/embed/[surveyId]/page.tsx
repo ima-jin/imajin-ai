@@ -341,7 +341,7 @@ export default function SurveyEmbedPage() {
               <span className="text-xl">✏️</span>
               <span className="font-semibold">Editing your response</span>
             </div>
-            <button
+            <button type="button"
               onClick={() => setEditing(false)}
               className="text-sm text-gray-500 hover:text-gray-300 transition"
             >
@@ -368,7 +368,7 @@ export default function SurveyEmbedPage() {
         <p className="text-gray-600 dark:text-gray-400 mb-4">
           Your response has been recorded.
         </p>
-        <button
+        <button type="button"
           onClick={() => setEditing(true)}
           className="px-4 py-2 text-sm rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 transition"
         >

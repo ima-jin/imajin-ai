@@ -260,7 +260,7 @@ export default function LessonViewerPage() {
             </div>
             <div className="flex gap-3">
               {currentProgress?.status !== 'completed' && (
-                <button
+                <button type="button"
                   onClick={markComplete}
                   disabled={completing}
                   className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium disabled:opacity-50"

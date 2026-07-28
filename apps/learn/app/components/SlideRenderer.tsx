@@ -104,7 +104,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
       <div className="absolute top-0 left-0 right-0 h-14 flex items-center justify-between px-8 md:px-16 bg-[#0a0a0a] z-10">
         <div className="text-white/40 text-sm tracking-widest font-medium">IMAJIN</div>
         <div className="flex items-center gap-5">
-          <button
+          <button type="button"
             onClick={onExit}
             className="text-white/25 hover:text-white/60 text-xs tracking-widest transition-colors"
           >
@@ -267,7 +267,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
 
       {/* Bottom navigation */}
       <div className="absolute bottom-0 left-0 right-0 h-14 flex items-center justify-between px-8 md:px-16 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a] to-transparent z-10">
-        <button
+        <button type="button"
           onClick={prev}
           disabled={current === 0}
           className="hover:text-white disabled:opacity-0 text-white/50 transition-colors px-4 py-2"
@@ -277,7 +277,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
 
         <div className="flex items-center gap-1.5">
           {slides.map((s, i) => (
-            <button
+            <button type="button"
               key={s.title}
               onClick={() => goTo(i)}
               className={`w-2 h-2 rounded-full transition-colors ${
@@ -287,7 +287,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
           ))}
         </div>
 
-        <button
+        <button type="button"
           onClick={next}
           disabled={current === slides.length - 1}
           className="hover:text-white disabled:opacity-0 text-white/50 transition-colors px-4 py-2"

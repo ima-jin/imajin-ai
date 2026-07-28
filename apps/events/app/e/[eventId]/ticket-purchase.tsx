@@ -235,7 +235,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           )}
         </div>
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={() => handleFreeRsvp(true)}
             disabled={step === 'loading-rsvp' || !email.includes('@')}
             className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${(() => {
@@ -246,7 +246,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           >
             {step === 'loading-rsvp' ? 'Confirming...' : 'Confirm RSVP'}
           </button>
-          <button
+          <button type="button"
             onClick={() => { setStep('button'); setError(null); }}
             disabled={step === 'loading-rsvp'}
             className="px-3 py-2.5 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition disabled:opacity-50"
@@ -261,7 +261,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
 
   if (soldOut) {
     return (
-      <button
+      <button type="button"
         disabled
         className="px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold whitespace-nowrap bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed"
       >
@@ -348,7 +348,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           )}
         </div>
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={handleETransfer}
             disabled={step === 'loading-etransfer' || !email.includes('@')}
             className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${(() => {
@@ -359,7 +359,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           >
             {step === 'loading-etransfer' ? 'Reserving...' : 'Reserve My Ticket'}
           </button>
-          <button
+          <button type="button"
             onClick={() => { setStep('selector'); setError(null); }}
             disabled={step === 'loading-etransfer'}
             className="px-3 py-2.5 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition disabled:opacity-50"
@@ -379,7 +379,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
         {showQuantity && <QuantityStepper quantity={quantity} setQuantity={setQuantity} max={effectiveMax} price={ticket.price} currency={ticket.currency} />}
         <div className="flex flex-col gap-2 w-full">
           {!stripeDisabled && (
-            <button
+            <button type="button"
               onClick={handleCardPayment}
               disabled={step === 'loading-card'}
               className={`w-full px-4 py-2.5 rounded-lg font-semibold transition text-center ${
@@ -393,7 +393,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
           )}
           {etransferEnabled && (
             <div className="flex flex-col gap-1">
-              <button
+              <button type="button"
                 onClick={() => setStep('etransfer-confirm')}
                 disabled={step === 'loading-card'}
                 className="w-full px-4 py-2.5 rounded-lg font-semibold transition text-center bg-orange-500/20 text-orange-500 border border-orange-500/40 hover:bg-orange-500/30 disabled:opacity-50"
@@ -405,7 +405,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
               </p>
             </div>
           )}
-          <button
+          <button type="button"
             onClick={() => { setStep('button'); setError(null); }}
             disabled={step === 'loading-card'}
             className="px-3 py-2.5 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
@@ -439,7 +439,7 @@ export function TicketPurchase({ eventId, eventTitle, ticket, inviteToken, etran
       )}
       {showQuantity && <QuantityStepper quantity={quantity} setQuantity={setQuantity} max={effectiveMax} price={ticket.price} currency={ticket.currency} />}
       {!hideCheckoutButton && (
-        <button
+        <button type="button"
           onClick={handleButtonClick}
           disabled={(step as string) === 'loading-rsvp' || (!isFree && quantity === 0)}
           className={`px-6 md:px-8 py-2.5 md:py-3 rounded-lg font-semibold transition whitespace-nowrap ${(() => {
@@ -477,7 +477,7 @@ function QuantityStepper({ quantity, setQuantity, max, price, currency }: Readon
   return (
     <div className="flex items-center gap-3 mb-2">
       <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
-        <button
+        <button type="button"
           onClick={() => setQuantity(Math.max(0, quantity - 1))}
           disabled={quantity <= 0}
           className="px-3 py-1.5 text-lg font-bold hover:bg-gray-100 dark:hover:bg-gray-800 transition disabled:opacity-30 disabled:cursor-not-allowed"
@@ -487,7 +487,7 @@ function QuantityStepper({ quantity, setQuantity, max, price, currency }: Readon
         <span className="px-3 py-1.5 min-w-[2.5rem] text-center font-semibold text-sm border-x border-gray-300 dark:border-gray-600">
           {quantity}
         </span>
-        <button
+        <button type="button"
           onClick={() => setQuantity(Math.min(max, quantity + 1))}
           disabled={quantity >= max}
           className="px-3 py-1.5 text-lg font-bold hover:bg-gray-100 dark:hover:bg-gray-800 transition disabled:opacity-30 disabled:cursor-not-allowed"

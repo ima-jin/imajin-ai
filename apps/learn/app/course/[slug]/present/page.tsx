@@ -98,7 +98,7 @@ export default function PresentPage() {
       <div className="fixed inset-0 bg-[#0a0a0a] text-white flex items-center justify-center">
         <div className="text-center space-y-4">
           <p className="text-white/40">{error}</p>
-          <button
+          <button type="button"
             onClick={() => router.push(`/course/${slug}`)}
             className="text-amber-500 hover:text-amber-400 text-sm"
           >

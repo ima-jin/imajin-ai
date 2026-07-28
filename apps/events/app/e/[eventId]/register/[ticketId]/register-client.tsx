@@ -135,7 +135,7 @@ export default function RegisterClient({ ticketId, eventId, registrationFormId }
       {error && (
         <div className="mt-4 flex items-center gap-3 justify-center">
           <span className="text-sm text-red-500">{error}</span>
-          <button
+          <button type="button"
             onClick={handleRegistrationComplete}
             disabled={isRetrying}
             className="px-3 py-1 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 transition"

@@ -118,7 +118,7 @@ export function InviteManager({ eventId, accessMode }: Readonly<Props>) {
             {isInviteOnly ? 'Invite Only' : 'Public'}
           </span>
         </div>
-        <button
+        <button type="button"
           onClick={() => setShowForm(!showForm)}
           className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-lg transition"
         >
@@ -245,14 +245,14 @@ export function InviteManager({ eventId, accessMode }: Readonly<Props>) {
                     </td>
                     <td className="py-3">
                       <div className="flex items-center gap-2">
-                        <button
+                        <button type="button"
                           onClick={() => handleCopy(invite.url, invite.id)}
                           className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded transition"
                           title="Copy link"
                         >
                           {copied === invite.id ? 'Copied!' : 'Copy'}
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => handleDelete(invite.id)}
                           className="px-2 py-1 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"
                           title="Revoke"
