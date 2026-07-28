@@ -76,6 +76,10 @@ describe('ATTESTATION_TYPES', () => {
     }
   });
 
+  it('contains imajin/nostr-key-binding', () => {
+    expect(ATTESTATION_TYPES_SET.has('imajin/nostr-key-binding')).toBe(true);
+  });
+
   it('has no duplicate entries', () => {
     expect(ATTESTATION_TYPES.length).toBe(ATTESTATION_TYPES_SET.size);
   });
