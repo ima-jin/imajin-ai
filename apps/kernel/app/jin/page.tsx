@@ -36,7 +36,12 @@ function useTtlCountdown(approvedUntil: string | null): string | null {
       const h = Math.floor(secs / 3600);
       const m = Math.floor((secs % 3600) / 60);
       const s = secs % 60;
-      setLabel(h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`);
+      // S3358: avoid nested ternary
+      let timeLabel: string;
+      if (h > 0) { timeLabel = `${h}h ${m}m`; }
+      else if (m > 0) { timeLabel = `${m}m ${s}s`; }
+      else { timeLabel = `${s}s`; }
+      setLabel(timeLabel);
     }
 
     tick();
@@ -53,11 +58,11 @@ function ProposalRow({
   proposal,
   onAction,
   actionLoading,
-}: {
+}: Readonly<{
   proposal: Proposal;
   onAction: (id: string, action: 'deny' | 'single' | '5m' | '24h') => void;
   actionLoading: string;
-}) {
+}>) {
   const ttl = useTtlCountdown(proposal.approvedUntil);
   const busy = actionLoading === proposal.id;
 
@@ -65,12 +70,16 @@ function ProposalRow({
     switch (proposal.status) {
       case 'pending':
         return <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-900/60 text-yellow-300">pending</span>;
-      case 'approved':
+      case 'approved': {
+        // S3358/S4624: avoid nested ternary and nested template literal
+        const ttlSuffix = ttl ? ' \u00b7 ' + ttl : '';
+        const approvedLabel = proposal.approvedUntil === null ? 'approved (single)' : 'approved' + ttlSuffix;
         return (
           <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-900/60 text-green-300">
-            {proposal.approvedUntil === null ? 'approved (single)' : `approved ${ttl ? `· ${ttl}` : ''}`}
+            {approvedLabel}
           </span>
         );
+      }
       case 'done':
         return <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-400">done</span>;
       case 'denied':
@@ -128,6 +137,7 @@ function ProposalRow({
         {proposal.status === 'pending' ? (
           <div className="flex items-center gap-1.5">
             <button
+              type="button"
               onClick={() => onAction(proposal.id, 'deny')}
               disabled={!canAct}
               className="px-2.5 py-1 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -135,6 +145,7 @@ function ProposalRow({
               No
             </button>
             <button
+              type="button"
               onClick={() => onAction(proposal.id, 'single')}
               disabled={!canAct}
               autoFocus
@@ -143,6 +154,7 @@ function ProposalRow({
               {busy ? '…' : 'Yes'}
             </button>
             <button
+              type="button"
               onClick={() => onAction(proposal.id, '5m')}
               disabled={!canAct}
               className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -150,6 +162,7 @@ function ProposalRow({
               5m
             </button>
             <button
+              type="button"
               onClick={() => onAction(proposal.id, '24h')}
               disabled={!canAct}
               className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -162,6 +175,56 @@ function ProposalRow({
         )}
       </td>
     </tr>
+  );
+}
+
+// ─── Body renderer (avoids nested ternary in JSX — S3358) ───────────────────
+
+function renderBody(
+  loading: boolean,
+  visible: Proposal[],
+  showDone: boolean,
+  onAction: (id: string, action: 'deny' | 'single' | '5m' | '24h') => void,
+  actionLoading: string,
+) {
+  if (loading) {
+    return <p className="text-sm text-gray-500 py-8 text-center">Loading…</p>;
+  }
+  if (visible.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-gray-600 text-sm">No proposals{showDone ? '' : ' pending'}.</p>
+        <p className="text-gray-700 text-xs mt-1">Proposals appear here when an agent tool call requires human approval.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-800">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs text-gray-500 border-b border-gray-800 bg-gray-900/50">
+            <th className="px-4 py-2.5 text-left font-medium">Status</th>
+            <th className="px-4 py-2.5 text-left font-medium">Risk</th>
+            <th className="px-4 py-2.5 text-left font-medium">Tool</th>
+            <th className="px-4 py-2.5 text-left font-medium">Target</th>
+            <th className="px-4 py-2.5 text-left font-medium">Args</th>
+            <th className="px-4 py-2.5 text-left font-medium">Agent</th>
+            <th className="px-4 py-2.5 text-left font-medium">Time</th>
+            <th className="px-4 py-2.5 text-left font-medium">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {visible.map((p) => (
+            <ProposalRow
+              key={p.id}
+              proposal={p}
+              onAction={onAction}
+              actionLoading={actionLoading}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -278,9 +341,10 @@ export default function JinPage() {
               onChange={(e) => setShowDone(e.target.checked)}
               className="accent-amber-500"
             />
-            show done/denied
+            <span>show done/denied</span>
           </label>
           <button
+            type="button"
             onClick={() => load()}
             className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
           >
@@ -298,43 +362,9 @@ export default function JinPage() {
         </div>
       )}
 
-      {/* Body */}
+      {/* Body — S3358: avoid nested ternary by extracting render logic */}
       <main className="px-6 py-4">
-        {loading ? (
-          <p className="text-sm text-gray-500 py-8 text-center">Loading…</p>
-        ) : visible.length === 0 ? (
-          <div className="text-center py-16">
-            <p className="text-gray-600 text-sm">No proposals{showDone ? '' : ' pending'}.</p>
-            <p className="text-gray-700 text-xs mt-1">Proposals appear here when an agent tool call requires human approval.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-800">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-gray-500 border-b border-gray-800 bg-gray-900/50">
-                  <th className="px-4 py-2.5 text-left font-medium">Status</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Risk</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Tool</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Target</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Args</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Agent</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Time</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((p) => (
-                  <ProposalRow
-                    key={p.id}
-                    proposal={p}
-                    onAction={handleAction}
-                    actionLoading={actionLoading}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {renderBody(loading, visible, showDone, handleAction, actionLoading)}
       </main>
     </div>
   );
