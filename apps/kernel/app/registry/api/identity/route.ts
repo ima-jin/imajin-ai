@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { db, identities, identityAliases } from '@/src/db';
+import { db, identities, identityAliases, identityMembers } from '@/src/db';
 import {
   resolveOrMintIdentity,
   isResolveIdentityError,
@@ -123,6 +123,7 @@ export async function POST(request: Request) {
   const namespace = typeof body.namespace === 'string' ? body.namespace.trim() : null;
   const ref = typeof body.ref === 'string' ? body.ref.trim() : null;
   const type = typeof body.type === 'string' ? body.type.trim() : null;
+  const optInRef = typeof body.optInRef === 'string' ? body.optInRef.trim() : null;
   const metadata =
     typeof body.metadata === 'object' && body.metadata !== null && !Array.isArray(body.metadata)
       ? (body.metadata as Record<string, unknown>)
@@ -131,6 +132,9 @@ export async function POST(request: Request) {
   if (!namespace) return NextResponse.json({ error: 'namespace is required' }, { status: 400 });
   if (!ref) return NextResponse.json({ error: 'ref is required' }, { status: 400 });
   if (!type) return NextResponse.json({ error: 'type is required' }, { status: 400 });
+  if (optInRef !== null && optInRef.length === 0) {
+    return NextResponse.json({ error: 'optInRef must be a non-empty string when provided' }, { status: 400 });
+  }
 
   const result = await resolveOrMintIdentity(repo, { namespace, ref, type, metadata });
 
@@ -160,8 +164,72 @@ export async function POST(request: Request) {
     });
   }
 
+  // Record an agent-role controller grant when the caller supplies an opt-in reference.
+  // This authorizes the partner (actingDid) to write consent on the traveler's behalf
+  // via X-Acting-For, as long as the grant is live. Idempotent: re-reference with the
+  // same optInRef reactivates a previously removed grant rather than inserting a duplicate.
+  if (optInRef !== null) {
+    await upsertAgentGrant({ travelerDid: result.did, appDid: actingDid, optInRef });
+  }
+
   return NextResponse.json(
     { did: result.did, created: result.created, type, metadata: result.metadata },
     { status: result.created ? 201 : 200 },
   );
+}
+
+/**
+ * Upsert an `agent`-role entry in identity_members.
+ *
+ * - If no row exists: insert one.
+ * - If a row exists and is NOT removed: idempotent no-op (already live).
+ * - If a row exists but IS removed: reactivate it (partner re-presented the opt-in).
+ *
+ * Authorized solely by the presence of `optInRef` — the opt-in is the
+ * authorizing event. We never grant silently without it (#1442).
+ */
+async function upsertAgentGrant({
+  travelerDid,
+  appDid,
+  optInRef,
+}: {
+  travelerDid: string;
+  appDid: string;
+  optInRef: string;
+}): Promise<void> {
+  const [existing] = await db
+    .select({ removedAt: identityMembers.removedAt })
+    .from(identityMembers)
+    .where(
+      and(
+        eq(identityMembers.identityDid, travelerDid),
+        eq(identityMembers.memberDid, appDid),
+      )
+    )
+    .limit(1);
+
+  if (!existing) {
+    await db.insert(identityMembers).values({
+      identityDid: travelerDid,
+      memberDid: appDid,
+      role: 'agent',
+      addedBy: appDid,
+      optInRef,
+    });
+    return;
+  }
+
+  // Already live — nothing to do.
+  if (existing.removedAt === null) return;
+
+  // Reactivate a previously revoked grant.
+  await db
+    .update(identityMembers)
+    .set({ removedAt: null, role: 'agent', optInRef, addedBy: appDid, addedAt: new Date() })
+    .where(
+      and(
+        eq(identityMembers.identityDid, travelerDid),
+        eq(identityMembers.memberDid, appDid),
+      )
+    );
 }

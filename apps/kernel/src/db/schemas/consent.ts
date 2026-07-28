@@ -24,6 +24,7 @@ export const consentGrants = consentSchema.table('consent_grants', {
   mode: text('mode').notNull().default('attestation'),              // 'attestation' | 'raw'
   status: text('status').notNull().default('active'),               // 'active' | 'revoked'
   consentRef: text('consent_ref').notNull(),                        // stable reference ID for audit trail
+  issuer: text('issuer'),                                            // app DID when written via acting-for; null = subject wrote own grant
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

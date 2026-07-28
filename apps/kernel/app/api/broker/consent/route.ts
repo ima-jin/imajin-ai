@@ -47,12 +47,21 @@ export const GET = withLogger('kernel', async (request: NextRequest) => {
 });
 
 // POST /api/broker/consent — create a grant from the acting DID.
+//
+// Standard path: caller is the subject (subject === actingDid).
+// Acting-for path: partner app sends X-Acting-For: <traveler-did>.  requireAuth
+// validates the agent grant; resolveActingDid returns the traveler's DID, so the
+// subject === actingDid check still passes.  We additionally record the app DID
+// as issuer so the audit trail reads: issuer = app, subject = traveler (#1442).
 export const POST = withLogger('kernel', async (request: NextRequest) => {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const actingDid = resolveActingDid(authResult.identity);
+  // When X-Acting-For is used, the true caller is the app; actingDid resolves to the
+  // traveler. Capture the real caller for the audit issuer field.
+  const callerDid = authResult.identity.id;
 
   let body: CreateConsentBody;
   try {
@@ -63,7 +72,9 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
 
   const { subject, grantedTo, purpose, allowedFields, mode, expiresAt } = body;
 
-  // Users grant from themselves only.
+  // Users grant from themselves only.  When a partner uses X-Acting-For the
+  // subject must equal actingDid (the traveler's DID), which requireAuth already
+  // verified has a live agent grant.
   if (typeof subject !== 'string' || subject !== actingDid) {
     return NextResponse.json(
       { error: 'subject must equal the acting DID' },
@@ -102,11 +113,15 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     expiresAtDate = parsed;
   }
 
+  // issuer is the app DID on the acting-for path, or the subject themselves otherwise.
+  const issuer = actingDid !== callerDid ? callerDid : null;
+
   const [grant] = await db
     .insert(consentGrants)
     .values({
       id: generateId('consent'),
       subject,
+      issuer,
       grantedTo: grantedTo.trim(),
       purpose: purpose.trim(),
       allowedFields,
@@ -118,8 +133,10 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     .returning();
 
   // Fire-and-forget downstream notification.
+  // When acting-for, use the app DID as event issuer so downstream consumers
+  // see the true originator; subject remains the traveler.
   publish('broker.consent.created', {
-    issuer: actingDid,
+    issuer: issuer ?? actingDid,
     subject,
     scope: 'broker',
     payload: {
