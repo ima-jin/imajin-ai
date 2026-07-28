@@ -726,6 +726,19 @@ export interface BusEventMap {
     context_type: 'github';
   };
   /**
+   * Emitted when the human denies a pending proposal via the /jin dashboard (#1429).
+   * No ownerAuthorization is written; the tool call stays blocked.
+   * issuer = ownerDid, subject = ownerDid, scope = 'github'.
+   */
+  'action.denied': {
+    proposalId: string;
+    ownerDid: string;
+    tool: string;
+    target: string;
+    context_id: string;
+    context_type: 'github';
+  };
+  /**
    * Emitted after a write action executes successfully under an approved grant
    * (#1366). Non-fatal bus publish.
    * issuer = ownerDid, subject = ownerDid, scope = 'github'.
