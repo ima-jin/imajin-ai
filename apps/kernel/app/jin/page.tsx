@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type ProposalAction = 'deny' | 'single' | '5m' | '24h';
+
 interface Proposal {
   id: string;
   ownerDid: string;
@@ -60,7 +62,7 @@ function ProposalRow({
   actionLoading,
 }: Readonly<{
   proposal: Proposal;
-  onAction: (id: string, action: 'deny' | 'single' | '5m' | '24h') => void;
+  onAction: (id: string, action: ProposalAction) => void;
   actionLoading: string;
 }>) {
   const ttl = useTtlCountdown(proposal.approvedUntil);
@@ -184,7 +186,7 @@ function renderBody(
   loading: boolean,
   visible: Proposal[],
   showDone: boolean,
-  onAction: (id: string, action: 'deny' | 'single' | '5m' | '24h') => void,
+  onAction: (id: string, action: ProposalAction) => void,
   actionLoading: string,
 ) {
   if (loading) {
@@ -276,7 +278,7 @@ export default function JinPage() {
     };
   }, [load]);
 
-  const handleAction = useCallback(async (id: string, action: 'deny' | 'single' | '5m' | '24h') => {
+  const handleAction = useCallback(async (id: string, action: ProposalAction) => {
     setActionLoading(id);
     try {
       if (action === 'deny') {
