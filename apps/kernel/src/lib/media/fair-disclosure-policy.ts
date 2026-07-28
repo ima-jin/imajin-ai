@@ -309,7 +309,7 @@ export function applyDisclosureGates(
 ): ApplyGatesResult {
   const manifest: Record<string, unknown> = {};
   const withheld: Record<string, WithheldAttestation> = {};
-  const raw = rawManifest as Record<string, unknown>;
+  const raw = rawManifest as unknown as Record<string, unknown>;
 
   const amountPolicy: FairReleaseClass =
     policy["amount"]?.release ?? "on-consent";
