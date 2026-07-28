@@ -1,7 +1,5 @@
 /**
- * POST /github/api/confirm/:proposalId
- *
- * The human approval tap for a pending GitHub mutate-write proposal (#1366).
+ * POST /github/api/confirm/:proposalId — approve a pending proposal.
  *
  * Advances a proposal from 'pending' → 'approved', records a signed
  * ownerAuthorization, and publishes action.approved so the /jin dashboard
@@ -12,6 +10,15 @@
  *
  * Response:
  *   { proposalId, status: 'approved', approvedUntil: string | null }
+ *
+ * DELETE /github/api/confirm/:proposalId — deny a pending proposal (#1429).
+ *
+ * Sets status → 'denied'. No ownerAuthorization is written (no grant).
+ * Publishes action.denied (non-fatal). Subsequent tool calls matching this
+ * proposal scope stay blocked (fail-closed).
+ *
+ * Response:
+ *   { proposalId, status: 'denied' }
  *
  * Mirrors the inference confirm route (app/api/inference/confirm/[sessionId]/route.ts)
  * and reuses the same node-signing pattern established by #1293.
@@ -174,6 +181,84 @@ export async function POST(
     );
   } catch (err) {
     log.error({ err: String(err), proposalId, ownerDid }, 'Confirm failed');
+    return NextResponse.json({ error: String(err) }, { status: 400, headers: cors });
+  }
+}
+
+/**
+ * DELETE /github/api/confirm/:proposalId — deny the proposal (#1429).
+ *
+ * No grant is written. The tool call that produced this proposal stays blocked;
+ * the agent may re-propose at the next invocation. This enforces the
+ * two-panel invariant: the panel IS the authorization surface, denial is explicit.
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { proposalId: string } },
+) {
+  const cors = corsHeaders(request);
+  const { proposalId } = params;
+
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+  }
+  const ownerDid = resolveActingDid(authResult.identity);
+
+  try {
+    const [proposal] = await db
+      .select({ id: githubActionProposals.id, status: githubActionProposals.status, tool: githubActionProposals.tool, target: githubActionProposals.target })
+      .from(githubActionProposals)
+      .where(
+        and(
+          eq(githubActionProposals.id, proposalId),
+          eq(githubActionProposals.ownerDid, ownerDid),
+        )
+      )
+      .limit(1);
+
+    if (!proposal) {
+      return NextResponse.json({ error: 'Proposal not found' }, { status: 404, headers: cors });
+    }
+    if (proposal.status !== 'pending') {
+      return NextResponse.json(
+        { error: `Proposal is not awaiting confirmation (status: ${proposal.status})` },
+        { status: 400, headers: cors },
+      );
+    }
+
+    await db
+      .update(githubActionProposals)
+      .set({ status: 'denied', updatedAt: new Date() })
+      .where(
+        and(
+          eq(githubActionProposals.id, proposalId),
+          eq(githubActionProposals.ownerDid, ownerDid),
+        )
+      );
+
+    // Publish action.denied (non-fatal) — downstream can react (e.g. notify agent).
+    bus.publish('action.denied', {
+      issuer: ownerDid,
+      subject: ownerDid,
+      scope: 'github',
+      payload: {
+        proposalId,
+        ownerDid,
+        tool: proposal.tool,
+        target: proposal.target,
+        context_id: proposalId,
+        context_type: 'github' as const,
+      },
+    }).catch((err: unknown) => {
+      log.error({ err: String(err), proposalId }, 'action.denied publish failed (non-fatal)');
+    });
+
+    log.info({ proposalId, ownerDid, tool: proposal.tool, target: proposal.target }, 'proposal denied');
+
+    return NextResponse.json({ proposalId, status: 'denied' }, { headers: cors });
+  } catch (err) {
+    log.error({ err: String(err), proposalId, ownerDid }, 'Deny failed');
     return NextResponse.json({ error: String(err) }, { status: 400, headers: cors });
   }
 }
