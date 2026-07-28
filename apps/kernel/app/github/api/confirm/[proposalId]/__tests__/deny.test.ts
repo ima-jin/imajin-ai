@@ -8,19 +8,11 @@ const {
   mockDbUpdateWhere,
   mockPublish,
 } = vi.hoisted(() => {
-  const mockDbSelectLimit  = vi.fn().mockResolvedValue([]);
-  const mockDbSelectWhere  = vi.fn(() => ({ limit: mockDbSelectLimit }));
-  const mockDbSelectFrom   = vi.fn(() => ({ where: mockDbSelectWhere }));
-  const mockDbSelect       = vi.fn(() => ({ from: mockDbSelectFrom }));
-
-  const mockDbUpdateWhere  = vi.fn().mockResolvedValue(undefined);
-  const mockDbUpdateSet    = vi.fn(() => ({ where: mockDbUpdateWhere }));
-  const mockDbUpdate       = vi.fn(() => ({ set: mockDbUpdateSet }));
-
-  const mockRequireAuth    = vi.fn();
-  const mockPublish        = vi.fn().mockResolvedValue(undefined);
-
-  return { mockRequireAuth, mockDbSelectLimit, mockDbSelect, mockDbUpdateWhere, mockDbUpdate, mockPublish };
+  const mockDbSelectLimit = vi.fn().mockResolvedValue([]);
+  const mockDbUpdateWhere = vi.fn().mockResolvedValue(undefined);
+  const mockRequireAuth   = vi.fn();
+  const mockPublish       = vi.fn().mockResolvedValue(undefined);
+  return { mockRequireAuth, mockDbSelectLimit, mockDbUpdateWhere, mockPublish };
 });
 
 vi.mock('@/src/db', () => ({

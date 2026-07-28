@@ -175,10 +175,10 @@ export default function JinPage() {
   const [showDone, setShowDone] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  function notify(type: 'ok' | 'err', msg: string) {
+  const notify = useCallback((type: 'ok' | 'err', msg: string) => {
     setFlash({ type, msg });
     setTimeout(() => setFlash(null), 4000);
-  }
+  }, []);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -213,7 +213,7 @@ export default function JinPage() {
     };
   }, [load]);
 
-  async function handleAction(id: string, action: 'deny' | 'single' | '5m' | '24h') {
+  const handleAction = useCallback(async (id: string, action: 'deny' | 'single' | '5m' | '24h') => {
     setActionLoading(id);
     try {
       if (action === 'deny') {
@@ -247,7 +247,7 @@ export default function JinPage() {
     } finally {
       setActionLoading('');
     }
-  }
+  }, [load, notify]);
 
   const pending  = proposals.filter((p) => p.status === 'pending');
   const approved = proposals.filter((p) => p.status === 'approved');
