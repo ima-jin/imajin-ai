@@ -328,7 +328,7 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <p className="text-red-500 text-sm">{error}</p>
-        <button
+        <button type="button"
           onClick={load}
           className="mt-2 px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition"
         >
@@ -385,7 +385,7 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
       {/* Export button */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Transactions</h2>
-        <button
+        <button type="button"
           onClick={() => handleExport('csv')}
           disabled={exporting}
           className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition border border-gray-200 dark:border-gray-600 disabled:opacity-50"
@@ -472,7 +472,7 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {isPendingEmt && (
-                        <button
+                        <button type="button"
                           onClick={() => setConfirmETransferOrder(sale.orderId)}
                           disabled={actionLoading === sale.orderId}
                           className="px-3 py-1 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
@@ -481,7 +481,7 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
                         </button>
                       )}
                       {sale.status === 'completed' && sale.paymentMethod === 'stripe' && (
-                        <button
+                        <button type="button"
                           onClick={() => setConfirmRefundOrder(sale.orderId)}
                           disabled={actionLoading === sale.orderId}
                           className="px-3 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 hover:bg-red-100 dark:hover:bg-red-900/40 text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition disabled:opacity-50"
@@ -626,13 +626,13 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
               This will issue a full Stripe refund and cancel every ticket in the order. This action cannot be undone.
             </p>
             <div className="flex gap-3 justify-end">
-              <button
+              <button type="button"
                 onClick={() => setConfirmRefundOrder(null)}
                 className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={() => handleRefundOrder(confirmRefundOrder)}
                 disabled={!!actionLoading}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition"
@@ -655,13 +655,13 @@ export function SalesTab({ eventId }: Readonly<SalesTabProps>) {
               This will confirm all tickets in the order.
             </p>
             <div className="flex gap-3 justify-end">
-              <button
+              <button type="button"
                 onClick={() => setConfirmETransferOrder(null)}
                 className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={() => handleConfirmETransferOrder(confirmETransferOrder)}
                 disabled={!!actionLoading}
                 className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition"

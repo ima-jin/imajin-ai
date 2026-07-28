@@ -184,7 +184,7 @@ export default function DashboardPage() {
             </a>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button
+            <button type="button"
               onClick={() => navigator.clipboard.writeText(`${globalThis.location.origin}/${userPage?.handle}`)}
               className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition font-medium text-sm"
             >

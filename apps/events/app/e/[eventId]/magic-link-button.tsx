@@ -168,7 +168,7 @@ export function MagicLinkButton({ eventId }: Readonly<{ eventId: string }>) {
     return (
       <div className="flex items-center gap-2">
         <span className="text-sm text-red-400">{errorMessage}</span>
-        <button
+        <button type="button"
           onClick={() => {
             setStatus('idle');
             setPollHandle(null);
@@ -184,7 +184,7 @@ export function MagicLinkButton({ eventId }: Readonly<{ eventId: string }>) {
 
   if (!showForm) {
     return (
-      <button
+      <button type="button"
         onClick={() => setShowForm(true)}
         className="text-sm text-orange-500 hover:text-orange-400 transition"
       >

@@ -262,7 +262,7 @@ export default function CourseEditorPage() {
               </div>
             </div>
             <div className="flex gap-3">
-              <button
+              <button type="button"
                 onClick={saveCourse}
                 disabled={saving}
                 className="px-5 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"
@@ -297,13 +297,13 @@ export default function CourseEditorPage() {
                   {mod.title}
                 </h3>
                 <div className="flex gap-2">
-                  <button
+                  <button type="button"
                     onClick={() => addLesson(mod.id)}
                     className="text-xs px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
                   >
                     + Lesson
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => deleteModule(mod.id)}
                     className="text-xs px-3 py-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                   >
@@ -350,13 +350,13 @@ export default function CourseEditorPage() {
                           className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 font-mono text-sm"
                         />
                         <div className="flex gap-2">
-                          <button
+                          <button type="button"
                             onClick={() => saveLesson(mod.id, lesson.id)}
                             className="px-4 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700"
                           >
                             Save
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => setEditingLesson(null)}
                             className="px-4 py-1.5 border border-gray-300 dark:border-gray-600 rounded text-sm"
                           >
@@ -377,13 +377,13 @@ export default function CourseEditorPage() {
                           )}
                         </div>
                         <div className="flex gap-2">
-                          <button
+                          <button type="button"
                             onClick={() => startEditLesson(lesson)}
                             className="text-xs px-3 py-1 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded"
                           >
                             Edit
                           </button>
-                          <button
+                          <button type="button"
                             onClick={() => deleteLesson(mod.id, lesson.id)}
                             className="text-xs px-3 py-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                           >
@@ -413,7 +413,7 @@ export default function CourseEditorPage() {
               onKeyDown={(e) => e.key === 'Enter' && addModule()}
               className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
             />
-            <button
+            <button type="button"
               onClick={addModule}
               disabled={!newModuleTitle.trim()}
               className="px-5 py-2 bg-gray-800 dark:bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50"

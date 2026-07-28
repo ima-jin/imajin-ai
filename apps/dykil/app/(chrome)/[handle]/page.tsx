@@ -69,7 +69,7 @@ export default function UserSurveysPage() {
         ) : (
           <div className="space-y-4">
             {surveys.map((survey) => (
-              <button
+              <button type="button"
                 key={survey.id}
                 onClick={() => router.push(`/${handle}/${survey.id}`)}
                 className="w-full bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 hover:shadow-lg hover:border-orange-500 dark:hover:border-orange-500 transition text-left"

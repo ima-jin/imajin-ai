@@ -22,7 +22,7 @@ export default function Pagination({ page, totalPages }: Readonly<PaginationProp
 
   return (
     <div className="flex items-center justify-center gap-4 mt-8">
-      <button
+      <button type="button"
         onClick={() => goToPage(page - 1)}
         disabled={page <= 1}
         className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
@@ -32,7 +32,7 @@ export default function Pagination({ page, totalPages }: Readonly<PaginationProp
       <span className="text-gray-400 text-sm">
         Page {page} of {totalPages}
       </span>
-      <button
+      <button type="button"
         onClick={() => goToPage(page + 1)}
         disabled={page >= totalPages}
         className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition"

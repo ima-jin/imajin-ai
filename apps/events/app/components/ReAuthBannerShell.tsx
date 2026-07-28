@@ -20,7 +20,7 @@ export function ReAuthBannerShell({ children }: Readonly<ReAuthBannerShellProps>
           <div className="mt-1">{children}</div>
         </div>
       </div>
-      <button
+      <button type="button"
         onClick={() => setDismissed(true)}
         className="text-gray-400 hover:text-gray-200 transition shrink-0 p-1"
         aria-label="Dismiss"

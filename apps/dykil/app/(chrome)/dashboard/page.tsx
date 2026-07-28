@@ -117,7 +117,7 @@ export default function DashboardPage() {
               Manage your surveys and view responses
             </p>
           </div>
-          <button
+          <button type="button"
             onClick={() => router.push('/create')}
             className="px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
           >
@@ -132,7 +132,7 @@ export default function DashboardPage() {
             <p className="text-gray-600 dark:text-gray-400 mb-6">
               Create your first survey to get started.
             </p>
-            <button
+            <button type="button"
               onClick={() => router.push('/create')}
               className="px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition"
             >
@@ -174,7 +174,7 @@ export default function DashboardPage() {
 
                   <div className="flex gap-2 ml-4">
                     {survey.status === 'published' && (
-                      <button
+                      <button type="button"
                         onClick={() => {
                           const handle = survey.handle || 'survey';
                           const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '/dykil';
@@ -189,21 +189,21 @@ export default function DashboardPage() {
                       </button>
                     )}
 
-                    <button
+                    <button type="button"
                       onClick={() => router.push(`/create?id=${survey.id}`)}
                       className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"
                     >
                       Edit
                     </button>
 
-                    <button
+                    <button type="button"
                       onClick={() => router.push(`/survey/${survey.id}/results`)}
                       className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition"
                     >
                       View Results
                     </button>
 
-                    <button
+                    <button type="button"
                       onClick={() => deleteSurvey(survey.id)}
                       className="px-4 py-2 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 rounded-lg text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 transition"
                     >

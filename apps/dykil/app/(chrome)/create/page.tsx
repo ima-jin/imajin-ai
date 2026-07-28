@@ -95,7 +95,7 @@ function FieldFormPanel({
                     className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
                   />
                   {i > 0 && (
-                    <button
+                    <button type="button"
                       onClick={() => {
                         const newChoices = (fieldForm.choices || []).filter((_, idx) => idx !== i);
                         setFieldForm({ ...fieldForm, choices: newChoices });
@@ -108,7 +108,7 @@ function FieldFormPanel({
                 </div>
               );
             })}
-            <button
+            <button type="button"
               onClick={() => {
                 setFieldForm({ ...fieldForm, choices: [...(fieldForm.choices || []), ''] });
               }}
@@ -161,13 +161,13 @@ function FieldFormPanel({
         )}
 
         <div className="flex gap-2 pt-2">
-          <button
+          <button type="button"
             onClick={onSave}
             className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
           >
             {isEditing ? 'Save Changes' : 'Add Question'}
           </button>
-          <button
+          <button type="button"
             onClick={onCancel}
             className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition"
           >
@@ -391,7 +391,7 @@ function CreateSurveyContent() {
           <h1 className="text-3xl font-bold">
             {editId ? 'Edit Survey' : 'Create Survey'}
           </h1>
-          <button
+          <button type="button"
             onClick={() => router.push('/dashboard')}
             className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
           >
@@ -438,43 +438,43 @@ function CreateSurveyContent() {
               </div>
 
               <div className="mb-4 flex flex-wrap gap-2">
-                <button
+                <button type="button"
                   onClick={() => openFieldForm('text')}
                   className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
                 >
                   + Text
                 </button>
-                <button
+                <button type="button"
                   onClick={() => openFieldForm('comment')}
                   className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
                 >
                   + Comment
                 </button>
-                <button
+                <button type="button"
                   onClick={() => openFieldForm('radiogroup')}
                   className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
                 >
                   + Radio
                 </button>
-                <button
+                <button type="button"
                   onClick={() => openFieldForm('checkbox')}
                   className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
                 >
                   + Checkbox
                 </button>
-                <button
+                <button type="button"
                   onClick={() => openFieldForm('dropdown')}
                   className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
                 >
                   + Dropdown
                 </button>
-                <button
+                <button type="button"
                   onClick={() => openFieldForm('rating')}
                   className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
                 >
                   + Rating
                 </button>
-                <button
+                <button type="button"
                   onClick={() => openFieldForm('boolean')}
                   className="px-3 py-2 bg-orange-500 text-white rounded-lg text-sm hover:bg-orange-600 transition"
                 >
@@ -530,27 +530,27 @@ function CreateSurveyContent() {
                             )}
                           </div>
                           <div className="flex gap-1">
-                            <button
+                            <button type="button"
                               onClick={() => moveField(index, 'up')}
                               disabled={index === 0}
                               className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs disabled:opacity-30"
                             >
                               ↑
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => moveField(index, 'down')}
                               disabled={index === survey.fields.elements.length - 1}
                               className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs disabled:opacity-30"
                             >
                               ↓
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => editField(index)}
                               className="px-2 py-1 border border-gray-300 dark:border-gray-700 rounded text-xs hover:bg-gray-100 dark:hover:bg-gray-800"
                             >
                               Edit
                             </button>
-                            <button
+                            <button type="button"
                               onClick={() => deleteField(index)}
                               className="px-2 py-1 border border-red-300 dark:border-red-700 text-red-600 rounded text-xs hover:bg-red-50 dark:hover:bg-red-900/20"
                             >
@@ -566,14 +566,14 @@ function CreateSurveyContent() {
             </div>
 
             <div className="flex gap-3">
-              <button
+              <button type="button"
                 onClick={() => saveSurvey(false)}
                 disabled={saving}
                 className="flex-1 px-6 py-3 border border-gray-300 dark:border-gray-700 rounded-lg font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition disabled:opacity-50"
               >
                 {saving ? 'Saving...' : 'Save as Draft'}
               </button>
-              <button
+              <button type="button"
                 onClick={() => saveSurvey(true)}
                 disabled={saving}
                 className="flex-1 px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition disabled:opacity-50"
