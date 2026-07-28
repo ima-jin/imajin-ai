@@ -108,14 +108,14 @@ function ConsentRequestCard({
         </div>
       </div>
       <div className="flex gap-2 pl-4">
-        <button
+        <button type="button"
           onClick={handleApprove}
           disabled={busy !== null}
           className="flex-1 py-1.5 text-xs font-medium bg-amber-500 hover:bg-amber-400 text-black rounded transition disabled:opacity-50"
         >
           {busy === 'approve' ? '…' : 'Approve'}
         </button>
-        <button
+        <button type="button"
           onClick={handleDeny}
           disabled={busy !== null}
           className="flex-1 py-1.5 text-xs font-medium bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white rounded transition disabled:opacity-50"
@@ -167,7 +167,7 @@ export function NotificationBell() {
 
   return (
     <div className="relative" ref={panelRef}>
-      <button
+      <button type="button"
         onClick={handleOpen}
         className={`relative p-2 rounded-lg transition ${
           open ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -190,7 +190,7 @@ export function NotificationBell() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 shrink-0">
             <span className="text-sm font-semibold text-white">Notifications</span>
             {hasUnread && (
-              <button
+              <button type="button"
                 onClick={() => markAllAsRead()}
                 className="text-xs text-blue-400 hover:text-blue-300 transition"
               >
@@ -217,7 +217,7 @@ export function NotificationBell() {
                   );
                 }
                 return (
-                  <button
+                  <button type="button"
                     key={notification.id}
                     onClick={() => markAsRead(notification.id)}
                     className={`w-full text-left px-4 py-3 border-b border-gray-800 last:border-0 hover:bg-gray-800 transition flex items-start gap-3 ${

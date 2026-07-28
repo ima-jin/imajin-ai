@@ -187,7 +187,7 @@ function filePathToUrlPath(absoluteFile: string, routeRootAbs: string): string {
   if (rel.endsWith(slashSuffix)) rel = rel.slice(0, -slashSuffix.length);
   else if (rel.endsWith(backslashSuffix)) rel = rel.slice(0, -backslashSuffix.length);
 
-  const normalized = rel.split('\\').join('/');
+  const normalized = rel.replaceAll('\\', '/');
   const convertedSegments = normalized.split('/').map((segment) => {
     if (segment.startsWith('[...') && segment.endsWith(']')) {
       return `{${segment.slice(4, -1)}}`;

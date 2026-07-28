@@ -142,7 +142,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       {identities.map((ident) => {
         const isActive = ident.groupDid === activeIdentity;
         return (
-          <button
+          <button type="button"
             key={ident.groupDid}
             onClick={() => { setActiveIdentity(isActive ? null : ident.groupDid); setShowPanel(false); }}
             className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
@@ -262,7 +262,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
 
   return (
     <div className="relative" ref={panelRef}>
-      <button
+      <button type="button"
         onClick={() => setShowPanel(!showPanel)}
         className={`px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1.5 ${
           showPanel

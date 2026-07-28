@@ -336,7 +336,7 @@ export function NavBar({
         )}
 
         {/* Mobile hamburger */}
-        <button
+        <button type="button"
           onClick={() => setShowMobileMenu(!showMobileMenu)}
           className="sm:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
         >
@@ -348,7 +348,7 @@ export function NavBar({
           {(() => {
             if (identity?.isLoggedIn && identity?.tier === 'soft') return (
             /* Soft DID — just a logout button, no dropdown */
-            <button
+            <button type="button"
               onClick={() => identity.onLogout?.()}
               className="px-3 py-1.5 rounded-lg text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
             >
@@ -374,7 +374,7 @@ export function NavBar({
                 </a>
               )}
             <div className="relative" ref={dropdownRef}>
-              <button
+              <button type="button"
                 onClick={() => setShowDropdown(!showDropdown)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               >
@@ -403,7 +403,7 @@ export function NavBar({
                   {identity.tier !== 'soft' && (
                     <>
                       {identity.onViewProfile && (
-                        <button
+                        <button type="button"
                           onClick={() => { identity.onViewProfile?.(); setShowDropdown(false); }}
                           className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
                         >
@@ -411,7 +411,7 @@ export function NavBar({
                         </button>
                       )}
                       {identity.onEditProfile && (
-                        <button
+                        <button type="button"
                           onClick={() => { identity.onEditProfile?.(); setShowDropdown(false); }}
                           className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
                         >
@@ -472,7 +472,7 @@ export function NavBar({
                       </div>
                       {activeIdentity && identity && (
                         <div className="flex items-center group/identity">
-                          <button
+                          <button type="button"
                             onClick={() => {
                               setActiveIdentity(null);
                               setShowDropdown(false);
@@ -490,7 +490,7 @@ export function NavBar({
                         const isActive = ident.groupDid === activeIdentity;
                         return (
                           <div key={ident.groupDid} className="flex items-center group/identity">
-                            <button
+                            <button type="button"
                               onClick={() => {
                                 setActiveIdentity(isActive ? null : ident.groupDid);
                                 setShowDropdown(false);
@@ -525,7 +525,7 @@ export function NavBar({
                         </a>
                       )}
                       <hr className="my-1 border-gray-200 dark:border-gray-800" />
-                      <button
+                      <button type="button"
                         onClick={toggleTheme}
                         className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
                       >
@@ -542,7 +542,7 @@ export function NavBar({
                   {identity.onLogout && (
                     <>
                       {identity.tier !== 'soft' && <hr className="my-1 border-gray-200 dark:border-gray-800" />}
-                      <button
+                      <button type="button"
                         onClick={() => { identity.onLogout?.(); setShowDropdown(false); }}
                         className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition flex items-center gap-2"
                       >
@@ -558,7 +558,7 @@ export function NavBar({
             if (identity) return (
             <>
               {identity.onLogin && (
-                <button
+                <button type="button"
                   onClick={identity.onLogin}
                   className="px-3 py-1.5 rounded-lg text-sm bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-medium"
                 >

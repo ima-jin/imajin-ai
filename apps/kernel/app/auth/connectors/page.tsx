@@ -355,7 +355,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                 }`}>
                   {status.configSealed ? '✓' : '1'}
                 </span>
-                OAuth App
+                {' '}OAuth App
               </h3>
               {status.configSealed && !showConfigure && (
                 <button
@@ -430,7 +430,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
               }`}>
                 {status.tokenSealed ? '✓' : '2'}
               </span>
-              GitHub Account
+              {' '}GitHub Account
             </h3>
 
             {status.tokenSealed ? (
@@ -598,7 +598,7 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                 }`}>
                   {status.tokenSealed ? '✓' : '1'}
                 </span>
-                Bot Token
+                {' '}Bot Token
               </h3>
               {status.tokenSealed && !showTokenInput && (
                 <button

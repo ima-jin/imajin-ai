@@ -94,7 +94,7 @@ export function MediaMessage({ assetId, filename, mimeType, size, width, height,
               className="max-w-full max-h-full object-contain rounded-lg"
               onMouseDown={(e) => e.stopPropagation()}
             />
-            <button
+            <button type="button"
               className="absolute top-4 right-4 text-white text-3xl hover:text-gray-300 leading-none"
               onClick={() => setLightboxOpen(false)}
               aria-label="Close"

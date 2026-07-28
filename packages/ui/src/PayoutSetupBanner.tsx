@@ -103,7 +103,7 @@ export function PayoutSetupBanner({
               Set up payouts →
             </a>
           )}
-          <button
+          <button type="button"
             onClick={handleDismiss}
             className="text-orange-400/60 hover:text-orange-400 text-lg leading-none transition-colors"
             aria-label="Dismiss"

@@ -29,7 +29,7 @@ function Reactions({ emojis, onSelect }: Readonly<ReactionsProps>) {
   return (
     <div className="flex justify-around px-4 py-3 border-b border-gray-700">
       {emojis.map((emoji) => (
-        <button
+        <button type="button"
           key={emoji}
           onClick={() => onSelect(emoji)}
           className="w-11 h-11 flex items-center justify-center text-2xl hover:bg-gray-700 rounded-full transition"
@@ -52,7 +52,7 @@ function Actions({ children }: Readonly<ActionsProps>) {
 
 function Action({ icon, label, onPress, variant = 'default' }: Readonly<ActionProps>) {
   return (
-    <button
+    <button type="button"
       onClick={onPress}
       className={`w-full flex items-center gap-3 px-5 py-3.5 text-left text-sm transition hover:bg-gray-800 ${
         variant === 'danger' ? 'text-red-400' : 'text-white'

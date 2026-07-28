@@ -40,7 +40,7 @@ function bytesToBase64url(bytes: Uint8Array): string {
     .map((b) => String.fromCodePoint(b))
     .join('');
   const base64 = btoa(bin);
-  let out = base64.split('+').join('-').split('/').join('_');
+  let out = base64.replaceAll('+', '-').replaceAll('/', '_');
   while (out.endsWith('=')) {
     out = out.slice(0, -1);
   }
@@ -48,7 +48,7 @@ function bytesToBase64url(bytes: Uint8Array): string {
 }
 
 function base64urlToBytes(b64: string): Uint8Array {
-  const base64 = b64.split('-').join('+').split('_').join('/');
+  const base64 = b64.replaceAll('-', '+').replaceAll('_', '/');
   const pad = base64.length % 4;
   const padded = pad ? base64 + '='.repeat(4 - pad) : base64;
   const bin = atob(padded);

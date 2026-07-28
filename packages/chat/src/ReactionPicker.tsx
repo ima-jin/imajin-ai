@@ -41,7 +41,7 @@ export function ReactionPicker({ onSelect, onClose, position }: Readonly<Reactio
       style={position ? { left: position.x, top: position.y } : undefined}
     >
       {EMOJIS.map((emoji) => (
-        <button
+        <button type="button"
           key={emoji}
           onClick={() => {
             onSelect(emoji);

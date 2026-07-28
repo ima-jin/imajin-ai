@@ -97,7 +97,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
 
       {/* Player row */}
       <div className="flex items-center gap-2">
-        <button
+        <button type="button"
           onClick={togglePlay}
           className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition ${buttonColor}`}
           aria-label={isPlaying ? 'Pause' : 'Play'}
@@ -170,7 +170,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
       {/* Transcript */}
       {transcript && (
         <div className="mt-1.5">
-          <button
+          <button type="button"
             onClick={() => setShowTranscript(!showTranscript)}
             className={`text-xs ${transcriptBtnColor} transition flex items-center gap-1`}
           >
