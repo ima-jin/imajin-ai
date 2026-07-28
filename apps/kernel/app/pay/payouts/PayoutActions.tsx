@@ -72,7 +72,7 @@ export function PayoutActions({ status, did }: Readonly<PayoutActionsProps>) {
 
   if (status === 'not_connected') {
     return (
-      <button
+      <button type="button"
         onClick={handleOnboard}
         disabled={loading}
         className="px-6 py-3 bg-orange-600 hover:bg-orange-500 disabled:bg-orange-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
@@ -84,7 +84,7 @@ export function PayoutActions({ status, did }: Readonly<PayoutActionsProps>) {
 
   if (status === 'incomplete_onboarding') {
     return (
-      <button
+      <button type="button"
         onClick={handleOnboard}
         disabled={loading}
         className="px-6 py-3 bg-orange-600 hover:bg-orange-500 disabled:bg-orange-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
@@ -96,7 +96,7 @@ export function PayoutActions({ status, did }: Readonly<PayoutActionsProps>) {
 
   if (status === 'connected') {
     return (
-      <button
+      <button type="button"
         onClick={handleDashboard}
         disabled={loading}
         className="px-6 py-3 bg-orange-600 hover:bg-orange-500 disabled:bg-orange-700 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"

@@ -10,7 +10,7 @@ export default function BumpIndicator({ timeRemaining, onPress }: Readonly<Props
   const seconds = String(timeRemaining % 60).padStart(2, '0');
 
   return (
-    <button
+    <button type="button"
       onClick={onPress}
       className="flex items-center gap-2 px-3 py-1.5 rounded-full transition hover:opacity-80"
       style={{

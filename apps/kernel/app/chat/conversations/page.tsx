@@ -211,7 +211,7 @@ export default function ConversationsPage() {
     <div className="max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">Messages</h1>
-        <button
+        <button type="button"
           onClick={() => setShowNewChat(true)}
           className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition text-sm font-medium"
         >
@@ -246,7 +246,7 @@ export default function ConversationsPage() {
             ) : (
               <>
                 <p className="mb-4">No conversations yet.</p>
-                <button
+                <button type="button"
                   onClick={() => setShowNewChat(true)}
                   className="text-orange-500 hover:underline"
                 >

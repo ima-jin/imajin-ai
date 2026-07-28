@@ -107,7 +107,7 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
         {methods.length > 1 && (
           <div className="flex gap-2 mb-6">
             {methods.map(m => (
-              <button
+              <button type="button"
                 key={m}
                 onClick={() => { setSelectedMethod(m); setCode(''); setError(''); setEmailSent(false); }}
                 className={`flex-1 px-3 py-2 rounded-lg text-sm transition ${selectedMethod === m ? 'bg-[#F59E0B] text-black font-medium' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}
@@ -124,7 +124,7 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
             <p className="text-sm text-gray-400 mb-4">
               We&apos;ll send a 6-digit code to your registered email address.
             </p>
-            <button
+            <button type="button"
               onClick={handleSendEmailCode}
               disabled={emailSending}
               className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
@@ -194,7 +194,7 @@ export default function MfaGate({ methods, challengeToken, did, nextUrl, onSucce
           </div>
         )}
 
-        <button
+        <button type="button"
           onClick={onCancel}
           className="mt-4 w-full text-sm text-gray-500 hover:text-gray-300 transition"
         >

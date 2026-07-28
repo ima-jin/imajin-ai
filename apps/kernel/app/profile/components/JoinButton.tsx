@@ -46,7 +46,7 @@ export function JoinButton({
   if (!viewerDid) {
     return (
       <div className="mb-6">
-        <button
+        <button type="button"
           disabled
           className="px-6 py-2 bg-gray-900 border border-gray-800 rounded-lg text-gray-500 text-sm cursor-not-allowed"
         >
@@ -88,7 +88,7 @@ export function JoinButton({
 
   return (
     <div className="mb-6">
-      <button
+      <button type="button"
         onClick={handleJoin}
         disabled={loading}
         className="px-6 py-2 bg-[#F59E0B]/10 border border-[#F59E0B]/30 text-[#F59E0B] rounded-lg hover:bg-[#F59E0B]/20 transition text-sm font-medium disabled:opacity-50"

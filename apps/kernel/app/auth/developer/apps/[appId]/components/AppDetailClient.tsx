@@ -31,7 +31,7 @@ function CopyButton({ text, label }: Readonly<{ text: string; label?: string }>)
     setTimeout(() => setCopied(false), 1500);
   }
   return (
-    <button
+    <button type="button"
       onClick={copy}
       className="text-xs px-2 py-0.5 rounded border border-zinc-700 text-zinc-500 hover:text-amber-400 hover:border-amber-500/50 transition-colors"
     >
@@ -147,7 +147,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-sm font-semibold text-white">Edit App</h2>
-            <button
+            <button type="button"
               onClick={() => setEditing(false)}
               className="text-zinc-500 hover:text-zinc-300 text-sm transition-colors"
             >
@@ -302,7 +302,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
             )}
           </div>
           {app.status === 'active' && (
-            <button
+            <button type="button"
               onClick={startEdit}
               className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors shrink-0"
             >
@@ -391,13 +391,13 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
                 </p>
               )}
               <div className="flex gap-2">
-                <button
+                <button type="button"
                   onClick={() => setShowRevoke(false)}
                   className="px-4 py-2 bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white rounded-lg text-sm transition-colors"
                 >
                   Cancel
                 </button>
-                <button
+                <button type="button"
                   onClick={handleRevoke}
                   disabled={revoking}
                   className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg text-sm transition-colors"
@@ -407,7 +407,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
               </div>
             </div>
           ) : (
-            <button
+            <button type="button"
               onClick={() => setShowRevoke(true)}
               className="px-4 py-2 border border-red-900/60 text-red-400 hover:bg-red-900/20 rounded-lg text-sm transition-colors"
             >

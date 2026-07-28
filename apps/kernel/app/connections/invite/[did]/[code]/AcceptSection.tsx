@@ -79,7 +79,7 @@ export function AcceptSection({ loginUrl, code, connectionsUrl }: Readonly<Props
           Signed in as <span className="text-white font-medium">{session.handle ? `@${session.handle}` : session.did.slice(0, 20) + '...'}</span>
         </p>
         {error && <p className="text-red-400 text-sm">{error}</p>}
-        <button
+        <button type="button"
           onClick={handleAccept}
           disabled={accepting}
           className="w-full px-6 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-500/50 text-black font-semibold rounded-lg transition"

@@ -164,7 +164,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
           {SELECTABLE_SERVICES.map((svc) => {
             const isEnabled = enabledServices.includes(svc.name);
             return (
-              <button
+              <button type="button"
                 key={svc.name}
                 onClick={() => toggleService(svc.name)}
                 className={`flex flex-col items-start gap-1 p-3 rounded-xl border transition text-left ${
@@ -298,7 +298,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
           <code className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-300 font-mono overflow-x-auto whitespace-nowrap">
             {onboardUrl}
           </code>
-          <button
+          <button type="button"
             onClick={() => {
               navigator.clipboard.writeText(onboardUrl).then(() => {
                 setCopyLabel('Copied!');
@@ -314,7 +314,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
 
       {/* Save button */}
       <div className="flex justify-end">
-        <button
+        <button type="button"
           onClick={handleSave}
           disabled={saving}
           className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-gray-950 font-semibold rounded-lg transition disabled:opacity-50"

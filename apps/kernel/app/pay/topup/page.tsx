@@ -190,7 +190,7 @@ export default function TopupPage() {
           {/* Preset cards */}
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
             {PRESET_AMOUNTS.map((val) => (
-              <button
+              <button type="button"
                 key={val}
                 onClick={() => handlePresetClick(val)}
                 className={`relative rounded-xl border px-3 py-4 text-center transition-all ${
@@ -226,7 +226,7 @@ export default function TopupPage() {
             </div>
           )}
 
-          <button
+          <button type="button"
             onClick={handleProceedToStep2}
             disabled={!canProceedStep1}
             className="w-full px-4 py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-medium rounded-xl transition-colors"
@@ -253,7 +253,7 @@ export default function TopupPage() {
               </span>
             </div>
             <div className="flex bg-black/40 rounded-lg p-1">
-              <button
+              <button type="button"
                 onClick={() => setAbsorbFees(false)}
                 className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
                   absorbFees
@@ -263,7 +263,7 @@ export default function TopupPage() {
               >
                 Me
               </button>
-              <button
+              <button type="button"
                 onClick={() => setAbsorbFees(true)}
                 className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
                   absorbFees
@@ -279,7 +279,7 @@ export default function TopupPage() {
           {/* Method cards */}
           <div className="space-y-3">
             {/* Stripe */}
-            <button
+            <button type="button"
               onClick={() => setMethod('stripe')}
               className={`w-full text-left rounded-xl border p-4 transition-all ${
                 method === 'stripe'
@@ -324,7 +324,7 @@ export default function TopupPage() {
             </button>
 
             {/* EMT */}
-            <button
+            <button type="button"
               onClick={() => setMethod('emt')}
               className={`w-full text-left rounded-xl border p-4 transition-all ${
                 method === 'emt'
@@ -374,13 +374,13 @@ export default function TopupPage() {
           )}
 
           <div className="flex gap-3">
-            <button
+            <button type="button"
               onClick={() => setStep(1)}
               className="px-5 py-3 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 font-medium rounded-xl transition-colors"
             >
               Back
             </button>
-            <button
+            <button type="button"
               onClick={handleProceedToStep3}
               disabled={loading}
               className="flex-1 px-4 py-3 bg-orange-500 hover:bg-orange-600 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-medium rounded-xl transition-colors"
@@ -408,7 +408,7 @@ export default function TopupPage() {
                 <div className="text-xs text-zinc-500 mb-1">Send to</div>
                 <div className="flex items-center justify-between bg-black/40 rounded-lg px-4 py-3">
                   <span className="text-white font-mono text-sm">{emtInstructions.email}</span>
-                  <button
+                  <button type="button"
                     onClick={() => {
                       navigator.clipboard.writeText(emtInstructions.email);
                       setCopied(true);
@@ -432,7 +432,7 @@ export default function TopupPage() {
                 <div className="text-xs text-zinc-500 mb-1">Message / Memo</div>
                 <div className="flex items-center justify-between bg-black/40 rounded-lg px-4 py-3">
                   <span className="text-white font-mono text-sm">{emtInstructions.memo}</span>
-                  <button
+                  <button type="button"
                     onClick={handleCopyMemo}
                     className="text-xs text-orange-500 hover:text-orange-400 transition-colors"
                   >

@@ -130,7 +130,7 @@ export default function NotificationsPage() {
                     <div className="flex items-center gap-6">
                       <label htmlFor={`notif-inapp-${scope}`} className="flex items-center gap-2 cursor-pointer">
                         <span className="text-xs text-zinc-500">In-app</span>
-                        <button
+                        <button type="button"
                           id={`notif-inapp-${scope}`}
                           onClick={() => toggle(scope, 'inapp', !pref.inapp)}
                           disabled={saving === `${scope}:inapp`}
@@ -147,7 +147,7 @@ export default function NotificationsPage() {
                       </label>
                       <label htmlFor={`notif-email-${scope}`} className="flex items-center gap-2 cursor-pointer">
                         <span className="text-xs text-zinc-500">Email</span>
-                        <button
+                        <button type="button"
                           id={`notif-email-${scope}`}
                           onClick={() => toggle(scope, 'email', !pref.email)}
                           disabled={saving === `${scope}:email`}

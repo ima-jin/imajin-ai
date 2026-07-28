@@ -289,7 +289,7 @@ function RegisterPage() {
             </p>
           </div>
 
-          <button
+          <button type="button"
             onClick={downloadKey}
             className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition mb-3 flex items-center justify-center gap-2"
           >
@@ -297,14 +297,14 @@ function RegisterPage() {
           </button>
 
           {keyBackedUp ? (
-            <button
+            <button type="button"
               onClick={continueAfterBackup}
               className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition"
             >
               ✓ Continue
             </button>
           ) : (
-            <button
+            <button type="button"
               onClick={continueAfterBackup}
               className="w-full py-3 bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-medium rounded-lg transition text-sm"
             >

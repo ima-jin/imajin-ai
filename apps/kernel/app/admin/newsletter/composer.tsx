@@ -276,13 +276,13 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
               This cannot be undone.
             </p>
             <div className="flex gap-2 justify-end">
-              <button
+              <button type="button"
                 onClick={() => setConfirm(false)}
                 className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 onClick={handleSend}
                 disabled={sending}
                 className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-50"

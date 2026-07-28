@@ -72,7 +72,7 @@ function AddMemberPicker({
     <div className="mt-2">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-gray-500">Add a member:</span>
-        <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600">
+        <button type="button" onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600">
           Cancel
         </button>
       </div>
@@ -95,7 +95,7 @@ function AddMemberPicker({
               {filtered.map((conn) => {
                 const label = didNames[conn.did] || (conn.handle ? `@${conn.handle}` : conn.did.slice(-8));
                 return (
-                  <button
+                  <button type="button"
                     key={conn.did}
                     onClick={() => onAdd(conn.did)}
                     disabled={addingDid === conn.did}
@@ -387,7 +387,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
             );
           })()}
           {parsed.type === 'group' && (
-            <button
+            <button type="button"
               onClick={() => setShowMembers(!showMembers)}
               className="text-xs text-gray-500 mt-0.5 hover:text-orange-500 transition-colors text-left"
             >
@@ -403,14 +403,14 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
           leaveConfirm ? (
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs text-gray-500">Leave group?</span>
-              <button
+              <button type="button"
                 onClick={handleLeave}
                 disabled={leaving}
                 className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition disabled:opacity-50"
               >
                 {leaving ? '…' : 'Yes, leave'}
               </button>
-              <button
+              <button type="button"
                 onClick={() => setLeaveConfirm(false)}
                 className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition"
               >
@@ -418,7 +418,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
               </button>
             </div>
           ) : (
-            <button
+            <button type="button"
               onClick={() => setLeaveConfirm(true)}
               className="shrink-0 px-3 py-1.5 text-xs text-red-500 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition"
             >
@@ -442,7 +442,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
                 {/* Remove button: owners can remove anyone (except self); admins can remove regular members only */}
                 {isOwnerOrAdmin && m.did !== identity?.did &&
                   (callerRole === 'owner' || (m.role !== 'owner' && m.role !== 'admin')) && (
-                  <button
+                  <button type="button"
                     onClick={() => handleRemoveMember(m.did)}
                     disabled={removingDid === m.did}
                     className="ml-1 text-gray-400 hover:text-red-500 transition disabled:opacity-50"
@@ -465,7 +465,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
                 onCancel={() => { setShowAddMember(false); setConnections([]); }}
               />
             ) : (
-              <button
+              <button type="button"
                 onClick={() => { setShowAddMember(true); loadConnections(); }}
                 className="text-xs text-orange-500 hover:text-orange-600 transition"
               >

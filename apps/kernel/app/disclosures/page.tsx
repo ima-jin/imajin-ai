@@ -180,7 +180,7 @@ function ContactDetail({ did, onChanged }: Readonly<{ did: string; onChanged: ()
     <div className="mt-3 border-t border-white/10 pt-4">
       {activeCount > 0 && (
         <div className="flex justify-end mb-3">
-          <button
+          <button type="button"
             onClick={onRevokeAll}
             disabled={busy}
             className="px-3 py-1.5 text-sm bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded-lg transition disabled:opacity-50"
@@ -210,7 +210,7 @@ function ContactDetail({ did, onChanged }: Readonly<{ did: string; onChanged: ()
                   </div>
                 </div>
                 {item.grant.status === 'active' && (
-                  <button
+                  <button type="button"
                     onClick={() => onRevokeGrant(item.grant.id)}
                     disabled={busy}
                     className="px-2 py-1 text-xs bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded transition disabled:opacity-50 shrink-0"
@@ -287,7 +287,7 @@ function ContactCard({
   return (
     <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
       <div className="flex items-start gap-4">
-        <button onClick={onToggle} className="flex-1 flex items-center gap-4 text-left min-w-0">
+        <button type="button" onClick={onToggle} className="flex-1 flex items-center gap-4 text-left min-w-0">
           <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg shrink-0">
             {typeIcon}
           </div>
@@ -313,7 +313,7 @@ function ContactCard({
         </button>
 
         {/* Edit button */}
-        <button
+        <button type="button"
           onClick={() => {
             setLabelDraft(contact.label ?? '');
             setTypeDraft(contact.relationshipType ?? '');
@@ -357,14 +357,14 @@ function ContactCard({
             </select>
           </div>
           <div className="flex gap-2">
-            <button
+            <button type="button"
               onClick={saveMetadata}
               disabled={saving}
               className="px-3 py-1.5 text-sm bg-amber-500 hover:bg-amber-400 text-black font-medium rounded-lg transition disabled:opacity-50"
             >
               {saving ? 'Saving\u2026' : 'Save'}
             </button>
-            <button
+            <button type="button"
               onClick={() => setEditing(false)}
               className="px-3 py-1.5 text-sm bg-white/5 hover:bg-white/10 text-gray-400 rounded-lg transition"
             >
@@ -477,7 +477,7 @@ function PreviewTab({ contacts }: Readonly<{ contacts: ContactSummary[] }>) {
           </div>
         )}
 
-        <button
+        <button type="button"
           onClick={runPreview}
           disabled={!effectiveDid || !effectivePurpose || loading}
           className="px-4 py-2 text-sm font-medium bg-amber-500 hover:bg-amber-400 text-black rounded-lg transition disabled:opacity-40"
@@ -594,7 +594,7 @@ export default function DisclosuresPage() {
       {/* Tabs */}
       <div className="flex gap-1 mb-8 border-b border-white/10">
         {(['contacts', 'grants', 'preview'] as const).map((t) => (
-          <button
+          <button type="button"
             key={t}
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
@@ -665,7 +665,7 @@ export default function DisclosuresPage() {
                     )}
                   </div>
                   {g.activeContacts > 0 && (
-                    <button
+                    <button type="button"
                       onClick={() => onRevokeDataType(g.purpose)}
                       className="px-2 py-1 text-xs bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded transition shrink-0"
                     >

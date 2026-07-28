@@ -354,7 +354,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                   status.configSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
                 }`}>
                   {status.configSealed ? '✓' : '1'}
-                </span>
+                </span>{' '}
                 OAuth App
               </h3>
               {status.configSealed && !showConfigure && (
@@ -429,7 +429,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                 status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
               }`}>
                 {status.tokenSealed ? '✓' : '2'}
-              </span>
+              </span>{' '}
               GitHub Account
             </h3>
 
@@ -597,11 +597,11 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                   status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
                 }`}>
                   {status.tokenSealed ? '✓' : '1'}
-                </span>
+                </span>{' '}
                 Bot Token
               </h3>
               {status.tokenSealed && !showTokenInput && (
-                <button
+                <button type="button"
                   onClick={() => setShowTokenInput(true)}
                   className="text-xs text-gray-600 hover:text-gray-400 transition"
                 >

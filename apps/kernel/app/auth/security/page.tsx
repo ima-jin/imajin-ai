@@ -541,7 +541,7 @@ export default function SecuritySettingsPage() {
                 {methods?.hasStoredKey ? (
                   <>
                     <span className="px-2 py-1 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap">Active</span>
-                    <button
+                    <button type="button"
                       onClick={() => { setShowPasswordChange(true); setShowPasswordReset(false); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
                       className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition"
                     >
@@ -551,7 +551,7 @@ export default function SecuritySettingsPage() {
                 ) : (
                   <>
                     <span className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 whitespace-nowrap">Not set up</span>
-                    <button
+                    <button type="button"
                       onClick={() => { setShowPasswordSetup(true); setPassword(''); setConfirmPassword(''); }}
                       className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition"
                     >
@@ -603,13 +603,13 @@ export default function SecuritySettingsPage() {
                   </div>
                 </form>
                 <div className="mt-3 flex items-center justify-between">
-                  <button
+                  <button type="button"
                     onClick={() => { setShowPasswordChange(false); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
                     className="text-sm text-gray-500 hover:text-gray-300 transition"
                   >
                     Cancel
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => { setShowPasswordChange(false); setShowPasswordReset(true); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
                     className="text-sm text-amber-500 hover:text-amber-400 transition"
                   >
@@ -655,7 +655,7 @@ export default function SecuritySettingsPage() {
                     </button>
                   </div>
                 </form>
-                <button
+                <button type="button"
                   onClick={() => { setShowPasswordReset(false); setPassword(''); setConfirmPassword(''); }}
                   className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
                 >
@@ -698,7 +698,7 @@ export default function SecuritySettingsPage() {
                     </button>
                   </div>
                 </form>
-                <button
+                <button type="button"
                   onClick={() => { setShowPasswordSetup(false); setPassword(''); setConfirmPassword(''); }}
                   className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
                 >
@@ -728,14 +728,14 @@ export default function SecuritySettingsPage() {
                   <span className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 whitespace-nowrap">Not set up</span>
                 )}
                 {hasTotpEnabled ? (
-                  <button
+                  <button type="button"
                     onClick={() => setShowTotpDisable(true)}
                     className="text-sm px-3 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition"
                   >
                     Remove
                   </button>
                 ) : (
-                  <button
+                  <button type="button"
                     onClick={handleStartTotpSetup}
                     disabled={actionLoading === 'totp-setup'}
                     className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition disabled:opacity-50"
@@ -777,7 +777,7 @@ export default function SecuritySettingsPage() {
                     {actionLoading === 'totp-verify' ? 'Verifying…' : 'Confirm'}
                   </button>
                 </form>
-                <button
+                <button type="button"
                   onClick={() => { setShowTotpSetup(false); setTotpSetup(null); }}
                   className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
                 >
@@ -810,7 +810,7 @@ export default function SecuritySettingsPage() {
                     {actionLoading === 'totp-disable' ? 'Removing…' : 'Remove'}
                   </button>
                 </form>
-                <button
+                <button type="button"
                   onClick={() => { setShowTotpDisable(false); setTotpDisableCode(''); }}
                   className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
                 >
@@ -834,7 +834,7 @@ export default function SecuritySettingsPage() {
                   <span className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 whitespace-nowrap">Not set up</span>
                 )}
                 {hasEmailMfa ? (
-                  <button
+                  <button type="button"
                     onClick={handleDisableEmailMfa}
                     disabled={actionLoading === 'email-disable'}
                     className="text-sm px-3 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition disabled:opacity-50"
@@ -842,7 +842,7 @@ export default function SecuritySettingsPage() {
                     {actionLoading === 'email-disable' ? 'Disabling…' : 'Disable'}
                   </button>
                 ) : (
-                  <button
+                  <button type="button"
                     onClick={handleStartEmailSetup}
                     disabled={actionLoading === 'email-setup'}
                     className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition disabled:opacity-50"
@@ -877,7 +877,7 @@ export default function SecuritySettingsPage() {
                     {actionLoading === 'email-verify' ? 'Verifying…' : 'Confirm'}
                   </button>
                 </form>
-                <button
+                <button type="button"
                   onClick={() => { setShowEmailSetup(false); setEmailCode(''); }}
                   className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
                 >
@@ -937,7 +937,7 @@ export default function SecuritySettingsPage() {
                   </div>
                   <div className="flex gap-2 ml-3 flex-shrink-0">
                     {!device.trusted && (
-                      <button
+                      <button type="button"
                         onClick={() => handleTrustDevice(device.id)}
                         disabled={actionLoading === `trust-${device.id}`}
                         className="text-xs px-2 py-1 border border-gray-700 text-gray-400 rounded hover:bg-gray-800 transition disabled:opacity-50"
@@ -945,7 +945,7 @@ export default function SecuritySettingsPage() {
                         Trust
                       </button>
                     )}
-                    <button
+                    <button type="button"
                       onClick={() => handleRemoveDevice(device.id)}
                       disabled={actionLoading === `device-${device.id}`}
                       className="text-xs px-2 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition disabled:opacity-50"

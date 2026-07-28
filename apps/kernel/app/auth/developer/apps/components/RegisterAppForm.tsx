@@ -121,7 +121,7 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
             This is the only time the private key will be shown. It is not stored on the server.
             If you lose it, you&apos;ll need to re-register the app.
           </p>
-          <button
+          <button type="button"
             onClick={downloadKeypair}
             className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-lg transition-colors text-sm"
           >
@@ -137,7 +137,7 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
         </div>
 
         <div className="flex gap-3 pt-1">
-          <button
+          <button type="button"
             onClick={() => onSuccess(createdApp)}
             disabled={!keypairDownloaded}
             className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 disabled:text-zinc-600 text-black font-semibold rounded-lg transition-colors text-sm"

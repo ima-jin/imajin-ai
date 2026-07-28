@@ -184,13 +184,13 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
     <div>
       {/* Import method selector */}
       <div className="flex gap-2 mb-6">
-        <button
+        <button type="button"
           onClick={() => setMethod('file')}
           className={`flex-1 px-4 py-2 rounded-lg transition ${method === 'file' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}
         >
           Import File
         </button>
-        <button
+        <button type="button"
           onClick={() => setMethod('paste')}
           className={`flex-1 px-4 py-2 rounded-lg transition ${method === 'paste' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}
         >

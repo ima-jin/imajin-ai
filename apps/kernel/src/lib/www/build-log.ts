@@ -45,7 +45,7 @@ function parseSectionHeader(section: string): { date: string; title: string; con
  */
 export async function getBuildEntries(): Promise<BuildEntry[]> {
   const raw = fs.readFileSync(buildLogPath, 'utf8');
-  const normalized = raw.split('\r\n').join('\n');
+  const normalized = raw.replaceAll('\r\n', '\n');
   const sections = splitSectionsByHeading(normalized);
 
   const entries: BuildEntry[] = [];

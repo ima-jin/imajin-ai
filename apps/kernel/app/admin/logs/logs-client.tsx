@@ -264,7 +264,7 @@ export default function LogsClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <button type="button"
             onClick={() => setAutoRefresh((v) => !v)}
             className={`rounded-lg border px-3 py-1.5 text-sm flex items-center gap-1.5 ${
               autoRefresh
@@ -274,7 +274,7 @@ export default function LogsClient() {
           >
             {autoRefresh ? '⏸ Auto' : '▶ Auto'}
           </button>
-          <button
+          <button type="button"
             onClick={refresh}
             className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-1.5"
           >
@@ -285,7 +285,7 @@ export default function LogsClient() {
 
       {/* Tabs */}
       <div className="mb-4 flex gap-1 border-b border-gray-200 dark:border-gray-700">
-        <button
+        <button type="button"
           onClick={() => setActiveTab('structured')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'structured'
@@ -295,7 +295,7 @@ export default function LogsClient() {
         >
           Structured Logs
         </button>
-        <button
+        <button type="button"
           onClick={() => setActiveTab('raw')}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'raw'
@@ -334,7 +334,7 @@ export default function LogsClient() {
                 {ALL_LEVELS.map((level) => {
                   const active = pendingFilters.levels.includes(level);
                   return (
-                    <button
+                    <button type="button"
                       key={level}
                       onClick={() => toggleLevel(level)}
                       className={`text-xs px-2 py-1 rounded font-medium transition-opacity ${
@@ -411,14 +411,14 @@ export default function LogsClient() {
               />
             </div>
 
-            <button
+            <button type="button"
               onClick={applyFilters}
               className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 text-sm font-medium self-end"
             >
               Filter
             </button>
             {(hasFilters || hasActiveFilters) && (
-              <button
+              <button type="button"
                 onClick={clearFilters}
                 className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 self-end py-1.5"
               >
@@ -544,7 +544,7 @@ export default function LogsClient() {
 
           {/* Pagination */}
           <div className="mt-4 flex items-center gap-3">
-            <button
+            <button type="button"
               onClick={prevPage}
               disabled={!hasPrev}
               className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -554,7 +554,7 @@ export default function LogsClient() {
             <span className="text-sm text-gray-500 dark:text-gray-400">
               Page {page} — Showing {Math.min(offset + 1, total)}–{Math.min(offset + LIMIT, total)} of {total.toLocaleString()}
             </span>
-            <button
+            <button type="button"
               onClick={nextPage}
               disabled={!hasNext}
               className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -576,7 +576,7 @@ export default function LogsClient() {
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-20"
               />
               <span className="text-sm text-gray-500 dark:text-gray-400">days</span>
-              <button
+              <button type="button"
                 onClick={runCleanup}
                 className="rounded-lg bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 text-sm font-medium"
               >
@@ -617,7 +617,7 @@ export default function LogsClient() {
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-24"
               />
             </div>
-            <button
+            <button type="button"
               onClick={fetchRawLogs}
               disabled={rawLoading}
               className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 text-sm font-medium self-end disabled:opacity-50"

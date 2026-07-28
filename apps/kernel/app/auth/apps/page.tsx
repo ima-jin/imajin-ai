@@ -73,7 +73,7 @@ function AppCard({
           </div>
 
           {!isRevoked && (
-            <button
+            <button type="button"
               onClick={() => onRevoke(app)}
               className="flex-shrink-0 text-sm px-3 py-1.5 rounded border border-red-800 text-red-400 hover:bg-red-900/30 transition-colors"
             >
@@ -140,14 +140,14 @@ function ConfirmRevokeDialog({
           access your data.
         </p>
         <div className="flex gap-3 justify-end">
-          <button
+          <button type="button"
             onClick={onCancel}
             disabled={revoking}
             className="px-4 py-2 text-sm rounded border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
-          <button
+          <button type="button"
             onClick={onConfirm}
             disabled={revoking}
             className="px-4 py-2 text-sm rounded border border-red-800 text-red-400 hover:bg-red-900/30 transition-colors disabled:opacity-50"

@@ -73,7 +73,7 @@ export function FileUpload({
         onChange={handleFileSelect}
         className="hidden"
       />
-      <button
+      <button type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={uploading}
         className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50"

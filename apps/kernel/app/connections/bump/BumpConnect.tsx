@@ -552,7 +552,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
 
       {/* Header */}
       <div className="flex items-center justify-between p-4 shrink-0">
-        <button
+        <button type="button"
           onClick={() => {
             if (isActive && session) deactivate(session.sessionId);
             onClose();
@@ -589,7 +589,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
                     ? `${Math.round(dist)}m`
                     : `${(dist / 1000).toFixed(1)}km`;
                   return (
-                  <button
+                  <button type="button"
                     key={node.id}
                     onClick={() => setSelectedNode(node)}
                     className={`w-full text-left p-4 rounded-xl border transition min-h-[48px] ${
@@ -616,7 +616,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
             <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Active for</p>
             <div className="flex gap-2">
               {EXPIRY_OPTIONS.map((opt) => (
-                <button
+                <button type="button"
                   key={opt.value}
                   onClick={() => setExpiry(opt.value)}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium transition min-h-[48px] ${
@@ -631,7 +631,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
             </div>
           </div>
 
-          <button
+          <button type="button"
             onClick={startBumping}
             disabled={!selectedNode || loadingNodes}
             className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-black font-bold text-lg rounded-xl transition min-h-[48px]"
@@ -701,7 +701,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
           </div>
 
           {/* Stop button */}
-          <button
+          <button type="button"
             onClick={handleStop}
             className="absolute bottom-8 left-1/2 -translate-x-1/2 px-10 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition text-base font-medium min-h-[48px]"
           >
@@ -724,13 +724,13 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
           </div>
 
           <div className="w-full space-y-3">
-            <button
+            <button type="button"
               onClick={() => handleConfirm(match.matchId, true)}
               className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-black font-bold text-lg rounded-xl transition min-h-[48px]"
             >
               Connect
             </button>
-            <button
+            <button type="button"
               onClick={() => handleConfirm(match.matchId, false)}
               className="w-full py-3 bg-white/10 hover:bg-white/15 text-gray-400 rounded-xl transition text-base min-h-[48px]"
             >
@@ -756,7 +756,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
                 View @{connectedInfo.peer.handle || 'profile'}
               </a>
             )}
-            <button
+            <button type="button"
               onClick={() => setState(session ? 'active' : 'idle')}
               className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition font-medium"
             >
@@ -780,7 +780,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
               : undefined
             }
           />
-          <button
+          <button type="button"
             onClick={() => setState(session ? 'active' : 'idle')}
             className="mt-8 px-8 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition text-base font-medium min-h-[48px]"
           >
@@ -793,7 +793,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
       {state === 'idle' && (
         <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
           <div className="text-[8rem] leading-none mb-6 select-none">🤜🤛</div>
-          <button
+          <button type="button"
             onClick={() => setState('selecting')}
             className="px-10 py-4 bg-orange-500 hover:bg-orange-600 text-black text-lg font-bold rounded-xl transition min-h-[48px]"
           >
