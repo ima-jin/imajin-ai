@@ -239,6 +239,7 @@ export const identityMembers = authSchema.table('identity_members', {
   addedBy: text('added_by'),
   addedAt: timestamp('added_at', { withTimezone: true }).defaultNow(),
   removedAt: timestamp('removed_at', { withTimezone: true }),
+  optInRef: text('opt_in_ref'),                                     // opaque opt-in ref that authorized this agent delegation (#1442)
 }, (table) => ({
   pk: index('idx_identity_members_pk').on(table.identityDid, table.memberDid),
   memberIdx: index('idx_identity_members_member').on(table.memberDid),
