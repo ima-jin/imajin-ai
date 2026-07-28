@@ -18,7 +18,7 @@ import type { VaultDelegationGrant } from '@/src/db';
 // ── Mock: @/src/db — drizzle update chain ────────────────────────────────────
 
 const { mockReturning, mockUpdate } = vi.hoisted(() => {
-  const mockReturning = vi.fn<[], Promise<VaultDelegationGrant[]>>();
+  const mockReturning = vi.fn<() => Promise<VaultDelegationGrant[]>>();
   const mockWhere = vi.fn(() => ({ returning: mockReturning }));
   const mockSet = vi.fn(() => ({ where: mockWhere }));
   const mockUpdate = vi.fn(() => ({ set: mockSet }));
