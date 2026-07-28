@@ -85,7 +85,7 @@ export default function SearchFilters() {
         {(['all', 'direct', 'protected'] as const).map((t) => {
           const active = tier === t || (t === 'all' && !searchParams.get('tier'));
           return (
-            <button
+            <button type="button"
               key={t}
               onClick={() => updateParam('tier', t === 'all' ? '' : t)}
               className={`px-3 py-2 text-sm transition ${

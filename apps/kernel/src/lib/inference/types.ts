@@ -118,6 +118,16 @@ export interface IntentVocabulary {
   /** Model ID for the inference call, e.g. 'claude-sonnet-4-20250514'. */
   modelId: string;
   /**
+   * Optional channel for per-DID credential resolution.
+   *
+   * When set to `'gemini'`, policy.ts resolves the model credentials (API key,
+   * base URL) from the per-DID Gemini connector vault field (gemini:infer grant
+   * required) instead of the global OPENAI_API_KEY env var. Falls back to
+   * GEMINI_API_KEY / GEMINI_BASE_URL env vars when no connection is sealed for
+   * the ownerDid. Omit for all other providers.
+   */
+  modelChannel?: 'gemini';
+  /**
    * Vocab-specific system prompt fragment injected into the policy call.
    * Should describe the available intent types and the expected JSON output
    * schema in terms meaningful to this vocabulary.

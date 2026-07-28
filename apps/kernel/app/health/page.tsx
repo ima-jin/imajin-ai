@@ -133,7 +133,7 @@ export default function HealthPage() {
                   {(() => { if (loading) { return 'Checking...'; } if (allUp) { return 'All Systems Operational'; } return 'Some Systems Degraded'; })()}
                 </span>
               </div>
-              <button
+              <button type="button"
                 onClick={checkHealth}
                 disabled={loading}
                 className="px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors disabled:opacity-50"

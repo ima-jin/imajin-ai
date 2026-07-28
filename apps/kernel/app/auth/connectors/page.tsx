@@ -601,7 +601,7 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                 {' '}Bot Token
               </h3>
               {status.tokenSealed && !showTokenInput && (
-                <button
+                <button type="button"
                   onClick={() => setShowTokenInput(true)}
                   className="text-xs text-gray-600 hover:text-gray-400 transition"
                 >

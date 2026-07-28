@@ -141,7 +141,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
 
   if (!open) {
     return (
-      <button
+      <button type="button"
         onClick={() => setOpen(true)}
         className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium rounded-lg transition-colors"
       >
@@ -154,7 +154,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-bold text-white">New Document Signing</h3>
-        <button
+        <button type="button"
           onClick={() => setOpen(false)}
           className="text-zinc-500 hover:text-zinc-300 text-sm"
         >
@@ -190,7 +190,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
             accept=".pdf,.txt,.md,image/*"
             onChange={handleFileChange}
           />
-          <button
+          <button type="button"
             onClick={handleUpload}
             disabled={!file || uploading}
             className="w-full px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 text-black text-sm font-medium rounded-lg transition-colors"
@@ -229,7 +229,7 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
                       {s.handle ? `@${s.handle}` : s.name ?? s.did.slice(0, 22) + '…'}
                     </span>
                     <span className="text-xs text-zinc-600 font-mono">{s.did}</span>
-                    <button
+                    <button type="button"
                       onClick={() => removeSigner(s.did)}
                       className="ml-auto text-zinc-500 hover:text-red-400 text-xs"
                     >
@@ -258,13 +258,13 @@ export default function CreateDocumentForm({ sessionDid, onCreated }: Readonly<P
           </div>
 
           <div className="flex gap-2">
-            <button
+            <button type="button"
               onClick={() => setStep('upload')}
               className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
             >
               Back
             </button>
-            <button
+            <button type="button"
               onClick={handleSubmit}
               disabled={loading || !title.trim() || signers.length === 0}
               className="flex-1 px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 text-black text-sm font-medium rounded-lg transition-colors"

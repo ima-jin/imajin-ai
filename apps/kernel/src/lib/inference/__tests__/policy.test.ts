@@ -29,6 +29,11 @@ vi.mock('@imajin/logger', () => ({
   createLogger: vi.fn(() => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() })),
 }));
 
+const mockLoadGeminiCredentials = vi.hoisted(() => vi.fn());
+vi.mock('@/src/lib/gemini/connector', () => ({
+  loadGeminiCredentials: mockLoadGeminiCredentials,
+}));
+
 // ─── Subject ────────────────────────────────────────────────────────────────
 
 import { infer } from '../policy';
@@ -64,19 +69,75 @@ beforeEach(() => {
   mockUpdateSet.mockImplementation(() => ({ where: mockUpdateSetWhere }));
   mockUpdateSetWhere.mockResolvedValue(undefined);
   mockDbUpdate.mockImplementation(() => ({ set: mockUpdateSet }));
+  mockLoadGeminiCredentials.mockResolvedValue(undefined);
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('infer — inference policy layer', () => {
-  it('calls getModel with the vocab modelProvider and modelId', async () => {
+  it('calls getModel with the vocab modelProvider and modelId (no ownerDid)', async () => {
     mockGenerateText.mockResolvedValueOnce({
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.95, metadata: { product: 'maize' } }]),
     });
 
     await infer(CTX, VOCAB);
 
-    expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash');
+    // No modelChannel on VOCAB, so getModel called with no config (undefined).
+    expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash', undefined);
+  });
+
+  it('resolves Gemini credentials from vault when modelChannel is gemini and ownerDid provided', async () => {
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
+    });
+    const GEMINI_VOCAB = { ...VOCAB, modelChannel: 'gemini' as const };
+    const CREDS = { apiKey: 'AIzaSy-TEST', baseUrl: 'https://example.com/openai' };
+    mockLoadGeminiCredentials.mockResolvedValueOnce(CREDS);
+
+    await infer(CTX, GEMINI_VOCAB, 'did:imajin:farmer');
+
+    expect(mockLoadGeminiCredentials).toHaveBeenCalledWith('did:imajin:farmer');
+    expect(mockGetModel).toHaveBeenCalledWith(
+      'openai',
+      'gemini-2.0-flash',
+      { apiKey: 'AIzaSy-TEST', baseURL: 'https://example.com/openai' },
+    );
+  });
+
+  it('falls back to env vars when modelChannel is gemini but no connection is sealed', async () => {
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
+    });
+    const GEMINI_VOCAB = { ...VOCAB, modelChannel: 'gemini' as const };
+    mockLoadGeminiCredentials.mockResolvedValueOnce(undefined); // no connection
+    vi.stubEnv('GEMINI_API_KEY', 'env-api-key');
+    vi.stubEnv('GEMINI_BASE_URL', 'https://env-base.example.com');
+
+    await infer(CTX, GEMINI_VOCAB, 'did:imajin:farmer');
+
+    expect(mockGetModel).toHaveBeenCalledWith(
+      'openai',
+      'gemini-2.0-flash',
+      { apiKey: 'env-api-key', baseURL: 'https://env-base.example.com' },
+    );
+
+    vi.unstubAllEnvs();
+  });
+
+  it('passes undefined config when modelChannel is gemini but no connection and no env vars', async () => {
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
+    });
+    const GEMINI_VOCAB = { ...VOCAB, modelChannel: 'gemini' as const };
+    mockLoadGeminiCredentials.mockResolvedValueOnce(undefined);
+    vi.stubEnv('GEMINI_API_KEY', '');
+    vi.stubEnv('GEMINI_BASE_URL', '');
+
+    await infer(CTX, GEMINI_VOCAB, 'did:imajin:farmer');
+
+    expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash', undefined);
+
+    vi.unstubAllEnvs();
   });
 
   it('calls generateText with the vocab systemPrompt injected', async () => {

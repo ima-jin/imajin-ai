@@ -82,6 +82,8 @@ When an external agent arrives at an Imajin node, it finds a `.well-known/` surf
 /.well-known/ap2-manifest     → AP2 mandate templates (spending limits, authorization chains)
 ```
 
+That surface answers *"what does this node speak?"* Its resource-level companion (§3.5) answers *"what is this individual object, and what am I allowed to do with it?"* — every resource URL is self-describing via `rel="fair"` + `X-Fair-*` headers, so discovery works whether an agent arrives at a node or at a shared link.
+
 ### 3.1 A2A Agent Card (`/.well-known/agent.json`)
 
 The Agent Card describes the node as an A2A agent — not a human-like assistant, but a platform agent with deterministic capabilities:
@@ -240,6 +242,45 @@ The Imajin node generates mandate templates from `.fair` manifests. The node's `
 The mandate is a VDC signed by the owner's DID. The agent presents it when initiating payment. The `.fair` manifest on the resulting transaction is the receipt — and it is the *richer* record (see §4.7 for the exact field-level mapping and the signature-curve caveat).
 
 > **Note (Jul 2026):** the earlier draft named a single `spending_authorization` mandate. That predates the current AP2 Cart/Payment × Open/Closed model. AP2 also natively supports `x402` as a payment rail, which we already speak (§4.4).
+
+### 3.5 Resource-Level Discovery — every URL is self-describing (`rel="fair"` + `X-Fair-*`)
+
+§3.1–§3.4 describe discovery at the **node** level: an agent arrives at a node and reads `.well-known/` to learn what the *node* speaks. But an agent rarely arrives at a bare node — it arrives at a **resource**: someone hands it a URL. `https://jin.imajin.ai/media/api/assets/asset_XXX`. The question at that moment is not "what does this node speak" but **"what *is* this thing, what am I allowed to do with it, what will it cost, and who stands behind it?"** — answered *before* fetching the bytes, by a cold client that has never coordinated with this node.
+
+That discovery axis is the resource-level companion to §3's node-level handshake. **The affordances already ship** (implemented in `apps/kernel/app/media/api/assets/[id]/route.ts`); RFC-32 promotes them from an *undocumented implementation detail* to a **documented contract** so a `.fair`-unaware client can learn the contract, and a `.fair`-aware client can rely on it.
+
+**Every Imajin resource response carries a self-description header set:**
+
+```http
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Link: </media/api/assets/asset_XXX/fair>; rel="fair"; type="application/fair+json"
+X-Fair-Access: public          # public | private | trust-graph | conversation
+X-Fair-Digest: sha256:9f8c…    # content digest the manifest is bound to
+X-Fair-Dfos: dfos:event:evt_…  # the DFOS event anchoring the signed manifest
+```
+
+The traversal a cold client performs:
+
+1. **`rel="fair"`** — the single link that answers *"what is this?"* Follow it to the `.fair` manifest (`application/fair+json`). The manifest is the resource's **meaning + boundary descriptor**: the attribution `chain[]` (who made it, who gets paid), `access`, and the **permission surface** — `distribution.{reproduction,streaming,derivative,syndication}` (each with a `mode` and optional `price`), `commercial`, `training.allowed`, `transfer`. This is exactly `rel="fair-policy"` at §3.3 but scoped to *one object* instead of the whole node: the node policy is the default terms; the manifest is the terms *for this resource*.
+2. **`X-Fair-Access`** — the boundary *class*, readable without fetching the manifest. `public` means the bytes are servable now; `private`/`trust-graph`/`conversation` mean the client must authenticate and will be authorized against the owner's graph (§"access control runs first"). A cold client learns the boundary from a header, not from a 403 body.
+3. **`X-Fair-Digest` + `X-Fair-Dfos`** — *provenance*. The digest binds the manifest to specific bytes; the DFOS event id is the anchor on the wire. A verifier confirms "this manifest describes *these* bytes, and the manifest is anchored in a signed event" without trusting the transport that served it.
+4. **`chain[].did` → the owner/creator DID** — the hop *outward* into the network. The manifest names the DIDs behind the resource; resolving one of them (→ **RFC-40**, chain-verified `did:imajin` resolution) turns "a file at a URL" into "a signed object owned by a resolvable identity with a verifiable history." This is the rung that closes the loop: node discovery (§3) tells you what a node speaks; **resource discovery (§3.5) tells you what an object *is* and hands you the DID; RFC-40 resolves that DID so the trust does not bottom out in "because jin.imajin.ai said so."**
+
+**Why this is a distinct primitive, not a convenience.** Node-level `.well-known` (§3) requires the client to *start at the node*. Real agent traffic starts at a *shared resource* — a link in a message, a citation, an attachment. Without resource-level self-description, a URL is opaque: an external agent holding a share link can read the bytes (if public) but cannot discover the object's meaning, boundaries, price, or owner — it must already be Imajin-native to know that `rel="fair"` is load-bearing. Documenting the contract makes **any** URL a discovery entry point into the network. This is the concrete form of the least-exhumed fifth primitive (Discovery): we have query-driven discovery (search, list) and now node-level handshake discovery (§3); §3.5 + RFC-40 are the **resolution-driven** axis — *from an object, reach its identity and its record.*
+
+**Contract (normative).**
+
+- Any Imajin resource served over HTTP **SHOULD** emit `Link: <…/fair>; rel="fair"; type="application/fair+json"` when a `.fair` manifest exists for it.
+- It **SHOULD** emit `X-Fair-Access` with one of `public | private | trust-graph | conversation`.
+- When the resource is anchored, it **SHOULD** emit `X-Fair-Digest` (`sha256:…`) and `X-Fair-Dfos` (`dfos:event:…`).
+- A conforming client **MUST** treat the `.fair` manifest — not the URL path, filename, or content type — as authoritative for the resource's meaning, permitted actions, and settlement terms.
+- A conforming client **MUST NOT** assume authority from the serving host; trust in the owner/creator DID comes from resolving it per RFC-40 (chain-verified), never from the transport that served the resource.
+- The manifest's terms are **scoped to the resource**; the node's `/.well-known/fair-policy.json` (§3.3) supplies the node-default fee cascade the manifest inherits.
+
+**Boundary this does *not* cross (honest gate).** Resource discovery is **opaque-id, direct-access** by design: a resource URL describes *itself* and hands you *its* owner DID — it **does not** enumerate the owner's other objects, list siblings, or expose a crawl surface. Discovering "everything this DID owns" is a separate, RFC-40-gated, consent-scoped question (a resolver returning *typed pointers*), not a property of holding one share link. A private DRAFT you hand to one person must never leak "here is everything else I have." Resource discovery makes a single object legible; it does not make its neighbourhood enumerable.
+
+> **Status:** the header + manifest affordances are **implemented today** on the media asset route; §3.5 documents the existing behavior as a contract and names RFC-40 as the resolution hinge. No new build is authorized by this section — it specifies the contract the current code already (mostly) satisfies and the conformance target for other resource surfaces (profiles, posts, events) to adopt the same headers.
 
 ---
 
@@ -613,6 +654,8 @@ Protocols evolve. A node speaking A2A v1.0 and an agent speaking A2A v1.1 might 
 
 9. **DIF WG posture:** RFC-32 §4.7 is drop-in-shareable in DIF's Trusted AI Agents / KYA-OS task force. Do we enter as an implementer presenting a conformant Service + portable-credential adapter, or stay heads-down until the resolver ships? (Prove-the-net-first discipline suggests: ship the resolver + VC layer against the spec, *then* present.)
 
+10. **Resource-discovery conformance rollout (§3.5):** the `rel="fair"` + `X-Fair-*` header contract is proven on the media asset route. Which other resource surfaces adopt it next — profiles, posts, events, group artifacts — and does it become a `@imajin/node-conformance` test (the resource emits the documented headers) so "self-describing at the resource level" is *verified*, not asserted? What is the minimal shared helper (a `buildFairHeaders`-style util) so every surface emits an identical contract rather than re-implementing it per route?
+
 5. **Visa/Mastercard sandbox:** Do we build against their sandbox environments first, or wait for production APIs? Sandbox integration is lower risk but may not reflect production behavior.
 
 6. **Protocol conformance testing:** Should conformance tests be run in CI against live protocol endpoints, or against mock implementations? Live tests catch real drift but are flaky. Mock tests are reliable but may miss real-world quirks.
@@ -629,6 +672,7 @@ Protocols evolve. A node speaking A2A v1.0 and an agent speaking A2A v1.1 might 
 - **RFC-27** — Multi-Agent Coordination: Agent identity, delegation, task routing
 - **RFC-31** — Agent Execution Sandbox: Tool surface, permissions, scoped execution
 - **RFC-39** — Verifiable Skills & the Invokable Agent: the verification layer pointed at the agent's own capabilities; §4.7's credential-emission discipline is the same prove-against-the-signed-record model applied to delegation
+- **RFC-40** — `did:imajin` Resolution: the resolution hinge for §3.5 — resource discovery hands a cold client the owner/creator DID; RFC-40 resolves it chain-verified so trust never bottoms out in the serving host
 - **DFOS Specification** — Federation protocol, existing `.well-known/dfos` endpoint
 
 ### External specifications referenced (Jul 2026)

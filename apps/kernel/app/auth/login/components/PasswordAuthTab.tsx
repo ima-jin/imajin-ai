@@ -228,7 +228,7 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: R
   if (step === 'password' && storedKeyData) {
     return (
       <div>
-        <button
+        <button type="button"
           onClick={() => { setStep('identifier'); setError(''); setPassword(''); }}
           className="text-sm text-gray-500 hover:text-gray-300 transition mb-4 flex items-center gap-1"
         >

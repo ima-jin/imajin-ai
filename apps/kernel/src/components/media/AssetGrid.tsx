@@ -368,7 +368,7 @@ export function AssetGrid({
 
         <span className="text-xs text-gray-600">Sort:</span>
         {(["created", "name", "size"] as const).map((s) => (
-          <button
+          <button type="button"
             key={s}
             onClick={() => {
               if (sort === s) {
@@ -389,7 +389,7 @@ export function AssetGrid({
           </button>
         ))}
 
-        <button
+        <button type="button"
           onClick={() => uploadRef.current?.openPicker()}
           className="ml-1 px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-lg transition-colors"
         >
@@ -398,7 +398,7 @@ export function AssetGrid({
 
         {/* View toggle — large grid | small grid | list */}
         <div className="flex items-center border border-gray-700 rounded overflow-hidden ml-1">
-          <button
+          <button type="button"
             onClick={() => handleSetViewMode("large-grid")}
             className={`p-1.5 text-xs transition-colors ${viewMode === "large-grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
             title="Large grid"
@@ -406,7 +406,7 @@ export function AssetGrid({
           >
             ⊞
           </button>
-          <button
+          <button type="button"
             onClick={() => handleSetViewMode("small-grid")}
             className={`p-1.5 text-xs transition-colors ${viewMode === "small-grid" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
             title="Small grid"
@@ -414,7 +414,7 @@ export function AssetGrid({
           >
             ⊠
           </button>
-          <button
+          <button type="button"
             onClick={() => handleSetViewMode("list")}
             className={`p-1.5 text-xs transition-colors ${viewMode === "list" ? "bg-orange-500 text-white" : "text-gray-400 hover:text-gray-200 hover:bg-white/10"}`}
             title="List view"
@@ -449,7 +449,7 @@ export function AssetGrid({
       {dropError && (
         <div className="px-4 py-1.5 bg-red-500/10 border-b border-red-500/20 text-xs text-red-400 shrink-0 flex items-center justify-between">
           <span>{dropError}</span>
-          <button onClick={() => setDropError(null)} className="hover:text-red-200 ml-2">
+          <button type="button" onClick={() => setDropError(null)} className="hover:text-red-200 ml-2">
             ✕
           </button>
         </div>
@@ -498,7 +498,7 @@ export function AssetGrid({
             ))}
           </select>
           {moveFolderId && (
-            <button
+            <button type="button"
               onClick={handleBatchMove}
               className="text-xs px-2.5 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition-colors"
             >
@@ -529,7 +529,7 @@ export function AssetGrid({
               <span className="text-6xl mb-4">📂</span>
               <p className="text-gray-400 text-lg font-medium mb-1">No media yet</p>
               <p className="text-gray-600 text-sm mb-6">Upload your first file.</p>
-              <button
+              <button type="button"
                 onClick={() => uploadRef.current?.openPicker()}
                 className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition-colors"
               >

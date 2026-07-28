@@ -42,7 +42,7 @@ export default function AdminNav({ navItems, mobile = false, nodeName }: Readonl
               {nodeName || 'Admin Console'}
             </span>
           </div>
-          <button
+          <button type="button"
             onClick={() => setMenuOpen(!menuOpen)}
             className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
             aria-label="Toggle menu"

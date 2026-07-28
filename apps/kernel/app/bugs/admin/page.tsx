@@ -121,7 +121,7 @@ export default function AdminBugsPage() {
       {/* Status tabs */}
       <div className="flex flex-wrap gap-2 mb-6">
         {STATUSES.map((s) => (
-          <button
+          <button type="button"
             key={s}
             onClick={() => setFilter(s)}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -210,7 +210,7 @@ export default function AdminBugsPage() {
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-800">
                   {r.status !== 'imported' && (
-                    <button
+                    <button type="button"
                       onClick={() => importToGitHub(r.id)}
                       disabled={busy}
                       className="px-3 py-1.5 rounded-lg text-xs bg-green-900 hover:bg-green-800 text-green-300 transition-colors disabled:opacity-50"
@@ -229,14 +229,14 @@ export default function AdminBugsPage() {
                           placeholder="Reason (optional)"
                           className="rounded bg-[#1a1a1a] border border-gray-700 text-gray-200 text-xs px-2 py-1 focus:outline-none focus:border-orange-500"
                         />
-                        <button
+                        <button type="button"
                           onClick={() => patchReport(r.id, { status: 'ignored', adminNotes: ignoreState.notes })}
                           disabled={busy}
                           className="px-3 py-1.5 rounded-lg text-xs bg-red-900 hover:bg-red-800 text-red-300 transition-colors disabled:opacity-50"
                         >
                           Confirm
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => setIgnoreState(null)}
                           className="text-xs text-gray-500 hover:text-gray-300"
                         >
@@ -244,7 +244,7 @@ export default function AdminBugsPage() {
                         </button>
                       </div>
                     ) : (
-                      <button
+                      <button type="button"
                         onClick={() => setIgnoreState({ id: r.id, notes: '' })}
                         disabled={busy}
                         className="px-3 py-1.5 rounded-lg text-xs bg-[#1a1a1a] hover:bg-red-950 text-red-400 border border-gray-700 transition-colors disabled:opacity-50"
@@ -264,14 +264,14 @@ export default function AdminBugsPage() {
                           placeholder="Original bug ID"
                           className="rounded bg-[#1a1a1a] border border-gray-700 text-gray-200 text-xs px-2 py-1 focus:outline-none focus:border-orange-500"
                         />
-                        <button
+                        <button type="button"
                           onClick={() => patchReport(r.id, { status: 'duplicate', duplicateOf: duplicateState.duplicateOf })}
                           disabled={busy || !duplicateState.duplicateOf.trim()}
                           className="px-3 py-1.5 rounded-lg text-xs bg-yellow-900 hover:bg-yellow-800 text-yellow-300 transition-colors disabled:opacity-50"
                         >
                           Confirm
                         </button>
-                        <button
+                        <button type="button"
                           onClick={() => setDuplicateState(null)}
                           className="text-xs text-gray-500 hover:text-gray-300"
                         >
@@ -279,7 +279,7 @@ export default function AdminBugsPage() {
                         </button>
                       </div>
                     ) : (
-                      <button
+                      <button type="button"
                         onClick={() => setDuplicateState({ id: r.id, duplicateOf: '' })}
                         disabled={busy}
                         className="px-3 py-1.5 rounded-lg text-xs bg-[#1a1a1a] hover:bg-yellow-950 text-yellow-400 border border-gray-700 transition-colors disabled:opacity-50"
@@ -290,7 +290,7 @@ export default function AdminBugsPage() {
                   )}
 
                   {r.status === 'new' && (
-                    <button
+                    <button type="button"
                       onClick={() => patchReport(r.id, { status: 'reviewed' })}
                       disabled={busy}
                       className="px-3 py-1.5 rounded-lg text-xs bg-[#1a1a1a] hover:bg-blue-950 text-blue-400 border border-gray-700 transition-colors disabled:opacity-50"

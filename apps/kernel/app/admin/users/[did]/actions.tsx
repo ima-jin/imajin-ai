@@ -77,7 +77,7 @@ export default function UserActions({ did, currentTier, isSuspended }: Readonly<
 
       <div className="flex gap-2 flex-wrap justify-end">
         {upgradableToTiers.map((tier) => (
-          <button
+          <button type="button"
             key={tier}
             onClick={() => handleUpgradeTier(tier)}
             disabled={loading !== null}
@@ -87,7 +87,7 @@ export default function UserActions({ did, currentTier, isSuspended }: Readonly<
           </button>
         ))}
 
-        <button
+        <button type="button"
           onClick={handleSuspend}
           disabled={loading !== null}
           className={`rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${

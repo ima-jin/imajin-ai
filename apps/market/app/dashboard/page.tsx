@@ -305,14 +305,14 @@ export default function DashboardPage() {
         {actionError && (
           <div className="mb-4 px-4 py-3 bg-red-900/30 border border-red-800 rounded-xl text-sm text-red-400 flex items-center justify-between gap-2">
             <span>{actionError}</span>
-            <button onClick={() => setActionError('')} className="text-red-500 hover:text-red-300 transition">×</button>
+            <button type="button" onClick={() => setActionError('')} className="text-red-500 hover:text-red-300 transition">×</button>
           </div>
         )}
 
         {/* Status Filter Tabs */}
         <div className="flex gap-1 border-b border-gray-800 mb-6 overflow-x-auto">
           {STATUS_TABS.map((tab) => (
-            <button
+            <button type="button"
               key={tab.value}
               onClick={() => handleTabChange(tab.value)}
               className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap transition border-b-2 -mb-px ${
@@ -344,7 +344,7 @@ export default function DashboardPage() {
           if (error) return (
           <div className="text-center py-16">
             <p className="text-red-400 mb-4">{error}</p>
-            <button
+            <button type="button"
               onClick={() => fetchListings(page, statusFilter)}
               className="px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition text-sm font-medium"
             >
@@ -430,7 +430,7 @@ export default function DashboardPage() {
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex items-center justify-center gap-2 mt-8">
-                <button
+                <button type="button"
                   disabled={page <= 1}
                   onClick={() => setPage((p) => p - 1)}
                   className="px-4 py-2 rounded-lg bg-gray-900 border border-gray-800 text-sm font-medium disabled:opacity-40 hover:border-orange-500 hover:text-orange-500 transition"
@@ -441,7 +441,7 @@ export default function DashboardPage() {
                   {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                     const p = i + 1;
                     return (
-                      <button
+                      <button type="button"
                         key={p}
                         onClick={() => setPage(p)}
                         className={`w-9 h-9 rounded-lg text-sm font-medium transition ${
@@ -455,7 +455,7 @@ export default function DashboardPage() {
                     );
                   })}
                 </div>
-                <button
+                <button type="button"
                   disabled={page >= totalPages}
                   onClick={() => setPage((p) => p + 1)}
                   className="px-4 py-2 rounded-lg bg-gray-900 border border-gray-800 text-sm font-medium disabled:opacity-40 hover:border-orange-500 hover:text-orange-500 transition"
@@ -550,7 +550,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
       </Link>
 
       {canToggle && (
-        <button
+        <button type="button"
           disabled={pending}
           onClick={isPaused ? onResume : onPause}
           className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-300 hover:text-white hover:bg-gray-700 transition disabled:opacity-40"
@@ -560,7 +560,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
       )}
 
       {canSell && (
-        <button
+        <button type="button"
           disabled={pending}
           onClick={onMarkSold}
           className="px-2.5 py-1 rounded-lg text-xs font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 transition disabled:opacity-40"
@@ -570,7 +570,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
       )}
 
       {canMarkUnavailable && (
-        <button
+        <button type="button"
           disabled={pending}
           onClick={onMarkUnavailable}
           className="px-2.5 py-1 rounded-lg text-xs font-medium text-gray-400 hover:text-gray-200 hover:bg-gray-700 transition disabled:opacity-40"
@@ -580,7 +580,7 @@ function ActionButtons({ listing, pending, onPause, onResume, onMarkSold, onMark
       )}
 
       {canRemove && (
-        <button
+        <button type="button"
           disabled={pending}
           onClick={onRemove}
           className="px-2.5 py-1 rounded-lg text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-900/30 transition disabled:opacity-40"
@@ -701,13 +701,13 @@ function ConfirmModal({
             : `Are you sure you want to remove "${action.title}"? This can't be undone.`}
         </p>
         <div className="flex gap-3 justify-end">
-          <button
+          <button type="button"
             onClick={onCancel}
             className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm font-medium transition"
           >
             Cancel
           </button>
-          <button
+          <button type="button"
             onClick={onConfirm}
             className={`px-4 py-2 rounded-xl text-white text-sm font-medium transition ${
               isSold

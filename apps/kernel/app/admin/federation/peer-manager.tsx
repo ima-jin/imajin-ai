@@ -105,7 +105,7 @@ export default function PeerManager() {
             {peers.length} configured
           </span>
         </div>
-        <button
+        <button type="button"
           onClick={() => setShowAddForm(!showAddForm)}
           className="text-xs px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-medium transition-colors"
         >
@@ -188,7 +188,7 @@ export default function PeerManager() {
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button
+                      <button type="button"
                         onClick={() => togglePeer(peer.peer_url, 'enabled', peer.enabled)}
                         className={`w-2 h-2 rounded-full flex-shrink-0 ${
                           peer.enabled
@@ -206,7 +206,7 @@ export default function PeerManager() {
                     </div>
                   </td>
                   <td className="text-center px-3 py-3">
-                    <button
+                    <button type="button"
                       onClick={() => togglePeer(peer.peer_url, 'push', peer.push)}
                       className={`text-xs px-2 py-0.5 rounded ${
                         peer.push
@@ -218,7 +218,7 @@ export default function PeerManager() {
                     </button>
                   </td>
                   <td className="text-center px-3 py-3">
-                    <button
+                    <button type="button"
                       onClick={() => togglePeer(peer.peer_url, 'fetch', peer.fetch)}
                       className={`text-xs px-2 py-0.5 rounded ${
                         peer.fetch
@@ -230,7 +230,7 @@ export default function PeerManager() {
                     </button>
                   </td>
                   <td className="text-center px-3 py-3">
-                    <button
+                    <button type="button"
                       onClick={() => togglePeer(peer.peer_url, 'sync', peer.sync)}
                       className={`text-xs px-2 py-0.5 rounded ${
                         peer.sync
@@ -247,7 +247,7 @@ export default function PeerManager() {
                       : 'never'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
+                    <button type="button"
                       onClick={() => removePeer(peer.peer_url)}
                       className="text-xs text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
                     >

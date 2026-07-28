@@ -21,7 +21,7 @@ export function MemberSection({ memberCount, topMembers, children }: Readonly<Me
           👥 Members{' '}
           <span className="ml-1.5 text-gray-500 font-normal">({memberCount})</span>
         </h2>
-        <button
+        <button type="button"
           onClick={() => setExpanded((e) => !e)}
           className="text-xs text-[#F59E0B] hover:underline"
         >

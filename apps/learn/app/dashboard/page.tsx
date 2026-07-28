@@ -120,7 +120,7 @@ export default function DashboardPage() {
               onKeyDown={(e) => e.key === 'Enter' && createCourse()}
               className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
             />
-            <button
+            <button type="button"
               onClick={createCourse}
               disabled={creating || !newTitle.trim()}
               className="px-5 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium disabled:opacity-50"

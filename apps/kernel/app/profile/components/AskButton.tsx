@@ -22,7 +22,7 @@ export function AskButton({
 
   if (!inferenceEnabled || !canAsk) {
     return (
-      <button
+      <button type="button"
         disabled
         className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg text-gray-500 text-sm cursor-not-allowed"
       >
@@ -33,7 +33,7 @@ export function AskButton({
 
   return (
     <>
-      <button
+      <button type="button"
         onClick={() => setShowChat(true)}
         className="px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-200 text-sm hover:bg-gray-800 hover:border-gray-600 transition"
       >

@@ -30,7 +30,7 @@ export function FollowButton({ targetDid, initialFollowing }: Readonly<FollowBut
   }
 
   return (
-    <button
+    <button type="button"
       onClick={handleClick}
       disabled={loading}
       className={`px-4 py-2 rounded-lg border transition text-sm font-medium disabled:opacity-50 ${

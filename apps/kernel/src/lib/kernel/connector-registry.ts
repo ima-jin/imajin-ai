@@ -184,6 +184,27 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     tokenRoute: '/discord/api/token',
   },
   {
+    id: 'gemini',
+    name: 'Google Gemini',
+    description: 'Seal your own Gemini API key per-DID so inference uses your credential instead of the global env var.',
+    icon: '✨',
+    ingestionPattern: 'token-paste',
+    channel: 'gemini',
+    connectorDid: 'did:imajin:gemini-connector',
+    scopes: [
+      {
+        name: 'gemini:infer',
+        label: 'Use your Gemini API key for inference',
+        releaseClass: 'on-consent',
+      },
+    ],
+    statusEndpoint: '/gemini/api/scope-manifest',
+    backendPending: false,
+    connectRoute: null,
+    configureRoute: null,
+    tokenRoute: '/gemini/api/token',
+  },
+  {
     id: 'quickbooks',
     name: 'QuickBooks',
     description: 'Read and write QuickBooks Online invoices via OAuth2.',

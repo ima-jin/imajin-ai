@@ -259,13 +259,13 @@ function AuthorizeForm() {
 
           {/* Actions */}
           <div className="flex gap-3">
-            <button
+            <button type="button"
               onClick={handleDeny}
               className="flex-1 px-4 py-2.5 rounded-lg bg-gray-900 text-gray-300 hover:bg-gray-800 transition font-medium text-sm"
             >
               Deny
             </button>
-            <button
+            <button type="button"
               onClick={handleAuthorize}
               disabled={submitting}
               className="flex-1 px-4 py-2.5 rounded-lg bg-[#F59E0B] text-black hover:bg-[#D97706] transition font-medium text-sm disabled:opacity-50"

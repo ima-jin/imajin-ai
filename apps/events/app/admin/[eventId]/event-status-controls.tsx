@@ -102,7 +102,7 @@ export function EventStatusControls({ eventId, currentStatus }: Readonly<Props>)
             {nextStatuses.map((next) => {
               const key = `${status}->${next}`;
               return (
-                <button
+                <button type="button"
                   key={next}
                   onClick={() => handleTransition(next)}
                   disabled={loading}

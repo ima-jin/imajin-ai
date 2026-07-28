@@ -6,7 +6,7 @@ interface CopyDidProps {
 
 export function CopyDid({ did }: Readonly<CopyDidProps>) {
   return (
-    <button
+    <button type="button"
       onClick={() => navigator.clipboard.writeText(did)}
       className="text-xs text-gray-600 hover:text-gray-400 transition font-mono"
     >

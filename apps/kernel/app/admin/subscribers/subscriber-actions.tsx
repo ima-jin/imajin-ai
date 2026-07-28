@@ -39,14 +39,14 @@ export default function SubscriberActions({ id, email, isVerified }: Readonly<Pr
     return (
       <div className="flex items-center gap-1 whitespace-nowrap">
         <span className="text-xs text-gray-500 dark:text-gray-400">Delete {email}?</span>
-        <button
+        <button type="button"
           onClick={handleDelete}
           disabled={deleting}
           className="text-xs text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
         >
           {deleting ? 'Deleting…' : 'Confirm'}
         </button>
-        <button
+        <button type="button"
           onClick={() => setShowConfirm(false)}
           className="text-xs text-gray-500 dark:text-gray-400 hover:underline"
         >
@@ -59,7 +59,7 @@ export default function SubscriberActions({ id, email, isVerified }: Readonly<Pr
   return (
     <div className="flex items-center gap-2 whitespace-nowrap">
       {!isVerified && (
-        <button
+        <button type="button"
           onClick={handleResendVerify}
           disabled={resending}
           className="text-xs text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
@@ -67,7 +67,7 @@ export default function SubscriberActions({ id, email, isVerified }: Readonly<Pr
           {resending ? 'Sending…' : 'Resend verify'}
         </button>
       )}
-      <button
+      <button type="button"
         onClick={() => setShowConfirm(true)}
         className="text-xs text-red-600 dark:text-red-400 hover:underline"
       >

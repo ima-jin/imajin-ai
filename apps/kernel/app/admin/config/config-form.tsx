@@ -49,7 +49,7 @@ export function ConfigForm({ registrationMode, maxIdentities, maxStoragePerDidMb
             <option value="invite_only">Invite Only</option>
             <option value="closed">Closed</option>
           </select>
-          <button
+          <button type="button"
             onClick={() => save('registration_mode', regMode)}
             disabled={saving === 'registration_mode'}
             className="rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-4 py-2 text-sm font-medium"
@@ -79,7 +79,7 @@ export function ConfigForm({ registrationMode, maxIdentities, maxStoragePerDidMb
                 onChange={(e) => setMaxIds(e.target.value)}
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-36"
               />
-              <button
+              <button type="button"
                 onClick={() => save('max_identities', Number(maxIds))}
                 disabled={saving === 'max_identities'}
                 className="rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-4 py-2 text-sm font-medium"
@@ -101,7 +101,7 @@ export function ConfigForm({ registrationMode, maxIdentities, maxStoragePerDidMb
                 onChange={(e) => setMaxStorage(e.target.value)}
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-36"
               />
-              <button
+              <button type="button"
                 onClick={() => save('max_storage_per_did_mb', Number(maxStorage))}
                 disabled={saving === 'max_storage_per_did_mb'}
                 className="rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-4 py-2 text-sm font-medium"

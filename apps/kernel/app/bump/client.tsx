@@ -9,7 +9,7 @@ export default function BumpPageClient() {
   if (!started) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
-        <button
+        <button type="button"
           onClick={() => setStarted(true)}
           className="flex flex-col items-center gap-4 group"
         >

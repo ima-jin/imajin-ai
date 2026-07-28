@@ -8,7 +8,7 @@ export function BugReportButton() {
 
   return (
     <>
-      <button
+      <button type="button"
         onClick={() => setOpen(true)}
         data-bug-reporter-trigger
         title="Report a bug"

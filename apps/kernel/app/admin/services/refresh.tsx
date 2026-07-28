@@ -16,7 +16,7 @@ export default function ServicesRefresh() {
   }
 
   return (
-    <button
+    <button type="button"
       onClick={handleRefresh}
       disabled={loading}
       className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

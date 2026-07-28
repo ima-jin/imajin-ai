@@ -408,7 +408,7 @@ export default function EditStubPage() {
     return (
       <div className="max-w-lg mx-auto py-8 text-center">
         <p className="text-zinc-500">Place not found or you don&apos;t have access.</p>
-        <button
+        <button type="button"
           onClick={() => router.push('/auth')}
           className="mt-4 text-sm text-amber-400 hover:text-amber-300 transition-colors"
         >

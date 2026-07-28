@@ -41,7 +41,7 @@ export function PromoVideo() {
   if (!playing) {
     return (
       <section className="w-full max-w-4xl mx-auto mb-10 px-0">
-        <button
+        <button type="button"
           onClick={handlePlay}
           className="relative w-full rounded-xl overflow-hidden group cursor-pointer"
           style={{ aspectRatio: '16/9' }}

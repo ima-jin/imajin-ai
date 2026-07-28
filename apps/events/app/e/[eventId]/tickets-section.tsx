@@ -136,7 +136,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
     <div>
       {/* Tabs */}
       <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-700">
-        <button
+        <button type="button"
           onClick={() => handleTabChange('my-tickets')}
           className={`px-4 py-2 font-semibold transition-colors border-b-2 ${
             activeTab === 'my-tickets'
@@ -146,7 +146,7 @@ export function TicketsSection({ eventId, eventTitle, tickets, userOrders = [], 
         >
           🎫 My Tickets
         </button>
-        <button
+        <button type="button"
           onClick={() => handleTabChange('buy-tickets')}
           className={`px-4 py-2 font-semibold transition-colors border-b-2 ${
             activeTab === 'buy-tickets'
@@ -410,7 +410,7 @@ function TicketRegistrationSurvey({ ticket, eventId, override, onComplete }: Rea
       {lastError && (
         <div className="mt-2 flex items-center gap-3">
           <span className="text-sm text-red-500">{lastError}</span>
-          <button
+          <button type="button"
             onClick={handleRegistrationComplete}
             disabled={isRetrying}
             className="px-3 py-1 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 transition"
@@ -451,7 +451,7 @@ function TicketFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement
 
   return (
     <div className="mt-4 border-t border-gray-200 dark:border-gray-800 pt-4">
-      <button
+      <button type="button"
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
       >
@@ -747,14 +747,14 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
                   <p className="text-xs text-red-500 mt-1">{unlockError}</p>
                 )}
               </div>
-              <button
+              <button type="button"
                 onClick={handleUnlock}
                 disabled={unlockLoading || !unlockCode.trim()}
                 className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
               >
                 {unlockLoading ? '…' : 'Unlock'}
               </button>
-              <button
+              <button type="button"
                 onClick={() => { setShowUnlock(false); setUnlockError(null); }}
                 className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               >
@@ -762,7 +762,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
               </button>
             </div>
           ) : (
-            <button
+            <button type="button"
               onClick={() => setShowUnlock(true)}
               className="text-sm text-orange-500 hover:text-orange-600 font-medium flex items-center gap-1"
             >
@@ -1144,7 +1144,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         {isExpired ? (
           <>
             <p className="text-sm text-red-500">{pollError || 'Verification link expired — please try again.'}</p>
-            <button
+            <button type="button"
               onClick={() => {
                 setStep('idle');
                 setPollHandle(null);
@@ -1169,7 +1169,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
             {showFallbackHint && (
               <p className="text-xs text-amber-500">
                 Still waiting? Make sure you clicked the link in your email. If you already verified, you can{' '}
-                <button
+                <button type="button"
                   onClick={() => {
                     setStep('idle');
                     setPollHandle(null);
@@ -1183,7 +1183,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
                 </button>.
               </p>
             )}
-            <button
+            <button type="button"
               onClick={() => { setStep('emt-form'); setVerifySentTo(null); setPollHandle(null); setPollStatus(null); }}
               className="text-xs text-orange-500 hover:underline"
             >
@@ -1219,7 +1219,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
               <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
                 You have {totalPendingCount} ticket{totalPendingCount === 1  ? '' : 's'} that need registration before the event.
               </p>
-              <button
+              <button type="button"
                 onClick={() => {
                   if (onJumpToMyTickets) {
                     onJumpToMyTickets();
@@ -1249,7 +1249,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         {emtResult.quantity > 1 && (
           <p className="text-xs text-gray-500">Reserved {emtResult.quantity} tickets in one order. Send a single e-Transfer for the full amount.</p>
         )}
-        <button
+        <button type="button"
           onClick={() => {
             // Clear the emt-done state so it doesn't persist on return
             setEmtResult(null);
@@ -1300,8 +1300,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={startEtransfer} disabled={!emtEmail.includes('@')} className={`px-5 py-2.5 rounded-lg font-semibold transition ${emtEmail.includes('@') ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'}`}>Reserve My Ticket</button>
-          <button onClick={() => setStep('idle')} className="px-3 py-2.5 text-sm text-gray-500 hover:text-gray-700">Back</button>
+          <button type="button" onClick={startEtransfer} disabled={!emtEmail.includes('@')} className={`px-5 py-2.5 rounded-lg font-semibold transition ${emtEmail.includes('@') ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'}`}>Reserve My Ticket</button>
+          <button type="button" onClick={() => setStep('idle')} className="px-3 py-2.5 text-sm text-gray-500 hover:text-gray-700">Back</button>
         </div>
       </div>
     );
@@ -1342,7 +1342,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
           )}
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
-          <button
+          <button type="button"
             onClick={startStripe}
             disabled={totalQty === 0 || mixedCurrency || step === 'card-loading' || step === 'emt-loading' || (!sessionContactEmail && !emtEmail.includes('@'))}
             className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap ${
@@ -1354,7 +1354,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
             {cardButtonLabel}
           </button>
           {buyerBalance !== null && buyerBalance > 0 && (
-            <button
+            <button type="button"
               onClick={startBalance}
               disabled={totalQty === 0 || mixedCurrency || buyerBalance < totalAmountDollars || step !== 'idle'}
               className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap border ${
@@ -1367,7 +1367,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
             </button>
           )}
           {etransferEnabled && (
-            <button
+            <button type="button"
               onClick={startEtransfer}
               disabled={totalQty === 0 || mixedCurrency || step === 'card-loading' || step === 'emt-loading' || (!sessionContactEmail && !emtEmail.includes('@'))}
               className={`px-5 py-2.5 rounded-lg font-semibold transition whitespace-nowrap border ${

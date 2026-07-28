@@ -107,7 +107,7 @@ export default function SurveyResponsePage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Survey not found</h1>
-          <button
+          <button type="button"
             onClick={() => router.push('/')}
             className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
           >
@@ -127,7 +127,7 @@ export default function SurveyResponsePage() {
           <p className="text-xl text-gray-600 dark:text-gray-400 mb-8">
             Your response has been recorded.
           </p>
-          <button
+          <button type="button"
             onClick={() => router.push('/')}
             className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
           >
@@ -146,7 +146,7 @@ export default function SurveyResponsePage() {
           <p className="text-gray-600 dark:text-gray-400 mb-8">
             This survey is currently {surveyData.status}.
           </p>
-          <button
+          <button type="button"
             onClick={() => router.push('/')}
             className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
           >

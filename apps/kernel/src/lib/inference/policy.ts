@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm';
 import { db, inferenceSessions } from '@/src/db';
 import { getModel, generateText } from '@imajin/llm';
 import { createLogger } from '@imajin/logger';
+import { loadGeminiCredentials } from '@/src/lib/gemini/connector';
 import type { CandidateIntent, InferenceContext, IntentVocabulary } from './types';
 
 const log = createLogger('kernel:inference:policy');
@@ -31,12 +32,20 @@ Return ONLY the JSON array, no surrounding text.
  *
  * Updates the session row with the resulting candidate intents and advances
  * status to ready for consent gate.
+ *
+ * @param ownerDid - Optional owner DID for per-DID credential resolution.
+ *   When provided and `vocab.modelChannel === 'gemini'`, credentials are
+ *   resolved from the sealed Gemini connector vault field for this DID,
+ *   falling back to GEMINI_API_KEY / GEMINI_BASE_URL env vars. When absent,
+ *   provider env var defaults apply.
  */
 export async function infer(
   ctx: InferenceContext,
   vocab: IntentVocabulary,
+  ownerDid?: string,
 ): Promise<CandidateIntent[]> {
-  const model = getModel(vocab.modelProvider, vocab.modelId);
+  const modelConfig = await resolveModelConfig(vocab, ownerDid);
+  const model = getModel(vocab.modelProvider, vocab.modelId, modelConfig);
 
   const systemPrompt = `${vocab.systemPrompt}\n\n${SYSTEM_SUFFIX}`;
   const userMessage = buildUserMessage(ctx);
@@ -79,6 +88,46 @@ export async function infer(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Resolve optional model config (apiKey, baseURL) for the vocab's provider.
+ *
+ * For `modelChannel === 'gemini'`: try the per-DID sealed connection first;
+ * fall back to GEMINI_API_KEY / GEMINI_BASE_URL env vars. This replaces the
+ * old "set OPENAI_API_KEY=$GEMINI_API_KEY in kernel env" workaround.
+ * Returns `undefined` for all other channels (lets the SDK use its own env
+ * var defaults).
+ */
+async function resolveModelConfig(
+  vocab: IntentVocabulary,
+  ownerDid?: string,
+): Promise<{ apiKey?: string; baseURL?: string } | undefined> {
+  if (vocab.modelChannel !== 'gemini') {
+    return undefined;
+  }
+
+  if (ownerDid) {
+    const creds = await loadGeminiCredentials(ownerDid);
+    if (creds) {
+      return {
+        apiKey: creds.apiKey,
+        ...(creds.baseUrl ? { baseURL: creds.baseUrl } : {}),
+      };
+    }
+  }
+
+  // Env-var fallback — keeps local dev working without a sealed connection.
+  const apiKey = process.env.GEMINI_API_KEY;
+  const baseURL = process.env.GEMINI_BASE_URL;
+  if (apiKey || baseURL) {
+    return {
+      ...(apiKey ? { apiKey } : {}),
+      ...(baseURL ? { baseURL } : {}),
+    };
+  }
+
+  return undefined;
+}
 
 function buildUserMessage(ctx: InferenceContext): string {
   const lines: string[] = [

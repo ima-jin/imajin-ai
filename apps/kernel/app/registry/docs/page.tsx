@@ -64,7 +64,7 @@ export default function DocsPage() {
 
         <div className="flex flex-wrap gap-2 mb-8">
           {services.map(s => (
-            <button
+            <button type="button"
               key={s.name}
               onClick={() => setSelected(s.name)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${

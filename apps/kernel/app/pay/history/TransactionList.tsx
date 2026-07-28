@@ -312,7 +312,7 @@ export default function TransactionList({ displayEntries, sessionId }: Readonly<
       {hasBatched && (
         <div className="flex justify-end">
           <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
-            <button
+            <button type="button"
               onClick={() => setShowGross(false)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                 showGross  ? 'text-zinc-400 hover:text-zinc-300' : 'bg-orange-500 text-white'
@@ -320,7 +320,7 @@ export default function TransactionList({ displayEntries, sessionId }: Readonly<
             >
               Net
             </button>
-            <button
+            <button type="button"
               onClick={() => setShowGross(true)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                 showGross ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:text-zinc-300'

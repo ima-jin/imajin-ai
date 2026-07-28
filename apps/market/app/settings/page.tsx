@@ -74,7 +74,7 @@ export default function SettingsPage() {
         {error && (
           <div className="mb-6 px-4 py-3 bg-red-900/30 border border-red-800 rounded-xl text-sm text-red-400 flex items-center justify-between gap-2">
             <span>{error}</span>
-            <button onClick={() => setError('')} className="text-red-500 hover:text-red-300 transition">×</button>
+            <button type="button" onClick={() => setError('')} className="text-red-500 hover:text-red-300 transition">×</button>
           </div>
         )}
 
@@ -99,7 +99,7 @@ export default function SettingsPage() {
                     Display your active listings in the &ldquo;For Sale&rdquo; section of your public profile page.
                   </p>
                 </div>
-                <button
+                <button type="button"
                   id="show-market-items"
                   role="switch"
                   aria-checked={showMarketItems}

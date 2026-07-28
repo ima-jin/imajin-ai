@@ -56,7 +56,7 @@ export default function IdentitySwitcher({
   return (
     <div className="space-y-0.5">
       {/* Personal identity */}
-      <button
+      <button type="button"
         onClick={() => switchTo(null)}
         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
           isPersonal
@@ -84,7 +84,7 @@ export default function IdentitySwitcher({
         const isActive = activeIdentity === identity.groupDid;
         const label = identity.name || (identity.handle ? `@${identity.handle}` : identity.groupDid.slice(0, 16) + '…');
         return (
-          <button
+          <button type="button"
             key={identity.groupDid}
             onClick={() => switchTo(identity.groupDid)}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${

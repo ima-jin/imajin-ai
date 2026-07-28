@@ -76,13 +76,13 @@ export function LocationPicker({ onLocationSelected, disabled }: Readonly<Locati
           <p className="text-xs text-gray-400 mb-3">Accuracy: ~{location.accuracy}m</p>
         )}
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={handleConfirm}
             className="flex-1 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition"
           >
             Share
           </button>
-          <button
+          <button type="button"
             onClick={handleCancel}
             className="flex-1 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg transition"
           >
@@ -97,7 +97,7 @@ export function LocationPicker({ onLocationSelected, disabled }: Readonly<Locati
     return (
       <div className="absolute bottom-full left-0 mb-2 w-72 bg-white dark:bg-gray-900 border border-red-200 dark:border-red-800 rounded-xl shadow-lg p-4 z-10">
         <p className="text-sm text-red-600 dark:text-red-400 mb-3">{error}</p>
-        <button
+        <button type="button"
           onClick={handleCancel}
           className="w-full py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg transition"
         >
@@ -112,10 +112,10 @@ export function LocationPicker({ onLocationSelected, disabled }: Readonly<Locati
       {error && state === 'idle' && (
         <div className="absolute bottom-full left-0 mb-2 w-64 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-2 z-10">
           <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-          <button onClick={() => setError(null)} className="text-xs underline text-red-500 mt-1">Dismiss</button>
+          <button type="button" onClick={() => setError(null)} className="text-xs underline text-red-500 mt-1">Dismiss</button>
         </div>
       )}
-      <button
+      <button type="button"
         onClick={requestLocation}
         disabled={disabled || state === 'requesting'}
         className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50"
