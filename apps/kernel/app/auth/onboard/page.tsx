@@ -265,13 +265,13 @@ function OnboardContent() {
               </p>
             </div>
             {joinError && <p className="text-red-400 text-sm text-center">{joinError}</p>}
-            <button
+            <button type="button"
               onClick={handleJoin}
               className="w-full py-3 bg-amber-500 hover:bg-amber-400 rounded-xl text-gray-950 font-semibold transition"
             >
               Join {scopeName || 'this group'}
             </button>
-            <button
+            <button type="button"
               onClick={() => setFlow('choose')}
               className="w-full py-2 text-sm text-gray-500 hover:text-gray-300 transition"
             >
@@ -305,14 +305,14 @@ function OnboardContent() {
 
         {flow === 'choose' && sessionChecked && (
           <div className="space-y-3">
-            <button
+            <button type="button"
               onClick={() => setFlow('email')}
               className="w-full flex items-center gap-3 px-4 py-3 bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-gray-600 rounded-xl text-white transition text-left"
             >
               <span className="text-lg">📧</span>
               <span className="font-medium">Continue with email</span>
             </button>
-            <button
+            <button type="button"
               onClick={handleGenerateKeypair}
               className="w-full flex items-center gap-3 px-4 py-3 bg-amber-500 hover:bg-amber-400 rounded-xl text-gray-950 transition text-left font-semibold"
             >
@@ -388,7 +388,7 @@ function OnboardContent() {
                   </p>
                 </div>
               </div>
-              <button
+              <button type="button"
                 onClick={downloadKeypair}
                 className="w-full flex items-center justify-center gap-2 py-2.5 border border-gray-700 hover:border-amber-500 rounded-xl text-gray-300 hover:text-amber-400 transition text-sm"
               >
@@ -405,7 +405,7 @@ function OnboardContent() {
               </label>
             </div>
             {keypairError && <p className="text-red-400 text-sm">{keypairError}</p>}
-            <button
+            <button type="button"
               onClick={handleKeypairContinue}
               disabled={!keypairAck}
               className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 rounded-xl text-gray-950 font-semibold transition"

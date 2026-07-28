@@ -219,14 +219,14 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
               rows={2}
             />
             <div className="flex gap-2">
-              <button
+              <button type="button"
                 onClick={saveEdit}
                 disabled={saving || !editName.trim()}
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
               >
                 {saving ? 'Saving...' : 'Save'}
               </button>
-              <button
+              <button type="button"
                 onClick={() => setEditing(false)}
                 className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
               >
@@ -259,7 +259,7 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
             </div>
             {isOwner && !isReadOnly && (
               <div className="flex gap-2 shrink-0">
-                <button
+                <button type="button"
                   onClick={() => {
                     setEditName(pod.name);
                     setEditDesc(pod.description || '');
@@ -269,7 +269,7 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
                 >
                   Edit
                 </button>
-                <button
+                <button type="button"
                   onClick={deleteGroup}
                   className="px-3 py-1.5 text-sm bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition"
                 >
@@ -286,7 +286,7 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Members</h2>
           {isOwner && !isReadOnly && (
-            <button
+            <button type="button"
               onClick={() => setShowAddMember(!showAddMember)}
               className="px-3 py-1.5 text-sm bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition"
             >
@@ -306,7 +306,7 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
               disabled={adding}
             />
             <div className="mt-3">
-              <button
+              <button type="button"
                 onClick={() => setShowAddMember(false)}
                 className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
               >
@@ -355,7 +355,7 @@ export default function PodDetailPage({ params }: Readonly<{ params: { id: strin
                 </div>
               </div>
               {isOwner && !isReadOnly && member.did !== did && (
-                <button
+                <button type="button"
                   onClick={() => removeMember(member.did)}
                   className="px-2 py-1 text-xs bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded transition shrink-0"
                   title="Remove member"

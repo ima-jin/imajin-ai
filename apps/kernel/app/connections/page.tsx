@@ -92,7 +92,7 @@ function NicknameEditor({
           className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-sm text-white placeholder-gray-500 w-32 focus:outline-none focus:border-amber-500/50"
         />
         {value.trim() && (
-          <button
+          <button type="button"
             onMouseDown={(e) => { e.preventDefault(); clear(); }}
             className="text-gray-500 hover:text-red-400 transition text-xs"
             title="Clear nickname"
@@ -109,7 +109,7 @@ function NicknameEditor({
       {conn.nickname ? (
         <span className="font-medium text-white truncate">{conn.nickname}</span>
       ) : null}
-      <button
+      <button type="button"
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         className="text-gray-600 hover:text-amber-400 transition shrink-0"
         title="Edit nickname"
@@ -259,7 +259,7 @@ export default function ConnectionsPage() {
 
       {/* Tab navigation */}
       <div className="flex gap-1 mb-8 border-b border-white/10">
-        <button
+        <button type="button"
           onClick={() => setActiveTab('connections')}
           className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
             activeTab === 'connections'
@@ -272,7 +272,7 @@ export default function ConnectionsPage() {
             <span className="ml-2 px-1.5 py-0.5 text-xs bg-white/10 rounded-full">{connections.length}</span>
           )}
         </button>
-        <button
+        <button type="button"
           onClick={() => setActiveTab('groups')}
           className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
             activeTab === 'groups'
@@ -285,7 +285,7 @@ export default function ConnectionsPage() {
             <span className="ml-2 px-1.5 py-0.5 text-xs bg-white/10 rounded-full">{pods.length}</span>
           )}
         </button>
-        <button
+        <button type="button"
           onClick={() => setActiveTab('invitations')}
           className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
             activeTab === 'invitations'
@@ -323,7 +323,7 @@ export default function ConnectionsPage() {
                   }
                   return (
                     <>
-                      <button
+                      <button type="button"
                         onClick={() => { if (sortMode === 'date') setSortAsc(!sortAsc); else { setSortMode('date'); setSortAsc(false); } }}
                         className={`px-2 py-1 text-xs rounded transition ${
                           sortMode === 'date' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
@@ -332,7 +332,7 @@ export default function ConnectionsPage() {
                       >
                         🕐 {dateSortArrow}
                       </button>
-                      <button
+                      <button type="button"
                         onClick={() => { if (sortMode === 'alpha') setSortAsc(!sortAsc); else { setSortMode('alpha'); setSortAsc(true); } }}
                         className={`px-2 py-1 text-xs rounded transition ${
                           sortMode === 'alpha' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-gray-300'
@@ -345,7 +345,7 @@ export default function ConnectionsPage() {
                   );
                 })()}
               </div>
-              <button
+              <button type="button"
                 onClick={() => setActiveTab('invitations')}
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition text-sm"
               >
@@ -414,7 +414,7 @@ export default function ConnectionsPage() {
                     >
                       Message
                     </a>
-                    <button
+                    <button type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         if (confirm(`Disconnect from ${conn.nickname || conn.name || conn.handle || 'this person'}? You'll need a new invite to reconnect.`)) {
@@ -450,7 +450,7 @@ export default function ConnectionsPage() {
             {/* Filter pills */}
             <div className="flex gap-1">
               {(['all', 'mine', 'event'] as GroupFilter[]).map((f) => (
-                <button
+                <button type="button"
                   key={f}
                   onClick={() => setGroupFilter(f)}
                   className={`px-3 py-1 text-xs font-medium rounded-full transition ${
@@ -463,7 +463,7 @@ export default function ConnectionsPage() {
                 </button>
               ))}
             </div>
-            <button
+            <button type="button"
               onClick={() => setShowCreateGroup(!showCreateGroup)}
               className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition text-sm"
             >
@@ -489,14 +489,14 @@ export default function ConnectionsPage() {
                 rows={2}
               />
               <div className="flex gap-2">
-                <button
+                <button type="button"
                   onClick={createGroup}
                   disabled={creatingGroup || !newGroupName.trim()}
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
                 >
                   {creatingGroup ? 'Creating...' : 'Create Group'}
                 </button>
-                <button
+                <button type="button"
                   onClick={() => { setShowCreateGroup(false); setNewGroupName(''); setNewGroupDesc(''); }}
                   className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
                 >

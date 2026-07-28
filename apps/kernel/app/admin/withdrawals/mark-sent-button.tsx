@@ -28,7 +28,7 @@ export default function MarkSentButton({ id }: Readonly<{ id: string }>) {
   }
 
   return (
-    <button
+    <button type="button"
       onClick={handleMarkSent}
       disabled={loading}
       className="px-3 py-1 text-xs font-medium rounded bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"

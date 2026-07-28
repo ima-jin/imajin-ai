@@ -224,7 +224,7 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
                       </span>
                     )}
                     {!isOwner && (
-                      <button
+                      <button type="button"
                         onClick={() => handleRemoveMember(ctrl.controllerDid)}
                         disabled={isRemoving}
                         className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-red-400 hover:bg-red-900/20 transition disabled:opacity-40"

@@ -159,7 +159,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: R
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <button type="button"
               onClick={() => setShowDebug(d => !d)}
               className={`text-xs px-2 py-1 rounded transition ${
                 showDebug ? 'bg-amber-600 text-white' : 'text-gray-500 hover:text-gray-300'
@@ -168,7 +168,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: R
             >
               🔧
             </button>
-            <button
+            <button type="button"
               onClick={onClose}
               className="text-gray-400 hover:text-white transition p-1"
             >

@@ -153,7 +153,7 @@ export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold">New Chat</h2>
-          <button
+          <button type="button"
             onClick={onClose}
             className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition text-xl"
           >
@@ -163,7 +163,7 @@ export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
 
         {/* Tabs */}
         <div className="flex gap-4 mb-4 border-b border-gray-200 dark:border-gray-700">
-          <button
+          <button type="button"
             onClick={() => setTab('dm')}
             className={`pb-2 text-sm font-medium border-b-2 transition ${
               tab === 'dm'
@@ -173,7 +173,7 @@ export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
           >
             Direct Message
           </button>
-          <button
+          <button type="button"
             onClick={() => setTab('group')}
             className={`pb-2 text-sm font-medium border-b-2 transition ${
               tab === 'group'
@@ -205,7 +205,7 @@ export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
             if (tab === 'dm') return (
             <div className="space-y-1">
               {connections.map((conn: Connection) => (
-                <button
+                <button type="button"
                   key={`dm-${conn.did}`}
                   onClick={() => startDm(conn)}
                   disabled={creatingDm !== null}
@@ -259,7 +259,7 @@ export function NewChatModal({ onClose }: Readonly<{ onClose: () => void }>) {
                 ))}
               </div>
               <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <button
+                <button type="button"
                   onClick={createGroup}
                   disabled={selectedDids.size === 0}
                   className="w-full py-2.5 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition disabled:opacity-50 disabled:cursor-not-allowed"

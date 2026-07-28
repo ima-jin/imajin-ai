@@ -69,7 +69,7 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: Readonly<Messa
               className="max-w-full max-h-full object-contain"
               onMouseDown={(e) => e.stopPropagation()}
             />
-            <button
+            <button type="button"
               className="absolute top-4 right-4 text-white text-3xl hover:text-gray-300"
               onClick={() => setLightboxOpen(false)}
             >

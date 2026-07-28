@@ -130,7 +130,7 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
       <div className="w-full max-w-lg rounded-xl bg-[#111] border border-gray-800 shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
           <h2 className="text-lg font-semibold text-gray-100">Submit Feedback</h2>
-          <button
+          <button type="button"
             onClick={onClose}
             className="text-gray-500 hover:text-gray-300 transition-colors text-xl leading-none"
             aria-label="Close"
@@ -143,7 +143,7 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
           <div className="px-6 py-10 text-center">
             <p className="text-2xl mb-3">✓</p>
             <p className="text-gray-300 font-medium">Report submitted. Thanks!</p>
-            <button
+            <button type="button"
               onClick={() => { router.refresh(); onClose(); }}
               className="mt-6 px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-sm transition-colors"
             >

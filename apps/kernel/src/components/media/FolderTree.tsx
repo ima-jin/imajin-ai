@@ -125,7 +125,7 @@ function FolderRow({
             {count}
           </span>
         )}
-        <button
+        <button type="button"
           className={`opacity-0 group-hover:opacity-100 p-0.5 rounded text-xs transition-opacity ${
             isSelected ? "text-white hover:bg-white/20" : "text-gray-400 hover:bg-white/10"
           }`}
@@ -289,7 +289,7 @@ export function FolderTree({
       {/* New Folder button */}
       {onCreateFolder && (
         <div className="pt-2 border-t border-white/10">
-          <button
+          <button type="button"
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-gray-400 hover:text-gray-200 hover:bg-white/10 transition-colors"
             onClick={() => onCreateFolder(selectedFolderId)}
           >
@@ -307,7 +307,7 @@ export function FolderTree({
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           {onCreateFolder && (
-            <button
+            <button type="button"
               className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
               onClick={() => { onCreateFolder(contextMenu.folderId); closeMenu(); }}
             >
@@ -315,7 +315,7 @@ export function FolderTree({
             </button>
           )}
           {!contextMenu.isSystem && onRenameFolder && (
-            <button
+            <button type="button"
               className="w-full text-left px-3 py-1.5 text-sm text-gray-200 hover:bg-white/10 transition-colors"
               onClick={() => startRename(contextMenu.folderId)}
             >
@@ -323,7 +323,7 @@ export function FolderTree({
             </button>
           )}
           {!contextMenu.isSystem && onDeleteFolder && (
-            <button
+            <button type="button"
               className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-white/10 transition-colors"
               onClick={() => handleDelete(contextMenu.folderId)}
             >
@@ -365,13 +365,13 @@ export function FolderTree({
               }}
             />
             <div className="flex gap-2 mt-3 justify-end">
-              <button
+              <button type="button"
                 className="px-3 py-1 text-sm text-gray-400 hover:text-gray-200 transition-colors"
                 onClick={() => setRenamingId(null)}
               >
                 Cancel
               </button>
-              <button
+              <button type="button"
                 className="px-3 py-1 text-sm bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors"
                 onClick={commitRename}
               >
@@ -388,7 +388,7 @@ export function FolderTree({
   if (collapsed) {
     return (
       <>
-        <button
+        <button type="button"
           className="fixed top-4 left-4 z-40 p-2 rounded-md bg-[#2a2a2a] border border-white/10 text-gray-300 hover:text-white transition-colors md:hidden"
           onClick={() => setMobileOpen(true)}
           aria-label="Open folder tree"

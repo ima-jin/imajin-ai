@@ -291,7 +291,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-4">
-          <button
+          <button type="button"
             onClick={() => {
               setActiveCreate(activeCreate === 'link' ? null : 'link');
               setGeneratedInvite(null);
@@ -306,7 +306,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
             <div className="text-sm font-medium">Generate Link</div>
             <div className="text-xs text-gray-500 mt-0.5">Share a one-time invite URL</div>
           </button>
-          <button
+          <button type="button"
             onClick={() => {
               setActiveCreate(activeCreate === 'email' ? null : 'email');
               setEmailResult(null);
@@ -331,21 +331,21 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
                 <p className="text-sm text-gray-400 mb-3">Share this link with someone you trust:</p>
                 <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-lg px-3 py-2 mb-3">
                   <code className="text-xs text-amber-300 flex-1 truncate">{generatedInvite.url}</code>
-                  <button
+                  <button type="button"
                     onClick={() => setQrUrl(generatedInvite.url)}
                     className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/20 text-white font-medium rounded transition shrink-0"
                     title="Show QR code"
                   >
                     QR
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => copyLink(generatedInvite.url, generatedInvite.code)}
                     className="px-2.5 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-black font-medium rounded transition shrink-0"
                   >
                     {copiedCode === generatedInvite.code ? '✓ Copied' : 'Copy'}
                   </button>
                 </div>
-                <button
+                <button type="button"
                   onClick={() => { setGeneratedInvite(null); setInviteNote(''); }}
                   className="text-xs text-gray-500 hover:text-gray-300 transition"
                 >
@@ -362,14 +362,14 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
                   rows={2}
                 />
                 <div className="flex gap-2">
-                  <button
+                  <button type="button"
                     onClick={generateLink}
                     disabled={generating}
                     className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
                   >
                     {generating ? 'Generating…' : 'Generate Link'}
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => setActiveCreate(null)}
                     className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
                   >
@@ -393,7 +393,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
             {emailResult === 'success' ? (
               <div>
                 <p className="text-sm text-green-400 mb-3">✓ Invite sent successfully!</p>
-                <button
+                <button type="button"
                   onClick={() => { setEmailResult(null); }}
                   className="text-xs text-gray-500 hover:text-gray-300 transition"
                 >
@@ -421,14 +421,14 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
                   <p className="text-xs text-red-400 mb-3">{emailResult}</p>
                 )}
                 <div className="flex gap-2">
-                  <button
+                  <button type="button"
                     onClick={sendEmailInvite}
                     disabled={sendingEmail || !inviteEmail.trim()}
                     className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
                   >
                     {sendingEmail ? 'Sending…' : 'Send Invite'}
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => setActiveCreate(null)}
                     className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
                   >
@@ -446,7 +446,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Sent Invites</h2>
           {allSentRows.some(r => r.status === 'accepted') && (
-            <button
+            <button type="button"
               onClick={() => setShowAccepted(!showAccepted)}
               className="text-xs text-gray-500 hover:text-gray-300 transition"
             >
@@ -506,14 +506,14 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
                   <>
                     {row.type === 'link' && (
                       <>
-                        <button
+                        <button type="button"
                       onClick={() => setQrUrl(row.url)}
                           className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
                           title="Show QR code"
                         >
                           QR
                         </button>
-                        <button
+                        <button type="button"
                       onClick={() => copyLink(row.url, row.code)}
                           className="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/15 text-white rounded transition shrink-0"
                         >
@@ -521,7 +521,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
                         </button>
                       </>
                     )}
-                    <button
+                    <button type="button"
                       onClick={() => deleteInvite(row.code)}
                       className="px-2.5 py-1 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded transition shrink-0"
                     >

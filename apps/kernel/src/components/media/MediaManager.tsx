@@ -175,7 +175,7 @@ export function MediaManager({ session, search = '' }: Readonly<MediaManagerProp
   return (
     <>
       <AppShell.Header className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-[#1a1a1a]">
-        <button
+        <button type="button"
           className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
           onClick={() => setMobileSidebarOpen(true)}
           aria-label="Open folders"

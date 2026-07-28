@@ -32,7 +32,7 @@ export function CommunityTabs({ tabs, activeTab, onTabChange, isMember }: Readon
       {tabs.map(tab => {
         const disabled = tab.memberOnly && !isMember;
         return (
-          <button
+          <button type="button"
             key={tab.id}
             onClick={() => !disabled && handleTabChange(tab.id)}
             disabled={disabled}

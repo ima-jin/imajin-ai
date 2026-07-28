@@ -60,7 +60,7 @@ function FairEditModal({
       >
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-medium text-gray-200">Edit .fair Manifest</p>
-          <button
+          <button type="button"
             onClick={onCancel}
             className="text-gray-400 hover:text-white transition-colors"
           >
@@ -86,13 +86,13 @@ function FairEditModal({
         )}
         {!isFairManifestV1_1(draft) && (
           <div className="flex justify-end gap-2 mt-3">
-            <button
+            <button type="button"
               onClick={onCancel}
               className="px-3 py-1.5 text-sm text-gray-400 hover:text-white rounded-md transition-colors"
             >
               Cancel
             </button>
-            <button
+            <button type="button"
               disabled={saving}
               onClick={async () => {
                 setSaving(true);
@@ -287,7 +287,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
       <div className="flex-1 flex flex-col overflow-hidden border-r border-gray-800 min-w-0">
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800 bg-[#1a1a1a] shrink-0">
-          <button
+          <button type="button"
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors text-sm shrink-0"
           >
@@ -387,7 +387,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
             {movingTo ? (
               <>
                 {folders.map((f) => (
-                  <button
+                  <button type="button"
                     key={f.id}
                     onClick={() => handleMove(f.id)}
                     className="text-xs px-2 py-1 bg-[#252525] border border-gray-700 rounded hover:border-orange-500 hover:text-orange-400 transition-colors text-gray-300"
@@ -395,7 +395,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
                     {f.icon} {f.name}
                   </button>
                 ))}
-                <button
+                <button type="button"
                   onClick={() => setMovingTo(false)}
                   className="text-xs px-2 py-1 text-gray-500 hover:text-gray-300"
                 >
@@ -404,26 +404,26 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
               </>
             ) : (
               <>
-                <button
+                <button type="button"
                   onClick={handleDelete}
                   className="px-3 py-1.5 text-xs bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors"
                 >
                   Delete
                 </button>
-                <button
+                <button type="button"
                   onClick={() => setMovingTo(true)}
                   className="px-3 py-1.5 text-xs bg-[#252525] border border-gray-700 text-gray-300 rounded-lg hover:border-gray-500 transition-colors"
                 >
                   Move to…
                 </button>
-                <button
+                <button type="button"
                   onClick={handleShare}
                   className="px-3 py-1.5 text-xs bg-[#252525] border border-gray-700 text-gray-300 rounded-lg hover:border-gray-500 transition-colors"
                 >
                   {shareLabel}
                 </button>
                 {(isAudio || isVideo) && (
-                  <button
+                  <button type="button"
                     onClick={handleTranscribe}
                     disabled={transcribing}
                     className="px-3 py-1.5 text-xs bg-[#252525] border border-gray-700 text-gray-300 rounded-lg hover:border-gray-500 transition-colors disabled:opacity-50"
@@ -439,7 +439,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
             <div className="mt-3 p-3 bg-[#252525] rounded-xl space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-xs text-gray-500 uppercase tracking-widest">Transcript</p>
-                <button
+                <button type="button"
                   onClick={handleDownloadTranscript}
                   className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
                 >
@@ -518,7 +518,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
               )}
             </div>
             {fairManifest && isOwner && (
-              <button
+              <button type="button"
                 onClick={() => setEditingFair(true)}
                 className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
               >
@@ -556,7 +556,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
           {/* v1.0 → v1.1 upgrade button */}
           {fairManifest && !isV1_1 && isOwner && (
             <div className="mt-2 space-y-2">
-              <button
+              <button type="button"
                 onClick={handleUpgradeFair}
                 disabled={upgradingFair}
                 className="w-full py-1.5 text-xs bg-orange-500/10 border border-orange-500/30 text-orange-400 rounded-lg hover:bg-orange-500/20 transition-colors disabled:opacity-50"

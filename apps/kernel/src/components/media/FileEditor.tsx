@@ -177,7 +177,7 @@ export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
       <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-800 bg-zinc-900 shrink-0">
         {/* Mode toggle */}
         <div className="flex rounded-md overflow-hidden border border-zinc-700 text-xs">
-          <button
+          <button type="button"
             onClick={() => setMode("edit")}
             className={`px-3 py-1 transition-colors ${
               mode === "edit"
@@ -187,7 +187,7 @@ export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
           >
             Edit
           </button>
-          <button
+          <button type="button"
             onClick={() => setMode("preview")}
             className={`px-3 py-1 transition-colors ${
               mode === "preview"
@@ -213,7 +213,7 @@ export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
 
         {/* Save button — owner only, edit mode only */}
         {isOwner && mode === "edit" && (
-          <button
+          <button type="button"
             onClick={handleSave}
             disabled={saving}
             className="px-3 py-1 text-xs bg-orange-500 hover:bg-orange-600 text-white rounded transition-colors disabled:opacity-50"

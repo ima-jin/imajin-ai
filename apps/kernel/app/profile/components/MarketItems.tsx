@@ -31,7 +31,7 @@ export function MarketItems({ did, handle, marketBaseUrl }: Readonly<MarketItems
 
   useEffect(() => {
     void fetch(`${marketBase}/api/listings?seller_did=${encodeURIComponent(did)}&status=active&limit=8`)
-      .then((r) => r.ok ? r.json() : Promise.reject())
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error('fetch failed')))
       .then((data) => setListings(Array.isArray(data) ? data : (data.listings || [])))
       .catch(() => setListings([]))
       .finally(() => setLoading(false));

@@ -194,7 +194,7 @@ export default function EventsClient() {
             System event stream — last 24h: {stats?.total.toLocaleString() ?? '…'} events
           </p>
         </div>
-        <button
+        <button type="button"
           onClick={refresh}
           className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-1.5"
         >
@@ -206,7 +206,7 @@ export default function EventsClient() {
       {stats && stats.byService.length > 0 && (
         <div className="mb-5 flex flex-wrap gap-2">
           {stats.byService.map((s) => (
-            <button
+            <button type="button"
               key={s.service}
               onClick={() => {
                 const f = { ...pendingFilters, service: s.service };
@@ -282,14 +282,14 @@ export default function EventsClient() {
             className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
           />
         </div>
-        <button
+        <button type="button"
           onClick={applyFilters}
           className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 text-sm font-medium self-end"
         >
           Filter
         </button>
         {hasFilters || hasActiveFilters ? (
-          <button
+          <button type="button"
             onClick={clearFilters}
             className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 self-end py-1.5"
           >
@@ -389,7 +389,7 @@ export default function EventsClient() {
 
       {/* Pagination */}
       <div className="mt-4 flex items-center gap-3">
-        <button
+        <button type="button"
           onClick={prevPage}
           disabled={!hasPrev}
           className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -397,7 +397,7 @@ export default function EventsClient() {
           ← Previous
         </button>
         <span className="text-sm text-gray-500 dark:text-gray-400">Page {page}</span>
-        <button
+        <button type="button"
           onClick={nextPage}
           disabled={!hasNext}
           className="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"

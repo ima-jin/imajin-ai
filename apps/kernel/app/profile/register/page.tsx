@@ -346,7 +346,7 @@ function RegisterPage() {
               Your private key is only stored in this browser. If you clear your data or lose this device,{' '}
               <strong>you will permanently lose access to your identity.</strong>
             </p>
-            <button
+            <button type="button"
               onClick={downloadKeys}
               className="w-full px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition text-sm font-medium"
             >
@@ -362,7 +362,7 @@ function RegisterPage() {
               Continue →
             </a>
           ) : (
-            <button
+            <button type="button"
               onClick={() => router.push(profilePath(profile.handle || profile.did))}
               className="w-full px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
             >
@@ -381,7 +381,7 @@ function RegisterPage() {
           <div className="text-6xl mb-4">😕</div>
           <h1 className="text-2xl font-bold mb-2 text-white">Something went wrong</h1>
           <p className="text-red-400 mb-6">{error}</p>
-          <button
+          <button type="button"
             onClick={() => setStep('form')}
             className="px-6 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition"
           >
@@ -415,14 +415,14 @@ function RegisterPage() {
               Already registered as {loggedInHandle ? `@${loggedInHandle}` : 'a user'}
             </p>
             <div className="flex gap-2 mt-2">
-              <button
+              <button type="button"
                 onClick={() => router.push(profilePath(loggedInHandle || did || ''))}
                 className="text-xs text-[#F59E0B] hover:underline"
               >
                 Go to profile
               </button>
               <span className="text-gray-600">•</span>
-              <button
+              <button type="button"
                 onClick={() => setShowBanner(false)}
                 className="text-xs text-gray-400 hover:underline"
               >

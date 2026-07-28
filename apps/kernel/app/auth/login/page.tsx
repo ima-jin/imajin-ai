@@ -153,13 +153,13 @@ function LoginForm() {
 
         {/* Tab selector */}
         <div className="flex gap-2 mb-6">
-          <button
+          <button type="button"
             onClick={() => setActiveTab('key')}
             className={`flex-1 px-4 py-2 rounded-lg transition ${activeTab === 'key' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}
           >
             Import / Paste Key
           </button>
-          <button
+          <button type="button"
             onClick={() => setActiveTab('password')}
             className={`flex-1 px-4 py-2 rounded-lg transition ${activeTab === 'password' ? 'bg-[#F59E0B] text-black font-medium' : 'bg-gray-900 text-gray-400 hover:bg-gray-800'}`}
           >

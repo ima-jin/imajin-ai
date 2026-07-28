@@ -47,7 +47,7 @@ export function UpcomingEvents({ did, eventsBaseUrl, viewerDid }: Readonly<Upcom
     if (viewerDid) url.searchParams.set('viewer_did', viewerDid);
 
     void fetch(url.toString())
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('fetch failed'))))
       .then((data) => setEvents(Array.isArray(data) ? data : []))
       .catch(() => setEvents([]));
   }, [did, eventsBase, viewerDid]);
