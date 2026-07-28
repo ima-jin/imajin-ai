@@ -72,7 +72,7 @@ export function ConnectionPicker({
         return (
         <div className="space-y-0 max-h-48 overflow-y-auto rounded-lg border border-gray-700 bg-gray-900">
           {filtered.map(conn => (
-            <button
+            <button type="button"
               key={conn.did}
               onClick={() => { onSelect(conn); setSearch(''); }}
               disabled={disabled}

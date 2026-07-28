@@ -484,7 +484,7 @@ export function Chat({
                 </p>
               )}
             </div>
-            <button
+            <button type="button"
               onClick={clearComposerState}
               className="ml-2 flex-shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               aria-label="Cancel"
@@ -503,7 +503,7 @@ export function Chat({
           />
         )}
         {!voiceActive && enableMedia && (
-          <button
+          <button type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={isSending}
             className="ima-btn"
@@ -543,7 +543,7 @@ export function Chat({
           </div>
         )}
         {!voiceActive && enableLocation && (
-          <button
+          <button type="button"
             onClick={handleShareLocation}
             disabled={isSending}
             className="ima-btn"
@@ -579,7 +579,7 @@ export function Chat({
         {voiceActive && voiceSending && (
           <span className="text-xs text-slate-400 flex-shrink-0">Sending…</span>
         )}
-        <button
+        <button type="button"
           onClick={handleSend}
           disabled={isSending || !composerText.trim()}
           className="ima-btn-primary"

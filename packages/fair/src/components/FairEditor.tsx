@@ -222,7 +222,7 @@ function AttributionEdit({
                 <option key={r} value={r}>{r}</option>
               ))}
             </select>
-            <button
+            <button type="button"
               onClick={() => remove(i)}
               className="text-gray-600 hover:text-red-400 transition text-sm px-1"
               title="Remove"
@@ -260,7 +260,7 @@ function AttributionEdit({
           />
         </div>
       ))}
-      <button
+      <button type="button"
         onClick={add}
         className="w-full py-1.5 rounded border border-dashed border-gray-700 text-xs text-gray-500 hover:border-orange-500 hover:text-orange-400 transition"
       >
@@ -319,7 +319,7 @@ function ChainEdit({
                 ))}
               </select>
               {!isProtocol && (
-                <button
+                <button type="button"
                   onClick={() => remove(i)}
                   className="text-gray-600 hover:text-red-400 transition text-sm px-1"
                   title="Remove"
@@ -355,7 +355,7 @@ function ChainEdit({
           </div>
         );
       })}
-      <button
+      <button type="button"
         onClick={add}
         className="w-full py-1.5 rounded border border-dashed border-gray-700 text-xs text-gray-500 hover:border-orange-500 hover:text-orange-400 transition"
       >
@@ -404,7 +404,7 @@ function AccessSection({
     <div className="space-y-3">
       <div className="flex gap-2">
         {types.map(t => (
-          <button
+          <button type="button"
             key={t}
             disabled={readOnly}
             onClick={() => onChange?.({ ...access, type: t })}
@@ -443,7 +443,7 @@ function AccessSection({
             <div key={did} className="flex items-center gap-2">
               <span className="flex-1 text-xs text-gray-400 truncate">{did}</span>
               {!readOnly && (
-                <button
+                <button type="button"
                   onClick={() => {
                     const next = [...(access.allowedDids ?? [])];
                     next.splice(i, 1);

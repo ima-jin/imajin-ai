@@ -135,7 +135,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
 
   return (
     <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-lg overflow-hidden">
-      <button
+      <button type="button"
         onClick={() => setOpen(!open)}
         className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 transition"
       >

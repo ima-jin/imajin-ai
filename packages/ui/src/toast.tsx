@@ -80,7 +80,7 @@ function ToastItem({
       style={{ animation: 'toastSlideIn 0.2s ease-out' }}
     >
       <p className="flex-1 text-sm">{toast.message}</p>
-      <button
+      <button type="button"
         onClick={onDismiss}
         className="text-gray-400 hover:text-white transition-colors shrink-0 text-lg leading-none"
         aria-label="Dismiss"

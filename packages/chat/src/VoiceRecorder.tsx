@@ -147,7 +147,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
 
   if (state === 'idle') {
     return (
-      <button
+      <button type="button"
         onClick={handleClick}
         disabled={disabled}
         className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition disabled:opacity-50"
@@ -184,7 +184,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
       ) : (
         <>
           {/* Cancel */}
-          <button
+          <button type="button"
             onClick={() => stopRecording(true)}
             className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-gray-500 flex-shrink-0"
             title="Cancel recording"
@@ -193,7 +193,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
           </button>
 
           {/* Stop & send */}
-          <button
+          <button type="button"
             onClick={() => stopRecording(false)}
             className="p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg flex-shrink-0"
             title="Stop and send"

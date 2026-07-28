@@ -354,8 +354,8 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                   status.configSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
                 }`}>
                   {status.configSealed ? '✓' : '1'}
-                </span>{' '}
-                OAuth App
+                </span>
+                {' '}OAuth App
               </h3>
               {status.configSealed && !showConfigure && (
                 <button
@@ -429,8 +429,8 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                 status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
               }`}>
                 {status.tokenSealed ? '✓' : '2'}
-              </span>{' '}
-              GitHub Account
+              </span>
+              {' '}GitHub Account
             </h3>
 
             {status.tokenSealed ? (
@@ -597,8 +597,8 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                   status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
                 }`}>
                   {status.tokenSealed ? '✓' : '1'}
-                </span>{' '}
-                Bot Token
+                </span>
+                {' '}Bot Token
               </h3>
               {status.tokenSealed && !showTokenInput && (
                 <button type="button"

@@ -152,7 +152,7 @@ function AgentMetaFooter({ meta }: Readonly<{ meta: MessageMeta }>) {
   const model = meta.model ? abbreviateModel(meta.model) : null;
 
   return (
-    <button
+    <button type="button"
       onClick={() => setExpanded(v => !v)}
       className="mt-1.5 flex flex-col gap-1 text-left w-full"
       aria-label={expanded ? 'Collapse agent metadata' : 'Expand agent metadata'}
@@ -488,13 +488,13 @@ export function MessageBubble({
                   This will permanently delete this message for everyone.
                 </p>
                 <div className="flex gap-2 justify-end">
-                  <button
+                  <button type="button"
                     onClick={() => setShowDeleteConfirm(false)}
                     className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
                   >
                     Cancel
                   </button>
-                  <button
+                  <button type="button"
                     onClick={confirmDelete}
                     className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
                   >
@@ -509,7 +509,7 @@ export function MessageBubble({
           {reactions.length > 0 && (
             <div className={`reactions-wrapper flex gap-1 ml-1.5 mr-1.5 ${isOwn ? 'justify-start' : 'justify-end'}`}>
               {reactions.map((reaction) => (
-                <button
+                <button type="button"
                   key={reaction.emoji}
                   onClick={() => onReactionToggle(reaction.emoji, reaction.reacted)}
                   className={`px-1 py-0.5 rounded-full text-xs flex items-center gap-1 border border-white dark:border-black transition ${reaction.reacted

@@ -133,7 +133,7 @@ export function OnboardGate({
         <p className="text-xs text-gray-400">
           Link expires in 15 minutes. Check spam if you don't see it.
         </p>
-        <button
+        <button type="button"
           onClick={() => setState('prompt')}
           className="mt-4 text-sm text-amber-500 hover:underline"
         >
@@ -182,7 +182,7 @@ export function OnboardGate({
         </button>
       </form>
 
-      <button
+      <button type="button"
         onClick={() => setState('idle')}
         className="mt-3 w-full text-sm text-gray-400 hover:text-gray-600"
       >

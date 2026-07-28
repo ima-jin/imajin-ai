@@ -47,7 +47,7 @@ PM2_PIDS="$(pm2 jlist 2>/dev/null | node -e '
 is_pm2_pid() {
   local pid="$1"
   for managed in $PM2_PIDS; do
-    if [ "$pid" = "$managed" ]; then
+    if [[ "$pid" = "$managed" ]]; then
       return 0
     fi
   done
@@ -61,7 +61,7 @@ for port in "${PORTS[@]}"; do
     | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
 
   for pid in $LISTENERS; do
-    [ -z "$pid" ] && continue
+    [[ -z "$pid" ]] && continue
     if is_pm2_pid "$pid"; then
       continue
     fi
@@ -78,7 +78,7 @@ for port in "${PORTS[@]}"; do
   done
 done
 
-if [ "$KILLED" -eq 0 ]; then
+if [[ "$KILLED" -eq 0 ]]; then
   echo "✅ reap-orphans ($SCOPE): no orphaned port squatters found."
 else
   echo "✅ reap-orphans ($SCOPE): reaped $KILLED orphan(s)."

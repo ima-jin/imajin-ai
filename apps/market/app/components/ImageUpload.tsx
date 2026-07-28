@@ -199,7 +199,7 @@ export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
                 })()}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                <img src={imgUrl} alt={`Listing ${i + 1}`} className="w-full h-full object-cover" />
                 {i === 0 && (
                   <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[9px] text-center py-0.5 pointer-events-none">
                     Primary
