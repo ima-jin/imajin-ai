@@ -155,11 +155,13 @@ export async function GET(
        */
       "X-Fair-Disclosure": "layered",
       /**
-       * Floor fields are deterministic across all callers; cache briefly.
-       * The cache is invalidated naturally on the next PUT to nodeConfig or
-       * lot manifest — both are infrequent writes.
+       * The response body varies by caller auth and consent grants
+       * (on-consent fields materialise only under active grants). `private`
+       * prevents a shared/CDN cache from serving one authenticated caller's
+       * granted (unredacted) view to an anonymous caller — that would be a
+       * disclosure leak through caching.
        */
-      "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+      "Cache-Control": "private, max-age=60",
     },
   });
 }

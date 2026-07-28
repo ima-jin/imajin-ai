@@ -75,6 +75,7 @@ The reference deployment ships with these defaults:
 |---|---|---|
 | `fees[].rateBps` | `silent` | Rate model is checkable — rates ≠ amounts |
 | `attribution[*].did`, `.share`, `.role` | `silent` | Pseudonymous anchors; who-got-what-share, no names |
+| `owner` | `on-consent` | Linkability handle — the same DID across many lots reconstructs a supplier's full settlement graph. The floor already proves provenance (type + time + sig) without naming the owner. A radical-transparency overlay can restore `silent`. |
 | `amount` (any `Money.amount`) | `on-consent` | Public view shows "amount present: true" |
 | `attribution[*].name`, `.note` | `on-consent` | PII; the DID suffices |
 | `distribution`, `transfer` | `on-consent` | Contain price sub-fields |
@@ -198,7 +199,7 @@ public (redacted) view — no 401.
 | Header | Value |
 |---|---|
 | `X-Fair-Disclosure` | `layered` |
-| `Cache-Control` | `public, max-age=60, stale-while-revalidate=300` |
+| `Cache-Control` | `private, max-age=60` |
 
 ### Public view (no auth, no grants)
 
@@ -221,6 +222,7 @@ from both sections.
     { "did": "did:imajin:bob",   "role": "producer", "share": 30 }
   ],
   "_withheld": {
+    "owner":               { "present": true, "attestation": "covered-by-signature" },
     "distribution":        { "present": true, "attestation": "covered-by-signature" },
     "transfer":            { "present": true, "attestation": "covered-by-signature" },
     "amount":              { "present": true, "attestation": "covered-by-signature" },

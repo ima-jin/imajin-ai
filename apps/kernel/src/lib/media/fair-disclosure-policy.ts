@@ -140,6 +140,10 @@ export const FAIR_FLOOR_FIELDS: ReadonlySet<FairFieldKey> = new Set<FairFieldKey
  *
  * Default AgriFortress tiers below:
  *   • fees             → silent   (rate model is checkable; rates ≠ amounts)
+ *   • owner            → on-consent (linkability handle — the same DID across lots
+ *                        reconstructs a supplier's full settlement graph; the floor
+ *                        already proves provenance without exposing who; a radical-
+ *                        transparency overlay can restore `silent` via nodeConfig)
  *   • attribution.did  → silent   (pseudonymous anchors; who-got-what-share, no names)
  *   • attribution.share → silent
  *   • amount           → on-consent (public view: "amount present: true")
@@ -156,8 +160,10 @@ export const DEFAULT_AGRIFORTRESS_OVERLAY: FairDisclosureOverlay = {
   integrity: { release: "silent" },
   signature: { release: "silent" },
   platformSignature: { release: "silent" },
-  // Structural metadata — silent
-  owner: { release: "silent" },
+  // owner is on-consent: the same DID across many lots reconstructs a supplier's
+  // full settlement graph (linkability). The floor proves provenance without naming
+  // the owner. A radical-transparency overlay restores `silent` via nodeConfig.
+  owner: { release: "on-consent" },
   source: { release: "silent" },
   access: { release: "silent" },
   terms: { release: "silent" },
@@ -508,6 +514,16 @@ function scrubAmountFromTransfer(
  * ```json
  * { "_disclosure": { "amount": { "release": "silent" } } }
  * ```
+ *
+ * SECURITY NOTE — loosening gates are unsigned until #1226-adjacent co-signing
+ * lands: a subject gate that LOOSENS disclosure (e.g. `never` → `silent`) is
+ * parsed and applied here but is not independently signature-verified at the
+ * field level. Today this is safe because `lot.fairManifest` is only writable
+ * via the owner-authenticated lot write path — the only party who can author a
+ * loosening `_disclosure` is the owner themselves. Until per-field co-signing
+ * is implemented, do NOT expose `parseSubjectGates` on any unauthenticated or
+ * third-party write surface; doing so would allow arbitrary callers to widen
+ * disclosure without the owner's signature.
  */
 export function parseSubjectGates(
   rawManifest: Record<string, unknown>,

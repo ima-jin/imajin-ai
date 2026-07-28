@@ -89,6 +89,8 @@ describe("composeEffectivePolicy", () => {
     expect(policy["fees"]?.release).toBe("silent");
     expect(policy["amount"]?.release).toBe("on-consent");
     expect(policy["attribution[*].name"]?.release).toBe("on-consent");
+    // owner is on-consent by default: linkability handle
+    expect(policy["owner"]?.release).toBe("on-consent");
   });
 
   it("lets subject gates tighten community defaults", () => {
@@ -157,6 +159,20 @@ describe("applyDisclosureGates — silent fields", () => {
     const { manifest } = applyDisclosureGates(BASE_MANIFEST, policy);
     expect(manifest).toHaveProperty("training");
     expect(manifest).toHaveProperty("commercial");
+  });
+
+  it("withholds owner (on-consent by default — linkability handle)", () => {
+    const { manifest, withheld } = applyDisclosureGates(BASE_MANIFEST, policy);
+    expect(manifest).not.toHaveProperty("owner");
+    expect(withheld).toHaveProperty("owner");
+    expect(withheld["owner"]).toEqual({ present: true, attestation: "covered-by-signature" });
+  });
+
+  it("discloses owner when consent grant covers it", () => {
+    const granted = new Set(["owner"]);
+    const { manifest, withheld } = applyDisclosureGates(BASE_MANIFEST, policy, granted);
+    expect(manifest).toHaveProperty("owner", "did:imajin:owner");
+    expect(withheld).not.toHaveProperty("owner");
   });
 });
 
