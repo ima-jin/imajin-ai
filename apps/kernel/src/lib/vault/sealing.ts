@@ -170,3 +170,55 @@ export function _resetSealingCache(): void {
     cachedNodeXKeypair = undefined;
     cachedOwnerXKeypair = undefined;
 }
+
+// ── Tier 1 helpers ——————————————————————————————————————————————————
+
+/**
+ * Return true when the kernel is configured for Tier 1 vault custody.
+ *
+ * Tier 1 is active when both VAULT_OWNER_X_PUB (the external owner agent's
+ * X25519 pubkey) and VAULT_OWNER_ED_PUB (their Ed25519 pubkey for signature
+ * verification) are set as environment variables.
+ *
+ * In Tier 1, sealAndStoreV2 skips the self-grant and instead emits a
+ * vault.grant.requested event so the owner agent (imajin-cli vault serve)
+ * can create the delegation grant externally.
+ */
+export function isVaultTier1(): boolean {
+    return Boolean(process.env.VAULT_OWNER_X_PUB && process.env.VAULT_OWNER_ED_PUB);
+}
+
+/**
+ * Return the external owner agent's X25519 public key (hex) for Tier 1.
+ *
+ * Reads VAULT_OWNER_X_PUB — the X25519 pubkey of the owner agent running
+ * `imajin-cli vault serve`.  The node wraps the per-field AES key to this
+ * pubkey when creating a grant request, so only the owner agent can recover it.
+ *
+ * Throws if VAULT_OWNER_X_PUB is not set (i.e. not in Tier 1 mode).
+ */
+export function getExternalOwnerXPublicKey(): string {
+    const pub = process.env.VAULT_OWNER_X_PUB;
+    if (!pub) {
+        throw new Error('VAULT_OWNER_X_PUB is required for Tier 1 vault operations (set it to the ownerXPub from imajin-cli vault pubkey)');
+    }
+    return pub;
+}
+
+/**
+ * Return the external owner agent's Ed25519 public key (hex) for Tier 1
+ * signature verification.
+ *
+ * Reads VAULT_OWNER_ED_PUB — the Ed25519 pubkey of the owner agent.
+ * Used by POST /api/vault/delegation/grant to verify the ownerSignature
+ * on incoming grants from the CLI owner agent.
+ *
+ * Throws if VAULT_OWNER_ED_PUB is not set.
+ */
+export function getExternalOwnerEdPublicKey(): string {
+    const pub = process.env.VAULT_OWNER_ED_PUB;
+    if (!pub) {
+        throw new Error('VAULT_OWNER_ED_PUB is required for Tier 1 vault operations (set it to the ownerEdPub from imajin-cli vault pubkey)');
+    }
+    return pub;
+}

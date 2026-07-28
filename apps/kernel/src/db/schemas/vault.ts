@@ -56,3 +56,40 @@ export const vaultDelegationGrants = vaultSchema.table('vault_delegation_grants'
 
 export type VaultDelegationGrant = typeof vaultDelegationGrants.$inferSelect;
 export type NewVaultDelegationGrant = typeof vaultDelegationGrants.$inferInsert;
+
+/**
+ * Vault grant requests — pending Tier 1 grant requests awaiting the external owner agent.
+ *
+ * When sealAndStoreV2 runs in Tier 1 mode (VAULT_OWNER_X_PUB + VAULT_OWNER_ED_PUB set),
+ * it wraps the per-field AES key from nodeXPriv → ownerXPub and stores a pending row here
+ * instead of creating a self-grant. The owner agent (imajin-cli vault serve) polls
+ * GET /api/vault/grants/pending, recovers the field key, re-wraps it as a proper
+ * delegation grant, and POSTs it to POST /api/vault/delegation/grant.
+ *
+ * wrappedFieldKey / wrappedFieldKeyNonce:
+ *   fieldKey ECDH-wrapped wrapFieldKey(fieldKey, ownerXPub, nodeXPriv).
+ *   Only the owner — who holds ownerXPriv — can recover it via
+ *   unwrapFieldKey({ encryptedKey: wrappedFieldKey, nonce: wrappedFieldKeyNonce }, nodeXPub, ownerXPriv).
+ */
+export const vaultGrantRequests = vaultSchema.table('vault_grant_requests', {
+  id: text('id').primaryKey(),                               // vgr_{nanoid}
+  field: text('field').notNull(),                            // vault field name, e.g. 'GH_TOKEN'
+  keyId: text('key_id').notNull(),                           // keyId of the corresponding vault entry
+  requestId: text('request_id').notNull(),                   // UUID correlation ID
+  nodeXPub: text('node_x_pub').notNull(),                    // node's X25519 pubkey (32-byte hex)
+  ownerXPub: text('owner_x_pub').notNull(),                  // expected owner's X25519 pubkey
+  wrappedFieldKey: text('wrapped_field_key').notNull(),       // base64: fieldKey wrapped nodeXPriv→ownerXPub
+  wrappedFieldKeyNonce: text('wrapped_field_key_nonce').notNull(), // base64: 12-byte AES-GCM IV
+  status: text('status').notNull().default('pending'),        // 'pending' | 'fulfilled' | 'expired'
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
+  grantId: text('grant_id'),                                 // FK → vault_delegation_grants.id once fulfilled
+}, (table) => ({
+  requestIdUniq: uniqueIndex('uniq_vault_grant_request_id').on(table.requestId),
+  statusIdx: index('idx_vault_grant_requests_status').on(table.status),
+  fieldStatusIdx: index('idx_vault_grant_requests_field_status').on(table.field, table.status),
+}));
+
+export type VaultGrantRequest = typeof vaultGrantRequests.$inferSelect;
+export type NewVaultGrantRequest = typeof vaultGrantRequests.$inferInsert;

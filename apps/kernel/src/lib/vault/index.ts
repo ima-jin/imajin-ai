@@ -22,12 +22,14 @@ import {
   type VaultEntry,
   type DelegationWrappedKey,
 } from '@imajin/vault-core';
+import { randomUUID } from 'node:crypto';
 import { verifySync, crypto as authCrypto } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { and, eq, isNull, gt, or } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { db, vaultDelegationGrants, type VaultDelegationGrant } from '@/src/db';
+import { db, vaultDelegationGrants, vaultGrantRequests, type VaultDelegationGrant } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
-import { getSealKey, getNodeSigningIdentity, getNodeXPrivateKey, getNodeXPublicKey, getOwnerXPrivateKey, getOwnerXPublicKey } from './sealing';
+import { getSealKey, getNodeSigningIdentity, getNodeXPrivateKey, getNodeXPublicKey, getOwnerXPrivateKey, getOwnerXPublicKey, isVaultTier1, getExternalOwnerXPublicKey } from './sealing';
 import { VaultDelegationError } from './errors';
 
 const log = createLogger('kernel');
@@ -91,21 +93,26 @@ export async function sealAndStore(field: string, plaintext: string): Promise<Va
  *
  * Unlike sealAndStore (v1), the plaintext is encrypted with a random per-field
  * AES-256-GCM key (not the node-derived seal key). That field key is then
- * ECDH-wrapped to the node's X25519 public key by the owner agent (Tier 0:
- * the node's own owner X25519 key) and stored as a vault_delegation_grants row.
+ * ECDH-wrapped by the owner agent and stored as a vault_delegation_grants row.
  *
- * This makes the entry revocable, scoped, and owner-signed without custody
- * change in Tier 0. Upgrading to Tier 1 moves only the owner agent key out
- * of the server — the protocol and DB structure are identical.
+ * ## Tier 0 (default): the node acts as its own owner agent.
+ * The field key is wrapped to the node's X25519 pubkey using the owner's X25519
+ * private key (both derived from AUTH_PRIVATE_KEY). Returns `{ entry, grantId }`.
  *
- * Returns the persisted VaultEntry and the new delegation grant id.
+ * ## Tier 1 (VAULT_OWNER_X_PUB + VAULT_OWNER_ED_PUB set): external owner agent.
+ * The field key is wrapped from nodeXPriv → ownerXPub (for secure delivery) and
+ * stored in vault_grant_requests. A vault.grant.requested event is emitted so
+ * the external owner agent (imajin-cli vault serve) can recover the key, create
+ * the canonical delegation grant, and POST it to /api/vault/delegation/grant.
+ * Returns `{ entry, grantId: null, requestId }`.
+ *
  * No plaintext is logged at any point.
  */
 export async function sealAndStoreV2(
   field: string,
   plaintext: string,
   options: { expiresAt?: Date | null } = {},
-): Promise<{ entry: VaultEntry; grantId: string }> {
+): Promise<{ entry: VaultEntry; grantId: string | null; requestId: string | null }> {
   const identity = getNodeSigningIdentity();
   const fieldKey = randomBytes(32);
 
@@ -137,13 +144,66 @@ export async function sealAndStoreV2(
   await assertEntryIntegrity(entry, vaultAdapters);
   await vaultService.set(entry);
 
+  const expiresAt = options.expiresAt ?? null;
+
+  // ── Tier 1: external owner agent ────────────────────────────────────────────────
+  if (isVaultTier1()) {
+    const ownerXPub = getExternalOwnerXPublicKey();
+    const nodeXPub = getNodeXPublicKey();
+
+    // Wrap the field key from nodeXPriv → ownerXPub so only the owner agent can
+    // recover it (unwrapFieldKey(wrapped, nodeXPub, ownerXPriv)).
+    const wrappedForOwner = wrapFieldKey(fieldKey, ownerXPub, getNodeXPrivateKey());
+    const requestId = randomUUID();
+    const requestRowId = generateId('vgr');
+
+    await db.insert(vaultGrantRequests).values({
+      id: requestRowId,
+      field,
+      keyId,
+      requestId,
+      nodeXPub,
+      ownerXPub,
+      wrappedFieldKey: wrappedForOwner.encryptedKey,
+      wrappedFieldKeyNonce: wrappedForOwner.nonce,
+      status: 'pending',
+      expiresAt,
+    });
+
+    // Fire-and-forget: emit the request event so the owner agent is notified.
+    publish('vault.grant.requested', {
+      issuer: identity.senderDid,
+      subject: identity.senderDid,
+      scope: 'vault',
+      payload: {
+        field,
+        nodeXPub,
+        nodeDid: identity.senderDid,
+        keyId,
+        requestId,
+        wrappedFieldKey: wrappedForOwner.encryptedKey,
+        wrappedFieldKeyNonce: wrappedForOwner.nonce,
+        ownerXPub,
+        expiresAt: expiresAt?.toISOString() ?? null,
+        context_id: requestId,
+        context_type: 'vault',
+      },
+    }).catch((err: unknown) => {
+      log.error({ err: String(err), field, requestId }, 'Bus publish error for vault.grant.requested');
+    });
+
+    log.info({ field, requestId }, 'Vault Tier 1: grant request created, waiting for owner agent');
+    return { entry, grantId: null, requestId };
+  }
+
+  // ── Tier 0: node acts as its own owner agent ───────────────────────────────
+
   // Wrap the field key: owner (this node in Tier 0) wraps to the node's X25519 pubkey.
   const wrapped = wrapFieldKey(fieldKey, getNodeXPublicKey(), getOwnerXPrivateKey());
-  const expiresAt = options.expiresAt ?? null;
 
   const grantRaw = {
     subject: identity.senderDid,
-    grantedTo: identity.senderDid,  // self-grant in Tier 0; Tier 1: external owner agent sets this
+    grantedTo: identity.senderDid,  // self-grant in Tier 0
     field,
     ownerXPub: getOwnerXPublicKey(),
     wrappedKey: wrapped.encryptedKey,
@@ -181,7 +241,7 @@ export async function sealAndStoreV2(
     status: 'active',
   });
 
-  return { entry, grantId };
+  return { entry, grantId, requestId: null };
 }
 
 /**
