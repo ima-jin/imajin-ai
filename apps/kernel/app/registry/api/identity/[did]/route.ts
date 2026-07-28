@@ -72,6 +72,14 @@ export async function GET(
     // Soft/stub identities hold a placeholder key (soft_<nanoid>), not a real
     // Ed25519 key. Return a defined non-leaking response so external verifiers
     // know the DID exists but cannot be used for signature verification yet.
+    //
+    // Belt-and-suspenders: check BOTH tier === 'soft' AND the soft_ prefix.
+    //   - tier is the canonical indicator (set at mint time in identity-alias.ts).
+    //   - soft_ prefix is a guaranteed invariant of the registry get-or-create path:
+    //     createIdentity() always writes `soft_${nanoid(32)}` for keypair-less rows.
+    // The || means a full-tier row with a malformed soft_-prefixed key still
+    // refuses to serve key material — failing toward not-verifiable rather than
+    // leaking a non-Ed25519 string as a public key. Intentional defensiveness.
     const isSoft = identity.tier === 'soft' || identity.publicKey.startsWith('soft_');
     if (isSoft) {
       return NextResponse.json(
@@ -131,8 +139,9 @@ export async function GET(
       ...(identity.subtype ? { subtype: identity.subtype } : {}),
 
       // DFOS chain hints (untrusted transport metadata — verifier must re-verify)
+      // All three fields use the imajin: namespace for consistent JSON-LD convention.
       ...(chain ? {
-        dfosDid: chain.dfosDid,
+        'imajin:dfosDid': chain.dfosDid,
         'imajin:chainHead': chain.headCid,
         'imajin:keyCount': chain.keyCount,
       } : {}),

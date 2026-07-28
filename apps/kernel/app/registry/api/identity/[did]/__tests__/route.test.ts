@@ -204,7 +204,8 @@ describe('GET /registry/api/identity/:did — public DID resolver (#1443)', () =
       });
       const res = await GET(makeRequest(CLAIMED_DID) as Parameters<typeof GET>[0], paramsFor(CLAIMED_DID));
       const body = await res.json() as Record<string, unknown>;
-      expect(body.dfosDid).toBe('did:dfos:xyz');
+      // All DFOS hints use the imajin: namespace for consistent JSON-LD convention.
+      expect(body['imajin:dfosDid']).toBe('did:dfos:xyz');
       expect(body['imajin:chainHead']).toBe('bafycidabc');
       expect(body['imajin:keyCount']).toBe(2);
     });
@@ -213,7 +214,7 @@ describe('GET /registry/api/identity/:did — public DID resolver (#1443)', () =
       mockGetChain.mockResolvedValueOnce(null);
       const res = await GET(makeRequest(CLAIMED_DID) as Parameters<typeof GET>[0], paramsFor(CLAIMED_DID));
       const body = await res.json() as Record<string, unknown>;
-      expect(body.dfosDid).toBeUndefined();
+      expect(body['imajin:dfosDid']).toBeUndefined();
       expect(body['imajin:chainHead']).toBeUndefined();
     });
   });
