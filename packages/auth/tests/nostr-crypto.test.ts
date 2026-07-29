@@ -19,7 +19,7 @@ describe('nostrAttestationDigest', () => {
   it('returns a 32-byte Uint8Array', () => {
     const digest = nostrAttestationDigest(CANONICAL);
     expect(digest).toBeInstanceOf(Uint8Array);
-    expect(digest.length).toBe(32);
+    expect(digest).toHaveLength(32);
   });
 
   it('is deterministic for the same input', () => {

@@ -45,6 +45,34 @@ async function resolveCallerDid(request: NextRequest): Promise<string | null> {
   return null;
 }
 
+function resolveIssuedAt(value: unknown): number {
+  if (!value) return Date.now();
+  if (typeof value === 'number') return value;
+  return new Date(value as string).getTime();
+}
+
+type NostrValidationResult =
+  | { ok: true; nostrSigToStore: string }
+  | { ok: false; error: string };
+
+function validateNostrKeyBinding(
+  nostrSig: unknown,
+  payload: unknown,
+  canonicalPayload: string
+): NostrValidationResult {
+  if (!nostrSig || typeof nostrSig !== 'string') {
+    return { ok: false, error: 'nostr_sig required for imajin/nostr-key-binding' };
+  }
+  const claim = payload as NostrKeyBindingClaim | null;
+  if (!claim?.nostr_pubkey || typeof claim.nostr_pubkey !== 'string') {
+    return { ok: false, error: 'payload.nostr_pubkey required for imajin/nostr-key-binding' };
+  }
+  if (!verifyNostrSig(nostrSig, canonicalPayload, claim.nostr_pubkey)) {
+    return { ok: false, error: 'Invalid nostr_sig — Nostr key control not proven' };
+  }
+  return { ok: true, nostrSigToStore: nostrSig };
+}
+
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
@@ -112,9 +140,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Issuer DID not found' }, { status: 400, headers: cors });
   }
 
-  const issuedAtMs = issued_at
-    ? (typeof issued_at === 'number' ? issued_at : new Date(issued_at as string).getTime())
-    : Date.now();
+  const issuedAtMs = resolveIssuedAt(issued_at);
 
   // Canonical form that was signed
   const canonicalPayload = canonicalize({
@@ -135,27 +161,11 @@ export async function POST(request: NextRequest) {
   // proving the submitter also controls the Nostr key they are binding.
   let nostrSigToStore: string | null = null;
   if (type === 'imajin/nostr-key-binding') {
-    const nostrSig = body.nostr_sig;
-    if (!nostrSig || typeof nostrSig !== 'string') {
-      return NextResponse.json(
-        { error: 'nostr_sig required for imajin/nostr-key-binding' },
-        { status: 400, headers: cors }
-      );
+    const nostrResult = validateNostrKeyBinding(body.nostr_sig, payload, canonicalPayload);
+    if (!nostrResult.ok) {
+      return NextResponse.json({ error: nostrResult.error }, { status: 400, headers: cors });
     }
-    const claim = payload as NostrKeyBindingClaim | null;
-    if (!claim?.nostr_pubkey || typeof claim.nostr_pubkey !== 'string') {
-      return NextResponse.json(
-        { error: 'payload.nostr_pubkey required for imajin/nostr-key-binding' },
-        { status: 400, headers: cors }
-      );
-    }
-    if (!verifyNostrSig(nostrSig, canonicalPayload, claim.nostr_pubkey)) {
-      return NextResponse.json(
-        { error: 'Invalid nostr_sig — Nostr key control not proven' },
-        { status: 400, headers: cors }
-      );
-    }
-    nostrSigToStore = nostrSig;
+    nostrSigToStore = nostrResult.nostrSigToStore;
   }
 
   const id = genId('att');
