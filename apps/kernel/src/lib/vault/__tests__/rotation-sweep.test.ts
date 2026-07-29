@@ -150,7 +150,7 @@ describe('vault rotation sweep — crypto roundtrip', () => {
       field, keyId: deriveKeyId(oldKeys.edPub), fieldKey,
     });
 
-    const result = await _applyDelegationGrant(entry, grant, oldKeys.nodeXPriv);
+    const result = await _applyDelegationGrant(entry, grant, oldKeys.nodeXPriv, oldKeys.edPub);
     expect(result).toBe(plaintext);
   });
 
@@ -191,13 +191,13 @@ describe('vault rotation sweep — crypto roundtrip', () => {
     });
 
     // Verify old keys work before rotation
-    const beforeRotation = await _applyDelegationGrant(oldEntry, oldGrant, oldKeys.nodeXPriv);
+    const beforeRotation = await _applyDelegationGrant(oldEntry, oldGrant, oldKeys.nodeXPriv, oldKeys.edPub);
     expect(beforeRotation).toBe(plaintext);
 
     // ── Phase A — export: unseal with old keys ───────────────────────────────
     // (simulates the rotation-sweep POST { phase: 'export' } logic)
 
-    const exportedPlaintext = await _applyDelegationGrant(oldEntry, oldGrant, oldKeys.nodeXPriv);
+    const exportedPlaintext = await _applyDelegationGrant(oldEntry, oldGrant, oldKeys.nodeXPriv, oldKeys.edPub);
     expect(exportedPlaintext).toBe(plaintext);
 
     // ── Key rotation ─────────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ describe('vault rotation sweep — crypto roundtrip', () => {
     // The old entry is NOT readable with new keys (grant was wrapped to old nodeXPub).
 
     await expect(
-      _applyDelegationGrant(oldEntry, oldGrant, newKeys.nodeXPriv),
+      _applyDelegationGrant(oldEntry, oldGrant, newKeys.nodeXPriv, oldKeys.edPub),
     ).rejects.toThrow();
 
     // ── Phase B — reimport: re-seal with new keys ────────────────────────────
@@ -223,17 +223,17 @@ describe('vault rotation sweep — crypto roundtrip', () => {
 
     // ── Post-sweep verification ───────────────────────────────────────────────
 
-    const afterSweep = await _applyDelegationGrant(newEntry, newGrant, newKeys.nodeXPriv);
+    const afterSweep = await _applyDelegationGrant(newEntry, newGrant, newKeys.nodeXPriv, newKeys.edPub);
     expect(afterSweep).toBe(plaintext);
 
     // Old grant (pointing to oldKeys.nodeXPub) cannot decrypt the new entry
     await expect(
-      _applyDelegationGrant(newEntry, oldGrant, oldKeys.nodeXPriv),
-    ).rejects.toThrow(); // signature fails: oldGrant.ownerSignature was signed over oldKeys.edPub
+      _applyDelegationGrant(newEntry, oldGrant, oldKeys.nodeXPriv, oldKeys.edPub),
+    ).rejects.toThrow(); // keyId mismatch: oldGrant.keyId ≠ newEntry.keyId
 
     // Old grant cannot decrypt the new entry with new keys either
     await expect(
-      _applyDelegationGrant(newEntry, oldGrant, newKeys.nodeXPriv),
+      _applyDelegationGrant(newEntry, oldGrant, newKeys.nodeXPriv, oldKeys.edPub),
     ).rejects.toThrow();
   });
 
@@ -270,7 +270,7 @@ describe('vault rotation sweep — crypto roundtrip', () => {
     const newEntry = await buildV2Entry({ field, plaintext: 'postgres://...', fieldKey: newFieldKey, ...newKeys });
 
     await expect(
-      _applyDelegationGrant(newEntry, oldGrant, oldKeys.nodeXPriv),
+      _applyDelegationGrant(newEntry, oldGrant, oldKeys.nodeXPriv, oldKeys.edPub),
     ).rejects.toBeInstanceOf(VaultDelegationError);
   });
 });
