@@ -3,12 +3,13 @@ import { db, identities, attestations, tokens } from '@/src/db';
 import { eq, and, isNull, gt, desc } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, verifyNostrSig } from '@imajin/auth';
-import type { AttestationType, NostrKeyBindingClaim } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
+import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
+import { resolveIssuedAt, validateNostrKeyBinding } from './attestation-helpers';
 
 const ATTESTATION_LIMIT_MAX = 100;
 
@@ -43,34 +44,6 @@ async function resolveCallerDid(request: NextRequest): Promise<string | null> {
   }
 
   return null;
-}
-
-function resolveIssuedAt(value: unknown): number {
-  if (!value) return Date.now();
-  if (typeof value === 'number') return value;
-  return new Date(value as string).getTime();
-}
-
-type NostrValidationResult =
-  | { ok: true; nostrSigToStore: string }
-  | { ok: false; error: string };
-
-function validateNostrKeyBinding(
-  nostrSig: unknown,
-  payload: unknown,
-  canonicalPayload: string
-): NostrValidationResult {
-  if (!nostrSig || typeof nostrSig !== 'string') {
-    return { ok: false, error: 'nostr_sig required for imajin/nostr-key-binding' };
-  }
-  const claim = payload as NostrKeyBindingClaim | null;
-  if (!claim?.nostr_pubkey || typeof claim.nostr_pubkey !== 'string') {
-    return { ok: false, error: 'payload.nostr_pubkey required for imajin/nostr-key-binding' };
-  }
-  if (!verifyNostrSig(nostrSig, canonicalPayload, claim.nostr_pubkey)) {
-    return { ok: false, error: 'Invalid nostr_sig — Nostr key control not proven' };
-  }
-  return { ok: true, nostrSigToStore: nostrSig };
 }
 
 export async function OPTIONS(request: NextRequest) {
