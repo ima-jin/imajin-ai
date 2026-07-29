@@ -5,6 +5,41 @@ import type { FieldVisibility } from '@/src/db/schemas/profile';
 export const FIELD_VISIBILITY_LEVELS: string[] = ['public', 'connections', 'selective', 'private'];
 
 /**
+ * Release connections-gated metadata fields through the broker in a single batched request.
+ * Mutates `result` in place. Fail-closed — on any broker error the fields stay sealed.
+ */
+async function applyBrokerGatedFields(
+  result: Record<string, unknown>,
+  gatedFields: string[],
+  metadata: Record<string, unknown>,
+  requesterDid: string,
+  subjectDid: string,
+  log: Pick<Logger, 'error'>
+): Promise<void> {
+  if (gatedFields.length === 0) return;
+  try {
+    const gatedData = Object.fromEntries(gatedFields.map((f) => [f, metadata[f]]));
+    const release = await broker('profile.field.request', {
+      type: 'profile.field.request',
+      requester: requesterDid,
+      subject: subjectDid,
+      fields: gatedFields,
+      purpose: 'profile.field',
+      scope: 'profile',
+      data: gatedData,
+    });
+    if (isBrokerRelease(release)) {
+      for (const [field, value] of Object.entries(release.data)) {
+        result[field] = value;
+      }
+    }
+  } catch (err: unknown) {
+    // Fail-closed: on any broker error, gated fields stay sealed.
+    log.error({ err: String(err) }, 'profile.field.request broker gate error');
+  }
+}
+
+/**
  * Apply per-field visibility rules to a profile's metadata for a non-owner requester (#1003).
  *
  * Visibility model (same shape as the calendar broker gate in
@@ -40,58 +75,19 @@ export async function filterProfileFields(
 
   for (const [field, value] of Object.entries(metadata)) {
     const rule = rules[field];
-
     // public or no rule: pass through
-    if (!rule || rule.level === 'public') {
-      result[field] = value;
-      continue;
-    }
-
+    if (!rule || rule.level === 'public') { result[field] = value; continue; }
     // private: always drop
-    if (rule.level === 'private') {
-      continue;
-    }
-
+    if (rule.level === 'private') continue;
     // selective: inline allowedDids check
     if (rule.level === 'selective') {
-      if (rule.allowedDids?.includes(requesterDid)) {
-        result[field] = value;
-      }
+      if (rule.allowedDids?.includes(requesterDid)) result[field] = value;
       continue;
     }
-
     // connections: defer to the broker gate (fail-closed)
-    if (rule.level === 'connections') {
-      gatedFields.push(field);
-    }
+    if (rule.level === 'connections') gatedFields.push(field);
   }
 
-  // Gate connections-level fields through the broker in a single request. Fail-closed by default.
-  if (gatedFields.length > 0) {
-    try {
-      const gatedData: Record<string, unknown> = {};
-      for (const field of gatedFields) gatedData[field] = metadata[field];
-
-      const release = await broker('profile.field.request', {
-        type: 'profile.field.request',
-        requester: requesterDid,
-        subject: subjectDid,
-        fields: gatedFields,
-        purpose: 'profile.field',
-        scope: 'profile',
-        data: gatedData,
-      });
-
-      if (isBrokerRelease(release)) {
-        for (const [field, value] of Object.entries(release.data)) {
-          result[field] = value;
-        }
-      }
-    } catch (err: unknown) {
-      // Fail-closed: on any broker error, gated fields stay sealed.
-      log.error({ err: String(err) }, 'profile.field.request broker gate error');
-    }
-  }
-
+  await applyBrokerGatedFields(result, gatedFields, metadata, requesterDid, subjectDid, log);
   return result;
 }
