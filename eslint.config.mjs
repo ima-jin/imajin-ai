@@ -123,9 +123,12 @@ export default tseslint.config(
     files: ['**/*.js', '**/*.jsx'],
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
-  // Function type is acceptable for mock signatures in test files
+  // Test files: Function type + require() are both acceptable (mocking patterns)
   {
     files: ['**/__tests__/**', '**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],
-    rules: { '@typescript-eslint/no-unsafe-function-type': 'off' },
+    rules: {
+      '@typescript-eslint/no-unsafe-function-type': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
+    },
   },
 );
