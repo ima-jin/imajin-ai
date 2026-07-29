@@ -817,6 +817,9 @@ importers:
       '@imajin/emit':
         specifier: workspace:*
         version: link:../emit
+      '@imajin/fair':
+        specifier: workspace:*
+        version: link:../fair
       '@imajin/logger':
         specifier: workspace:*
         version: link:../logger

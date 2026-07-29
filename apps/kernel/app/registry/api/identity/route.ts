@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, identities, identityAliases, identityMembers } from '@/src/db';
@@ -104,15 +104,37 @@ const repo: IdentityAliasRepo = {
  * The partner namespace is metadata, not a new DID method. The mint is
  * attributed to the acting partner DID (provenance: who referenced it first).
  *
+ * Auth: dual-mode (Issue #1464)
+ *   - App-service Bearer JWT with `identity:write` scope → app-tier path; actingDid = appDid.
+ *   - Session cookie or opaque Bearer token → existing user/session path.
+ *
  * Body: { namespace: string, ref: string, type: string, metadata?: object }
  * Response: { did, created, type, metadata }
  */
 export async function POST(request: Request) {
+  // App-auth path: service / broker token carrying identity:write scope (Issue #1464).
+  const appAuthResult = await requireAppAuth(request, { scope: 'identity:write' });
+  if ('appAuth' in appAuthResult) {
+    // Service tokens carry userDid='' — use the app's own DID as the acting principal
+    // so identity.created.issuer records provenance as the calling partner.
+    return handleIdentityPost(request, appAuthResult.appAuth.appDid);
+  }
+
+  // If the app token was valid but lacked identity:write, propagate the scope error
+  // immediately. Do not fall through to session auth — session auth cannot verify app JWTs
+  // and would return a misleading 401 instead of the correct 403.
+  if (appAuthResult.status === 403) {
+    return NextResponse.json({ error: appAuthResult.error }, { status: 403 });
+  }
+
+  // Session/user auth path: session cookie or opaque Bearer token.
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const actingDid = resolveActingDid(auth.identity);
+  return handleIdentityPost(request, resolveActingDid(auth.identity));
+}
 
+async function handleIdentityPost(request: Request, actingDid: string) {
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -144,7 +166,7 @@ export async function POST(request: Request) {
   }
 
   if (result.minted) {
-    const { scope, subtype } = mapType(type);
+    const { scope, subtype } = mapType(type!);
     // Reuse identity.created so downstream reactors behave like other mint paths;
     // intentionally not double-firing the full verification chain per referenced entity.
     publish('identity.created', {

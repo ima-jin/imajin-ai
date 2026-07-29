@@ -3,6 +3,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 // vi.mock factories are hoisted; all referenced variables must come from vi.hoisted.
 
+// Mock next/server — not available outside Next.js runtime.
+vi.mock('next/server', () => ({
+  NextResponse: {
+    json: (body: unknown, init?: { status?: number; headers?: Record<string, string> }) =>
+      new Response(JSON.stringify(body), {
+        status: init?.status ?? 200,
+        headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      }),
+  },
+}));
+
 const {
   mockDbSelect,
   mockSelectLimit,
@@ -11,6 +22,7 @@ const {
   mockDbUpdate,
   mockUpdateSet,
   mockRequireAuth,
+  mockRequireAppAuth,
   mockResolveOrMintIdentity,
   mockPublish,
 } = vi.hoisted(() => {
@@ -26,6 +38,8 @@ const {
   const mockUpdateSet   = vi.fn(() => ({ where: mockUpdateWhere }));
   const mockDbUpdate    = vi.fn(() => ({ set: mockUpdateSet }));
 
+  // requireAppAuth returns a non-403 error by default → falls through to requireAuth
+  const mockRequireAppAuth      = vi.fn().mockResolvedValue({ error: 'Not an app token', status: 401 });
   const mockRequireAuth         = vi.fn();
   const mockResolveOrMintIdentity = vi.fn();
   const mockPublish             = vi.fn().mockResolvedValue(undefined);
@@ -38,6 +52,7 @@ const {
     mockDbUpdate,
     mockUpdateSet,
     mockRequireAuth,
+    mockRequireAppAuth,
     mockResolveOrMintIdentity,
     mockPublish,
   };
@@ -61,6 +76,7 @@ vi.mock('drizzle-orm', () => ({
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: mockRequireAuth,
+  requireAppAuth: mockRequireAppAuth,
   resolveActingDid: (identity: { actingFor?: string; actingAs?: string; id: string }) =>
     identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
