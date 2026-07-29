@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/vault-grant-expiry",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

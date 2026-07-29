@@ -1,5 +1,7 @@
 export type VaultReloadStatus = 'confirmed' | 'pending';
 export type VaultHistoryAction = 'set' | 'rotate';
+export type VaultCustodyScheme = 'node-sealed' | 'delegation-grant';
+export type VaultGrantStatus = 'active' | 'none';
 
 export interface VaultSecretRow {
   field: string;
@@ -8,6 +10,11 @@ export interface VaultSecretRow {
   setBy: string;
   updatedAt: string;
   status: VaultReloadStatus;
+  custodyScheme: VaultCustodyScheme;
+  /** Only present when custodyScheme === 'delegation-grant' */
+  grantedTo?: string | null;
+  expiresAt?: string | null;
+  grantStatus?: VaultGrantStatus;
 }
 
 export interface VaultHistoryEntry {
@@ -37,6 +44,10 @@ export interface VaultListApiRow {
   senderDid: string;
   timestamp: string;
   status: 'active' | 'deleted';
+  custodyScheme: VaultCustodyScheme;
+  grantedTo?: string | null;
+  expiresAt?: string | null;
+  grantStatus?: VaultGrantStatus;
 }
 
 export interface VaultHistoryApiRow {
@@ -57,6 +68,18 @@ export interface VaultWriteApiResponse {
   timestamp: string;
   senderDid: string;
   status: VaultReloadStatus;
+  custodyScheme?: VaultCustodyScheme;
+  grantId?: string;
+}
+
+export interface UpgradeCustodyApiResponse {
+  field: string;
+  cid: string;
+  timestamp: string;
+  senderDid: string;
+  custodyScheme: 'delegation-grant';
+  grantId: string;
+  grantedTo: string;
 }
 
 export interface AdminEventRow {
