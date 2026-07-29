@@ -5,14 +5,18 @@
  * Signs the attestation using the platform keypair (AUTH_PRIVATE_KEY).
  * Authenticated via Bearer token (ATTESTATION_INTERNAL_API_KEY).
  *
- * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload? }
+ * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, issued_at?, nostr_sig? }
  * No session cookie required — service-to-service only.
+ *
+ * For type `imajin/nostr-key-binding`: nostr_sig and issued_at are required.
+ * The caller must compute nostr_sig client-side over the canonical payload
+ * (including the provided issued_at) before calling this endpoint.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, attestations } from '@/src/db';
-import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
-import type { AttestationType } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, verifyNostrSig } from '@imajin/auth';
+import type { AttestationType, NostrKeyBindingClaim } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { randomUUID } from 'node:crypto';
 
@@ -64,7 +68,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const issuedAtMs = Date.now();
+  // Accept issued_at so the caller can pre-compute nostr_sig over the exact canonical form.
+  const issuedAtMs = body.issued_at
+    ? (typeof body.issued_at === 'number' ? body.issued_at : new Date(body.issued_at as string).getTime())
+    : Date.now();
 
   const canonicalPayload = canonicalize({
     subject_did,
@@ -83,6 +90,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Signing failed' }, { status: 500 });
   }
 
+  // For imajin/nostr-key-binding: require + verify the caller-supplied nostr_sig.
+  let nostrSigToStore: string | null = null;
+  if (type === 'imajin/nostr-key-binding') {
+    const nostrSig = body.nostr_sig;
+    if (!nostrSig || typeof nostrSig !== 'string') {
+      return NextResponse.json(
+        { error: 'nostr_sig required for imajin/nostr-key-binding' },
+        { status: 400 }
+      );
+    }
+    const claim = payload as NostrKeyBindingClaim | null;
+    if (!claim?.nostr_pubkey || typeof claim.nostr_pubkey !== 'string') {
+      return NextResponse.json(
+        { error: 'payload.nostr_pubkey required for imajin/nostr-key-binding' },
+        { status: 400 }
+      );
+    }
+    if (!verifyNostrSig(nostrSig, canonicalPayload, claim.nostr_pubkey)) {
+      return NextResponse.json(
+        { error: 'Invalid nostr_sig — Nostr key control not proven' },
+        { status: 400 }
+      );
+    }
+    nostrSigToStore = nostrSig;
+  }
+
   const id = genId('att');
 
   try {
@@ -97,6 +130,7 @@ export async function POST(request: NextRequest) {
         contextType: (context_type as string | undefined) ?? null,
         payload: (payload as Record<string, unknown> | undefined) ?? null,
         signature,
+        nostrSig: nostrSigToStore,
         issuedAt: new Date(issuedAtMs),
       })
       .returning();

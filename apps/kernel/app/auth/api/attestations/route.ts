@@ -3,8 +3,8 @@ import { db, identities, attestations, tokens } from '@/src/db';
 import { eq, and, isNull, gt, desc } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
-import type { AttestationType } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, verifyNostrSig } from '@imajin/auth';
+import type { AttestationType, NostrKeyBindingClaim } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -54,10 +54,15 @@ export async function OPTIONS(request: NextRequest) {
  * Issue a new attestation.
  * Requires session cookie or Bearer token.
  *
- * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, signature, issued_at? }
+ * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, signature, issued_at?, nostr_sig? }
  *
  * Signature MUST be Ed25519 over:
  *   canonicalize({ subject_did, type, context_id, context_type, payload, issued_at })
+ *
+ * For type `imajin/nostr-key-binding` only:
+ *   nostr_sig MUST be a secp256k1 Schnorr (BIP-340) signature by the key in
+ *   payload.nostr_pubkey over SHA-256(canonicalize(...)). Both sigs cover the
+ *   same canonical form, proving control of both the DID and the Nostr key.
  */
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -126,6 +131,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400, headers: cors });
   }
 
+  // For imajin/nostr-key-binding: require + verify the Nostr key's Schnorr signature
+  // proving the submitter also controls the Nostr key they are binding.
+  let nostrSigToStore: string | null = null;
+  if (type === 'imajin/nostr-key-binding') {
+    const nostrSig = body.nostr_sig;
+    if (!nostrSig || typeof nostrSig !== 'string') {
+      return NextResponse.json(
+        { error: 'nostr_sig required for imajin/nostr-key-binding' },
+        { status: 400, headers: cors }
+      );
+    }
+    const claim = payload as NostrKeyBindingClaim | null;
+    if (!claim?.nostr_pubkey || typeof claim.nostr_pubkey !== 'string') {
+      return NextResponse.json(
+        { error: 'payload.nostr_pubkey required for imajin/nostr-key-binding' },
+        { status: 400, headers: cors }
+      );
+    }
+    if (!verifyNostrSig(nostrSig, canonicalPayload, claim.nostr_pubkey)) {
+      return NextResponse.json(
+        { error: 'Invalid nostr_sig — Nostr key control not proven' },
+        { status: 400, headers: cors }
+      );
+    }
+    nostrSigToStore = nostrSig;
+  }
+
   const id = genId('att');
 
   // Compute content address (CID) for the attestation payload
@@ -160,6 +192,7 @@ export async function POST(request: NextRequest) {
       payload: (payload as Record<string, unknown> | undefined) ?? null,
       signature,
       cid,
+      nostrSig: nostrSigToStore,
       authorJws,
       attestationStatus: authorJws ? 'pending' : null, // null for legacy attestations
       issuedAt: new Date(issuedAtMs),
