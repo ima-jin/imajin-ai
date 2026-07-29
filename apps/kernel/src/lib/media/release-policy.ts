@@ -37,9 +37,12 @@ export {
 } from "@imajin/fair";
 
 // Import locally for use in the parse pipeline below.
-import type { FairReleaseTier as ReleaseTier } from "@imajin/fair";
-import { FAIR_RELEASE_TIERS as RELEASE_TIERS, TIER_RANK, deriveReleaseTier } from "@imajin/fair";
-import type { FieldClassification } from "@imajin/fair";
+import {
+  FAIR_RELEASE_TIERS as RELEASE_TIERS,
+  TIER_RANK,
+  deriveReleaseTier,
+  type FairReleaseTier as ReleaseTier,
+} from "@imajin/fair";
 
 // ── Asset-side parse pipeline (stays here — depends on frontmatter) ─────────
 
@@ -132,12 +135,13 @@ function parseFieldEntry(
         )} (expected ${RELEASE_TIERS.join(" | ")})`,
       };
     }
-    if (TIER_RANK[raw.release] < TIER_RANK[derived]) {
+    const overrideTier: ReleaseTier = raw.release;
+    if (TIER_RANK[overrideTier] < TIER_RANK[derived]) {
       return {
-        error: `release policy for field "${field}": release "${raw.release}" widens disclosure past the derived tier "${derived}" (overrides may only tighten)`,
+        error: `release policy for field "${field}": release "${overrideTier}" widens disclosure past the derived tier "${derived}" (overrides may only tighten)`,
       };
     }
-    release = raw.release;
+    release = overrideTier;
   }
 
   if (raw.viewer !== undefined && typeof raw.viewer !== "string") {

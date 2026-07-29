@@ -295,141 +295,155 @@ export function applyDisclosureGates(
   const withheld: Record<string, WithheldAttestation> = {};
   const raw = rawManifest as unknown as Record<string, unknown>;
 
-  const amountPolicy: FairReleaseTier = policy['amount']?.release ?? 'on-consent';
-  const amountGranted = grantedFields.has('amount');
+  const ctx: GateContext = {
+    policy,
+    grantedFields,
+    isOwner,
+    amountPolicy: policy['amount']?.release ?? 'on-consent',
+    amountGranted: grantedFields.has('amount'),
+    withheld,
+  };
 
   for (const [key, value] of Object.entries(raw)) {
     // _disclosure is subject-internal; never emitted
     if (key === '_disclosure') continue;
 
-    const fieldKey = key as FairFieldKey;
-    const release: FairReleaseTier = policy[fieldKey]?.release ?? 'silent';
+    const release: FairReleaseTier = policy[key as FairFieldKey]?.release ?? 'silent';
 
     if (release === 'never') continue;
 
     if (release === 'owner-only') {
-      if (isOwner) {
-        manifest[key] = value;
-      } else if (value !== undefined && value !== null) {
-        withheld[key] = { present: true, attestation: 'covered-by-signature' };
-      }
+      if (isOwner) manifest[key] = value;
+      else withholdIfPresent(withheld, key, value);
       continue;
     }
 
     if (release === 'on-consent') {
-      if (grantedFields.has(key)) {
-        // Granted: include but still scrub nested amounts if `amount` is gated
-        if (key === 'distribution' && typeof value === 'object' && value !== null) {
-          manifest[key] = scrubAmountsFromDistribution(
-            value as Record<string, unknown>,
-            amountPolicy,
-            amountGranted,
-            withheld,
-          );
-        } else if (key === 'transfer' && typeof value === 'object' && value !== null) {
-          manifest[key] = scrubAmountFromTransfer(
-            value as Record<string, unknown>,
-            amountPolicy,
-            amountGranted,
-            withheld,
-          );
-        } else {
-          manifest[key] = value;
-        }
-      } else if (value !== undefined && value !== null) {
-        withheld[key] = { present: true, attestation: 'covered-by-signature' };
-      }
+      // Granted: include but still scrub nested amounts if `amount` is gated
+      if (grantedFields.has(key)) manifest[key] = scrubAmountBearingField(key, value, ctx);
+      else withholdIfPresent(withheld, key, value);
       continue;
     }
 
     // ── silent: include, with sub-field gating for special cases ──────────
-
     if (key === 'attribution' && Array.isArray(value)) {
-      const namePolicy: FairReleaseTier =
-        policy['attribution[*].name']?.release ?? 'silent';
-      const notePolicy: FairReleaseTier =
-        policy['attribution[*].note']?.release ?? 'silent';
-      const nameGranted = grantedFields.has('attribution[*].name');
-      const noteGranted = grantedFields.has('attribution[*].note');
-
-      let hasNameWithheld = false;
-      let hasNoteWithheld = false;
-
-      manifest['attribution'] = (value as Record<string, unknown>[]).map(
-        (entry) => {
-          const out: Record<string, unknown> = { ...entry };
-
-          if (namePolicy === 'never') {
-            delete out['name'];
-          } else if (namePolicy === 'on-consent' && !nameGranted) {
-            if (out['name'] !== undefined && out['name'] !== null) {
-              hasNameWithheld = true;
-            }
-            delete out['name'];
-          } else if (namePolicy === 'owner-only' && !isOwner) {
-            if (out['name'] !== undefined && out['name'] !== null) {
-              hasNameWithheld = true;
-            }
-            delete out['name'];
-          }
-
-          if (notePolicy === 'never') {
-            delete out['note'];
-          } else if (notePolicy === 'on-consent' && !noteGranted) {
-            if (out['note'] !== undefined && out['note'] !== null) {
-              hasNoteWithheld = true;
-            }
-            delete out['note'];
-          } else if (notePolicy === 'owner-only' && !isOwner) {
-            if (out['note'] !== undefined && out['note'] !== null) {
-              hasNoteWithheld = true;
-            }
-            delete out['note'];
-          }
-
-          return out;
-        },
-      );
-
-      if (hasNameWithheld) {
-        withheld['attribution[*].name'] = {
-          present: true,
-          attestation: 'covered-by-signature',
-        };
-      }
-      if (hasNoteWithheld) {
-        withheld['attribution[*].note'] = {
-          present: true,
-          attestation: 'covered-by-signature',
-        };
-      }
-      continue;
-    }
-
-    if (key === 'distribution' && typeof value === 'object' && value !== null) {
-      manifest[key] = scrubAmountsFromDistribution(
-        value as Record<string, unknown>,
-        amountPolicy,
-        amountGranted,
-        withheld,
+      manifest['attribution'] = applyAttributionGates(
+        value as Record<string, unknown>[],
+        ctx,
       );
       continue;
     }
 
-    if (key === 'transfer' && typeof value === 'object' && value !== null) {
-      manifest[key] = scrubAmountFromTransfer(
-        value as Record<string, unknown>,
-        amountPolicy,
-        amountGranted,
-        withheld,
-      );
-      continue;
-    }
-
-    manifest[key] = value;
+    manifest[key] = scrubAmountBearingField(key, value, ctx);
   }
 
   return { manifest, withheld };
+}
+
+/** Shared read-only context threaded through the disclosure-gate helpers. */
+interface GateContext {
+  policy: EffectivePolicy;
+  grantedFields: ReadonlySet<string>;
+  isOwner: boolean;
+  amountPolicy: FairReleaseTier;
+  amountGranted: boolean;
+  withheld: Record<string, WithheldAttestation>;
+}
+
+/** Record a `_withheld` presence attestation when the value is actually present. */
+function withholdIfPresent(
+  withheld: Record<string, WithheldAttestation>,
+  key: string,
+  value: unknown,
+): void {
+  if (value !== undefined && value !== null) {
+    withheld[key] = { present: true, attestation: 'covered-by-signature' };
+  }
+}
+
+/**
+ * Pass a field through, scrubbing nested `price.amount` values for the
+ * amount-bearing `distribution` / `transfer` objects per the synthetic
+ * `amount` gate. All other fields are returned unchanged.
+ */
+function scrubAmountBearingField(key: string, value: unknown, ctx: GateContext): unknown {
+  if (key === 'distribution' && typeof value === 'object' && value !== null) {
+    return scrubAmountsFromDistribution(
+      value as Record<string, unknown>,
+      ctx.amountPolicy,
+      ctx.amountGranted,
+      ctx.withheld,
+    );
+  }
+  if (key === 'transfer' && typeof value === 'object' && value !== null) {
+    return scrubAmountFromTransfer(
+      value as Record<string, unknown>,
+      ctx.amountPolicy,
+      ctx.amountGranted,
+      ctx.withheld,
+    );
+  }
+  return value;
+}
+
+/**
+ * Gate a single attribution sub-field (`name` / `note`) in place. Mutates
+ * `out`, deleting the sub-key when the effective policy withholds it. Returns
+ * true when a present value was withheld (a `_withheld` attestation is owed).
+ */
+function gateAttributionSubField(
+  out: Record<string, unknown>,
+  subKey: string,
+  policy: FairReleaseTier,
+  granted: boolean,
+  isOwner: boolean,
+): boolean {
+  if (policy === 'never') {
+    delete out[subKey];
+    return false;
+  }
+  const withhold =
+    (policy === 'on-consent' && !granted) || (policy === 'owner-only' && !isOwner);
+  if (!withhold) return false;
+  const present = out[subKey] !== undefined && out[subKey] !== null;
+  delete out[subKey];
+  return present;
+}
+
+/**
+ * Apply per-entry `name` / `note` sub-field gating to an `attribution` array,
+ * recording aggregate `_withheld` attestations on `ctx.withheld`.
+ */
+function applyAttributionGates(
+  entries: Record<string, unknown>[],
+  ctx: GateContext,
+): Record<string, unknown>[] {
+  const namePolicy: FairReleaseTier = ctx.policy['attribution[*].name']?.release ?? 'silent';
+  const notePolicy: FairReleaseTier = ctx.policy['attribution[*].note']?.release ?? 'silent';
+  const nameGranted = ctx.grantedFields.has('attribution[*].name');
+  const noteGranted = ctx.grantedFields.has('attribution[*].note');
+
+  let hasNameWithheld = false;
+  let hasNoteWithheld = false;
+
+  const gated = entries.map((entry) => {
+    const out: Record<string, unknown> = { ...entry };
+    if (gateAttributionSubField(out, 'name', namePolicy, nameGranted, ctx.isOwner)) {
+      hasNameWithheld = true;
+    }
+    if (gateAttributionSubField(out, 'note', notePolicy, noteGranted, ctx.isOwner)) {
+      hasNoteWithheld = true;
+    }
+    return out;
+  });
+
+  if (hasNameWithheld) {
+    ctx.withheld['attribution[*].name'] = { present: true, attestation: 'covered-by-signature' };
+  }
+  if (hasNoteWithheld) {
+    ctx.withheld['attribution[*].note'] = { present: true, attestation: 'covered-by-signature' };
+  }
+  return gated;
 }
 
 /** Strip `price.amount` from a distribution rights object when `amount` is on-consent+ungated. */
