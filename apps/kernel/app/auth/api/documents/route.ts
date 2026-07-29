@@ -132,37 +132,12 @@ export async function GET(request: NextRequest) {
   const documentTypes = ['document.created', 'document.amended'] as const;
 
   try {
-    // Build base conditions
-    const typeConditions = [inArray(attestations.type, [...documentTypes])];
+    const typeConditions: Array<Parameters<typeof and>[0]> = [inArray(attestations.type, [...documentTypes])];
 
     // Role filter: which attestations to show
-    if (roleFilter === 'creator') {
-      typeConditions.push(eq(attestations.issuerDid, callerDid));
-    } else if (roleFilter === 'signer') {
-      // Find attestations where caller has a signature row
-      const signerAtts = await db
-        .select({ attestationId: attestationSignatures.attestationId })
-        .from(attestationSignatures)
-        .where(eq(attestationSignatures.signerDid, callerDid));
-      const attIds = signerAtts.map((r) => r.attestationId);
-      if (attIds.length === 0) {
-        return NextResponse.json({ documents: [], count: 0 }, { headers: cors });
-      }
-      typeConditions.push(inArray(attestations.id, attIds));
-    } else {
-      // 'all' — creator OR signer
-      const signerAtts = await db
-        .select({ attestationId: attestationSignatures.attestationId })
-        .from(attestationSignatures)
-        .where(eq(attestationSignatures.signerDid, callerDid));
-      const attIds = signerAtts.map((r) => r.attestationId);
-      typeConditions.push(
-        or(
-          eq(attestations.issuerDid, callerDid),
-          attIds.length > 0 ? inArray(attestations.id, attIds) : sql`false`
-        )!
-      );
-    }
+    const roleResult = await buildRoleCondition(roleFilter, callerDid, cors);
+    if ('earlyReturn' in roleResult) return roleResult.earlyReturn;
+    typeConditions.push(...roleResult.conditions);
 
     if (statusFilter) {
       typeConditions.push(eq(attestations.attestationStatus, statusFilter));
@@ -213,4 +188,44 @@ export async function GET(request: NextRequest) {
     log.error({ err: String(error) }, 'Documents GET error');
     return NextResponse.json({ error: 'Failed to query documents' }, { status: 500, headers: cors });
   }
+}
+
+type Condition = Parameters<typeof and>[0];
+type RoleResult =
+  | { earlyReturn: ReturnType<typeof NextResponse.json> }
+  | { conditions: Condition[] };
+
+/**
+ * Build the Drizzle conditions for the role filter.
+ * Returns an earlyReturn response when the caller has no documents in the given role.
+ */
+async function buildRoleCondition(
+  roleFilter: string | null,
+  callerDid: string,
+  cors: HeadersInit,
+): Promise<RoleResult> {
+  if (roleFilter === 'creator') {
+    return { conditions: [eq(attestations.issuerDid, callerDid)] };
+  }
+
+  // For 'signer' and 'all' we need to fetch the signer's attestation IDs.
+  const signerAtts = await db
+    .select({ attestationId: attestationSignatures.attestationId })
+    .from(attestationSignatures)
+    .where(eq(attestationSignatures.signerDid, callerDid));
+  const attIds = signerAtts.map((r) => r.attestationId);
+
+  if (roleFilter === 'signer') {
+    if (attIds.length === 0) {
+      return { earlyReturn: NextResponse.json({ documents: [], count: 0 }, { headers: cors }) };
+    }
+    return { conditions: [inArray(attestations.id, attIds)] };
+  }
+
+  // 'all' (default) — creator OR signer
+  const orCondition = or(
+    eq(attestations.issuerDid, callerDid),
+    attIds.length > 0 ? inArray(attestations.id, attIds) : sql`false`,
+  )!;
+  return { conditions: [orCondition] };
 }

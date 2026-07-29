@@ -114,49 +114,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Create profile (fire-and-forget)
-    try {
-      const trimmedName = name.trim().slice(0, 100);
-      const metadata: Record<string, string | number> = {};
-      if (location) metadata.location = String(location).slice(0, 200);
-      if (category) metadata.category = String(category).slice(0, 100);
-      if (typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon)) {
-        metadata.lat = Math.round(lat * 1e6) / 1e6;
-        metadata.lon = Math.round(lon * 1e6) / 1e6;
-      }
-
-      // Server-side geocoding fallback: if no coords from client but location text is present, query Nominatim
-      let resolvedLat = lat;
-      let resolvedLon = lon;
-      if (!resolvedLat && !resolvedLon && location) {
-        try {
-          const geoUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`;
-          const geoRes = await fetch(geoUrl, {
-            headers: { 'User-Agent': 'Imajin/1.0 (https://imajin.ai)' },
-          });
-          if (geoRes.ok) {
-            const geoData = await geoRes.json() as Array<{ lat: string; lon: string }>;
-            if (geoData.length > 0) {
-              resolvedLat = Number.parseFloat(geoData[0].lat);
-              resolvedLon = Number.parseFloat(geoData[0].lon);
-            }
-          }
-        } catch (err) {
-          log.error({ err: String(err) }, '[groups] Nominatim geocode failed (non-fatal)');
-        }
-      }
-      if (resolvedLat != null) metadata.lat = String(resolvedLat);
-      if (resolvedLon != null) metadata.lon = String(resolvedLon);
-
-      await db.insert(profiles).values({
-        did: groupDid,
-        displayName: trimmedName,
-        handle: handle || null,
-        bio: description || null,
-        metadata,
-      }).onConflictDoNothing();
-    } catch (err) {
-      log.error({ err: String(err) }, '[groups] Profile creation failed (non-fatal)');
-    }
+    await createGroupProfile({
+      groupDid, name, handle, description, location, category, lat, lon,
+    });
+    
 
     // Emit attestation (fire-and-forget)
     publish('group.created', {
@@ -170,6 +131,70 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     log.error({ err: String(error) }, '[groups] Create error');
     return NextResponse.json({ error: 'Failed to create group' }, { status: 500 });
+  }
+}
+
+interface GroupProfileParams {
+  groupDid: string;
+  name: string;
+  handle?: string;
+  description?: string;
+  location?: string;
+  category?: string;
+  lat?: number;
+  lon?: number;
+}
+
+/** Create or update the profile row for a group identity (non-fatal). */
+async function createGroupProfile({
+  groupDid, name, handle, description, location, category, lat, lon,
+}: GroupProfileParams): Promise<void> {
+  try {
+    const trimmedName = name.trim().slice(0, 100);
+    const metadata: Record<string, string | number> = {};
+    if (location) metadata.location = String(location).slice(0, 200);
+    if (category) metadata.category = String(category).slice(0, 100);
+    if (typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon)) {
+      metadata.lat = Math.round(lat * 1e6) / 1e6;
+      metadata.lon = Math.round(lon * 1e6) / 1e6;
+    }
+
+    // Server-side geocoding fallback: if no coords from client but location text is present.
+    if (!lat && !lon && location) {
+      const coords = await geocodeLocation(location);
+      if (coords) {
+        metadata.lat = String(coords.lat);
+        metadata.lon = String(coords.lon);
+      }
+    } else {
+      if (lat != null) metadata.lat = String(lat);
+      if (lon != null) metadata.lon = String(lon);
+    }
+
+    await db.insert(profiles).values({
+      did: groupDid,
+      displayName: trimmedName,
+      handle: handle || null,
+      bio: description || null,
+      metadata,
+    }).onConflictDoNothing();
+  } catch (err) {
+    log.error({ err: String(err) }, '[groups] Profile creation failed (non-fatal)');
+  }
+}
+
+/** Query Nominatim to resolve a location string to coordinates. Non-fatal, returns null on error. */
+async function geocodeLocation(location: string): Promise<{ lat: number; lon: number } | null> {
+  try {
+    const geoUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`;
+    const geoRes = await fetch(geoUrl, { headers: { 'User-Agent': 'Imajin/1.0 (https://imajin.ai)' } });
+    if (!geoRes.ok) return null;
+    const geoData = await geoRes.json() as Array<{ lat: string; lon: string }>;
+    if (geoData.length === 0) return null;
+    return { lat: Number.parseFloat(geoData[0].lat), lon: Number.parseFloat(geoData[0].lon) };
+  } catch (err) {
+    log.error({ err: String(err) }, '[groups] Nominatim geocode failed (non-fatal)');
+    return null;
   }
 }
 
