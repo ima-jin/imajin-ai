@@ -12,7 +12,8 @@
     "@imajin/auth": "workspace:*",
     "@imajin/emit": "workspace:*",
     "@imajin/notify": "workspace:*",
-    "@imajin/db": "workspace:*"
+    "@imajin/db": "workspace:*",
+    "@imajin/fair": "workspace:*"
   },
   "peerDependencies": {
     "next": ">=14"
