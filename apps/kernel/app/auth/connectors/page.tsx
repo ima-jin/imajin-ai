@@ -243,6 +243,10 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const [grantingScope, setGrantingScope] = useState<string | null>(null);
   const [grantError, setGrantError] = useState<string | null>(null);
 
+  // Disconnect state
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+
   // Prefill redirectUri from current origin (only in browser)
   useEffect(() => {
     setRedirectUri(`${window.location.origin}/github/api/callback`);
@@ -323,6 +327,25 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       setGrantError(String(err));
     } finally {
       setGrantingScope(null);
+    }
+  }
+
+  // ── Disconnect ────────────────────────────────────────────────────────────
+  async function handleDisconnect() {
+    if (!window.confirm('Disconnect GitHub? This will revoke the grant and delete all sealed credentials.')) return;
+    setDisconnecting(true);
+    setDisconnectError(null);
+    try {
+      const r = await fetch(entry.disconnectRoute!, { method: 'POST' });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+      void fetchStatus();
+    } catch (err: unknown) {
+      setDisconnectError(String(err));
+    } finally {
+      setDisconnecting(false);
     }
   }
 
@@ -481,13 +504,28 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
               manifest: {status.manifestAssetId}
             </div>
           )}
+
+          {/* Disconnect */}
+          {(status.configSealed || status.tokenSealed) && (
+            <div className="pt-3 border-t border-white/5">
+              {disconnectError && <p className="text-red-400 text-xs mb-2">{disconnectError}</p>}
+              <button
+                type="button"
+                onClick={() => { void handleDisconnect(); }}
+                disabled={disconnecting}
+                className="px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-sm rounded-lg transition disabled:opacity-50"
+              >
+                {disconnecting ? 'Disconnecting…' : 'Disconnect GitHub'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// ── Discord card (token-paste, Pattern B) ───────────────────────────────────────────
+// ── Discord card (token-paste, Pattern B) ────────────────────────────────────────────────────────────────
 
 function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const [status, setStatus] = useState<DiscordStatus | null>(null);
@@ -503,6 +541,10 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   // Scope grant state
   const [grantingScope, setGrantingScope] = useState<string | null>(null);
   const [grantError, setGrantError] = useState<string | null>(null);
+
+  // Disconnect state
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -566,6 +608,24 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       setGrantError(String(err));
     } finally {
       setGrantingScope(null);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!window.confirm('Disconnect Discord? This will revoke the grant and delete the sealed bot token.')) return;
+    setDisconnecting(true);
+    setDisconnectError(null);
+    try {
+      const r = await fetch(entry.disconnectRoute!, { method: 'POST' });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+      void fetchStatus();
+    } catch (err: unknown) {
+      setDisconnectError(String(err));
+    } finally {
+      setDisconnecting(false);
     }
   }
 
@@ -662,13 +722,28 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
               manifest: {status.manifestAssetId}
             </div>
           )}
+
+          {/* Disconnect */}
+          {status.tokenSealed && (
+            <div className="pt-3 border-t border-white/5">
+              {disconnectError && <p className="text-red-400 text-xs mb-2">{disconnectError}</p>}
+              <button
+                type="button"
+                onClick={() => { void handleDisconnect(); }}
+                disabled={disconnecting}
+                className="px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-sm rounded-lg transition disabled:opacity-50"
+              >
+                {disconnecting ? 'Disconnecting…' : 'Disconnect Discord'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-// ── QuickBooks card (Pattern A — OAuth, like GitHub) ─────────────────────────────────
+// ── QuickBooks card (Pattern A — OAuth, like GitHub) ─────────────────────────────────────────────────────
 
 function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const [status, setStatus] = useState<QuickBooksStatus | null>(null);
@@ -685,6 +760,10 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
 
   const [grantingScope, setGrantingScope] = useState<string | null>(null);
   const [grantError, setGrantError] = useState<string | null>(null);
+
+  // Disconnect state
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   useEffect(() => { setRedirectUri(`${window.location.origin}/quickbooks/api/callback`); }, []);
 
@@ -733,6 +812,18 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
       setStatus(prev => prev ? { ...prev, activeScopes: newScopes } : prev);
     } catch (err: unknown) { setGrantError(String(err)); }
     finally { setGrantingScope(null); }
+  }
+
+  async function handleDisconnect() {
+    if (!window.confirm('Disconnect QuickBooks? This will revoke the grant and delete all sealed credentials.')) return;
+    setDisconnecting(true);
+    setDisconnectError(null);
+    try {
+      const r = await fetch(entry.disconnectRoute!, { method: 'POST' });
+      if (!r.ok) { const d = await r.json().catch(() => ({})) as { error?: string }; throw new Error(d.error ?? `${r.status}`); }
+      void fetchStatus();
+    } catch (err: unknown) { setDisconnectError(String(err)); }
+    finally { setDisconnecting(false); }
   }
 
   return (
@@ -837,6 +928,21 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
           {status.manifestAssetId && (
             <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
               manifest: {status.manifestAssetId}
+            </div>
+          )}
+
+          {/* Disconnect */}
+          {(status.configSealed || status.tokenSealed) && (
+            <div className="pt-3 border-t border-white/5">
+              {disconnectError && <p className="text-red-400 text-xs mb-2">{disconnectError}</p>}
+              <button
+                type="button"
+                onClick={() => { void handleDisconnect(); }}
+                disabled={disconnecting}
+                className="px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-sm rounded-lg transition disabled:opacity-50"
+              >
+                {disconnecting ? 'Disconnecting…' : 'Disconnect QuickBooks'}
+              </button>
             </div>
           )}
         </div>
