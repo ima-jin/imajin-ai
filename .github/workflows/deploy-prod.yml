@@ -3,6 +3,12 @@ name: Deploy to Prod
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch/tag/SHA to deploy'
+        required: false
+        default: 'main'
 
 jobs:
   deploy:
@@ -14,10 +20,10 @@ jobs:
       PATH: /home/jin/.nvm/versions/node/v22.22.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     steps:
-      - name: Pull latest tag
+      - name: Pull latest
         run: |
           git fetch origin --tags
-          git reset --hard ${{ github.ref_name }}
+          git reset --hard ${{ github.event.inputs.ref || github.ref_name }}
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
