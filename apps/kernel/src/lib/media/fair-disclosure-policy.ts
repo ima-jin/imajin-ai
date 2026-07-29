@@ -33,6 +33,9 @@ export {
   parseSubjectGates,
 } from '@imajin/fair';
 
+// Local import so DEFAULT_AGRIFORTRESS_OVERLAY below can use the type annotation.
+import type { FairDisclosureOverlay } from '@imajin/fair';
+
 /**
  * Backward-compat alias. Previously a 3-tier type (missing `owner-only`);
  * now a full alias for FairReleaseTier (4 tiers). Decision A re-adopts
