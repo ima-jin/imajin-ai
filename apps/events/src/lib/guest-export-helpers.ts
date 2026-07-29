@@ -120,7 +120,8 @@ export function buildSurveyValues(
     const field = fields.find((f) => (f.exportLabel || stripHtml(f.title)) === question);
     if (field && field.name in surveyAnswers) {
       const ans = (surveyAnswers as Record<string, unknown>)[field.name];
-      return ans === null || ans === undefined ? '' : String(ans);
+      if (ans === null || ans === undefined) return '';
+      return typeof ans === 'object' ? JSON.stringify(ans) : String(ans);
     }
     return '';
   });

@@ -92,7 +92,8 @@ export interface MagicLinkParams {
 export async function handleAnonymousMagicLink(params: MagicLinkParams): Promise<NextResponse> {
   const { email, name, eventId, invite, totalQuantity, log } = params;
   const eventsBase = buildPublicUrlAbsolute('events');
-  const redirectUrl = `${eventUrl(eventsBase, eventId)}${invite ? `?invite=${encodeURIComponent(invite)}` : ''}`;
+  const inviteParam = invite ? `?invite=${encodeURIComponent(invite)}` : '';
+  const redirectUrl = `${eventUrl(eventsBase, eventId)}${inviteParam}`;
   let pollHandle: string | undefined;
 
   try {

@@ -6,7 +6,7 @@
 import { randomBytes } from 'node:crypto';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
-import { eventUrl, eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
+import { eventUrl, buildPublicUrlAbsolute } from '@imajin/config';
 import { generateQRCode } from '@/src/lib/email';
 
 // ---------------------------------------------------------------------------
@@ -314,5 +314,6 @@ async function publishBundleConfirmation(params: BundleConfirmParams): Promise<v
   }
 }
 
-// Re-export for use in the route
-export { eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute };
+// Re-export URL helpers for use in the route
+export { eventRegisterUrl, eventMyTicketsUrl } from '@imajin/config';
+export { buildPublicUrlAbsolute };

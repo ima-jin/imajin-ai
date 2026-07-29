@@ -367,9 +367,10 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
 
   const onboardToken = await createOnboardToken(customerEmail, customerName, onboardRedirectUrl, event.title, log);
   const magicLink = onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : undefined;
-  const registrationUrl = anyPendingRegistration
-    ? (onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id))
-    : eventMyTicketsUrl(EVENTS_URL, event.id);
+  const registrationBaseUrl = onboardToken
+    ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`
+    : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id);
+  const registrationUrl = anyPendingRegistration ? registrationBaseUrl : eventMyTicketsUrl(EVENTS_URL, event.id);
 
   await publishConfirmationEmails({
     customerEmail,
