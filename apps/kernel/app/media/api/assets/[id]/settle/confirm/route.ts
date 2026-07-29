@@ -36,6 +36,53 @@ function getSignKey(): Promise<CryptoKey> {
   return signKeyPromise;
 }
 
+async function publishAndRecordSettlement(
+  settlementId: string,
+  settlement: {
+    assetId: string;
+    action: string;
+    amount: number;
+    currency: string;
+    scheme: string | null;
+    buyerDid: string | null;
+    fairManifestDigest: string | null;
+  },
+  txHash: string | undefined
+): Promise<void> {
+  let dfosEventId: string | null = null;
+  try {
+    const { publishContentEvent } = await import("@imajin/dfos");
+    const result = await publishContentEvent({
+      topic: "fair.settlement.completed",
+      payload: {
+        assetId: settlement.assetId,
+        settlementId,
+        action: settlement.action,
+        amount: settlement.amount,
+        currency: settlement.currency,
+        scheme: settlement.scheme,
+        buyerDid: settlement.buyerDid,
+        externalReceiptId: txHash ?? "mjnx-confirmed",
+        manifestDigest: settlement.fairManifestDigest,
+        settledAt: new Date().toISOString(),
+      },
+    });
+    if (result) {
+      dfosEventId = result.eventId;
+    }
+  } catch (err) {
+    log.warn({ err: String(err), settlementId }, "DFOS publish failed (non-fatal)");
+  }
+
+  if (dfosEventId) {
+    try {
+      await db.update(settlements).set({ dfosEventId }).where(eq(settlements.id, settlementId));
+    } catch (err) {
+      log.warn({ err: String(err), settlementId }, "Failed to store DFOS eventId");
+    }
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -139,39 +186,8 @@ export async function POST(
     return NextResponse.json({ error: "Database failure" }, { status: 500 });
   }
 
-  // Publish to DFOS if available (feature-detect)
-  let dfosEventId: string | null = null;
-  try {
-    const { publishContentEvent } = await import("@imajin/dfos");
-    const result = await publishContentEvent({
-      topic: "fair.settlement.completed",
-      payload: {
-        assetId: settlement.assetId,
-        settlementId,
-        action: settlement.action,
-        amount: settlement.amount,
-        currency: settlement.currency,
-        scheme: settlement.scheme,
-        buyerDid: settlement.buyerDid,
-        externalReceiptId: txHash || "mjnx-confirmed",
-        manifestDigest: settlement.fairManifestDigest,
-        settledAt: new Date().toISOString(),
-      },
-    });
-    if (result) {
-      dfosEventId = result.eventId;
-    }
-  } catch (err) {
-    log.warn({ err: String(err), settlementId }, "DFOS publish failed (non-fatal)");
-  }
-
-  if (dfosEventId) {
-    try {
-      await db.update(settlements).set({ dfosEventId }).where(eq(settlements.id, settlementId));
-    } catch (err) {
-      log.warn({ err: String(err), settlementId }, "Failed to store DFOS eventId");
-    }
-  }
+  // Publish to DFOS if available (feature-detect) and record the event id
+  await publishAndRecordSettlement(settlementId, settlement, txHash);
 
   log.info({ settlementId, txHash, assetId: settlement.assetId }, "Settlement confirmed by owner via MJNx");
 

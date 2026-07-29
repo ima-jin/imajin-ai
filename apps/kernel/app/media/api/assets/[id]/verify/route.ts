@@ -7,19 +7,9 @@ import { computeCid } from "@imajin/cid";
 import type { FairManifest } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 import { corsHeaders } from "@/src/lib/kernel/cors";
+import { getAccessType, canReadAsset } from "@/src/lib/media/read-access";
 
 const log = createLogger("kernel");
-
-function getAccessType(access: FairManifest["access"]): string {
-  if (!access) return "private";
-  if (typeof access === "string") return access;
-  return access.type ?? "private";
-}
-
-function getAllowedDids(access: FairManifest["access"]): string[] {
-  if (!access || typeof access === "string") return [];
-  return (access as { allowedDids?: string[] }).allowedDids ?? [];
-}
 
 // ---------------------------------------------------------------------------
 // GET /api/assets/[id]/verify — content integrity verification
@@ -58,25 +48,16 @@ export async function GET(
   }
 
   // 2. Access control (mirrors GET /api/assets/[id] — same read rules)
-  const manifest = asset.fairManifest as FairManifest | null;
-  const access = manifest?.access ?? "private";
-  const accessType = getAccessType(access);
-
-  if (accessType !== "public") {
+  const access = (asset.fairManifest as FairManifest | null)?.access ?? "private";
+  if (getAccessType(access) !== "public") {
     const authResult = await requireAuth(request);
     if ("error" in authResult) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401, headers: cors });
     }
     const callerDid = resolveActingDid(authResult.identity);
-
-    if (accessType === "private" && callerDid !== asset.ownerDid) {
+    const decision = canReadAsset({ ownerDid: asset.ownerDid, access }, callerDid);
+    if (!decision.allowed) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: cors });
-    }
-    if (accessType === "trust-graph") {
-      const allowed = getAllowedDids(access);
-      if (callerDid !== asset.ownerDid && !allowed.includes(callerDid)) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: cors });
-      }
     }
   }
 
