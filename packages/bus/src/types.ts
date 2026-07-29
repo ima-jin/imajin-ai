@@ -579,6 +579,44 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'vault.delegation';
   };
+  /**
+   * Emitted by sealAndStoreV2 in Tier 1 mode when the vault entry is written
+   * but no delegation grant has been created yet (#1403).  The external owner
+   * agent (imajin-cli vault serve) receives this event, recovers the field key
+   * by unwrapping wrappedFieldKey/wrappedFieldKeyNonce using ownerXPriv +
+   * nodeXPub, then re-wraps it to nodeXPub (the canonical grant), signs, and
+   * POSTs to POST /api/vault/delegation/grant.
+   *
+   * wrappedFieldKey: wrapFieldKey(fieldKey, ownerXPub, nodeXPriv)
+   * Only the owner who holds ownerXPriv can recover the raw field key.
+   */
+  'vault.grant.requested': {
+    field: string;                 // vault field name, e.g. 'GH_TOKEN'
+    nodeXPub: string;              // node's X25519 pubkey (owner wraps the canonical grant to this)
+    nodeDid: string;               // node's DID
+    keyId: string;                 // correlates with the vault entry
+    requestId: string;             // UUID from vault_grant_requests.request_id
+    wrappedFieldKey: string;       // base64: fieldKey ECDH-wrapped nodeXPriv→ownerXPub
+    wrappedFieldKeyNonce: string;  // base64: 12-byte AES-GCM nonce for the above
+    ownerXPub: string;             // expected owner's X25519 pubkey (must match VAULT_OWNER_X_PUB)
+    expiresAt: string | null;
+    context_id: string;
+    context_type: 'vault';
+  };
+  /**
+   * Emitted by POST /api/vault/delegation/grant when a Tier 1 delegation grant is
+   * fulfilled by the external owner agent (#1403).  Prefer this over the generic
+   * vault.secret.updated for consumers that specifically track grant lifecycle.
+   */
+  'vault.grant.fulfilled': {
+    grantId: string;
+    requestId: string;
+    field: string;
+    subject: string;     // ownerDid
+    grantedTo: string;   // nodeDid
+    context_id: string;
+    context_type: 'vault';
+  };
   'broker.release': {
     releaseId: string;
     requester: string;

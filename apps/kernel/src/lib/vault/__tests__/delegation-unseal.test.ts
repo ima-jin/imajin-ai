@@ -159,7 +159,7 @@ describe('_applyDelegationGrant', () => {
         const keyId = deriveKeyId(owner.edPub);
         const grant = buildGrant({ owner, nodeDid: node.did, nodeXPub: node.xPub, field, keyId, fieldKey });
 
-        const result = await _applyDelegationGrant(entry, grant, node.xPriv);
+        const result = await _applyDelegationGrant(entry, grant, node.xPriv, owner.edPub);
         expect(result).toBe(plaintext);
     });
 
@@ -180,7 +180,7 @@ describe('_applyDelegationGrant', () => {
         const keyId = deriveKeyId(owner.edPub);
         const grant = buildGrant({ owner, nodeDid: node.did, nodeXPub: node.xPub, field, keyId, fieldKey });
 
-        const result = await _applyDelegationGrant(loaded!, grant, node.xPriv);
+        const result = await _applyDelegationGrant(loaded!, grant, node.xPriv, owner.edPub);
         expect(result).toBe(plaintext);
     });
 
@@ -197,7 +197,7 @@ describe('_applyDelegationGrant', () => {
         const tampered = { ...grant, ownerSignature: 'a'.repeat(128) };
 
         await expect(
-            _applyDelegationGrant(entry, tampered, node.xPriv),
+            _applyDelegationGrant(entry, tampered, node.xPriv, owner.edPub),
         ).rejects.toBeInstanceOf(VaultDelegationError);
     });
 
@@ -214,7 +214,7 @@ describe('_applyDelegationGrant', () => {
         const grant = buildGrant({ owner, nodeDid: node.did, nodeXPub: node.xPub, field, keyId, fieldKey });
 
         await expect(
-            _applyDelegationGrant(entry, grant, wrongNode.xPriv),
+            _applyDelegationGrant(entry, grant, wrongNode.xPriv, owner.edPub),
         ).rejects.toThrow();
     });
 
@@ -232,7 +232,7 @@ describe('_applyDelegationGrant', () => {
         const tampered = { ...entry, cid: 'cid:tampered' };
 
         await expect(
-            _applyDelegationGrant(tampered, grant, node.xPriv),
+            _applyDelegationGrant(tampered, grant, node.xPriv, owner.edPub),
         ).rejects.toThrow();
     });
 
@@ -253,7 +253,89 @@ describe('_applyDelegationGrant', () => {
 
         // entry.senderPubkey is owner's pubkey — forged sig from attacker fails
         await expect(
-            _applyDelegationGrant(entry, forgedGrant, node.xPriv),
+            _applyDelegationGrant(entry, forgedGrant, node.xPriv, owner.edPub),
+        ).rejects.toBeInstanceOf(VaultDelegationError);
+    });
+});
+
+// ── Tier 1: external owner signs grant, node signs entry ─────────────────────
+//
+// In Tier 1 the vault entry is sealed and signed by the NODE's Ed key, but the
+// delegation grant is signed by a SEPARATE external owner's Ed key. This means
+// entry.senderPubkey !== ownerEdPub, which is the exact gap the blocker covered.
+
+describe('_applyDelegationGrant (Tier 1)', () => {
+    it('decrypts plaintext when ownerEdPub is the external owner key (round-trip)', async () => {
+        // Node seals and signs the vault entry; external owner signs the grant.
+        const nodeIdentity = makeOwnerKeypair();   // node's Ed+X keys (signs the entry)
+        const externalOwner = makeOwnerKeypair();  // external owner's Ed+X keys (signs the grant)
+        const fieldKey = randomBytes(32);
+        const plaintext = 'tier1-vault-secret';
+        const field = 'TIER1_GH_TOKEN';
+
+        // Entry signed by the NODE — entry.senderPubkey === nodeIdentity.edPub
+        const entry = await buildV2Entry({ field, plaintext, fieldKey, owner: nodeIdentity });
+        expect(entry.senderPubkey).toBe(nodeIdentity.edPub); // sanity
+        expect(entry.senderPubkey).not.toBe(externalOwner.edPub); // Tier 1 invariant
+
+        // Grant issued to node, signed by external owner.
+        // keyId is derived from the node's Ed key (matches how sealAndStoreV2 sets it).
+        const keyId = deriveKeyId(nodeIdentity.edPub);
+        const grant = buildGrant({
+            owner: externalOwner,
+            nodeDid: nodeIdentity.did,
+            nodeXPub: nodeIdentity.xPub,
+            field,
+            keyId,
+            fieldKey,
+        });
+
+        // Must succeed: correct ownerEdPub (external owner's key)
+        const result = await _applyDelegationGrant(entry, grant, nodeIdentity.xPriv, externalOwner.edPub);
+        expect(result).toBe(plaintext);
+    });
+
+    it('throws VaultDelegationError when ownerEdPub is the node key instead of external owner (Tier 1 key mismatch)', async () => {
+        // This test documents the exact failure mode fixed by the blocker:
+        // using entry.senderPubkey (node's key) to verify a Tier 1 grant signed
+        // by the external owner's key produces an invalid-signature error.
+        const nodeIdentity = makeOwnerKeypair();
+        const externalOwner = makeOwnerKeypair();
+        const fieldKey = randomBytes(32);
+        const field = 'TIER1_TOKEN';
+
+        const entry = await buildV2Entry({ field, plaintext: 'secret', fieldKey, owner: nodeIdentity });
+        const keyId = deriveKeyId(nodeIdentity.edPub);
+        const grant = buildGrant({
+            owner: externalOwner,
+            nodeDid: nodeIdentity.did,
+            nodeXPub: nodeIdentity.xPub,
+            field,
+            keyId,
+            fieldKey,
+        });
+
+        // Must fail: node's Ed key cannot verify a signature made by the external owner.
+        await expect(
+            _applyDelegationGrant(entry, grant, nodeIdentity.xPriv, nodeIdentity.edPub),
+        ).rejects.toBeInstanceOf(VaultDelegationError);
+    });
+
+    it('throws VaultDelegationError when grant keyId does not match entry keyId', async () => {
+        const owner = makeOwnerKeypair();
+        const node = makeNodeKeypair();
+        const fieldKey = randomBytes(32);
+        const field = 'TOKEN';
+
+        const entry = await buildV2Entry({ field, plaintext: 'secret', fieldKey, owner });
+        // Use a fresh valid keypair to produce a well-formed but distinct keyId.
+        const wrongKeyId = deriveKeyId(makeOwnerKeypair().edPub);
+        const grant = buildGrant({ owner, nodeDid: node.did, nodeXPub: node.xPub, field, keyId: wrongKeyId, fieldKey });
+
+        // grant.keyId !== entry.keyId — the keyId guard should reject this.
+        expect(grant.keyId).not.toBe(deriveKeyId(owner.edPub));
+        await expect(
+            _applyDelegationGrant(entry, grant, node.xPriv, owner.edPub),
         ).rejects.toBeInstanceOf(VaultDelegationError);
     });
 });
