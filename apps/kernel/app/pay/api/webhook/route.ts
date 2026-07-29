@@ -15,28 +15,24 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { db, transactions, feeLedger, balances, balanceRollups } from '@/src/db';
-import { eq, sql } from 'drizzle-orm';
+import { db, transactions, feeLedger } from '@/src/db';
+import { eq } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
+import { getStripe } from '@/src/lib/pay/stripe';
+import {
+  type FairManifest,
+  type TxRow,
+  fetchActualStripeFee,
+  calculateEstimatedFee,
+  reconcileStripeFee,
+  processChainDistribution,
+  handleTopupCheckout,
+  notifyCheckoutServices,
+} from '@/src/lib/pay/webhook-handlers';
 
 const log = createLogger('kernel');
-
-// Lazy Stripe initialization to avoid build-time errors in CI
-let _stripe: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!_stripe) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2024-11-20.acacia' as Stripe.LatestApiVersion,
-    });
-  }
-  return _stripe;
-}
 
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -209,362 +205,72 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   log.info({ id: session.id, customerEmail: session.customer_email, amountTotal: session.amount_total, metadata: session.metadata }, 'Checkout completed');
 
-  // Update transaction status to completed
-  await db
-    .update(transactions)
-    .set({ status: 'completed' })
-    .where(eq(transactions.stripeId, session.id));
+  await db.update(transactions).set({ status: 'completed' }).where(eq(transactions.stripeId, session.id));
 
-  // Fee ledger: subdivide payment per .fair manifest
   const [tx] = await db.select().from(transactions).where(eq(transactions.stripeId, session.id)).limit(1);
+  await processFairManifest(session, tx as (TxRow & { fairManifest?: unknown }) | undefined);
 
-  if (tx?.fairManifest) {
-    const manifest = tx.fairManifest as {
-      fees?: Array<{ role: string; name: string; rateBps: number; fixedCents: number }>;
-      chain?: Array<{ did: string; role: string; share: number }>;
-    };
-    const totalAmountCents = session.amount_total || 0;
-    const currency = (session.currency || 'usd').toUpperCase();
-    const buyerDid = session.metadata?.buyerDid || session.metadata?.identity_id || null;
-
-    if (manifest.chain && totalAmountCents > 0) {
-      // Record processing fees — use actual Stripe fee from balance_transaction when available
-      let actualStripeFeeCents: number | null = null;
-      try {
-        const stripe = getStripe();
-        const paymentIntentId = session.payment_intent as string;
-        if (paymentIntentId) {
-          const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
-            expand: ['latest_charge.balance_transaction'],
-          });
-          const charge = pi.latest_charge as Stripe.Charge | null;
-          const bt = charge?.balance_transaction as Stripe.BalanceTransaction | null | undefined;
-          if (bt?.fee) {
-            actualStripeFeeCents = bt.fee;
-            log.info({ transactionId: tx.id, stripeFee: bt.fee, feeDetails: bt.fee_details }, '[webhook] Actual Stripe fee from balance_transaction');
-          }
-        }
-      } catch (err) {
-        log.warn({ err: String(err) }, '[webhook] Failed to fetch balance_transaction — using estimate');
-      }
-
-      // Fall back to estimate if balance_transaction lookup failed
-      const feeEntry = manifest.fees?.find(f => f.role === 'processor');
-      const estimatedFeeCents = feeEntry
-        ? Math.round(totalAmountCents * feeEntry.rateBps / 10000) + (feeEntry.fixedCents || 0)
-        : Math.round(totalAmountCents * STRIPE_RATE_BPS / 10000) + STRIPE_FIXED_CENTS;
-      const processingFeeCents = actualStripeFeeCents ?? estimatedFeeCents;
-
-      await db.insert(feeLedger).values({
-        id: generateId('fl'),
-        transactionId: tx.id,
-        recipientDid: 'stripe:processor',
-        role: 'processor',
-        amountCents: processingFeeCents,
-        currency,
-        status: 'paid_out',
-      });
-
-      publish('fee.record', {
-        issuer: process.env.PLATFORM_DID || 'system',
-        subject: 'stripe:processor',
-        scope: 'pay',
-        payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents: processingFeeCents, currency },
-      }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
-
-      // Processing fee reconciliation: credit or debit MJNx based on estimate vs actual
-      if (actualStripeFeeCents !== null && actualStripeFeeCents !== estimatedFeeCents) {
-        const sellerEntry = manifest.chain.find(e => e.role === 'seller');
-        const sellerDid = sellerEntry?.did;
-
-        if (sellerDid && sellerDid !== 'NODE_PLACEHOLDER') {
-          const diffCents = Math.abs(estimatedFeeCents - actualStripeFeeCents);
-
-          if (actualStripeFeeCents < estimatedFeeCents) {
-            // Over-collected → rebate difference as MJNx to seller
-            await db.insert(feeLedger).values({
-              id: generateId('fl'),
-              transactionId: tx.id,
-              recipientDid: sellerDid,
-              role: 'processor_rebate',
-              amountCents: diffCents,
-              currency,
-              status: 'accrued',
-            });
-
-            await db.insert(balances).values({
-              did: sellerDid,
-              cashAmount: '0',
-              creditAmount: (diffCents / 100).toFixed(8),
-              currency,
-            }).onConflictDoUpdate({
-              target: balances.did,
-              set: {
-                creditAmount: sql`${balances.creditAmount} + ${(diffCents / 100).toFixed(8)}`,
-                updatedAt: new Date(),
-              },
-            });
-
-            log.info({ transactionId: tx.id, sellerDid, rebateCents: diffCents, estimatedFeeCents, actualStripeFeeCents }, '[webhook] Processing fee rebate → MJNx');
-            publish('fee.rebate', {
-              issuer: process.env.PLATFORM_DID || 'system',
-              subject: sellerDid,
-              scope: 'pay',
-              payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency },
-            }).catch((err) => log.error({ err: String(err) }, 'fee.rebate publish error'));
-
-          } else {
-            // Under-collected → debit difference from seller's MJNx balance
-            await db.insert(feeLedger).values({
-              id: generateId('fl'),
-              transactionId: tx.id,
-              recipientDid: sellerDid,
-              role: 'processor_surcharge',
-              amountCents: diffCents,
-              currency,
-              status: 'accrued',
-            });
-
-            await db.insert(balances).values({
-              did: sellerDid,
-              cashAmount: '0',
-              creditAmount: (-diffCents / 100).toFixed(8),
-              currency,
-            }).onConflictDoUpdate({
-              target: balances.did,
-              set: {
-                creditAmount: sql`${balances.creditAmount} + ${(-diffCents / 100).toFixed(8)}`,
-                updatedAt: new Date(),
-              },
-            });
-
-            log.info({ transactionId: tx.id, sellerDid, surchargeCents: diffCents, estimatedFeeCents, actualStripeFeeCents }, '[webhook] Processing fee surcharge → MJNx debit');
-            publish('fee.surcharge', {
-              issuer: process.env.PLATFORM_DID || 'system',
-              subject: sellerDid,
-              scope: 'pay',
-              payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency },
-            }).catch((err) => log.error({ err: String(err) }, 'fee.surcharge publish error'));
-          }
-        }
-      }
-
-      for (const entry of manifest.chain) {
-        const amountCents = Math.round(totalAmountCents * entry.share);
-        if (amountCents <= 0) continue;
-
-        // Resolve BUYER_PLACEHOLDER to actual buyer DID
-        const recipientDid = entry.did === 'BUYER_PLACEHOLDER' ? (buyerDid || 'unresolved') : entry.did;
-
-        const isSeller = entry.role === 'seller';
-        const isBuyerCredit = entry.role === 'buyer_credit';
-        const status = isSeller ? 'paid_out' : 'accrued';
-
-        // Insert fee ledger row
-        await db.insert(feeLedger).values({
-          id: generateId('fl'),
-          transactionId: tx.id,
-          recipientDid,
-          role: entry.role,
-          amountCents,
-          currency,
-          status,
-        });
-
-        publish('fee.record', {
-          issuer: process.env.PLATFORM_DID || 'system',
-          subject: recipientDid,
-          scope: 'pay',
-          payload: { transactionId: tx.id, recipientDid, role: entry.role, amountCents, currency },
-        }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
-
-        // Increment balance (skip unresolved and seller — seller's money is already in their Stripe)
-        if (recipientDid !== 'unresolved' && !isSeller) {
-          if (isBuyerCredit) {
-            // Buyer credit goes to creditAmount (virtual MJN)
-            await db.insert(balances).values({
-              did: recipientDid,
-              cashAmount: '0',
-              creditAmount: (amountCents / 100).toFixed(8),
-              currency,
-            }).onConflictDoUpdate({
-              target: balances.did,
-              set: {
-                creditAmount: sql`${balances.creditAmount} + ${(amountCents / 100).toFixed(8)}`,
-                updatedAt: new Date(),
-              },
-            });
-          } else {
-            // Fee beneficiaries (protocol, node, scope) get cashAmount — held in Imajin account
-            await db.insert(balances).values({
-              did: recipientDid,
-              cashAmount: (amountCents / 100).toFixed(8),
-              creditAmount: '0',
-              currency,
-            }).onConflictDoUpdate({
-              target: balances.did,
-              set: {
-                cashAmount: sql`${balances.cashAmount} + ${(amountCents / 100).toFixed(8)}`,
-                updatedAt: new Date(),
-              },
-            });
-          }
-
-          // Update daily rollup
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          await db.insert(balanceRollups).values({
-            did: recipientDid,
-            date: today,
-            service: tx.service || 'unknown',
-            earned: (amountCents / 100).toFixed(8),
-            spent: '0',
-            txCount: 1,
-          }).onConflictDoUpdate({
-            target: [balanceRollups.did, balanceRollups.date, balanceRollups.service],
-            set: {
-              earned: sql`${balanceRollups.earned} + ${(amountCents / 100).toFixed(8)}`,
-              txCount: sql`${balanceRollups.txCount} + 1`,
-            },
-          });
-        }
-      }
-    }
-  }
-
-  // Handle top-up checkout sessions
   if (session.metadata?.service === 'topup') {
-    const topupAmountStr = session.metadata?.topupAmount;
-    const buyerDid = session.metadata?.buyerDid;
-
-    if (topupAmountStr && buyerDid) {
-      const topupAmount = Number.parseFloat(topupAmountStr);
-
-      // Atomic operation: insert transaction + update cash balance
-      const txId = generateId('tx');
-      await db.transaction(async (tx) => {
-        // Insert completed top-up transaction
-        await tx.insert(transactions).values({
-          id: txId,
-          service: 'topup',
-          type: 'topup',
-          fromDid: null,
-          toDid: buyerDid,
-          amount: topupAmount.toString(),
-          currency: (session.currency || 'cad').toUpperCase(),
-          status: 'completed',
-          stripeId: session.id,
-          source: 'fiat',
-          metadata: {
-            ...session.metadata,
-            checkoutSessionId: session.id,
-          },
-        });
-
-        // Credit cash balance
-        await tx
-          .insert(balances)
-          .values({
-            did: buyerDid,
-            cashAmount: topupAmount.toString(),
-            creditAmount: '0',
-            currency: (session.currency || 'cad').toUpperCase(),
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: balances.did,
-            set: {
-              cashAmount: sql`${balances.cashAmount} + ${topupAmount}`,
-              updatedAt: new Date(),
-            },
-          });
-      });
-
-      log.info({ service: 'pay', transactionId: txId, buyerDid, amount: topupAmount }, 'Top-up credited via webhook');
-    }
-
-    // Skip further processing — topups don't need service notifications
+    await handleTopupCheckout(session);
     return;
   }
 
-  // Notify the originating service based on metadata
-  // Events service handles event tickets
-  if (session.metadata?.eventId) {
-    await notifyEventsService('checkout.completed', session);
-  }
-
-  // Market: fire sale + purchase notifications
-  if (session.metadata?.service === 'market' && session.metadata?.sellerDid) {
-    const sellerDid = session.metadata.sellerDid;
-    const buyerDid = session.metadata.buyerDid;
-    const listingTitle = session.metadata.listingTitle;
-    const amount = session.amount_total ?? 0;
-    const currency = (session.currency ?? 'usd').toUpperCase();
-    const buyerEmail = session.customer_email || session.customer_details?.email || undefined;
-    const buyerName = session.customer_details?.name || undefined;
-
-    publish('market.sale', {
-      issuer: process.env.PLATFORM_DID || 'system',
-      subject: sellerDid,
-      scope: 'market',
-      payload: { listingTitle, amount, currency, ...(buyerName && { buyerName }) },
-    }).catch((err) => log.error({ err: String(err) }, 'Notify market:sale error'));
-
-    if (buyerDid) {
-      publish('market.purchase', {
-        issuer: process.env.PLATFORM_DID || 'system',
-        subject: buyerDid,
-        scope: 'market',
-        payload: { ...(buyerEmail && { email: buyerEmail }), listingTitle, amount, currency },
-      }).catch((err) => log.error({ err: String(err) }, 'Notify market:purchase error'));
-    }
-  }
+  await notifyCheckoutServices(session);
 }
 
 /**
- * Notify events service about payment completion
+ * Record the Stripe processor fee, reconcile estimate vs actual, then
+ * distribute the remaining amount across the .fair manifest chain.
  */
-async function notifyEventsService(
-  type: 'checkout.completed' | 'payment.failed',
-  session: Stripe.Checkout.Session
-) {
-  const eventsServiceUrl = process.env.EVENTS_SERVICE_URL!;
-  const webhookSecret = process.env.EVENTS_WEBHOOK_SECRET!;
-  
-  try {
-    const response = await fetch(`${eventsServiceUrl}/api/webhook/payment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${webhookSecret}`,
-      },
-      body: JSON.stringify({
-        type,
-        sessionId: session.id,
-        paymentId: typeof session.payment_intent === 'string'
-          ? session.payment_intent
-          : session.payment_intent?.id,
-        customerEmail: session.customer_email || session.customer_details?.email || null,
-        customerName: session.customer_details?.name || null,
-        amountTotal: session.amount_total,
-        currency: session.currency,
-        metadata: session.metadata,
-      }),
-    });
-    
-    if (response.ok) {
-      log.info({}, 'Events service notified successfully');
-    } else {
-      const error = await response.text();
-      log.error({ error }, 'Events service webhook failed');
-    }
-  } catch (error) {
-    log.error({ err: String(error) }, 'Failed to notify events service');
-    // Don't throw - we don't want to fail the Stripe webhook
-    // The payment is still valid, we just need to handle the fulfillment separately
+async function processFairManifest(
+  session: Stripe.Checkout.Session,
+  tx: (TxRow & { fairManifest?: unknown }) | undefined,
+): Promise<void> {
+  if (!tx?.fairManifest) return;
+
+  const manifest = tx.fairManifest as FairManifest;
+  const totalAmountCents = session.amount_total || 0;
+  if (!manifest.chain || totalAmountCents <= 0) return;
+
+  const currency = (session.currency || 'usd').toUpperCase();
+  const actualFeeCents = await fetchActualStripeFee(session, tx.id);
+  const estimatedFeeCents = calculateEstimatedFee(manifest, totalAmountCents);
+  const processingFeeCents = actualFeeCents ?? estimatedFeeCents;
+
+  await recordProcessingFee(tx, processingFeeCents, currency);
+
+  if (actualFeeCents !== null && actualFeeCents !== estimatedFeeCents) {
+    await reconcileStripeFee({ tx, manifest, actualFeeCents, estimatedFeeCents, currency });
   }
+
+  await processChainDistribution({
+    tx,
+    totalAmountCents,
+    currency,
+    buyerDid: session.metadata?.buyerDid || session.metadata?.identity_id || null,
+    chain: manifest.chain,
+  });
 }
 
+/** Insert the Stripe processor fee-ledger row and fire its bus event. */
+async function recordProcessingFee(tx: TxRow, amountCents: number, currency: string): Promise<void> {
+  await db.insert(feeLedger).values({
+    id: generateId('fl'),
+    transactionId: tx.id,
+    recipientDid: 'stripe:processor',
+    role: 'processor',
+    amountCents,
+    currency,
+    status: 'paid_out',
+  });
+
+  publish('fee.record', {
+    issuer: process.env.PLATFORM_DID || 'system',
+    subject: 'stripe:processor',
+    scope: 'pay',
+    payload: { transactionId: tx.id, recipientDid: 'stripe:processor', role: 'processor', amountCents, currency },
+  }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
+}
 /**
  * Notify coffee service about payment completion or failure
  */
