@@ -305,39 +305,51 @@ export function applyDisclosureGates(
   };
 
   for (const [key, value] of Object.entries(raw)) {
-    // _disclosure is subject-internal; never emitted
-    if (key === '_disclosure') continue;
-
-    const release: FairReleaseTier = policy[key as FairFieldKey]?.release ?? 'silent';
-
-    if (release === 'never') continue;
-
-    if (release === 'owner-only') {
-      if (isOwner) manifest[key] = value;
-      else withholdIfPresent(withheld, key, value);
-      continue;
-    }
-
-    if (release === 'on-consent') {
-      // Granted: include but still scrub nested amounts if `amount` is gated
-      if (grantedFields.has(key)) manifest[key] = scrubAmountBearingField(key, value, ctx);
-      else withholdIfPresent(withheld, key, value);
-      continue;
-    }
-
-    // ── silent: include, with sub-field gating for special cases ──────────
-    if (key === 'attribution' && Array.isArray(value)) {
-      manifest['attribution'] = applyAttributionGates(
-        value as Record<string, unknown>[],
-        ctx,
-      );
-      continue;
-    }
-
-    manifest[key] = scrubAmountBearingField(key, value, ctx);
+    applyFieldGate(key, value, ctx, manifest);
   }
 
   return { manifest, withheld };
+}
+
+/**
+ * Apply the effective gate for a single manifest field, writing any disclosed
+ * value into `manifest` and any presence attestation into `ctx.withheld`. Split
+ * out of the main loop so each tier's branching stays legible (and keeps
+ * `applyDisclosureGates` within cognitive-complexity limits).
+ */
+function applyFieldGate(
+  key: string,
+  value: unknown,
+  ctx: GateContext,
+  manifest: Record<string, unknown>,
+): void {
+  // _disclosure is subject-internal; never emitted
+  if (key === '_disclosure') return;
+
+  const release: FairReleaseTier = ctx.policy[key as FairFieldKey]?.release ?? 'silent';
+
+  if (release === 'never') return;
+
+  if (release === 'owner-only') {
+    if (ctx.isOwner) manifest[key] = value;
+    else withholdIfPresent(ctx.withheld, key, value);
+    return;
+  }
+
+  if (release === 'on-consent') {
+    // Granted: include but still scrub nested amounts if `amount` is gated
+    if (ctx.grantedFields.has(key)) manifest[key] = scrubAmountBearingField(key, value, ctx);
+    else withholdIfPresent(ctx.withheld, key, value);
+    return;
+  }
+
+  // ── silent: include, with sub-field gating for special cases ──────────
+  if (key === 'attribution' && Array.isArray(value)) {
+    manifest['attribution'] = applyAttributionGates(value as Record<string, unknown>[], ctx);
+    return;
+  }
+
+  manifest[key] = scrubAmountBearingField(key, value, ctx);
 }
 
 /** Shared read-only context threaded through the disclosure-gate helpers. */
