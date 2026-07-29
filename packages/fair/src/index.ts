@@ -79,3 +79,33 @@ export type {
   VerifyManifestFromAssetOptions,
   FetchResponse,
 } from './verify-from-asset';
+
+// ── Disclosure engine (#1453) ──────────────────────────────────────────────────
+export type { FairReleaseTier, FairFieldKey } from './disclosure';
+export {
+  FAIR_RELEASE_TIERS,
+  TIER_RANK,
+  FAIR_FLOOR_FIELDS,
+  deriveReleaseTier,
+  composeEffectivePolicy,
+  applyDisclosureGates,
+  parseSubjectGates,
+} from './disclosure';
+export type {
+  FieldClassification,
+  FieldOverlayEntry,
+  FairDisclosureOverlay,
+  EffectiveFieldPolicy,
+  EffectivePolicy,
+  WithheldAttestation,
+  ApplyGatesResult,
+} from './disclosure';
+
+// ── Settlement fee-math (#1453) ────────────────────────────────────────────────
+export { computeFeeCents, resolveSettlementChain, DEFAULT_SELLER_ROLES } from './settlement';
+export type {
+  FairSettlementEntry,
+  ResolvedChainEntry,
+  ResolveChainOptions,
+  ResolvedChain,
+} from './settlement';

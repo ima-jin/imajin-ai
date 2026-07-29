@@ -381,6 +381,55 @@ describe("parseSubjectGates", () => {
   });
 });
 
+// ── applyDisclosureGates — owner-only tier (Decision A, 2026-07-28) ──────────
+
+describe("applyDisclosureGates — owner-only tier", () => {
+  it("withholds owner-only fields from non-owner callers", () => {
+    const overlay: FairDisclosureOverlay = {
+      ...DEFAULT_AGRIFORTRESS_OVERLAY,
+      source: { release: "owner-only" },
+    };
+    const policy = composeEffectivePolicy(overlay);
+    const withSource = { ...BASE_MANIFEST, source: "internal://cost-ref" } as unknown as typeof BASE_MANIFEST;
+    const { manifest, withheld } = applyDisclosureGates(withSource, policy);
+    expect(manifest).not.toHaveProperty("source");
+    expect(withheld["source"]).toEqual({ present: true, attestation: "covered-by-signature" });
+  });
+
+  it("includes owner-only fields when isOwner is true", () => {
+    const overlay: FairDisclosureOverlay = {
+      ...DEFAULT_AGRIFORTRESS_OVERLAY,
+      source: { release: "owner-only" },
+    };
+    const policy = composeEffectivePolicy(overlay);
+    const withSource = { ...BASE_MANIFEST, source: "internal://cost-ref" } as unknown as typeof BASE_MANIFEST;
+    const { manifest, withheld } = applyDisclosureGates(withSource, policy, new Set(), true);
+    expect(manifest).toHaveProperty("source", "internal://cost-ref");
+    expect(withheld).not.toHaveProperty("source");
+  });
+
+  it("owner-only is not unlocked by consent grants (only isOwner flag)", () => {
+    const overlay: FairDisclosureOverlay = {
+      ...DEFAULT_AGRIFORTRESS_OVERLAY,
+      source: { release: "owner-only" },
+    };
+    const policy = composeEffectivePolicy(overlay);
+    const withSource = { ...BASE_MANIFEST, source: "secret" } as unknown as typeof BASE_MANIFEST;
+    // Grant 'source' via consent — should still be withheld because isOwner=false
+    const { manifest, withheld } = applyDisclosureGates(withSource, policy, new Set(["source"]), false);
+    expect(manifest).not.toHaveProperty("source");
+    expect(withheld).toHaveProperty("source");
+  });
+
+  it("parseSubjectGates accepts owner-only as a valid tier", () => {
+    const raw = {
+      _disclosure: { source: { release: "owner-only" } },
+    };
+    const gates = parseSubjectGates(raw);
+    expect(gates["source"]).toEqual({ release: "owner-only" });
+  });
+});
+
 // ── Subject gates integration: compose + apply ───────────────────────────────
 
 describe("subject gates integration", () => {

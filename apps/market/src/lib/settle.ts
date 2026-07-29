@@ -16,13 +16,12 @@
 import { createLogger } from '@imajin/logger';
 import { db, listings } from '@/db';
 import { eq } from 'drizzle-orm';
+import { computeFeeCents, resolveSettlementChain } from '@imajin/fair';
 
 const log = createLogger('market');
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
-
-const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
 
 interface FairEntry {
   did: string;
@@ -64,49 +63,19 @@ export async function settleListingPurchase(params: SettleListingPurchaseParams)
     return;
   }
 
-  const totalDollars = amount / 100;
-
   // Resolve node DID from environment
   const NODE_DID = process.env.NODE_DID || process.env.RELAY_IMAJIN_DID || null;
   if (!NODE_DID) {
     log.warn({ listingId }, '[settle] NODE_DID not set — node fee recipient unresolved');
   }
 
-  // Calculate estimated processing fee to deduct from seller's share
-  const fees = fairManifest?.fees || [];
-  const processorFee = fees.find(f => f.role === 'processor');
-  const estimatedFeeDollars = processorFee
-    ? Number.parseFloat(((amount * processorFee.rateBps / 10000 + processorFee.fixedCents) / 100).toFixed(2))
-    : Number.parseFloat(((amount * 370 / 10000 + 30) / 100).toFixed(2));  // fallback: 3.7% + 30¢
-
-  // Replace placeholder DIDs and deduct processing fee from seller
-  const resolvedChain = chain.map((entry) => {
-    let did = entry.did;
-    if (did === 'BUYER_PLACEHOLDER') did = buyerDid;
-    if (did === 'NODE_PLACEHOLDER') did = NODE_DID || 'did:imajin:node-unresolved';
-
-    let entryAmount = Number.parseFloat((totalDollars * entry.share).toFixed(2));
-
-    // Seller's actual payout = (total × sellerShare) - processingFee
-    // Because Stripe deducts applicationFee (which includes processing) from connected account transfer
-    if (SELLER_ROLES.has(entry.role)) {
-      entryAmount = Number.parseFloat((entryAmount - estimatedFeeDollars).toFixed(2));
-    }
-
-    return { did, amount: entryAmount, role: entry.role };
+  const { resolvedChain, expectedTotal } = resolveSettlementChain({
+    amountCents: amount,
+    chain,
+    fees: fairManifest.fees,
+    buyerDid,
+    nodeDid: NODE_DID,
   });
-
-  // Chain now sums to totalDollars - estimatedFeeDollars
-  const expectedTotal = Number.parseFloat((totalDollars - estimatedFeeDollars).toFixed(2));
-
-  // Fix rounding drift: adjust seller so chain sums to expectedTotal exactly
-  const chainSum = resolvedChain.reduce((sum, e) => sum + e.amount, 0);
-  const drift = Number.parseFloat((expectedTotal - chainSum).toFixed(2));
-  if (drift !== 0 && resolvedChain.length > 0) {
-    const seller = resolvedChain.find(e => SELLER_ROLES.has(e.role));
-    const target = seller || resolvedChain.reduce((max, e) => e.amount > max.amount ? e : max, resolvedChain[0]);
-    target.amount = Number.parseFloat((target.amount + drift).toFixed(2));
-  }
 
   const body = {
     from_did: buyerDid,
@@ -147,14 +116,14 @@ export async function settleListingPurchase(params: SettleListingPurchaseParams)
         name: fee.name,
         rateBps: fee.rateBps,
         fixedCents: fee.fixedCents,
-        amount: Number.parseFloat(((amount * fee.rateBps / 10000 + fee.fixedCents) / 100).toFixed(2)),
+        amount: Number.parseFloat((computeFeeCents(amount, fee.rateBps, fee.fixedCents) / 100).toFixed(2)),
         estimated: true,
       }));
 
       const fairSettlement = {
         version: fairManifest.version || (fairManifest as any).fair || '1.0',
         settledAt: new Date().toISOString(),
-        totalAmount: totalDollars,
+        totalAmount: amount / 100,
         netAmount: expectedTotal,
         currency: params.currency,
         fees: resolvedFees,

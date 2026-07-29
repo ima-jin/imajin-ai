@@ -110,14 +110,19 @@ export async function GET(
   // ── 4. Composed effective policy ─────────────────────────────────────────
   const policy = composeEffectivePolicy(communityOverlay, subjectGates);
 
-  // ── 5. Optional auth — check consent grants for on-consent fields ────────
+  // ── 5. Optional auth — check consent grants + owner-only access ─────────
   //
   // This route is publicly accessible without auth (floor fields are always
   // returned). Auth is OPTIONAL: if the caller presents a Bearer token, we
-  // resolve their DID and check for active consent grants that unlock
-  // on-consent fields. If they lack a grant — or don't authenticate at all —
-  // they get the redacted/attested view.
+  // resolve their DID and:
+  //   a) check for active consent grants that unlock on-consent fields
+  //   b) set isOwner = true when the caller IS the manifest owner, which
+  //      unlocks `owner-only` fields (the sovereignty tier: no grant can
+  //      expose these to a counterparty).
+  // If they lack a grant — or don't authenticate at all — they get the
+  // redacted/attested view.
   let grantedFields = new Set<string>();
+  let isOwner = false;
   const authHeader = request.headers.get("authorization");
   if (authHeader) {
     const authResult = await requireAuth(request);
@@ -127,18 +132,19 @@ export async function GET(
         typeof manifestRaw["owner"] === "string"
           ? manifestRaw["owner"]
           : lot.originatingDid;
+      isOwner = requesterDid === ownerDid;
       grantedFields = await queryConsentGrants(ownerDid, requesterDid);
     }
     // Auth header present but invalid → still serve the public view (no 401).
-    // On-consent fields stay withheld. Only hard auth failures (missing header)
-    // and consent-grant checks are surfaced this way.
+    // On-consent and owner-only fields stay withheld.
   }
 
-  // ── 6. Apply gates ───────────────────────────────────────────────────────
+  // ── 6. Apply gates ──────────────────────────────────────────────────
   const { manifest: disclosed, withheld } = applyDisclosureGates(
     manifestRaw as unknown as FairManifest,
     policy,
     grantedFields,
+    isOwner,
   );
 
   // ── 7. Build and return response ─────────────────────────────────────────

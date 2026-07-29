@@ -19,45 +19,37 @@ import { parseFrontmatter } from "./frontmatter";
  * WIDEN disclosure past what the #1196 consent 2x2 permits is a validation
  * failure — we fail closed, mirroring the `{ error: string }` return of
  * `buildArticleBlock()`.
+ *
+ * Tier types, ordering, and #1196 derivation now live in packages/fair (#1453).
+ * They are re-exported here under their original names so all existing callers
+ * (tests, projection reactor, etc.) continue to work without import changes.
  */
 
-/** Release tier, ordered least→most restrictive by {@link TIER_RANK}. */
-export type ReleaseTier = "silent" | "on-consent" | "owner-only" | "never";
+// ── Canonical tier types (re-exported from @imajin/fair) ─────────────────────
+
+// Alias so existing callers that use `ReleaseTier` still work.
+export type { FairReleaseTier as ReleaseTier } from "@imajin/fair";
+export type { FieldClassification } from "@imajin/fair";
+export {
+  FAIR_RELEASE_TIERS as RELEASE_TIERS,
+  TIER_RANK,
+  deriveReleaseTier,
+} from "@imajin/fair";
+
+// Import locally for use in the parse pipeline below.
+import {
+  FAIR_RELEASE_TIERS as RELEASE_TIERS,
+  TIER_RANK,
+  deriveReleaseTier,
+  type FairReleaseTier as ReleaseTier,
+} from "@imajin/fair";
+
+// ── Asset-side parse pipeline (stays here — depends on frontmatter) ─────────
 
 /** Proof grade carried alongside a released field. */
 export type ProofGrade = "signed" | "asserted";
 
-export const RELEASE_TIERS: readonly ReleaseTier[] = [
-  "silent",
-  "on-consent",
-  "owner-only",
-  "never",
-] as const;
-
 export const PROOF_GRADES: readonly ProofGrade[] = ["signed", "asserted"] as const;
-
-/**
- * Restrictiveness ranking. A higher rank discloses LESS. An override is only
- * valid when its rank is >= the derived tier's rank (it may only tighten).
- */
-export const TIER_RANK: Record<ReleaseTier, number> = {
-  silent: 0,
-  "on-consent": 1,
-  "owner-only": 2,
-  never: 3,
-};
-
-/**
- * The #1196 consent 2x2 classification of a field/row. The two axes are the
- * same ones that tier consent scopes:
- *   - `disclosesOthers`: does releasing this field reveal data about someone
- *     other than the document owner?
- *   - `sensitive`: is the field sensitive?
- */
-export interface FieldClassification {
-  disclosesOthers: boolean;
-  sensitive: boolean;
-}
 
 /** The resolved, typed release policy for a single field/row (the shape #1207 consumes). */
 export interface FieldReleasePolicy {
@@ -77,30 +69,6 @@ export interface ParsedReleasePolicy {
   data: Record<string, unknown>;
   body: string;
   releasePolicy: ReleasePolicy;
-}
-
-/**
- * Derive the default release tier from the #1196 consent 2x2.
- *
- * CANONICAL IMPLEMENTATION of the #1196 decision record. #1196 is a governing
- * decision record (closed 2026-07-01), not a build ticket — it defines the 2x2
- * rule in prose but ships no code. This function is the single executable
- * authority for that rule; there is no separate #1196 implementation to
- * reconcile with. Restrictiveness is monotonic in both axes — each axis that is
- * `true` discloses less, and both-true is the most restrictive:
- *
- *   self,     not sensitive  → silent      (freely projectable)
- *   discloses-others, not sensitive → on-consent  (needs others' consent)
- *   self,     sensitive      → owner-only  (owner sees it, nobody else)
- *   discloses-others, sensitive → never    (most restrictive default)
- *
- * Pure helper. If the #1196 rule ever changes, change it here (the one place).
- */
-export function deriveReleaseTier(classification: FieldClassification): ReleaseTier {
-  if (!classification.disclosesOthers && !classification.sensitive) return "silent";
-  if (classification.disclosesOthers && !classification.sensitive) return "on-consent";
-  if (!classification.disclosesOthers && classification.sensitive) return "owner-only";
-  return "never";
 }
 
 function isReleaseTier(value: unknown): value is ReleaseTier {
@@ -167,12 +135,13 @@ function parseFieldEntry(
         )} (expected ${RELEASE_TIERS.join(" | ")})`,
       };
     }
-    if (TIER_RANK[raw.release] < TIER_RANK[derived]) {
+    const overrideTier: ReleaseTier = raw.release;
+    if (TIER_RANK[overrideTier] < TIER_RANK[derived]) {
       return {
-        error: `release policy for field "${field}": release "${raw.release}" widens disclosure past the derived tier "${derived}" (overrides may only tighten)`,
+        error: `release policy for field "${field}": release "${overrideTier}" widens disclosure past the derived tier "${derived}" (overrides may only tighten)`,
       };
     }
-    release = raw.release;
+    release = overrideTier;
   }
 
   if (raw.viewer !== undefined && typeof raw.viewer !== "string") {
