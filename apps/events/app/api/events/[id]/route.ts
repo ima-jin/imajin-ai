@@ -240,7 +240,8 @@ export async function PUT(
     // Build update object — validates nameDisplayPolicy when present
     const updatesResult = buildEventUpdates(body);
     if ('error' in updatesResult) {
-      return NextResponse.json({ error: updatesResult.error }, { status: updatesResult.status });
+      const { error, status } = updatesResult as { error: string; status: number };
+      return NextResponse.json({ error }, { status });
     }
 
     const [updated] = await db
