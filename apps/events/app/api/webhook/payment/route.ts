@@ -14,14 +14,16 @@ import { db, events, ticketTypes, tickets, orders } from '@/src/db';
 
 const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
-import { generateQRCode } from '@/src/lib/email';
 import { backfillContactEmail } from '@/src/lib/contact-email';
 import { createOrderWithTickets } from '@/src/lib/checkout-common';
-import { randomBytes } from 'node:crypto';
-import { eventUrl, eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
-import { getClient } from '@imajin/db';
-import { publish } from '@imajin/bus';
+import { eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
 import * as bus from '@imajin/bus';
+import {
+  parseCartFromMetadata,
+  createOnboardToken,
+  syncBuyerToEventChat,
+  publishConfirmationEmails,
+} from '@/src/lib/webhook-payment-helpers';
 
 // Shared secret between pay service and events service.
 // In production, use proper service-to-service auth.
@@ -213,19 +215,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const customerEmail = payload.customerEmail || null;
 
   // Parse cart: multi-type (cart JSON) or legacy single-type
-  interface CartEntry { ticketTypeId: string; quantity: number }
-  let cart: CartEntry[];
-  if (metadata.cart) {
-    try {
-      cart = JSON.parse(metadata.cart);
-    } catch {
-      throw new Error(`Invalid cart metadata: ${metadata.cart}`);
-    }
-  } else if (metadata.ticketTypeId) {
-    cart = [{ ticketTypeId: metadata.ticketTypeId, quantity: Number.parseInt(metadata.quantity || '1') }];
-  } else {
-    throw new Error('No cart or ticketTypeId in metadata');
-  }
+  const cart = parseCartFromMetadata(metadata);
   const totalQuantity = cart.reduce((sum, c) => sum + c.quantity, 0);
 
   // Idempotency: check if an order for this Stripe session already exists
@@ -333,20 +323,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   // Add buyer to event chat conversation_members (non-fatal). Event DID = conversation DID.
   const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
   if (CHAT_URL) {
-    try {
-      const memberRes = await fetch(`${CHAT_URL}/api/d/${encodeURIComponent(event.did)}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberDid: ownerDid, role: 'member' }),
-      });
-      if (memberRes.ok) {
-        log.info({ ownerDid, eventDid: event.did }, 'Added buyer to event chat');
-      } else {
-        log.warn({ status: memberRes.status }, 'Failed to add to event chat — non-fatal');
-      }
-    } catch (chatError) {
-      log.warn({ err: String(chatError) }, 'Event chat member sync failed (non-fatal)');
-    }
+    await syncBuyerToEventChat(CHAT_URL, event.did, ownerDid, log);
   }
 
   // Trigger settlement and notification signals via bus
@@ -376,157 +353,38 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     log.error({ err: String(settleError) }, '[settle] Unexpected settlement error (non-fatal)');
   }
 
-  // Send confirmation email with onboard verification link
-  const eventDate = new Date(event.startsAt);
-  const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || buildPublicUrlAbsolute('auth');
+  // Build onboard token for magic-link auth in confirmation email
   const EVENTS_URL = buildPublicUrlAbsolute('events');
+  const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || buildPublicUrlAbsolute('auth');
 
-  // Determine registration-pending tickets early so the onboard token can
-  // redirect to the register page when applicable.
-  const bundleTickets = createdTickets.filter(
-    (t) => t.registrationStatus !== 'pending',
-  );
-  const registrationPendingTickets = createdTickets.filter(
-    (t) => t.registrationStatus === 'pending',
-  );
+  const registrationPendingTickets = createdTickets.filter((t) => t.registrationStatus === 'pending');
   const ctaTicket = registrationPendingTickets[0] ?? null;
   const anyPendingRegistration = registrationPendingTickets.length > 0;
 
-  // Magic-link onboard token — redirect to register page when there are
-  // pending registrations so users land authenticated.
-  let onboardToken: string | null = null;
   const onboardRedirectUrl = ctaTicket
     ? eventRegisterUrl(EVENTS_URL, event.id, ctaTicket.id)
-    : eventUrl(EVENTS_URL, event.id);
-  try {
-    const authSql = getClient();
-    onboardToken = randomBytes(36).toString('hex');
-    const onboardId = `obt_${randomBytes(8).toString('hex')}`;
+    : eventMyTicketsUrl(EVENTS_URL, event.id);
 
-    await authSql`
-      INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
-      VALUES (
-        ${onboardId},
-        ${customerEmail.toLowerCase().trim()},
-        ${customerName || null},
-        ${onboardToken},
-        ${onboardRedirectUrl},
-        ${'access your ticket for ' + event.title},
-        ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
-      )
-    `;
-  } catch (onboardError) {
-    log.error({ customerEmail, err: String(onboardError) }, '[webhook] Onboard token creation failed (non-fatal)');
-    onboardToken = null;
-  }
-
+  const onboardToken = await createOnboardToken(customerEmail, customerName, onboardRedirectUrl, event.title, log);
   const magicLink = onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : undefined;
+  const registrationUrl = anyPendingRegistration
+    ? (onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id))
+    : eventMyTicketsUrl(EVENTS_URL, event.id);
 
-  // Registration CTA goes through magic link for auth; falls back to naked URL.
-  let registrationUrl: string;
-  if (anyPendingRegistration) {
-    registrationUrl = onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id);
-  } else {
-    registrationUrl = eventMyTicketsUrl(EVENTS_URL, event.id);
-  }
-
-  let eventImageUrl: string | undefined;
-  if (event.imageUrl) {
-    eventImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
-  }
-
-  const formattedEventDate = eventDate.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+  await publishConfirmationEmails({
+    customerEmail,
+    customerName,
+    ownerDid,
+    event,
+    firstTypeName: firstType.name,
+    createdTickets,
+    currency,
+    amountTotal,
+    paymentId,
+    magicLink,
+    registrationUrl,
+    log,
   });
-  const formattedEventTime = eventDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  });
-  const formattedTotal = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency.toUpperCase(),
-  }).format(amountTotal / 100);
-  const quantity = createdTickets.length;
-  const unitPrice = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency.toUpperCase(),
-  }).format(amountTotal / 100 / quantity);
-
-  // bundleTickets, registrationPendingTickets, ctaTicket, anyPendingRegistration,
-  // and registrationUrl are computed above (before onboard token creation).
-
-  // Always publish a purchase receipt to the buyer
-  try {
-    publish('ticket.receipt', {
-      issuer: ownerDid,
-      subject: ownerDid,
-      scope: 'events',
-      payload: {
-        email: customerEmail,
-        buyerName: customerName || undefined,
-        eventTitle: event.title,
-        eventDate: formattedEventDate,
-        eventTime: formattedEventTime,
-        ticketSummary: [{ typeName: firstType.name, quantity, unitPrice }],
-        totalPaid: formattedTotal,
-        paymentMethod: paymentId ? 'Credit Card' : 'E-Transfer',
-        registrationUrl,
-        eventImageUrl,
-        hasRegistrationRequired: anyPendingRegistration,
-        context_id: event.id,
-        context_type: 'event',
-      },
-    }).catch((err) => log.error({ customerEmail, err: String(err) }, '[webhook] Purchase receipt publish error'));
-  } catch (emailError) {
-    log.error({ customerEmail, err: String(emailError) }, '[webhook] Purchase receipt publish failed');
-  }
-
-  // Only publish the ticket confirmation (with QR) immediately for no-registration tickets
-  if (bundleTickets.length > 0) {
-    try {
-      const ticketsWithQr = await Promise.all(
-        bundleTickets.map(async (t) => ({
-          id: t.id,
-          qrCodeDataUri: await generateQRCode(t.id),
-        }))
-      );
-      const bundleCents = bundleTickets.reduce((sum, t) => sum + (t.pricePaid ?? 0), 0);
-      const bundleFormatted = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currency.toUpperCase(),
-      }).format(bundleCents / 100);
-
-      publish('ticket.confirmed', {
-        issuer: ownerDid,
-        subject: ownerDid,
-        scope: 'events',
-        payload: {
-          to: customerEmail,
-          email: customerEmail,
-          eventTitle: event.title,
-          ticketType: firstType.name,
-          ticketId: bundleTickets[0].id,
-          eventDate: formattedEventDate,
-          eventTime: formattedEventTime,
-          isVirtual: event.isVirtual ?? false,
-          venue: event.venue ?? undefined,
-          price: bundleFormatted,
-          magicLink,
-          eventImageUrl,
-          eventUrl: eventUrl(EVENTS_URL, event.id),
-          tickets: ticketsWithQr,
-          context_id: event.id,
-          context_type: 'event',
-        },
-      }).catch((err) => log.error({ customerEmail, err: String(err) }, '[webhook] Ticket confirmed publish error'));
-    } catch (emailError) {
-      log.error({ customerEmail, err: String(emailError) }, '[webhook] Ticket confirmation publish failed');
-    }
-  }
 }
 
 async function handlePaymentFailed(payload: PaymentWebhookPayload) {

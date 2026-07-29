@@ -2,6 +2,7 @@
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { revalidatePath } from 'next/cache';
+import { buildEventUpdates, syncNamePolicyToChat } from '@/src/lib/event-update-helpers';
 
 const log = createLogger('events');
 
@@ -235,87 +236,23 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const {
-      title,
-      description,
-      startsAt,
-      endsAt,
-      locationType,
-      isVirtual,
-      virtualUrl,
-      venue,
-      address,
-      city,
-      country,
-      imageUrl,
-      imageAssetId,
-      tags,
-      status,
-      metadata,
-      nameDisplayPolicy,
-      chatEnabled,
-    } = body;
 
-    const VALID_NAME_POLICIES = ['real_name', 'handle', 'anonymous', 'attendee_choice'];
-
-    // Build update object with only provided fields
-    const updates: Record<string, any> = { updatedAt: new Date() };
-    if (title !== undefined) updates.title = title;
-    if (description !== undefined) updates.description = description;
-    if (startsAt !== undefined) updates.startsAt = new Date(startsAt);
-    if (endsAt !== undefined) updates.endsAt = endsAt ? new Date(endsAt) : null;
-    if (body.timezone !== undefined) updates.timezone = body.timezone;
-    if (locationType !== undefined) {
-      updates.locationType = locationType;
-      updates.isVirtual = locationType !== 'physical';
-    } else if (isVirtual !== undefined) {
-      updates.isVirtual = isVirtual;
+    // Build update object — validates nameDisplayPolicy when present
+    const updatesResult = buildEventUpdates(body);
+    if ('error' in updatesResult) {
+      return NextResponse.json({ error: updatesResult.error }, { status: updatesResult.status });
     }
-    if (virtualUrl !== undefined) updates.virtualUrl = virtualUrl;
-    if (venue !== undefined) updates.venue = venue;
-    if (address !== undefined) updates.address = address;
-    if (city !== undefined) updates.city = city;
-    if (country !== undefined) updates.country = country;
-    if (imageUrl !== undefined) updates.imageUrl = imageUrl;
-    if (imageAssetId !== undefined) updates.imageAssetId = imageAssetId;
-    if (tags !== undefined) updates.tags = tags;
-    if (status !== undefined) updates.status = status;
-    if (metadata !== undefined) updates.metadata = metadata;
-    if (nameDisplayPolicy !== undefined) {
-      if (!VALID_NAME_POLICIES.includes(nameDisplayPolicy)) {
-        return NextResponse.json({ error: 'Invalid nameDisplayPolicy' }, { status: 400 });
-      }
-      updates.nameDisplayPolicy = nameDisplayPolicy;
-    }
-    if (body.accessMode !== undefined) updates.accessMode = body.accessMode;
-    if (body.courseSlug !== undefined) updates.courseSlug = body.courseSlug || null;
-    if (body.emtEmail !== undefined) updates.emtEmail = body.emtEmail || null;
-    if (chatEnabled !== undefined) updates.chatEnabled = chatEnabled;
 
     const [updated] = await db
       .update(events)
-      .set(updates)
+      .set(updatesResult)
       .where(eq(events.id, id))
       .returning();
 
     // Sync name display policy to chat conversation context if it changed
-    if (nameDisplayPolicy !== undefined && updated) {
-      const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
-      if (CHAT_URL) {
-        try {
-          const internalKey = process.env.AUTH_INTERNAL_API_KEY;
-          await fetch(`${CHAT_URL}/api/d/${encodeURIComponent(updated.did)}/context`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(internalKey ? { 'Authorization': `Bearer ${internalKey}` } : {}),
-            },
-            body: JSON.stringify({ context: { nameDisplayPolicy } }),
-          });
-        } catch {
-          // Best-effort sync
-        }
-      }
+    const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
+    if (body.nameDisplayPolicy !== undefined && updated && CHAT_URL) {
+      await syncNamePolicyToChat(CHAT_URL, updated.did, body.nameDisplayPolicy);
     }
 
     // Bust the cache for this event page

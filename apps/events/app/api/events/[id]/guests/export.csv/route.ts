@@ -1,9 +1,14 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 import { resolveAttendee } from '@/src/lib/attendee';
+import {
+  warnDuplicateSurveyResponses,
+  loadSurveyFormData,
+  buildSurveyValues,
+} from '@/src/lib/guest-export-helpers';
 
 const log = createLogger('events');
 const sql = getClient();
@@ -14,37 +19,6 @@ function csvEscape(v: unknown): string {
   const s = String(v);
   if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
   return s;
-}
-
-/** Strip HTML tags and collapse whitespace for clean CSV headers */
-function stripHtml(s: string): string {
-  let out = '';
-  let inTag = false;
-  for (const ch of s) {
-    if (ch === '<') {
-      inTag = true;
-      continue;
-    }
-    if (ch === '>') {
-      inTag = false;
-      continue;
-    }
-    if (!inTag) out += ch;
-  }
-
-  let collapsed = '';
-  let prevWasSpace = false;
-  for (const ch of out) {
-    const isSpace = ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
-    if (isSpace) {
-      if (!prevWasSpace) collapsed += ' ';
-      prevWasSpace = true;
-    } else {
-      collapsed += ch;
-      prevWasSpace = false;
-    }
-  }
-  return collapsed.trim();
 }
 
 function csvRow(values: unknown[]): string {
@@ -186,21 +160,7 @@ export async function GET(
 
     // Detect duplicate survey responses and warn
     const ticketIds = ticketRows.map((t: any) => t.id);
-    if (ticketIds.length > 0) {
-      const dupRows = await sql`
-        SELECT ticket_id, COUNT(*) as cnt
-        FROM dykil.survey_responses
-        WHERE ticket_id = ANY(${ticketIds})
-        GROUP BY ticket_id
-        HAVING COUNT(*) > 1
-      `;
-      for (const row of dupRows) {
-        log.warn(
-          { ticketId: row.ticket_id, count: Number(row.cnt) },
-          'Ticket has multiple survey responses; using most recent'
-        );
-      }
-    }
+    await warnDuplicateSurveyResponses(ticketIds, sql, log);
 
     if (summaryMode) {
       const total = ticketRows.length;
@@ -224,39 +184,8 @@ export async function GET(
     // Find distinct form IDs used by this event's ticket types
     const formIds = [...new Set(ticketRows.map((t: any) => t.registration_form_id).filter(Boolean))] as string[];
 
-    // Fetch form definitions from Dykil and build survey column list
-    const surveyColumns: string[] = [];
-    const formFieldMap = new Map<string, Array<{ name: string; title: string; exportLabel?: string }>>();
-
-    if (formIds.length > 0) {
-      const formRows = await sql`
-        SELECT id, fields FROM dykil.surveys WHERE id = ANY(${formIds})
-      `;
-      for (const row of formRows) {
-        const rawFields = row.fields || {};
-        let fields: Array<{ name: string; title?: string; exportLabel?: string }>;
-        if (Array.isArray(rawFields)) {
-          fields = rawFields;
-        } else if (Array.isArray(rawFields.elements)) {
-          fields = rawFields.elements;
-        } else {
-          fields = [];
-        }
-        const mappedFields = fields.map((f: any) => ({
-          name: f.name,
-          title: f.title || f.name,
-          exportLabel: f.exportLabel,
-        }));
-        formFieldMap.set(row.id, mappedFields);
-        for (const f of mappedFields) {
-          const label = f.exportLabel || stripHtml(f.title);
-          const colName = `Survey: ${label}`;
-          if (!surveyColumns.includes(colName)) {
-            surveyColumns.push(colName);
-          }
-        }
-      }
-    }
+    // Fetch form definitions and build survey column list
+    const { surveyColumns, formFieldMap } = await loadSurveyFormData(formIds, sql);
 
     // Build CSV
     const dateStr = new Date().toISOString().split('T')[0];
@@ -329,24 +258,11 @@ export async function GET(
       ];
 
       // Survey answers
-      const surveyValues: string[] = [];
-      if (t.survey_form_id && formFieldMap.has(t.survey_form_id)) {
-        const fields = formFieldMap.get(t.survey_form_id)!;
-        for (const colName of surveyColumns) {
-          const question = colName.replaceAll('Survey: ', '');
-          const field = fields.find((f) => (f.exportLabel || stripHtml(f.title)) === question);
-          if (field && field.name in surveyAnswers) {
-            const ans = surveyAnswers[field.name];
-            surveyValues.push(ans === null || ans === undefined ? '' : String(ans));
-          } else {
-            surveyValues.push('');
-          }
-        }
-      } else {
-        for (const _ of surveyColumns) {
-          surveyValues.push('');
-        }
-      }
+      const surveyValues = buildSurveyValues(
+        { survey_form_id: t.survey_form_id, survey_answers: surveyAnswers as any },
+        surveyColumns,
+        formFieldMap,
+      );
 
       csvBody += csvRow([...baseValues, ...surveyValues, t.owner_did || '']);
     }

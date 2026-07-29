@@ -16,21 +16,16 @@ import {
   resolveCheckoutIdentity,
   validateInviteAccess,
   CheckoutValidationError,
-  type CartItem,
 } from '@/src/lib/checkout-common';
+import { normalizeCheckoutCart, validateCheckoutCartLimits } from '@/src/lib/checkout-helpers';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;
 
-interface CheckoutCartItem {
-  ticketTypeId: string;
-  quantity: number;
-}
-
 interface CheckoutRequest {
   eventId: string;
   // Multi-type cart
-  items?: CheckoutCartItem[];
+  items?: Array<{ ticketTypeId: string; quantity: number }>;
   // Legacy single-type (still accepted)
   ticketTypeId?: string;
   quantity?: number;
@@ -56,26 +51,11 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     }
 
     // Normalize to cart: accept items[] or legacy ticketTypeId+quantity
-    let rawItems: CheckoutCartItem[];
-    if (body.items && body.items.length > 0) {
-      rawItems = body.items;
-    } else if (body.ticketTypeId) {
-      rawItems = [{ ticketTypeId: body.ticketTypeId, quantity: body.quantity ?? 1 }];
-    } else {
-      rawItems = [];
+    const cartResult = normalizeCheckoutCart(body);
+    if (!Array.isArray(cartResult)) {
+      return NextResponse.json({ error: cartResult.error }, { status: cartResult.status });
     }
-
-    if (rawItems.length === 0) {
-      return NextResponse.json(
-        { error: 'items or ticketTypeId is required' },
-        { status: 400 }
-      );
-    }
-
-    const cart: CartItem[] = rawItems.map((item) => ({
-      ticketTypeId: item.ticketTypeId,
-      quantity: Math.max(1, Math.min(20, Math.floor(item.quantity ?? 1))),
-    }));
+    const cart = cartResult;
 
     // Fetch event + status check up-front so invite check (which needs
     // accessMode) can run before per-type validation.
@@ -109,25 +89,8 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       cart,
     );
 
-    for (const item of cart) {
-      const tt = typesById.get(item.ticketTypeId)!;
-      const maxPerOrder = Math.min(tt.maxPerOrder ?? eventMeta.maxTicketsPerOrder ?? 10, 20);
-      if (item.quantity > maxPerOrder) {
-        return NextResponse.json(
-          { error: `Maximum ${maxPerOrder} ${tt.name} tickets per order` },
-          { status: 400 }
-        );
-      }
-      if (tt.quantity !== null) {
-        const available = tt.quantity - (tt.sold ?? 0);
-        if (available < item.quantity) {
-          return NextResponse.json(
-            { error: `Only ${available} ${tt.name} ticket${available === 1 ? '' : 's'} available` },
-            { status: 409 }
-          );
-        }
-      }
-    }
+    const cartError = validateCheckoutCartLimits(cart, typesById, eventMeta);
+    if (cartError) return cartError;
 
     const identity = await resolveCheckoutIdentity(request, { email: body.email }, log);
     // Stripe only attributes purchases to hard-tier sessions; soft sessions
