@@ -9,6 +9,7 @@ import { corsHeaders } from '@imajin/config';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq, and, asc, isNull } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
+import { buildTierUpdates } from '@/src/lib/tiers-helpers';
 
 /**
  * GET /api/events/[id]/tiers - List public ticket tiers (excludes access-code-protected)
@@ -168,7 +169,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { tierId, name, description, price, currency, quantity, perks, sortOrder, requiresRegistration, registrationFormId, accessCode } = body;
+    const { tierId } = body;
 
     if (!tierId) {
       return NextResponse.json({ error: 'tierId is required' }, { status: 400 });
@@ -188,68 +189,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Tier not found' }, { status: 404 });
     }
 
-    const updates: Record<string, any> = {};
-    const violations: string[] = [];
-
-    // Name, description, sort order, registration fields - freely editable
-    if (name !== undefined) updates.name = name;
-    if (description !== undefined) updates.description = description;
-    if (sortOrder !== undefined) updates.sortOrder = sortOrder;
-    if (requiresRegistration !== undefined) updates.requiresRegistration = requiresRegistration;
-    if (registrationFormId !== undefined) updates.registrationFormId = registrationFormId || null;
-    if (accessCode !== undefined) updates.accessCode = accessCode?.trim() || null;
-
-    // Currency - freely editable if no tickets sold
-    if (currency !== undefined) {
-      const sold = tier.sold || 0;
-      if (sold === 0) {
-        updates.currency = currency;
-      } else if (currency !== tier.currency) {
-        violations.push(`currency cannot be changed after tickets are sold`);
-      }
-    }
-
-    // Price - freely editable if no tickets sold, can only decrease after sales
-    if (price !== undefined) {
-      const sold = tier.sold || 0;
-      if (sold === 0) {
-        updates.price = price;
-      } else if (price > tier.price) {
-        violations.push(`price can only decrease after tickets are sold (current: ${tier.price}, requested: ${price})`);
-      } else {
-        updates.price = price;
-      }
-    }
-
-    // Quantity - can increase, or decrease to >= sold
-    if (quantity !== undefined) {
-      const sold = tier.sold || 0;
-      if (quantity !== null && quantity < sold) {
-        violations.push(`quantity cannot be less than sold count (sold: ${sold}, requested: ${quantity})`);
-      } else {
-        updates.quantity = quantity;
-      }
-    }
-
-    // Perks - freely editable if no tickets sold, append-only after sales
-    if (perks !== undefined) {
-      const sold = tier.sold || 0;
-      if (sold === 0) {
-        // No tickets sold — free to edit
-        updates.perks = perks;
-      } else {
-        // Tickets sold — can only add, not remove
-        const currentPerks = (tier.perks as string[]) || [];
-        const newPerks = perks as string[];
-        const removedPerks = currentPerks.filter(p => !newPerks.includes(p));
-        
-        if (removedPerks.length > 0) {
-          violations.push(`cannot remove perks after tickets are sold: ${removedPerks.join(', ')}`);
-        } else {
-          updates.perks = newPerks;
-        }
-      }
-    }
+    const { updates, violations } = buildTierUpdates(body, tier);
 
     if (violations.length > 0) {
       return NextResponse.json({

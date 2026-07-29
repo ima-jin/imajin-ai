@@ -8,28 +8,24 @@
 
 import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { db, events, tickets, orders } from '@/src/db';
-import { eq, and } from 'drizzle-orm';
-import { publish } from '@imajin/bus';
-import { getClient } from '@imajin/db';
+import { db, events } from '@/src/db';
+import { eq } from 'drizzle-orm';
 import {
   validateCart,
   resolveCheckoutIdentity,
   validateInviteAccess,
   createOrderWithTickets,
   CheckoutValidationError,
-  type CartItem,
 } from '@/src/lib/checkout-common';
-import { eventUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
+import {
+  normalizeAndCoalesceCart,
+  handleAnonymousMagicLink,
+  findExistingEtransferOrder,
+  resolveBuyerEmailFromDb,
+  publishReservationEmail,
+} from '@/src/lib/etransfer-helpers';
 
-const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const HOLD_HOURS = 72;
-const MAX_QUANTITY = 20;
-
-interface ETransferCartItem {
-  ticketTypeId: string;
-  quantity: number;
-}
 
 interface ETransferCheckoutRequest {
   eventId: string;
@@ -37,7 +33,7 @@ interface ETransferCheckoutRequest {
   ticketTypeId?: string;
   quantity?: number;
   // Multi-type cart payload
-  items?: ETransferCartItem[];
+  items?: Array<{ ticketTypeId: string; quantity: number }>;
   email?: string;
   name?: string;
   invite?: string;
@@ -51,36 +47,15 @@ export const POST = withLogger('events', async (request, { log }) => {
       return NextResponse.json({ error: 'eventId is required' }, { status: 400 });
     }
 
-    // Normalize to a cart. Accept either legacy {ticketTypeId, quantity} or {items: [...]}.
-    let rawItems: ETransferCartItem[];
-    if (body.items && body.items.length > 0) {
-      rawItems = body.items;
-    } else if (body.ticketTypeId) {
-      rawItems = [{ ticketTypeId: body.ticketTypeId, quantity: body.quantity ?? 1 }];
-    } else {
-      rawItems = [];
+    // Normalize + coalesce cart items (handles legacy and multi-type payloads)
+    const cartResult = normalizeAndCoalesceCart(body);
+    if ('error' in cartResult) {
+      return NextResponse.json({ error: cartResult.error }, { status: cartResult.status });
     }
+    const { cart, cartMap, totalQuantity } = cartResult;
 
-    if (rawItems.length === 0) {
-      return NextResponse.json({ error: 'items or ticketTypeId is required' }, { status: 400 });
-    }
-
-    // Coalesce duplicates and clamp quantities
-    const cartMap = new Map<string, number>();
-    for (const item of rawItems) {
-      if (!item.ticketTypeId) continue;
-      const q = Math.max(1, Math.min(MAX_QUANTITY, Math.floor(item.quantity ?? 1)));
-      cartMap.set(item.ticketTypeId, (cartMap.get(item.ticketTypeId) ?? 0) + q);
-    }
-    const cart: CartItem[] = Array.from(cartMap.entries()).map(([ticketTypeId, quantity]) => ({
-      ticketTypeId,
-      quantity: Math.min(MAX_QUANTITY, quantity),
-    }));
-    const totalQuantity = cart.reduce((sum, c) => sum + c.quantity, 0);
-
-    // Resolve identity from session (any tier). The new-magic-link branch
-    // below handles the anonymous-with-email case before we touch any other
-    // helpers, since it short-circuits to a "verification email sent" reply.
+    // Resolve identity from session (any tier). The anonymous-with-email branch
+    // short-circuits to a "verification email sent" reply.
     const identity = await resolveCheckoutIdentity(request, { email: body.email }, log);
 
     let ownerDid: string;
@@ -94,67 +69,17 @@ export const POST = withLogger('events', async (request, { log }) => {
       if (!ownerEmail) {
         return NextResponse.json(
           { error: 'Email required to send your ticket', field: 'email' },
-          { status: 400 }
+          { status: 400 },
         );
       }
     } else if (body.email) {
       // Anonymous buyer with an email but no session: send a magic-link
-      // verification email instead of creating a soft DID + hold blindly.
-      // This proves the email is real and owned before we reserve inventory
-      // or send any reservation email.
-      // Tab-A-canonical: redirect goes to a simple affirmation page; cart stays
-      // in component state and tab A picks up verification via polling.
-      const eventsBase = buildPublicUrlAbsolute('events');
-      const redirectUrl = `${eventUrl(eventsBase, body.eventId)}${
-        body.invite ? `?invite=${encodeURIComponent(body.invite)}` : ''
-      }`;
-      let pollHandle: string | undefined;
-      try {
-        const onboardRes = await fetch(`${AUTH_URL}/api/onboard`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: body.email,
-            name: body.name,
-            redirectUrl,
-            context: 'reserve your tickets',
-            wantPolling: true,
-          }),
-        });
-        if (!onboardRes.ok) {
-          const errBody = await onboardRes.text().catch(() => '');
-          log.error({ status: onboardRes.status, body: errBody }, 'Magic-link send failed');
-          // Issue #13: pass through kernel status codes so the client can show
-          // accurate messages (e.g. 429 rate-limit, 410 gone).
-          const propagateStatus = onboardRes.status === 429 || onboardRes.status === 410
-            ? onboardRes.status
-            : 502;
-          let message = 'Could not send verification email. Please try again.';
-          try {
-            const parsed = JSON.parse(errBody);
-            if (parsed.error) message = parsed.error;
-          } catch { /* ignore parse failure, use generic */ }
-          return NextResponse.json({ error: message }, { status: propagateStatus });
-        }
-        const onboardData = await onboardRes.json();
-        pollHandle = onboardData.pollHandle;
-      } catch (err) {
-        log.error({ err: String(err) }, 'Magic-link send error');
-        return NextResponse.json(
-          { error: 'Could not send verification email. Please try again.' },
-          { status: 502 }
-        );
-      }
-      return NextResponse.json({
-        verificationSent: true,
-        email: body.email,
-        ...(pollHandle ? { pollHandle } : {}),
-        message: `We sent a verification link to ${body.email}. Click it to confirm your email and reserve your ticket${totalQuantity > 1 ? 's' : ''}.`,
-      });
+      // verification email. This proves email ownership before reserving inventory.
+      return handleAnonymousMagicLink({ email: body.email, name: body.name, eventId: body.eventId, invite: body.invite, totalQuantity, log });
     } else {
       return NextResponse.json(
         { error: 'Not authenticated. Please log in or provide an email address.' },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -179,61 +104,17 @@ export const POST = withLogger('events', async (request, { log }) => {
 
     // First validateCart pass: types exist + currency consistency. Availability
     // is deferred until AFTER duplicate-pending-order detection so a buyer
-    // with an existing hold can still retrieve it when stock has since sold
-    // out.
+    // with an existing hold can still retrieve it when stock has since sold out.
     const initial = await validateCart(body.eventId, cart);
     const cartCurrency = initial.currency;
 
-    // Look for an existing pending EMT order from this buyer covering exactly
-    // the same cart shape (same ticket types in same quantities). If found,
-    // return its instructions instead of creating a duplicate hold.
-    const existingOrders = await db
-      .select()
-      .from(orders)
-      .where(
-        and(
-          eq(orders.eventId, body.eventId),
-          eq(orders.buyerDid, ownerDid),
-          eq(orders.status, 'pending'),
-          eq(orders.paymentMethod, 'etransfer')
-        )
-      );
-
-    for (const existing of existingOrders) {
-      const heldTickets = await db
-        .select()
-        .from(tickets)
-        .where(eq(tickets.orderId, existing.id));
-      const existingCart = new Map<string, number>();
-      for (const t of heldTickets) {
-        existingCart.set(t.ticketTypeId, (existingCart.get(t.ticketTypeId) ?? 0) + 1);
-      }
-      const shapeMatches =
-        existingCart.size === cartMap.size &&
-        Array.from(cartMap.entries()).every(([k, v]) => existingCart.get(k) === v);
-      if (!shapeMatches) continue;
-
-      const earliestDeadline = heldTickets
-        .map((t) => t.holdExpiresAt)
-        .filter((d): d is Date => !!d)
-        .sort((a, b) => a.getTime() - b.getTime())[0];
-      return NextResponse.json({
-        orderId: existing.id,
-        ticketIds: heldTickets.map((t) => t.id),
-        instructions: {
-          email: etransferEmail,
-          amount: existing.amountTotal / 100,
-          currency: existing.currency,
-          memo: `ORD-${existing.id}`,
-          deadline: earliestDeadline,
-          quantity: existing.quantity,
-          message: `Your ${existing.quantity} ticket${existing.quantity > 1 ? 's are' : ' is'} reserved. Send one e-Transfer for the full amount; once we confirm it, your tickets will be activated.`,
-        },
-      });
+    // Return existing pending order when the buyer already has a matching hold.
+    const existingOrder = await findExistingEtransferOrder(body.eventId, ownerDid, cartMap, etransferEmail);
+    if (existingOrder) {
+      return NextResponse.json(existingOrder);
     }
 
-    // Second pass: release expired holds + availability check. Re-fetches
-    // types so post-release sold counts are accurate.
+    // Second pass: release expired holds + availability check.
     const validated = await validateCart(body.eventId, cart, {
       releaseExpiredHolds: true,
       checkAvailability: true,
@@ -243,21 +124,8 @@ export const POST = withLogger('events', async (request, { log }) => {
     const holdUntil = new Date();
     holdUntil.setHours(holdUntil.getHours() + HOLD_HOURS);
 
-    // Resolve the buyer's email up-front so it can be stored on the order row.
-    // Falls back to auth.identities.contact_email when the request didn't carry
-    // one (e.g. logged-in user with no body.email).
-    let buyerEmail: string | undefined = ownerEmail;
-    if (!buyerEmail) {
-      try {
-        const sql = getClient();
-        const rows = await sql<{ contact_email: string | null }[]>`
-          SELECT contact_email FROM auth.identities WHERE id = ${ownerDid} LIMIT 1
-        `;
-        buyerEmail = rows[0]?.contact_email ?? undefined;
-      } catch (err) {
-        log.warn({ err: String(err) }, 'Failed to resolve buyer email for reservation');
-      }
-    }
+    // Resolve buyer email for order storage + notification.
+    const buyerEmail = await resolveBuyerEmailFromDb(ownerDid, ownerEmail, log);
 
     const { order, tickets: insertedTickets } = await createOrderWithTickets({
       eventId: body.eventId,
@@ -278,65 +146,20 @@ export const POST = withLogger('events', async (request, { log }) => {
     const memo = `ORD-${order.id}`;
     const amount = validated.totalAmount / 100;
 
-    // Send the buyer a 'reserved — not yet confirmed' email so they have a
-    // record of the hold, the memo, and the address to send to.
-    if (buyerEmail) {
-      const EVENTS_URL = buildPublicUrlAbsolute('events');
-      const eventDate = new Date(event.startsAt);
-      let eventImageUrl: string | undefined;
-      if (event.imageUrl) {
-        eventImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
-      }
-      const summary = cart.map((item) => ({
-        typeName: validated.typesById.get(item.ticketTypeId)?.name ?? 'Ticket',
-        quantity: item.quantity,
-      }));
-      const formattedAmount = new Intl.NumberFormat('en-CA', {
-        style: 'currency',
-        currency: cartCurrency,
-      }).format(amount);
-      const formattedDeadline = holdUntil.toLocaleString('en-CA', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        timeZoneName: 'short',
-      });
-      publish('ticket.reserved', {
-        issuer: ownerDid,
-        subject: ownerDid,
-        scope: 'events',
-        payload: {
-          email: buyerEmail,
-          eventTitle: event.title,
-          eventDate: eventDate.toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }),
-          eventTime: eventDate.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            timeZoneName: 'short',
-          }),
-          ticketSummary: summary,
-          totalQuantity,
-          amount: formattedAmount,
-          payToEmail: etransferEmail,
-          memo,
-          deadline: formattedDeadline,
-          buyerEmail,
-          myTicketsUrl: eventMyTicketsUrl(EVENTS_URL, event.id),
-          eventImageUrl,
-          context_id: event.id,
-          context_type: 'event',
-        },
-      }).catch((err) => log.error({ err: String(err) }, 'Failed to publish ticket reserved event'));
-    } else {
-      log.warn({ ownerDid, eventId: body.eventId }, 'No buyer email available for reservation; skipping confirmation send');
-    }
+    publishReservationEmail({
+      buyerEmail: buyerEmail ?? '',
+      ownerDid,
+      event,
+      cart,
+      typesById: validated.typesById,
+      totalQuantity,
+      amount,
+      cartCurrency,
+      etransferEmail,
+      memo,
+      holdUntil,
+      log,
+    });
 
     return NextResponse.json(
       {
