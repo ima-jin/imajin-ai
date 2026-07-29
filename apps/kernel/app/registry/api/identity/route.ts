@@ -93,6 +93,22 @@ const repo: IdentityAliasRepo = {
 };
 
 /**
+ * Parse and coerce the POST /registry/api/identity request body.
+ * Cognitive complexity: 7 (≤ 15)
+ */
+function parseIdentityRequestBody(body: Record<string, unknown>) {
+  const namespace = typeof body.namespace === 'string' ? body.namespace.trim() : null;
+  const ref = typeof body.ref === 'string' ? body.ref.trim() : null;
+  const type = typeof body.type === 'string' ? body.type.trim() : null;
+  const optInRef = typeof body.optInRef === 'string' ? body.optInRef.trim() : null;
+  const metadata =
+    typeof body.metadata === 'object' && body.metadata !== null && !Array.isArray(body.metadata)
+      ? (body.metadata as Record<string, unknown>)
+      : {};
+  return { namespace, ref, type, optInRef, metadata };
+}
+
+/**
  * POST /registry/api/identity — lazy get-or-create identity (Issue #1230).
  *
  * Tripian's Journey State Manager calls this per entity (traveler / hotel /
@@ -142,14 +158,7 @@ async function handleIdentityPost(request: Request, actingDid: string) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const namespace = typeof body.namespace === 'string' ? body.namespace.trim() : null;
-  const ref = typeof body.ref === 'string' ? body.ref.trim() : null;
-  const type = typeof body.type === 'string' ? body.type.trim() : null;
-  const optInRef = typeof body.optInRef === 'string' ? body.optInRef.trim() : null;
-  const metadata =
-    typeof body.metadata === 'object' && body.metadata !== null && !Array.isArray(body.metadata)
-      ? (body.metadata as Record<string, unknown>)
-      : {};
+  const { namespace, ref, type, optInRef, metadata } = parseIdentityRequestBody(body);
 
   if (!namespace) return NextResponse.json({ error: 'namespace is required' }, { status: 400 });
   if (!ref) return NextResponse.json({ error: 'ref is required' }, { status: 400 });

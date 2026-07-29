@@ -1,13 +1,17 @@
-﻿import { withLogger } from '@imajin/logger';
+import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { eq, desc, and, gt, ne, inArray, sql } from 'drizzle-orm';
+import { eq, desc, and, inArray } from 'drizzle-orm';
 import { db, conversationsV2, messagesV2, conversationReadsV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { requireAuth, resolveEffectiveDid, resolveActingDid } from '@imajin/auth';
 import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
 import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/kernel/utils';
 import { dmDid, parseConversationDid } from '@/src/lib/chat/conversation-did';
-import { lookupIdentity } from '@/src/lib/kernel/lookup';
+import {
+  countUnread,
+  extractMessagePreview,
+  resolveDmParticipant,
+} from '@/src/lib/chat/conversation-helpers';
 
 const rawSql = getClient();
 
@@ -85,114 +89,10 @@ export const GET = withLogger('kernel', async (request, { log }) => {
           .orderBy(desc(messagesV2.createdAt))
           .limit(1);
 
-        // Unread count
         const lastReadAt = readMap.get(conv.did);
-        let unread = 0;
-        if (lastReadAt) {
-          const [row] = await db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(messagesV2)
-            .where(
-              and(
-                eq(messagesV2.conversationDid, conv.did),
-                gt(messagesV2.createdAt, lastReadAt),
-                ne(messagesV2.fromDid, effectiveDid),
-              )
-            );
-          unread = row?.count ?? 0;
-        } else {
-          const [row] = await db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(messagesV2)
-            .where(
-              and(
-                eq(messagesV2.conversationDid, conv.did),
-                ne(messagesV2.fromDid, effectiveDid),
-              )
-            );
-          unread = row?.count ?? 0;
-        }
-
-        let lastMessagePreview = '';
-        if (lastMsg) {
-          const c = lastMsg.content as Record<string, unknown>;
-          if (c?.text && typeof c.text === 'string') {
-            lastMessagePreview = c.text.slice(0, 100);
-          } else if (c?.type === 'media') {
-            lastMessagePreview = '[Media]';
-          } else if (c?.type === 'voice') {
-            lastMessagePreview = '[Voice message]';
-          } else if (c?.type === 'location') {
-            lastMessagePreview = '[Location]';
-          }
-        }
-
-        // For DMs, resolve other participant info by parsing the DID slug
-        let otherParticipant: { did: string; handle: string | null; name: string | null } | null = null;
-        if (parsed.type === 'dm') {
-          // DM DIDs don't embed participant DIDs — look up from messages and reads
-          let otherDid: string | undefined;
-
-          // 1. Check messages from the other party
-          const [otherMsg] = await db
-            .select({ fromDid: messagesV2.fromDid })
-            .from(messagesV2)
-            .where(
-              and(
-                eq(messagesV2.conversationDid, conv.did),
-                ne(messagesV2.fromDid, effectiveDid),
-              )
-            )
-            .limit(1);
-          otherDid = otherMsg?.fromDid;
-
-          // 2. If no messages from other party, check conversation reads
-          if (!otherDid) {
-            const [otherRead] = await db
-              .select({ did: conversationReadsV2.did })
-              .from(conversationReadsV2)
-              .where(
-                and(
-                  eq(conversationReadsV2.conversationDid, conv.did),
-                  ne(conversationReadsV2.did, effectiveDid),
-                )
-              )
-              .limit(1);
-            otherDid = otherRead?.did;
-          }
-
-          // 3. Check conversation_members table
-          if (!otherDid) {
-            const otherMembers = await rawSql`
-              SELECT member_did FROM chat.conversation_members
-              WHERE conversation_did = ${conv.did}
-                AND member_did != ${effectiveDid}
-              LIMIT 1
-            `;
-            if (otherMembers.length > 0) {
-              otherDid = otherMembers[0].member_did as string;
-            }
-          }
-
-          // 4. Fallback: created_by != me means I'm the other party
-          if (!otherDid && conv.createdBy !== effectiveDid) {
-            otherDid = conv.createdBy;
-          }
-          if (otherDid) {
-            try {
-              const ident = await lookupIdentity(otherDid);
-              if (ident) {
-                otherParticipant = {
-                  did: otherDid,
-                  handle: ident.handle || null,
-                  name: ident.name || null,
-                };
-              }
-            } catch {
-              // ignore lookup failures
-            }
-          }
-        }
+        const unread = await countUnread(conv.did, effectiveDid, lastReadAt);
+        const lastMessagePreview = extractMessagePreview(lastMsg);
+        const otherParticipant = await resolveDmParticipant(conv, effectiveDid, rawSql);
 
         return {
           did: conv.did,
