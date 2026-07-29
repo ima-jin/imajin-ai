@@ -53,9 +53,31 @@ export const ATTESTATION_TYPES = [
   'contributor.design',
   'email_verified',
   'phone_verified',
+  'imajin/nostr-key-binding',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
+
+/**
+ * Claim payload for the `imajin/nostr-key-binding` attestation type.
+ *
+ * A DID-key signs this to assert that the given Nostr public key
+ * (nostr_pubkey / npub) belongs to or acts on behalf of the subject DID.
+ */
+export interface NostrKeyBindingClaim {
+  /** Hex-encoded secp256k1 public key (32 bytes / 64 hex chars) */
+  nostr_pubkey: string;
+  /** Bech32-encoded npub (NIP-19) */
+  npub: string;
+  /** DID that ultimately controls the Nostr key (may differ from subject) */
+  onBehalfOf?: string;
+  /** Human-readable purpose, e.g. 'buzz-workspace-participation' */
+  purpose: string;
+  /** Unix epoch ms when the claim was issued */
+  issued_at: number;
+  /** Optional Unix epoch ms after which the binding expires */
+  expires_at?: number;
+}
 
 export interface Attestation {
   id: string;                    // att_xxx
