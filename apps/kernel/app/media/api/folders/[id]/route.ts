@@ -8,6 +8,26 @@ export const dynamic = "force-dynamic";
 
 const log = createLogger("kernel");
 
+/**
+ * Validate the parentId update for a folder PATCH.
+ * Returns an error object { error, status } if invalid, or null if OK.
+ */
+async function validateParentFolder(
+  parentId: string | null,
+  folderId: string,
+  ownerDid: string
+): Promise<{ error: string; status: number } | null> {
+  if (parentId === null) return null;
+  if (parentId === folderId) {
+    return { error: "Folder cannot be its own parent", status: 400 };
+  }
+  const [parent] = await db.select().from(folders).where(eq(folders.id, parentId)).limit(1);
+  if (!parent || parent.ownerDid !== ownerDid) {
+    return { error: "Parent folder not found", status: 404 };
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // PATCH /api/folders/[id] — rename, move, or change icon
 // ---------------------------------------------------------------------------
@@ -47,14 +67,9 @@ export async function PATCH(
     updates.name = body.name.trim();
   }
   if (body.parentId !== undefined) {
-    if (body.parentId !== null) {
-      const [parent] = await db.select().from(folders).where(eq(folders.id, body.parentId)).limit(1);
-      if (!parent || parent.ownerDid !== ownerDid) {
-        return NextResponse.json({ error: "Parent folder not found" }, { status: 404 });
-      }
-      if (body.parentId === id) {
-        return NextResponse.json({ error: "Folder cannot be its own parent" }, { status: 400 });
-      }
+    const parentErr = await validateParentFolder(body.parentId, id, ownerDid);
+    if (parentErr) {
+      return NextResponse.json({ error: parentErr.error }, { status: parentErr.status });
     }
     updates.parentId = body.parentId;
   }

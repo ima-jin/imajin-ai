@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "node:fs/promises";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
@@ -8,21 +8,32 @@ import { isFairManifestV1_1 } from "@imajin/fair";
 import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
 import { createLogger } from "@imajin/logger";
 import { renderFairHtml } from "@/src/lib/media/render-fair-html";
+import { getAccessType, canReadAsset } from "@/src/lib/media/read-access";
 
 const log = createLogger("kernel");
 
-function getAccessType(
-  access: FairManifest["access"]
-): "public" | "private" | "trust-graph" | "conversation" {
-  if (!access) return "private";
-  if (access === "public") return "public";
-  if (access === "private") return "private";
-  return access.type;
-}
-
-function getAllowedDids(access: FairManifest["access"]): string[] {
-  if (!access || typeof access === "string") return [];
-  return access.allowedDids ?? [];
+/**
+ * Load the .fair manifest for an asset: prefer the DB column, fall back to disk.
+ */
+async function loadFairManifest(
+  asset: { fairManifest: unknown; fairPath: string | null }
+): Promise<FairManifest | null> {
+  if (
+    asset.fairManifest &&
+    typeof asset.fairManifest === "object" &&
+    Object.keys(asset.fairManifest as object).length > 0
+  ) {
+    return asset.fairManifest as FairManifest;
+  }
+  if (asset.fairPath) {
+    try {
+      const raw = await readFile(asset.fairPath, "utf-8");
+      return JSON.parse(raw) as FairManifest;
+    } catch {
+      // No manifest on disk — fall through to return null
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,23 +63,7 @@ export async function GET(
   }
 
   // 2. Get .fair manifest
-  let manifest: FairManifest | null = null;
-
-  if (
-    asset.fairManifest &&
-    typeof asset.fairManifest === "object" &&
-    Object.keys(asset.fairManifest as object).length > 0
-  ) {
-    manifest = asset.fairManifest as FairManifest;
-  } else if (asset.fairPath) {
-    try {
-      const raw = await readFile(asset.fairPath, "utf-8");
-      manifest = JSON.parse(raw) as FairManifest;
-    } catch {
-      // No manifest on disk
-    }
-  }
-
+  const manifest = await loadFairManifest(asset);
   if (!manifest) {
     return NextResponse.json(
       { error: "No .fair manifest found for this asset" },
@@ -89,25 +84,12 @@ export async function GET(
       );
     }
     const requesterDid = resolveActingDid(authResult.identity);
-
-    if (accessType === "private") {
-      if (requesterDid !== asset.ownerDid) {
-        return NextResponse.json(
-          { error: "Access denied", reason: "Private asset — owner only" },
-          { status: 403 }
-        );
-      }
-    } else if (accessType === "trust-graph") {
-      const allowedDids = getAllowedDids(access);
-      if (
-        requesterDid !== asset.ownerDid &&
-        !allowedDids.includes(requesterDid)
-      ) {
-        return NextResponse.json(
-          { error: "Access denied", reason: "Not in trust graph" },
-          { status: 403 }
-        );
-      }
+    const decision = canReadAsset({ ownerDid: asset.ownerDid, access }, requesterDid);
+    if (!decision.allowed) {
+      return NextResponse.json(
+        { error: "Access denied", reason: decision.reason },
+        { status: 403 }
+      );
     }
   }
 
