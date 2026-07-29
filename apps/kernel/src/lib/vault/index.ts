@@ -29,7 +29,7 @@ import { and, eq, isNull, gt, or } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants, vaultGrantRequests, type VaultDelegationGrant } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
-import { getSealKey, getNodeSigningIdentity, getNodeXPrivateKey, getNodeXPublicKey, getOwnerXPrivateKey, getOwnerXPublicKey, isVaultTier1, getExternalOwnerXPublicKey } from './sealing';
+import { getSealKey, getNodeSigningIdentity, getNodeXPrivateKey, getNodeXPublicKey, getOwnerXPrivateKey, getOwnerXPublicKey, isVaultTier1, getExternalOwnerXPublicKey, getExternalOwnerEdPublicKey } from './sealing';
 import { VaultDelegationError } from './errors';
 
 const log = createLogger('kernel');
@@ -357,7 +357,12 @@ export async function loadAndUnseal(field: string): Promise<string | undefined> 
         { field, nodeDid: identity.senderDid },
       );
     }
-    return _applyDelegationGrant(entry, grant, getNodeXPrivateKey());
+    // In Tier 1 the grant is signed by the external owner (VAULT_OWNER_ED_PUB), which differs
+    // from the node's own Ed key stored in entry.senderPubkey. In Tier 0 owner == node so
+    // entry.senderPubkey is the correct verifier. Resolving the right key here is what makes
+    // headless unseal work in Tier 1.
+    const ownerEdPub = isVaultTier1() ? getExternalOwnerEdPublicKey() : entry.senderPubkey;
+    return _applyDelegationGrant(entry, grant, getNodeXPrivateKey(), ownerEdPub);
   }
 
   // v1 node-sealed path — unchanged.
@@ -440,12 +445,18 @@ export function canonicalizeGrantPayload(grant: {
  *
  * Steps:
  *   1. Verify the owner's Ed25519 signature over the canonical grant payload,
- *      using entry.senderPubkey (the owner's Ed25519 pubkey).
+ *      using the explicitly-supplied ownerEdPub:
+ *        Tier 0 — entry.senderPubkey (node is the owner; both keys are the same)
+ *        Tier 1 — VAULT_OWNER_ED_PUB (external owner's key ≠ entry.senderPubkey)
+ *      canonicalizeGrantPayload covers wrappedKey, wrappedNonce, and keyId, so a
+ *      valid signature cryptographically binds the wrapped key to the intended grant.
+ *   1b. Verify grant.keyId matches entry.keyId (defense-in-depth: prevents a valid
+ *      grant for one key rotation being misapplied to a different entry).
  *   2. Assert full vault entry integrity (CID, keyId, DID-binding, signature).
  *   3. Unwrap the per-field AES key from the grant using nodeXPriv.
  *   4. AES-256-GCM decrypt the entry ciphertext with the recovered field key.
  *
- * Throws VaultDelegationError if the grant signature is invalid.
+ * Throws VaultDelegationError if the grant signature is invalid or keyId mismatch.
  * Throws VaultIntegrityError if the vault entry fails integrity checks.
  */
 export async function _applyDelegationGrant(
@@ -455,13 +466,26 @@ export async function _applyDelegationGrant(
     'wrappedKey' | 'wrappedNonce' | 'keyId' | 'ownerSignature' | 'expiresAt'
   >,
   nodeXPriv: string,
+  ownerEdPub: string,
 ): Promise<string> {
   // 1. Verify owner signature over the canonical grant payload.
+  //    ownerEdPub is provided by the caller — in Tier 0 it equals entry.senderPubkey
+  //    (owner == node), in Tier 1 it is VAULT_OWNER_ED_PUB (external owner's key).
   const canonical = canonicalizeGrantPayload(grant);
-  const sigValid = verifySync(grant.ownerSignature, canonical, entry.senderPubkey);
+  const sigValid = verifySync(grant.ownerSignature, canonical, ownerEdPub);
   if (!sigValid) {
     throw new VaultDelegationError(
       `vault _applyDelegationGrant: owner signature on grant for field '${grant.field}' is invalid`,
+      { field: grant.field, nodeDid: grant.grantedTo },
+    );
+  }
+
+  // 1b. Guard against a valid-signed grant being applied to the wrong vault entry.
+  //     The grant's keyId is covered by the owner signature above, so this check
+  //     ensures the grant was specifically issued for this entry's key rotation.
+  if (grant.keyId !== entry.keyId) {
+    throw new VaultDelegationError(
+      `vault _applyDelegationGrant: grant keyId '${grant.keyId}' does not match entry keyId '${entry.keyId}' for field '${grant.field}'`,
       { field: grant.field, nodeDid: grant.grantedTo },
     );
   }

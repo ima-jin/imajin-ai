@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, eq, gt, isNull, or } from 'drizzle-orm';
+import { and, eq, gt, isNull, isNotNull, lt, or } from 'drizzle-orm';
 import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { db, vaultGrantRequests } from '@/src/db';
@@ -30,6 +30,20 @@ export async function GET() {
 
   try {
     const now = new Date();
+
+    // Sweep: atomically mark any pending requests whose expiresAt has passed as
+    // 'expired'. This prevents the queue growing indefinitely with stale rows.
+    // The owner agent polls this endpoint, so the sweep runs on every poll cycle.
+    await db
+      .update(vaultGrantRequests)
+      .set({ status: 'expired' })
+      .where(
+        and(
+          eq(vaultGrantRequests.status, 'pending'),
+          isNotNull(vaultGrantRequests.expiresAt),
+          lt(vaultGrantRequests.expiresAt, now),
+        ),
+      );
 
     const requests = await db
       .select({

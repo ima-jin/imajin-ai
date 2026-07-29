@@ -603,6 +603,20 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'vault';
   };
+  /**
+   * Emitted by POST /api/vault/delegation/grant when a Tier 1 delegation grant is
+   * fulfilled by the external owner agent (#1403).  Prefer this over the generic
+   * vault.secret.updated for consumers that specifically track grant lifecycle.
+   */
+  'vault.grant.fulfilled': {
+    grantId: string;
+    requestId: string;
+    field: string;
+    subject: string;     // ownerDid
+    grantedTo: string;   // nodeDid
+    context_id: string;
+    context_type: 'vault';
+  };
   'broker.release': {
     releaseId: string;
     requester: string;

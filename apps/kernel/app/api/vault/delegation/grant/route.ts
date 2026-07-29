@@ -65,6 +65,20 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Resolve this node's identity up-front so it is available for both the
+    // grantedTo assertion and the bus publish at the end.
+    const identity = getNodeSigningIdentity();
+
+    // Defense-in-depth: the canonical grant payload is signed by the owner and
+    // includes grantedTo, but an owner agent could accidentally sign a grant
+    // meant for a different node. Reject early if grantedTo doesn't match ours.
+    if (grantedTo !== identity.senderDid) {
+      return NextResponse.json(
+        { error: `grantedTo '${grantedTo}' does not match this node's DID` },
+        { status: 400 },
+      );
+    }
+
     // 1. Look up the pending grant request.
     const rows = await db
       .select()
@@ -121,8 +135,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const identity = getNodeSigningIdentity();
-
     // 4. Supersede any existing active grant for this (subject, grantedTo, field) tuple.
     await db
       .update(vaultDelegationGrants)
@@ -158,20 +170,24 @@ export async function POST(request: NextRequest) {
       .set({ status: 'fulfilled', fulfilledAt: new Date(), grantId })
       .where(eq(vaultGrantRequests.requestId, requestId));
 
-    // 7. Non-fatal bus notification.
-    publish('vault.secret.updated', {
+    // 7. Non-fatal bus notification — emit a dedicated grant.fulfilled event so
+    //    consumers can track grant lifecycle without misinterpreting the generic
+    //    vault.secret.updated event (which uses keyId as a cid proxy).
+    publish('vault.grant.fulfilled', {
       issuer: identity.senderDid,
       subject,
       scope: 'vault',
       payload: {
+        grantId,
+        requestId,
         field,
-        cid: grantRequest.keyId,    // keyId as correlation proxy — not the CID, but useful for audit
-        senderDid: identity.senderDid,
+        subject,
+        grantedTo,
         context_id: field,
         context_type: 'vault',
       },
     }).catch((err: unknown) => {
-      log.error({ err: String(err) }, 'Bus publish error for vault.secret.updated (grant fulfilled)');
+      log.error({ err: String(err) }, 'Bus publish error for vault.grant.fulfilled');
     });
 
     log.info({ field, requestId, grantId }, 'Vault Tier 1: delegation grant fulfilled by owner agent');
