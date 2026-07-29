@@ -3,8 +3,9 @@ import { eq } from 'drizzle-orm';
 import { db, conversationsV2, conversationMembers } from '@/src/db';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { dmDid, conversationPath } from '@/src/lib/chat/conversation-did';
+import { buildPublicUrl } from '@imajin/config';
 
-const APP_URL = process.env.NEXT_PUBLIC_CHAT_URL || process.env.APP_URL || 'http://localhost:3000/chat';
+const APP_URL = buildPublicUrl('chat');
 
 function redirect(path: string) {
   return NextResponse.redirect(`${APP_URL}${path}`);

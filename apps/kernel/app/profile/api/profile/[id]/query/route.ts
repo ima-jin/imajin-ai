@@ -14,6 +14,7 @@ import { generateText } from 'ai';
 import { resolveModel, calculateCost, createPresenceTools } from '@imajin/llm';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
+import { buildPublicUrl } from '@imajin/config';
 
 const log = createLogger('kernel');
 
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     connectionsUrl: CONNECTIONS_URL,
     authUrl: '',
     payUrl: process.env.PAY_SERVICE_URL ?? '',
-    profileUrl: process.env.NEXT_PUBLIC_PROFILE_URL ?? '',
+    profileUrl: buildPublicUrl('profile'),
     learnUrl: process.env.LEARN_SERVICE_URL ?? '',
     targetDid: resolvedTargetDid,
     requesterDid,
