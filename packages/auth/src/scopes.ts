@@ -6,6 +6,7 @@
 export const SCOPES = {
   'profile:read':       'Read your profile information',
   'identity:read':      'Read your identity and DID',
+  'identity:write':     'Resolve or mint soft identities on your behalf (registry get-or-create)',
   'media:read':         'Read your media library (files, folders, and metadata)',
   'media:write':        'Create and upload media on your behalf',
   'media:share':        'Share your media with other people',
