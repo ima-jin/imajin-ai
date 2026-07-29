@@ -121,6 +121,42 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Resolve the HTML/text content for a broadcast email.
+ * If `htmlInput` is provided it is used directly; otherwise the markdown
+ * is rendered via `renderBroadcastEmail`.
+ *
+ * Cognitive complexity: 1 (≤ 15)
+ */
+function resolveEmailContent(
+  htmlInput: string | undefined,
+  markdown: string | undefined,
+  textInput: string | undefined,
+  eventContext: { title: string; imageUrl?: string | null; eventUrl?: string } | undefined,
+): { html: string; text: string | undefined } {
+  if (htmlInput) return { html: htmlInput, text: textInput };
+  const rendered = renderBroadcastEmail(markdown!, eventContext);
+  return { html: rendered.html, text: textInput ?? rendered.text };
+}
+
+/**
+ * Resolve the audience DIDs for a broadcast.
+ * Uses `explicitDids` if provided; otherwise fetches from the registry.
+ * Returns null when no audience is found (caller should short-circuit).
+ *
+ * Cognitive complexity: 3 (≤ 15)
+ */
+async function resolveAudienceDids(
+  scope: string,
+  explicitDids: string[] | undefined,
+  secret: string,
+): Promise<string[] | null> {
+  if (explicitDids && explicitDids.length > 0) return explicitDids;
+  const dids = await fetchAudienceFromRegistry(scope, secret);
+  if (dids.length === 0) return null;
+  return dids;
+}
+
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
@@ -175,29 +211,15 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let html: string;
-  let text: string | undefined = textInput;
-
-  if (htmlInput) {
-    html = htmlInput;
-  } else {
-    const rendered = renderBroadcastEmail(markdown!, eventContext);
-    html = rendered.html;
-    if (!text) text = rendered.text;
-  }
+  const { html, text } = resolveEmailContent(htmlInput, markdown, textInput, eventContext);
 
   // Resolve audience
-  let audienceDids: string[];
-  if (explicitDids && explicitDids.length > 0) {
-    audienceDids = explicitDids;
-  } else {
-    audienceDids = await fetchAudienceFromRegistry(scope, secret);
-    if (audienceDids.length === 0) {
-      return NextResponse.json(
-        { sent: 0, skipped: 0, errors: 0, message: 'No audience found' },
-        { headers: cors },
-      );
-    }
+  const audienceDids = await resolveAudienceDids(scope, explicitDids, secret);
+  if (!audienceDids) {
+    return NextResponse.json(
+      { sent: 0, skipped: 0, errors: 0, message: 'No audience found' },
+      { headers: cors },
+    );
   }
 
   let sent = 0;

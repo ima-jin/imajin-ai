@@ -1,15 +1,19 @@
 ﻿import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { eq, and, desc, lt, ne, isNull, inArray } from 'drizzle-orm';
+import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
 
 const log = createLogger('kernel');
-import { db, conversationsV2, conversationMembers, messagesV2, messageReactionsV2, identities } from '@/src/db';
+import { db, conversationsV2, messagesV2, messageReactionsV2, identities } from '@/src/db';
 import { requireAuth, isVerifiedTier, canonicalize, crypto as authCrypto, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
-import { parseConversationDid } from '@/src/lib/chat/conversation-did';
-import { unfurlLinks } from '@/src/lib/chat/unfurl';
+import {
+  ensureConversation,
+  ensureDmMembers,
+  resolvePreviewText,
+  triggerLinkUnfurl,
+} from '@/src/lib/chat/message-helpers';
 
 import { checkAccess } from '@/src/lib/kernel/access';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
@@ -196,79 +200,11 @@ export async function POST(
       return errorResponse(`Invalid contentType: ${contentType}`, 400, cors);
     }
 
-    // Auto-create conversation if it doesn't exist
-    const existing = await db.query.conversationsV2.findFirst({
-      where: eq(conversationsV2.did, did),
-    });
+    // Auto-create conversation (if needed) and track sender as member
+    await ensureConversation(did, effectiveDid, conversationName ?? null);
 
-    if (!existing) {
-      const parsed = parseConversationDid(did);
-      let name = conversationName || null;
-      // For event conversations, resolve the event title from events service
-      if (!name && parsed.type === 'event') {
-        try {
-          const eventsUrl = process.env.EVENTS_SERVICE_URL || 'http://localhost:3006';
-          const evtRes = await fetch(`${eventsUrl}/api/events/by-did/${encodeURIComponent(did)}`);
-          if (evtRes.ok) {
-            const evtData = await evtRes.json();
-            name = evtData.event?.title ? `${evtData.event.title} Lobby` : null;
-          }
-        } catch {}
-      }
-      // Fallback for non-event types: use type:slug
-      if (!name && parsed.type !== 'unknown' && parsed.type !== 'event') {
-        name = `${parsed.type}:${parsed.slug ?? ''}`;
-      }
-      await db.insert(conversationsV2).values({
-        did,
-        name: name || did,
-        createdBy: effectiveDid,
-      }).onConflictDoNothing();
-    }
-
-    // Always ensure the sender is a conversation member (idempotent).
-    // Catches edge cases where the conversation exists but the sender isn't tracked.
-    await db.insert(conversationMembers).values({
-      conversationDid: did,
-      memberDid: effectiveDid,
-      role: 'member',
-    }).onConflictDoNothing();
-
-    // For DMs: ensure the recipient is also tracked as a member.
-    // The DM DID is a hash so we can't reverse it — use recipientDid from the client
-    // if provided, otherwise discover from existing conversation data.
-    const isDm = parseConversationDid(did).type === 'dm';
-    if (isDm) {
-      let otherDid = recipientDid || null;
-      if (!otherDid) {
-        // Try conversation creator (if it's not us, they're the other party)
-        const conv = existing || await db.query.conversationsV2.findFirst({
-          where: eq(conversationsV2.did, did),
-        });
-        if (conv?.createdBy && conv.createdBy !== effectiveDid) {
-          otherDid = conv.createdBy;
-        }
-      }
-      if (!otherDid) {
-        // Try existing messages from someone else
-        const [otherMsg] = await db
-          .select({ fromDid: messagesV2.fromDid })
-          .from(messagesV2)
-          .where(and(
-            eq(messagesV2.conversationDid, did),
-            ne(messagesV2.fromDid, effectiveDid),
-          ))
-          .limit(1);
-        otherDid = otherMsg?.fromDid || null;
-      }
-      if (otherDid) {
-        await db.insert(conversationMembers).values({
-          conversationDid: did,
-          memberDid: otherDid,
-          role: 'member',
-        }).onConflictDoNothing();
-      }
-    }
+    // For DMs: ensure the other participant is also tracked
+    await ensureDmMembers(did, effectiveDid, recipientDid ?? null);
 
     // Validate reply if provided
     let replyToDid: string | null = null;
@@ -357,39 +293,15 @@ export async function POST(
     });
 
     // Notify conversation participants about the new message — fire and forget
-    const previewText = typeof content === 'string'
-      ? content
-      : typeof content === 'object' && content !== null && 'text' in content
-        ? String((content as Record<string, unknown>).text)
-        : '';
     notifyMessageRecipients({
       conversationDid: did,
       senderDid: effectiveDid,
       senderName: identity.handle || identity.name || identity.id.slice(0, 16),
-      messagePreview: previewText,
+      messagePreview: resolvePreviewText(content),
     });
 
     // Unfurl link previews async — don't block the response
-    if (message && contentType === 'text' && typeof content === 'string') {
-      unfurlLinks(content).then(async (previews) => {
-        if (previews.length === 0) return;
-        await db
-          .update(messagesV2)
-          .set({ linkPreviews: previews })
-          .where(eq(messagesV2.id, messageId));
-        // Broadcast updated message with previews
-        const port = process.env.PORT || '3007';
-        fetch(`http://localhost:${port}/__ws_broadcast`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            conversationId: did,
-            type: 'message_updated',
-            message: { ...message, linkPreviews: previews },
-          }),
-        }).catch(() => {});
-      }).catch(() => {});
-    }
+    triggerLinkUnfurl(enrichedMessage ?? message ?? null, content, contentType, did, messageId);
 
     return jsonResponse({ message: enrichedMessage ?? message }, 201, cors);
   } catch (error) {

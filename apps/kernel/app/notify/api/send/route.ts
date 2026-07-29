@@ -11,6 +11,63 @@ export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
+/**
+ * Resolve the email address for a notification recipient.
+ * Checks the request payload, then the profile table, then the identity table.
+ *
+ * Cognitive complexity: 3 (≤ 15)
+ */
+async function resolveRecipientEmail(
+  to: string,
+  data: Record<string, unknown>,
+): Promise<string | undefined> {
+  const payloadEmail = (data as Record<string, unknown>).email as string | undefined;
+  if (payloadEmail) return payloadEmail;
+  if (!to.startsWith('did:')) return undefined;
+
+  const [profile] = await db
+    .select({ contactEmail: profiles.contactEmail })
+    .from(profiles)
+    .where(eq(profiles.did, to))
+    .limit(1);
+  if (profile?.contactEmail) return profile.contactEmail;
+
+  const [identity] = await db
+    .select({ contactEmail: identities.contactEmail })
+    .from(identities)
+    .where(eq(identities.id, to))
+    .limit(1);
+  return identity?.contactEmail ?? undefined;
+}
+
+/**
+ * Resolve recipient email and send the email notification.
+ * Returns true if the email was sent successfully.
+ *
+ * Cognitive complexity: 2 (≤ 15)
+ */
+async function resolveAndSendEmail(
+  to: string,
+  data: Record<string, unknown>,
+  template: import('@/src/lib/notify/templates').NotifyTemplate,
+  log: { error: (obj: Record<string, unknown>, msg: string) => void },
+  notifId: string,
+): Promise<boolean> {
+  const recipientEmail = await resolveRecipientEmail(to, data);
+  if (!recipientEmail) return false;
+  try {
+    await sendEmail({
+      to: recipientEmail,
+      subject: template.email!.subject(data as Record<string, any>),
+      html: template.email!.html(data as Record<string, any>),
+    });
+    return true;
+  } catch (err) {
+    log.error({ err: String(err), id: notifId }, 'Email send failed for notification');
+    return false;
+  }
+}
+
 export const POST = withLogger('kernel', async (request, { log }) => {
   const cors = corsHeaders(request);
 
@@ -77,38 +134,8 @@ export const POST = withLogger('kernel', async (request, { log }) => {
 
   // Send email if enabled and template has email config
   if (emailEnabled && template?.email) {
-    // Resolve recipient email: payload > identity contact_email
-    let recipientEmail = (data as any).email as string | undefined;
-    if (!recipientEmail && to.startsWith('did:')) {
-      // Check profile first (set from connection invite / register — primary identity)
-      const [profile] = await db
-        .select({ contactEmail: profiles.contactEmail })
-        .from(profiles)
-        .where(eq(profiles.did, to))
-        .limit(1);
-      recipientEmail = profile?.contactEmail || undefined;
-      // Fall back to auth.identities (set from Stripe/ticket purchases)
-      if (!recipientEmail) {
-        const [identity] = await db
-          .select({ contactEmail: identities.contactEmail })
-          .from(identities)
-          .where(eq(identities.id, to))
-          .limit(1);
-        recipientEmail = identity?.contactEmail || undefined;
-      }
-    }
-    if (recipientEmail) {
-      try {
-        await sendEmail({
-          to: recipientEmail,
-          subject: template.email.subject(data as Record<string, any>),
-          html: template.email.html(data as Record<string, any>),
-        });
-        channelsSent.push('email');
-      } catch (err) {
-        log.error({ err: String(err), id }, 'Email send failed for notification');
-      }
-    }
+    const emailSent = await resolveAndSendEmail(to, data, template, log, id);
+    if (emailSent) channelsSent.push('email');
   }
 
   // Update channels_sent
