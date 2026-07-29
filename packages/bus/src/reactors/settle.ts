@@ -1,13 +1,12 @@
 import { createLogger } from '@imajin/logger';
 import { publish } from '../publish';
 import type { ReactorHandler } from '../types';
+import { computeFeeCents, resolveSettlementChain } from '@imajin/fair';
 
 const log = createLogger('bus:settle');
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL;
 const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY;
-
-const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
 
 interface FairEntry {
   did: string;
@@ -59,7 +58,6 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
   // Resolve .fair chain if provided
   let resolvedChain: Array<{ did: string; amount: number; role: string }> | undefined;
   let expectedTotal: number | undefined;
-  const totalDollars = amountCents / 100;
 
   const chain = fairManifest?.chain;
   if (fairManifest && chain?.length) {
@@ -68,38 +66,15 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
       log.warn({ event: event.type }, '[settle] NODE_DID not set — node fee recipient unresolved');
     }
 
-    // Calculate estimated processing fee to deduct from seller's share
-    const fees = fairManifest.fees || [];
-    const processorFee = fees.find(f => f.role === 'processor');
-    const estimatedFeeDollars = processorFee
-      ? Number.parseFloat(((amountCents * processorFee.rateBps / 10000 + processorFee.fixedCents) / 100).toFixed(2))
-      : Number.parseFloat(((amountCents * 370 / 10000 + 30) / 100).toFixed(2)); // fallback: 3.7% + 30¢
-
-    // Replace placeholder DIDs and deduct processing fee from seller
-    resolvedChain = chain.map((entry) => {
-      let did = entry.did;
-      if (did === 'BUYER_PLACEHOLDER') did = buyerDid;
-      if (did === 'NODE_PLACEHOLDER') did = NODE_DID || 'did:imajin:node-unresolved';
-
-      let entryAmount = Number.parseFloat((totalDollars * entry.share).toFixed(2));
-
-      if (SELLER_ROLES.has(entry.role)) {
-        entryAmount = Number.parseFloat((entryAmount - estimatedFeeDollars).toFixed(2));
-      }
-
-      return { did, amount: entryAmount, role: entry.role };
+    const result = resolveSettlementChain({
+      amountCents,
+      chain,
+      fees: fairManifest.fees,
+      buyerDid: buyerDid ?? '',
+      nodeDid: NODE_DID,
     });
-
-    expectedTotal = Number.parseFloat((totalDollars - estimatedFeeDollars).toFixed(2));
-
-    // Fix rounding drift
-    const chainSum = resolvedChain.reduce((sum, e) => sum + e.amount, 0);
-    const drift = Number.parseFloat((expectedTotal - chainSum).toFixed(2));
-    if (drift !== 0 && resolvedChain.length > 0) {
-      const seller = resolvedChain.find(e => SELLER_ROLES.has(e.role));
-      const target = seller || resolvedChain.reduce((max, e) => e.amount > max.amount ? e : max, resolvedChain[0]);
-      target.amount = Number.parseFloat((target.amount + drift).toFixed(2));
-    }
+    resolvedChain = result.resolvedChain;
+    expectedTotal = result.expectedTotal;
   }
 
   const body: Record<string, unknown> = {
@@ -151,7 +126,7 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
       name: fee.name,
       rateBps: fee.rateBps,
       fixedCents: fee.fixedCents,
-      amount: Number.parseFloat(((amountCents * fee.rateBps / 10000 + fee.fixedCents) / 100).toFixed(2)),
+      amount: Number.parseFloat((computeFeeCents(amountCents, fee.rateBps, fee.fixedCents) / 100).toFixed(2)),
       estimated: true,
     }));
 
@@ -166,8 +141,8 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
           buyerDid: buyerDid || event.issuer,
           amount: amountCents,
           currency: currency || 'CAD',
-          totalAmount: totalDollars,
-          netAmount: expectedTotal ?? totalDollars,
+          totalAmount: amountCents / 100,
+          netAmount: expectedTotal ?? amountCents / 100,
           fees: resolvedFees,
           chain: resolvedChain || [],
           metadata,
