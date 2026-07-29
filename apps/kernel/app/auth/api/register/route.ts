@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, profiles, invitesInConnections as invites, podsInConnections as pods, podMembersInConnections as podMembers, connections, contacts, mailingLists, subscriptions } from '@/src/db';
-import { eq, or, sql } from 'drizzle-orm';
-import { didFromPublicKey, verifySignature } from '@/src/lib/auth/crypto';
+import { db, identities, profiles } from '@/src/db';
+import { eq, or } from 'drizzle-orm';
+import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { rateLimit, getClientIP } from '@imajin/config';
-import { generateId } from '@/src/lib/kernel/utils';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
-import { sendEmail } from '@imajin/email';
-import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
-import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
 import { createLogger } from '@imajin/logger';
 import * as bus from '@imajin/bus';
+import {
+  autoAcceptInvite,
+  linkDfosChainSafe,
+  resolveInviteCode,
+  subscribeEmailToMailingList,
+  verifyRegistrationSignature,
+} from '@/src/lib/auth/register';
 
 const log = createLogger('kernel');
 
@@ -18,7 +21,7 @@ const log = createLogger('kernel');
  * POST /api/register
  * Register a new identity with a public key.
  * REQUIRES a valid invite code (invite-only platform).
- * 
+ *
  * Body: {
  *   publicKey: string (hex),
  *   handle?: string,
@@ -35,203 +38,88 @@ export async function POST(request: NextRequest) {
   if (rl.limited) {
     return NextResponse.json(
       { error: 'Too many requests', retryAfter: rl.retryAfter },
-      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } },
     );
   }
 
   try {
     const body = await request.json();
-    const { publicKey, handle, name, scope: rawScope, subtype: rawSubtype, signature, inviteCode, email, phone, optInUpdates } = body;
+    const {
+      publicKey, handle, name,
+      scope: rawScope, subtype: rawSubtype,
+      signature, inviteCode, email, phone, optInUpdates,
+    } = body;
     const scope = rawScope || 'actor';
     const subtype = rawSubtype || (scope === 'actor' ? 'human' : null);
 
-    // Validate required fields
     if (!publicKey || typeof publicKey !== 'string') {
-      return NextResponse.json(
-        { error: 'publicKey required (Ed25519 hex)' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'publicKey required (Ed25519 hex)' }, { status: 400 });
     }
 
-    // Valid identity scopes
     const VALID_SCOPES = ['actor', 'family', 'community', 'business'];
     if (!VALID_SCOPES.includes(scope)) {
       return NextResponse.json(
         { error: `scope must be one of: ${VALID_SCOPES.join(', ')}` },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // Validate handle format if provided
-    if (handle) {
-      if (!/^[a-z0-9_]{3,30}$/.test(handle)) {
-        return NextResponse.json(
-          { error: 'Handle must be 3-30 lowercase letters, numbers, or underscores' },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Verify signature
-    if (!signature) {
+    if (handle && !/^[a-z0-9_]{3,30}$/.test(handle)) {
       return NextResponse.json(
-        { error: 'signature required' },
-        { status: 400 }
+        { error: 'Handle must be 3-30 lowercase letters, numbers, or underscores' },
+        { status: 400 },
       );
     }
 
-    // The message being signed is the registration payload
-    const payloadToSign = JSON.stringify({
-      publicKey,
-      handle,
-      name,
-      scope,
-      subtype,
-      timestamp: Math.floor(Date.now() / 1000),
-    });
+    if (!signature) {
+      return NextResponse.json({ error: 'signature required' }, { status: 400 });
+    }
 
-    // For registration, we accept any recent timestamp (within 5 minutes)
-    // In production, you'd want stricter timestamp validation
-
-    const isValid = await verifySignature(payloadToSign, signature, publicKey);
+    const isValid = await verifyRegistrationSignature(
+      publicKey, handle, name, scope, subtype, rawSubtype, signature,
+    );
     if (!isValid) {
-      // Also try without timestamp for simpler clients (and legacy type-based payloads)
-      const simplePayload = JSON.stringify({ publicKey, handle, name, scope, subtype });
-      const isValidSimple = await verifySignature(simplePayload, signature, publicKey);
-      const legacyPayload = JSON.stringify({ publicKey, handle, name, type: rawSubtype || 'human' });
-      const isValidLegacy = !isValidSimple && await verifySignature(legacyPayload, signature, publicKey);
-      if (!isValidSimple && !isValidLegacy) {
-        return NextResponse.json(
-          { error: 'Invalid signature' },
-          { status: 401 }
-        );
-      }
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
     // Check if publicKey or handle already registered
     const conditions = [eq(identities.publicKey, publicKey)];
-    if (handle) {
-      conditions.push(eq(identities.handle, handle));
-    }
+    if (handle) conditions.push(eq(identities.handle, handle));
 
-    const existing = await db
-      .select()
-      .from(identities)
-      .where(or(...conditions))
-      .limit(1);
+    const existing = await db.select().from(identities).where(or(...conditions)).limit(1);
 
     if (existing.length > 0) {
-      if (existing[0].publicKey === publicKey) {
-        // Same key - return existing identity (login-via-register flow)
-        let existingDfosLinked = false;
-        if (body.dfosChain) {
-          try {
-            const { verifyClientChain, storeDfosChain } = await import('@/src/lib/auth/dfos');
-            const verified = await verifyClientChain(body.dfosChain, publicKey);
-            if (verified) {
-              existingDfosLinked = await storeDfosChain(existing[0].id, verified);
-            }
-          } catch (err) {
-            log.error({ err: String(err), did: existing[0].id }, '[register] DFOS bridge failed');
-          }
-        }
-
-        const token = await createSessionToken({
-          sub: existing[0].id,
-          handle: existing[0].handle || undefined,
-          scope: existing[0].scope,
-          subtype: existing[0].subtype || undefined,
-          name: existing[0].name || undefined,
-          tier: (existing[0].tier as 'soft' | 'preliminary' | 'established') || 'preliminary',
-        });
-
-        const cookieConfig = getSessionCookieOptions();
-        const response = NextResponse.json({
-          did: existing[0].id,
-          handle: existing[0].handle,
-          scope: existing[0].scope,
-          subtype: existing[0].subtype,
-          created: false,
-          message: 'Identity already exists',
-          dfosChainLinked: existingDfosLinked,
-        });
-
-        response.cookies.set(cookieConfig.name, token, cookieConfig.options);
-        return response;
-      } else {
-        // Handle taken by different key
-        return NextResponse.json(
-          { error: 'Handle already taken' },
-          { status: 409 }
-        );
+      if (existing[0].publicKey !== publicKey) {
+        return NextResponse.json({ error: 'Handle already taken' }, { status: 409 });
       }
+      // Same key — login-via-register flow
+      return loginViaRegister(existing[0], body, publicKey);
     }
 
     // Require invite code for new registrations (skip in dev with DISABLE_INVITE_GATE=true)
-    // Service-to-service registrations (events, agents, etc.) bypass the invite gate
+    // Service-to-service registrations (events, agents, etc.) bypass the invite gate.
     const inviteGateDisabled = process.env.NEXT_PUBLIC_DISABLE_INVITE_GATE === 'true';
     const isServiceRegistration = scope !== 'actor' || (subtype && subtype !== 'human');
-    let inviteData: { fromDid: string; fromHandle?: string } | null = null;
-
-    if (!isServiceRegistration && inviteCode) {
-      // Always look up the invite if one was provided — even with gate disabled
-      // This ensures auto-accept creates the connection from the invite
-      const [invite] = await db
-        .select()
-        .from(invites)
-        .where(eq(invites.code, inviteCode))
-        .limit(1);
-
-      if (invite?.status === 'pending' && invite.usedCount < invite.maxUses) {
-        inviteData = { fromDid: invite.fromDid, fromHandle: invite.fromHandle ?? undefined };
-      } else if (!inviteGateDisabled) {
-        // Only reject invalid invites when the gate is enforced
-        return NextResponse.json(
-          { error: invite?.usedCount >= invite?.maxUses ? 'This invite has already been used' : 'Invalid or expired invite code' },
-          { status: 403 }
-        );
-      }
-    } else if (!inviteGateDisabled && !isServiceRegistration) {
-      // Gate is enforced and no invite code provided
-      return NextResponse.json(
-        { error: 'Imajin is invite-only. You need an invite code to register.' },
-        { status: 403 }
-      );
+    const inviteResult = await resolveInviteCode(inviteCode, isServiceRegistration, inviteGateDisabled);
+    if (!inviteResult.ok) {
+      return NextResponse.json({ error: inviteResult.error }, { status: inviteResult.status });
     }
-
-    // Generate DID from public key
-    const did = didFromPublicKey(publicKey);
+    const { inviteData } = inviteResult;
 
     // Create identity
+    const did = didFromPublicKey(publicKey);
     const [identity] = await db
       .insert(identities)
       .values({
-        id: did,
-        scope,
-        subtype: subtype || null,
-        publicKey,
-        handle: handle || null,
-        name: name?.trim().slice(0, 100) || null,
-        tier: 'preliminary',
+        id: did, scope, subtype: subtype || null, publicKey,
+        handle: handle || null, name: name?.trim().slice(0, 100) || null, tier: 'preliminary',
       })
       .returning();
 
-    // Store DFOS chain if provided
-    let dfosChainLinked = false;
-    if (body.dfosChain) {
-      try {
-        const { verifyClientChain, storeDfosChain } = await import('@/src/lib/auth/dfos');
-        const verified = await verifyClientChain(body.dfosChain, publicKey);
-        if (verified) {
-          dfosChainLinked = await storeDfosChain(identity.id, verified);
-        } else {
-          log.warn({ did: identity.id }, '[register] DFOS chain verification failed — skipping');
-        }
-      } catch (err) {
-        log.error({ err: String(err), did: identity.id }, '[register] DFOS chain storage failed');
-        // Non-fatal — registration still succeeds
-      }
-    }
+    // Store DFOS chain if provided (non-fatal)
+    const dfosChainLinked = body.dfosChain
+      ? await linkDfosChainSafe(identity.id, body.dfosChain, publicKey)
+      : false;
 
     // Create session token
     const token = await createSessionToken({
@@ -240,38 +128,24 @@ export async function POST(request: NextRequest) {
       scope: identity.scope,
       subtype: identity.subtype || undefined,
       name: identity.name || undefined,
-      tier: 'preliminary', // registrations with public keys are preliminary DIDs
+      tier: 'preliminary',
     });
 
-    // Set cookie first so the accept call is authenticated
     const cookieConfig = getSessionCookieOptions();
-    const response = NextResponse.json({
-      did: identity.id,
-      handle: identity.handle,
-      scope: identity.scope,
-      subtype: identity.subtype,
-      created: true,
-      inviteAccepted: false,
-      dfosChainLinked,
-    }, { status: 201 });
-
-    response.cookies.set(cookieConfig.name, token, cookieConfig.options);
-
     const platformDid = await getNodeDid();
 
     bus.publish('identity.created', {
       issuer: identity.id, subject: identity.id, scope: 'auth',
       payload: { tier: 'preliminary', scope: identity.scope, subtype: identity.subtype,
-                 context_id: identity.id, context_type: 'identity' }
+                 context_id: identity.id, context_type: 'identity' },
     });
-
     bus.publish('identity.verified.preliminary', {
       issuer: platformDid, subject: identity.id, scope: 'auth',
       payload: { tier: 'preliminary', scope: identity.scope, subtype: identity.subtype,
-                 context_id: identity.id, context_type: 'identity' }
+                 context_id: identity.id, context_type: 'identity' },
     });
 
-    // Create profile row so the user is visible/discoverable
+    // Create profile row (non-fatal)
     try {
       await db.insert(profiles).values({
         did: identity.id,
@@ -283,174 +157,68 @@ export async function POST(request: NextRequest) {
       }).onConflictDoNothing();
     } catch (err) {
       log.error({ err: String(err) }, 'Profile creation failed (non-fatal)');
-      // Non-fatal — user can still use the platform, profile can be created later
     }
 
-    // Subscribe to mailing list if opted in — fire and forget, non-fatal
+    // Subscribe to mailing list — fire and forget
     if (optInUpdates && email && typeof email === 'string' && email.trim()) {
-      (async () => {
-        try {
-          const normalizedEmail = email.toLowerCase().trim();
-          const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_WWW_URL || process.env.WWW_URL || new URL(request.url).origin;
-
-          // Get or create the default mailing list
-          let defaultList = await db.query.mailingLists.findFirst({
-            where: eq(mailingLists.slug, 'updates'),
-          });
-          if (!defaultList) {
-            const [newList] = await db.insert(mailingLists).values({
-              slug: 'updates',
-              name: 'Imajin Updates',
-              description: 'Progress updates on sovereign infrastructure',
-            }).returning();
-            defaultList = newList;
-          }
-
-          // Check for existing contact
-          const existingContact = await db.query.contacts.findFirst({
-            where: eq(contacts.email, normalizedEmail),
-          });
-
-          if (existingContact) {
-            const existingSub = await db.query.subscriptions.findFirst({
-              where: eq(subscriptions.contactId, existingContact.id),
-            });
-            if (!existingSub) {
-              await db.insert(subscriptions).values({
-                contactId: existingContact.id,
-                mailingListId: defaultList.id,
-              });
-            } else if (existingSub.status !== 'subscribed') {
-              await db.update(subscriptions)
-                .set({ status: 'subscribed', subscribedAt: new Date(), unsubscribedAt: null })
-                .where(eq(subscriptions.id, existingSub.id));
-            }
-            if (!existingContact.isVerified) {
-              const expiresAt = verifyTokenExpiry();
-              const token = generateVerifyToken(normalizedEmail, expiresAt);
-              const verifyUrl = `${baseUrl}/api/subscribe/verify?email=${encodeURIComponent(normalizedEmail)}&token=${token}&expires=${expiresAt}`;
-              await sendEmail({
-                to: normalizedEmail,
-                subject: 'Confirm your email — Imajin',
-                html: verificationEmail(verifyUrl),
-                text: verificationEmailText(verifyUrl),
-              });
-            }
-          } else {
-            // Create contact and subscription, then send verification email
-            const [newContact] = await db.insert(contacts).values({
-              email: normalizedEmail,
-              source: 'register',
-              isVerified: false,
-            }).returning();
-
-            await db.insert(subscriptions).values({
-              contactId: newContact.id,
-              mailingListId: defaultList.id,
-            });
-
-            const expiresAt = verifyTokenExpiry();
-            const token = generateVerifyToken(normalizedEmail, expiresAt);
-            const verifyUrl = `${baseUrl}/api/subscribe/verify?email=${encodeURIComponent(normalizedEmail)}&token=${token}&expires=${expiresAt}`;
-            await sendEmail({
-              to: normalizedEmail,
-              subject: 'Confirm your email — Imajin',
-              html: verificationEmail(verifyUrl),
-              text: verificationEmailText(verifyUrl),
-            });
-          }
-        } catch (err) {
-          log.error({ err: String(err) }, '[register] Mailing list subscription failed (non-fatal)');
-        }
-      })().catch((err) => log.error({ err: String(err) }, '[register] Mailing list subscription setup error'));
+      subscribeEmailToMailingList(email, identity.id, request.url);
     }
 
-    // Auto-accept the invite (create the connection)
-    // We do this server-side so the new user lands with their first connection
+    // Auto-accept invite: create the connection so the new user lands with a first contact.
     if (inviteData && inviteCode) {
-      try {
-        const podId = generateId('pod_');
-        const senderLabel = inviteData.fromHandle || inviteData.fromDid.slice(0, 16);
-        const accepterLabel = identity.handle || identity.id.slice(0, 16);
-
-        await db.insert(pods).values({
-          id: podId,
-          name: `${senderLabel} ↔ ${accepterLabel}`,
-          ownerDid: inviteData.fromDid,
-          type: 'personal',
-          visibility: 'private',
-        });
-
-        await db.insert(podMembers).values([
-          { podId, did: inviteData.fromDid, role: 'member', addedBy: inviteData.fromDid },
-          { podId, did: identity.id, role: 'member', addedBy: identity.id },
-        ]);
-
-        const [connDidA, connDidB] = [inviteData.fromDid, identity.id].sort((a, b) => a.localeCompare(b));
-        await db.insert(connections).values({ didA: connDidA, didB: connDidB })
-          .onConflictDoUpdate({
-            target: [connections.didA, connections.didB],
-            set: { disconnectedAt: null, connectedAt: new Date() },
-          });
-
-        bus.publish('connection.create', { issuer: identity.id, subject: inviteData.fromDid, scope: 'connections', payload: { otherDid: inviteData.fromDid, source: 'invite' } }).catch(() => {});
-
-        const now = new Date().toISOString();
-        await db
-          .update(invites)
-          .set({
-            status: 'accepted',
-            acceptedAt: now,
-            usedCount: sql`${invites.usedCount} + 1`,
-            consumedBy: identity.id,
-            toDid: identity.id,
-          })
-          .where(eq(invites.code, inviteCode));
-
-        // Fetch inviter profile for notification payload — fire and forget
-        const [inviterProfile] = await db
-          .select()
-          .from(profiles)
-          .where(eq(profiles.did, inviteData.fromDid))
-          .limit(1);
-
-        bus.publish('connection.accepted', {
-          issuer: identity.id, subject: inviteData.fromDid, scope: 'connections',
-          payload: { invite_code: inviteCode, context_id: podId, context_type: 'connection',
-                     name: identity.handle || identity.id.slice(0, 16),
-                     email: inviterProfile?.contactEmail || undefined }
-        });
-
-        bus.publish('vouch', {
-          issuer: inviteData.fromDid, subject: identity.id, scope: 'connections',
-          payload: { invite_code: inviteCode, context_id: podId, context_type: 'connection' }
-        });
-
+      const accepted = await autoAcceptInvite({ inviteData, inviteCode, identity });
+      if (accepted.ok) {
         const acceptedResponse = NextResponse.json({
-          did: identity.id,
-          handle: identity.handle,
-          scope: identity.scope,
-          subtype: identity.subtype,
-          created: true,
-          inviteAccepted: true,
-          dfosChainLinked,
+          did: identity.id, handle: identity.handle,
+          scope: identity.scope, subtype: identity.subtype,
+          created: true, inviteAccepted: true, dfosChainLinked,
         }, { status: 201 });
         acceptedResponse.cookies.set(cookieConfig.name, token, cookieConfig.options);
         return acceptedResponse;
-      } catch (err) {
-        log.error({ err: String(err) }, '[register] Auto-accept failed (non-fatal)');
-        // Registration succeeded but auto-accept failed — they can accept manually
-        return response;
       }
+      log.error({ err: String(accepted.error) }, '[register] Auto-accept failed (non-fatal)');
     }
 
+    const response = NextResponse.json({
+      did: identity.id, handle: identity.handle,
+      scope: identity.scope, subtype: identity.subtype,
+      created: true, inviteAccepted: false, dfosChainLinked,
+    }, { status: 201 });
+    response.cookies.set(cookieConfig.name, token, cookieConfig.options);
     return response;
 
   } catch (error) {
     log.error({ err: String(error) }, 'Register error');
-    return NextResponse.json(
-      { error: 'Failed to register identity' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to register identity' }, { status: 500 });
   }
+}
+
+/** Handle the case where the same public key re-registers (login-via-register flow). */
+async function loginViaRegister(
+  existing: typeof identities.$inferSelect,
+  body: Record<string, unknown>,
+  publicKey: string,
+): Promise<NextResponse> {
+  const dfosChainLinked = body.dfosChain
+    ? await linkDfosChainSafe(existing.id, body.dfosChain, publicKey)
+    : false;
+
+  const token = await createSessionToken({
+    sub: existing.id,
+    handle: existing.handle || undefined,
+    scope: existing.scope,
+    subtype: existing.subtype || undefined,
+    name: existing.name || undefined,
+    tier: (existing.tier as 'soft' | 'preliminary' | 'established') || 'preliminary',
+  });
+
+  const cookieConfig = getSessionCookieOptions();
+  const response = NextResponse.json({
+    did: existing.id, handle: existing.handle,
+    scope: existing.scope, subtype: existing.subtype,
+    created: false, message: 'Identity already exists',
+    dfosChainLinked,
+  });
+  response.cookies.set(cookieConfig.name, token, cookieConfig.options);
+  return response;
 }

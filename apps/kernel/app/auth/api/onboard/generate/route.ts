@@ -9,14 +9,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, credentials, identityMembers, profiles } from '@/src/db';
+import { db, identities, credentials, profiles } from '@/src/db';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { publish } from '@imajin/bus';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
+import { addScopeMembership } from '@/src/lib/auth/onboard';
 
 const log = createLogger('kernel');
 
@@ -107,22 +108,7 @@ export async function POST(request: NextRequest) {
 
     // If scoped to a forest, add as member and set active forest cookie
     if (scopeDid && typeof scopeDid === 'string') {
-      try {
-        const [existingMember] = await db
-          .select({ removedAt: identityMembers.removedAt })
-          .from(identityMembers)
-          .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)))
-          .limit(1);
-        if (!existingMember) {
-          await db.insert(identityMembers).values({ identityDid: scopeDid, memberDid: did, role: 'member', addedBy: scopeDid });
-        } else if (existingMember.removedAt) {
-          await db.update(identityMembers)
-            .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedAt: new Date() })
-            .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)));
-        }
-      } catch (err) {
-        log.error({ err: String(err) }, '[onboard/generate] Forest member add failed (non-fatal)');
-      }
+      await addScopeMembership(scopeDid, did);
       publish('scope.onboard', {
         issuer: scopeDid,
         subject: did,

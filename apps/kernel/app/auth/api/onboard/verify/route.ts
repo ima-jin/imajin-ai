@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, onboardTokens, identities, credentials, identityMembers } from '@/src/db';
+import { db, onboardTokens } from '@/src/db';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { emitSessionAttestation } from '@/src/lib/auth/emit-session-attestation';
 import { publish } from '@imajin/bus';
@@ -15,6 +15,11 @@ import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { consumePendingInvites } from '@/src/lib/auth/consume-invite';
+import {
+  addScopeMembership,
+  createOrFindSoftDid,
+  handleExpiredOrUsedToken,
+} from '@/src/lib/auth/onboard';
 
 const log = createLogger('kernel');
 
@@ -61,72 +66,24 @@ export async function GET(request: NextRequest) {
       .limit(1);
 
     if (!record) {
-      // Token is used or expired — but if user already has a session, just redirect
-      if (existingSession) {
-        const [anyRecord] = await db
-          .select()
-          .from(onboardTokens)
-          .where(eq(onboardTokens.token, token))
-          .limit(1);
-        const redirectUrl = anyRecord?.redirectUrl || 'https://events.imajin.ai';
-        return NextResponse.redirect(redirectUrl);
-      }
+      const DEFAULT_REDIRECT = 'https://events.imajin.ai';
+      const graceResponse = await handleExpiredOrUsedToken(
+        token, existingSession, getSessionCookieOptions(), DEFAULT_REDIRECT,
+      );
+      if (graceResponse) return graceResponse;
 
-      // Check if token exists but was already used (vs truly expired/invalid)
+      // Check if it was a used token (not just missing) to give a better error
       const [usedRecord] = await db
-        .select()
+        .select({ usedAt: onboardTokens.usedAt, redirectUrl: onboardTokens.redirectUrl })
         .from(onboardTokens)
         .where(eq(onboardTokens.token, token))
         .limit(1);
 
       if (usedRecord?.usedAt) {
-        // Grace window: if token was used within the last 60 seconds, re-issue session.
-        // Handles email security scanners (Outlook Safe Links, Proofpoint, etc.)
-        // that consume the token via GET before the user clicks.
-        const usedAgo = Date.now() - new Date(usedRecord.usedAt).getTime();
-        const GRACE_MS = 60_000;
-
-        if (usedAgo < GRACE_MS) {
-          // Re-issue session — the token already proved email ownership.
-          // Look up the stable DID via the credentials table.
-          const normalizedEmail = usedRecord.email.toLowerCase().trim();
-          const [existingCred] = await db
-            .select({ did: credentials.did })
-            .from(credentials)
-            .where(and(eq(credentials.type, 'email'), eq(credentials.value, normalizedEmail)))
-            .limit(1);
-
-          if (existingCred?.did) {
-            const [identity] = await db
-              .select()
-              .from(identities)
-              .where(eq(identities.id, existingCred.did))
-              .limit(1);
-
-            if (identity) {
-              const identityTier = (identity.tier || 'soft') as 'soft' | 'preliminary' | 'established';
-              const sessionToken = await createSessionToken({
-                sub: existingCred.did,
-                scope: 'actor',
-                subtype: 'human',
-                tier: identityTier,
-                handle: identity.handle || undefined,
-                name: identity.name || undefined,
-              });
-
-              const cookieOptions = getSessionCookieOptions();
-              const redirectUrl = usedRecord.redirectUrl || 'https://events.imajin.ai';
-              const response = NextResponse.redirect(redirectUrl);
-              response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
-              return response;
-            }
-          }
-        }
-
-        const redirectUrl = usedRecord.redirectUrl || 'https://events.imajin.ai';
+        const redirectUrl = usedRecord.redirectUrl ?? DEFAULT_REDIRECT;
         return errorPage(
           'Already Verified',
-          `This link was already used. You're probably already logged in — <a href="${redirectUrl}" style="color:#60a5fa;text-decoration:underline;">click here to continue</a>.<br><br>If that doesn't work, your browser may be blocking cookies. Try disabling your ad blocker or using a different browser, then request a new link.`
+          `This link was already used. You're probably already logged in — <a href="${redirectUrl}" style="color:#60a5fa;text-decoration:underline;">click here to continue</a>.<br><br>If that doesn't work, your browser may be blocking cookies. Try disabling your ad blocker or using a different browser, then request a new link.`,
         );
       }
 
@@ -139,77 +96,17 @@ export async function GET(request: NextRequest) {
       .set({ usedAt: new Date() })
       .where(eq(onboardTokens.id, record.id));
 
-    // Create or find soft DID
-    // Check for existing credential to reuse DID (prevents duplicates)
+    // Create or find the soft DID for this email
     const normalizedEmail = record.email.toLowerCase().trim();
-    const [existingCred] = await db
-      .select({ did: credentials.did })
-      .from(credentials)
-      .where(and(eq(credentials.type, 'email'), eq(credentials.value, normalizedEmail)))
-      .limit(1);
+    const { did, identity, created } = await createOrFindSoftDid(normalizedEmail, record.name);
 
-    let did: string;
-
-    let [identity] = existingCred
-      ? await db.select().from(identities).where(eq(identities.id, existingCred.did)).limit(1)
-      : [];
-
-    if (identity) {
-      did = identity.id;
-      const wantNameUpdate = !!(record.name && !identity.name);
-      const missingEmail = !identity.contactEmail;
-      if (wantNameUpdate || missingEmail) {
-        // Update name if provided and not already set; backfill contact_email if missing
-        [identity] = await db
-          .update(identities)
-          .set({
-            ...(wantNameUpdate ? { name: record.name! } : {}),
-            ...(missingEmail ? { contactEmail: normalizedEmail } : {}),
-            updatedAt: new Date(),
-          })
-          .where(eq(identities.id, did))
-          .returning();
-      }
-    } else {
-      // Mint a new stable DID
-      did = `did:imajin:${nanoid(44)}`;
-      const placeholderKey = `soft_${nanoid(32)}`;
-      [identity] = await db
-        .insert(identities)
-        .values({
-          id: did,
-          scope: 'actor',
-          subtype: 'human',
-          publicKey: placeholderKey,
-          handle: null,
-          name: record.name || null,
-          contactEmail: normalizedEmail,
-          metadata: { email: record.email, tier: 'soft', source: 'onboard' },
-        })
-        .returning();
-      // Insert email credential
-      await db.insert(credentials).values({
-        id: `cred_${nanoid(16)}`,
-        did,
-        type: 'email',
-        value: normalizedEmail,
-        verifiedAt: new Date(),
-      });
-
-      // Emit identity.created attestation → triggers 10 MJN emission (soft DID)
+    // Emit identity.created for newly minted DIDs (triggers token emission)
+    if (created) {
       publish('identity.created', {
-        issuer: did,
-        subject: did,
-        scope: 'auth',
-        payload: {
-          did,
-          scope: 'actor',
-          subtype: 'human',
-          tier: 'soft',
-          context_id: did,
-          context_type: 'identity',
-        },
-      }).catch((err) => log.error({ err: String(err) }, '[onboard/verify] Attestation (identity.created) error (non-fatal)'));
+        issuer: did, subject: did, scope: 'auth',
+        payload: { did, scope: 'actor', subtype: 'human', tier: 'soft',
+                   context_id: did, context_type: 'identity' },
+      }).catch((err) => log.error({ err: String(err) }, '[onboard/verify] identity.created error (non-fatal)'));
     }
 
     // Auto-consume any pending invites sent to this email — fire and forget
@@ -227,26 +124,9 @@ export async function GET(request: NextRequest) {
     // None of these depend on whether we set a cookie or hand off via token.
     if (record.scopeDid) {
       const scopeDid = record.scopeDid;
-      try {
-        const [existing] = await db
-          .select({ removedAt: identityMembers.removedAt })
-          .from(identityMembers)
-          .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)))
-          .limit(1);
-        if (!existing) {
-          await db.insert(identityMembers).values({ identityDid: scopeDid, memberDid: did, role: 'member', addedBy: scopeDid });
-        } else if (existing.removedAt) {
-          await db.update(identityMembers)
-            .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedAt: new Date() })
-            .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, did)));
-        }
-      } catch (err) {
-        log.error({ err: String(err) }, '[onboard/verify] Forest member add failed (non-fatal)');
-      }
+      await addScopeMembership(scopeDid, did);
       publish('scope.onboard', {
-        issuer: scopeDid,
-        subject: did,
-        scope: 'auth',
+        issuer: scopeDid, subject: did, scope: 'auth',
         payload: { context_id: scopeDid, context_type: 'forest' },
       }).catch(err => log.error({ err: String(err) }, '[onboard/verify] Scope attestation failed (non-fatal)'));
     }

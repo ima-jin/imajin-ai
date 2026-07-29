@@ -163,53 +163,23 @@ export async function POST(
 
   try {
     // Load attestation
-    const [attestation] = await db
-      .select()
-      .from(attestations)
-      .where(eq(attestations.id, id))
-      .limit(1);
+    const [attestation] = await db.select().from(attestations).where(eq(attestations.id, id)).limit(1);
+    if (!attestation) return NextResponse.json({ error: 'Document not found' }, { status: 404, headers: cors });
 
-    if (!attestation) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404, headers: cors });
-    }
-
-    if (attestation.attestationStatus === 'declined') {
-      return NextResponse.json({ error: 'Document has been declined' }, { status: 409, headers: cors });
-    }
-    if (attestation.attestationStatus === 'executed') {
-      return NextResponse.json({ error: 'Document is already executed' }, { status: 409, headers: cors });
-    }
-    if (attestation.attestationStatus !== 'collecting') {
-      return NextResponse.json({ error: `Cannot sign — document is ${attestation.attestationStatus}` }, { status: 409, headers: cors });
-    }
-
-    // Check expiry
-    if (attestation.expiresAt && new Date() > attestation.expiresAt) {
-      await db.update(attestations).set({ attestationStatus: 'expired' }).where(eq(attestations.id, id));
-      return NextResponse.json({ error: 'Document has expired' }, { status: 410, headers: cors });
-    }
-
-    // Verify document hash
-    if (attestation.documentHash !== document_hash) {
-      return NextResponse.json({ error: 'Document hash mismatch' }, { status: 400, headers: cors });
-    }
+    const guardError = await validateDocumentForSigning(attestation, id, document_hash, cors);
+    if (guardError) return guardError;
 
     // Find caller's pending signature row
     const [sigRow] = await db
       .select()
       .from(attestationSignatures)
-      .where(
-        and(
-          eq(attestationSignatures.attestationId, id),
-          eq(attestationSignatures.signerDid, callerDid),
-          eq(attestationSignatures.status, 'pending')
-        )
-      )
+      .where(and(
+        eq(attestationSignatures.attestationId, id),
+        eq(attestationSignatures.signerDid, callerDid),
+        eq(attestationSignatures.status, 'pending'),
+      ))
       .limit(1);
-
-    if (!sigRow) {
-      return NextResponse.json({ error: 'You are not a pending signer for this document' }, { status: 403, headers: cors });
-    }
+    if (!sigRow) return NextResponse.json({ error: 'You are not a pending signer for this document' }, { status: 403, headers: cors });
 
     // Verify JWS signature
     const [callerIdentity] = await db
@@ -217,105 +187,77 @@ export async function POST(
       .from(identities)
       .where(eq(identities.id, callerDid))
       .limit(1);
-
-    if (!callerIdentity) {
-      return NextResponse.json({ error: 'Signer identity not found' }, { status: 400, headers: cors });
-    }
+    if (!callerIdentity) return NextResponse.json({ error: 'Signer identity not found' }, { status: 400, headers: cors });
 
     const signatureValid = await verifyDocumentSignatureToken({
-      token: jws,
-      signerPublicKeyHex: callerIdentity.publicKey,
-      signerDid: callerDid,
-      documentHash: document_hash,
+      token: jws, signerPublicKeyHex: callerIdentity.publicKey,
+      signerDid: callerDid, documentHash: document_hash,
     });
-    if (!signatureValid) {
-      return NextResponse.json({ error: 'Invalid JWS signature' }, { status: 400, headers: cors });
-    }
+    if (!signatureValid) return NextResponse.json({ error: 'Invalid JWS signature' }, { status: 400, headers: cors });
 
-    // Update signature row
-    await db
-      .update(attestationSignatures)
+    // Record the signature
+    await db.update(attestationSignatures)
       .set({ status: 'signed', jws, signedAt: new Date() })
       .where(eq(attestationSignatures.id, sigRow.id));
 
-    // Check if all signed
+    // Copy document asset to signer's library (non-fatal, happens regardless of allSigned)
+    if (attestation.documentAssetId) {
+      const [asset] = await db.select().from(assets).where(eq(assets.id, attestation.documentAssetId)).limit(1);
+      if (asset) await copyDocumentToSigner(asset, callerDid, id);
+    }
+
+    // Check if all signers have signed
     const [pendingCount] = await db
       .select({ count: sql<number>`count(*)` })
       .from(attestationSignatures)
-      .where(
-        and(
-          eq(attestationSignatures.attestationId, id),
-          eq(attestationSignatures.status, 'pending')
-        )
-      );
+      .where(and(eq(attestationSignatures.attestationId, id), eq(attestationSignatures.status, 'pending')));
 
-    const allSigned = pendingCount.count === 0;
-
-    if (allSigned) {
-      await db
-        .update(attestations)
-        .set({ attestationStatus: 'executed' })
-        .where(eq(attestations.id, id));
-
-      // Copy document to signer
-      if (attestation.documentAssetId) {
-        const [asset] = await db
-          .select()
-          .from(assets)
-          .where(eq(assets.id, attestation.documentAssetId))
-          .limit(1);
-        if (asset) {
-          await copyDocumentToSigner(asset, callerDid, id);
-        }
-      }
-
-      // Publish executed
+    if (pendingCount.count === 0) {
+      await db.update(attestations).set({ attestationStatus: 'executed' }).where(eq(attestations.id, id));
       publish('document.executed', {
-        issuer: callerDid,
-        subject: attestation.issuerDid,
-        scope: 'auth',
-        payload: {
-          attestationId: id,
-          documentAssetId: attestation.documentAssetId ?? '',
-          creatorDid: attestation.issuerDid,
-          signerDids: [], // filled below
-          context_id: id,
-          context_type: 'document',
-        },
+        issuer: callerDid, subject: attestation.issuerDid, scope: 'auth',
+        payload: { attestationId: id, documentAssetId: attestation.documentAssetId ?? '',
+                   creatorDid: attestation.issuerDid, signerDids: [],
+                   context_id: id, context_type: 'document' },
       });
-
       return NextResponse.json({ status: 'executed', id }, { headers: cors });
     }
 
-    // Copy document to signer even for partial sign
-    if (attestation.documentAssetId) {
-      const [asset] = await db
-        .select()
-        .from(assets)
-        .where(eq(assets.id, attestation.documentAssetId))
-        .limit(1);
-      if (asset) {
-        await copyDocumentToSigner(asset, callerDid, id);
-      }
-    }
-
-    // Publish signed
     publish('document.signed', {
-      issuer: callerDid,
-      subject: attestation.issuerDid,
-      scope: 'auth',
-      payload: {
-        attestationId: id,
-        signerDid: callerDid,
-        documentAssetId: attestation.documentAssetId ?? '',
-        context_id: id,
-        context_type: 'document',
-      },
+      issuer: callerDid, subject: attestation.issuerDid, scope: 'auth',
+      payload: { attestationId: id, signerDid: callerDid,
+                 documentAssetId: attestation.documentAssetId ?? '',
+                 context_id: id, context_type: 'document' },
     });
-
     return NextResponse.json({ status: 'signed', id }, { headers: cors });
   } catch (error) {
     log.error({ err: String(error), documentId: id }, 'Document sign error');
     return NextResponse.json({ error: 'Failed to sign document' }, { status: 500, headers: cors });
   }
+}
+
+/** Guard checks: status, expiry, hash. Returns an error response or null if OK. */
+async function validateDocumentForSigning(
+  attestation: typeof attestations.$inferSelect,
+  id: string,
+  documentHash: string,
+  cors: HeadersInit,
+): Promise<NextResponse | null> {
+  if (attestation.attestationStatus === 'declined') {
+    return NextResponse.json({ error: 'Document has been declined' }, { status: 409, headers: cors });
+  }
+  if (attestation.attestationStatus === 'executed') {
+    return NextResponse.json({ error: 'Document is already executed' }, { status: 409, headers: cors });
+  }
+  if (attestation.attestationStatus !== 'collecting') {
+    return NextResponse.json({ error: `Cannot sign — document is ${attestation.attestationStatus}` }, { status: 409, headers: cors });
+  }
+  if (attestation.expiresAt && new Date() > attestation.expiresAt) {
+    await db.update(attestations).set({ attestationStatus: 'expired' }).where(eq(attestations.id, id));
+    return NextResponse.json({ error: 'Document has expired' }, { status: 410, headers: cors });
+  }
+  if (attestation.documentHash !== documentHash) {
+    return NextResponse.json({ error: 'Document hash mismatch' }, { status: 400, headers: cors });
+  }
+  return null;
 }

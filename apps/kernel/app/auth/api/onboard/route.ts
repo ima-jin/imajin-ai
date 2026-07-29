@@ -61,68 +61,17 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    // mode='login' (used by MagicLinkButton): only send to existing accounts,
-    // reject hard DIDs (they must authenticate by key, not email), and apply
-    // email enumeration protection by returning { sent: true } silently when
-    // no account is found. Onboarding flows (mode unset) accept any email and
-    // mint a fresh soft DID on verify.
     if (mode === 'login') {
-      const [cred] = await db
-        .select({ did: credentials.did })
-        .from(credentials)
-        .where(
-          and(
-            eq(credentials.type, 'email'),
-            eq(credentials.value, normalizedEmail),
-          )
-        )
-        .limit(1);
-
-      let resolvedDid = cred?.did;
-
-      if (!resolvedDid) {
-        // Fallback: legacy profile.profiles contact_email lookup, with backfill
-        // into credentials so the next call hits the fast path.
-        const rawSql = getClient();
-        const profileRows = await rawSql<{ did: string }[]>`
-          SELECT did FROM profile.profiles
-          WHERE LOWER(contact_email) = ${normalizedEmail}
-          LIMIT 1
-        `;
-        if (profileRows.length > 0) {
-          resolvedDid = profileRows[0].did;
-          try {
-            await db.insert(credentials).values({
-              id: `cred_${nanoid(16)}`,
-              did: resolvedDid,
-              type: 'email',
-              value: normalizedEmail,
-              verifiedAt: new Date(),
-            });
-          } catch (e: unknown) {
-            // 23505 = unique violation; harmless race.
-            const code = (e as { code?: string } | null)?.code;
-            if (code !== '23505') throw e;
-          }
-        }
-      }
-
-      if (!resolvedDid) {
-        // Unknown email — silently succeed to prevent enumeration.
+      // Only send to existing soft-DID accounts; reject hard DIDs; enumerate-protect.
+      const loginCheck = await resolveLoginEmail(normalizedEmail);
+      if (loginCheck.notFound) {
         log.info({ email: normalizedEmail }, 'Login requested for unknown email');
         return NextResponse.json({ sent: true }, { headers: cors });
       }
-
-      const [identity] = await db
-        .select({ tier: identities.tier })
-        .from(identities)
-        .where(eq(identities.id, resolvedDid))
-        .limit(1);
-
-      if (identity && identity.tier !== 'soft') {
+      if (loginCheck.hardDid) {
         return NextResponse.json(
           { error: 'This account requires private key authentication. Use your backup key file to log in.' },
-          { status: 403, headers: cors }
+          { status: 403, headers: cors },
         );
       }
     }
@@ -176,6 +125,53 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     );
   }
 });
+
+/** Returns { notFound } when the email has no account, { hardDid } when it does but isn't a soft DID. */
+async function resolveLoginEmail(
+  normalizedEmail: string,
+): Promise<{ notFound: true } | { notFound: false; hardDid: boolean }> {
+  const [cred] = await db
+    .select({ did: credentials.did })
+    .from(credentials)
+    .where(and(eq(credentials.type, 'email'), eq(credentials.value, normalizedEmail)))
+    .limit(1);
+
+  let resolvedDid = cred?.did;
+
+  if (!resolvedDid) {
+    const rawSql = getClient();
+    const profileRows = await rawSql<{ did: string }[]>`
+      SELECT did FROM profile.profiles
+      WHERE LOWER(contact_email) = ${normalizedEmail}
+      LIMIT 1
+    `;
+    if (profileRows.length > 0) {
+      resolvedDid = profileRows[0].did;
+      try {
+        await db.insert(credentials).values({
+          id: `cred_${nanoid(16)}`,
+          did: resolvedDid,
+          type: 'email',
+          value: normalizedEmail,
+          verifiedAt: new Date(),
+        });
+      } catch (e: unknown) {
+        const code = (e as { code?: string } | null)?.code;
+        if (code !== '23505') throw e; // 23505 = unique violation; harmless race
+      }
+    }
+  }
+
+  if (!resolvedDid) return { notFound: true };
+
+  const [identity] = await db
+    .select({ tier: identities.tier })
+    .from(identities)
+    .where(eq(identities.id, resolvedDid))
+    .limit(1);
+
+  return { notFound: false, hardDid: !!(identity && identity.tier !== 'soft') };
+}
 
 function onboardEmail({ verifyUrl, context, name }: { verifyUrl: string; context?: string; name?: string }): string {
   const greeting = name ? `Hi ${name},` : 'Hi,';
