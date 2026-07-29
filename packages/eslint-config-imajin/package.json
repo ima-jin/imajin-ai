@@ -1,17 +1,21 @@
 {
   "name": "eslint-config-imajin",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Shared ESLint config for imajin-ai monorepo",
+  "description": "Shared ESLint flat config for imajin-ai monorepo",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
     "./node": "./node.js"
   },
   "peerDependencies": {
-    "@typescript-eslint/eslint-plugin": ">=7",
-    "@typescript-eslint/parser": ">=7",
-    "eslint": ">=8",
-    "eslint-plugin-sonarjs": ">=0.25"
+    "@eslint/eslintrc": ">=3",
+    "@eslint/js": ">=9",
+    "@typescript-eslint/eslint-plugin": ">=8",
+    "typescript-eslint": ">=8",
+    "eslint": ">=9",
+    "eslint-config-next": ">=14",
+    "eslint-plugin-sonarjs": ">=2",
+    "globals": ">=15"
   }
 }

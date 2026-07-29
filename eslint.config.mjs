@@ -1,0 +1,131 @@
+import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import sonarjs from 'eslint-plugin-sonarjs';
+import reactHooks from 'eslint-plugin-react-hooks';
+import globals from 'globals';
+import { FlatCompat } from '@eslint/eslintrc';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Bridge for eslint-config-next@14 (legacy format) until Next.js 15 upgrade
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+  recommendedConfig: js.configs.recommended,
+});
+
+export default tseslint.config(
+  // ── Global ignores ────────────────────────────────────────────────────────
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/.next/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/drizzle/**',
+      'scripts/**',
+      // Build-tool configs — use require() by design
+      '**/*.config.js',
+      '**/*.config.ts',
+      '**/*.config.cjs',
+      '**/*.config.mts',
+    ],
+  },
+
+  // ── Base JS ──────────────────────────────────────────────────
+  js.configs.recommended,
+  // Allow empty catch blocks — intentional no-ops are common throughout the codebase
+  { rules: { 'no-empty': ['warn', { allowEmptyCatch: true }] } },
+  // Downgrade no-control-regex: some regex patterns intentionally include control chars
+  { rules: { 'no-control-regex': 'warn' } },
+
+  // ── TypeScript (auto-scoped to .ts/.tsx by typescript-eslint) ────────────
+  ...tseslint.configs.recommended,
+
+  // ── Globals ───────────────────────────────────────────────────────────────
+  {
+    files: ['apps/**/*.{ts,tsx,js,jsx}'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+    },
+  },
+  {
+    files: ['packages/**/*.{ts,tsx,js,mjs,cjs}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+
+  // ── Next.js apps — core-web-vitals via FlatCompat ────────────────────────
+  // Strip the canary react-hooks bundled by eslint-config-next@14 — it uses
+  // context.getScope() which was removed in ESLint v9. We register the stable
+  // eslint-plugin-react-hooks@5 below instead.
+  ...compat.extends('next/core-web-vitals').map(config => {
+    const { plugins = {}, ...rest } = config;
+    const { 'react-hooks': _rh, ...otherPlugins } = plugins;
+    return { ...rest, plugins: otherPlugins, files: ['apps/**/*.{ts,tsx,js,jsx}'] };
+  }),
+
+  // React Hooks — stable ESLint v9-compatible plugin
+  {
+    files: ['apps/**/*.{ts,tsx,js,jsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: reactHooks.configs.recommended.rules,
+  },
+
+  // App rule overrides
+  {
+    files: ['apps/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      'react/no-unescaped-entities': 'off',
+      '@next/next/no-img-element': 'off',
+    },
+  },
+
+  // No console in Next.js page / API routes
+  {
+    files: [
+      'apps/**/app/**/page.tsx',
+      'apps/**/app/**/layout.tsx',
+      'apps/**/app/api/**/*.ts',
+    ],
+    rules: {
+      'no-console': 'error',
+    },
+  },
+
+  // ── TypeScript overrides ──────────────────────────────────────────────────
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
+  },
+
+  // ── SonarJS — repo-wide ────────────────────────────────────────
+  // S3776 + S2004 now both available via eslint-plugin-sonarjs v2
+  {
+    plugins: { sonarjs },
+    rules: {
+      // Sonar S3776 — warn now, flip to error when epic #1466 closes
+      'sonarjs/cognitive-complexity': ['warn', 15],
+      // Sonar S2004 — warn now, flip to error when epic #1466 closes
+      'sonarjs/no-nested-functions': ['warn', { threshold: 4 }],
+    },
+  },
+
+  // ── Final overrides (must come last to beat FlatCompat + tseslint entries) ───
+  // TS plugin rules should not fire on plain .js/.jsx runtime scripts
+  {
+    files: ['**/*.js', '**/*.jsx'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  // Function type is acceptable for mock signatures in test files
+  {
+    files: ['**/__tests__/**', '**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx'],
+    rules: { '@typescript-eslint/no-unsafe-function-type': 'off' },
+  },
+);

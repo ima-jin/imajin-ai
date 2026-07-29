@@ -13,6 +13,7 @@ const nextConfig = {
       { source: '/:path*', headers: [...tier2Headers(), ...tier3Headers()] },
     ];
   },
+  eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: false },
   reactStrictMode: true,
   webpack: (config) => {

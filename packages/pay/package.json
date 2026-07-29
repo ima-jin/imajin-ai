@@ -9,7 +9,7 @@
     "./providers": "./src/providers/index.ts"
   },
   "scripts": {
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src",
     "test": "vitest"
   },
   "dependencies": {

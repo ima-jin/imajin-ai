@@ -1,31 +1,34 @@
-/** @type {import('eslint').Linter.Config} */
-module.exports = {
-  env: {
-    node: true,
-    es2020: true,
+// Flat config for Node.js/TypeScript packages.
+// The root eslint.config.mjs is the primary entry point;
+// this file is kept for standalone per-package use if needed.
+'use strict';
+
+const js = require('@eslint/js');
+const tseslint = require('typescript-eslint');
+const sonarjs = require('eslint-plugin-sonarjs');
+const globals = require('globals');
+
+/** @type {import('eslint').Linter.Config[]} */
+module.exports = tseslint.config(
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    languageOptions: { globals: globals.node },
   },
-  extends: ['eslint:recommended'],
-  plugins: ['sonarjs'],
-  parserOptions: {
-    ecmaVersion: 2020,
-    sourceType: 'module',
-  },
-  rules: {
-    'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-    // Sonar S3776 — warn now, flip to error when epic #1466 closes
-    'sonarjs/cognitive-complexity': ['warn', 15],
-    // S2004 (sonarjs/no-nested-functions) requires eslint-plugin-sonarjs v2+
-    // which needs ESLint v9 flat config — deferred until ESLint upgrade
-  },
-  overrides: [
-    {
-      files: ['*.ts', '*.tsx'],
-      parser: '@typescript-eslint/parser',
-      extends: ['plugin:@typescript-eslint/recommended'],
-      rules: {
-        '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-        '@typescript-eslint/no-explicit-any': 'warn',
-      },
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn',
     },
-  ],
-};
+  },
+  {
+    plugins: { sonarjs },
+    rules: {
+      // Sonar S3776 — warn now, flip to error when epic #1466 closes
+      'sonarjs/cognitive-complexity': ['warn', 15],
+      // Sonar S2004 — warn now, flip to error when epic #1466 closes
+      'sonarjs/no-nested-functions': ['warn', { threshold: 4 }],
+    },
+  },
+);

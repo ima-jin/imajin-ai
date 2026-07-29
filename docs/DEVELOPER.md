@@ -318,26 +318,28 @@ Run lint across all packages:
 pnpm lint
 ```
 
-Shared ESLint config lives in `packages/eslint-config-imajin`. All apps extend `eslint-config-imajin` (Next.js flavour) and all TS packages extend `eslint-config-imajin/node`.
+Config lives in `eslint.config.mjs` at the repo root — a single flat config that applies glob-based rules across all apps and packages. No per-package `.eslintrc.*` files.
+
+**Stack:** ESLint v9 flat config, `typescript-eslint` v8, `eslint-plugin-sonarjs` v2.
+
+All apps use Next.js rules via `FlatCompat` (bridging `eslint-config-next@14` until a Next.js 15 upgrade). All TypeScript files get `@typescript-eslint/recommended`. `packages/eslint-config-imajin` exports reusable flat config arrays for standalone package use.
 
 ### SonarJS rules
 
-Two Sonar rules are active repo-wide via `eslint-plugin-sonarjs`:
+Two Sonar rules are active repo-wide via `eslint-plugin-sonarjs` v2:
 
 | Rule | Sonar ID | Threshold | Severity |
 |------|----------|-----------|----------|
 | `sonarjs/cognitive-complexity` | S3776 | 15 | `warn` |
-| `sonarjs/no-nested-functions` | S2004 | 4 | deferred |
+| `sonarjs/no-nested-functions` | S2004 | 4 levels | `warn` |
 
-> **Note:** `sonarjs/no-nested-functions` (S2004) requires `eslint-plugin-sonarjs` v2+ which only supports ESLint v9 flat config. It is tracked as a follow-up for the ESLint v9 upgrade.
+Both are set to `warn` (visible, non-blocking). They will be promoted to `error` once the SonarCloud cleanup epic (#1466) is closed and the existing violations are cleared.
 
-These are set to `warn` so they surface in local saves and in the `pnpm lint` CI job without breaking the build. They will be promoted to `error` once the SonarCloud cleanup epic (#1466) is closed and the existing violations are resolved.
-
-The same rules run in SonarCloud via its GitHub App (Automatic Analysis). Catching them in ESLint first means you see the feedback before pushing a PR.
+The same rules run in SonarCloud via its GitHub App. Catching them in ESLint first means you see S3776/S2004 feedback before pushing a PR.
 
 ### Adding a rule repo-wide
 
-Edit `packages/eslint-config-imajin/index.js` (apps) or `packages/eslint-config-imajin/node.js` (packages). All consumers pick it up automatically on the next lint run.
+Edit `eslint.config.mjs` in the repo root. All packages pick it up automatically on the next lint run.
 
 ## Troubleshooting
 

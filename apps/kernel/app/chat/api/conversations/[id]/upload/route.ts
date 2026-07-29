@@ -81,7 +81,7 @@ export async function POST(
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    let mediaMeta: Record<string, unknown> = {
+    const mediaMeta: Record<string, unknown> = {
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
