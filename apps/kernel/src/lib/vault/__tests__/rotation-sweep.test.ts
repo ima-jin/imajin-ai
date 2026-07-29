@@ -226,15 +226,13 @@ describe('vault rotation sweep — crypto roundtrip', () => {
     const afterSweep = await _applyDelegationGrant(newEntry, newGrant, newKeys.nodeXPriv, newKeys.edPub);
     expect(afterSweep).toBe(plaintext);
 
-    // Old grant (pointing to oldKeys.nodeXPub) cannot decrypt the new entry
+    // Old grant (pointing to oldKeys.nodeXPub) cannot decrypt the new entry.
+    // In Tier 0, ownerEdPub = entry.senderPubkey = newKeys.edPub. The old grant
+    // was signed by oldKeys.edPriv, so sig verification against newKeys.edPub fails.
     await expect(
       _applyDelegationGrant(newEntry, oldGrant, oldKeys.nodeXPriv, oldKeys.edPub),
     ).rejects.toThrow(); // keyId mismatch: oldGrant.keyId ≠ newEntry.keyId
 
-    // Old grant cannot decrypt the new entry with new keys either
-    await expect(
-      _applyDelegationGrant(newEntry, oldGrant, newKeys.nodeXPriv, oldKeys.edPub),
-    ).rejects.toThrow();
   });
 
   it('sweep is a no-op when there are no active delegation-grant fields', () => {

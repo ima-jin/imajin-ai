@@ -9,6 +9,7 @@ import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
+import { resolveIssuedAt, validateNostrKeyBinding } from './attestation-helpers';
 
 const ATTESTATION_LIMIT_MAX = 100;
 
@@ -54,10 +55,15 @@ export async function OPTIONS(request: NextRequest) {
  * Issue a new attestation.
  * Requires session cookie or Bearer token.
  *
- * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, signature, issued_at? }
+ * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, signature, issued_at?, nostr_sig? }
  *
  * Signature MUST be Ed25519 over:
  *   canonicalize({ subject_did, type, context_id, context_type, payload, issued_at })
+ *
+ * For type `imajin/nostr-key-binding` only:
+ *   nostr_sig MUST be a secp256k1 Schnorr (BIP-340) signature by the key in
+ *   payload.nostr_pubkey over SHA-256(canonicalize(...)). Both sigs cover the
+ *   same canonical form, proving control of both the DID and the Nostr key.
  */
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -107,9 +113,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Issuer DID not found' }, { status: 400, headers: cors });
   }
 
-  const issuedAtMs = issued_at
-    ? (typeof issued_at === 'number' ? issued_at : new Date(issued_at as string).getTime())
-    : Date.now();
+  const issuedAtMs = resolveIssuedAt(issued_at);
 
   // Canonical form that was signed
   const canonicalPayload = canonicalize({
@@ -124,6 +128,17 @@ export async function POST(request: NextRequest) {
   const sigValid = authCrypto.verifySync(signature, canonicalPayload, issuerIdentity.publicKey);
   if (!sigValid) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400, headers: cors });
+  }
+
+  // For imajin/nostr-key-binding: require + verify the Nostr key's Schnorr signature
+  // proving the submitter also controls the Nostr key they are binding.
+  let nostrSigToStore: string | null = null;
+  if (type === 'imajin/nostr-key-binding') {
+    const nostrResult = validateNostrKeyBinding(body.nostr_sig, payload, canonicalPayload);
+    if (!nostrResult.ok) {
+      return NextResponse.json({ error: nostrResult.error }, { status: 400, headers: cors });
+    }
+    nostrSigToStore = nostrResult.nostrSigToStore;
   }
 
   const id = genId('att');
@@ -160,6 +175,7 @@ export async function POST(request: NextRequest) {
       payload: (payload as Record<string, unknown> | undefined) ?? null,
       signature,
       cid,
+      nostrSig: nostrSigToStore,
       authorJws,
       attestationStatus: authorJws ? 'pending' : null, // null for legacy attestations
       issuedAt: new Date(issuedAtMs),

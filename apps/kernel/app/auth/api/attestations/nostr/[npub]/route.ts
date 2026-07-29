@@ -13,6 +13,7 @@
  *   3. The most-recent such attestation has not expired (claim.expires_at or row expiresAt)
  *   4. Issuer identity is resolvable (fail closed — unknown issuer → invalid)
  *   5. The stored Ed25519 signature is intact (tampered claim → invalid)
+ *   6. The stored Nostr Schnorr signature is intact (proof-of-control, #1411)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -20,7 +21,7 @@ import { db, attestations, identities } from '@/src/db';
 import { eq, and, isNull, desc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
-import { canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, verifyNostrSig } from '@imajin/auth';
 import type { NostrKeyBindingClaim } from '@imajin/auth';
 
 const NOSTR_KEY_BINDING_TYPE = 'imajin/nostr-key-binding';
@@ -122,6 +123,29 @@ export async function GET(
   if (!sigValid) {
     return NextResponse.json(
       { valid: false, reason: 'Signature verification failed — claim may be tampered' },
+      { status: 200, headers: cors }
+    );
+  }
+
+  // Verify proof-of-control: the Nostr key must have also signed the same digest.
+  // Fail closed: absence of nostr_sig means the binding was never properly dual-signed.
+  if (!attestation.nostrSig) {
+    return NextResponse.json(
+      { valid: false, reason: 'Binding is missing proof-of-Nostr-key-control (nostr_sig)' },
+      { status: 200, headers: cors }
+    );
+  }
+
+  if (!claim?.nostr_pubkey) {
+    return NextResponse.json(
+      { valid: false, reason: 'Binding payload is missing nostr_pubkey' },
+      { status: 200, headers: cors }
+    );
+  }
+
+  if (!verifyNostrSig(attestation.nostrSig, canonicalPayload, claim.nostr_pubkey)) {
+    return NextResponse.json(
+      { valid: false, reason: 'Nostr signature verification failed — Nostr key control not proven' },
       { status: 200, headers: cors }
     );
   }

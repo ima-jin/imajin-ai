@@ -5,8 +5,12 @@
  * Signs the attestation using the platform keypair (AUTH_PRIVATE_KEY).
  * Authenticated via Bearer token (ATTESTATION_INTERNAL_API_KEY).
  *
- * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload? }
+ * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, issued_at?, nostr_sig? }
  * No session cookie required — service-to-service only.
+ *
+ * For type `imajin/nostr-key-binding`: nostr_sig and issued_at are required.
+ * The caller must compute nostr_sig client-side over the canonical payload
+ * (including the provided issued_at) before calling this endpoint.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,6 +19,7 @@ import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/a
 import type { AttestationType } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { randomUUID } from 'node:crypto';
+import { resolveIssuedAt, validateNostrKeyBinding } from '../attestation-helpers';
 
 const log = createLogger('kernel');
 
@@ -64,7 +69,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const issuedAtMs = Date.now();
+  // Accept issued_at so the caller can pre-compute nostr_sig over the exact canonical form.
+  const issuedAtMs = resolveIssuedAt(body.issued_at);
 
   const canonicalPayload = canonicalize({
     subject_did,
@@ -83,6 +89,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Signing failed' }, { status: 500 });
   }
 
+  // For imajin/nostr-key-binding: require + verify the caller-supplied nostr_sig.
+  let nostrSigToStore: string | null = null;
+  if (type === 'imajin/nostr-key-binding') {
+    const nostrResult = validateNostrKeyBinding(body.nostr_sig, payload, canonicalPayload);
+    if (!nostrResult.ok) {
+      return NextResponse.json({ error: nostrResult.error }, { status: 400 });
+    }
+    nostrSigToStore = nostrResult.nostrSigToStore;
+  }
+
   const id = genId('att');
 
   try {
@@ -97,6 +113,7 @@ export async function POST(request: NextRequest) {
         contextType: (context_type as string | undefined) ?? null,
         payload: (payload as Record<string, unknown> | undefined) ?? null,
         signature,
+        nostrSig: nostrSigToStore,
         issuedAt: new Date(issuedAtMs),
       })
       .returning();
