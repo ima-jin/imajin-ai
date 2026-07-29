@@ -328,12 +328,12 @@ describe('_applyDelegationGrant (Tier 1)', () => {
         const field = 'TOKEN';
 
         const entry = await buildV2Entry({ field, plaintext: 'secret', fieldKey, owner });
-        const correctKeyId = deriveKeyId(owner.edPub);
-        const wrongKeyId = deriveKeyId(randomBytes(32).toString('hex'));
+        // Use a fresh valid keypair to produce a well-formed but distinct keyId.
+        const wrongKeyId = deriveKeyId(makeOwnerKeypair().edPub);
         const grant = buildGrant({ owner, nodeDid: node.did, nodeXPub: node.xPub, field, keyId: wrongKeyId, fieldKey });
 
         // grant.keyId !== entry.keyId — the keyId guard should reject this.
-        expect(grant.keyId).not.toBe(correctKeyId);
+        expect(grant.keyId).not.toBe(deriveKeyId(owner.edPub));
         await expect(
             _applyDelegationGrant(entry, grant, node.xPriv, owner.edPub),
         ).rejects.toBeInstanceOf(VaultDelegationError);
