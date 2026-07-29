@@ -1,6 +1,6 @@
 import path from 'node:path';
 import os from 'node:os';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   FileVaultRepository,
   VaultEntryService,
@@ -22,7 +22,6 @@ import {
   type VaultEntry,
   type DelegationWrappedKey,
 } from '@imajin/vault-core';
-import { randomUUID } from 'node:crypto';
 import { verifySync, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { and, eq, isNull, gt, or } from 'drizzle-orm';
