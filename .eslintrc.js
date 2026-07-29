@@ -4,7 +4,7 @@ module.exports = {
   rules: {
     // Sonar S3776 — warn now, flip to error when epic #1466 closes
     'sonarjs/cognitive-complexity': ['warn', 15],
-    // Sonar S2004 — warn now, flip to error when epic #1466 closes
-    'sonarjs/no-nested-functions': ['warn', 4],
+    // S2004 (sonarjs/no-nested-functions) requires eslint-plugin-sonarjs v2+
+    // which needs ESLint v9 flat config — deferred until ESLint upgrade
   },
 };

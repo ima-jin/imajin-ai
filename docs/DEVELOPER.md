@@ -327,7 +327,9 @@ Two Sonar rules are active repo-wide via `eslint-plugin-sonarjs`:
 | Rule | Sonar ID | Threshold | Severity |
 |------|----------|-----------|----------|
 | `sonarjs/cognitive-complexity` | S3776 | 15 | `warn` |
-| `sonarjs/no-nested-functions` | S2004 | 4 | `warn` |
+| `sonarjs/no-nested-functions` | S2004 | 4 | deferred |
+
+> **Note:** `sonarjs/no-nested-functions` (S2004) requires `eslint-plugin-sonarjs` v2+ which only supports ESLint v9 flat config. It is tracked as a follow-up for the ESLint v9 upgrade.
 
 These are set to `warn` so they surface in local saves and in the `pnpm lint` CI job without breaking the build. They will be promoted to `error` once the SonarCloud cleanup epic (#1466) is closed and the existing violations are resolved.
 
