@@ -268,7 +268,7 @@ describe('vault rotation sweep — crypto roundtrip', () => {
     const newEntry = await buildV2Entry({ field, plaintext: 'postgres://...', fieldKey: newFieldKey, ...newKeys });
 
     await expect(
-      _applyDelegationGrant(newEntry, oldGrant, oldKeys.nodeXPriv, newKeys.edPub),
+      _applyDelegationGrant(newEntry, oldGrant, oldKeys.nodeXPriv, oldKeys.edPub),
     ).rejects.toBeInstanceOf(VaultDelegationError);
   });
 });
