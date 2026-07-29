@@ -752,6 +752,9 @@ importers:
       '@imajin/logger':
         specifier: workspace:*
         version: link:../logger
+      '@noble/curves':
+        specifier: ^1.9.7
+        version: 1.9.7
       '@noble/ed25519':
         specifier: ^2.3.0
         version: 2.3.0

@@ -102,6 +102,7 @@ export const attestations = authSchema.table('attestations', {
   payload: jsonb('payload'),
   signature: text('signature').notNull(),              // Ed25519 hex (128 chars) — legacy
   cid: text('cid'),                                    // dag-cbor CID of attestation payload
+  nostrSig: text('nostr_sig'),                          // secp256k1 Schnorr hex (imajin/nostr-key-binding proof-of-control)
   authorJws: text('author_jws'),                       // JWS compact token (author signature)
   witnessJws: text('witness_jws'),                     // JWS compact token (countersignature)
   attestationStatus: text('attestation_status').default('pending'), // 'pending' | 'bilateral' | 'declined' | 'collecting' | 'executed' | 'expired'
