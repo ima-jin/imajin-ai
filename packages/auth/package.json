@@ -11,6 +11,7 @@
     "@imajin/config": "workspace:*",
     "@imajin/logger": "workspace:*",
     "@imajin/db": "workspace:*",
+    "@noble/curves": "^1.9.7",
     "@noble/ed25519": "^2.3.0",
     "@noble/hashes": "^1.7.2"
   },
