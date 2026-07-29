@@ -1,10 +1,9 @@
-import { createHash } from 'node:crypto';
-import { NextRequest, NextResponse } from 'next/server';
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
-import { db, profiles, identityMembers, contactHashes, consentGrants } from '@/src/db';
+import { NextRequest, NextResponse } from 'next/server';
+import { db, profiles, identityMembers } from '@/src/db';
 import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
-import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
+import { corsOptions, corsHeaders } from '@/src/lib/kernel/cors';
 import { eq, and, isNull, count } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
@@ -12,8 +11,8 @@ import { publish, broker, isBrokerRelease } from '@imajin/bus';
 import { validateAgentPricingManifest } from '@imajin/fair';
 import { filterProfileFields, FIELD_VISIBILITY_LEVELS } from '@/src/lib/profile';
 import type { FieldVisibility } from '@/src/db/schemas/profile';
-import { sealAndStore, rotateAndStore, deleteFromVault, loadAndUnseal, vaultService } from '@/src/lib/vault';
-import { generateId } from '@/src/lib/kernel/id';
+import { loadAndUnseal } from '@/src/lib/vault';
+import { processEmailUpdate, processPhoneUpdate } from '@/src/lib/profile/vault-contacts';
 
 const log = createLogger('kernel');
 
@@ -90,61 +89,263 @@ async function getViewerDid(request: NextRequest): Promise<string | null> {
   } catch { return null; }
 }
 
-/** SHA-256 of a normalised (lowercased, trimmed) string for federation hashing. */
-function hashContactValue(value: string): string {
-  return createHash('sha256').update(value.toLowerCase().trim()).digest('hex');
-}
+// ---------------------------------------------------------------------------
+// GET helpers
+// ---------------------------------------------------------------------------
 
-/**
- * Upsert contact hashes for a DID. Pass null for a field to clear its hash.
- * No plaintext is ever stored here — hashes only.
- */
-async function upsertContactHashes(
-  did: string,
-  emailHash: string | null,
-  phoneHash: string | null
-): Promise<void> {
-  await db
-    .insert(contactHashes)
-    .values({ did, emailHash, phoneHash })
-    .onConflictDoUpdate({
-      target: contactHashes.did,
-      set: { emailHash, phoneHash, updatedAt: new Date() },
+/** Handle the app-auth fast path for GET /api/profile/:id */
+async function handleAppAuthGet(
+  request: NextRequest,
+  id: string,
+  cors: HeadersInit
+): Promise<NextResponse> {
+  const appResult = await requireAppAuth(request, { scope: 'profile:read' });
+  if ('error' in appResult) {
+    return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
+  }
+  try {
+    const profile = await db.query.profiles.findFirst({
+      where: (p, { eq: deq, or }) => or(deq(p.did, id), deq(p.handle, id)),
     });
+    if (!profile) {
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
+    }
+    return NextResponse.json(filterProfileForApp(profile as Record<string, any>), { headers: cors });
+  } catch (error) {
+    log.error({ err: String(error) }, 'Failed to fetch profile (app auth)');
+    return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500, headers: cors });
+  }
+}
+
+/** Release broker-gated contact fields for a third-party viewer. Mutates result in place. */
+async function applyBrokerContactRelease(
+  result: Record<string, any>,
+  unsealed: Record<string, unknown>,
+  viewerDid: string,
+  subjectDid: string
+): Promise<void> {
+  try {
+    const release = await broker('profile.contact.request', {
+      type: 'profile.contact.request',
+      requester: viewerDid,
+      subject: subjectDid,
+      fields: Object.keys(unsealed),
+      purpose: 'contact.disclosure',
+      scope: 'profile',
+      data: unsealed,
+    });
+    if (isBrokerRelease(release)) {
+      if (release.data['email']) result.contactEmail = release.data['email'];
+      if (release.data['phone']) result.phone = release.data['phone'];
+    }
+  } catch {
+    // Fail-closed: no contact info released on broker error
+  }
 }
 
 /**
- * Seed a connections-level consent grant for contact disclosure if one does
- * not already exist. The owner can tighten/widen or revoke via the
- * contact-visibility API. Idempotent — no-op if an active grant already exists.
+ * Populate result.contactEmail / result.phone from the vault.
+ * Owner sees their own contact info directly; third-party viewers go through the broker gate.
  */
-async function ensureContactConsentGrant(ownerDid: string): Promise<void> {
-  const [existing] = await db
-    .select({ id: consentGrants.id })
-    .from(consentGrants)
-    .where(
-      and(
-        eq(consentGrants.subject, ownerDid),
-        eq(consentGrants.purpose, 'contact.disclosure'),
-        eq(consentGrants.status, 'active')
-      )
-    )
-    .limit(1);
+async function resolveContactInfo(
+  result: Record<string, any>,
+  profile: { did: string },
+  viewerDid: string | null
+): Promise<void> {
+  if (viewerDid === profile.did) {
+    const [vaultEmail, vaultPhone] = await Promise.all([
+      loadAndUnseal(`contact:email:${profile.did}`).catch(() => undefined),
+      loadAndUnseal(`contact:phone:${profile.did}`).catch(() => undefined),
+    ]);
+    if (vaultEmail) result.contactEmail = vaultEmail;
+    if (vaultPhone) result.phone = vaultPhone;
+    return;
+  }
+  if (!viewerDid) return;
 
-  if (existing) return;
+  const [e, p] = await Promise.all([
+    loadAndUnseal(`contact:email:${profile.did}`).catch(() => undefined),
+    loadAndUnseal(`contact:phone:${profile.did}`).catch(() => undefined),
+  ]);
+  const unsealed: Record<string, unknown> = {};
+  if (e) unsealed['email'] = e;
+  if (p) unsealed['phone'] = p;
+  if (Object.keys(unsealed).length === 0) return;
 
-  await db.insert(consentGrants).values({
-    id: generateId('cg'),
-    subject: ownerDid,
-    grantedTo: null,
-    grantedToClass: 'connections',
-    purpose: 'contact.disclosure',
-    allowedFields: ['email', 'phone'],
-    mode: 'raw',
-    status: 'active',
-    consentRef: generateId('cref'),
-  });
+  await applyBrokerContactRelease(result, unsealed, viewerDid, profile.did);
 }
+
+/** Attach maintainerCount and isMaintainer for business profiles. Mutates result in place. */
+async function applyBusinessProfileInfo(
+  result: Record<string, any>,
+  profile: { did: string; claimStatus?: string | null },
+  viewerDid: string | null
+): Promise<void> {
+  if (!profile.claimStatus) return;
+
+  const [{ value: maintainerCount }] = await db
+    .select({ value: count() })
+    .from(identityMembers)
+    .where(and(
+      eq(identityMembers.identityDid, profile.did),
+      eq(identityMembers.role, 'maintainer'),
+      isNull(identityMembers.removedAt)
+    ));
+  result.maintainerCount = maintainerCount;
+
+  if (!viewerDid) return;
+
+  const [isMaintainerRow] = await db
+    .select({ identityDid: identityMembers.identityDid })
+    .from(identityMembers)
+    .where(and(
+      eq(identityMembers.identityDid, profile.did),
+      eq(identityMembers.memberDid, viewerDid),
+      eq(identityMembers.role, 'maintainer'),
+      isNull(identityMembers.removedAt)
+    ))
+    .limit(1);
+  result.isMaintainer = !!isMaintainerRow;
+}
+
+// ---------------------------------------------------------------------------
+// PUT helpers
+// ---------------------------------------------------------------------------
+
+/** Verify that the caller is allowed to create/update the given profile. Returns an error response or null. */
+async function checkProfileOwnership(
+  id: string,
+  existing: typeof profiles.$inferSelect | undefined,
+  identity: { id: string },
+  effectiveDid: string,
+  cors: HeadersInit
+): Promise<NextResponse | null> {
+  if (!existing) {
+    if (id !== identity.id && id !== effectiveDid) {
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
+    }
+    const { getClient } = await import('@imajin/db');
+    const sql = getClient();
+    const [identityRow] = await sql`SELECT id FROM auth.identities WHERE id = ${id} LIMIT 1`;
+    if (!identityRow) {
+      return NextResponse.json({ error: 'Identity not found' }, { status: 404, headers: cors });
+    }
+    return null;
+  }
+  if (existing.did !== identity.id && existing.did !== effectiveDid) {
+    return NextResponse.json({ error: 'Not authorized to update this profile' }, { status: 403, headers: cors });
+  }
+  return null;
+}
+
+/** If x-signature header is present, verify the Ed25519 signature. Returns an error response or null. */
+async function validateSignatureIfPresent(
+  request: NextRequest,
+  bodyText: string,
+  identity: { id: string },
+  cors: HeadersInit
+): Promise<NextResponse | null> {
+  if (!request.headers.get('x-signature')) return null;
+  const sigResult = await verifySignedRequest(request, bodyText);
+  if (!sigResult.valid) {
+    return NextResponse.json({ error: `Signature verification failed: ${sigResult.error}` }, { status: 401, headers: cors });
+  }
+  if (sigResult.did !== identity.id) {
+    return NextResponse.json({ error: 'Signature DID does not match authenticated identity' }, { status: 403, headers: cors });
+  }
+  return null;
+}
+
+/** Validate the shape and values of a fieldVisibility object. Returns error response or null. */
+function validateFieldVisibilityShape(
+  fieldVisibility: unknown,
+  cors: HeadersInit
+): NextResponse | null {
+  if (typeof fieldVisibility !== 'object' || fieldVisibility === null || Array.isArray(fieldVisibility)) {
+    return NextResponse.json({ error: 'fieldVisibility must be an object' }, { status: 400, headers: cors });
+  }
+  for (const [field, rule] of Object.entries(fieldVisibility as Record<string, unknown>)) {
+    if (typeof rule !== 'object' || rule === null) {
+      return NextResponse.json({ error: `fieldVisibility.${field} must be an object` }, { status: 400, headers: cors });
+    }
+    const { level, allowedDids } = rule as { level?: unknown; allowedDids?: unknown };
+    if (typeof level !== 'string' || !FIELD_VISIBILITY_LEVELS.includes(level)) {
+      return NextResponse.json(
+        { error: `fieldVisibility.${field}.level must be one of ${FIELD_VISIBILITY_LEVELS.join(', ')}` },
+        { status: 400, headers: cors }
+      );
+    }
+    if (allowedDids !== undefined && !(Array.isArray(allowedDids) && allowedDids.every((d) => typeof d === 'string'))) {
+      return NextResponse.json({ error: `fieldVisibility.${field}.allowedDids must be an array of strings` }, { status: 400, headers: cors });
+    }
+  }
+  return null;
+}
+
+/**
+ * Validate body fields that require explicit checks (visibility, agentPricing, fieldVisibility).
+ * Returns an error response if validation fails, or null if all is valid.
+ */
+function validateProfileUpdateBody(
+  body: Record<string, any>,
+  cors: HeadersInit
+): NextResponse | null {
+  const { visibility, agentPricing, fieldVisibility } = body;
+  if (visibility !== undefined && !['public', 'incognito'].includes(visibility)) {
+    return NextResponse.json({ error: 'visibility must be public or incognito' }, { status: 400, headers: cors });
+  }
+  if (agentPricing !== undefined && agentPricing !== null) {
+    const validation = validateAgentPricingManifest(agentPricing);
+    if (!validation.valid) {
+      return NextResponse.json({ error: 'Invalid agent pricing manifest', details: validation.errors }, { status: 400, headers: cors });
+    }
+  }
+  if (fieldVisibility !== undefined) {
+    const fvError = validateFieldVisibilityShape(fieldVisibility, cors);
+    if (fvError) return fvError;
+  }
+  return null;
+}
+
+/**
+ * Build the DB update object, applying vault side-effects for email/phone.
+ * Assumes validateProfileUpdateBody has already passed.
+ */
+async function buildProfileUpdates(
+  body: Record<string, any>,
+  existing: typeof profiles.$inferSelect | undefined,
+  profileDid: string
+): Promise<Record<string, any>> {
+  const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles, agentPricing, fieldVisibility } = body;
+  const updates: Record<string, any> = { updatedAt: new Date() };
+
+  if (displayName !== undefined) updates.displayName = displayName;
+  if (avatar !== undefined) updates.avatar = avatar;
+  if (avatarAssetId !== undefined) updates.avatarAssetId = avatarAssetId;
+  if (bio !== undefined) updates.bio = bio;
+  if (feature_toggles !== undefined) {
+    updates.featureToggles = { ...(existing?.featureToggles ?? {}), ...feature_toggles };
+  }
+  if (agentPricing !== undefined) updates.agentPricing = agentPricing;
+  if (visibility !== undefined) updates.visibility = visibility;
+  if (fieldVisibility !== undefined) updates.fieldVisibility = fieldVisibility as FieldVisibility;
+
+  // Contact info is vault-stored — never write plaintext to DB columns.
+  if (email !== undefined) {
+    updates.contactEmail = null;
+    await processEmailUpdate(profileDid, email);
+  }
+  if (phone !== undefined) {
+    updates.phone = null;
+    await processPhoneUpdate(profileDid, phone);
+  }
+
+  return updates;
+}
+
+// ---------------------------------------------------------------------------
+// Route handlers
+// ---------------------------------------------------------------------------
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -163,85 +364,26 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   // App auth path — takes precedence over cookie auth if app headers are present
   if (request.headers.get('x-app-did')) {
-    const appResult = await requireAppAuth(request, { scope: 'profile:read' });
-    if ('error' in appResult) {
-      return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
-    }
-    try {
-      const profile = await db.query.profiles.findFirst({
-        where: (profiles, { eq, or }) =>
-          or(eq(profiles.did, id), eq(profiles.handle, id)),
-      });
-      if (!profile) {
-        return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
-      }
-      return NextResponse.json(filterProfileForApp(profile as Record<string, any>), { headers: cors });
-    } catch (error) {
-      log.error({ err: String(error) }, 'Failed to fetch profile (app auth)');
-      return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500, headers: cors });
-    }
+    return handleAppAuthGet(request, id, cors);
   }
 
   try {
-    // Look up by DID or handle
     const profile = await db.query.profiles.findFirst({
-      where: (profiles, { eq, or }) =>
-        or(eq(profiles.did, id), eq(profiles.handle, id)),
+      where: (p, { eq: deq, or }) => or(deq(p.did, id), deq(p.handle, id)),
     });
-
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
     }
 
-    // Contact info is vault-stored; never return plaintext columns even if they
-    // still exist (legacy migration period). Always read from vault.
+    // Contact info is vault-stored; strip any legacy plaintext columns from the result.
     const result: Record<string, any> = { ...profile };
     delete result.contactEmail;
     delete result.phone;
 
     const viewerDid = await getViewerDid(request);
+    await resolveContactInfo(result, profile, viewerDid);
 
-    if (viewerDid === profile.did) {
-      // Owner: unseal directly from vault
-      const [vaultEmail, vaultPhone] = await Promise.all([
-        loadAndUnseal(`contact:email:${profile.did}`).catch(() => undefined),
-        loadAndUnseal(`contact:phone:${profile.did}`).catch(() => undefined),
-      ]);
-      if (vaultEmail) result.contactEmail = vaultEmail;
-      if (vaultPhone) result.phone = vaultPhone;
-    } else if (viewerDid) {
-      // Third-party: broker-gated release (consent → scope → release → audit)
-      const unsealed: Record<string, unknown> = {};
-      const [e, p] = await Promise.all([
-        loadAndUnseal(`contact:email:${profile.did}`).catch(() => undefined),
-        loadAndUnseal(`contact:phone:${profile.did}`).catch(() => undefined),
-      ]);
-      if (e) unsealed['email'] = e;
-      if (p) unsealed['phone'] = p;
-
-      if (Object.keys(unsealed).length > 0) {
-        try {
-          const release = await broker('profile.contact.request', {
-            type: 'profile.contact.request',
-            requester: viewerDid,
-            subject: profile.did,
-            fields: Object.keys(unsealed),
-            purpose: 'contact.disclosure',
-            scope: 'profile',
-            data: unsealed,
-          });
-          if (isBrokerRelease(release)) {
-            if (release.data['email']) result.contactEmail = release.data['email'];
-            if (release.data['phone']) result.phone = release.data['phone'];
-          }
-        } catch {
-          // Fail-closed: no contact info released on broker error
-        }
-      }
-    }
-
-    // Per-field metadata visibility (#1003): non-owners get a broker-filtered metadata object.
-    // Self-queries bypass filtering and see everything.
+    // Per-field metadata visibility (#1003): non-owners get broker-filtered metadata.
     if (viewerDid !== profile.did) {
       result.metadata = await filterProfileFields(
         profile.metadata as Record<string, unknown> | null,
@@ -254,36 +396,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       delete result.fieldVisibility;
     }
 
-    // Stub metadata for business profiles
-    if (profile.claimStatus) {
-      const [{ value: maintainerCount }] = await db
-        .select({ value: count() })
-        .from(identityMembers)
-        .where(
-          and(
-            eq(identityMembers.identityDid, profile.did),
-            eq(identityMembers.role, 'maintainer'),
-            isNull(identityMembers.removedAt)
-          )
-        );
-      result.maintainerCount = maintainerCount;
-
-      if (viewerDid) {
-        const [isMaintainerRow] = await db
-          .select({ identityDid: identityMembers.identityDid })
-          .from(identityMembers)
-          .where(
-            and(
-              eq(identityMembers.identityDid, profile.did),
-              eq(identityMembers.memberDid, viewerDid),
-              eq(identityMembers.role, 'maintainer'),
-              isNull(identityMembers.removedAt)
-            )
-          )
-          .limit(1);
-        result.isMaintainer = !!isMaintainerRow;
-      }
-    }
+    await applyBusinessProfileInfo(result, profile, viewerDid);
 
     return NextResponse.json(result, { headers: cors });
   } catch (error) {
@@ -299,180 +412,41 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   const { id } = await params;
   const cors = corsHeaders(request);
 
-  // Require authentication
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
-
   const { identity } = authResult;
 
   try {
-    // Fetch existing profile
     const existing = await db.query.profiles.findFirst({
-      where: (profiles, { eq, or }) =>
-        or(eq(profiles.did, id), eq(profiles.handle, id)),
+      where: (p, { eq: deq, or }) => or(deq(p.did, id), deq(p.handle, id)),
     });
-
-    // Check ownership — allow personal DID or acting-as DID
     const effectiveDid = resolveActingDid(identity);
 
-    if (!existing) {
-      // No profile yet — only the identity owner can create it, and the DID must exist in auth.identities
-      if (id !== identity.id && id !== effectiveDid) {
-        return NextResponse.json({ error: 'Profile not found' }, { status: 404, headers: cors });
-      }
-      // Verify the DID actually exists as a registered identity
-      const { getClient } = await import('@imajin/db');
-      const sql = getClient();
-      const [identityRow] = await sql`SELECT id FROM auth.identities WHERE id = ${id} LIMIT 1`;
-      if (!identityRow) {
-        return NextResponse.json({ error: 'Identity not found' }, { status: 404, headers: cors });
-      }
-      // Will create below after parsing body
-    } else if (existing.did !== identity.id && existing.did !== effectiveDid) {
-      return NextResponse.json({ error: 'Not authorized to update this profile' }, { status: 403, headers: cors });
-    }
+    const ownerError = await checkProfileOwnership(id, existing, identity, effectiveDid, cors);
+    if (ownerError) return ownerError;
 
-    // Clone the request body for signature verification
     const bodyText = await request.text();
-
-    // Verify Ed25519 signed request headers if present
-    const sigResult = await verifySignedRequest(request, bodyText);
-    if (request.headers.get('x-signature')) {
-      // Signature headers are present — enforce verification
-      if (!sigResult.valid) {
-        return NextResponse.json({ error: `Signature verification failed: ${sigResult.error}` }, { status: 401, headers: cors });
-      }
-      // Ensure the signing DID matches the authenticated identity
-      if (sigResult.did !== identity.id) {
-        return NextResponse.json({ error: 'Signature DID does not match authenticated identity' }, { status: 403, headers: cors });
-      }
-    }
+    const sigError = await validateSignatureIfPresent(request, bodyText, identity, cors);
+    if (sigError) return sigError;
 
     const body = JSON.parse(bodyText);
-    const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles, agentPricing, fieldVisibility } = body;
+    const validationError = validateProfileUpdateBody(body, cors);
+    if (validationError) return validationError;
 
-    // Build update object
-    const updates: Record<string, any> = {
-      updatedAt: new Date(),
-    };
-
-    if (displayName !== undefined) updates.displayName = displayName;
-    if (avatar !== undefined) updates.avatar = avatar;
-    if (avatarAssetId !== undefined) updates.avatarAssetId = avatarAssetId;
-    if (bio !== undefined) updates.bio = bio;
-
-    // Contact info is vault-stored — never write plaintext to DB columns.
-    // Always null out the legacy columns and delegate to vault.
-    const profileDid = existing?.did || id;
-    if (email !== undefined) {
-      updates.contactEmail = null; // ensure legacy column stays clear
-      if (email) {
-        const emailField = `contact:email:${profileDid}`;
-        const exists = await vaultService.get(emailField);
-        if (exists) {
-          await rotateAndStore(emailField, String(email));
-        } else {
-          await sealAndStore(emailField, String(email));
-        }
-        await upsertContactHashes(profileDid, hashContactValue(String(email)), null);
-        await ensureContactConsentGrant(profileDid).catch(() => {});
-      } else {
-        await deleteFromVault(`contact:email:${profileDid}`);
-        // Clear email hash; preserve phone hash
-        const existing_hashes = await db
-          .select({ phoneHash: contactHashes.phoneHash })
-          .from(contactHashes)
-          .where(eq(contactHashes.did, profileDid))
-          .limit(1);
-        await upsertContactHashes(profileDid, null, existing_hashes[0]?.phoneHash ?? null);
-      }
-    }
-    if (phone !== undefined) {
-      updates.phone = null; // ensure legacy column stays clear
-      if (phone) {
-        const phoneField = `contact:phone:${profileDid}`;
-        const exists = await vaultService.get(phoneField);
-        if (exists) {
-          await rotateAndStore(phoneField, String(phone));
-        } else {
-          await sealAndStore(phoneField, String(phone));
-        }
-        const existing_hashes = await db
-          .select({ emailHash: contactHashes.emailHash })
-          .from(contactHashes)
-          .where(eq(contactHashes.did, profileDid))
-          .limit(1);
-        await upsertContactHashes(profileDid, existing_hashes[0]?.emailHash ?? null, hashContactValue(String(phone)));
-        await ensureContactConsentGrant(profileDid).catch(() => {});
-      } else {
-        await deleteFromVault(`contact:phone:${profileDid}`);
-        const existing_hashes = await db
-          .select({ emailHash: contactHashes.emailHash })
-          .from(contactHashes)
-          .where(eq(contactHashes.did, profileDid))
-          .limit(1);
-        await upsertContactHashes(profileDid, existing_hashes[0]?.emailHash ?? null, null);
-      }
-    }
-    if (feature_toggles !== undefined) {
-      // Merge incoming feature_toggles over existing ones
-      updates.featureToggles = { ...(existing?.featureToggles ?? {}), ...feature_toggles };
-    }
-    if (agentPricing !== undefined) {
-      if (agentPricing === null) {
-        updates.agentPricing = null;
-      } else {
-        const validation = validateAgentPricingManifest(agentPricing);
-        if (!validation.valid) {
-          return NextResponse.json(
-            { error: 'Invalid agent pricing manifest', details: validation.errors },
-            { status: 400, headers: cors }
-          );
-        }
-        updates.agentPricing = agentPricing;
-      }
-    }
-    if (visibility !== undefined) {
-      if (!['public', 'incognito'].includes(visibility)) {
-        return NextResponse.json({ error: 'visibility must be public or incognito' }, { status: 400, headers: cors });
-      }
-      updates.visibility = visibility;
-    }
-    if (fieldVisibility !== undefined) {
-      if (typeof fieldVisibility !== 'object' || fieldVisibility === null || Array.isArray(fieldVisibility)) {
-        return NextResponse.json({ error: 'fieldVisibility must be an object' }, { status: 400, headers: cors });
-      }
-      for (const [field, rule] of Object.entries(fieldVisibility as Record<string, unknown>)) {
-        if (typeof rule !== 'object' || rule === null) {
-          return NextResponse.json({ error: `fieldVisibility.${field} must be an object` }, { status: 400, headers: cors });
-        }
-        const { level, allowedDids } = rule as { level?: unknown; allowedDids?: unknown };
-        if (typeof level !== 'string' || !FIELD_VISIBILITY_LEVELS.includes(level)) {
-          return NextResponse.json(
-            { error: `fieldVisibility.${field}.level must be one of ${FIELD_VISIBILITY_LEVELS.join(', ')}` },
-            { status: 400, headers: cors }
-          );
-        }
-        if (allowedDids !== undefined && !(Array.isArray(allowedDids) && allowedDids.every((d) => typeof d === 'string'))) {
-          return NextResponse.json({ error: `fieldVisibility.${field}.allowedDids must be an array of strings` }, { status: 400, headers: cors });
-        }
-      }
-      updates.fieldVisibility = fieldVisibility as FieldVisibility;
-    }
+    const profileDid = existing?.did ?? id;
+    const updates = await buildProfileUpdates(body, existing, profileDid);
 
     let updated;
     if (existing) {
-      // Update existing profile
       [updated] = await db
         .update(profiles)
         .set(updates)
         .where(eq(profiles.did, existing.did))
         .returning();
     } else {
-      // Create new profile for bare identity
-      // Note: contactEmail and phone are vault-stored; never written to DB columns.
+      const { displayName, avatar, bio, visibility, feature_toggles, agentPricing } = body;
       [updated] = await db
         .insert(profiles)
         .values({
@@ -491,7 +465,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     publish('profile.update', { issuer: identity.id, subject: identity.id, scope: 'profile', payload: { profileDid } }).catch(() => {});
-
     return NextResponse.json(updated, { headers: cors });
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to update profile');
