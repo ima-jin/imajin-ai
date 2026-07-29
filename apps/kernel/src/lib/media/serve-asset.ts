@@ -134,12 +134,12 @@ function buildArticleHtml(
   const esc = (s: string) =>
     s.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-  const escapedTitle = esc(String(fm.title ?? ""));
-  const escapedSubtitle = fm.subtitle ? esc(String(fm.subtitle)) : "";
-  const escapedDesc = fm.description ? esc(String(fm.description)) : "";
+  const escapedTitle = esc(typeof fm.title === "string" ? fm.title : "");
+  const escapedSubtitle = typeof fm.subtitle === "string" ? esc(fm.subtitle) : "";
+  const escapedDesc = typeof fm.description === "string" ? esc(fm.description) : "";
   const author = typeof fm.author === "string" ? fm.author : "";
-  const date = fm.date
-    ? new Date(String(fm.date)).toLocaleDateString("en-US", {
+  const date = typeof fm.date === "string"
+    ? new Date(fm.date).toLocaleDateString("en-US", {
         year: "numeric",
         month: "long",
         day: "numeric",

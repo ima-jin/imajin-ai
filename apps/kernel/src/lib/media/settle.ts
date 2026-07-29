@@ -16,6 +16,13 @@ import { respondPaymentRequired } from "@/src/lib/http/route-response";
 
 const log = createLogger("kernel");
 
+/** Returns true when the manifest carries a priced distribution right for the given action. */
+function hasPricedDistributionRight(manifest: FairManifest | null, action: FairAction): boolean {
+  if (!manifest || !isFairManifestV1_1(manifest)) return false;
+  const right = (manifest as FairManifestV1_1).distribution?.[action];
+  return !!right?.price && right.price.amount > 0;
+}
+
 /**
  * Lazy-cached CryptoKey derived from AUTH_PRIVATE_KEY.
  * Shared across requests; loaded once on first priced-asset access.
@@ -77,12 +84,7 @@ export async function handleSettlement(
   action: FairAction,
 ): Promise<NextResponse | null> {
   // Fast path: no manifest or no priced distribution right for this action.
-  const distRight =
-    manifest && isFairManifestV1_1(manifest)
-      ? (manifest as FairManifestV1_1).distribution?.[action]
-      : undefined;
-  const hasPrice = !!distRight?.price && distRight.price.amount > 0;
-  if (!hasPrice) return null;
+  if (!hasPricedDistributionRight(manifest, action)) return null;
 
   const receiptHeader = request.headers.get("X-Payment-Receipt");
 
