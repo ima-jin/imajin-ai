@@ -222,7 +222,7 @@ export default function ConnectedAppsPage() {
   return (
     <div className="p-6 max-w-2xl">
       <h1 className="text-lg font-semibold text-white mb-1">Connected Apps</h1>
-      <p className="text-sm text-zinc-500 mb-6">Apps you've authorized to access your account.</p>
+      <p className="text-sm text-zinc-500 mb-6">Apps with access to your account.</p>
 
       {loading && (
         <div className="text-sm text-zinc-500">Loading…</div>
