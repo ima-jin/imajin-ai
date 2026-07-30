@@ -816,6 +816,18 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'discord';
   };
+  /**
+   * Emitted after a connector credential is purged and its channel_links grant
+   * revoked (#1490). Non-fatal audit trail. `connector` identifies the
+   * provider, e.g. `'github'`, `'discord'`, `'quickbooks'`.
+   */
+  'connector.disconnected': {
+    ownerDid: string;
+    /** Short connector id, e.g. 'github', 'discord', 'quickbooks'. */
+    connector: string;
+    context_id: string;
+    context_type: string;
+  };
   // #1205 — authored-document change trigger (the control-plane "button").
   // issuer=ownerDid, subject=<assetId/doc-id>, scope=<service scope>.
   // Emitted only for tracked authored doc classes, never hot-state writes.

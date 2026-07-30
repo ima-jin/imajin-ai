@@ -85,6 +85,12 @@ export interface ConnectorEntry {
    * credential token in-app. `null` for OAuth connectors.
    */
   tokenRoute: string | null;
+  /**
+   * POST route that disconnects the connector — purges sealed credentials,
+   * revokes the channel_links grant, and publishes a bus event.
+   * `null` for connectors that do not yet implement disconnect (e.g. native, pending).
+   */
+  disconnectRoute: string | null;
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -125,6 +131,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: null,
     configureRoute: null,
     tokenRoute: null,
+    disconnectRoute: null,
   },
   {
     id: 'github',
@@ -156,6 +163,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: '/github/api/connect',
     configureRoute: '/github/api/configure',
     tokenRoute: null,
+    disconnectRoute: '/github/api/disconnect',
   },
   {
     id: 'discord',
@@ -182,6 +190,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: null,
     configureRoute: null,
     tokenRoute: '/discord/api/token',
+    disconnectRoute: '/discord/api/disconnect',
   },
   {
     id: 'gemini',
@@ -203,6 +212,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: null,
     configureRoute: null,
     tokenRoute: '/gemini/api/token',
+    disconnectRoute: null,
   },
   {
     id: 'quickbooks',
@@ -229,6 +239,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: '/quickbooks/api/connect',
     configureRoute: '/quickbooks/api/configure',
     tokenRoute: null,
+    disconnectRoute: '/quickbooks/api/disconnect',
   },
 ] as const;
 

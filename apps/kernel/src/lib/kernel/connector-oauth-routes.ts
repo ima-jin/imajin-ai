@@ -7,14 +7,19 @@
  * centralises them so each route file is a thin 4–8 line delegation.
  *
  * Exports:
- *   createConnectHandler   — GET: requireAuth → buildAuthorizeUrl → redirect
- *   createCallbackHandler  — GET: verifyState → exchange → { connected: true }
+ *   createConnectHandler    — GET: requireAuth → buildAuthorizeUrl → redirect
+ *   createCallbackHandler   — GET: verifyState → exchange → { connected: true }
  *   MissingCallbackParamError — throw inside `exchange` to return 400 (not 502)
- *   createConfigureHandler — OPTIONS + POST: auth → validate → storeConfig
+ *   createDisconnectHandler — POST: auth → purge vault → revoke grant → event
+ *   createConfigureHandler  — OPTIONS + POST: auth → validate → storeConfig
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
+import { publish } from '@imajin/bus';
+import { and, eq } from 'drizzle-orm';
+import { db, channelLinks } from '@/src/db';
+import { deleteFromVault } from '@/src/lib/vault';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import type { BaseOAuthConfig } from './connector-oauth';
 
@@ -94,6 +99,80 @@ export function createCallbackHandler(opts: {
     }
 
     return NextResponse.json({ connected: true });
+  };
+}
+
+// ── Disconnect ────────────────────────────────────────────────────────────────
+
+/**
+ * Build a `POST` handler that disconnects a connector for the authenticated DID.
+ *
+ * Steps (all idempotent — safe to call even when provider-side app is already gone):
+ *   1. requireAuth → resolve ownerDid.
+ *   2. Tombstone all sealed vault fields (config, oauth token bundle, PAT fallback).
+ *      `deleteFromVault` is a no-op on absent fields — no error on already-clean state.
+ *   3. Revoke the active `auth.channel_links` grant row (status → 'revoked').
+ *      A WHERE on status='active' makes it a no-op when already revoked.
+ *   4. Publish a `<connectorName>.disconnected` bus event for audit trail (non-fatal).
+ *   5. Return `{ connected: false }`.
+ *
+ * Usage (one-liner per connector):
+ *   export const POST = createDisconnectHandler({ vaultPrefixes, channel, connectorDid, connectorName });
+ */
+export function createDisconnectHandler(opts: {
+  /**
+   * Vault key prefixes (without `:${ownerDid}`) to tombstone on disconnect, e.g.
+   * `['github-config', 'github-oauth', 'github-pat']`.
+   */
+  vaultPrefixes: string[];
+  /** Channel name in channel_links, e.g. `'github'`. */
+  channel: string;
+  /** Connector app DID in channel_links, e.g. `'did:imajin:github-connector'`. */
+  connectorDid: string;
+  /** Short connector name for bus event topic and log messages, e.g. `'github'`. */
+  connectorName: string;
+}) {
+  return async function POST(request: NextRequest) {
+    const auth = await requireAuth(request);
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+    const ownerDid = resolveActingDid(auth.identity);
+
+    // Tombstone all sealed vault fields (idempotent — absent fields are a no-op).
+    await Promise.all(
+      opts.vaultPrefixes.map((prefix) => deleteFromVault(`${prefix}:${ownerDid}`)),
+    );
+
+    // Revoke the active channel_links grant row (no-op when already revoked).
+    await db
+      .update(channelLinks)
+      .set({ status: 'revoked', revokedAt: new Date() })
+      .where(
+        and(
+          eq(channelLinks.channel, opts.channel),
+          eq(channelLinks.did, ownerDid),
+          eq(channelLinks.appDid, opts.connectorDid),
+          eq(channelLinks.status, 'active'),
+        ),
+      );
+
+    // Publish bus event for audit trail (non-fatal).
+    publish('connector.disconnected', {
+      issuer: ownerDid,
+      subject: ownerDid,
+      scope: opts.channel,
+      payload: {
+        ownerDid,
+        connector: opts.connectorName,
+        context_id: ownerDid,
+        context_type: opts.connectorName,
+      },
+    }).catch((err: unknown) => {
+      log.error({ err: String(err), ownerDid }, `${opts.connectorName} disconnect: bus publish failed (non-fatal)`);
+    });
+
+    return NextResponse.json({ connected: false });
   };
 }
 
