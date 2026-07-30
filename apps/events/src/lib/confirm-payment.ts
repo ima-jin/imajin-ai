@@ -16,6 +16,10 @@ import { eventUrl, eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute }
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || buildPublicUrlAbsolute('auth');
 const EVENTS_URL = buildPublicUrlAbsolute('events');
 
+type SqlClient = ReturnType<typeof getClient>;
+type Event = typeof events.$inferSelect;
+type Ticket = typeof tickets.$inferSelect;
+
 export interface ConfirmPaymentResult {
   confirmedTickets: (typeof tickets.$inferSelect)[];
   orderId: string | null;
@@ -95,202 +99,200 @@ export async function confirmHeldTickets(
   // Send buyer emails
   if (event) {
     try {
-      const authSql = getClient();
-      const buyerDid = confirmedTickets[0].ownerDid;
-      let customerEmail: string | null = null;
-      let customerName: string | null = null;
-      if (buyerDid) {
-        const rows = await authSql<{ contact_email: string | null; name: string | null }[]>`
-          SELECT contact_email, name FROM auth.identities WHERE id = ${buyerDid} LIMIT 1
-        `;
-        customerEmail = rows[0]?.contact_email ?? null;
-        customerName = rows[0]?.name ?? null;
-
-        // Fallback 1: auth.credentials (email type, newest first)
-        if (!customerEmail) {
-          const credRows = await authSql<{ value: string }[]>`
-            SELECT value FROM auth.credentials
-            WHERE did = ${buyerDid} AND type = 'email'
-            ORDER BY created_at DESC LIMIT 1
-          `;
-          customerEmail = credRows[0]?.value ?? null;
-        }
-      }
-
-      // Fallback 2: orders.buyer_email (persists the email from checkout time)
-      if (!customerEmail && orderId) {
-        const orderRows = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
-        customerEmail = orderRows[0]?.buyerEmail ?? null;
-      }
-
-      if (customerEmail) {
-        const typeIds = Array.from(new Set(confirmedTickets.map((t) => t.ticketTypeId)));
-        const typeRows = await db
-          .select()
-          .from(ticketTypes)
-          .where(inArray(ticketTypes.id, typeIds));
-        const typesById = new Map(typeRows.map((t) => [t.id, t]));
-
-        const summary = new Map<string, { typeName: string; quantity: number; unitPrice: number; currency: string }>();
-        let totalCents = 0;
-        for (const t of confirmedTickets) {
-          const tt = typesById.get(t.ticketTypeId);
-          const key = t.ticketTypeId;
-          const existing = summary.get(key);
-          if (existing) {
-            existing.quantity += 1;
-          } else {
-            summary.set(key, {
-              typeName: tt?.name ?? 'Ticket',
-              quantity: 1,
-              unitPrice: t.pricePaid ?? tt?.price ?? 0,
-              currency: t.currency || tt?.currency || 'CAD',
-            });
-          }
-          totalCents += t.pricePaid ?? tt?.price ?? 0;
-        }
-        const currency = confirmedTickets[0].currency || 'CAD';
-        const fmt = (cents: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency }).format(cents / 100);
-        const totalFormatted = fmt(totalCents);
-
-        const eventDate = new Date(event.startsAt);
-        const formattedEventDate = eventDate.toLocaleDateString('en-US', {
-          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-        });
-        const formattedEventTime = eventDate.toLocaleTimeString('en-US', {
-          hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
-        });
-        let eventImageUrl: string | undefined;
-        if (event.imageUrl) {
-          eventImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
-        }
-
-        // Split tickets by their actual registration state, not by ticket-type
-        // policy. A reg-required ticket that's already 'complete' is just as
-        // redeemable as a 'not_required' ticket and belongs in the bundle email.
-        //
-        // Previous logic gated on tt.requiresRegistration, which excluded
-        // already-registered tickets from the "you're in" QR email entirely.
-        const bundleTickets = confirmedTickets.filter(
-          (t) => t.registrationStatus !== 'pending',
-        );
-        const registrationPendingTickets = confirmedTickets.filter(
-          (t) => t.registrationStatus === 'pending',
-        );
-
-        // CTA targets: the first pending-and-required ticket, falling back to my-tickets
-        const ctaTicket = registrationPendingTickets[0] ?? null;
-        const anyPendingRegistration = registrationPendingTickets.length > 0;
-
-        // Magic-link onboard token — redirect destination depends on whether
-        // there are registration-pending tickets. If so, land on the register
-        // page (with a session cookie already set); otherwise, the event page.
-        let onboardToken: string | null = null;
-        const onboardRedirectUrl = ctaTicket
-          ? eventRegisterUrl(EVENTS_URL, event.id, ctaTicket.id)
-          : eventUrl(EVENTS_URL, event.id);
-        try {
-          onboardToken = randomBytes(36).toString('hex');
-          const onboardId = `obt_${randomBytes(8).toString('hex')}`;
-          await authSql`
-            INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
-            VALUES (
-              ${onboardId},
-              ${customerEmail.toLowerCase().trim()},
-              ${customerName || null},
-              ${onboardToken},
-              ${onboardRedirectUrl},
-              ${'access your ticket for ' + event.title},
-              ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
-            )
-          `;
-        } catch (err) {
-          log.error({ err: String(err) }, 'Onboard token creation failed (non-fatal)');
-          onboardToken = null;
-        }
-        const magicLink = onboardToken
-          ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`
-          : eventMyTicketsUrl(EVENTS_URL, event.id);
-
-        // Registration CTA goes through the magic link so users land
-        // authenticated. Falls back to the naked register URL if token
-        // creation failed.
-        let registrationUrl: string;
-        if (anyPendingRegistration) {
-          registrationUrl = onboardToken ? magicLink : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id);
-        } else {
-          registrationUrl = eventMyTicketsUrl(EVENTS_URL, event.id);
-        }
-
-        // 1. Purchase receipt (always)
-        publish('ticket.receipt', {
-          issuer: buyerDid || '',
-          subject: buyerDid || '',
-          scope: 'events',
-          payload: {
-            email: customerEmail,
-            buyerName: customerName || undefined,
-            eventTitle: event.title,
-            eventDate: formattedEventDate,
-            eventTime: formattedEventTime,
-            ticketSummary: Array.from(summary.values()).map((s) => ({
-              typeName: s.typeName,
-              quantity: s.quantity,
-              unitPrice: fmt(s.unitPrice),
-            })),
-            totalPaid: totalFormatted,
-            paymentMethod: 'E-Transfer',
-            registrationUrl,
-            eventImageUrl,
-            hasRegistrationRequired: anyPendingRegistration,
-            context_id: event.id,
-            context_type: 'event',
-          },
-        }).catch((err) => log.error({ err: String(err) }, 'Receipt publish error'));
-
-        // 2. Ticket confirmation with QR codes for no-registration tickets
-        if (bundleTickets.length > 0) {
-          const ticketsWithQr = await Promise.all(
-            bundleTickets.map(async (t) => ({
-              id: t.id,
-              qrCodeDataUri: await generateQRCode(t.id),
-            }))
-          );
-          const primaryType = typesById.get(bundleTickets[0].ticketTypeId);
-          // Recompute formatted price for the bundle subset (sum of bundleTickets pricePaid)
-          const bundleCents = bundleTickets.reduce((sum, t) => sum + (t.pricePaid ?? 0), 0);
-          const bundleFormatted = fmt(bundleCents);
-          publish('ticket.confirmed', {
-            issuer: bundleTickets[0].ownerDid || '',
-            subject: bundleTickets[0].ownerDid || customerEmail,
-            scope: 'events',
-            payload: {
-              to: customerEmail,
-              email: customerEmail,
-              eventTitle: event.title,
-              ticketType: primaryType?.name ?? 'Ticket',
-              ticketId: bundleTickets[0].id,
-              eventDate: formattedEventDate,
-              eventTime: formattedEventTime,
-              isVirtual: event.isVirtual ?? false,
-              venue: event.venue ?? undefined,
-              price: bundleFormatted,
-              magicLink,
-              eventImageUrl,
-              eventUrl: eventUrl(EVENTS_URL, event.id),
-              tickets: ticketsWithQr,
-              context_id: event.id,
-              context_type: 'event',
-            },
-          }).catch((err) => log.error({ err: String(err) }, 'Failed to publish ticket confirmed event'));
-        }
-      } else {
-        log.warn({ buyerDid, orderId }, 'No buyer email available on EMT confirm; skipping receipt + ticket emails');
-      }
+      await sendConfirmationEmails(event, confirmedTickets, orderId, getClient());
     } catch (emailErr) {
       log.error({ err: String(emailErr) }, 'EMT confirm email block failed');
     }
   }
 
   return { confirmedTickets, orderId };
+}
+
+/** Resolve buyer contact details from multiple fallback sources. */
+async function resolveBuyerContact(
+  buyerDid: string | null,
+  orderId: string | null,
+  authSql: SqlClient,
+): Promise<{ email: string | null; name: string | null }> {
+  let customerEmail: string | null = null;
+  let customerName: string | null = null;
+
+  if (buyerDid) {
+    const rows = await authSql<{ contact_email: string | null; name: string | null }[]>`
+      SELECT contact_email, name FROM auth.identities WHERE id = ${buyerDid} LIMIT 1
+    `;
+    customerEmail = rows[0]?.contact_email ?? null;
+    customerName = rows[0]?.name ?? null;
+
+    if (!customerEmail) {
+      const credRows = await authSql<{ value: string }[]>`
+        SELECT value FROM auth.credentials
+        WHERE did = ${buyerDid} AND type = 'email'
+        ORDER BY created_at DESC LIMIT 1
+      `;
+      customerEmail = credRows[0]?.value ?? null;
+    }
+  }
+
+  if (!customerEmail && orderId) {
+    const orderRows = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+    customerEmail = orderRows[0]?.buyerEmail ?? null;
+  }
+
+  return { email: customerEmail, name: customerName };
+}
+
+/** Build ticket type lookup + purchase summary for the email. */
+async function buildTicketSummary(confirmedTickets: Ticket[]) {
+  const typeIds = Array.from(new Set(confirmedTickets.map((t) => t.ticketTypeId)));
+  const typeRows = await db.select().from(ticketTypes).where(inArray(ticketTypes.id, typeIds));
+  const typesById = new Map(typeRows.map((t) => [t.id, t]));
+
+  const summary = new Map<string, { typeName: string; quantity: number; unitPrice: number; currency: string }>();
+  let totalCents = 0;
+  for (const t of confirmedTickets) {
+    const tt = typesById.get(t.ticketTypeId);
+    const existing = summary.get(t.ticketTypeId);
+    if (existing) {
+      existing.quantity += 1;
+    } else {
+      summary.set(t.ticketTypeId, {
+        typeName: tt?.name ?? 'Ticket',
+        quantity: 1,
+        unitPrice: t.pricePaid ?? tt?.price ?? 0,
+        currency: t.currency || tt?.currency || 'CAD',
+      });
+    }
+    totalCents += t.pricePaid ?? tt?.price ?? 0;
+  }
+  return { typesById, summary, totalCents };
+}
+
+/** Create a magic-link onboard token for the buyer. Returns null on failure (non-fatal). */
+async function createOnboardToken(
+  customerEmail: string,
+  customerName: string | null,
+  redirectUrl: string,
+  eventTitle: string,
+  authSql: SqlClient,
+): Promise<string | null> {
+  try {
+    const token = randomBytes(36).toString('hex');
+    const onboardId = `obt_${randomBytes(8).toString('hex')}`;
+    await authSql`
+      INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
+      VALUES (
+        ${onboardId},
+        ${customerEmail.toLowerCase().trim()},
+        ${customerName || null},
+        ${token},
+        ${redirectUrl},
+        ${'access your ticket for ' + eventTitle},
+        ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
+      )
+    `;
+    return token;
+  } catch (err) {
+    log.error({ err: String(err) }, 'Onboard token creation failed (non-fatal)');
+    return null;
+  }
+}
+
+/** Publish the receipt + ticket-bundle emails for a confirmed EMT purchase. */
+async function sendConfirmationEmails(
+  event: Event,
+  confirmedTickets: Ticket[],
+  orderId: string | null,
+  authSql: SqlClient,
+): Promise<void> {
+  const buyerDid = confirmedTickets[0].ownerDid;
+  const { email: customerEmail, name: customerName } = await resolveBuyerContact(buyerDid, orderId, authSql);
+
+  if (!customerEmail) {
+    log.warn({ buyerDid, orderId }, 'No buyer email available on EMT confirm; skipping receipt + ticket emails');
+    return;
+  }
+
+  const { typesById, summary, totalCents } = await buildTicketSummary(confirmedTickets);
+  const currency = confirmedTickets[0].currency || 'CAD';
+  const fmt = (cents: number) => new Intl.NumberFormat('en-CA', { style: 'currency', currency }).format(cents / 100);
+
+  const eventDate = new Date(event.startsAt);
+  const formattedEventDate = eventDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const formattedEventTime = eventDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  const eventImageUrl = event.imageUrl
+    ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
+    : undefined;
+
+  const bundleTickets = confirmedTickets.filter((t) => t.registrationStatus !== 'pending');
+  const registrationPendingTickets = confirmedTickets.filter((t) => t.registrationStatus === 'pending');
+  const ctaTicket = registrationPendingTickets[0] ?? null;
+  const anyPendingRegistration = registrationPendingTickets.length > 0;
+
+  const onboardRedirectUrl = ctaTicket
+    ? eventRegisterUrl(EVENTS_URL, event.id, ctaTicket.id)
+    : eventUrl(EVENTS_URL, event.id);
+  const onboardToken = await createOnboardToken(customerEmail, customerName, onboardRedirectUrl, event.title, authSql);
+  const magicLink = onboardToken
+    ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`
+    : eventMyTicketsUrl(EVENTS_URL, event.id);
+  const registrationUrl = anyPendingRegistration
+    ? (onboardToken ? magicLink : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id))
+    : eventMyTicketsUrl(EVENTS_URL, event.id);
+
+  publish('ticket.receipt', {
+    issuer: buyerDid || '',
+    subject: buyerDid || '',
+    scope: 'events',
+    payload: {
+      email: customerEmail,
+      buyerName: customerName || undefined,
+      eventTitle: event.title,
+      eventDate: formattedEventDate,
+      eventTime: formattedEventTime,
+      ticketSummary: Array.from(summary.values()).map((s) => ({
+        typeName: s.typeName,
+        quantity: s.quantity,
+        unitPrice: fmt(s.unitPrice),
+      })),
+      totalPaid: fmt(totalCents),
+      paymentMethod: 'E-Transfer',
+      registrationUrl,
+      eventImageUrl,
+      hasRegistrationRequired: anyPendingRegistration,
+      context_id: event.id,
+      context_type: 'event',
+    },
+  }).catch((err) => log.error({ err: String(err) }, 'Receipt publish error'));
+
+  if (bundleTickets.length > 0) {
+    const ticketsWithQr = await Promise.all(
+      bundleTickets.map(async (t) => ({ id: t.id, qrCodeDataUri: await generateQRCode(t.id) }))
+    );
+    const primaryType = typesById.get(bundleTickets[0].ticketTypeId);
+    const bundleFormatted = fmt(bundleTickets.reduce((sum, t) => sum + (t.pricePaid ?? 0), 0));
+    publish('ticket.confirmed', {
+      issuer: bundleTickets[0].ownerDid || '',
+      subject: bundleTickets[0].ownerDid || customerEmail,
+      scope: 'events',
+      payload: {
+        to: customerEmail,
+        email: customerEmail,
+        eventTitle: event.title,
+        ticketType: primaryType?.name ?? 'Ticket',
+        ticketId: bundleTickets[0].id,
+        eventDate: formattedEventDate,
+        eventTime: formattedEventTime,
+        isVirtual: event.isVirtual ?? false,
+        venue: event.venue ?? undefined,
+        price: bundleFormatted,
+        magicLink,
+        eventImageUrl,
+        eventUrl: eventUrl(EVENTS_URL, event.id),
+        tickets: ticketsWithQr,
+        context_id: event.id,
+        context_type: 'event',
+      },
+    }).catch((err) => log.error({ err: String(err) }, 'Failed to publish ticket confirmed event'));
+  }
 }
