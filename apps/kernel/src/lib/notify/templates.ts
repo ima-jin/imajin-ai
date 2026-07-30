@@ -12,6 +12,15 @@ export interface NotifyTemplate {
   };
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function simpleEmailHtml(title: string, body: string): string {
   return emailWrapper(`
     <tr>
@@ -557,6 +566,36 @@ export const templates: NotifyTemplate[] = [
           `${data.senderName || "Someone"} mentioned you`,
           body
         );
+      },
+    },
+  },
+  {
+    scope: 'auth:document-signature-request',
+    urgency: 'urgent',
+    title: (data) => {
+      const creator: string = typeof data.creatorName === 'string' && data.creatorName ? data.creatorName : 'Someone';
+      return `${creator} sent you a document to sign`;
+    },
+    body: (data) => {
+      const docTitle: string = typeof data.title === 'string' && data.title ? data.title : 'a document';
+      return `You have been asked to review and sign "${docTitle}".`;
+    },
+    email: {
+      subject: (data) => {
+        const creator: string = typeof data.creatorName === 'string' && data.creatorName ? data.creatorName : 'Someone';
+        return `${creator} sent you a document to sign \u2014 Imajin`;
+      },
+      html: (data) => {
+        const baseUrl = buildPublicUrlAbsolute('kernel');
+        const rawSignUrl: string = typeof data.signUrl === 'string' ? data.signUrl : '';
+        const signUrl = rawSignUrl.startsWith('http') ? rawSignUrl : `${baseUrl}${rawSignUrl}`;
+        const creator = escapeHtml(data.creatorName || 'Someone');
+        const docTitle = escapeHtml(data.title || 'a document');
+        const intro = `<strong style=\"color:#ffffff;\">${creator}</strong> has asked you to review and sign <strong style=\"color:#ffffff;\">${docTitle}</strong>.`;
+        const cta = signUrl
+          ? `<br><br><a href=\"${escapeHtml(signUrl)}\" style=\"color:#f97316;text-decoration:none;font-weight:600;\">Review &amp; sign the document &rarr;</a>`
+          : '';
+        return simpleEmailHtml('Document ready for your signature', `${intro}${cta}`);
       },
     },
   },
