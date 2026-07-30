@@ -123,8 +123,6 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
           onClose();
         }
       }}
-      role="button"
-      tabIndex={0}
       aria-label="Close feedback modal"
     >
       <div className="w-full max-w-lg rounded-xl bg-[#111] border border-gray-800 shadow-2xl">
@@ -204,8 +202,6 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
                     fileInputRef.current?.click();
                   }
                 }}
-                role="button"
-                tabIndex={0}
                 aria-label="Upload screenshot"
                 className={`relative flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
                   dragging

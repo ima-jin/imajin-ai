@@ -220,7 +220,6 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
               setQrUrl(null);
             }
           }}
-          role="button"
           tabIndex={0}
           aria-label="Close QR code overlay"
         >

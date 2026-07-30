@@ -141,7 +141,7 @@ export default function TraceView({ events, correlationId }: Readonly<{ events: 
                           toggle(evt.id);
                         }
                       } : undefined}
-                      role={hasPayload ? 'button' : undefined}
+                      role={hasPayload ? 'region' : undefined}
                       tabIndex={hasPayload ? 0 : undefined}
                       aria-expanded={hasPayload ? isExpanded : undefined}
                       aria-label={hasPayload ? `Toggle ${evt.action} details` : undefined}
