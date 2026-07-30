@@ -42,6 +42,21 @@ const SERVICES = [
   { key: 'inference', label: 'Ask Me', description: 'Let people query your presence' },
 ];
 
+/** Map feature_toggles to a keyed boolean record for the service toggle UI. */
+function buildServiceToggles(ft: FeatureToggles): Record<string, boolean> {
+  const toggles: Record<string, boolean> = {};
+  for (const svc of SERVICES) {
+    toggles[svc.key] = svc.key === 'inference' ? !!ft.inference_enabled : !!(ft[svc.key as keyof typeof ft]);
+  }
+  return toggles;
+}
+
+/** Determine avatar display mode from the avatar value. */
+function detectAvatarMode(avatar?: string): AvatarMode {
+  if (avatar && (avatar.startsWith('http') || avatar.startsWith('/'))) return 'image';
+  return 'emoji';
+}
+
 function EditProfileContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -150,24 +165,10 @@ function EditProfileContent() {
 
       // Set service toggles from feature_toggles
       const ft = profile.featureToggles ?? profile.feature_toggles ?? {};
-      const toggles: Record<string, boolean> = {};
-      for (const svc of SERVICES) {
-        if (svc.key === 'inference') {
-          toggles[svc.key] = !!ft.inference_enabled;
-        } else {
-          toggles[svc.key] = !!(ft[svc.key as keyof typeof ft]);
-        }
-      }
-      setServiceToggles(toggles);
+      setServiceToggles(buildServiceToggles(ft));
       setShowMarketItems(!!ft.show_market_items);
       setShowEvents(!!ft.show_events);
-
-      // Detect avatar mode based on current avatar
-      if (profile.avatar && (profile.avatar.startsWith('http') || profile.avatar.startsWith('/'))) {
-        setAvatarMode('image');
-      } else {
-        setAvatarMode('emoji');
-      }
+      setAvatarMode(detectAvatarMode(profile.avatar));
     } catch (err: any) {
       console.error('Failed to load profile:', err);
       setError('Failed to load profile');

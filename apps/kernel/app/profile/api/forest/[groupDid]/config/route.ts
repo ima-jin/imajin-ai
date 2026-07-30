@@ -6,6 +6,43 @@ import { SERVICES } from '@imajin/config';
 
 const VALID_SERVICE_NAMES = new Set(SERVICES.map((s) => s.name));
 
+/** Validate enabledServices array and landingService consistency. Returns error string or null. */
+function validateServiceConfig(
+  enabledServices: string[],
+  landingService?: string | null
+): string | null {
+  if (!Array.isArray(enabledServices)) return 'enabledServices must be an array';
+  const invalid = enabledServices.filter((n) => !VALID_SERVICE_NAMES.has(n));
+  if (invalid.length > 0) return `Unknown services: ${invalid.join(', ')}`;
+  if (landingService && !enabledServices.includes(landingService)) return 'landingService must be in enabledServices';
+  return null;
+}
+
+/** Validate the PATCH body for forest config. Returns error string or null. */
+function validateForestConfigBody(body: {
+  enabledServices?: unknown;
+  landingService?: unknown;
+  joinVisibility?: unknown;
+  joinNetworkDepth?: unknown;
+  scopeFeeBps?: unknown;
+}): string | null {
+  const { enabledServices, landingService, joinVisibility, joinNetworkDepth, scopeFeeBps } = body;
+  if (enabledServices !== undefined) {
+    const err = validateServiceConfig(enabledServices as string[], landingService as string | null | undefined);
+    if (err) return err;
+  }
+  if (joinVisibility !== undefined && !['open', 'network', 'invite'].includes(joinVisibility as string)) {
+    return 'joinVisibility must be open, network, or invite';
+  }
+  if (joinNetworkDepth !== undefined && (typeof joinNetworkDepth !== 'number' || joinNetworkDepth < 1 || joinNetworkDepth > 3)) {
+    return 'joinNetworkDepth must be 1, 2, or 3';
+  }
+  if (scopeFeeBps !== undefined && (typeof scopeFeeBps !== 'number' || scopeFeeBps < 0 || scopeFeeBps > 500)) {
+    return 'scopeFeeBps must be 0-500 (0-5%)';
+  }
+  return null;
+}
+
 /**
  * Verify caller is a controller of the group with the given minimum role.
  */
@@ -94,6 +131,11 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
+  const validationError = validateForestConfigBody(body);
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+
   const { enabledServices, landingService, theme, joinVisibility, joinNetworkDepth, scopeFeeBps } = body as {
     enabledServices?: string[];
     landingService?: string | null;
@@ -102,37 +144,6 @@ export async function PATCH(
     joinNetworkDepth?: number;
     scopeFeeBps?: number;
   };
-
-  if (enabledServices !== undefined) {
-    if (!Array.isArray(enabledServices)) {
-      return NextResponse.json({ error: 'enabledServices must be an array' }, { status: 400 });
-    }
-    const invalid = enabledServices.filter((n) => !VALID_SERVICE_NAMES.has(n));
-    if (invalid.length > 0) {
-      return NextResponse.json({ error: `Unknown services: ${invalid.join(', ')}` }, { status: 400 });
-    }
-    if (landingService && !enabledServices.includes(landingService)) {
-      return NextResponse.json({ error: 'landingService must be in enabledServices' }, { status: 400 });
-    }
-  }
-
-  if (joinVisibility !== undefined) {
-    if (!['open', 'network', 'invite'].includes(joinVisibility)) {
-      return NextResponse.json({ error: 'joinVisibility must be open, network, or invite' }, { status: 400 });
-    }
-  }
-
-  if (joinNetworkDepth !== undefined) {
-    if (typeof joinNetworkDepth !== 'number' || joinNetworkDepth < 1 || joinNetworkDepth > 3) {
-      return NextResponse.json({ error: 'joinNetworkDepth must be 1, 2, or 3' }, { status: 400 });
-    }
-  }
-
-  if (scopeFeeBps !== undefined) {
-    if (typeof scopeFeeBps !== 'number' || scopeFeeBps < 0 || scopeFeeBps > 500) {
-      return NextResponse.json({ error: 'scopeFeeBps must be 0-500 (0-5%)' }, { status: 400 });
-    }
-  }
 
   const now = new Date();
   const updateSet: Record<string, unknown> = { updatedAt: now };

@@ -2,7 +2,7 @@ import { db, profiles, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 
 import Link from 'next/link';
-import { profilePath } from '@imajin/config';
+import { profilePath, buildPublicUrl } from '@imajin/config';
 import Image from 'next/image';
 import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 
@@ -63,7 +63,7 @@ export default async function AuthPage() {
   const location = metadata.location as string | undefined;
   const website = metadata.website as string | undefined;
 
-  const mediaUrl = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
+  const mediaUrl = buildPublicUrl('media');
 
   // Resolve avatar URL — relative /api/media/ paths must go through the
   // public URL because Caddy serves them via file_server; the Next.js image

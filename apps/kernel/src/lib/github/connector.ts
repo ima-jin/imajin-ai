@@ -58,7 +58,7 @@ export const GITHUB_OAUTH_SCOPE = 'repo';
 // ── GitHub-specific types ─────────────────────────────────────────────────────────
 
 /** GitHub OAuth app config (no `environment` field — GitHub has one API). */
-export interface GitHubConfig extends BaseOAuthConfig {}
+export type GitHubConfig = BaseOAuthConfig;
 
 export interface GitHubTokens {
   accessToken: string;

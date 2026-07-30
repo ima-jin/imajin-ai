@@ -12,6 +12,24 @@ set -euo pipefail
 export NODE_ENV=production
 cd "$(git rev-parse --show-toplevel)"
 
+# is_app_stale APP
+# Returns 0 (true) if the app's .next output is older than its source files,
+# or if no .next/BUILD_ID exists. Excludes .next/ and node_modules/ from the
+# source scan so the build output itself doesn't trigger re-detection.
+is_app_stale() {
+  local app="$1"
+  local build_id="apps/$app/.next/BUILD_ID"
+  # No BUILD_ID → definitely stale
+  [[ ! -f "$build_id" ]] && return 0
+  # Any source file newer than BUILD_ID → stale
+  local stale
+  stale=$(find "apps/$app" \
+    \( -path "apps/$app/.next" -o -path "apps/$app/node_modules" \) -prune \
+    -o -type f -newer "$build_id" -print \
+    2>/dev/null | head -1)
+  [[ -n "$stale" ]]
+}
+
 DRY_RUN=false
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
 
@@ -22,8 +40,20 @@ CURRENT_SHA=$(git rev-parse HEAD)
 if [[ -f "$LAST_SHA_FILE" ]]; then
   LAST_SHA=$(cat "$LAST_SHA_FILE")
   if [[ "$LAST_SHA" == "$CURRENT_SHA" ]]; then
-    echo "✓ Already built at $(echo $CURRENT_SHA | cut -c1-7) — nothing to do"
-    exit 0
+    # SHA matches — check per-app .next freshness before declaring done.
+    # This catches manual git-pull scenarios where source is newer than .next.
+    STALE_APPS=""
+    for _app in $(ls apps/*/package.json 2>/dev/null | cut -d/ -f2); do
+      if is_app_stale "$_app"; then
+        STALE_APPS+="$_app "
+      fi
+    done
+    if [[ -z "$STALE_APPS" ]]; then
+      echo "✓ Already built at $(echo $CURRENT_SHA | cut -c1-7) — nothing to do"
+      exit 0
+    fi
+    echo "⚠️  SHA matches but stale .next detected for: $STALE_APPS"
+    CHANGED_APPS=$(echo "$STALE_APPS" | tr ' ' '\n' | grep -v '^$' | sort -u)
   fi
 
   echo "Detecting changes since $(echo $LAST_SHA | cut -c1-7)..."
@@ -66,6 +96,15 @@ echo "$COUNT app(s) to build: $APP_LIST"
 
 if $DRY_RUN; then
   echo "(dry run — would run: ./scripts/build.sh $APP_LIST)"
+  echo ""
+  echo "Per-app .next freshness:"
+  for _app in $(ls apps/*/package.json 2>/dev/null | cut -d/ -f2); do
+    if is_app_stale "$_app"; then
+      echo "  $_app: STALE"
+    else
+      echo "  $_app: fresh"
+    fi
+  done
   exit 0
 fi
 

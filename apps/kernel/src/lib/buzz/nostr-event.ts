@@ -126,23 +126,49 @@ export function buildAuthEvent(
 // ── NIP-29: group messages ────────────────────────────────────────────────────
 
 /**
+ * Imajin DID attribution tags for NIP-29 kind:9 events (#1413).
+ *
+ * Carriers bind the signing Nostr key back to a sovereign Imajin DID via
+ * an on-chain `imajin/nostr-key-binding` attestation:
+ *   - `[imajin-did, <ownerDid>]`        — the Imajin DID that controls this key
+ *   - `[imajin-attestation, <digest>]`  — SHA-256 hex of the attestation canonical payload
+ */
+export interface DidTags {
+  /** Imajin DID that controls the signing Nostr key. */
+  ownerDid: string;
+  /** SHA-256 hex digest of the `imajin/nostr-key-binding` canonical payload. */
+  attestationDigest: string;
+}
+
+/**
  * Build and sign a NIP-29 kind:9 group message.
  *
  * The `#h` tag identifies the target group on a NIP-29 relay.
  * NIP-29 relays enforce group membership; the relay will reject the event
  * if the signing pubkey is not an admitted group member.
+ *
+ * When `didTags` is provided, two additional Imajin attribution tags are
+ * appended (#1413):
+ *   `[imajin-did, ownerDid]`
+ *   `[imajin-attestation, attestationDigest]`
  */
 export function buildKind9Event(
   pubkey: string,
   groupId: string,
   content: string,
   privkeyHex: string,
+  didTags?: DidTags,
 ): NostrEvent {
+  const tags: string[][] = [['h', groupId]];
+  if (didTags) {
+    tags.push(['imajin-did', didTags.ownerDid]);
+    tags.push(['imajin-attestation', didTags.attestationDigest]);
+  }
   const unsigned: UnsignedNostrEvent = {
     pubkey,
     created_at: Math.floor(Date.now() / 1000),
     kind: 9,
-    tags: [['h', groupId]],
+    tags,
     content,
   };
   return signNostrEvent(unsigned, privkeyHex);

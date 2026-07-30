@@ -27,6 +27,57 @@ function getUploadLimitBytes(identity: { tier?: string; uploadLimitMb?: number |
   return mb * 1024 * 1024;
 }
 
+/** Resolve (and optionally rename) the upload filename. */
+function resolveUploadFilename(file: Blob, formData: FormData): string {
+  const GENERIC_AUDIO_PATTERN = /^(voice|blob|audio|recording|sound)\./i;
+  const base =
+    (formData.get("filename") as string | null) ??
+    (file as File).name ??
+    "upload";
+  if (file.type.startsWith("audio/") && GENERIC_AUDIO_PATTERN.test(base)) {
+    const ts = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const ext = base.includes(".") ? base.slice(base.lastIndexOf(".")) : "";
+    return `Audio_${ts.getFullYear()}_${pad(ts.getMonth() + 1)}_${pad(ts.getDate())}_${pad(ts.getHours())}_${pad(ts.getMinutes())}_${pad(ts.getSeconds())}${ext}`;
+  }
+  return base;
+}
+
+/** Resolve ownerDid for GET /api/assets listing: internal key path or user auth path. */
+async function resolveListOwnerDid(
+  request: NextRequest,
+  searchParams: URLSearchParams,
+  cors: Record<string, string>
+): Promise<{ ownerDid: string; isAgentQuery: boolean } | NextResponse> {
+  const internalApiKey = process.env.MEDIA_INTERNAL_API_KEY;
+  const authHeader = request.headers.get("Authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (
+    bearerToken &&
+    internalApiKey &&
+    bearerToken.length === internalApiKey.length &&
+    timingSafeEqual(Buffer.from(bearerToken), Buffer.from(internalApiKey))
+  ) {
+    const ownerDidHeader = request.headers.get("X-Owner-DID");
+    if (!ownerDidHeader) {
+      return NextResponse.json({ error: "X-Owner-DID header required" }, { status: 400, headers: cors });
+    }
+    return { ownerDid: ownerDidHeader, isAgentQuery: false };
+  }
+
+  const authResult = await requireAuth(request);
+  if ("error" in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+  }
+  const { identity } = authResult;
+  const didParam = searchParams.get("did");
+  if (didParam && didParam !== identity.id) {
+    return { ownerDid: didParam, isAgentQuery: true };
+  }
+  return { ownerDid: resolveActingDid(identity), isAgentQuery: false };
+}
+
 // ---------------------------------------------------------------------------
 // POST /api/assets — upload a file
 // ---------------------------------------------------------------------------
@@ -80,20 +131,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Extract original filename first (needed for MIME inference)
-  let originalName =
-    (formData.get("filename") as string | null) ??
-    file.name ??
-    "upload";
-
-  // Rename generic audio filenames to a timestamped format (e.g. blob.webm → Audio_2026_01_01_12_00_00.webm)
-  const GENERIC_AUDIO_PATTERN = /^(voice|blob|audio|recording|sound)\./i;
-  if (file.type.startsWith("audio/") && GENERIC_AUDIO_PATTERN.test(originalName)) {
-    const ts = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const ext = originalName.includes(".") ? originalName.slice(originalName.lastIndexOf(".")) : "";
-    originalName = `Audio_${ts.getFullYear()}_${pad(ts.getMonth() + 1)}_${pad(ts.getDate())}_${pad(ts.getHours())}_${pad(ts.getMinutes())}_${pad(ts.getSeconds())}${ext}`;
-  }
+  // Extract original filename first (needed for MIME inference);
+  // generic audio blobs are renamed to a timestamped format.
+  const originalName = resolveUploadFilename(file, formData);
 
   // MIME check — infer from extension if browser sent octet-stream
   const mimeType = inferMime(file.type, originalName);
@@ -180,38 +220,10 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  // Internal API key auth: Bearer token + X-Owner-DID header
-  const internalApiKey = process.env.MEDIA_INTERNAL_API_KEY;
-  const authHeader = request.headers.get("Authorization");
-  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
   const { searchParams } = new URL(request.url);
-  let ownerDid: string;
-  let isAgentQuery = false;
-  if (bearerToken && internalApiKey &&
-      bearerToken.length === internalApiKey.length &&
-      timingSafeEqual(Buffer.from(bearerToken), Buffer.from(internalApiKey))) {
-    const ownerDidHeader = request.headers.get("X-Owner-DID");
-    if (!ownerDidHeader) {
-      return NextResponse.json({ error: "X-Owner-DID header required" }, { status: 400, headers: cors });
-    }
-    ownerDid = ownerDidHeader;
-  } else {
-    const authResult = await requireAuth(request);
-    if ("error" in authResult) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
-    }
-    const { identity } = authResult;
-    const didParam = searchParams.get("did");
-
-    if (didParam && didParam !== identity.id) {
-      // Querying another DID's public assets — allowed for any authenticated user
-      ownerDid = didParam;
-      isAgentQuery = true;
-    } else {
-      ownerDid = resolveActingDid(identity);
-    }
-  }
+  const ownerInfo = await resolveListOwnerDid(request, searchParams, cors);
+  if (ownerInfo instanceof NextResponse) return ownerInfo;
+  const { ownerDid, isAgentQuery } = ownerInfo;
 
   const search = searchParams.get("search");      // filename search
   const type = searchParams.get("type");          // e.g. "image"

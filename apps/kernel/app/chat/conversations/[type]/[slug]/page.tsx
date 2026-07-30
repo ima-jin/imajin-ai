@@ -18,7 +18,7 @@ function parseConvDid(did: string): { type: string; slug?: string } {
   return { type: rest.slice(0, idx), slug: rest.slice(idx + 1) || undefined };
 }
 
-const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
+const MEDIA_URL = buildPublicUrl('media');
 
 const SERVICE_PREFIX = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';

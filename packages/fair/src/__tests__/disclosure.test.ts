@@ -188,8 +188,18 @@ describe('applyDisclosureGates on-consent tier', () => {
   it('withholds on-consent fields without a grant', () => {
     const policy = composeEffectivePolicy(overlay);
     const { manifest: out, withheld } = applyDisclosureGates(BASE_MANIFEST, policy);
-    // amount is synthetic; distribution/transfer contain Money.amount
-    expect(withheld['amount']).toBeUndefined(); // raw 'amount' key not in manifest, but distribution has price
+    // `amount` is a synthetic gate over the Money.amount values nested inside
+    // distribution/transfer. On-consent + no grant strips those prices and
+    // records a single presence attestation under the synthetic `amount` key
+    // (covered-by-signature), so the consumer knows an amount was present.
+    expect(withheld['amount']).toEqual({ present: true, attestation: 'covered-by-signature' });
+    // The amount-bearing objects stay disclosed, but their prices are stripped.
+    const distribution = out['distribution'] as { reproduction: Record<string, unknown> };
+    expect(distribution.reproduction['price']).toBeUndefined();
+    expect(distribution.reproduction['mode']).toBe('license');
+    const transfer = out['transfer'] as Record<string, unknown>;
+    expect(transfer['price']).toBeUndefined();
+    expect(transfer['allowed']).toBe(true);
   });
 
   it('includes on-consent fields with a matching grant', () => {

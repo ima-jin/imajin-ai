@@ -23,6 +23,7 @@ import {
   buildKind9Event,
 } from './nostr-event';
 import { sendToRelay } from './relay-transport';
+import { loadDidTags } from './did-resolver';
 
 const log = createLogger('kernel');
 
@@ -108,7 +109,9 @@ export async function sendKind9(
   }
 
   const pubkeyHex = deriveNostrPubkey(privkeyHex);
-  const event = buildKind9Event(pubkeyHex, groupId, content, privkeyHex);
+  // Load DID attribution tags (#1413) — non-fatal if no binding exists yet.
+  const didTags = await loadDidTags(ownerDid);
+  const event = buildKind9Event(pubkeyHex, groupId, content, privkeyHex, didTags);
   // Private key is no longer needed after signing — let it fall out of scope.
 
   await sendToRelay(

@@ -13,14 +13,86 @@ import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 
 /**
+ * Attempt to resolve a chain DID from the chain log.
+ * Returns the last DID in the chain if a matching identityChains record is found.
+ * Returns undefined if the chain cannot be verified or the log is empty.
+ *
+ * Cognitive complexity: 2 (≤ 15)
+ */
+async function resolveChainDid(chainLog: string[] | undefined): Promise<string | undefined> {
+  if (!chainLog || !Array.isArray(chainLog) || chainLog.length === 0) return undefined;
+  try {
+    const candidateDid = chainLog.at(-1)!;
+    const [chainRow] = await db
+      .select({ did: identityChains.did, dfosDid: identityChains.dfosDid })
+      .from(identityChains)
+      .where(eq(identityChains.did, candidateDid))
+      .limit(1);
+    return chainRow?.did;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Handle a renewal registration for an existing node.
+ * Updates the node record and returns the verified response.
+ *
+ * Cognitive complexity: 3 (≤ 15)
+ */
+async function handleNodeRenewal(
+  existingNode: { id: string; hostname: string; chainDid: string | null },
+  attestation: NodeAttestation,
+  chainDid: string | undefined,
+  expiresAt: Date,
+): Promise<NextResponse> {
+  if (existingNode.hostname !== attestation.hostname) {
+    const available = await isHostnameAvailable(attestation.hostname);
+    if (!available) {
+      return NextResponse.json(
+        { status: 'rejected', error: 'Hostname already taken' },
+        { status: 409 },
+      );
+    }
+  }
+
+  await db
+    .update(nodes)
+    .set({
+      hostname: attestation.hostname,
+      subdomain: `${attestation.hostname}.imajin.ai`,
+      services: attestation.services,
+      capabilities: attestation.capabilities,
+      buildHash: attestation.buildHash,
+      version: attestation.version,
+      sourceCommit: attestation.sourceCommit,
+      attestation,
+      chainDid: chainDid ?? existingNode.chainDid,
+      status: 'active',
+      expiresAt,
+      lastHeartbeat: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(nodes.id, attestation.nodeId));
+
+  return NextResponse.json({
+    status: 'verified',
+    subdomain: `${attestation.hostname}.imajin.ai`,
+    expiresAt: expiresAt.getTime(),
+    renewed: true,
+    chainVerified: !!chainDid,
+  });
+}
+
+/**
  * POST /api/node/register
  * Register a new node in the network
- * 
+ *
  * Request:
  * {
  *   attestation: NodeAttestation
  * }
- * 
+ *
  * Response:
  * {
  *   status: "verified" | "pending" | "rejected",
@@ -88,29 +160,9 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       );
     }
 
-    // 5. Optional chain verification — look up chain identity via direct DB query
-    let chainDid: string | undefined;
-    if (chainLog && Array.isArray(chainLog) && chainLog.length > 0) {
-      // TODO(#538): Full verify-chain log validation requires cryptographic chain replay.
-      // For now, check if the last DID in the chain log has a matching identityChains record
-      // whose public key matches the attestation. Degraded mode if not found.
-      try {
-        const candidateDid = chainLog.at(-1)!;
-        const [chainRow] = await db
-          .select({ did: identityChains.did, dfosDid: identityChains.dfosDid })
-          .from(identityChains)
-          .where(eq(identityChains.did, candidateDid))
-          .limit(1);
-
-        if (chainRow) {
-          chainDid = chainRow.did;
-        }
-        // If no row found, proceed without chain verification (degraded mode)
-      } catch (err) {
-        log.warn({ err: String(err) }, '[register] Chain verification DB query failed (non-fatal)');
-        // Proceed without chain verification (degraded mode)
-      }
-    }
+    // 5. Optional chain verification — best-effort, degraded mode if chain is not found
+    // TODO(#538): Full verify-chain log validation requires cryptographic chain replay.
+    const chainDid = await resolveChainDid(chainLog);
 
     // 6. Verify build hash against approved builds
     const [approvedBuild] = await db
@@ -152,46 +204,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
     const expiresAt = new Date(now + NODE_REGISTRATION_TTL);
 
     if (existingNode) {
-      // Renewal - same node, maybe different hostname
-      if (existingNode.hostname !== attestation.hostname) {
-        // Hostname change - check new one is available
-        const available = await isHostnameAvailable(attestation.hostname);
-        if (!available) {
-          return NextResponse.json(
-            { status: 'rejected', error: 'Hostname already taken' },
-            { status: 409 }
-          );
-        }
-        // TODO: Remove old subdomain, provision new one
-      }
-
-      // Update registration
-      await db
-        .update(nodes)
-        .set({
-          hostname: attestation.hostname,
-          subdomain: `${attestation.hostname}.imajin.ai`,
-          services: attestation.services,
-          capabilities: attestation.capabilities,
-          buildHash: attestation.buildHash,
-          version: attestation.version,
-          sourceCommit: attestation.sourceCommit,
-          attestation,
-          chainDid: chainDid ?? existingNode.chainDid,
-          status: 'active',
-          expiresAt,
-          lastHeartbeat: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(nodes.id, attestation.nodeId));
-
-      return NextResponse.json({
-        status: 'verified',
-        subdomain: `${attestation.hostname}.imajin.ai`,
-        expiresAt: expiresAt.getTime(),
-        renewed: true,
-        chainVerified: !!chainDid,
-      });
+      return handleNodeRenewal(existingNode, attestation, chainDid, expiresAt);
     }
 
     // 7. New registration - check hostname availability
@@ -210,21 +223,21 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       .where(eq(nodes.hostname, attestation.hostname))
       .limit(1);
 
-    if (existingHostname) {
-      // Check if in grace period and same owner
-      if (existingHostname.id === attestation.nodeId) {
-        // Same node reclaiming - allow
-      } else if (existingHostname.status === 'expired' && 
-                 Date.now() < new Date(existingHostname.expiresAt).getTime() + NODE_GRACE_PERIOD) {
-        return NextResponse.json(
-          { 
-            status: 'rejected', 
-            error: 'Hostname in grace period',
-            hint: 'Previous owner can still reclaim this hostname'
-          },
-          { status: 409 }
-        );
-      }
+    // Reject if a different expired node is still within its grace period
+    const gracePeriodConflict =
+      existingHostname &&
+      existingHostname.id !== attestation.nodeId &&
+      existingHostname.status === 'expired' &&
+      Date.now() < new Date(existingHostname.expiresAt).getTime() + NODE_GRACE_PERIOD;
+    if (gracePeriodConflict) {
+      return NextResponse.json(
+        {
+          status: 'rejected',
+          error: 'Hostname in grace period',
+          hint: 'Previous owner can still reclaim this hostname',
+        },
+        { status: 409 },
+      );
     }
 
     // 8. Provision subdomain

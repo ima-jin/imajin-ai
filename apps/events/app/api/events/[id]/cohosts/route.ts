@@ -6,10 +6,10 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 const log = createLogger('events');
 import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
+import { resolveCoHostDid } from '@/src/lib/cohost-helpers';
 
 const sql = getClient();
 
-const PROFILE_SERVICE_URL = process.env.PROFILE_SERVICE_URL || 'http://localhost:3005';
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 
 async function resolveProfile(did: string): Promise<{ did: string; name: string | null; handle: string | null; avatar: string | null }> {
@@ -113,38 +113,11 @@ export async function POST(
     }
 
     // Look up DID from handle via profile service (or use did directly)
-    let coHostDid: string;
-    let profileData: { name?: string; handle?: string; avatar?: string; avatarUrl?: string } = {};
-
-    if (didParam && typeof didParam === 'string') {
-      coHostDid = didParam;
-      // Resolve profile for the DID
-      try {
-        const profile = await resolveProfile(coHostDid);
-        profileData = { name: profile.name || undefined, handle: profile.handle || undefined, avatar: profile.avatar || undefined };
-      } catch {}
-    } else {
-      if (typeof handle !== 'string') {
-        return NextResponse.json({ error: 'handle must be a string' }, { status: 400 });
-      }
-      try {
-        const res = await fetch(
-          `${PROFILE_SERVICE_URL}/api/profile/by-handle/${encodeURIComponent(handle.replace(/^@/, ''))}`,
-          { cache: 'no-store' }
-        );
-        if (!res.ok) {
-          return NextResponse.json({ error: 'Handle not found' }, { status: 404 });
-        }
-        const data = await res.json();
-        coHostDid = data.did;
-        profileData = data;
-        if (!coHostDid) {
-          return NextResponse.json({ error: 'Could not resolve DID for handle' }, { status: 404 });
-        }
-      } catch {
-        return NextResponse.json({ error: 'Failed to look up handle' }, { status: 502 });
-      }
+    const resolvedCoHost = await resolveCoHostDid(didParam, handle);
+    if ('error' in resolvedCoHost) {
+      return NextResponse.json({ error: resolvedCoHost.error }, { status: resolvedCoHost.status });
     }
+    const { coHostDid, profileData } = resolvedCoHost;
 
     // Can't add yourself
     if (coHostDid === did) {

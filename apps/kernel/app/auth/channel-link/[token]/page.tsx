@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getClient } from '@imajin/db';
 import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
@@ -83,9 +84,9 @@ export default async function ChannelLinkApprovalPage({
           You can close this tab and return to the chat.
         </p>
         <p style={{ marginTop: 24 }}>
-          <a href="/auth/settings" style={{ color: '#6366f1', textDecoration: 'none' }}>
+          <Link href="/auth/settings" style={{ color: '#6366f1', textDecoration: 'none' }}>
             Manage your linked accounts →
-          </a>
+          </Link>
         </p>
       </main>
     );
@@ -160,12 +161,12 @@ export default async function ChannelLinkApprovalPage({
         >
           Approve
         </button>
-        <a
+        <Link
           href="/"
           style={{ marginLeft: 16, color: '#888', fontSize: 14, textDecoration: 'none' }}
         >
           Cancel
-        </a>
+        </Link>
       </form>
     </main>
   );

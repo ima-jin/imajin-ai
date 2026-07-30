@@ -12,6 +12,34 @@ import * as bus from "@imajin/bus";
 const log = createLogger("kernel");
 
 /**
+ * Normalize a pre-1.0 or 1.0 manifest to a consistent shape before upgrading.
+ * Backfills missing `fair`, `type`, `created`, `owner`, and `id` fields from
+ * the asset row, and resolves the nested `createdAt` → `created` rename.
+ */
+function normalizeLegacyManifest(
+  manifest: FairManifest,
+  asset: { mimeType: string; ownerDid: string; id: string }
+): { oldVersion: string; normalized: Record<string, unknown> } {
+  const raw = manifest as unknown as Record<string, unknown>;
+  const oldVersion = String(raw.version ?? raw.fair ?? "1.0");
+  const normalizedCreated =
+    typeof raw.created === "string"
+      ? raw.created
+      : typeof raw.createdAt === "string"
+        ? raw.createdAt
+        : new Date().toISOString();
+  const normalized: Record<string, unknown> = {
+    ...raw,
+    fair: typeof raw.fair === "string" ? raw.fair : "1.0",
+    type: typeof raw.type === "string" ? raw.type : asset.mimeType,
+    created: normalizedCreated,
+    owner: typeof raw.owner === "string" ? raw.owner : asset.ownerDid,
+    id: typeof raw.id === "string" ? raw.id : asset.id,
+  };
+  return { oldVersion, normalized };
+}
+
+/**
  * POST /api/assets/[id]/upgrade-fair
  * Manually upgrade a v1.0 .fair manifest to v1.1, sign with platform key,
  * persist, and publish a bus event.
@@ -69,20 +97,7 @@ export async function POST(
 
   // 4. Normalize pre-1.0 manifests (e.g. version 0.2.0 — no `type`, no `fair`,
   //    `createdAt` instead of `created`). Backfill from asset row when possible.
-  const raw = manifest as unknown as Record<string, unknown>;
-  const oldVersion = String(raw.version ?? raw.fair ?? "1.0");
-  const normalized: Record<string, unknown> = {
-    ...raw,
-    fair: typeof raw.fair === "string" ? raw.fair : "1.0",
-    type: typeof raw.type === "string" ? raw.type : asset.mimeType,
-    created: typeof raw.created === "string"
-      ? raw.created
-      : typeof raw.createdAt === "string"
-        ? raw.createdAt
-        : new Date().toISOString(),
-    owner: typeof raw.owner === "string" ? raw.owner : asset.ownerDid,
-    id: typeof raw.id === "string" ? raw.id : asset.id,
-  };
+  const { oldVersion, normalized } = normalizeLegacyManifest(manifest, asset);
 
   // 5. Upgrade to v1.1
   const upgraded = upgradeToV1_1(normalized as unknown as FairManifest);

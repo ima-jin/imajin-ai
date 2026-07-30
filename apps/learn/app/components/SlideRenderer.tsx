@@ -94,7 +94,7 @@ export function SlideRenderer({ slides, initialIndex = 0, onExit }: Readonly<Sli
         const diffX = e.changedTouches[0].clientX - touchStart;
         const diffY = e.changedTouches[0].clientY - (touchStartY ?? 0);
         if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY) * 1.5) {
-          diffX > 0 ? prev() : next();
+          if (diffX > 0) { prev(); } else { next(); }
         }
         setTouchStart(null);
         setTouchStartY(null);

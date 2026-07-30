@@ -201,7 +201,7 @@ export async function getArticleBySlug(ownerDid: string, slug: string): Promise<
 
   // Extract title from first H1 if not in frontmatter
   let title = data.title;
-  let subtitle = data.subtitle;
+  const subtitle = data.subtitle;
   if (!title) {
     for (const line of content.split('\n')) {
       const trimmed = line.trim();
