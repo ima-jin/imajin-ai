@@ -379,6 +379,176 @@ export async function loadAndUnseal(field: string): Promise<string | undefined> 
   return unsealSecret(entry, sealKey);
 }
 
+// ── Static-secret vault primitives (#1439) ───────────────────────────────────
+
+/**
+ * Seal a plaintext secret as a v2 delegation-grant entry and store it,
+ * minting a grant where `subject = principalDid` and `grantedTo = granteeDid`
+ * (Option-B custody — principal owns the key, app DID is the grantee).
+ *
+ * This is the generic lower-level primitive behind the static-secret connector
+ * factory. Callers are responsible for choosing the vault field name (typically
+ * `${secretPrefix}:${principalDid}`).
+ *
+ * Crypto: identical to sealAndStoreV2 Tier 0 — a random per-field AES-256-GCM
+ * key is generated, the plaintext is encrypted, and the field key is ECDH-wrapped
+ * to the node's X25519 pubkey using the owner's X25519 private key. The grant
+ * is signed by the node's Ed25519 signing identity.
+ *
+ * Supersedes any existing active grant for the (principalDid, granteeDid, field)
+ * tuple before inserting the new row (rotation semantics).
+ *
+ * NOTE: Tier 1 (external owner agent) is not yet supported by this function.
+ * Calling it in a Tier 1 environment will throw.
+ *
+ * No plaintext is logged at any point.
+ */
+export async function sealAndGrantStaticSecret(
+  field: string,
+  plaintext: string,
+  options: { principalDid: string; granteeDid: string; expiresAt?: Date | null },
+): Promise<{ entry: VaultEntry; grantId: string }> {
+  if (isVaultTier1()) {
+    // Tier 1 requires the external owner agent to re-wrap the field key for
+    // the granteeDid; the request/fulfil flow is not yet implemented here.
+    throw new Error('sealAndGrantStaticSecret: Tier 1 (external owner agent) is not yet supported');
+  }
+
+  const { principalDid, granteeDid, expiresAt = null } = options;
+  const identity = getNodeSigningIdentity();
+  const fieldKey = randomBytes(32);
+
+  const blob = sealSecret(plaintext, fieldKey);
+  const cid = await computeVaultCid(blob);
+  const keyId = deriveKeyId(identity.senderPubkey);
+  const timestamp = new Date().toISOString();
+
+  const existingEntry = await vaultService.get(field);
+  const previousCid = existingEntry?.cid;
+
+  const payload = {
+    version: VAULT_ENTRY_VERSION_V2 as typeof VAULT_ENTRY_VERSION_V2,
+    field,
+    cid,
+    encrypted: blob.encrypted,
+    nonce: blob.nonce,
+    senderDid: identity.senderDid,
+    senderPubkey: identity.senderPubkey,
+    keyId,
+    timestamp,
+    custodyScheme: 'delegation-grant' as const,
+    ...(previousCid === undefined ? {} : { previousCid }),
+  };
+
+  const signature = signVaultPayload(payload, identity.privateKeyHex);
+  const entry: VaultEntry = { ...payload, signature };
+
+  await assertEntryIntegrity(entry, vaultAdapters);
+  await vaultService.set(entry);
+
+  // Supersede any existing active grant for this (principalDid, granteeDid, field) tuple.
+  await db
+    .update(vaultDelegationGrants)
+    .set({ status: 'superseded' })
+    .where(
+      and(
+        eq(vaultDelegationGrants.subject, principalDid),
+        eq(vaultDelegationGrants.grantedTo, granteeDid),
+        eq(vaultDelegationGrants.field, field),
+        eq(vaultDelegationGrants.status, 'active'),
+      ),
+    );
+
+  // Wrap the field key to the node's X25519 pubkey using the owner X25519 private key.
+  const wrapped = wrapFieldKey(fieldKey, getNodeXPublicKey(), getOwnerXPrivateKey());
+
+  const grantRaw = {
+    subject: principalDid,
+    grantedTo: granteeDid,
+    field,
+    ownerXPub: getOwnerXPublicKey(),
+    wrappedKey: wrapped.encryptedKey,
+    wrappedNonce: wrapped.nonce,
+    keyId,
+    expiresAt,
+  };
+
+  const ownerSignature = authCrypto.signSync(
+    canonicalizeGrantPayload(grantRaw),
+    identity.privateKeyHex,
+  );
+
+  const grantId = generateId('vdg');
+  await db.insert(vaultDelegationGrants).values({
+    id: grantId,
+    ...grantRaw,
+    ownerSignature,
+    status: 'active',
+  });
+
+  return { entry, grantId };
+}
+
+/**
+ * Load a delegation-grant sealed vault entry and unseal it, resolving the
+ * active grant by granteeDid rather than nodeDid.
+ *
+ * Used by the static-secret framework (#1439): the app DID (granteeDid) acts
+ * as the grantee and the engine unseals on its behalf.
+ *
+ * Returns undefined when:
+ *   - The vault field does not exist or has been deleted.
+ *   - No active, non-expired delegation grant exists for (field, granteeDid).
+ *
+ * Throws VaultDelegationError when the grant's owner signature is invalid.
+ * Throws VaultIntegrityError on any integrity or isolation violation.
+ * No plaintext is logged at any point.
+ */
+export async function loadAndUnsealByGrantee(
+  field: string,
+  granteeDid: string,
+): Promise<string | undefined> {
+  const entry = await vaultService.get(field);
+  if (!entry || entry.deleted) {
+    return undefined;
+  }
+
+  const grant = await fetchActiveGrant(field, granteeDid);
+  if (!grant) {
+    return undefined;
+  }
+
+  const ownerEdPub = isVaultTier1() ? getExternalOwnerEdPublicKey() : entry.senderPubkey;
+  return _applyDelegationGrant(entry, grant, getNodeXPrivateKey(), ownerEdPub);
+}
+
+/**
+ * Revoke the active delegation grant for (field, granteeDid).
+ *
+ * Sets status = 'revoked' and revokedAt = now on the active row.
+ * Returns true when a grant was deactivated; false when no active grant existed.
+ *
+ * Does NOT delete the vault entry — the sealed ciphertext remains, but future
+ * calls to loadAndUnsealByGrantee will return undefined (fail-closed).
+ */
+export async function revokeStaticSecretGrant(
+  field: string,
+  granteeDid: string,
+): Promise<boolean> {
+  const updated = await db
+    .update(vaultDelegationGrants)
+    .set({ status: 'revoked', revokedAt: new Date() })
+    .where(
+      and(
+        eq(vaultDelegationGrants.grantedTo, granteeDid),
+        eq(vaultDelegationGrants.field, field),
+        eq(vaultDelegationGrants.status, 'active'),
+      ),
+    )
+    .returning({ id: vaultDelegationGrants.id });
+  return updated.length > 0;
+}
+
 // ── Delegation helpers ────────────────────────────────────────────────────────
 
 /**

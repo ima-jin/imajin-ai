@@ -10,7 +10,7 @@
  *
  * Resolution from #1354 pre-implementation review:
  * - Registry shape: static TypeScript object (consistent with GITHUB_SCOPE_DESCRIPTORS)
- * - Ingestion patterns: 'oauth' (GitHub, QuickBooks) | 'token-paste' (Discord)
+ * - Ingestion patterns: 'oauth' (GitHub, QuickBooks) | 'token-paste' (Discord) | 'static-secret' (#1439, delegation-grant sealed API keys)
  * - statusEndpoint: null = backend not yet implemented (#1355, #1356)
  *
  * Scope release classes (#1196 consent 2×2):
@@ -20,7 +20,7 @@
  */
 
 /** How the connector ingests credentials. */
-export type IngestionPattern = 'oauth' | 'token-paste' | 'native';
+export type IngestionPattern = 'oauth' | 'token-paste' | 'native' | 'static-secret';
 
 /** Release class from the #1196 consent 2×2. */
 export type ReleaseClass = 'silent' | 'on-consent' | 'never';
