@@ -40,11 +40,14 @@ import { db, githubActionProposals } from '@/src/db';
 import { sealAndStore, loadAndUnseal } from '@/src/lib/vault';
 import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../kernel/connector-oauth';
 import { readReadAllowlist, filterOrgs, filterRepos, isRepoAllowed } from './allowlist';
+import { GITHUB_CONNECTOR_DID } from './constants';
 
 const log = createLogger('kernel');
 
-/** Connector app DID — matches the scope-manifest fixture (github-scope-manifest.md). */
-export const GITHUB_CONNECTOR_DID = 'did:imajin:github-connector';
+// Re-exported for backwards compatibility; the value lives in the leaf
+// `./constants` module so `./scope-manifest` can read it without importing this
+// module (which would re-form the connector → allowlist → scope-manifest cycle).
+export { GITHUB_CONNECTOR_DID } from './constants';
 
 /** GitHub REST API constants. */
 const GITHUB_API_BASE = 'https://api.github.com';

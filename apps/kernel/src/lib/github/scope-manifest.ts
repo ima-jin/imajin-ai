@@ -21,7 +21,7 @@ import {
   type ConnectorScopeDescriptor,
   type Asset,
 } from '@/src/lib/kernel/scope-manifest-core';
-import { GITHUB_CONNECTOR_DID } from './connector';
+import { GITHUB_CONNECTOR_DID } from './constants';
 
 // ── Scope registry ──────────────────────────────────────────────────────────────
 
