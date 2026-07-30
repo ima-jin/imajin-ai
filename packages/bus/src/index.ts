@@ -1,5 +1,6 @@
 import { registerReactor } from './registry';
 import { attestationReactor } from './reactors/attestation';
+import { auditLogReactor } from './reactors/audit-log';
 import { dfosReactor } from './reactors/dfos';
 import { emitReactor } from './reactors/emit';
 import { mjnReactor } from './reactors/mjn';
@@ -12,6 +13,7 @@ import { supplyRecorderReactor } from './reactors/supply-recorder';
 
 // Auto-register built-in reactors on import
 registerReactor('attestation', attestationReactor);
+registerReactor('audit-log', auditLogReactor);
 registerReactor('dfos', dfosReactor);
 registerReactor('emit', emitReactor);
 registerReactor('mjn', mjnReactor);
