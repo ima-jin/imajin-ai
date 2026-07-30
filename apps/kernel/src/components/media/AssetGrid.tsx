@@ -64,9 +64,10 @@ export function AssetGrid({
       const next = value(selectedAssetIds);
       if (onSelectedAssetIdsChange) onSelectedAssetIdsChange(next);
       else setInternalSelectedAssetIds(next);
+    } else if (onSelectedAssetIdsChange) {
+      onSelectedAssetIdsChange(value);
     } else {
-      if (onSelectedAssetIdsChange) onSelectedAssetIdsChange(value);
-      else setInternalSelectedAssetIds(value);
+      setInternalSelectedAssetIds(value);
     }
   }, [onSelectedAssetIdsChange, selectedAssetIds]);
 
@@ -75,9 +76,10 @@ export function AssetGrid({
       const next = value(moveFolderId);
       if (onMoveFolderIdChange) onMoveFolderIdChange(next);
       else setInternalMoveFolderId(next);
+    } else if (onMoveFolderIdChange) {
+      onMoveFolderIdChange(value);
     } else {
-      if (onMoveFolderIdChange) onMoveFolderIdChange(value);
-      else setInternalMoveFolderId(value);
+      setInternalMoveFolderId(value);
     }
   }, [onMoveFolderIdChange, moveFolderId]);
   const selectionActive = selectedAssetIds.size > 0 || selectionMode;
@@ -233,21 +235,19 @@ export function AssetGrid({
           }
           return next;
         });
+      } else if (selectionMode) {
+        // In selection mode: toggle selection only
+        setSelectedAssetIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(asset.id)) next.delete(asset.id);
+          else next.add(asset.id);
+          return next;
+        });
+        onLastClickIdxChange?.(idx);
       } else {
-        if (selectionMode) {
-          // In selection mode: toggle selection only
-          setSelectedAssetIds((prev) => {
-            const next = new Set(prev);
-            if (next.has(asset.id)) next.delete(asset.id);
-            else next.add(asset.id);
-            return next;
-          });
-          onLastClickIdxChange?.(idx);
-        } else {
-          // Not in selection mode: open detail
-          onLastClickIdxChange?.(idx);
-          onSelectAsset(asset.id);
-        }
+        // Not in selection mode: open detail
+        onLastClickIdxChange?.(idx);
+        onSelectAsset(asset.id);
       }
     },
     [assets, onSelectAsset, selectionMode, lastClickIdxValue, onLastClickIdxChange]

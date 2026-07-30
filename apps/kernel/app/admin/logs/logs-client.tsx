@@ -151,8 +151,8 @@ export default function LogsClient() {
   useEffect(() => {
     if (autoRefresh) {
       autoRefreshRef.current = setInterval(() => fetchLogs(filters, offset), 10000);
-    } else {
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
+    } else if (autoRefreshRef.current) {
+      clearInterval(autoRefreshRef.current);
     }
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
