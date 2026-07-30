@@ -89,8 +89,6 @@ function FolderRow({
             onSelect(node.id);
           }
         }}
-        role="button"
-        tabIndex={0}
         onContextMenu={(e) => onContextMenu(e, node)}
       >
         <button
@@ -238,21 +236,14 @@ export function FolderTree({
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto py-1 space-y-0.5">
         {/* All Files */}
-        <div
-          className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer select-none transition-colors ${
+        <button
+          type="button"
+          className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer select-none transition-colors w-full text-left ${
             selectedFolderId === null
               ? "bg-orange-500 text-white"
               : "text-gray-300 hover:bg-white/10"
           }`}
           onClick={() => onSelect(null)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onSelect(null);
-            }
-          }}
-          role="button"
-          tabIndex={0}
         >
           <span className="w-4 h-4 shrink-0" />
           <span className="text-sm">🗂️</span>
@@ -268,7 +259,7 @@ export function FolderTree({
               {totalCount}
             </span>
           )}
-        </div>
+        </button>
 
         {/* Folder tree */}
         {tree.map((node) => (
@@ -344,8 +335,6 @@ export function FolderTree({
               setRenamingId(null);
             }
           }}
-          role="button"
-          tabIndex={0}
           aria-label="Close rename dialog"
         >
           <div
@@ -397,7 +386,7 @@ export function FolderTree({
         </button>
         {mobileOpen && (
           <div className="fixed inset-0 z-40 flex">
-            <div role="button" tabIndex={0} aria-label="Close menu" className="fixed inset-0 bg-black/60" onClick={() => setMobileOpen(false)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') setMobileOpen(false); }} />
+            <div aria-label="Close menu" className="fixed inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
             <div className="relative z-50 w-64 h-full bg-[#1a1a1a] border-r border-white/10 p-3">
               {treeContent}
             </div>

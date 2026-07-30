@@ -49,17 +49,10 @@ export function MediaMessage({ assetId, filename, mimeType, size, width, height,
     return (
       <>
         <div className="max-w-[280px]">
-          <div
-            role="button"
-            tabIndex={0}
-            className="cursor-pointer rounded-lg overflow-hidden hover:opacity-90 transition"
+          <button
+            type="button"
+            className="cursor-pointer rounded-lg overflow-hidden hover:opacity-90 transition block"
             onClick={() => setLightboxOpen(true)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                setLightboxOpen(true);
-              }
-            }}
             style={aspectStyle}
             aria-label={`Open image ${filename}`}
           >
@@ -69,18 +62,16 @@ export function MediaMessage({ assetId, filename, mimeType, size, width, height,
               className="w-full h-full object-cover"
               loading="lazy"
             />
-          </div>
+          </button>
           {caption && <p className={`text-xs mt-1 ${captionColor}`}>{caption}</p>}
         </div>
 
         {lightboxOpen && (
           <div
-            role="button"
-            tabIndex={0}
             className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
             onClick={() => setLightboxOpen(false)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+              if (e.key === 'Escape') {
                 e.preventDefault();
                 setLightboxOpen(false);
               }

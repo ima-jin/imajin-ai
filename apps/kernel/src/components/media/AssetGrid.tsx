@@ -581,8 +581,6 @@ export function AssetGrid({
               return (
                 <div
                   key={asset.id}
-                  role="button"
-                  tabIndex={0}
                   className={`group flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
                     asset.id === selectedAssetId || isChecked
                       ? "border-orange-500 bg-orange-500/10"

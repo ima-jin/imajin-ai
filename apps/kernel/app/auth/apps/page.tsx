@@ -129,8 +129,6 @@ function ConfirmRevokeDialog({
             onCancel();
           }
         }}
-        role="button"
-        tabIndex={0}
         aria-label="Close revoke confirmation"
       />
       <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-sm w-full shadow-xl">

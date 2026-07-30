@@ -145,7 +145,6 @@ export function ImageUpload({ currentImage, onUploadComplete }: Readonly<ImageUp
         onDrop={onDrop}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
-        role="button"
         tabIndex={0}
         onClick={() => fileInputRef.current?.click()}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
