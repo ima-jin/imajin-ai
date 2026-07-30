@@ -166,11 +166,13 @@ export function isValidPublicKey(hex: string): boolean {
 }
 
 /**
- * Validate that a string is a valid hex-encoded private key
+ * Validate that a string is a valid hex-encoded private key.
+ * Accepts raw 32-byte hex (64 chars) or PKCS#8 DER hex (96 chars).
+ * Use `extractPrivateKeySeed` to normalise before signing.
  */
 export function isValidPrivateKey(hex: string): boolean {
   if (typeof hex !== 'string') return false;
-  if (hex.length !== 64) return false; // 32 bytes = 64 hex chars
+  if (hex.length !== 64 && hex.length !== 96) return false; // raw (32B) or PKCS#8 DER (48B)
   if (!/^[0-9a-fA-F]+$/.test(hex)) return false;
   return true;
 }

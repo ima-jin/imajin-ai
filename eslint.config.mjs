@@ -105,7 +105,7 @@ export default tseslint.config(
     },
   },
 
-  // ── SonarJS — repo-wide ────────────────────────────────────────
+  // ── SonarJS — repo-wide ────────────────────────────────────
   // S3776 + S2004 now both available via eslint-plugin-sonarjs v2
   {
     plugins: { sonarjs },
