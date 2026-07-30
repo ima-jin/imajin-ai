@@ -39,6 +39,7 @@ import * as bus from '@imajin/bus';
 import { db, githubActionProposals } from '@/src/db';
 import { sealAndStore, loadAndUnseal } from '@/src/lib/vault';
 import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../kernel/connector-oauth';
+import { readReadAllowlist, filterOrgs, filterRepos, isRepoAllowed } from './allowlist';
 
 const log = createLogger('kernel');
 
@@ -742,6 +743,108 @@ export async function getIssue(
     path: `/repos/${repo}/issues/${issueNumber}`,
     token,
   }) as Promise<GitHubIssue>;
+}
+
+// ── Org / repo discovery (#1373 — read-tier, disclosure-allowlist filtered) ────
+
+export interface GitHubOrg {
+  login: string;
+  id: number;
+  description: string | null;
+}
+
+/** GitHub repo permission bits (present when the token can see them). */
+export interface GitHubRepoPermissions {
+  admin: boolean;
+  push: boolean;
+  pull: boolean;
+  maintain?: boolean;
+  triage?: boolean;
+}
+
+export interface GitHubRepo {
+  full_name: string;
+  private: boolean;
+  html_url: string;
+  description: string | null;
+  default_branch: string;
+  permissions?: GitHubRepoPermissions;
+}
+
+/**
+ * List the orgs this connection can see on behalf of ownerDid.
+ *
+ * Gates: active `github:read` grant + sealed credential (fail-closed, throws).
+ * Read-tier — ungated by the confirm/rate rails.
+ *
+ * Disclosure: results are filtered server-side AFTER the GitHub call against the
+ * `github:read` manifest allowlist, so orgs outside the allowlist never cross
+ * the wire to the MCP client. Empty/absent allowlist ⇒ allow-all.
+ */
+export async function listOrgs(ownerDid: string): Promise<GitHubOrg[]> {
+  const token = await requireGrantAndToken(ownerDid, 'github:read');
+
+  const orgs = (await callGitHubApi({
+    method: 'GET',
+    path: '/user/orgs?per_page=100',
+    token,
+  })) as GitHubOrg[];
+
+  const allowlist = await readReadAllowlist(ownerDid);
+  return filterOrgs(orgs, allowlist);
+}
+
+/**
+ * List the repos this connection can see on behalf of ownerDid.
+ *
+ * When `org` is provided, lists that org's repos (`/orgs/{org}/repos`);
+ * otherwise lists the authenticated user's repos (`/user/repos`).
+ *
+ * Gates: active `github:read` grant + sealed credential (fail-closed, throws).
+ * Read-tier — ungated by the confirm/rate rails.
+ *
+ * Disclosure: results are filtered server-side AFTER the GitHub call against the
+ * `github:read` manifest allowlist. Empty/absent allowlist ⇒ allow-all.
+ */
+export async function listRepos(ownerDid: string, org?: string): Promise<GitHubRepo[]> {
+  const token = await requireGrantAndToken(ownerDid, 'github:read');
+
+  const path =
+    org !== undefined && org.length > 0
+      ? `/orgs/${encodeURIComponent(org)}/repos?per_page=100`
+      : '/user/repos?per_page=100';
+
+  const repos = (await callGitHubApi({ method: 'GET', path, token })) as GitHubRepo[];
+
+  const allowlist = await readReadAllowlist(ownerDid);
+  return filterRepos(repos, allowlist);
+}
+
+/**
+ * Get a single repo's detail on behalf of ownerDid.
+ *
+ * Gates: active `github:read` grant + sealed credential (fail-closed, throws).
+ * Read-tier — ungated by the confirm/rate rails.
+ *
+ * Disclosure: the target is checked against the `github:read` manifest allowlist
+ * BEFORE the fetch. An out-of-allowlist target throws `github_not_in_scope`
+ * (no data, no 404-leak) rather than hitting GitHub. Empty/absent ⇒ allow-all.
+ */
+export async function getRepo(ownerDid: string, repo: string): Promise<GitHubRepo> {
+  const token = await requireGrantAndToken(ownerDid, 'github:read');
+
+  const allowlist = await readReadAllowlist(ownerDid);
+  if (!isRepoAllowed(repo, allowlist)) {
+    throw new Error(
+      `github_not_in_scope: repo '${repo}' is outside the github:read disclosure allowlist`,
+    );
+  }
+
+  return callGitHubApi({
+    method: 'GET',
+    path: `/repos/${repo}`,
+    token,
+  }) as Promise<GitHubRepo>;
 }
 
 export interface GitHubUpdateIssueParams {
