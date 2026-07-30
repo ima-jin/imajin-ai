@@ -41,6 +41,7 @@ function FairEditModal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onCancel}
+      onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
       aria-label="Close fair manifest editor"
     >
       <div
