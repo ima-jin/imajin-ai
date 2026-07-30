@@ -42,6 +42,7 @@ const nextConfig = {
       { source: '/p/:handle/:path*', destination: '/profile/p/:handle/:path*' },
     ];
   },
+  eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: false },
   reactStrictMode: true,
   images: {

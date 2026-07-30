@@ -50,7 +50,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   // Resolve DIDs to profile names/emails
   const studentDids = enrolled.map(e => e.studentDid);
-  let profileMap: Record<string, { displayName: string | null; contactEmail: string | null; handle: string | null }> = {};
+  const profileMap: Record<string, { displayName: string | null; contactEmail: string | null; handle: string | null }> = {};
   if (studentDids.length > 0) {
     try {
       const result = await db.execute(

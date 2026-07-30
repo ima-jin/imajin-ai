@@ -310,6 +310,37 @@ function generateId(prefix: string): string {
 - **End-to-end test cases:** `tests/HAPPY_PATH.md`
 - **Security audit checklist:** `tests/AUDIT.md`
 
+## Linting
+
+Run lint across all packages:
+
+```bash
+pnpm lint
+```
+
+Config lives in `eslint.config.mjs` at the repo root — a single flat config that applies glob-based rules across all apps and packages. No per-package `.eslintrc.*` files.
+
+**Stack:** ESLint v9 flat config, `typescript-eslint` v8, `eslint-plugin-sonarjs` v2.
+
+All apps use Next.js rules via `FlatCompat` (bridging `eslint-config-next@14` until a Next.js 15 upgrade). All TypeScript files get `@typescript-eslint/recommended`. `packages/eslint-config-imajin` exports reusable flat config arrays for standalone package use.
+
+### SonarJS rules
+
+Two Sonar rules are active repo-wide via `eslint-plugin-sonarjs` v2:
+
+| Rule | Sonar ID | Threshold | Severity |
+|------|----------|-----------|----------|
+| `sonarjs/cognitive-complexity` | S3776 | 15 | `warn` |
+| `sonarjs/no-nested-functions` | S2004 | 4 levels | `warn` |
+
+Both are set to `warn` (visible, non-blocking). They will be promoted to `error` once the SonarCloud cleanup epic (#1466) is closed and the existing violations are cleared.
+
+The same rules run in SonarCloud via its GitHub App. Catching them in ESLint first means you see S3776/S2004 feedback before pushing a PR.
+
+### Adding a rule repo-wide
+
+Edit `eslint.config.mjs` in the repo root. All packages pick it up automatically on the next lint run.
+
 ## Troubleshooting
 
 ### "Module not found" for shared packages

@@ -61,7 +61,6 @@ const inferenceCaptureTool: McpTool = {
 
     // If text only: create a minimal text asset and a session row.
     let resolvedAssetId = assetId;
-    let sessionId: string;
 
     if (!resolvedAssetId && text) {
       const { asset } = await createAsset({
@@ -80,7 +79,7 @@ const inferenceCaptureTool: McpTool = {
     if (!resolvedAssetId) throw new Error('Could not resolve asset');
 
     // Open a session row if we don't have one from captureGesture.
-    sessionId = `session_${nanoid(16)}`;
+    const sessionId = `session_${nanoid(16)}`;
     await db.insert(inferenceSessions).values({
       id: sessionId,
       ownerDid: ctx.did,
