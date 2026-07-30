@@ -224,6 +224,7 @@ interface BrokerOutcome {
   enforced: unknown;
   mode: unknown;
   releaseMode: unknown;
+  releaseId: unknown;
   data: Record<string, unknown>;
 }
 
@@ -252,8 +253,25 @@ async function brokerShadow(
     enforced: json.enforced,
     mode: json.mode,
     releaseMode: envelope.mode,
+    releaseId: envelope.releaseId,
     data: (json.data ?? {}) as Record<string, unknown>,
   };
+}
+
+/**
+ * Fetch broker.release attestations minted for a subject (#1508), newest first.
+ * Uses the DEMO_AGENT_TOKEN's bearer auth same as every other call in this script.
+ */
+async function getBrokerReleaseAttestations(
+  cfg: Readonly<Config>,
+  subjectDid: string,
+): Promise<Array<Record<string, unknown>>> {
+  const { status, json } = await getJson(
+    cfg,
+    `/auth/api/attestations/${encodeURIComponent(subjectDid)}?type=broker.release`,
+  );
+  if (status !== 200 || !Array.isArray(json)) return [];
+  return json as unknown as Array<Record<string, unknown>>;
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────────
@@ -312,6 +330,23 @@ async function main(): Promise<void> {
     assert(allergies.released, 'allergies is released');
     assert(allergies.releaseMode === 'attestation', 'allergies is released in ATTESTATION mode');
     assert(allergies.enforced === false, 'allergies decision is advisory (enforced:false)');
+
+    step('Verify the attestation-mode field minted a signed claim, not just mode=attestation (#1508)');
+    const releaseAttestations = await getBrokerReleaseAttestations(cfg, travelerDid);
+    const allergiesAttestation = releaseAttestations.find(
+      (a) => a.contextId === allergies.releaseId,
+    );
+    info(`broker.release attestations for traveler: ${releaseAttestations.length} (releaseId=${String(allergies.releaseId)})`);
+    assert(!!allergiesAttestation, 'a broker.release attestation exists referencing the allergies releaseId');
+    assert(
+      typeof allergiesAttestation?.signature === 'string' && (allergiesAttestation.signature as string).length > 0,
+      'the attestation carries a non-empty signature — a signed claim, not a bare tag',
+    );
+    const attestationPayload = JSON.stringify(allergiesAttestation?.payload ?? {});
+    assert(
+      !attestationPayload.includes(unsealed.allergies),
+      'the attestation payload never carries the raw allergies value (withheld, unchanged)',
+    );
 
     const budget = await brokerShadow(cfg, travelerDid, 'budget', unsealed.budget);
     info(`budget: http=${budget.status} released=${budget.released} enforced=${String(budget.enforced)}`);

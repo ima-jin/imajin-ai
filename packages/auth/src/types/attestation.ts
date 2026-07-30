@@ -54,6 +54,7 @@ export const ATTESTATION_TYPES = [
   'email_verified',
   'phone_verified',
   'imajin/nostr-key-binding',
+  'broker.release',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];

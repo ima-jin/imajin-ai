@@ -7,13 +7,22 @@ vi.mock('../src/publish', () => ({
   publish: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock @imajin/auth so the release reactor's emitAttestation() bridge (#1508)
+// doesn't make real network calls during tests.
+vi.mock('@imajin/auth', () => ({
+  emitAttestation: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { publish } from '../src/publish';
+import { emitAttestation } from '@imajin/auth';
 
 const mockPublish = vi.mocked(publish);
+const mockEmitAttestation = vi.mocked(emitAttestation);
 
 describe('bus.broker()', () => {
   beforeEach(() => {
     mockPublish.mockClear();
+    mockEmitAttestation.mockClear();
   });
 
   afterEach(() => {
@@ -211,6 +220,53 @@ describe('bus.broker()', () => {
 
     assertRelease(result);
     expect(result.envelope.mode).toBe('raw');
+  });
+
+  // --------------------------------------------------------------------------
+  // Attestation-mode release mints a signed claim via emitAttestation (#1508)
+  // --------------------------------------------------------------------------
+
+  it('emits a signed attestation referencing the consent grant + releaseId for attestation-mode releases', async () => {
+    const request = makeRequest();
+    const result = await broker('profile.read', request);
+
+    assertRelease(result);
+    expect(result.envelope.mode).toBe('attestation');
+    expect(mockEmitAttestation).toHaveBeenCalledTimes(1);
+    expect(mockEmitAttestation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issuer_did: 'did:imajin:alice',
+        subject_did: 'did:imajin:alice',
+        type: 'broker.release',
+        context_id: result.envelope.releaseId,
+        context_type: 'broker',
+        payload: expect.objectContaining({
+          requester: 'did:imajin:bob',
+          purpose: 'marketing',
+          scope: 'test',
+          fields: ['name', 'email'],
+          consentReference: 'consent-alice-bob-001',
+        }),
+      })
+    );
+
+    // The raw values are never handed to the attestation payload.
+    const [[attestationParams]] = mockEmitAttestation.mock.calls;
+    expect(JSON.stringify(attestationParams)).not.toContain('Alice');
+    expect(JSON.stringify(attestationParams)).not.toContain('alice@example.com');
+  });
+
+  it('does not emit an attestation for raw-mode releases', async () => {
+    const request = makeRequest({
+      purpose: 'analytics',
+      fields: ['name', 'email', 'age'],
+      data: { name: 'Alice', email: 'alice@example.com', age: 30 },
+    });
+    const result = await broker('profile.read', request);
+
+    assertRelease(result);
+    expect(result.envelope.mode).toBe('raw');
+    expect(mockEmitAttestation).not.toHaveBeenCalled();
   });
 
   // --------------------------------------------------------------------------
