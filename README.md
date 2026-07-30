@@ -1,5 +1,8 @@
 # Imajin
 
+**You compose. Imajin orchestrates. Signed. Legible.**
+*Imajin — programmable trust. The speed of thought, signed.*
+
 **For 2,000 years the money was in the lie.**
 
 Information asymmetry — I know what you don't, I hide it, I profit from the gap — is the business model under advertising, finance, platforms, and supply chains. The web we got runs on it: value extracted from what you can't see. The dark web is just the honest name for what the whole thing already is underneath.
