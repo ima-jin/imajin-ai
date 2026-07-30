@@ -3,6 +3,7 @@ import { getClient } from '@imajin/db';
 import { LandingGrid, EmailCapture } from '@/src/components/www/LandingGrid';
 import { PromoVideo } from '@/src/components/www/PromoVideo';
 import { PrimitiveMatrix } from '@/src/components/www/PrimitiveMatrix';
+import { toMatrixProps } from '@/src/components/www/matrix';
 import { BugReportButton } from '@/src/components/www/bug-report-button';
 import matrixData from '../../../docs/matrix-status.json';
 
@@ -81,15 +82,7 @@ export default async function Home() {
             isn&apos;t a cell — it&apos;s the primitive that stretches across every scope.
           </p>
         </div>
-        <PrimitiveMatrix
-          cells={Object.fromEntries(
-            Object.entries(matrixData.cells).map(([k, v]) => [k, (v as { percent: number }).percent])
-          )}
-          overall={Math.round(
-            Object.values(matrixData.cells).reduce((sum, v) => sum + (v as { percent: number }).percent, 0) /
-            Object.values(matrixData.cells).length
-          )}
-        />
+        <PrimitiveMatrix {...toMatrixProps(matrixData)} />
       </section>
 
       {/* LAUNCHER GRID */}

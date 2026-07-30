@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { ImajinFooter } from '@imajin/ui';
 import { getClient } from '@imajin/db';
 import { PrimitiveMatrix } from '@/src/components/www/PrimitiveMatrix';
+import { toMatrixProps } from '@/src/components/www/matrix';
 import matrixData from '../../../../docs/matrix-status.json';
 
 // Revalidate stats every 15 minutes (ISR)
@@ -133,15 +134,7 @@ export default async function ProjectPage() {
             4 scopes × 5 primitives. Every problem is a cell. The protocol is the matrix.
           </p>
         </div>
-        <PrimitiveMatrix
-          cells={Object.fromEntries(
-            Object.entries(matrixData.cells).map(([k, v]) => [k, (v as { percent: number }).percent])
-          )}
-          overall={Math.round(
-            Object.values(matrixData.cells).reduce((sum, v) => sum + (v as { percent: number }).percent, 0) /
-            Object.values(matrixData.cells).length
-          )}
-        />
+        <PrimitiveMatrix {...toMatrixProps(matrixData)} />
       </section>
 
       {/* NETWORK STATS */}
