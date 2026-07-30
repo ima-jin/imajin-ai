@@ -64,10 +64,8 @@ export function AssetGrid({
       const next = value(selectedAssetIds);
       if (onSelectedAssetIdsChange) onSelectedAssetIdsChange(next);
       else setInternalSelectedAssetIds(next);
-    } else {
-      if (onSelectedAssetIdsChange) onSelectedAssetIdsChange(value);
+    } else if (onSelectedAssetIdsChange) onSelectedAssetIdsChange(value);
       else setInternalSelectedAssetIds(value);
-    }
   }, [onSelectedAssetIdsChange, selectedAssetIds]);
 
   const setMoveFolderId = useCallback((value: string | ((prev: string) => string)) => {
@@ -75,10 +73,8 @@ export function AssetGrid({
       const next = value(moveFolderId);
       if (onMoveFolderIdChange) onMoveFolderIdChange(next);
       else setInternalMoveFolderId(next);
-    } else {
-      if (onMoveFolderIdChange) onMoveFolderIdChange(value);
+    } else if (onMoveFolderIdChange) onMoveFolderIdChange(value);
       else setInternalMoveFolderId(value);
-    }
   }, [onMoveFolderIdChange, moveFolderId]);
   const selectionActive = selectedAssetIds.size > 0 || selectionMode;
   const uploadRef = useRef<UploadZoneHandle>(null);
@@ -233,8 +229,7 @@ export function AssetGrid({
           }
           return next;
         });
-      } else {
-        if (selectionMode) {
+      } else if (selectionMode) {
           // In selection mode: toggle selection only
           setSelectedAssetIds((prev) => {
             const next = new Set(prev);
@@ -248,7 +243,6 @@ export function AssetGrid({
           onLastClickIdxChange?.(idx);
           onSelectAsset(asset.id);
         }
-      }
     },
     [assets, onSelectAsset, selectionMode, lastClickIdxValue, onLastClickIdxChange]
   );

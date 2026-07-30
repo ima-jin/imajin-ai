@@ -105,15 +105,34 @@ export default tseslint.config(
     },
   },
 
-  // ── SonarJS — repo-wide ────────────────────────────────────────
-  // S3776 + S2004 now both available via eslint-plugin-sonarjs v2
+  // ── SonarJS — repo-wide ────────────────────────────────────
+  // HIGH rules: S3776 + S2004 (warn; flip to error when #1466 closes)
   {
     plugins: { sonarjs },
     rules: {
-      // Sonar S3776 — warn now, flip to error when epic #1466 closes
       'sonarjs/cognitive-complexity': ['warn', 15],
-      // Sonar S2004 — warn now, flip to error when epic #1466 closes
       'sonarjs/no-nested-functions': ['warn', { threshold: 4 }],
+    },
+  },
+  // Autofixable sonarjs rules — enabled as warn so eslint --fix can clear them.
+  // sonarjs/no-empty-function omitted: incompatible with @typescript-eslint v8
+  // sonarjs/brace-style / enforce-trailing-comma / no-extra-semi / semi omitted:
+  //   formatting-only and already handled by project conventions.
+  {
+    plugins: { sonarjs },
+    rules: {
+      'sonarjs/no-inverted-boolean-check': 'warn',   // S1940
+      'sonarjs/prefer-immediate-return': 'warn',       // S1488
+      'sonarjs/prefer-while': 'warn',                  // S1264
+      'sonarjs/sonar-prefer-optional-chain': 'warn',   // S6582
+      'sonarjs/object-shorthand': 'warn',              // S3487
+      'sonarjs/prefer-template': 'warn',               // S3512
+      'sonarjs/no-empty-interface': 'warn',            // S4023
+      'sonarjs/prefer-string-starts-ends-with': 'warn',// S6557
+      'sonarjs/prefer-function-type': 'warn',          // S6598
+      'sonarjs/no-lonely-if': 'warn',                  // S6660 (few remain)
+      'sonarjs/prefer-object-spread': 'warn',          // S6661
+      'sonarjs/jsx-no-useless-fragment': 'warn',       // S6749
     },
   },
 

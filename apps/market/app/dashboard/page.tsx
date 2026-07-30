@@ -519,7 +519,7 @@ function ListingThumbnail({ images }: Readonly<{ images: string[] | null }>) {
   const src = ref ? resolveMediaRef(ref, 'thumbnail') : undefined;
   if (src) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
+       
       <img src={src} alt="" className="w-12 h-12 object-cover rounded-lg" />
     );
   }

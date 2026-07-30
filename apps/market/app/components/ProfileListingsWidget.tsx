@@ -51,7 +51,7 @@ function MiniCard({
     >
       <div className="aspect-video bg-gradient-to-br from-gray-800 to-gray-700 relative overflow-hidden">
         {primaryImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
+           
           <img src={primaryImage} alt={listing.title} className="w-full h-full object-cover" />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-gray-600">

@@ -67,7 +67,7 @@ export function UpcomingEvents({ did, eventsBaseUrl, viewerDid }: Readonly<Upcom
               className="flex items-center gap-3 px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:border-gray-700 transition"
             >
               {event.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                 
                 <img
                   src={event.imageUrl.startsWith('/') ? `${eventsBase}${event.imageUrl}` : event.imageUrl}
                   alt={event.title}

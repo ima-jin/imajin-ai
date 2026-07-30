@@ -23,7 +23,7 @@ function canonicalize(obj: unknown): string {
     }
 
     if (Array.isArray(obj)) {
-        return '[' + obj.map(canonicalize).join(',') + ']';
+        return `[${  obj.map(canonicalize).join(',')  }]`;
     }
 
     if (typeof obj === 'object') {
@@ -31,9 +31,9 @@ function canonicalize(obj: unknown): string {
         const pairs = keys
             .filter(k => (obj as Record<string, unknown>)[k] !== undefined)
             .map(k =>
-                JSON.stringify(k) + ':' + canonicalize((obj as Record<string, unknown>)[k])
+                `${JSON.stringify(k)  }:${  canonicalize((obj as Record<string, unknown>)[k])}`
             );
-        return '{' + pairs.join(',') + '}';
+        return `{${  pairs.join(',')  }}`;
     }
 
     return String(obj);

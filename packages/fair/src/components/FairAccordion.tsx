@@ -43,7 +43,7 @@ function formatDid(did: string, names: Record<string, string>, viewerDid?: strin
   if (names[did]) return `@${names[did]}`;
   if (did === 'NODE_PLACEHOLDER') return 'This node';
   if (did === 'BUYER_PLACEHOLDER') return 'You (buyer)';
-  if (did.length > 24) return did.slice(0, 12) + '…' + did.slice(-8);
+  if (did.length > 24) return `${did.slice(0, 12)  }…${  did.slice(-8)}`;
   return did;
 }
 

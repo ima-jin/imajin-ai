@@ -75,7 +75,7 @@ function serviceBadgeClass(service: string): string {
 
 function formatTs(ts: string) {
   const d = new Date(ts);
-  return d.toLocaleTimeString(undefined, { hour12: false }) + ' ' + d.toLocaleDateString();
+  return `${d.toLocaleTimeString(undefined, { hour12: false })  } ${  d.toLocaleDateString()}`;
 }
 
 function truncateDid(did: string | null) {
@@ -151,9 +151,7 @@ export default function LogsClient() {
   useEffect(() => {
     if (autoRefresh) {
       autoRefreshRef.current = setInterval(() => fetchLogs(filters, offset), 10000);
-    } else {
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
-    }
+    } else if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
     return () => {
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
     };

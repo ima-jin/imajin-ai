@@ -179,7 +179,7 @@ export default function AdminBugsPage() {
                 {/* Screenshot */}
                 {r.screenshotUrl && (
                   <a href={r.screenshotUrl} target="_blank" rel="noreferrer" className="inline-block mb-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    { }
                     <img
                       src={r.screenshotUrl}
                       alt="Screenshot"

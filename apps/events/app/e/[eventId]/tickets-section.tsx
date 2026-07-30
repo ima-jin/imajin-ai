@@ -475,7 +475,7 @@ function TicketFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement
                 <div className={`w-2 h-2 rounded-full ${ROLE_DOT_COLORS[entry.role] ?? 'bg-gray-500'}`} />
                 <span className="font-medium">{ROLE_LABELS[entry.role] ?? entry.role}</span>
                 <span className="text-xs text-gray-400 truncate max-w-[120px]" title={entry.did}>
-                  {entry.did.length > 24 ? entry.did.slice(0, 10) + '…' + entry.did.slice(-6) : entry.did}
+                  {entry.did.length > 24 ? `${entry.did.slice(0, 10)  }…${  entry.did.slice(-6)}` : entry.did}
                 </span>
               </div>
               <span className="font-bold">{currencyFmt.format(entry.amount)}</span>

@@ -89,7 +89,7 @@ function useDidNames(
 /** Format a DID for display — show handle if resolved, otherwise truncate DID */
 function formatDid(did: string, names: Record<string, string>): string {
   if (names[did]) return `@${names[did]}`;
-  if (did.length > 24) return did.slice(0, 12) + '…' + did.slice(-8);
+  if (did.length > 24) return `${did.slice(0, 12)  }…${  did.slice(-8)}`;
   return did;
 }
 

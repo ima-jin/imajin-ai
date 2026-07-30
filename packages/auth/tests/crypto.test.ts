@@ -77,7 +77,7 @@ describe('extractPrivateKeySeed', () => {
 
   it('trims whitespace', () => {
     const raw = 'a'.repeat(64);
-    expect(extractPrivateKeySeed('  ' + raw + '  ')).toBe(raw);
+    expect(extractPrivateKeySeed(`  ${  raw  }  `)).toBe(raw);
   });
 
   it('throws on invalid length', () => {

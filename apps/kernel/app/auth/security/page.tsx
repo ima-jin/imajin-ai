@@ -752,7 +752,7 @@ export default function SecuritySettingsPage() {
                 <h3 className="text-white font-medium mb-3">Scan QR code</h3>
                 <p className="text-sm text-gray-400 mb-4">Scan this code with your authenticator app, then enter the 6-digit code to confirm.</p>
                 <div className="flex justify-center mb-4">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  { }
                   <img src={totpSetup.qrCode} alt="TOTP QR Code" className="rounded" width={200} height={200} />
                 </div>
                 <p className="text-xs text-gray-500 text-center mb-4 font-mono break-all">

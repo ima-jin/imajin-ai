@@ -129,8 +129,7 @@ export async function getContentEvent(
     throw new Error(`DFOS relay returned ${response.status}: ${text}`);
   }
 
-  const result = (await response.json()) as ContentEvent;
-  return result;
+  return (await response.json()) as ContentEvent;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -141,12 +140,12 @@ function canonicalize(value: unknown): string {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return '[' + value.map(canonicalize).join(',') + ']';
+    return `[${  value.map(canonicalize).join(',')  }]`;
   }
   const obj = value as Record<string, unknown>;
   const keys = Object.keys(obj).sort((a, b) => a.localeCompare(b));
-  const parts = keys.map((key) => JSON.stringify(key) + ':' + canonicalize(obj[key]));
-  return '{' + parts.join(',') + '}';
+  const parts = keys.map((key) => `${JSON.stringify(key)  }:${  canonicalize(obj[key])}`);
+  return `{${  parts.join(',')  }}`;
 }
 
 function bytesToHex(bytes: Uint8Array): string {

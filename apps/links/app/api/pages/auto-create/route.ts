@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     // Create page
     const [page] = await db.insert(linkPages).values({
       id: generateId('page'),
-      did: did,
+      did,
       handle,
       title,
       bio: null,

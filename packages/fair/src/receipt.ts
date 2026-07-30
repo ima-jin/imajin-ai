@@ -37,7 +37,7 @@ export async function signReceipt(
   nodeKey: CryptoKey | Uint8Array,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  const jwt = await new jose.SignJWT({
+  return await new jose.SignJWT({
     buyer: payload.buyer,
     action: payload.action,
     amount: payload.amount,
@@ -51,8 +51,6 @@ export async function signReceipt(
     .setIssuedAt(payload.iat ?? now)
     .setExpirationTime(payload.exp ?? now + 30 * 24 * 60 * 60)
     .sign(nodeKey);
-
-  return jwt;
 }
 
 /**

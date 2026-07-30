@@ -36,8 +36,7 @@ async function signMessagePayload(fromDid: string, payload: string): Promise<str
     const verified = await verifyChain(chain.log as string[]);
     if (verified.isDeleted || verified.authKeys.length === 0) return null;
 
-    const signature = authCrypto.signSync(payload, privateKey);
-    return signature;
+    return authCrypto.signSync(payload, privateKey);
   } catch {
     return null;
   }
@@ -239,7 +238,7 @@ export async function POST(
       fromDid: effectiveDid,
       content,
       contentType,
-      replyToDid: replyToDid,
+      replyToDid,
       replyToMessageId: replyToMessageId || null,
       mediaType: mediaType || null,
       mediaPath: mediaPath || null,

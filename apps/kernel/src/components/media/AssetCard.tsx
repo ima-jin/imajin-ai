@@ -117,7 +117,7 @@ function AssetCard({ asset, selected, checked, compact, selectionActive, onSelec
       {/* Thumbnail */}
       <div className="aspect-square bg-[#1a1a1a] flex items-center justify-center overflow-hidden relative">
         {isImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
+           
           <img
             src={`/media/api/assets/${asset.id}?w=${compact ? 100 : 200}`}
             alt={asset.filename}

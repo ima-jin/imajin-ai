@@ -32,7 +32,7 @@ export const GET = withLogger('kernel', async (req: NextRequest, { log }) => {
     ${source ? sql`AND source = ${source}` : sql``}
     ${correlationId ? sql`AND correlation_id = ${correlationId}` : sql``}
     ${did ? sql`AND did = ${did}` : sql``}
-    ${search ? sql`AND (message ILIKE ${'%' + search + '%'} OR path ILIKE ${'%' + search + '%'} OR error_message ILIKE ${'%' + search + '%'})` : sql``}
+    ${search ? sql`AND (message ILIKE ${`%${  search  }%`} OR path ILIKE ${`%${  search  }%`} OR error_message ILIKE ${`%${  search  }%`})` : sql``}
     ${from ? sql`AND created_at >= ${from}::timestamptz` : sql``}
     ${to ? sql`AND created_at <= ${to}::timestamptz` : sql``}
   `;
@@ -46,7 +46,7 @@ export const GET = withLogger('kernel', async (req: NextRequest, { log }) => {
     ${source ? sql`AND source = ${source}` : sql``}
     ${correlationId ? sql`AND correlation_id = ${correlationId}` : sql``}
     ${did ? sql`AND did = ${did}` : sql``}
-    ${search ? sql`AND (message ILIKE ${'%' + search + '%'} OR path ILIKE ${'%' + search + '%'} OR error_message ILIKE ${'%' + search + '%'})` : sql``}
+    ${search ? sql`AND (message ILIKE ${`%${  search  }%`} OR path ILIKE ${`%${  search  }%`} OR error_message ILIKE ${`%${  search  }%`})` : sql``}
     ${from ? sql`AND created_at >= ${from}::timestamptz` : sql``}
     ${to ? sql`AND created_at <= ${to}::timestamptz` : sql``}
     ORDER BY created_at DESC

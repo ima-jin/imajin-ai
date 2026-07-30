@@ -55,11 +55,9 @@ export function BalanceBadge({ did, payUrl, authToken, className = '' }: Readonl
           if (!cancelled) {
             setBalance(data);
           }
-        } else {
-          if (!cancelled) {
+        } else if (!cancelled) {
             setBalance(null);
           }
-        }
       } catch (error) {
         console.error('Failed to fetch balance:', error);
         if (!cancelled) {

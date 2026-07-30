@@ -96,13 +96,11 @@ export async function PATCH(request: NextRequest) {
         mailingListId: list.id,
       });
     }
-  } else {
-    if (existingSub) {
+  } else if (existingSub) {
       await db.update(subscriptions)
         .set({ status: 'unsubscribed', unsubscribedAt: new Date() })
         .where(eq(subscriptions.id, existingSub.id));
     }
-  }
 
   return NextResponse.json({ subscribed: !!subscribed });
 }

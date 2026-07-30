@@ -87,7 +87,7 @@ export function MarketItems({ did, handle, marketBaseUrl }: Readonly<MarketItems
           >
             <div className="aspect-square bg-gray-800 flex items-center justify-center overflow-hidden">
               {listing.images && listing.images.length > 0 ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                 
                 <img
                   src={listing.images[0]}
                   alt={listing.title}

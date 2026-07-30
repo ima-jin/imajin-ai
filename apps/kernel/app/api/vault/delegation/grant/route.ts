@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
       field,
       ownerXPub,
       wrappedKey,
-      wrappedNonce: wrappedNonce,
+      wrappedNonce,
       keyId,
       ownerSignature,
       status: 'active',
