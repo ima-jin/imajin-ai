@@ -158,12 +158,13 @@ export function createDisconnectHandler(opts: {
       );
 
     // Publish bus event for audit trail (non-fatal).
-    publish(`${opts.connectorName}.disconnected`, {
+    publish('connector.disconnected', {
       issuer: ownerDid,
       subject: ownerDid,
       scope: opts.channel,
       payload: {
         ownerDid,
+        connector: opts.connectorName,
         context_id: ownerDid,
         context_type: opts.connectorName,
       },
