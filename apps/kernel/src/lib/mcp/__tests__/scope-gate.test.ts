@@ -9,6 +9,8 @@ vi.mock('../tools', () => {
     { name: 't_write',       requiredScope: 'media:write',      description: 'w', inputSchema: {}, handler: () => [{ type: 'text', text: 'write-ok' }] },
     { name: 't_share',       requiredScope: 'media:share',      description: 's', inputSchema: {}, handler: () => [{ type: 'text', text: 'share-ok' }] },
     { name: 't_connections', requiredScope: 'connections:read', description: 'c', inputSchema: {}, handler: () => [{ type: 'text', text: 'connections-ok' }] },
+    { name: 't_msg_read',    requiredScope: 'messages:read',    description: 'mr', inputSchema: {}, handler: () => [{ type: 'text', text: 'messages-read-ok' }] },
+    { name: 't_msg_write',   requiredScope: 'messages:write',   description: 'mw', inputSchema: {}, handler: () => [{ type: 'text', text: 'messages-write-ok' }] },
     { name: 't_ping',        description: 'p', inputSchema: {}, handler: () => [{ type: 'text', text: 'pong' }] },
   ];
   const byName = new Map(tools.map((t) => [t.name, t]));
@@ -92,6 +94,33 @@ describe('media:share scope gate', () => {
   it('allows a full-default token (read+write+share+connections) to call the share tool', async () => {
     const res = await call('t_share', ['media:read', 'media:write', 'media:share', 'connections:read']);
     expect(res.result.isError).toBe(false);
+  });
+});
+
+describe('messages scope gate (read != write)', () => {
+  it('denies a read-only token calling the send tool, in-band', async () => {
+    const res = await call('t_msg_write', ['messages:read']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('insufficient_scope');
+    expect(res.result.content[0].text).toContain('messages:write');
+  });
+
+  it('allows a messages:read token calling a read tool', async () => {
+    const res = await call('t_msg_read', ['messages:read']);
+    expect(res.result.isError).toBe(false);
+    expect(res.result.content[0].text).toBe('messages-read-ok');
+  });
+
+  it('denies a write-only token calling a read tool, in-band', async () => {
+    const res = await call('t_msg_read', ['messages:write']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('messages:read');
+  });
+
+  it('allows a messages:write token calling the send tool', async () => {
+    const res = await call('t_msg_write', ['messages:write']);
+    expect(res.result.isError).toBe(false);
+    expect(res.result.content[0].text).toBe('messages-write-ok');
   });
 });
 
