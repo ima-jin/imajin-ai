@@ -93,6 +93,23 @@ vi.mock('@/src/db', () => {
 
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
 
+// Disclosure allowlist (#1373). readReadAllowlist is controllable per-test; the
+// filter/matcher helpers default to identity/allow so the connector paths are
+// exercised without loading the manifest-read module (its own logic is covered
+// by allowlist.test.ts).
+const { readAllowlistMock, filterOrgsMock, filterReposMock, isRepoAllowedMock } = vi.hoisted(() => ({
+  readAllowlistMock: vi.fn(),
+  filterOrgsMock: vi.fn(),
+  filterReposMock: vi.fn(),
+  isRepoAllowedMock: vi.fn(),
+}));
+vi.mock('../allowlist', () => ({
+  readReadAllowlist: readAllowlistMock,
+  filterOrgs: filterOrgsMock,
+  filterRepos: filterReposMock,
+  isRepoAllowed: isRepoAllowedMock,
+}));
+
 import {
   resolveActiveGrant,
   sealPat,
@@ -101,6 +118,9 @@ import {
   listIssues,
   getIssue,
   updateIssue,
+  listOrgs,
+  listRepos,
+  getRepo,
   vaultField,
   oauthVaultField,
   configField,
@@ -194,6 +214,15 @@ beforeEach(() => {
   proposalInsertMock.mockResolvedValue([]);
   proposalUpdateMock.mockReset();
   proposalUpdateMock.mockResolvedValue([]);
+  // Allowlist mocks — default: allow-all (null), identity filters, repo allowed.
+  readAllowlistMock.mockReset();
+  readAllowlistMock.mockResolvedValue(null);
+  filterOrgsMock.mockReset();
+  filterOrgsMock.mockImplementation((orgs: unknown[]) => orgs);
+  filterReposMock.mockReset();
+  filterReposMock.mockImplementation((repos: unknown[]) => repos);
+  isRepoAllowedMock.mockReset();
+  isRepoAllowedMock.mockReturnValue(true);
   vi.stubGlobal('fetch', vi.fn());
 });
 
@@ -481,6 +510,108 @@ describe('getIssue (#1228)', () => {
 });
 
 // ΓöÇΓöÇ Security invariants ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+// ── Org / repo discovery (#1373) ─────────────────────────────────────────────
+
+const MOCK_ORG_A = { login: 'ima-jin', id: 1, description: 'org a' };
+const MOCK_ORG_B = { login: 'stranger', id: 2, description: 'org b' };
+const MOCK_REPO_A = { full_name: 'ima-jin/imajin-ai', private: true, html_url: 'https://github.com/ima-jin/imajin-ai', description: null, default_branch: 'main', permissions: { admin: true, push: true, pull: true } };
+const MOCK_REPO_B = { full_name: 'stranger/secret', private: true, html_url: 'https://github.com/stranger/secret', description: null, default_branch: 'main' };
+
+function mockFetchJson(value: unknown) {
+  (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => value });
+}
+
+describe('listOrgs (#1373)', () => {
+  it('fails closed when there is no grant — never calls the API', async () => {
+    noGrant();
+    await expect(listOrgs(OWNER)).rejects.toThrow(/github_no_grant/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when no credential is sealed', async () => {
+    grant(['github:read']);
+    loadMock.mockResolvedValue(undefined);
+    await expect(listOrgs(OWNER)).rejects.toThrow(/github_no_credential/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('fetches /user/orgs and filters the result server-side after the fetch', async () => {
+    grant(['github:read']);
+    const allowlist = new Set(['ima-jin']);
+    readAllowlistMock.mockResolvedValue(allowlist);
+    mockFetchJson([MOCK_ORG_A, MOCK_ORG_B]);
+    filterOrgsMock.mockReturnValue([MOCK_ORG_A]);
+
+    const orgs = await listOrgs(OWNER);
+
+    const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain('/user/orgs');
+    // Filtering happens post-fetch, against the fetched list + allowlist.
+    expect(filterOrgsMock).toHaveBeenCalledWith([MOCK_ORG_A, MOCK_ORG_B], allowlist);
+    expect(orgs).toEqual([MOCK_ORG_A]);
+  });
+});
+
+describe('listRepos (#1373)', () => {
+  it('fails closed when there is no grant — never calls the API', async () => {
+    noGrant();
+    await expect(listRepos(OWNER)).rejects.toThrow(/github_no_grant/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('lists the user\u2019s repos by default and filters post-fetch', async () => {
+    grant(['github:read']);
+    mockFetchJson([MOCK_REPO_A, MOCK_REPO_B]);
+    filterReposMock.mockReturnValue([MOCK_REPO_A]);
+
+    const repos = await listRepos(OWNER);
+
+    const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain('/user/repos');
+    expect(filterReposMock).toHaveBeenCalledWith([MOCK_REPO_A, MOCK_REPO_B], null);
+    expect(repos).toEqual([MOCK_REPO_A]);
+  });
+
+  it('scopes to an org when org is provided', async () => {
+    grant(['github:read']);
+    mockFetchJson([MOCK_REPO_A]);
+
+    await listRepos(OWNER, 'ima-jin');
+
+    const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('https://api.github.com/orgs/ima-jin/repos?per_page=100');
+  });
+});
+
+describe('getRepo (#1373)', () => {
+  it('fails closed when there is no grant — never calls the API', async () => {
+    noGrant();
+    await expect(getRepo(OWNER, REPO)).rejects.toThrow(/github_no_grant/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('throws github_not_in_scope for an out-of-allowlist target without fetching', async () => {
+    grant(['github:read']);
+    isRepoAllowedMock.mockReturnValue(false);
+
+    await expect(getRepo(OWNER, 'stranger/secret')).rejects.toThrow(/github_not_in_scope/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('fetches /repos/{repo} when the target is in scope', async () => {
+    grant(['github:read']);
+    isRepoAllowedMock.mockReturnValue(true);
+    mockFetchJson(MOCK_REPO_A);
+
+    const repo = await getRepo(OWNER, MOCK_REPO_A.full_name);
+
+    expect(repo).toMatchObject({ full_name: MOCK_REPO_A.full_name, default_branch: 'main' });
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe(`https://api.github.com/repos/${MOCK_REPO_A.full_name}`);
+    expect(init.method).toBe('GET');
+  });
+});
 
 describe('security invariants (#1228)', () => {
   it('GITHUB_CONNECTOR_DID is stable', () => {
