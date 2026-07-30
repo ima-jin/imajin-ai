@@ -1,0 +1,132 @@
+# Imajin Buzz relay stack (#1414)
+# Based on block/buzz deploy/compose — single-node VPS profile.
+#
+# Services:
+#   postgres   — Postgres 17: event store (NIP-01 events, channels, memberships)
+#   redis      — Redis 7: pub/sub fan-out, presence, typing indicators
+#   minio      — MinIO: S3-compatible object store for media (Blossom protocol)
+#   minio-init — one-shot bucket creation; exits after success
+#   relay      — ghcr.io/block/buzz: the Rust/Axum NIP-29 relay
+#
+# Usage:
+#   cp .env.example .env   # fill in every CHANGE_ME value + RELAY_OWNER_PUBKEY
+#   docker compose up -d
+#   docker compose logs -f relay
+
+name: imajin-buzz
+
+services:
+
+  # ── Postgres 17 ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-buzz}
+      POSTGRES_USER:     ${POSTGRES_USER:-buzz}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-buzz} -d ${POSTGRES_DB:-buzz}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis 7 ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── MinIO (S3-compatible media store) ────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${BUZZ_S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${BUZZ_S3_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-shot: creates the buzz-media bucket then exits.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 ${BUZZ_S3_ACCESS_KEY} ${BUZZ_S3_SECRET_KEY} &&
+        mc mb --ignore-existing local/${BUZZ_S3_BUCKET:-buzz-media}
+      "
+    restart: "no"
+
+  # ── Buzz relay ────────────────────────────────────────────────────────────────
+  relay:
+    image: ${BUZZ_IMAGE:-ghcr.io/block/buzz:main}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "${BUZZ_HTTP_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: >-
+        postgres://${POSTGRES_USER:-buzz}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-buzz}
+      REDIS_URL:    redis://:${REDIS_PASSWORD}@redis:6379
+      RELAY_URL:    ${RELAY_URL:-ws://localhost:3000}
+
+      # S3 / MinIO
+      BUZZ_S3_ENDPOINT:   http://minio:9000
+      BUZZ_S3_ACCESS_KEY: ${BUZZ_S3_ACCESS_KEY}
+      BUZZ_S3_SECRET_KEY: ${BUZZ_S3_SECRET_KEY}
+      BUZZ_S3_BUCKET:     ${BUZZ_S3_BUCKET:-buzz-media}
+      BUZZ_S3_REGION:     us-east-1
+      BUZZ_S3_FORCE_PATH_STYLE: "true"
+
+      # Media
+      BUZZ_MEDIA_BASE_URL:    ${BUZZ_MEDIA_BASE_URL:-http://localhost:3000/media}
+      BUZZ_MEDIA_SERVER_DOMAIN: ${BUZZ_MEDIA_SERVER_DOMAIN:-localhost}
+
+      # Security & relay identity
+      BUZZ_RELAY_PRIVATE_KEY:      ${BUZZ_RELAY_PRIVATE_KEY}
+      BUZZ_GIT_HOOK_HMAC_SECRET:   ${BUZZ_GIT_HOOK_HMAC_SECRET}
+      RELAY_OWNER_PUBKEY:          ${RELAY_OWNER_PUBKEY}
+      BUZZ_REQUIRE_AUTH_TOKEN:     ${BUZZ_REQUIRE_AUTH_TOKEN:-true}
+      BUZZ_REQUIRE_RELAY_MEMBERSHIP: ${BUZZ_REQUIRE_RELAY_MEMBERSHIP:-true}
+      BUZZ_ALLOW_NIP_OA_AUTH:      ${BUZZ_ALLOW_NIP_OA_AUTH:-true}
+      BUZZ_AUTO_MIGRATE:           ${BUZZ_AUTO_MIGRATE:-true}
+      BUZZ_CORS_ORIGINS:           ${BUZZ_CORS_ORIGINS:-http://localhost:3000}
+
+      RUST_LOG: ${RUST_LOG:-buzz_relay=info,buzz_db=info,buzz_auth=info,buzz_pubsub=info,tower_http=info}
+    healthcheck:
+      test: >
+        /bin/sh -c
+        "printf 'GET /_liveness HTTP/1.0\r\nHost: localhost\r\n\r\n' > /dev/tcp/localhost/3000"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
