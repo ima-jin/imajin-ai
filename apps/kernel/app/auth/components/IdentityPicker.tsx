@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { buildPublicUrl } from '@imajin/config';
+
+const MEDIA_URL = buildPublicUrl('media');
 
 interface IdentityResult {
   did: string;
@@ -109,9 +112,8 @@ export default function IdentityPicker({
   }
 
   function resolveAvatarSrc(identity: IdentityResult): string | null {
-    const mediaUrl = process.env.NEXT_PUBLIC_MEDIA_URL ?? '';
-    if (identity.avatarAssetId && mediaUrl) {
-      return `${mediaUrl}/api/media/${identity.avatarAssetId}`;
+    if (identity.avatarAssetId) {
+      return `${MEDIA_URL}/api/media/${identity.avatarAssetId}`;
     }
     if (identity.avatarUrl) return identity.avatarUrl;
     return null;

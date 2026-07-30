@@ -6,6 +6,7 @@ import IdentityDetail from './components/IdentityDetail';
 import PlacesMaintained from './components/PlacesMaintained';
 import IdentityTabBar from './components/IdentityTabBar';
 import AuthLayoutShell from './components/AuthLayoutShell';
+import { buildPublicUrl } from '@imajin/config';
 
 export default async function AuthLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { sessionDid, effectiveDid } = await getEffectiveDid();
@@ -73,7 +74,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
   }
 
   const authUrl = '/auth';
-  const profileUrl = process.env.NEXT_PUBLIC_PROFILE_URL ?? '';
+  const profileUrl = buildPublicUrl('profile');
 
   const leftRail = (
     <>

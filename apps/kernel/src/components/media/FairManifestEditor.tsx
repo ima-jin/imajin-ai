@@ -14,9 +14,7 @@ import { buildPublicUrl } from '@imajin/config';
 const CONNECTIONS_URL_BASE = buildPublicUrl('connections');
 const CONNECTIONS_API_URL = `${CONNECTIONS_URL_BASE}/api/connections`;
 
-const PROFILE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX
-  ? `${process.env.NEXT_PUBLIC_SERVICE_PREFIX}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`
-  : 'https://profile.imajin.ai';
+const PROFILE_URL = buildPublicUrl('profile');
 
 async function resolveProfile(did: string): Promise<{ name: string; handle?: string; avatar?: string } | null> {
   try {

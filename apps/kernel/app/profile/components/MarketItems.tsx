@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { buildPublicUrl } from '@imajin/config';
 
 interface MarketItemsProps {
   did: string;
@@ -27,7 +28,7 @@ export function MarketItems({ did, handle, marketBaseUrl }: Readonly<MarketItems
   const [listings, setListings] = useState<Listing[] | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const marketBase = marketBaseUrl || process.env.NEXT_PUBLIC_MARKET_URL || '/market';
+  const marketBase = marketBaseUrl || buildPublicUrl('market');
 
   useEffect(() => {
     void fetch(`${marketBase}/api/listings?seller_did=${encodeURIComponent(did)}&status=active&limit=8`)

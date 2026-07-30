@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { buildPublicUrlAbsolute } from '@imajin/config';
+
+const NODE_URL = buildPublicUrlAbsolute('kernel');
 
 interface Agent {
   did: string;
@@ -177,14 +180,14 @@ export default function AgentsPage() {
         entries: {
           imajin: {
             config: {
-              nodeUrl: 'https://jin.imajin.ai',
-              did: createdAgent.did,
-              keypairPath: `/path/to/.agent-${createdAgent.handle}.json`,
-            },
-          },
+          nodeUrl: NODE_URL,
+          did: createdAgent.did,
+          keypairPath: `/path/to/.agent-${createdAgent.handle}.json`,
         },
       },
-    }, null, 2);
+    },
+  },
+}, null, 2);
     navigator.clipboard.writeText(snippet).then(() => {
       showStatus('success', 'Config copied to clipboard');
     });
@@ -327,7 +330,7 @@ export default function AgentsPage() {
     entries: {
       imajin: {
         config: {
-          nodeUrl: 'https://jin.imajin.ai',
+          nodeUrl: NODE_URL,
           did: createdAgent.did,
           keypairPath: `/path/to/.agent-${createdAgent.handle}.json`,
         },

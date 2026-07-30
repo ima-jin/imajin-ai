@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { eventUrl } from '@imajin/config';
+import { eventUrl, buildPublicUrl } from '@imajin/config';
 
 interface UpcomingEventsProps {
   did: string;
@@ -40,7 +40,7 @@ function formatEventDate(startDate: string, endDate: string | null): string {
 export function UpcomingEvents({ did, eventsBaseUrl, viewerDid }: Readonly<UpcomingEventsProps>) {
   const [events, setEvents] = useState<AttendingEvent[] | null>(null);
 
-  const eventsBase = eventsBaseUrl || process.env.NEXT_PUBLIC_EVENTS_URL || '/events';
+  const eventsBase = eventsBaseUrl || buildPublicUrl('events');
 
   useEffect(() => {
     const url = new URL(`${eventsBase}/api/attending/${encodeURIComponent(did)}`);
