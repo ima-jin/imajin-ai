@@ -2,6 +2,7 @@ import { db, attestations, attestationSignatures, identities } from '@/src/db';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import Link from 'next/link';
 import DocumentSigningCard, { type DocumentAttestation, type Signature } from './DocumentSigningCard';
+import CopyLinkButton from './CopyLinkButton';
 
 type DocumentRoleFilter = 'created' | 'needs-signature';
 
@@ -106,13 +107,14 @@ export default async function DocumentList({ sessionDid, role }: Readonly<Props>
               signatures={signaturesForAttestation}
               sessionDid={sessionDid}
             />
-            <div className="px-1">
+            <div className="flex items-center gap-3 px-1">
               <Link
                 href={`/auth/documents/${attestation.id}`}
                 className="text-xs text-zinc-500 hover:text-amber-400 transition-colors"
               >
                 Open document detail →
               </Link>
+              <CopyLinkButton path={`/auth/documents/${attestation.id}`} />
             </div>
           </div>
         );
