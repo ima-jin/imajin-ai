@@ -13,7 +13,8 @@ export interface NotifyTemplate {
 }
 
 function escapeHtml(value: unknown): string {
-  return String(value ?? '')
+  const str = typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+  return str
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -591,9 +592,9 @@ export const templates: NotifyTemplate[] = [
         const signUrl = rawSignUrl.startsWith('http') ? rawSignUrl : `${baseUrl}${rawSignUrl}`;
         const creator = escapeHtml(data.creatorName || 'Someone');
         const docTitle = escapeHtml(data.title || 'a document');
-        const intro = `<strong style=\"color:#ffffff;\">${creator}</strong> has asked you to review and sign <strong style=\"color:#ffffff;\">${docTitle}</strong>.`;
+        const intro = `<strong style="color:#ffffff;">${creator}</strong> has asked you to review and sign <strong style="color:#ffffff;">${docTitle}</strong>.`;
         const cta = signUrl
-          ? `<br><br><a href=\"${escapeHtml(signUrl)}\" style=\"color:#f97316;text-decoration:none;font-weight:600;\">Review &amp; sign the document &rarr;</a>`
+          ? `<br><br><a href="${escapeHtml(signUrl)}" style="color:#f97316;text-decoration:none;font-weight:600;">Review &amp; sign the document &rarr;</a>`
           : '';
         return simpleEmailHtml('Document ready for your signature', `${intro}${cta}`);
       },
