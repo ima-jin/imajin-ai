@@ -22,6 +22,7 @@ export const GET = withLogger('kernel', async (req: NextRequest, { log }) => {
   const to = url.searchParams.get('to') || null;
   const limit = Math.min(200, Number.parseInt(url.searchParams.get('limit') || '50', 10));
   const offset = Number.parseInt(url.searchParams.get('offset') || '0', 10);
+  const searchPattern = search ? `%${search}%` : null;
 
   const [countRow] = await sql`
     SELECT COUNT(*)::int AS total
@@ -32,7 +33,7 @@ export const GET = withLogger('kernel', async (req: NextRequest, { log }) => {
     ${source ? sql`AND source = ${source}` : sql``}
     ${correlationId ? sql`AND correlation_id = ${correlationId}` : sql``}
     ${did ? sql`AND did = ${did}` : sql``}
-    ${search ? sql`AND (message ILIKE ${'%' + search + '%'} OR path ILIKE ${'%' + search + '%'} OR error_message ILIKE ${'%' + search + '%'})` : sql``}
+    ${searchPattern ? sql`AND (message ILIKE ${searchPattern} OR path ILIKE ${searchPattern} OR error_message ILIKE ${searchPattern})` : sql``}
     ${from ? sql`AND created_at >= ${from}::timestamptz` : sql``}
     ${to ? sql`AND created_at <= ${to}::timestamptz` : sql``}
   `;
@@ -46,7 +47,7 @@ export const GET = withLogger('kernel', async (req: NextRequest, { log }) => {
     ${source ? sql`AND source = ${source}` : sql``}
     ${correlationId ? sql`AND correlation_id = ${correlationId}` : sql``}
     ${did ? sql`AND did = ${did}` : sql``}
-    ${search ? sql`AND (message ILIKE ${'%' + search + '%'} OR path ILIKE ${'%' + search + '%'} OR error_message ILIKE ${'%' + search + '%'})` : sql``}
+    ${searchPattern ? sql`AND (message ILIKE ${searchPattern} OR path ILIKE ${searchPattern} OR error_message ILIKE ${searchPattern})` : sql``}
     ${from ? sql`AND created_at >= ${from}::timestamptz` : sql``}
     ${to ? sql`AND created_at <= ${to}::timestamptz` : sql``}
     ORDER BY created_at DESC

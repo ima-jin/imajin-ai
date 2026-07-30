@@ -38,9 +38,9 @@ type GrantRow = Record<string, unknown> & {
 const { tmpVaultPath, grantStore } = vi.hoisted(() => {
   // vi.hoisted() runs before ESM imports are initialized, so `join` and
   // `tmpdir` from the top-level imports are not yet available. Use require().
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+   
   const { join } = require('node:path') as typeof import('node:path');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+   
   const { tmpdir } = require('node:os') as typeof import('node:os');
 
   const tmpVaultPath = join(

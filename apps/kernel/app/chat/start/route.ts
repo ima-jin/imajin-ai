@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       .insert(conversationMembers)
       .values({
         conversationDid: convDid,
-        memberDid: memberDid,
+        memberDid,
         role: 'participant',
       })
       .onConflictDoNothing();

@@ -32,10 +32,10 @@ function buildToolBootstrap(tools: Record<string, { description?: string }>): st
     .map(([name, t]) => `- **${name}**: ${t.description ?? ''}`.trimEnd())
     .join('\n');
   return (
-    '\n\n## Available Tools\n' +
-    'You have tools to interact with the Imajin platform. ' +
-    "Do not say you lack access without trying the relevant tool first.\n\n" +
-    toolLines
+    `\n\n## Available Tools\n` +
+    `You have tools to interact with the Imajin platform. ` +
+    `Do not say you lack access without trying the relevant tool first.\n\n${ 
+    toolLines}`
   );
 }
 

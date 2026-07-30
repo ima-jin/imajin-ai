@@ -29,7 +29,7 @@ export function OnboardGate({
   children,
   authUrl: authUrlProp,
   redirectUrl,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   requireVerification: _requireVerification,
 }: Readonly<OnboardGateProps>) {
   const [state, setState] = useState<State>('idle');

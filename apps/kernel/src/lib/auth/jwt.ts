@@ -84,7 +84,7 @@ export interface SessionPayload {
 export async function createSessionToken(payload: SessionPayload): Promise<string> {
   const { privateKey } = await getKeyPair();
 
-  const jwt = await new jose.SignJWT({
+  return await new jose.SignJWT({
     handle: payload.handle,
     scope: payload.scope,
     subtype: payload.subtype,
@@ -99,8 +99,6 @@ export async function createSessionToken(payload: SessionPayload): Promise<strin
     .setIssuedAt()
     .setExpirationTime(JWT_EXPIRY)
     .sign(privateKey);
-
-  return jwt;
 }
 
 /**

@@ -67,7 +67,7 @@ function StatusBadge({ status }: Readonly<{ status: string }>) {
 
 function formatTs(ts: string) {
   const d = new Date(ts);
-  return d.toLocaleTimeString(undefined, { hour12: false }) + ' ' + d.toLocaleDateString();
+  return `${d.toLocaleTimeString(undefined, { hour12: false })  } ${  d.toLocaleDateString()}`;
 }
 
 function truncateDid(did: string | null) {

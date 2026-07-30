@@ -141,7 +141,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       {
         id: txId,
         amount: String(amount),
-        to_did: to_did,
+        to_did,
         status: 'completed',
       },
       { status: 201, headers: cors }

@@ -103,7 +103,7 @@ export async function POST(
         authorJws,
         attestationStatus: 'collecting',
         documentHash,
-        documentAssetId: documentAssetId,
+        documentAssetId,
         totalSigners: 1 + signerDids.length,
         issuedAt: new Date(),
       })

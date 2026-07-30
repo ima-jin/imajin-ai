@@ -198,7 +198,7 @@ export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
                   return 'border-gray-700';
                 })()}`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+                { }
                 <img src={imgUrl} alt={`Listing ${i + 1}`} className="w-full h-full object-cover" />
                 {i === 0 && (
                   <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[9px] text-center py-0.5 pointer-events-none">
@@ -220,7 +220,7 @@ export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
           {/* Pending uploads — spinner overlay */}
           {pending.map((p) => (
             <div key={p.id} className="relative w-20 h-20 rounded-lg overflow-hidden border border-gray-700">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              { }
               <img src={p.previewUrl} alt="Uploading…" className="w-full h-full object-cover opacity-40" />
               <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                 <svg

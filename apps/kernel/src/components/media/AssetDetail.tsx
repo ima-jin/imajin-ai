@@ -314,7 +314,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
         {/* Preview */}
         <div className={`flex-1 min-h-0 overflow-auto ${showFileEditor ? "flex" : "flex items-center justify-center bg-[#111]"}`}>
           {isImage && (
-            // eslint-disable-next-line @next/next/no-img-element
+             
             <img
               src={assetUrl}
               alt={asset.filename}
@@ -325,14 +325,14 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
             <div className="text-center space-y-4 p-8 w-full max-w-sm">
               <span className="text-8xl block">🎵</span>
               <p className="text-gray-300 text-sm truncate">{asset.filename}</p>
-              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              { }
               <audio controls className="w-full" style={{ colorScheme: "dark" }}>
                 <source src={assetUrl} type={asset.mimeType} />
               </audio>
             </div>
           )}
           {isVideo && (
-            // eslint-disable-next-line jsx-a11y/media-has-caption
+             
             <video
               controls
               className="max-w-full max-h-full"

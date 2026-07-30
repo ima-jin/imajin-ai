@@ -112,15 +112,15 @@ export function canonicalize(obj: unknown): string {
   }
   
   if (Array.isArray(obj)) {
-    return '[' + obj.map(canonicalize).join(',') + ']';
+    return `[${  obj.map(canonicalize).join(',')  }]`;
   }
   
   if (typeof obj === 'object') {
     const keys = Object.keys(obj).sort((a, b) => a.localeCompare(b));
     const pairs = keys.map(k => 
-      JSON.stringify(k) + ':' + canonicalize((obj as Record<string, unknown>)[k])
+      `${JSON.stringify(k)  }:${  canonicalize((obj as Record<string, unknown>)[k])}`
     );
-    return '{' + pairs.join(',') + '}';
+    return `{${  pairs.join(',')  }}`;
   }
   
   return String(obj);

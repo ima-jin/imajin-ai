@@ -777,7 +777,7 @@ const FAIR_ROLE_DOT_COLORS: Record<string, string> = {
 };
 
 function truncateFairDid(did: string): string {
-  return did.length > 16 ? did.slice(0, 10) + '…' + did.slice(-6) : did;
+  return did.length > 16 ? `${did.slice(0, 10)  }…${  did.slice(-6)}` : did;
 }
 
 function GuestFairReceipt({ settlement }: Readonly<{ settlement: FairSettlement }>) {

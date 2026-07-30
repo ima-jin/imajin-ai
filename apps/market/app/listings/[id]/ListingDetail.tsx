@@ -437,7 +437,7 @@ export default function ListingDetail() {
           <div>
             <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden flex items-center justify-center mb-3 relative">
               {hasImages ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                 
                 <img
                   src={detailImages[activeImage]}
                   alt={listing.title}
@@ -474,7 +474,7 @@ export default function ListingDetail() {
                       i === activeImage ? 'border-orange-500' : 'border-transparent opacity-60 hover:opacity-100'
                     }`}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    { }
                     <img src={src} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
@@ -649,7 +649,7 @@ export default function ListingDetail() {
                   >
                     <div className="aspect-video bg-gradient-to-br from-gray-800 to-gray-700 relative overflow-hidden">
                       {relImg ? (
-                        // eslint-disable-next-line @next/next/no-img-element
+                         
                         <img src={relImg} alt={rel.title} className="w-full h-full object-cover" />
                       ) : (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-600">

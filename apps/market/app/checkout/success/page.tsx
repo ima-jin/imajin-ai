@@ -43,7 +43,7 @@ function CheckoutSuccessContent() {
         {listing ? (
           <>
             {listing.images?.[0] && (
-              // eslint-disable-next-line @next/next/no-img-element
+               
               <img
                 src={resolveMediaRef(listing.images[0], 'card')}
                 alt={listing.title}

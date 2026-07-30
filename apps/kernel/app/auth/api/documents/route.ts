@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       authorJws,
       attestationStatus: 'collecting',
       documentHash,
-      documentAssetId: documentAssetId,
+      documentAssetId,
       totalSigners: 1 + signerDids.length,
       issuedAt: new Date(),
       expiresAt,

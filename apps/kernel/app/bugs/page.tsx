@@ -50,7 +50,7 @@ function ReportCard({ r, reporter }: Readonly<{ r: BugReport; reporter?: Reporte
       <div className="flex items-start gap-4">
         {r.screenshotUrl && (
           <a href={r.screenshotUrl} target="_blank" rel="noreferrer" className="shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+            { }
             <img
               src={r.screenshotUrl}
               alt="Screenshot"
@@ -64,7 +64,7 @@ function ReportCard({ r, reporter }: Readonly<{ r: BugReport; reporter?: Reporte
             {reporter && (
               <span className="inline-flex items-center gap-1.5">
                 {reporter.avatar && (
-                  // eslint-disable-next-line @next/next/no-img-element
+                   
                   <img src={reporter.avatar} alt="" className="w-4 h-4 rounded-full object-cover" />
                 )}
                 <span className="text-gray-400">
