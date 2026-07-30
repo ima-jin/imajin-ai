@@ -43,6 +43,38 @@ export interface VerifyManifestFromAssetOptions {
   fetchAsset: (url: string) => Promise<FetchResponse>;
 }
 
+/** Parse the href from a `Link: rel="fair"` header value. Returns null when absent. */
+function parseFairLinkHref(linkHeader: string): string | null {
+  for (const segment of linkHeader.split(',')) {
+    const trimmed = segment.trim();
+    if (!trimmed.includes('rel="fair"')) continue;
+    const lt = trimmed.indexOf('<');
+    const gt = trimmed.indexOf('>', lt + 1);
+    if (lt >= 0 && gt > lt) return trimmed.slice(lt + 1, gt).trim();
+  }
+  return null;
+}
+
+/** Verify the DFOS anchor header against the manifest digest. */
+async function verifyDfosAnchor(
+  manifest: SignedFairManifest,
+  dfosHeader: string,
+  fetchDfosEvent: VerifyManifestFromAssetOptions['fetchDfosEvent'],
+): Promise<{ ok: true; anchorTimestamp: string } | { ok: false; reason: string }> {
+  const prefix = 'dfos:event:';
+  if (!dfosHeader.startsWith(prefix)) {
+    return { ok: false, reason: `Invalid X-Fair-Dfos header format: ${dfosHeader}` };
+  }
+  const event = await fetchDfosEvent(dfosHeader.slice(prefix.length));
+  if (!event) return { ok: false, reason: `DFOS event not found: ${dfosHeader.slice(prefix.length)}` };
+  const payload = event.payload as { manifestDigest?: string };
+  const manifestDigest = `sha256:${bytesToHex(sha256(new TextEncoder().encode(canonicalize(manifest))))}`;
+  if (payload.manifestDigest !== manifestDigest) {
+    return { ok: false, reason: 'DFOS event manifestDigest does not match recomputed digest' };
+  }
+  return { ok: true, anchorTimestamp: event.anchoredAt };
+}
+
 /**
  * Verify a .fair manifest from an asset URL.
  *
@@ -63,36 +95,22 @@ export async function verifyManifestFromAsset(
   } catch (err) {
     return { valid: false, reason: `Failed to fetch asset: ${err instanceof Error ? err.message : String(err)}` };
   }
-
   if (!assetResponse.ok) {
-    return { valid: false, reason: `Asset fetch failed with status: ${assetResponse.ok === false ? 'non-ok' : 'unknown'}` };
+    return { valid: false, reason: 'Asset fetch failed with non-ok status' };
   }
 
-  const linkHeader = assetResponse.headers.get('link') || '';
-  let fairHref: string | null = null;
-  for (const segment of linkHeader.split(',')) {
-    const trimmed = segment.trim();
-    if (!trimmed.includes('rel="fair"')) continue;
-    const lt = trimmed.indexOf('<');
-    const gt = trimmed.indexOf('>', lt + 1);
-    if (lt >= 0 && gt > lt) {
-      fairHref = trimmed.slice(lt + 1, gt).trim();
-      break;
-    }
-  }
+  const fairHref = parseFairLinkHref(assetResponse.headers.get('link') || '');
   if (!fairHref) {
     return { valid: false, reason: 'Missing Link: rel="fair" header on asset response' };
   }
-  const manifestUrl = new URL(fairHref, assetUrl).toString();
 
   // 2. Fetch manifest
   let manifestResponse: FetchResponse;
   try {
-    manifestResponse = await opts.fetchAsset(manifestUrl);
+    manifestResponse = await opts.fetchAsset(new URL(fairHref, assetUrl).toString());
   } catch (err) {
     return { valid: false, reason: `Failed to fetch manifest: ${err instanceof Error ? err.message : String(err)}` };
   }
-
   if (!manifestResponse.ok) {
     return { valid: false, reason: 'Manifest fetch failed with non-ok status' };
   }
@@ -109,22 +127,16 @@ export async function verifyManifestFromAsset(
   if (!sig || typeof sig !== 'object' || !('alg' in sig)) {
     return { valid: false, reason: 'Manifest is not a v1.1 signed manifest' };
   }
-
   const verifyResult = await verifyManifest(manifest, opts.resolveOwnerKey);
-  if ('ok' in verifyResult && !verifyResult.ok) {
-    return { valid: false, reason: verifyResult.reason || 'Signature verification failed' };
+  if (('ok' in verifyResult && !verifyResult.ok) || ('valid' in verifyResult && !verifyResult.valid)) {
+    return { valid: false, reason: (verifyResult as { reason?: string }).reason || 'Signature verification failed' };
   }
-  if ('valid' in verifyResult && !verifyResult.valid) {
-    return { valid: false, reason: verifyResult.reason || 'Signature verification failed' };
-  }
-
-  const signedAt = sig && 'signedAt' in sig ? (sig as { signedAt?: string }).signedAt : undefined;
+  const signedAt = 'signedAt' in sig ? (sig as { signedAt?: string }).signedAt : undefined;
 
   // 4. Check X-Fair-Digest
   const digestHeader = assetResponse.headers.get('x-fair-digest') || '';
   if (digestHeader) {
-    const expectedDigest = bytesToHex(sha256(new TextEncoder().encode(canonicalize(manifest))));
-    const expected = `sha256:${expectedDigest}`;
+    const expected = `sha256:${bytesToHex(sha256(new TextEncoder().encode(canonicalize(manifest))))}`;
     if (digestHeader !== expected) {
       return { valid: false, signedAt, reason: `Digest mismatch: expected ${expected}, got ${digestHeader}` };
     }
@@ -134,38 +146,10 @@ export async function verifyManifestFromAsset(
   const dfosHeader = assetResponse.headers.get('x-fair-dfos') || '';
   let anchorTimestamp: string | undefined;
   if (dfosHeader) {
-    const prefix = 'dfos:event:';
-    if (!dfosHeader.startsWith(prefix)) {
-      return { valid: false, signedAt, reason: `Invalid X-Fair-Dfos header format: ${dfosHeader}` };
-    }
-    const eventId = dfosHeader.slice(prefix.length);
-    const event = await opts.fetchDfosEvent(eventId);
-    if (!event) {
-      return { valid: false, signedAt, reason: `DFOS event not found: ${eventId}` };
-    }
-
-    // Verify the DFOS payload matches the manifest
-    const payload = event.payload as {
-      assetId?: string;
-      ownerDid?: string;
-      manifestDigest?: string;
-      manifestUrl?: string;
-      fairVersion?: string;
-      signedAt?: string;
-    };
-
-    const manifestDigest = bytesToHex(sha256(new TextEncoder().encode(canonicalize(manifest))));
-    if (payload.manifestDigest !== `sha256:${manifestDigest}`) {
-      return { valid: false, signedAt, reason: 'DFOS event manifestDigest does not match recomputed digest' };
-    }
-
-    anchorTimestamp = event.anchoredAt;
+    const dfosResult = await verifyDfosAnchor(manifest, dfosHeader, opts.fetchDfosEvent);
+    if (!dfosResult.ok) return { valid: false, signedAt, reason: dfosResult.reason };
+    anchorTimestamp = dfosResult.anchorTimestamp;
   }
 
-  return {
-    valid: true,
-    signedAt,
-    anchorTimestamp,
-    owner: manifest.owner,
-  };
+  return { valid: true, signedAt, anchorTimestamp, owner: manifest.owner };
 }
