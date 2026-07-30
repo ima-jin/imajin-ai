@@ -1,14 +1,13 @@
 /**
- * Tests for the Buzz DID attribution resolver (#1413).
+ * Tests for the Buzz DID attribution resolver (#1413, #1415).
  *
- * Covers both the write path (loadDidTags) and the read path (resolveDidFromEvent).
- * The DB is mocked so no real database connection is required.
+ * Covers the write path (loadDidTags), the read path (resolveDidFromEvent),
+ * and the revocation path:
+ *   - active binding    → { did, status: 'active' }
+ *   - revoked binding   → { did, status: 'revoked', revokedAt, validAtEventTime }
+ *   - no matching row   → null
  *
- * Round-trip test:
- *   1. Compute the real canonical-payload digest for a mock attestation row.
- *   2. Build a kind:9 event with those DID tags.
- *   3. Feed the event to resolveDidFromEvent with the mock row in the DB.
- *   4. Assert the resolved DID matches the expected value.
+ * The DB is mocked; no real database connection is required.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { canonicalize, nostrAttestationDigest, bytesToHex } from '@imajin/auth';
@@ -47,7 +46,7 @@ import {
   deriveNostrPubkey,
   generateNostrPrivkey,
 } from '../nostr-event';
-import { loadDidTags, resolveDidFromEvent } from '../did-resolver';
+import { loadDidTags, resolveDidFromEvent, type ResolveResult } from '../did-resolver';
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
 
@@ -152,77 +151,160 @@ describe('loadDidTags', () => {
   });
 });
 
-// ── resolveDidFromEvent ───────────────────────────────────────────────────────
+// ── resolveDidFromEvent — active binding ──────────────────────────────────────
 
-describe('resolveDidFromEvent', () => {
-  it('returns undefined for an event with no DID tags', async () => {
+describe('resolveDidFromEvent — active binding', () => {
+  it('returns null for an event with no DID tags', async () => {
     mockState.rows = [MOCK_ROW];
     const event = buildKind9Event(PUB, 'group-1', 'hello', PRIV);
-    expect(await resolveDidFromEvent(event)).toBeUndefined();
+    expect(await resolveDidFromEvent(event)).toBeNull();
   });
 
-  it('returns undefined when the imajin-did tag is present but imajin-attestation is missing', async () => {
+  it('returns null when imajin-did is present but imajin-attestation is missing', async () => {
     mockState.rows = [MOCK_ROW];
-    // Manually craft an event with only the imajin-did tag
     const event = buildKind9Event(PUB, 'group-1', 'hello', PRIV);
     const partial = {
       ...event,
       tags: [...event.tags, ['imajin-did', OWNER_DID]],
     };
-    expect(await resolveDidFromEvent(partial)).toBeUndefined();
+    expect(await resolveDidFromEvent(partial)).toBeNull();
   });
 
-  it('returns undefined when the DB has no matching attestation', async () => {
+  it('returns null when the DB has no matching attestation', async () => {
     mockState.rows = [];
     const event = buildKind9Event(PUB, 'group-1', 'hello', PRIV, {
       ownerDid: OWNER_DID,
       attestationDigest: EXPECTED_DIGEST,
     });
-    expect(await resolveDidFromEvent(event)).toBeUndefined();
+    expect(await resolveDidFromEvent(event)).toBeNull();
   });
 
-  it('returns undefined when the event pubkey does not match payload.nostr_pubkey', async () => {
+  it('returns null when the event pubkey does not match payload.nostr_pubkey', async () => {
     const otherPriv = generateNostrPrivkey();
     const otherPub = deriveNostrPubkey(otherPriv);
-
-    // Attestation is for MOCK_ROW.payload.nostr_pubkey = PUB,
-    // but the event is signed by otherPub
     mockState.rows = [MOCK_ROW];
     const event = buildKind9Event(otherPub, 'group-1', 'hello', otherPriv, {
       ownerDid: OWNER_DID,
       attestationDigest: EXPECTED_DIGEST,
     });
-    expect(await resolveDidFromEvent(event)).toBeUndefined();
+    expect(await resolveDidFromEvent(event)).toBeNull();
   });
 
-  it('returns undefined when the attestationDigest tag is wrong', async () => {
+  it('returns null when the attestationDigest tag is wrong', async () => {
     mockState.rows = [MOCK_ROW];
     const wrongDigest = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const event = buildKind9Event(PUB, 'group-1', 'hello', PRIV, {
       ownerDid: OWNER_DID,
       attestationDigest: wrongDigest,
     });
-    expect(await resolveDidFromEvent(event)).toBeUndefined();
+    expect(await resolveDidFromEvent(event)).toBeNull();
   });
 
-  it('round-trip: resolves the correct DID from an event with real DID tags', async () => {
+  it('round-trip: resolves status=active and correct DID', async () => {
     mockState.rows = [MOCK_ROW];
-    // Build an event using the real digest computed from MOCK_ROW
     const event = buildKind9Event(PUB, 'group-1', 'Agent says hi', PRIV, {
       ownerDid: OWNER_DID,
       attestationDigest: EXPECTED_DIGEST,
     });
-    const resolved = await resolveDidFromEvent(event);
-    expect(resolved).toBe(OWNER_DID);
+    const result = await resolveDidFromEvent(event);
+    expect(result?.status).toBe('active');
+    expect(result?.did).toBe(OWNER_DID);
   });
 
-  it('round-trip: resolved DID matches loadDidTags ownerDid', async () => {
+  it('round-trip: loadDidTags + resolveDidFromEvent agree on DID and status', async () => {
     mockState.rows = [MOCK_ROW];
     const didTags = await loadDidTags(OWNER_DID);
     expect(didTags).toBeDefined();
 
     const event = buildKind9Event(PUB, 'group-1', 'Round-trip', PRIV, didTags);
-    const resolved = await resolveDidFromEvent(event);
-    expect(resolved).toBe(OWNER_DID);
+    const result = await resolveDidFromEvent(event);
+    expect(result?.status).toBe('active');
+    expect(result?.did).toBe(OWNER_DID);
   });
+});
+
+// ── resolveDidFromEvent — revocation path (#1415) ─────────────────────────────
+
+/** Build a row with revokedAt set to the given timestamp. */
+function revokedRow(revokedAtMs: number) {
+  return { ...MOCK_ROW, revokedAt: new Date(revokedAtMs) };
+}
+
+describe('resolveDidFromEvent — revocation path', () => {
+  it('returns status=revoked when the only matching attestation is revoked', async () => {
+    // Revoked 1 hour after issuance
+    mockState.rows = [revokedRow(ISSUED_AT_MS + 3_600_000)];
+    const event = buildKind9Event(PUB, 'group-1', 'old message', PRIV, {
+      ownerDid: OWNER_DID,
+      attestationDigest: EXPECTED_DIGEST,
+    });
+    const result = await resolveDidFromEvent(event);
+    expect(result?.status).toBe('revoked');
+    expect(result?.did).toBe(OWNER_DID);
+  });
+
+  it('revokedAt matches the row\'s revokedAt date', async () => {
+    const revokedAtMs = ISSUED_AT_MS + 3_600_000;
+    mockState.rows = [revokedRow(revokedAtMs)];
+    const event = buildKind9Event(PUB, 'group-1', 'msg', PRIV, {
+      ownerDid: OWNER_DID,
+      attestationDigest: EXPECTED_DIGEST,
+    });
+    const result = await resolveDidFromEvent(event) as Extract<ResolveResult, { status: 'revoked' }>;
+    expect(result.revokedAt).toEqual(new Date(revokedAtMs));
+  });
+
+  it('validAtEventTime=true when event was signed BEFORE revocation', async () => {
+    // Event created_at is in Unix seconds; revokedAt is later in ms
+    const revokedAtMs = ISSUED_AT_MS + 3_600_000; // 1 hour after issuance
+    mockState.rows = [revokedRow(revokedAtMs)];
+
+    // Build an event timestamped BEFORE the revocation
+    const eventCreatedAtSec = Math.floor((ISSUED_AT_MS + 1_800_000) / 1000); // 30 min after issuance
+    const event = {
+      ...buildKind9Event(PUB, 'group-1', 'historical msg', PRIV, {
+        ownerDid: OWNER_DID,
+        attestationDigest: EXPECTED_DIGEST,
+      }),
+      created_at: eventCreatedAtSec,
+    };
+    const result = await resolveDidFromEvent(event) as Extract<ResolveResult, { status: 'revoked' }>;
+    expect(result.validAtEventTime).toBe(true);
+  });
+
+  it('validAtEventTime=false when event was signed AFTER revocation', async () => {
+    const revokedAtMs = ISSUED_AT_MS + 1_800_000; // 30 min after issuance
+    mockState.rows = [revokedRow(revokedAtMs)];
+
+    // Build an event timestamped AFTER the revocation
+    const eventCreatedAtSec = Math.floor((ISSUED_AT_MS + 3_600_000) / 1000); // 1 hour after issuance
+    const event = {
+      ...buildKind9Event(PUB, 'group-1', 'post-revocation msg', PRIV, {
+        ownerDid: OWNER_DID,
+        attestationDigest: EXPECTED_DIGEST,
+      }),
+      created_at: eventCreatedAtSec,
+    };
+    const result = await resolveDidFromEvent(event) as Extract<ResolveResult, { status: 'revoked' }>;
+    expect(result.validAtEventTime).toBe(false);
+  });
+
+  it('active binding wins over revoked binding for the same DID', async () => {
+    // Two rows for the same DID: one revoked, one active
+    const revoked = revokedRow(ISSUED_AT_MS + 3_600_000);
+    const active = MOCK_ROW; // revokedAt: null
+    mockState.rows = [revoked, active];
+
+    const event = buildKind9Event(PUB, 'group-1', 'msg', PRIV, {
+      ownerDid: OWNER_DID,
+      attestationDigest: EXPECTED_DIGEST,
+    });
+    const result = await resolveDidFromEvent(event);
+    expect(result?.status).toBe('active');
+  });
+
+  // Note: loadDidTags skips revoked rows via `isNull(attestations.revokedAt)` in
+  // the WHERE clause. That SQL filter is enforced by the real database; the mock
+  // here doesn't implement column-level filtering, so we don't test it at this
+  // level. The WHERE clause in did-resolver.ts is the source of truth.
 });
