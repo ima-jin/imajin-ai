@@ -16,6 +16,15 @@
  * `github_list_issues`   — requiredScope: 'github:read'
  * `github_get_issue`     — requiredScope: 'github:read'
  *
+ * ── #1373 — org/repo discovery (read-tier, disclosure allowlist) ───────────────
+ * `github_list_orgs`     — requiredScope: 'github:read'
+ * `github_list_repos`    — requiredScope: 'github:read'
+ * `github_get_repo`      — requiredScope: 'github:read'
+ * These answer "what orgs/repos can this connection see?" so a write can be
+ * targeted. Results are filtered server-side against the `github:read` manifest
+ * allowlist (a DISCLOSURE bound, not a capability bound — the OAuth `repo` scope
+ * is the capability bound at GitHub).
+ *
  * All write tools gate on `github:write`; read tools gate on `github:read`.
  * The per-tool `requiredScope` check in `handleMcpRpc` runs BEFORE the
  * handler — the connector lib's `requireGrantAndPat` is an additional
@@ -34,6 +43,9 @@ import {
   listIssues,
   getIssue,
   updateIssue,
+  listOrgs,
+  listRepos,
+  getRepo,
 } from '@/src/lib/github/connector';
 
 // ── B4 — PAT ingestion ────────────────────────────────────────────────────────
@@ -336,6 +348,104 @@ const updateIssueTool: McpTool = {
   },
 };
 
+// ── #1373 — Org / repo discovery tools (read-tier) ────────────────────────────
+
+const listOrgsTool: McpTool = {
+  name: 'github_list_orgs',
+  requiredScope: 'github:read',
+  description:
+    'List the GitHub organizations this connection can see, so you can discover ' +
+    'where you are able to act before targeting a write. Read-tier: no confirm ' +
+    'step. Results are filtered by the disclosure allowlist on your github:read ' +
+    'grant (empty/absent = all visible orgs). ' +
+    'Requires an active github:read grant in your scope-manifest and a stored ' +
+    'credential from github_connect.',
+  inputSchema: {
+    type: 'object',
+    properties: {},
+    additionalProperties: false,
+  },
+  async handler(_args, ctx) {
+    const orgs = await listOrgs(ctx.did);
+    return json(orgs.map((o) => ({ login: o.login, id: o.id, description: o.description })));
+  },
+};
+
+const listReposTool: McpTool = {
+  name: 'github_list_repos',
+  requiredScope: 'github:read',
+  description:
+    'List the GitHub repositories this connection can see (optionally scoped to a ' +
+    'single org), returning the fields needed to target a write: full_name, ' +
+    'private, permissions, default_branch. Read-tier: no confirm step. Results are ' +
+    'filtered by the disclosure allowlist on your github:read grant ' +
+    '(empty/absent = all visible repos). ' +
+    'Requires an active github:read grant in your scope-manifest and a stored ' +
+    'credential from github_connect.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      org: {
+        type: 'string',
+        description: 'Optional org login to scope the listing (e.g. "ima-jin")',
+      },
+    },
+    additionalProperties: false,
+  },
+  async handler(args, ctx) {
+    const org = str(args, 'org');
+    const repos = await listRepos(ctx.did, org);
+    return json(
+      repos.map((r) => ({
+        full_name: r.full_name,
+        private: r.private,
+        permissions: r.permissions ?? null,
+        default_branch: r.default_branch,
+        html_url: r.html_url,
+        description: r.description,
+      })),
+    );
+  },
+};
+
+const getRepoTool: McpTool = {
+  name: 'github_get_repo',
+  requiredScope: 'github:read',
+  description:
+    'Get a single repository\u2019s detail (permissions, default branch, visibility) ' +
+    'before acting on it. Read-tier: no confirm step. If the repo is outside the ' +
+    'disclosure allowlist on your github:read grant, this returns a ' +
+    'github_not_in_scope error and never fetches or reveals the repo. ' +
+    'Requires an active github:read grant in your scope-manifest and a stored ' +
+    'credential from github_connect. repo format: "owner/repo".',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      repo: {
+        type: 'string',
+        description: 'Repository in "owner/repo" format',
+      },
+    },
+    required: ['repo'],
+    additionalProperties: false,
+  },
+  async handler(args, ctx) {
+    const repo = str(args, 'repo');
+    if (repo === undefined) throw new Error('repo is required');
+
+    const data = await getRepo(ctx.did, repo);
+
+    return json({
+      full_name: data.full_name,
+      private: data.private,
+      permissions: data.permissions ?? null,
+      default_branch: data.default_branch,
+      html_url: data.html_url,
+      description: data.description,
+    });
+  },
+};
+
 export const githubTools: McpTool[] = [
   connectTool,
   createIssueTool,
@@ -343,4 +453,7 @@ export const githubTools: McpTool[] = [
   listIssuesTool,
   getIssueTool,
   updateIssueTool,
+  listOrgsTool,
+  listReposTool,
+  getRepoTool,
 ];

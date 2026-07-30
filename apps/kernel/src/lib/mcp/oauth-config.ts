@@ -159,6 +159,10 @@ export function areRedirectUrisAllowed(uris: readonly string[]): boolean {
  *                       sovereignty boundary; distinct from media:write)
  *   connections:read  — enumerate caller's trust-graph connections (used by
  *                       connections_list to resolve a name → DID for sharing)
+ *   messages:read     — list caller's conversations + read their messages
+ *                       (imajin_list_conversations / imajin_read_messages, #1393)
+ *   messages:write    — send a message onBehalfOf the caller
+ *                       (imajin_send_message, #1393)
  *
  * A given client only receives a scope if its registry.apps.requested_scopes
  * includes it — no existing client gains new capability implicitly.
@@ -168,6 +172,8 @@ export const MCP_SCOPES = [
   'media:write',
   'media:share',
   'connections:read',
+  'messages:read',
+  'messages:write',
   'github:read',
   'github:write',
   'github:org',

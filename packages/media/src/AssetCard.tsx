@@ -32,12 +32,10 @@ export function AssetCard({
     : `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      className="bg-[#1a1a1a] border border-gray-800 rounded-lg overflow-hidden hover:border-orange-500 transition-colors cursor-pointer"
+    <button
+      type="button"
+      className="bg-[#1a1a1a] border border-gray-800 rounded-lg overflow-hidden hover:border-orange-500 transition-colors cursor-pointer text-left w-full"
       onClick={() => onClick?.(id)}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick?.(id); }}
     >
       {thumbPath ? (
         <img src={thumbPath} alt={filename} className="w-full h-32 object-cover" />
@@ -50,6 +48,6 @@ export function AssetCard({
         <p className="text-sm text-white truncate">{filename}</p>
         <p className="text-xs text-gray-500 mt-1">{mimeType} · {sizeLabel}</p>
       </div>
-    </div>
+    </button>
   );
 }

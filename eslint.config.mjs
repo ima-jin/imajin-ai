@@ -106,7 +106,7 @@ export default tseslint.config(
   },
 
   // ── SonarJS — repo-wide ────────────────────────────────────
-  // HIGH rules: S3776 + S2004 (warn; flip to error when #1466 closes)
+  // S3776 + S2004 now both available via eslint-plugin-sonarjs v2
   {
     plugins: { sonarjs },
     rules: {

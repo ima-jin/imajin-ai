@@ -29,6 +29,8 @@ vi.mock('@/src/lib/mcp/oauth-config', () => ({
     'media:write',
     'media:share',
     'connections:read',
+    'messages:read',
+    'messages:write',
     'github:read',
     'github:write',
     'github:org',
@@ -122,6 +124,18 @@ describe('POST /mcp surface scope gate (#1337)', () => {
 
   it('allows a github:read token through the surface gate', async () => {
     h.tokenPayload = validPayload({ scope: 'github:read' });
+    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
+    expect(res.status).toBe(200);
+  });
+
+  it('allows a messages:read token through the surface gate', async () => {
+    h.tokenPayload = validPayload({ scope: 'messages:read' });
+    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
+    expect(res.status).toBe(200);
+  });
+
+  it('allows a messages:write token through the surface gate', async () => {
+    h.tokenPayload = validPayload({ scope: 'messages:write' });
     const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
     expect(res.status).toBe(200);
   });

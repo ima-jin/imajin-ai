@@ -16,9 +16,8 @@
  *   media:write      → on-consent  (tightened; connector needs explicit consent)
  *   media:share      → on-consent  (touches others — crosses sovereignty boundary)
  *   connections:read → silent      (materialises immediately on publish)
- *
- * `messages:read` / `messages:write` (#1393) will be added here when that
- * issue lands; the registry entry is wired at that point too.
+ *   messages:read    → silent      (materialises immediately on publish)
+ *   messages:write   → on-consent  (tightened; sends onBehalfOf the human)
  *
  * Refs: #1394 (this epic) · #1222 (MCP grant back-port) · #1209 (channel-links) ·
  *       #1207 (projection reactor) · scope-manifest-core (shared implementation)
@@ -63,6 +62,17 @@ export const MCP_SCOPE_DESCRIPTORS: Readonly<Record<string, ConnectorScopeDescri
     label: 'Read your trust-graph connections',
     release: { discloses_others: false, sensitive: false },
     // Derived tier: silent → materialises immediately on publish.
+  },
+  'messages:read': {
+    verb: 'read', surface: 'messages',
+    label: 'List your conversations and read their messages',
+    release: { discloses_others: false, sensitive: false },
+    // Derived tier: silent → materialises immediately on publish.
+  },
+  'messages:write': {
+    verb: 'write', surface: 'messages',
+    label: 'Send messages in your conversations on your behalf',
+    release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_CONNECTOR_DID },
   },
 };
 

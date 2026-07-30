@@ -27,7 +27,7 @@ INSERT INTO kernel.bus_chain_configs (event_type, scope, reactors, enabled)
 VALUES (
   'calendar.entry.updated',
   NULL,
-  '[{"type":"emit","config":{},"enabled":true}]'::jsonb,
+  '[{"type":"emit","config":{},"enabled":true}]'::jsonb, -- NOSONAR — seed migration: repeated emit-only reactor JSON cannot be extracted to a SQL variable
   true
 )
 ON CONFLICT (event_type, scope) DO NOTHING;

@@ -74,8 +74,7 @@ export default function AgentsPage() {
         globalThis.location.href = '/auth/login?next=/auth/agents';
         return;
       }
-    } catch (err) {
-      void err; // logged via status message below
+    } catch {
       showStatus('error', 'Failed to load agents');
     } finally {
       setLoading(false);

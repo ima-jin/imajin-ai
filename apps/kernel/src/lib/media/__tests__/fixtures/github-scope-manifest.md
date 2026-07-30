@@ -48,3 +48,25 @@ Tiers derive from the #1196 consent 2×2 (self/others × sensitive/not):
 - `github:write` — write × only-you → tightened to **on-consent** (you see it).
 - `github:org` — touches others → **on-consent** (deliberate).
 - `github:actions` — touches others + spends → **never** (never silent).
+
+## Discovery disclosure allowlist (#1373)
+
+The `github:read` grant may carry an optional `allowlist:` field. It is a
+**disclosure** bound for the discovery tools (`github_list_orgs`,
+`github_list_repos`, `github_get_repo`) — NOT a capability bound. The OAuth
+`repo` scope granted at GitHub is the capability bound; the allowlist only
+narrows which orgs/repos the connector reveals to the model. Entries are org
+logins or `owner/repo` full names; an **empty or absent** allowlist means
+**allow-all**. Listings are filtered server-side after the GitHub call, and
+`github_get_repo` returns `github_not_in_scope` for an out-of-allowlist target
+without fetching it.
+
+```yaml
+"github:read":
+  verb: read
+  surface: repos
+  label: "Read your own repos, issues and PRs"
+  allowlist:
+    - ima-jin                 # org-level: discloses the org and all its repos
+    - a-r-t-i-f-a-c-t/artifactagent   # single repo
+```

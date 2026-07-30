@@ -26,17 +26,10 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: Readonly<Messa
 
     return (
       <>
-        <div
-          role="button"
-          tabIndex={0}
-          className="mt-2 cursor-pointer"
+        <button
+          type="button"
+          className="mt-2 cursor-pointer block"
           onClick={() => setLightboxOpen(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setLightboxOpen(true);
-            }
-          }}
           aria-label={`Open image ${mediaMeta.originalName || 'preview'}`}
         >
           <img
@@ -45,17 +38,15 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: Readonly<Messa
             className="rounded-lg max-w-[300px] hover:opacity-90 transition"
             loading="lazy"
           />
-        </div>
+        </button>
 
         {/* Lightbox */}
         {lightboxOpen && (
           <div
-            role="button"
-            tabIndex={0}
             className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
             onClick={() => setLightboxOpen(false)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+              if (e.key === 'Escape') {
                 e.preventDefault();
                 setLightboxOpen(false);
               }

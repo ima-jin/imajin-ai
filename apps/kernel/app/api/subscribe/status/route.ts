@@ -97,10 +97,10 @@ export async function PATCH(request: NextRequest) {
       });
     }
   } else if (existingSub) {
-      await db.update(subscriptions)
-        .set({ status: 'unsubscribed', unsubscribedAt: new Date() })
-        .where(eq(subscriptions.id, existingSub.id));
-    }
+    await db.update(subscriptions)
+      .set({ status: 'unsubscribed', unsubscribedAt: new Date() })
+      .where(eq(subscriptions.id, existingSub.id));
+  }
 
   return NextResponse.json({ subscribed: !!subscribed });
 }

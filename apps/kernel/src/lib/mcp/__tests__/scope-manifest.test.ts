@@ -43,9 +43,12 @@ const MCP_DID = 'did:imajin:mcp-connector';
 // ── Descriptor / constant tests ───────────────────────────────────────────────
 
 describe('MCP_SCOPE_DESCRIPTORS', () => {
-  it('defines all four MCP scopes', () => {
+  it('defines all six MCP scopes', () => {
     expect(new Set(VALID_MCP_SCOPES)).toEqual(
-      new Set(['media:read', 'media:write', 'media:share', 'connections:read']),
+      new Set([
+        'media:read', 'media:write', 'media:share', 'connections:read',
+        'messages:read', 'messages:write',
+      ]),
     );
   });
 
@@ -76,6 +79,19 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
     expect(r.discloses_others).toBe(false);
     expect(r.sensitive).toBe(false);
     expect(r.release).toBeUndefined();
+  });
+
+  it('messages:read is silent (no release override, discloses_others: false)', () => {
+    const r = MCP_SCOPE_DESCRIPTORS['messages:read'].release;
+    expect(r.discloses_others).toBe(false);
+    expect(r.sensitive).toBe(false);
+    expect(r.release).toBeUndefined();
+  });
+
+  it('messages:write is on-consent (explicit release override)', () => {
+    const r = MCP_SCOPE_DESCRIPTORS['messages:write'].release;
+    expect(r.release).toBe('on-consent');
+    expect(r.viewer).toBe(MCP_DID);
   });
 });
 

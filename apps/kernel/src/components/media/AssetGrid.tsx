@@ -64,8 +64,11 @@ export function AssetGrid({
       const next = value(selectedAssetIds);
       if (onSelectedAssetIdsChange) onSelectedAssetIdsChange(next);
       else setInternalSelectedAssetIds(next);
-    } else if (onSelectedAssetIdsChange) onSelectedAssetIdsChange(value);
-      else setInternalSelectedAssetIds(value);
+    } else if (onSelectedAssetIdsChange) {
+      onSelectedAssetIdsChange(value);
+    } else {
+      setInternalSelectedAssetIds(value);
+    }
   }, [onSelectedAssetIdsChange, selectedAssetIds]);
 
   const setMoveFolderId = useCallback((value: string | ((prev: string) => string)) => {
@@ -73,8 +76,11 @@ export function AssetGrid({
       const next = value(moveFolderId);
       if (onMoveFolderIdChange) onMoveFolderIdChange(next);
       else setInternalMoveFolderId(next);
-    } else if (onMoveFolderIdChange) onMoveFolderIdChange(value);
-      else setInternalMoveFolderId(value);
+    } else if (onMoveFolderIdChange) {
+      onMoveFolderIdChange(value);
+    } else {
+      setInternalMoveFolderId(value);
+    }
   }, [onMoveFolderIdChange, moveFolderId]);
   const selectionActive = selectedAssetIds.size > 0 || selectionMode;
   const uploadRef = useRef<UploadZoneHandle>(null);
@@ -230,19 +236,19 @@ export function AssetGrid({
           return next;
         });
       } else if (selectionMode) {
-          // In selection mode: toggle selection only
-          setSelectedAssetIds((prev) => {
-            const next = new Set(prev);
-            if (next.has(asset.id)) next.delete(asset.id);
-            else next.add(asset.id);
-            return next;
-          });
-          onLastClickIdxChange?.(idx);
-        } else {
-          // Not in selection mode: open detail
-          onLastClickIdxChange?.(idx);
-          onSelectAsset(asset.id);
-        }
+        // In selection mode: toggle selection only
+        setSelectedAssetIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(asset.id)) next.delete(asset.id);
+          else next.add(asset.id);
+          return next;
+        });
+        onLastClickIdxChange?.(idx);
+      } else {
+        // Not in selection mode: open detail
+        onLastClickIdxChange?.(idx);
+        onSelectAsset(asset.id);
+      }
     },
     [assets, onSelectAsset, selectionMode, lastClickIdxValue, onLastClickIdxChange]
   );
@@ -575,8 +581,6 @@ export function AssetGrid({
               return (
                 <div
                   key={asset.id}
-                  role="button"
-                  tabIndex={0}
                   className={`group flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
                     asset.id === selectedAssetId || isChecked
                       ? "border-orange-500 bg-orange-500/10"

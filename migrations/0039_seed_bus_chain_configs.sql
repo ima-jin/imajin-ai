@@ -37,7 +37,7 @@ VALUES ('connection.invited', NULL, '[{"type":"attestation","config":{"attestati
 ON CONFLICT (event_type, scope) DO NOTHING;
 
 INSERT INTO kernel.bus_chain_configs (event_type, scope, reactors, enabled)
-VALUES ('connection.create', NULL, '[{"type":"emit","config":{},"enabled":true}]'::jsonb, true)
+VALUES ('connection.create', NULL, '[{"type":"emit","config":{},"enabled":true}]'::jsonb, true) -- NOSONAR — seed migration: repeated emit-only reactor JSON cannot be extracted to a SQL variable
 ON CONFLICT (event_type, scope) DO NOTHING;
 
 INSERT INTO kernel.bus_chain_configs (event_type, scope, reactors, enabled)
