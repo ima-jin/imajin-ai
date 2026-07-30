@@ -1,17 +1,13 @@
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { eq, desc, and, inArray } from 'drizzle-orm';
-import { db, conversationsV2, messagesV2, conversationReadsV2 } from '@/src/db';
+import { eq } from 'drizzle-orm';
+import { db, conversationsV2 } from '@/src/db';
 import { getClient } from '@imajin/db';
 import { requireAuth, resolveEffectiveDid, resolveActingDid } from '@imajin/auth';
 import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
 import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/kernel/utils';
-import { dmDid, parseConversationDid } from '@/src/lib/chat/conversation-did';
-import {
-  countUnread,
-  extractMessagePreview,
-  resolveDmParticipant,
-} from '@/src/lib/chat/conversation-helpers';
+import { dmDid } from '@/src/lib/chat/conversation-did';
+import { listConversations } from '@/src/lib/chat/queries';
 
 const rawSql = getClient();
 
@@ -27,89 +23,8 @@ export const GET = withLogger('kernel', async (request, { log }) => {
   const effectiveDid = auth.effectiveDid;
 
   try {
-    // Discover all conversation DIDs this user participates in (same logic as conversations-v2)
-    const [readRecords, sentMessages, createdConvs, podConvDids, memberConvDids] = await Promise.all([
-      db
-        .select()
-        .from(conversationReadsV2)
-        .where(eq(conversationReadsV2.did, effectiveDid)),
-      db
-        .selectDistinct({ conversationDid: messagesV2.conversationDid })
-        .from(messagesV2)
-        .where(eq(messagesV2.fromDid, effectiveDid)),
-      db
-        .select({ did: conversationsV2.did })
-        .from(conversationsV2)
-        .where(eq(conversationsV2.createdBy, effectiveDid)),
-      rawSql`
-        SELECT p.conversation_did
-        FROM connections.pods p
-        JOIN connections.pod_members pm ON pm.pod_id = p.id
-        WHERE pm.did = ${effectiveDid}
-          AND pm.removed_at IS NULL
-          AND p.conversation_did IS NOT NULL
-      `,
-      rawSql`
-        SELECT conversation_did
-        FROM chat.conversation_members
-        WHERE member_did = ${effectiveDid}
-          AND left_at IS NULL
-      `,
-    ]);
-
-    const didSet = new Set<string>([
-      ...readRecords.map(r => r.conversationDid),
-      ...sentMessages.map(m => m.conversationDid),
-      ...createdConvs.map(c => c.did),
-      ...podConvDids.map((r: Record<string, string>) => r.conversation_did),
-      ...memberConvDids.map((r: Record<string, string>) => r.conversation_did),
-    ]);
-
-    if (didSet.size === 0) {
-      return jsonResponse({ conversations: [] });
-    }
-
-    const convs = await db
-      .select()
-      .from(conversationsV2)
-      .where(inArray(conversationsV2.did, Array.from(didSet)))
-      .orderBy(desc(conversationsV2.lastMessageAt));
-
-    const readMap = new Map(readRecords.map(r => [r.conversationDid, r.lastReadAt]));
-
-    const result = await Promise.all(
-      convs.map(async (conv) => {
-        const parsed = parseConversationDid(conv.did);
-
-        // Last message preview
-        const [lastMsg] = await db
-          .select()
-          .from(messagesV2)
-          .where(eq(messagesV2.conversationDid, conv.did))
-          .orderBy(desc(messagesV2.createdAt))
-          .limit(1);
-
-        const lastReadAt = readMap.get(conv.did);
-        const unread = await countUnread(conv.did, effectiveDid, lastReadAt);
-        const lastMessagePreview = extractMessagePreview(lastMsg);
-        const otherParticipant = await resolveDmParticipant(conv, effectiveDid, rawSql);
-
-        return {
-          did: conv.did,
-          name: conv.name,
-          type: parsed.type,
-          slug: parsed.slug,
-          createdBy: conv.createdBy,
-          createdAt: conv.createdAt,
-          lastMessageAt: conv.lastMessageAt,
-          lastMessagePreview,
-          unread,
-          otherParticipant,
-        };
-      })
-    );
-
-    return jsonResponse({ conversations: result });
+    const conversations = await listConversations(effectiveDid);
+    return jsonResponse({ conversations });
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to list conversations');
     return errorResponse('Failed to list conversations', 500);
