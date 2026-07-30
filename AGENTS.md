@@ -88,3 +88,11 @@ scripts/init-taxonomy.sh ima-jin/imajin-ai --set universal --set platform
 - Don't close-and-icebox real ideas — a genuine idea not being worked now stays **open** (shelved), not closed.
 - Use GitHub's **native sub-issues / blocked-by** (GraphQL `addSubIssue` / `addBlockedBy`) over `- [ ]` body checklists.
 - Labels are for **type/topic**; Status/Priority/Vertical live on the org [Roadmap board](https://github.com/orgs/ima-jin/projects/5), not as labels.
+
+## Deploy guardrails
+
+**NEVER `git pull` on the prod box to deploy.** Always use the pipeline:
+- Tag-triggered: `git tag vX.Y.Z && git push origin vX.Y.Z`
+- Manual/on-demand: `gh workflow run deploy-prod.yml -f ref=main` (or use the GitHub Actions UI)
+
+A manual `git pull` skips `build-changed.sh`, migrations, `reap-orphans`, and `pm2 restart`. The built `.next` stays stale and build failures are invisible (no failed CI run to inspect).
