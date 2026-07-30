@@ -31,7 +31,7 @@ function FairEditModal({
   onCancel,
 }: Readonly<{
   manifest: FairManifest;
-  onSave: (m: FairManifest) => void;
+  onSave: (m: FairManifest) => void | Promise<void>;
   onCancel: () => void;
 }>) {
   const [draft, setDraft] = useState<FairManifest>(manifest);

@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS auth.attestations (
     cid text,
     author_jws text,
     witness_jws text,
-    attestation_status text DEFAULT 'pending'::text
+    attestation_status text DEFAULT 'pending'::text -- NOSONAR — seed DDL: cannot extract string default to a variable
 );
 
 CREATE TABLE IF NOT EXISTS auth.challenges (

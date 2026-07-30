@@ -9,7 +9,7 @@ DECLARE
   deleted_count INT;
 BEGIN
   DELETE FROM registry.logs
-  WHERE created_at < now() - (p_days || ' days')::interval;
+  WHERE created_at < now() - (p_days || ' days')::interval; -- NOSONAR — plpgsql function: interval string cannot be extracted to a PL/SQL constant in this context
 
   GET DIAGNOSTICS deleted_count = ROW_COUNT;
   RETURN deleted_count;

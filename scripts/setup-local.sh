@@ -252,12 +252,14 @@ for app in "${APPS[@]}"; do
       events|coffee)
         set_env "$local_env" "NOTIFY_WEBHOOK_SECRET" "\"${NOTIFY_SECRET}\""
         ;;
+      *) ;; # no-op for other apps
     esac
 
     case "$app" in
       events|market)
         set_env "$local_env" "PAY_SERVICE_API_KEY" "\"${PAY_API_KEY}\""
         ;;
+      *) ;; # no-op for other apps
     esac
 
     ok "${app}/.env.local"
