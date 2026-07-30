@@ -34,6 +34,11 @@ import type { ConnectorStaticSecret } from './connector-static-secret';
 
 const log = createLogger('kernel');
 
+// Module-level CORS pre-flight handler — no closure dependency on factory opts.
+async function handleOptions(request: NextRequest): Promise<NextResponse> {
+  return corsOptions(request) as NextResponse;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ConnectorStaticSecretRouteOpts {
@@ -74,12 +79,6 @@ export interface ConnectorStaticSecretRouteHandlers {
 export function createConnectorStaticSecretRoutes(
   opts: ConnectorStaticSecretRouteOpts,
 ): ConnectorStaticSecretRouteHandlers {
-
-  // ── OPTIONS ──────────────────────────────────────────────────────────────
-
-  async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-    return corsOptions(request) as NextResponse;
-  }
 
   // ── GET ──────────────────────────────────────────────────────────────────
 
@@ -193,5 +192,5 @@ export function createConnectorStaticSecretRoutes(
     return NextResponse.json({ revoked }, { headers: cors });
   }
 
-  return { GET, POST, DELETE, OPTIONS };
+  return { GET, POST, DELETE, OPTIONS: handleOptions };
 }
