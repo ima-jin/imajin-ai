@@ -50,6 +50,28 @@ export class VaultEntryService {
         return latest;
     }
 
+    /**
+     * Return the raw latest entry for a field, exactly as persisted.
+     *
+     * Unlike {@link get}, this does NOT hide tombstones and does NOT assert
+     * integrity. It exists for two jobs that must work on entries `get` refuses
+     * to return:
+     *
+     *   1. Chaining `previousCid` — a writer must chain from the true latest
+     *      entry (tombstones included), otherwise the chain it signs disagrees
+     *      with what is actually on disk.
+     *   2. Recovery — tombstoning or inspecting an entry whose signature no
+     *      longer verifies. Without a non-asserting read, a single bad entry
+     *      would be permanently unfixable.
+     *
+     * Never unseal a peeked entry without verifying it first: the caller takes
+     * responsibility for integrity because this method deliberately skips it.
+     */
+    public async peek(field: string): Promise<VaultEntry | undefined> {
+        const vault = await this.repository.load();
+        return this.getLatestEntry(vault.entries, field);
+    }
+
     public async list(): Promise<VaultEntry[]> {
         const vault = await this.repository.load();
         const latestByField = new Map<string, VaultEntry>();
@@ -93,13 +115,38 @@ export class VaultEntryService {
         return this.repository.load();
     }
 
+    /**
+     * Persist an entry, appending it to the vault file.
+     *
+     * The caller's `previousCid` is authoritative and is NEVER overwritten:
+     * every entry arrives already signed, and the signature covers `previousCid`.
+     * Replacing it here would persist a payload that differs from the one that
+     * was signed, making the entry fail signature verification on the next read.
+     * That is exactly the bug this preserves against — a re-seal over a
+     * tombstoned field signed without `previousCid` (because `get` hides
+     * tombstones) then had the tombstone's cid injected after signing.
+     *
+     * `previousCid` is still auto-filled when the caller omitted it entirely,
+     * which keeps the convenience contract for callers that do not chain
+     * themselves. When that fill mutates the entry and integrity adapters are
+     * configured, the result is verified BEFORE it is written, so a
+     * signature-invalidating fill fails loudly at write time instead of
+     * silently corrupting the field for every later read.
+     */
     private async setInternal(entry: UpsertVaultEntryInput): Promise<VaultEntry> {
         const vault = await this.repository.load();
-        const previousCid = this.getLatestEntry(vault.entries, entry.field)?.cid ?? entry.previousCid;
-        const persistedEntry: VaultEntry = {
-            ...entry,
-            ...(previousCid === undefined  ? {} : { previousCid })
-        };
+        let persistedEntry = entry as VaultEntry;
+
+        if (entry.previousCid === undefined) {
+            const inferredPreviousCid = this.getLatestEntry(vault.entries, entry.field)?.cid;
+            if (inferredPreviousCid !== undefined) {
+                persistedEntry = { ...entry, previousCid: inferredPreviousCid } as VaultEntry;
+                if (this.adapters) {
+                    await assertEntryIntegrity(persistedEntry, this.adapters);
+                }
+            }
+        }
+
         vault.entries.push(persistedEntry);
         await this.repository.save(vault);
         return persistedEntry;

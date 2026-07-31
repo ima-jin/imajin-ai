@@ -54,6 +54,8 @@ export interface ConnectorRouteOpts {
    * (`configSealed`, `tokenSealed`). Native connectors omit it.
    *
    * Runs in parallel with findManifestAsset + readActiveScopes.
+   *
+   * A rejection here is contained, not fatal — see GET.
    */
   getExtraFields?: (ownerDid: string) => Promise<Record<string, unknown>>;
 }
@@ -96,6 +98,15 @@ export function createConnectorScopeManifestRoute(
    *   - `activeScopes`    — scopes currently active in auth.channel_links.
    *   - `validScopes`     — all scopes accepted by POST.
    *   - ...extra          — connector-specific credential booleans (optional).
+   *   - `credentialStatusUnavailable` — present and true only when the
+   *     credential probe failed (see below).
+   *
+   * This endpoint is what the connector card calls to render itself, including
+   * its Disconnect button. If it 500s, the card shows "Unavailable" and the user
+   * loses the very control they need to recover. So a failing credential probe
+   * degrades to "no credential status" rather than failing the whole response:
+   * the card falls back to its unconfigured state and Disconnect stays reachable.
+   * The error is logged so the underlying fault is still visible.
    */
   async function GET(request: NextRequest): Promise<NextResponse> {
     const cors = corsHeaders(request);
@@ -106,10 +117,25 @@ export function createConnectorScopeManifestRoute(
     }
     const ownerDid = resolveActingDid(auth.identity);
 
+    async function readExtraFields(): Promise<Record<string, unknown>> {
+      if (!opts.getExtraFields) {
+        return {};
+      }
+      try {
+        return await opts.getExtraFields(ownerDid);
+      } catch (err) {
+        log.error(
+          { err: String(err), ownerDid },
+          `${opts.name} scope-manifest: credential status probe failed — degrading response`,
+        );
+        return { credentialStatusUnavailable: true };
+      }
+    }
+
     const [manifestAsset, activeScopes, extraFields] = await Promise.all([
       opts.findManifestAsset(ownerDid),
       opts.readActiveScopes(ownerDid),
-      opts.getExtraFields ? opts.getExtraFields(ownerDid) : Promise.resolve({}),
+      readExtraFields(),
     ]);
 
     return NextResponse.json(

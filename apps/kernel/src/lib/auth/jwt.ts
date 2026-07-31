@@ -16,7 +16,20 @@ interface KeyPair {
 // Get or generate the key pair
 async function loadKeyPair(): Promise<KeyPair> {
   const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
-  
+
+  if (!privateKeyHex && process.env.NODE_ENV === 'production') {
+    // The ephemeral-keypair fallback below is a development convenience that is
+    // actively harmful in production: the key exists only in process memory, so
+    // every restart silently invalidates all outstanding session and app tokens,
+    // and no other process (or replica) can verify tokens this one signed.
+    // Refuse to boot rather than mint tokens nobody else can validate.
+    throw new Error(
+      'AUTH_PRIVATE_KEY is required in production: refusing to generate an ephemeral JWT signing key. ' +
+      'An ephemeral key invalidates every existing session on restart and cannot be verified by any other process. ' +
+      'Ensure the process environment carries AUTH_PRIVATE_KEY (node server.js does NOT load .env.local by itself).',
+    );
+  }
+
   if (privateKeyHex) {
     const privateKeyBytes = Buffer.from(privateKeyHex, 'hex');
     
@@ -53,7 +66,7 @@ async function loadKeyPair(): Promise<KeyPair> {
     return { privateKey: signingKey, publicKey: verifyKey };
   }
   
-  // For development: generate ephemeral key pair
+  // For development only: generate an ephemeral key pair. Production is gated above.
   return jose.generateKeyPair('EdDSA');
 }
 

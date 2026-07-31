@@ -47,9 +47,20 @@ function makeStubs(overrides: {
   publishReturn?: string;
   publishThrows?: boolean;
   extraFields?: Record<string, unknown>;
+  extraFieldsThrows?: Error;
 } = {}) {
   const activeScopes = overrides.activeScopes ?? ['test:read'];
   const manifestId = overrides.manifestId !== undefined ? overrides.manifestId : 'asset_abc';
+
+  function makeGetExtraFields() {
+    if (overrides.extraFieldsThrows) {
+      return vi.fn(async () => { throw overrides.extraFieldsThrows!; });
+    }
+    if (overrides.extraFields) {
+      return vi.fn(async () => overrides.extraFields!);
+    }
+    return undefined;
+  }
 
   return {
     findManifestAsset: vi.fn(async () => manifestId ? { id: manifestId } : null),
@@ -57,9 +68,7 @@ function makeStubs(overrides: {
     publish: overrides.publishThrows
       ? vi.fn(async () => { throw new Error('db failure'); })
       : vi.fn(async () => overrides.publishReturn ?? 'asset_new'),
-    getExtraFields: overrides.extraFields
-      ? vi.fn(async () => overrides.extraFields!)
-      : undefined,
+    getExtraFields: makeGetExtraFields(),
   };
 }
 
@@ -148,6 +157,43 @@ describe('GET — OAuth connector (with getExtraFields)', () => {
     expect(stubs.findManifestAsset).toHaveBeenCalledOnce();
     expect(stubs.readActiveScopes).toHaveBeenCalledOnce();
     expect(stubs.getExtraFields).toHaveBeenCalledOnce();
+  });
+});
+
+// A throwing credential probe must not take down the status response — the
+// connector card renders its Disconnect button from this endpoint, so a 500 here
+// leaves the user with no way to recover through the UI (#1518).
+describe('GET — credential probe failure', () => {
+  beforeEach(() => { h.authResult = { identity: {} }; });
+
+  it('still returns 200 with scope data when getExtraFields throws', async () => {
+    const { GET } = createConnectorScopeManifestRoute({
+      name: 'Test', validScopes: VALID_SCOPES,
+      ...makeStubs({
+        manifestId: 'asset_xyz',
+        activeScopes: ['test:read'],
+        extraFieldsThrows: new Error("Vault entry 'github-config:did:imajin:x' signature verification failed"),
+      }),
+    });
+
+    const res = await GET(makeRequest());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.manifestAssetId).toBe('asset_xyz');
+    expect(body.activeScopes).toEqual(['test:read']);
+  });
+
+  it('flags the degraded credential status and omits the booleans', async () => {
+    const { GET } = createConnectorScopeManifestRoute({
+      name: 'Test', validScopes: VALID_SCOPES,
+      ...makeStubs({ extraFieldsThrows: new Error('vault exploded') }),
+    });
+
+    const body = await (await GET(makeRequest())).json();
+    expect(body.credentialStatusUnavailable).toBe(true);
+    // Absent rather than guessed — the card falls back to its unconfigured state.
+    expect(body.configSealed).toBeUndefined();
+    expect(body.tokenSealed).toBeUndefined();
   });
 });
 
