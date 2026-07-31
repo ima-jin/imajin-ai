@@ -15,6 +15,7 @@ import {
   prepareRotationEntry,
   unwrapFieldKey,
   wrapFieldKey,
+  verifyEntryIntegrity,
   VAULT_ENTRY_VERSION_V1,
   VAULT_ENTRY_VERSION_V2,
   IntegrityErrorCode,
@@ -44,7 +45,29 @@ export const vaultService = new VaultEntryService(repository, {
   adapters: vaultAdapters,
 });
 
+// Deliberately does NOT derive the signing identity here. `next build` imports
+// this module with NODE_ENV=production while collecting page data, and a build
+// machine has no AUTH_PRIVATE_KEY — deriving at import time turns the runtime
+// key guard into a build failure. The identity is logged on first derivation
+// instead (see getNodeSigningIdentity in ./sealing).
 log.info({ vaultPath }, 'Vault service initialised');
+
+/**
+ * Resolve the `previousCid` a new entry for `field` must chain from.
+ *
+ * Reads the RAW latest entry (`peek`), not `get`, for two reasons:
+ *   - `get` hides tombstones, so a re-seal after a disconnect would sign a
+ *     payload with no `previousCid` while the store still chains from the
+ *     tombstone — a signed/persisted mismatch that fails verification forever.
+ *   - `get` asserts integrity, so an unverifiable entry would make it
+ *     impossible to write a replacement over it.
+ *
+ * The peeked entry is never unsealed here; only its cid is read.
+ */
+async function resolvePreviousCid(field: string): Promise<string | undefined> {
+  const latest = await vaultService.peek(field);
+  return latest?.cid;
+}
 
 /**
  * Seal a plaintext secret and store it as a signed vault entry.
@@ -64,8 +87,7 @@ export async function sealAndStore(field: string, plaintext: string): Promise<Va
   const keyId = deriveKeyId(identity.senderPubkey);
   const timestamp = new Date().toISOString();
 
-  const existingEntry = await vaultService.get(field);
-  const previousCid = existingEntry?.cid;
+  const previousCid = await resolvePreviousCid(field);
 
   const payload = {
     version: VAULT_ENTRY_VERSION_V1 as typeof VAULT_ENTRY_VERSION_V1,
@@ -120,7 +142,9 @@ export async function sealAndStoreV2(
   const keyId = deriveKeyId(identity.senderPubkey);
   const timestamp = new Date().toISOString();
 
-  const existingEntry = await vaultService.get(field);
+  // Raw latest entry (tombstones included) — both for chaining previousCid and
+  // for deciding whether a prior delegation grant needs superseding.
+  const existingEntry = await vaultService.peek(field);
   const previousCid = existingEntry?.cid;
 
   const payload = {
@@ -248,10 +272,16 @@ export async function sealAndStoreV2(
  * from all future reads while preserving the audit chain.
  *
  * Safe to call on a field that does not exist — returns undefined without error.
+ * Also safe to call on an already-tombstoned or UNVERIFIABLE field: this is the
+ * recovery path connector disconnect relies on, so it must never depend on the
+ * existing entry being readable. It peeks the raw latest entry and only reads
+ * its cid — the corrupt entry is never unsealed, and the fresh tombstone is
+ * signed by the current node identity.
+ *
  * No plaintext is logged at any point.
  */
 export async function deleteFromVault(field: string): Promise<VaultEntry | undefined> {
-  const existingEntry = await vaultService.get(field);
+  const existingEntry = await vaultService.peek(field);
   if (!existingEntry) {
     return undefined;
   }
@@ -315,15 +345,33 @@ export async function rotateAndStore(field: string, plaintext: string): Promise<
 }
 
 /**
- * Return true when the vault field exists and has not been deleted (tombstoned).
+ * Return true when the vault field holds a usable, verifiable secret.
  *
- * Reads only the vault metadata (no crypto operations) — safe to use for
- * status checks where the plaintext value is not needed. Returns false when
- * the field is absent or has been tombstoned via {@link deleteFromVault}.
+ * Never unseals — safe for status checks where the plaintext is not needed.
+ * Returns false when the field is absent, tombstoned via
+ * {@link deleteFromVault}, or fails integrity verification.
+ *
+ * Treating an unverifiable entry as `false` is the fail-closed reading of
+ * "is a usable credential sealed here?". Throwing instead would take down the
+ * connector status endpoint that renders the Disconnect button, making a single
+ * bad entry unrecoverable through the UI. The integrity failure is logged so
+ * the underlying problem stays visible rather than being silently swallowed.
  */
 export async function vaultFieldExists(field: string): Promise<boolean> {
-  const entry = await vaultService.get(field);
-  return entry !== undefined && entry !== null && entry.deleted !== true;
+  const entry = await vaultService.peek(field);
+  if (!entry || entry.deleted === true) {
+    return false;
+  }
+
+  const verified = await verifyEntryIntegrity(entry, vaultAdapters);
+  if (!verified.ok) {
+    log.warn(
+      { field, code: verified.error.code },
+      'Vault field failed integrity verification — reporting as not sealed',
+    );
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -423,8 +471,7 @@ export async function sealAndGrantStaticSecret(
   const keyId = deriveKeyId(identity.senderPubkey);
   const timestamp = new Date().toISOString();
 
-  const existingEntry = await vaultService.get(field);
-  const previousCid = existingEntry?.cid;
+  const previousCid = await resolvePreviousCid(field);
 
   const payload = {
     version: VAULT_ENTRY_VERSION_V2 as typeof VAULT_ENTRY_VERSION_V2,

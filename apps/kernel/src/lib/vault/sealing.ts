@@ -10,7 +10,10 @@
  */
 import { createHash } from 'node:crypto';
 import { crypto as authCrypto } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
 import { deriveSealKey, extractPrivateKeySeed, deriveXKeypairFromEd25519 } from '@imajin/vault-core';
+
+const log = createLogger('kernel');
 
 export interface NodeSigningIdentity {
     /** Hex-encoded Ed25519 private key (raw 32-byte seed format). */
@@ -25,6 +28,37 @@ export interface NodeSigningIdentity {
 const NODE_X25519_INFO = 'vault-node-x25519-v1';
 const OWNER_X25519_INFO = 'vault-owner-x25519-v1';
 
+/**
+ * Return AUTH_PRIVATE_KEY, refusing the dev fallback in production.
+ *
+ * Every derivation below (seal key, signing identity, node/owner X25519 keys)
+ * has a deterministic dev fallback so development is self-consistent without a
+ * configured key. In production that fallback is catastrophic in two distinct
+ * ways, both of which are silent:
+ *
+ *   1. Correctness — the fallback is a DIFFERENT node identity than the one that
+ *      sealed the existing entries, so every stored vault entry instantly fails
+ *      signature verification. The platform loses read access to all secrets
+ *      with no error at boot.
+ *   2. Security — the fallback seed is a hardcoded constant, making the node's
+ *      signing identity and sealing key publicly predictable.
+ *
+ * So in production the absence of the key is a boot failure, not a fallback.
+ * Failing loudly here is strictly better than serving traffic with the wrong
+ * cryptographic identity.
+ */
+function requireAuthPrivateKeyInProduction(): string | undefined {
+    const rawKey = process.env.AUTH_PRIVATE_KEY;
+    if (!rawKey && process.env.NODE_ENV === 'production') {
+        throw new Error(
+            'AUTH_PRIVATE_KEY is required in production: refusing to derive vault keys from the deterministic dev seed. ' +
+            'A dev-seed identity cannot read any existing vault entry and is publicly predictable. ' +
+            'Ensure the process environment carries AUTH_PRIVATE_KEY (node server.js does NOT load .env.local by itself).',
+        );
+    }
+    return rawKey;
+}
+
 // Process-lifetime caches — reading AUTH_PRIVATE_KEY once per process is correct.
 let cachedSealKey: Buffer | undefined;
 let cachedIdentity: NodeSigningIdentity | undefined;
@@ -38,16 +72,18 @@ let cachedOwnerXKeypair: { privateKey: string; publicKey: string } | undefined;
  * domain-separated from the raw signing key. The same seed never serves two
  * different cryptographic purposes directly.
  *
- * Dev fallback (AUTH_PRIVATE_KEY unset): a deterministic key derived from a
- * known dev seed — equivalent to auth/encrypt.ts' dev-mode behaviour.
- * Never use the fallback with real secrets.
+ * Dev fallback (AUTH_PRIVATE_KEY unset, non-production only): a deterministic
+ * key derived from a known dev seed — equivalent to auth/encrypt.ts' dev-mode
+ * behaviour. Never use the fallback with real secrets; in production the missing
+ * key throws instead (see requireAuthPrivateKeyInProduction).
  */
 export function getSealKey(): Buffer {
     if (cachedSealKey !== undefined) {
         return cachedSealKey;
     }
     // Single source of truth for seal-key derivation lives in @imajin/vault-core.
-    cachedSealKey = deriveSealKey(process.env.AUTH_PRIVATE_KEY);
+    // deriveSealKey has its own dev fallback, so the production guard runs first.
+    cachedSealKey = deriveSealKey(requireAuthPrivateKeyInProduction());
     return cachedSealKey;
 }
 
@@ -60,14 +96,15 @@ export function getSealKey(): Buffer {
  * This identity is what signs vault entries. The DID-to-key binding check in
  * vault-core passes because senderDid is derived directly from senderPubkey.
  *
- * Dev fallback (AUTH_PRIVATE_KEY unset): a deterministic key derived from the
- * same dev seed used above, so sign/verify is self-consistent in development.
+ * Dev fallback (AUTH_PRIVATE_KEY unset, non-production only): a deterministic
+ * key derived from the same dev seed used above, so sign/verify is
+ * self-consistent in development. In production the missing key throws.
  */
 export function getNodeSigningIdentity(): NodeSigningIdentity {
     if (cachedIdentity !== undefined) {
         return cachedIdentity;
     }
-    const rawKey = process.env.AUTH_PRIVATE_KEY;
+    const rawKey = requireAuthPrivateKeyInProduction();
     let seedHex: string;
     if (rawKey) {
         seedHex = extractPrivateKeySeed(rawKey);
@@ -78,6 +115,17 @@ export function getNodeSigningIdentity(): NodeSigningIdentity {
     const senderPubkey = authCrypto.getPublicKey(seedHex);
     const senderDid = `did:imajin:${senderPubkey.slice(0, 16)}`;
     cachedIdentity = { privateKeyHex: seedHex, senderPubkey, senderDid };
+
+    // Logged here rather than at module init so importing the vault (which
+    // `next build` does) never derives a key. The cache means this fires exactly
+    // once per process, on first real use. A wrong or fallback identity cannot
+    // read any existing entry, and that is otherwise invisible until the first
+    // read fails with SIGNATURE_INVALID — so surface it up front.
+    // senderDid is derived from the PUBLIC key and is safe to log; the seed is not.
+    log.info(
+        { senderDid, devFallback: rawKey === undefined },
+        'Vault signing identity derived',
+    );
     return cachedIdentity;
 }
 
@@ -111,7 +159,7 @@ function getOwnerXKeypair(): { privateKey: string; publicKey: string } {
     if (cachedOwnerXKeypair !== undefined) {
         return cachedOwnerXKeypair;
     }
-    const rawKey = process.env.AUTH_PRIVATE_KEY;
+    const rawKey = requireAuthPrivateKeyInProduction();
     if (rawKey) {
         cachedOwnerXKeypair = deriveXKeypairFromEd25519(rawKey, OWNER_X25519_INFO);
     } else {
@@ -131,8 +179,9 @@ function getOwnerXKeypair(): { privateKey: string; publicKey: string } {
  * Owner agents use this key as `recipientXPub` when wrapping a field key for
  * this node. The node uses the corresponding private key to unwrap at unseal time.
  *
- * Dev fallback (AUTH_PRIVATE_KEY unset): a deterministic key derived from the
- * same dev seed used by getSealKey, so wrap/unwrap is self-consistent in dev.
+ * Dev fallback (AUTH_PRIVATE_KEY unset, non-production only): a deterministic
+ * key derived from the same dev seed used by getSealKey, so wrap/unwrap is
+ * self-consistent in dev. In production the missing key throws.
  */
 export function getNodeXPublicKey(): string {
     return getNodeXKeypair().publicKey;
@@ -152,7 +201,7 @@ function getNodeXKeypair(): { privateKey: string; publicKey: string } {
     if (cachedNodeXKeypair !== undefined) {
         return cachedNodeXKeypair;
     }
-    const rawKey = process.env.AUTH_PRIVATE_KEY;
+    const rawKey = requireAuthPrivateKeyInProduction();
     if (rawKey) {
         cachedNodeXKeypair = deriveXKeypairFromEd25519(rawKey, NODE_X25519_INFO);
     } else {

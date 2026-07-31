@@ -36,6 +36,44 @@ Do **not** hand-edit the live `~/dev/ecosystem.config.js` / `~/prod/ecosystem.co
 without mirroring the change back here — that reintroduces the exact drift this
 directory exists to kill.
 
+## `prod-jin` env loading (#1520)
+
+`prod-jin` runs the Next **standalone** server (`node server.js`). Unlike
+`next dev` / `next start`, plain `node` does **not** load `.env.local`. Before
+this was fixed, the kernel env (including `AUTH_PRIVATE_KEY`) only reached the
+process when someone started it by hand with the env exported — so the next
+`pm2 restart` silently dropped it. The kernel then fell back to a deterministic
+dev signing key and **every sealed vault entry failed `SIGNATURE_INVALID`**
+platform-wide, with no error at boot.
+
+Two things now prevent a recurrence:
+
+1. `prod-jin` declares `env_file` pointing at the server's untracked
+   `apps/kernel/.env.local`, so the env is a property of the config rather than
+   of whoever ran the last restart. **Secrets are never committed here** — only
+   the path is.
+2. The kernel refuses to serve in production when `AUTH_PRIVATE_KEY` is absent
+   instead of deriving a dev key, and logs its derived vault `senderDid` on
+   first vault use.
+
+`env_file` requires pm2 ≥ 5.3. Verify after a restart:
+
+```bash
+pm2 restart ~/prod/ecosystem.config.js --only prod-jin --update-env
+# The vault identity is logged on first vault use — confirm it is the expected
+# node DID, and that devFallback is false:
+pm2 logs prod-jin --lines 200 | grep 'Vault signing identity derived'
+```
+
+The identity is logged on first use rather than at startup on purpose: deriving
+it at module-import time would make `next build` (which imports the vault with
+`NODE_ENV=production`) fail on any build machine, since those legitimately have
+no `AUTH_PRIVATE_KEY`.
+
+If the kernel exits immediately with an `AUTH_PRIVATE_KEY is required in
+production` error, the env file is missing or unreadable — that is the guard
+working, not a regression.
+
 ## Known drift captured on 2026-07-16 (documented, not yet reconciled)
 
 The prod file does **not** match what actually runs, in two ways. Both are
