@@ -3,18 +3,26 @@ module.exports = {
     {
       // prod-jin runs the Next standalone server directly (`node server.js`),
       // which does NOT auto-load .env.local the way `next dev` / `next start` do.
-      // Without env_file the process only ever saw AUTH_PRIVATE_KEY when someone
-      // started it by hand with the env exported, so the next `pm2 restart`
-      // silently dropped it and the kernel lost the ability to read every sealed
-      // vault entry. env_file makes the env a property of the config, not of
-      // whoever happened to run the last restart. Secrets stay in the untracked
-      // .env.local on the server; only the path is version-controlled.
+      // The process therefore only ever saw AUTH_PRIVATE_KEY when someone started
+      // it by hand with the env exported, so the next `pm2 restart` silently
+      // dropped it and the kernel lost the ability to read every sealed vault
+      // entry (#1520).
+      //
+      // `--env-file` (Node >= 20.6) loads it deterministically, making the env a
+      // property of this config rather than of whoever ran the last restart. It is
+      // the same mechanism the kernel's own `dev` script uses. Secrets stay in the
+      // untracked .env.local on the server; only the path is version-controlled.
+      //
+      // Node EXITS if the file is missing, which is deliberate here: a prod-jin
+      // that cannot load its env should crash loudly under pm2 rather than come
+      // back up with the wrong signing identity. Shell env still takes precedence
+      // over file values, so `env` below continues to win.
       "name": "prod-jin",
       "cwd": "/home/jin/prod/imajin-ai/apps/kernel",
       "script": "server.js",
       "args": "-p 7000",
       "interpreter": "node",
-      "env_file": "/home/jin/prod/imajin-ai/apps/kernel/.env.local",
+      "node_args": "--env-file=/home/jin/prod/imajin-ai/apps/kernel/.env.local",
       "env": {
         "NODE_ENV": "production"
       },
