@@ -11,8 +11,28 @@
  * a hard failure, and these tests pin that in both directions: throw in
  * production, still work in development.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { randomBytes } from 'node:crypto';
+
+// The import-time test below loads vault/index.ts, which pulls in the DB and bus
+// singletons. Stub them so the test exercises module evaluation only.
+vi.hoisted(() => {
+  const { join } = require('node:path') as typeof import('node:path');
+  const { tmpdir } = require('node:os') as typeof import('node:os');
+  process.env.VAULT_PATH = join(tmpdir(), `vault-key-guard-${Date.now()}.json`);
+});
+
+vi.mock('@/src/db', () => ({
+  db: {},
+  vaultDelegationGrants: {},
+  vaultGrantRequests: {},
+  channelLinks: {},
+}));
+
+vi.mock('@/src/lib/kernel/id', () => ({ generateId: (p: string) => `${p}_test` }));
+
+vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
+
 import {
   getSealKey,
   getNodeSigningIdentity,
@@ -84,6 +104,18 @@ describe('vault key derivation in production', () => {
     // The error is the only breadcrumb an operator gets at 3am, so it must point
     // at the actual cause: `node server.js` does not read .env.local.
     expect(() => getSealKey()).toThrow(/does NOT load \.env\.local/);
+  });
+});
+
+describe('module import in production', () => {
+  it('does not derive keys merely by importing the vault', async () => {
+    // `next build` imports route modules with NODE_ENV=production on a machine
+    // that legitimately has no AUTH_PRIVATE_KEY. Deriving a key at module scope
+    // therefore converts the runtime guard into a build failure, which is
+    // exactly what happened when the identity was logged at init.
+    setNodeEnv('production');
+
+    await expect(import('../index.js')).resolves.toBeDefined();
   });
 });
 

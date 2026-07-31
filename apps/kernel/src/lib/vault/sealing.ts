@@ -10,7 +10,10 @@
  */
 import { createHash } from 'node:crypto';
 import { crypto as authCrypto } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
 import { deriveSealKey, extractPrivateKeySeed, deriveXKeypairFromEd25519 } from '@imajin/vault-core';
+
+const log = createLogger('kernel');
 
 export interface NodeSigningIdentity {
     /** Hex-encoded Ed25519 private key (raw 32-byte seed format). */
@@ -112,6 +115,17 @@ export function getNodeSigningIdentity(): NodeSigningIdentity {
     const senderPubkey = authCrypto.getPublicKey(seedHex);
     const senderDid = `did:imajin:${senderPubkey.slice(0, 16)}`;
     cachedIdentity = { privateKeyHex: seedHex, senderPubkey, senderDid };
+
+    // Logged here rather than at module init so importing the vault (which
+    // `next build` does) never derives a key. The cache means this fires exactly
+    // once per process, on first real use. A wrong or fallback identity cannot
+    // read any existing entry, and that is otherwise invisible until the first
+    // read fails with SIGNATURE_INVALID — so surface it up front.
+    // senderDid is derived from the PUBLIC key and is safe to log; the seed is not.
+    log.info(
+        { senderDid, devFallback: rawKey === undefined },
+        'Vault signing identity derived',
+    );
     return cachedIdentity;
 }
 

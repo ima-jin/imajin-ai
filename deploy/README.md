@@ -52,17 +52,23 @@ Two things now prevent a recurrence:
    `apps/kernel/.env.local`, so the env is a property of the config rather than
    of whoever ran the last restart. **Secrets are never committed here** — only
    the path is.
-2. The kernel refuses to boot in production when `AUTH_PRIVATE_KEY` is absent
-   instead of deriving a dev key, and logs its derived vault `senderDid` at
-   startup.
+2. The kernel refuses to serve in production when `AUTH_PRIVATE_KEY` is absent
+   instead of deriving a dev key, and logs its derived vault `senderDid` on
+   first vault use.
 
 `env_file` requires pm2 ≥ 5.3. Verify after a restart:
 
 ```bash
 pm2 restart ~/prod/ecosystem.config.js --only prod-jin --update-env
-# The vault identity is logged at boot — confirm it is the expected node DID:
-pm2 logs prod-jin --lines 200 | grep 'Vault service initialised'
+# The vault identity is logged on first vault use — confirm it is the expected
+# node DID, and that devFallback is false:
+pm2 logs prod-jin --lines 200 | grep 'Vault signing identity derived'
 ```
+
+The identity is logged on first use rather than at startup on purpose: deriving
+it at module-import time would make `next build` (which imports the vault with
+`NODE_ENV=production`) fail on any build machine, since those legitimately have
+no `AUTH_PRIVATE_KEY`.
 
 If the kernel exits immediately with an `AUTH_PRIVATE_KEY is required in
 production` error, the env file is missing or unreadable — that is the guard

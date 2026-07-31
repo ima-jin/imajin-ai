@@ -8,6 +8,17 @@ import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 const log = createLogger('kernel');
 
 /**
+ * This route mutates the database and must never be evaluated at build time.
+ *
+ * Without this, Next statically prerenders it: the only request access below is
+ * guarded by `if (cronSecret)`, so with `CRON_SECRET` unset the handler looks
+ * static and Next runs the sweep during `next build` — issuing UPDATEs against
+ * whatever database the build environment points at, and baking the resulting
+ * response into a static file instead of running the sweep per invocation.
+ */
+export const dynamic = 'force-dynamic';
+
+/**
  * GET /api/cron/vault-grant-expiry — sweep expired-but-still-active delegation grants.
  *
  * Vercel Cron job (schedule: "0 * * * *" — hourly). Registered in vercel.json.

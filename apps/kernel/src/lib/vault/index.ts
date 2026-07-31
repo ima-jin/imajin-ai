@@ -45,15 +45,12 @@ export const vaultService = new VaultEntryService(repository, {
   adapters: vaultAdapters,
 });
 
-// Log the derived signing identity at init. A wrong or fallback identity cannot
-// read any existing entry, and that failure is otherwise invisible until the
-// first vault read fails with SIGNATURE_INVALID. Publishing the senderDid here
-// makes "this process is running as the wrong node" a one-line log check.
-// senderDid is a public identifier derived from the public key — safe to log.
-log.info(
-  { vaultPath, senderDid: getNodeSigningIdentity().senderDid },
-  'Vault service initialised',
-);
+// Deliberately does NOT derive the signing identity here. `next build` imports
+// this module with NODE_ENV=production while collecting page data, and a build
+// machine has no AUTH_PRIVATE_KEY — deriving at import time turns the runtime
+// key guard into a build failure. The identity is logged on first derivation
+// instead (see getNodeSigningIdentity in ./sealing).
+log.info({ vaultPath }, 'Vault service initialised');
 
 /**
  * Resolve the `previousCid` a new entry for `field` must chain from.
