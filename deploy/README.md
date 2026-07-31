@@ -48,31 +48,73 @@ platform-wide, with no error at boot.
 
 Two things now prevent a recurrence:
 
-1. `prod-jin` declares `env_file` pointing at the server's untracked
-   `apps/kernel/.env.local`, so the env is a property of the config rather than
-   of whoever ran the last restart. **Secrets are never committed here** — only
-   the path is.
+1. `prod-jin` passes `--env-file` to the Node interpreter via `node_args`,
+   pointing at the server's untracked `apps/kernel/.env.local`, so the env is a
+   property of the config rather than of whoever ran the last restart.
+   **Secrets are never committed here** — only the path is.
 2. The kernel refuses to serve in production when `AUTH_PRIVATE_KEY` is absent
    instead of deriving a dev key, and logs its derived vault `senderDid` on
    first vault use.
 
-`env_file` requires pm2 ≥ 5.3. Verify after a restart:
+`--env-file` needs Node ≥ 20.6 — the same mechanism the kernel's own `dev`
+script already uses. Do **not** use pm2's `env_file` key: it is not in the pm2
+ecosystem reference, so it may be silently ignored, which would drop the key
+again without any error.
+
+### Applying it — the prod deploy does this for you
+
+`deploy-prod.yml` now syncs this file and restarts `prod-jin` **from the file**:
+
+- **Sync pm2 ecosystem config** — copies `deploy/ecosystem.prod.config.js` to
+  `~/prod/ecosystem.config.js`, before the build so a cold start uses it.
+- **Restart prod services** — `pm2 startOrRestart <file> --only prod-jin`, then
+  the other `prod-*` processes by name, then `pm2 save`.
+
+`pm2 restart <name>` reuses pm2's *saved* process definition, so a name-based
+restart silently ignores changes to this file — including `prod-jin`'s
+`--env-file`. That is why the deploy targets the file for `prod-jin`, and why
+`pm2 save` runs afterwards: without it a reboot resurrects the stale definition
+without `node_args`.
+
+Only needed if applying by hand (out-of-band config change, or verifying):
 
 ```bash
-pm2 restart ~/prod/ecosystem.config.js --only prod-jin --update-env
-# The vault identity is logged on first vault use — confirm it is the expected
-# node DID, and that devFallback is false:
+cp ~/prod/imajin-ai/deploy/ecosystem.prod.config.js ~/prod/ecosystem.config.js
+pm2 startOrRestart ~/prod/ecosystem.config.js --only prod-jin --update-env
+pm2 describe prod-jin | grep -i node_args   # confirm it applied
+pm2 save
+```
+
+Then confirm the identity. It is logged on first vault use, so hit a
+vault-backed page (e.g. `/auth/connectors`) first:
+
+```bash
 pm2 logs prod-jin --lines 200 | grep 'Vault signing identity derived'
 ```
+
+Expect the node's real DID and `"devFallback":false`. A `devFallback:true` here
+means the key did not load and every sealed entry is unreadable.
 
 The identity is logged on first use rather than at startup on purpose: deriving
 it at module-import time would make `next build` (which imports the vault with
 `NODE_ENV=production`) fail on any build machine, since those legitimately have
 no `AUTH_PRIVATE_KEY`.
 
-If the kernel exits immediately with an `AUTH_PRIVATE_KEY is required in
-production` error, the env file is missing or unreadable — that is the guard
-working, not a regression.
+### Expected failure modes (both are the guard working)
+
+- Node exits immediately with `node: /path/.env.local: not found` — the env file
+  is missing at the configured path. `--env-file` fails hard by design, so pm2
+  will crash-loop rather than serve with the wrong identity.
+- Requests fail with `AUTH_PRIVATE_KEY is required in production` — the file
+  loaded but does not define the key.
+
+In either case the rollback is the pre-#1520 manual start, which gets prod
+serving again while the config is fixed:
+
+```bash
+cd ~/prod/imajin-ai/apps/kernel && set -a && . .env.local && set +a
+pm2 restart prod-jin --update-env
+```
 
 ## Known drift captured on 2026-07-16 (documented, not yet reconciled)
 
