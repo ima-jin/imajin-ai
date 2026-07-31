@@ -18,12 +18,23 @@ jobs:
         working-directory: /home/jin/prod/imajin-ai
     env:
       PATH: /home/jin/.nvm/versions/node/v22.22.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      # Live pm2 config location. The source of truth is deploy/ecosystem.prod.config.js
+      # in this repo; the Sync step below copies it here on every deploy.
+      ECOSYSTEM_FILE: /home/jin/prod/ecosystem.config.js
 
     steps:
       - name: Pull latest
         run: |
           git fetch origin --tags
           git reset --hard ${{ github.event.inputs.ref || github.ref_name }}
+
+      - name: Sync pm2 ecosystem config
+        # Copied before the build so any cold start during build.sh uses current
+        # config. Previously this was a manual `cp` an operator had to remember,
+        # which is the same "someone forgets" failure class as #1520 itself.
+        run: |
+          cp deploy/ecosystem.prod.config.js "$ECOSYSTEM_FILE"
+          echo "✅ Synced ecosystem config to $ECOSYSTEM_FILE"
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
@@ -42,13 +53,30 @@ jobs:
 
       - name: Restart prod services
         run: |
-          # Restart all pm2 processes whose name starts with prod-
-          # (covers prod-jin/kernel, prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, prod-links, etc.)
+          # prod-jin is restarted from the ecosystem FILE, deliberately not by name.
+          #
+          # `pm2 restart <name>` reuses pm2's saved process definition, so changes to
+          # the ecosystem file (notably prod-jin's `--env-file` node_args) are
+          # silently ignored. That is exactly the #1520 failure mode: the process
+          # came back up without AUTH_PRIVATE_KEY, signed vault entries with a
+          # deterministic dev key, and reported nothing wrong.
+          #
+          # startOrRestart also covers the case where prod-jin is not running yet.
+          pm2 startOrRestart "$ECOSYSTEM_FILE" --only prod-jin --update-env
+          echo "✅ prod-jin restarted from $ECOSYSTEM_FILE"
+
+          # Everything else keeps the previous name-based restart
+          # (prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, prod-links, …).
           PROD_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('prod-')).map(p => p.name).join(' '));")
-          if [ -z "$PROD_PROCS" ]; then
-            echo "⚠️  No prod-* pm2 processes found to restart"
-            exit 0
+          OTHER_PROCS=$(echo "$PROD_PROCS" | tr ' ' '\n' | grep -v '^prod-jin$' | grep -v '^$' | tr '\n' ' ')
+          if [ -n "$OTHER_PROCS" ]; then
+            echo "Restarting: $OTHER_PROCS"
+            pm2 restart $OTHER_PROCS
+          else
+            echo "ℹ️  No other prod-* pm2 processes to restart"
           fi
-          echo "Restarting: $PROD_PROCS"
-          pm2 restart $PROD_PROCS
+
+          # Persist the process list so a server reboot resurrects prod-jin WITH its
+          # node_args, instead of the stale saved definition that lacks them.
+          pm2 save
           echo "✅ Prod services restarted"

@@ -61,16 +61,28 @@ script already uses. Do **not** use pm2's `env_file` key: it is not in the pm2
 ecosystem reference, so it may be silently ignored, which would drop the key
 again without any error.
 
-### Applying it
+### Applying it — the prod deploy does this for you
 
-`pm2 restart <name>` does not re-read an edited ecosystem file. Point pm2 at the
-file itself, or the change will not take effect:
+`deploy-prod.yml` now syncs this file and restarts `prod-jin` **from the file**:
+
+- **Sync pm2 ecosystem config** — copies `deploy/ecosystem.prod.config.js` to
+  `~/prod/ecosystem.config.js`, before the build so a cold start uses it.
+- **Restart prod services** — `pm2 startOrRestart <file> --only prod-jin`, then
+  the other `prod-*` processes by name, then `pm2 save`.
+
+`pm2 restart <name>` reuses pm2's *saved* process definition, so a name-based
+restart silently ignores changes to this file — including `prod-jin`'s
+`--env-file`. That is why the deploy targets the file for `prod-jin`, and why
+`pm2 save` runs afterwards: without it a reboot resurrects the stale definition
+without `node_args`.
+
+Only needed if applying by hand (out-of-band config change, or verifying):
 
 ```bash
 cp ~/prod/imajin-ai/deploy/ecosystem.prod.config.js ~/prod/ecosystem.config.js
-pm2 restart ~/prod/ecosystem.config.js --only prod-jin --update-env
-# If the new node_args still are not visible in `pm2 describe prod-jin`:
-pm2 delete prod-jin && pm2 start ~/prod/ecosystem.config.js --only prod-jin
+pm2 startOrRestart ~/prod/ecosystem.config.js --only prod-jin --update-env
+pm2 describe prod-jin | grep -i node_args   # confirm it applied
+pm2 save
 ```
 
 Then confirm the identity. It is logged on first vault use, so hit a
