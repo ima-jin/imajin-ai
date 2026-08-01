@@ -4,19 +4,33 @@ import { requireAdmin, verifySync } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants, vaultGrantRequests } from '@/src/db';
-import { canonicalizeGrantPayload, eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
-import { getNodeSigningIdentity, getExternalOwnerEdPublicKey } from '@/src/lib/vault/sealing';
+import {
+  canonicalizeGrantPayload,
+  eraseInactiveGrantKeyMaterial,
+  expectedGrantVerifier,
+  getOwnerEnvelope,
+  vaultService,
+} from '@/src/lib/vault';
+import {
+  getExternalOwnerEdPublicKey,
+  getNodeSigningIdentity,
+  getNodeXPublicKey,
+} from '@/src/lib/vault/sealing';
 import { generateId } from '@/src/lib/kernel/id';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 
 const log = createLogger('kernel');
 
 interface GrantBody {
-  requestId: string;
+  /**
+   * Present for the initial seal-time handshake, absent for a renewal.
+   * See the route doc for why a renewal needs no request row.
+   */
+  requestId?: string | null;
   subject: string;       // ownerDid
   grantedTo: string;     // nodeDid
   field: string;
-  ownerXPub: string;     // owner's X25519 pubkey (must match request row)
+  ownerXPub: string;     // owner's X25519 pubkey (must match request row / envelope)
   wrappedKey: string;    // fieldKey ECDH-wrapped ownerXPriv → nodeXPub
   wrappedNonce: string;
   keyId: string;
@@ -25,21 +39,134 @@ interface GrantBody {
 }
 
 /**
+ * The two values a grant must not take from the request body: the Ed25519 key
+ * its signature is checked against, and the X25519 pubkey the field key was
+ * wrapped to. Each flow derives them from node-written state instead.
+ */
+interface GrantTrustContext {
+  ownerEdPub: string;
+  recipientXPub: string;
+}
+
+/** Either the resolved trust anchors, or the rejection to return verbatim. */
+type TrustResolution = { ok: true; context: GrantTrustContext } | { ok: false; response: NextResponse };
+
+function reject(error: string, status: number): TrustResolution {
+  return { ok: false, response: NextResponse.json({ error }, { status }) };
+}
+
+/**
+ * Seal-time handshake: the pending `vault_grant_requests` row is the record this
+ * node wrote when it generated the field key, so it is what the incoming grant
+ * is checked against.
+ */
+async function resolveHandshake(requestId: string, ownerXPub: string): Promise<TrustResolution> {
+  const rows = await db
+    .select()
+    .from(vaultGrantRequests)
+    .where(
+      and(
+        eq(vaultGrantRequests.requestId, requestId),
+        eq(vaultGrantRequests.status, 'pending'),
+      ),
+    )
+    .limit(1);
+
+  const grantRequest = rows[0];
+  if (!grantRequest) {
+    return reject(`No pending grant request found for requestId '${requestId}'`, 404);
+  }
+
+  // Prevents key substitution: the owner key must be the one we queued for.
+  if (grantRequest.ownerXPub !== ownerXPub) {
+    return reject('ownerXPub does not match the pending grant request', 400);
+  }
+
+  return {
+    ok: true,
+    context: {
+      ownerEdPub: getExternalOwnerEdPublicKey(),
+      // Written by this node at seal time, so it is the trustworthy record of
+      // which key the owner wrapped to.
+      recipientXPub: grantRequest.nodeXPub,
+    },
+  };
+}
+
+/**
+ * Renewal: there is no request row, so the entry and the owner envelope take its
+ * place. Both are node-written state, and together they pin the field, the key
+ * generation, and the owner identity.
+ */
+async function resolveRenewal(field: string, keyId: string, ownerXPub: string): Promise<TrustResolution> {
+  const entry = await vaultService.peek(field);
+  if (!entry || entry.deleted === true) {
+    return reject(`No vault entry for field '${field}' — a renewal needs an entry to grant against`, 404);
+  }
+
+  if (entry.custodyScheme !== 'delegation-grant') {
+    return reject(
+      `Field '${field}' is not under delegation-grant custody — re-seal it instead of renewing`,
+      400,
+    );
+  }
+
+  // A grant only opens the generation it was minted for. Accepting a stale keyId
+  // would install a grant that cannot decrypt the current ciphertext.
+  if (entry.keyId !== keyId) {
+    return reject(`keyId does not match the current entry for field '${field}'`, 400);
+  }
+
+  const envelope = await getOwnerEnvelope(field, keyId);
+  if (!envelope) {
+    return reject(
+      `No owner envelope for field '${field}' — the owner has no recoverable copy of this field key`,
+      404,
+    );
+  }
+
+  if (envelope.ownerXPub !== ownerXPub) {
+    return reject('ownerXPub does not match the owner envelope for this field', 400);
+  }
+
+  return {
+    ok: true,
+    context: {
+      ownerEdPub: expectedGrantVerifier(entry),
+      // The owner wrapped the key to this node, so the ECDH counterparty is our
+      // own X25519 pubkey — derived, never taken from the body.
+      recipientXPub: getNodeXPublicKey(),
+    },
+  };
+}
+
+/**
  * POST /api/vault/delegation/grant — accept a pre-signed delegation grant from
- * the external owner agent (imajin-cli vault serve).
+ * the owner agent (imajin-cli vault serve).
  *
- * Admin-only. Verifies:
- *   1. A pending vault_grant_requests row exists for the given requestId.
- *   2. The ownerSignature is a valid Ed25519 signature over the canonical
- *      grant payload, verified against VAULT_OWNER_ED_PUB (configured on kernel).
- *   3. ownerXPub in the body matches the request row (prevents key substitution).
+ * Admin-only. Serves two flows:
  *
- * On success:
- *   - Inserts an active row into vault_delegation_grants.
- *   - Marks the vault_grant_requests row as fulfilled.
- *   - Supersedes any existing active grant for (subject, grantedTo, field).
+ * ## Seal-time handshake (`requestId` present)
+ * The node generated a field key it cannot keep, wrapped it to the owner, and
+ * queued a `vault_grant_requests` row. The request row is how the field key
+ * reaches an owner who does not have it, and `ownerXPub` must match that row.
  *
- * After this, loadAndUnseal on the cloud node will succeed headlessly.
+ * ## Renewal (`requestId` absent) — #1535
+ * Re-issue a grant for an entry that already exists: after expiry, after
+ * revocation, or to replace one about to lapse.
+ *
+ * No request row exists, and none is needed. The owner already holds the field
+ * key via `vault_owner_envelopes` (#1521), so there is nothing to deliver. The
+ * trust anchor is unchanged and was always the real one: an Ed25519 signature
+ * over the canonical grant payload, verified against the key this node trusts
+ * (the configured external owner in Tier 1, the node itself in Tier 0).
+ *
+ * Without this path an expiring grant is a permanent lockout — a grant could only
+ * ever be created at seal time, and expiry now destroys the key material.
+ *
+ * Both flows then behave identically: supersede and crypto-erase any existing
+ * active grant, insert the new one, and emit `vault.grant.fulfilled`. After
+ * either, `loadAndUnseal` succeeds headlessly on the node.
  */
 export async function POST(request: NextRequest) {
   if (!(await requireAdmin())) {
@@ -59,7 +186,7 @@ export async function POST(request: NextRequest) {
     ownerSignature, expiresAt,
   } = body;
 
-  if (!requestId || !subject || !grantedTo || !field || !ownerXPub ||
+  if (!subject || !grantedTo || !field || !ownerXPub ||
       !wrappedKey || !wrappedNonce || !keyId || !ownerSignature) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
@@ -79,42 +206,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. Look up the pending grant request.
-    const rows = await db
-      .select()
-      .from(vaultGrantRequests)
-      .where(
-        and(
-          eq(vaultGrantRequests.requestId, requestId),
-          eq(vaultGrantRequests.status, 'pending'),
-        ),
-      )
-      .limit(1);
-
-    const grantRequest = rows[0];
-    if (!grantRequest) {
-      return NextResponse.json(
-        { error: `No pending grant request found for requestId '${requestId}'` },
-        { status: 404 },
-      );
-    }
-
-    // 2. Verify ownerXPub matches the stored request (prevents key substitution).
-    if (grantRequest.ownerXPub !== ownerXPub) {
-      return NextResponse.json(
-        { error: 'ownerXPub does not match the pending grant request' },
-        { status: 400 },
-      );
-    }
-
-    // 3. Verify ownerSignature against VAULT_OWNER_ED_PUB.
-    const ownerEdPub = getExternalOwnerEdPublicKey();
-
     const expiresAtDate = expiresAt ? new Date(expiresAt) : null;
     if (expiresAt && Number.isNaN(expiresAtDate?.getTime())) {
       return NextResponse.json({ error: 'expiresAt must be a valid ISO 8601 date' }, { status: 400 });
     }
 
+    // 1. Resolve the trust anchors from node-written state, per flow.
+    const resolution = requestId
+      ? await resolveHandshake(requestId, ownerXPub)
+      : await resolveRenewal(field, keyId, ownerXPub);
+
+    if (!resolution.ok) {
+      return resolution.response;
+    }
+
+    const { ownerEdPub, recipientXPub } = resolution.context;
+
+    // 2. Verify the owner signature over the canonical payload. This is the trust
+    //    anchor for both flows.
     const canonical = canonicalizeGrantPayload({
       subject,
       grantedTo,
@@ -135,7 +244,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Supersede any existing active grant for this (subject, grantedTo, field)
+    // 3. Supersede any existing active grant for this (subject, grantedTo, field)
     //    tuple, erasing its key material so the replaced grant stops being a usable
     //    copy of the field key.
     const superseded = await db
@@ -157,7 +266,7 @@ export async function POST(request: NextRequest) {
 
     await eraseInactiveGrantKeyMaterial(superseded);
 
-    // 5. Insert the new active delegation grant.
+    // 4. Insert the new active delegation grant.
     const grantId = generateId('vdg');
     await db.insert(vaultDelegationGrants).values({
       id: grantId,
@@ -171,23 +280,23 @@ export async function POST(request: NextRequest) {
       ownerSignature,
       status: 'active',
       expiresAt: expiresAtDate,
-      // Self-describing: the owner wrapped the key to the node's X25519 pubkey, so
-      // that is the ECDH counterparty needed to open this grant. Taken from the
-      // request row rather than the request body — the body is attacker-shaped
-      // input, the row was written by this node at seal time.
-      recipientXPub: grantRequest.nodeXPub,
+      // Self-describing: the ECDH counterparty needed to open this grant.
+      recipientXPub,
       // Pin the verifier this signature was checked against, so the grant stays
       // verifiable if the Tier 1 env later changes.
       ownerEdPub,
     });
 
-    // 6. Mark the grant request as fulfilled.
-    await db
-      .update(vaultGrantRequests)
-      .set({ status: 'fulfilled', fulfilledAt: new Date(), grantId })
-      .where(eq(vaultGrantRequests.requestId, requestId));
+    // 5. Mark the grant request as fulfilled. A renewal has no request row to
+    //    close out.
+    if (requestId) {
+      await db
+        .update(vaultGrantRequests)
+        .set({ status: 'fulfilled', fulfilledAt: new Date(), grantId })
+        .where(eq(vaultGrantRequests.requestId, requestId));
+    }
 
-    // 7. Non-fatal bus notification — emit a dedicated grant.fulfilled event so
+    // 6. Non-fatal bus notification — emit a dedicated grant.fulfilled event so
     //    consumers can track grant lifecycle without misinterpreting the generic
     //    vault.secret.updated event (which uses keyId as a cid proxy).
     publish('vault.grant.fulfilled', {
@@ -196,7 +305,7 @@ export async function POST(request: NextRequest) {
       scope: 'vault',
       payload: {
         grantId,
-        requestId,
+        requestId: requestId ?? null,
         field,
         subject,
         grantedTo,
@@ -207,11 +316,14 @@ export async function POST(request: NextRequest) {
       log.error({ err: String(err) }, 'Bus publish error for vault.grant.fulfilled');
     });
 
-    log.info({ field, requestId, grantId }, 'Vault Tier 1: delegation grant fulfilled by owner agent');
+    log.info(
+      { field, requestId: requestId ?? null, grantId, renewal: !requestId },
+      'Vault: delegation grant issued by owner agent',
+    );
 
-    return NextResponse.json({ ok: true, grantId, field });
+    return NextResponse.json({ ok: true, grantId, field, renewal: !requestId });
   } catch (error) {
-    log.error({ err: String(error), requestId }, 'Vault delegation/grant error');
+    log.error({ err: String(error), requestId: requestId ?? null }, 'Vault delegation/grant error');
     return toVaultErrorResponse(error, 'Failed to process delegation grant', 500);
   }
 }

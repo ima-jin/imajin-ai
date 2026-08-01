@@ -59,10 +59,19 @@ export const vaultDelegationGrants = vaultSchema.table('vault_delegation_grants'
   expiresIdx: index('idx_vault_delegation_expires')
     .on(table.expiresAt)
     .where(sql`${table.expiresAt} IS NOT NULL AND ${table.status} = 'active'`),
-  // Uniqueness: one active grant per (subject, grantedTo, field, keyId) tuple.
+  // Uniqueness: one ACTIVE grant per (subject, grantedTo, field, keyId) tuple.
   // Rotation supersedes the previous grant before inserting a new one.
+  //
+  // The status predicate is load-bearing. keyId derives from the node's signing
+  // key and is constant, so without it the tuple is effectively (owner, node,
+  // field) for all time: the superseded row keeps occupying it and the
+  // replacement insert fails. That made re-sealing a v2 field impossible on the
+  // second write, and renewal impossible at all. Fixed in migration 0079 — it
+  // went unnoticed because nothing writes v2 in production and the tests mock
+  // the database, so no real UNIQUE was ever exercised.
   activeGrantUniq: uniqueIndex('uniq_vault_delegation_active')
-    .on(table.subject, table.grantedTo, table.field, table.keyId),
+    .on(table.subject, table.grantedTo, table.field, table.keyId)
+    .where(sql`${table.status} = 'active'`),
 }));
 
 export type VaultDelegationGrant = typeof vaultDelegationGrants.$inferSelect;
