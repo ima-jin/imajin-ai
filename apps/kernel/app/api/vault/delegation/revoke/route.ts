@@ -4,6 +4,7 @@ import { requireAdmin } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants } from '@/src/db';
+import { eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 
 const log = createLogger('kernel');
@@ -11,10 +12,19 @@ const log = createLogger('kernel');
 /**
  * POST /api/vault/delegation/revoke — revoke the active delegation grant for a field.
  *
- * Marks the active vault_delegation_grants row for (field, nodeDid) as 'revoked'.
- * After revocation, loadAndUnseal for this field will throw VaultDelegationError
- * until a new delegation grant is created (via POST /api/vault/set with
- * custodyScheme: 'delegation-grant').
+ * Marks the active vault_delegation_grants row for (field, nodeDid) as 'revoked'
+ * and erases its wrapped key material.
+ *
+ * The erase is the part that makes revocation real. A status change alone only
+ * stops `fetchActiveGrant` from returning the row — the wrapped key stayed in the
+ * table, so anyone holding `nodeXPriv` and database access could still recover the
+ * field key from a revoked grant. Revocation constrained the code path, not an
+ * attacker.
+ *
+ * Erasing is safe because the owner keeps a separate copy in
+ * `vault_owner_envelopes`, which is what a later re-grant is issued from. Grants
+ * predating that table are left intact and logged rather than erased, since for
+ * them the wrapped key is still the only copy.
  *
  * IMPORTANT: revocation does NOT re-encrypt the ciphertext. Any in-process
  * loadAndUnseal that ran before revocation and holds the decrypted value in
@@ -60,6 +70,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const erasedGrantIds = await eraseInactiveGrantKeyMaterial(revoked);
+
   for (const grant of revoked) {
     publish('vault.delegation.revoked', {
       issuer: identity.senderDid,
@@ -81,7 +93,16 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     revokedCount: revoked.length,
+    // Surfaced so an operator can tell a real withdrawal from a status-only one.
+    // A shortfall here means those grants had no owner envelope and their wrapped
+    // key was left in place deliberately.
+    keyMaterialErasedCount: erasedGrantIds.length,
     field: trimmedField,
-    grants: revoked.map((g) => ({ id: g.id, grantedTo: g.grantedTo, revokedAt: g.revokedAt })),
+    grants: revoked.map((g) => ({
+      id: g.id,
+      grantedTo: g.grantedTo,
+      revokedAt: g.revokedAt,
+      keyMaterialErased: erasedGrantIds.includes(g.id),
+    })),
   });
 }

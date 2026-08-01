@@ -30,6 +30,20 @@ vi.mock('@/src/db', () => ({
   vaultDelegationGrants: {},
 }));
 
+// ── Mock: vault key-material erase ──────────────────────────────────────────
+//
+// The sweep now erases each expired grant's wrapped key. That logic and its
+// owner-envelope guard are covered in the vault suite; here we only assert the
+// route calls it with what it swept.
+
+const { mockEraseKeyMaterial } = vi.hoisted(() => ({
+  mockEraseKeyMaterial: vi.fn(async (grants: Array<{ id: string }>) => grants.map((g) => g.id)),
+}));
+
+vi.mock('@/src/lib/vault', () => ({
+  eraseInactiveGrantKeyMaterial: mockEraseKeyMaterial,
+}));
+
 // ── Mock: sealing identity ────────────────────────────────────────────────────
 
 vi.mock('@/src/lib/vault/sealing', () => ({
@@ -84,6 +98,8 @@ function makeGrant(overrides: Partial<VaultDelegationGrant> = {}): VaultDelegati
     expiresAt: new Date(now.getTime() - 60_000), // 1 min ago
     createdAt: new Date(now.getTime() - 3_600_000),
     revokedAt: now,
+    recipientXPub: 'd'.repeat(64),
+    ownerEdPub: 'a'.repeat(64),
     ...overrides,
   };
 }
@@ -156,6 +172,11 @@ describe('GET /api/cron/vault-grant-expiry', () => {
 
     // DB update called with correct mutation shape
     expect(mockUpdate).toHaveBeenCalledOnce();
+
+    // Expiry must destroy the wrapped key, not just flip status — otherwise an
+    // expired grant is still a usable copy of the field key.
+    expect(mockEraseKeyMaterial).toHaveBeenCalledOnce();
+    expect(mockEraseKeyMaterial).toHaveBeenCalledWith([grant]);
 
     // Bus event emitted once
     expect(mockPublish).toHaveBeenCalledOnce();

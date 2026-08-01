@@ -25,9 +25,9 @@ import {
 } from '@imajin/vault-core';
 import { verifySync, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
-import { and, eq, isNull, gt, or } from 'drizzle-orm';
+import { and, eq, isNull, gt, or, type SQL } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { db, vaultDelegationGrants, vaultGrantRequests, type VaultDelegationGrant } from '@/src/db';
+import { db, vaultDelegationGrants, vaultGrantRequests, vaultOwnerEnvelopes, type VaultDelegationGrant } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getSealKey, getNodeSigningIdentity, getNodeXPrivateKey, getNodeXPublicKey, getOwnerXPrivateKey, getOwnerXPublicKey, isVaultTier1, getExternalOwnerXPublicKey, getExternalOwnerEdPublicKey } from './sealing';
 import { VaultDelegationError } from './errors';
@@ -67,6 +67,162 @@ log.info({ vaultPath }, 'Vault service initialised');
 async function resolvePreviousCid(field: string): Promise<string | undefined> {
   const latest = await vaultService.peek(field);
   return latest?.cid;
+}
+
+// ── Owner envelopes (#1521) ────────────────────────────────────────────────
+
+/**
+ * Persist the owner's recoverable copy of a field key.
+ *
+ * Without this the field key exists only inside the delegation grant (wrapped to
+ * the node), which means revoking or expiring that grant would destroy the last
+ * copy — making expiry a permanent lockout and porting impossible. The envelope
+ * is what lets the owner re-issue a grant later, to this node or a different one,
+ * with no cooperation from the node holding the current grant.
+ *
+ * Wrapped `nodeXPriv → ownerXPub`, so only the owner can open it. `senderXPub` is
+ * recorded because ECDH needs the counterparty key at unwrap time.
+ *
+ * Upserted rather than inserted: `keyId` is derived from the node's signing key and
+ * so is constant across re-seals. The envelope therefore always tracks the CURRENT
+ * field key, and a re-seal deliberately crypto-erases the superseded one.
+ *
+ * The raw field key is never logged.
+ */
+async function writeOwnerEnvelope(params: {
+  field: string;
+  keyId: string;
+  fieldKey: Buffer;
+  ownerXPub: string;
+}): Promise<void> {
+  const senderXPub = getNodeXPublicKey();
+  const wrapped = wrapFieldKey(params.fieldKey, params.ownerXPub, getNodeXPrivateKey());
+
+  await db
+    .insert(vaultOwnerEnvelopes)
+    .values({
+      id: generateId('vwe'),
+      field: params.field,
+      keyId: params.keyId,
+      ownerXPub: params.ownerXPub,
+      senderXPub,
+      wrappedKey: wrapped.encryptedKey,
+      wrappedNonce: wrapped.nonce,
+    })
+    .onConflictDoUpdate({
+      target: [vaultOwnerEnvelopes.field, vaultOwnerEnvelopes.keyId],
+      set: {
+        ownerXPub: params.ownerXPub,
+        senderXPub,
+        wrappedKey: wrapped.encryptedKey,
+        wrappedNonce: wrapped.nonce,
+        createdAt: new Date(),
+      },
+    });
+}
+
+/**
+ * Return true when the owner holds a recoverable copy of the field key for
+ * (field, keyId).
+ *
+ * This is the precondition for erasing a grant's key material. Erase is
+ * irreversible, so it must never run when this returns false.
+ */
+async function hasOwnerEnvelope(field: string, keyId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: vaultOwnerEnvelopes.id })
+    .from(vaultOwnerEnvelopes)
+    .where(and(eq(vaultOwnerEnvelopes.field, field), eq(vaultOwnerEnvelopes.keyId, keyId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Values that blank a grant's wrapped key material.
+ *
+ * Marking a grant `revoked` only stops `fetchActiveGrant` from returning it — the
+ * wrapped key stays in the row, so anyone with `nodeXPriv` and database access can
+ * still recover the field key from a revoked grant. Revocation constrained the code
+ * path, not an attacker, and expiry inherited the same weakness.
+ *
+ * Blanking the material is what gives revocation and expiry real effect.
+ */
+const ERASED_KEY_MATERIAL = { wrappedKey: '', wrappedNonce: '' } as const;
+
+/**
+ * Erase key material for grants leaving `active`, but only where an owner envelope
+ * exists for that (field, keyId).
+ *
+ * Grants with no envelope are left intact and logged: for those the wrapped key is
+ * still the only copy of the field key, so erasing it would destroy the secret.
+ * Those are pre-#1521 grants and stop appearing once every field is re-sealed.
+ *
+ * What the guard does and does not promise, stated exactly, because `keyId` is
+ * derived from the node's signing key and so does not distinguish generations of a
+ * field:
+ *   - **Revoke / expire** — the erased grant covers the field's current entry, and
+ *     the envelope holds that same current field key. The owner can still re-issue,
+ *     so nothing is lost. This is the case the guard exists for.
+ *   - **Supersede on re-seal** — the envelope has already been upserted to the NEW
+ *     field key, so erasing the superseded grant destroys the last copy of the OLD
+ *     one. That is intended: re-sealing should crypto-erase the previous value
+ *     rather than leave it decryptable forever. It does mean history reads of
+ *     superseded generations are permanently unavailable.
+ */
+async function eraseGrantKeyMaterial(
+  grants: Array<Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>>,
+): Promise<string[]> {
+  const erased: string[] = [];
+
+  for (const grant of grants) {
+    if (!(await hasOwnerEnvelope(grant.field, grant.keyId))) {
+      log.warn(
+        { grantId: grant.id, field: grant.field },
+        'Vault: skipping key-material erase — no owner envelope, wrapped key is the only copy',
+      );
+      continue;
+    }
+
+    await db
+      .update(vaultDelegationGrants)
+      .set(ERASED_KEY_MATERIAL)
+      .where(eq(vaultDelegationGrants.id, grant.id));
+    erased.push(grant.id);
+  }
+
+  return erased;
+}
+
+/**
+ * Supersede the active grants matched by `where` and erase their key material.
+ *
+ * Callers run this immediately after writing a new envelope for the field, so the
+ * erase deliberately destroys the superseded generation's key while leaving the
+ * current one recoverable. See {@link eraseGrantKeyMaterial} for the exact
+ * guarantee.
+ */
+async function supersedeGrants(where: SQL | undefined): Promise<void> {
+  const superseded = await db
+    .update(vaultDelegationGrants)
+    .set({ status: 'superseded' })
+    .where(where)
+    .returning({
+      id: vaultDelegationGrants.id,
+      field: vaultDelegationGrants.field,
+      keyId: vaultDelegationGrants.keyId,
+    });
+
+  await eraseGrantKeyMaterial(superseded);
+}
+
+/**
+ * Erase key material for a set of grants that have already been moved out of
+ * `active` by the caller. Exported for the revoke route and the expiry sweep.
+ */
+export async function eraseInactiveGrantKeyMaterial(
+  grants: Array<Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>>,
+): Promise<string[]> {
+  return eraseGrantKeyMaterial(grants);
 }
 
 /**
@@ -174,6 +330,11 @@ export async function sealAndStoreV2(
     const ownerXPub = getExternalOwnerXPublicKey();
     const nodeXPub = getNodeXPublicKey();
 
+    // Durable owner copy, written before the request. The request row carries the
+    // same wrap, but it is a queue entry with its own lifecycle — the envelope is
+    // what survives fulfilment, expiry, and any pruning of that queue.
+    await writeOwnerEnvelope({ field, keyId, fieldKey, ownerXPub });
+
     // Wrap the field key from nodeXPriv → ownerXPub so only the owner agent can
     // recover it (unwrapFieldKey(wrapped, nodeXPub, ownerXPriv)).
     const wrappedForOwner = wrapFieldKey(fieldKey, ownerXPub, getNodeXPrivateKey());
@@ -221,8 +382,16 @@ export async function sealAndStoreV2(
 
   // ── Tier 0: node acts as its own owner agent ───────────────────────────────
 
+  const nodeXPub = getNodeXPublicKey();
+
+  // Durable owner copy. In Tier 0 the owner is this node, so the envelope adds no
+  // custody separation — but it keeps the invariant uniform, which is what lets
+  // erase-on-revoke apply to every v2 entry regardless of tier, and what makes a
+  // later promotion to Tier 1 a re-grant rather than a re-seal.
+  await writeOwnerEnvelope({ field, keyId, fieldKey, ownerXPub: getOwnerXPublicKey() });
+
   // Wrap the field key: owner (this node in Tier 0) wraps to the node's X25519 pubkey.
-  const wrapped = wrapFieldKey(fieldKey, getNodeXPublicKey(), getOwnerXPrivateKey());
+  const wrapped = wrapFieldKey(fieldKey, nodeXPub, getOwnerXPrivateKey());
 
   const grantRaw = {
     subject: identity.senderDid,
@@ -243,17 +412,14 @@ export async function sealAndStoreV2(
   // Supersede any existing active delegation grant for this (field, node) pair.
   // This handles re-sealing: the old ciphertext+grant become orphaned together.
   if (existingEntry?.custodyScheme === 'delegation-grant') {
-    await db
-      .update(vaultDelegationGrants)
-      .set({ status: 'superseded' })
-      .where(
-        and(
-          eq(vaultDelegationGrants.subject, identity.senderDid),
-          eq(vaultDelegationGrants.grantedTo, identity.senderDid),
-          eq(vaultDelegationGrants.field, field),
-          eq(vaultDelegationGrants.status, 'active'),
-        ),
-      );
+    await supersedeGrants(
+      and(
+        eq(vaultDelegationGrants.subject, identity.senderDid),
+        eq(vaultDelegationGrants.grantedTo, identity.senderDid),
+        eq(vaultDelegationGrants.field, field),
+        eq(vaultDelegationGrants.status, 'active'),
+      ),
+    );
   }
 
   const grantId = generateId('vdg');
@@ -262,6 +428,10 @@ export async function sealAndStoreV2(
     ...grantRaw,
     ownerSignature,
     status: 'active',
+    // Self-describing: the recipient pubkey ECDH needs, and the verifier this
+    // grant's signature must check against (the node itself, for a self-grant).
+    recipientXPub: nodeXPub,
+    ownerEdPub: identity.senderPubkey,
   });
 
   return { entry, grantId, requestId: null };
@@ -404,12 +574,7 @@ export async function loadAndUnseal(field: string): Promise<string | undefined> 
         { field, nodeDid: identity.senderDid },
       );
     }
-    // In Tier 1 the grant is signed by the external owner (VAULT_OWNER_ED_PUB), which differs
-    // from the node's own Ed key stored in entry.senderPubkey. In Tier 0 owner == node so
-    // entry.senderPubkey is the correct verifier. Resolving the right key here is what makes
-    // headless unseal work in Tier 1.
-    const ownerEdPub = isVaultTier1() ? getExternalOwnerEdPublicKey() : entry.senderPubkey;
-    return _applyDelegationGrant(entry, grant, getNodeXPrivateKey(), ownerEdPub);
+    return _applyDelegationGrant(entry, grant, getNodeXPrivateKey(), resolveGrantVerifier(entry, grant));
   }
 
   // v1 node-sealed path — unchanged.
@@ -493,21 +658,24 @@ export async function sealAndGrantStaticSecret(
   await assertEntryIntegrity(entry, vaultAdapters);
   await vaultService.set(entry);
 
+  const nodeXPub = getNodeXPublicKey();
+
+  // Durable owner copy before anything is superseded, so the erase below can never
+  // remove the last recoverable copy of the current field key.
+  await writeOwnerEnvelope({ field, keyId, fieldKey, ownerXPub: getOwnerXPublicKey() });
+
   // Supersede any existing active grant for this (principalDid, granteeDid, field) tuple.
-  await db
-    .update(vaultDelegationGrants)
-    .set({ status: 'superseded' })
-    .where(
-      and(
-        eq(vaultDelegationGrants.subject, principalDid),
-        eq(vaultDelegationGrants.grantedTo, granteeDid),
-        eq(vaultDelegationGrants.field, field),
-        eq(vaultDelegationGrants.status, 'active'),
-      ),
-    );
+  await supersedeGrants(
+    and(
+      eq(vaultDelegationGrants.subject, principalDid),
+      eq(vaultDelegationGrants.grantedTo, granteeDid),
+      eq(vaultDelegationGrants.field, field),
+      eq(vaultDelegationGrants.status, 'active'),
+    ),
+  );
 
   // Wrap the field key to the node's X25519 pubkey using the owner X25519 private key.
-  const wrapped = wrapFieldKey(fieldKey, getNodeXPublicKey(), getOwnerXPrivateKey());
+  const wrapped = wrapFieldKey(fieldKey, nodeXPub, getOwnerXPrivateKey());
 
   const grantRaw = {
     subject: principalDid,
@@ -531,6 +699,11 @@ export async function sealAndGrantStaticSecret(
     ...grantRaw,
     ownerSignature,
     status: 'active',
+    // The key material is wrapped to the node, which unseals on the grantee's
+    // behalf, so the ECDH counterparty is the node pubkey. The signature is the
+    // node's own (Tier 0 only — this path throws under Tier 1).
+    recipientXPub: nodeXPub,
+    ownerEdPub: identity.senderPubkey,
   });
 
   return { entry, grantId };
@@ -565,8 +738,7 @@ export async function loadAndUnsealByGrantee(
     return undefined;
   }
 
-  const ownerEdPub = isVaultTier1() ? getExternalOwnerEdPublicKey() : entry.senderPubkey;
-  return _applyDelegationGrant(entry, grant, getNodeXPrivateKey(), ownerEdPub);
+  return _applyDelegationGrant(entry, grant, getNodeXPrivateKey(), resolveGrantVerifier(entry, grant));
 }
 
 /**
@@ -592,11 +764,60 @@ export async function revokeStaticSecretGrant(
         eq(vaultDelegationGrants.status, 'active'),
       ),
     )
-    .returning({ id: vaultDelegationGrants.id });
+    .returning({
+      id: vaultDelegationGrants.id,
+      field: vaultDelegationGrants.field,
+      keyId: vaultDelegationGrants.keyId,
+    });
+
+  // Status alone would leave the wrapped key readable to anyone with nodeXPriv and
+  // database access, so revocation would not actually withdraw anything.
+  await eraseGrantKeyMaterial(updated);
+
   return updated.length > 0;
 }
 
-// ── Delegation helpers ────────────────────────────────────────────────────────
+// ── Delegation helpers ────────────────────────────────────────────────────
+
+/**
+ * Decide which Ed25519 public key a grant's `ownerSignature` must verify against.
+ *
+ * Grants written from #1521 onward pin their expected verifier in `ownerEdPub`.
+ * That pin is what stops Tier 1 being a one-way door: the verifier previously came
+ * from a process-wide flag, so unsetting the Tier 1 env made every Tier-1-sealed
+ * entry fail verification, and Tier-0 and Tier-1 grants could not coexist.
+ *
+ * A pin is only honoured when it matches a key we already trust — the node's own
+ * key (self-grant) or the configured external owner key. Otherwise a tampered row
+ * could nominate an attacker-controlled verifier and self-authorise.
+ *
+ * Rows predating the column fall back to the original process-wide rule.
+ */
+function resolveGrantVerifier(
+  entry: VaultEntry,
+  grant: Pick<VaultDelegationGrant, 'ownerEdPub' | 'field'>,
+): string {
+  const legacyVerifier = isVaultTier1() ? getExternalOwnerEdPublicKey() : entry.senderPubkey;
+
+  const pinned = grant.ownerEdPub;
+  if (!pinned) {
+    return legacyVerifier;
+  }
+
+  const trusted = new Set<string>([entry.senderPubkey]);
+  if (isVaultTier1()) {
+    trusted.add(getExternalOwnerEdPublicKey());
+  }
+
+  if (!trusted.has(pinned)) {
+    throw new VaultDelegationError(
+      `vault: grant for field '${grant.field}' pins an untrusted owner key — refusing to verify against it`,
+      { field: grant.field, nodeDid: entry.senderDid },
+    );
+  }
+
+  return pinned;
+}
 
 /**
  * Fetch the most-recently-created active delegation grant for (field, nodeDid).
