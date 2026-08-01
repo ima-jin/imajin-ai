@@ -165,9 +165,14 @@ const ERASED_KEY_MATERIAL = { wrappedKey: '', wrappedNonce: '' } as const;
  *     so nothing is lost. This is the case the guard exists for.
  *   - **Supersede on re-seal** — the envelope has already been upserted to the NEW
  *     field key, so erasing the superseded grant destroys the last copy of the OLD
- *     one. That is intended: re-sealing should crypto-erase the previous value
- *     rather than leave it decryptable forever. It does mean history reads of
- *     superseded generations are permanently unavailable.
+ *     one, and history reads of superseded generations become permanently
+ *     unavailable.
+ *
+ * That last behaviour is intended, not a limitation to work around. The vault holds
+ * rotating credentials: a superseded generation should be unreadable, because the
+ * alternative is a decryptable archive of every secret the field has ever held —
+ * more to steal, for no operational benefit. History belongs in signed events, not
+ * in the secret store.
  */
 async function eraseGrantKeyMaterial(
   grants: Array<Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>>,
