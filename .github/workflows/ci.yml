@@ -85,8 +85,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run tests
-        run: pnpm test
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+
+      # Handed to the SonarCloud job rather than re-running the suite there.
+      # Without a coverage report the scanner reports new_coverage=0.0 and fails
+      # the quality gate on every PR that adds code.
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          retention-days: 1
+          if-no-files-found: error
 
   build:
     name: Build
@@ -115,6 +126,10 @@ jobs:
   sonarcloud:
     name: SonarCloud
     runs-on: ubuntu-latest
+    # Needs the coverage artifact produced by the Test job. This also means a
+    # failing suite short-circuits the scan, which is fine — the gate would be
+    # judging an incomplete picture anyway.
+    needs: [test]
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
@@ -122,6 +137,23 @@ jobs:
         with:
           # Full history so SonarCloud can assign blame and compute new-code accurately.
           fetch-depth: 0
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-lcov
+          # sonar.javascript.lcov.reportPaths points here, relative to the repo root.
+          path: coverage
+
+      - name: Verify coverage report is present
+        # Fail loudly rather than let the scan proceed and silently report 0%
+        # coverage, which reads as "untested code" instead of "broken pipeline".
+        run: |
+          test -s coverage/lcov.info || {
+            echo "::error::coverage/lcov.info missing or empty — SonarCloud would report 0% coverage"
+            exit 1
+          }
+          echo "lcov.info: $(grep -c '^SF:' coverage/lcov.info) source files"
 
       - name: SonarCloud Scan
         if: ${{ env.SONAR_TOKEN != '' }}
