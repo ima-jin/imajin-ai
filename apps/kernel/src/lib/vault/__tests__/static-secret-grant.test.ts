@@ -35,7 +35,7 @@ type GrantRow = Record<string, unknown> & {
   expiresAt: Date | null;
 };
 
-const { tmpVaultPath, grantStore } = vi.hoisted(() => {
+const { tmpVaultPath, grantStore, envelopeStore } = vi.hoisted(() => {
   // vi.hoisted() runs before ESM imports are initialized, so `join` and
   // `tmpdir` from the top-level imports are not yet available. Use require().
    
@@ -50,20 +50,31 @@ const { tmpVaultPath, grantStore } = vi.hoisted(() => {
   process.env.VAULT_PATH = tmpVaultPath;
 
   const grantStore = new Map<string, GrantRow>();
-  return { tmpVaultPath, grantStore };
+  const envelopeStore = new Map<string, Record<string, unknown>>();
+  return { tmpVaultPath, grantStore, envelopeStore };
 });
 
-// ── DB mock ───────────────────────────────────────────────────────────────────
+// ── DB mock ─────────────────────────────────────────────────────────────────
 //
-// Implements just the operations used by the three vault primitives:
-//   insert(vaultDelegationGrants).values()                  — sealAndGrantStaticSecret
-//   update().set().where()                                  — supersede (no .returning())
-//   update().set().where().returning()                      — revokeStaticSecretGrant
-//   select().from().where().limit()                         — fetchActiveGrant
+// Implements just the operations the vault primitives use:
+//   insert(table).values()                                  — grants and owner envelopes
+//   insert(vaultOwnerEnvelopes).values().onConflictDoUpdate() — envelope upsert
+//   update().set().where()                                  — supersede / erase
+//   update().set().where().returning()                      — revoke, supersede
+//   select().from(table).where().limit()                    — fetchActiveGrant, hasOwnerEnvelope
+//
+// The doubles are table-aware because envelopes and grants now share these call
+// shapes and must not be conflated — hasOwnerEnvelope gates the key-material
+// erase, so a mock that answered it from the grant store would make the erase
+// look safe when it is not.
 
 vi.mock('@/src/db', () => {
-  // .where() result must be both a Promise (for supersede await) and
-  // have a .returning() method (for revokeStaticSecretGrant).
+  const vaultDelegationGrants = { __table: 'grants' };
+  const vaultOwnerEnvelopes = { __table: 'envelopes' };
+  const vaultGrantRequests = { __table: 'requests' };
+
+  // .where() result must be both a Promise (for bare awaits) and have a
+  // .returning() method.
   function makeWhereResult(returningValue: GrantRow[]) {
     const p = Promise.resolve([] as unknown[]);
     return {
@@ -74,24 +85,46 @@ vi.mock('@/src/db', () => {
     };
   }
 
+  function insertEnvelope(data: Record<string, unknown>) {
+    envelopeStore.set(`${String(data.field)}:${String(data.keyId)}`, data);
+  }
+
   return {
     db: {
-      insert: () => ({
-        values: (data: GrantRow) => {
-          grantStore.set(data.id, data);
+      insert: (table: { __table?: string }) => ({
+        values: (data: Record<string, unknown>) => {
+          if (table.__table === 'envelopes') {
+            insertEnvelope(data);
+            const p = Promise.resolve([] as unknown[]);
+            return {
+              then: p.then.bind(p),
+              catch: p.catch.bind(p),
+              finally: p.finally.bind(p),
+              // Upsert: the real unique index is (field, keyId), which the store
+              // key already models, so re-inserting simply overwrites.
+              onConflictDoUpdate: () => {
+                insertEnvelope(data);
+                return Promise.resolve([]);
+              },
+            };
+          }
+          grantStore.set(String(data.id), data as GrantRow);
           return Promise.resolve([]);
         },
       }),
       update: () => ({
         set: (patch: Record<string, unknown>) => ({
           where: () => {
-            // Apply the patch to all currently active rows (supersede semantics).
+            // Erase blanks key material on rows the caller has already moved out
+            // of 'active', so target those. Everything else is a status change
+            // applied to the currently active rows (supersede / revoke).
+            const isErase = patch.wrappedKey === '';
             for (const [id, row] of grantStore) {
-              if (row.status === 'active') {
+              const matches = isErase ? row.status !== 'active' : row.status === 'active';
+              if (matches) {
                 grantStore.set(id, { ...row, ...patch });
               }
             }
-            // Build .returning() result: rows that were just patched.
             const patched = [...grantStore.values()].filter(
               (r) => r.status === (patch.status ?? 'active'),
             );
@@ -100,20 +133,23 @@ vi.mock('@/src/db', () => {
         }),
       }),
       select: () => ({
-        from: () => ({
+        from: (table: { __table?: string }) => ({
           where: () => ({
             limit: () => {
-              const found = [...grantStore.values()].find(
-                (r) => r.status === 'active',
-              );
+              if (table.__table === 'envelopes') {
+                const envelope = [...envelopeStore.values()][0];
+                return Promise.resolve(envelope ? [envelope] : []);
+              }
+              const found = [...grantStore.values()].find((r) => r.status === 'active');
               return Promise.resolve(found ? [found] : []);
             },
           }),
         }),
       }),
     },
-    vaultDelegationGrants: {},
-    vaultGrantRequests: {},
+    vaultDelegationGrants,
+    vaultOwnerEnvelopes,
+    vaultGrantRequests,
     channelLinks: {},
   };
 });
@@ -156,6 +192,7 @@ function onlyActiveGrant(): GrantRow | undefined {
 
 beforeEach(() => {
   grantStore.clear();
+  envelopeStore.clear();
   _resetSealingCache();
   delete process.env.AUTH_PRIVATE_KEY;
   delete process.env.VAULT_OWNER_X_PUB;

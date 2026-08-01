@@ -3,6 +3,7 @@ import { and, eq, isNotNull, lt } from 'drizzle-orm';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants } from '@/src/db';
+import { eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 
 const log = createLogger('kernel');
@@ -27,6 +28,12 @@ export const dynamic = 'force-dynamic';
  * Expiry is already fail-safe at read time (SQL filter in fetchActiveGrant inside
  * loadAndUnseal), but `active` rows accumulate in the DB as the expiry wall-clock
  * passes.  This sweep cleans them up so the DB reflects true revocation state.
+ *
+ * It also erases the wrapped key material of the grants it expires. Without that,
+ * an expired grant still carries a usable field key for anyone with `nodeXPriv`
+ * and database access, so expiry would bound nothing in practice — which is what
+ * makes short-lived grants worth having at all. The owner's copy in
+ * `vault_owner_envelopes` is what a renewal is later issued from.
  *
  * Bus event: mirrors vault.delegation.revoked from POST /api/vault/delegation/revoke.
  */
@@ -57,6 +64,8 @@ export async function GET(request: NextRequest) {
       )
       .returning();
 
+    const erasedGrantIds = await eraseInactiveGrantKeyMaterial(swept);
+
     // Emit vault.delegation.revoked per row — mirrors POST /api/vault/delegation/revoke.
     for (const grant of swept) {
       publish('vault.delegation.revoked', {
@@ -79,11 +88,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    log.info({ swept: swept.length }, 'Vault grant expiry sweep complete');
+    log.info(
+      { swept: swept.length, keyMaterialErased: erasedGrantIds.length },
+      'Vault grant expiry sweep complete',
+    );
 
     return NextResponse.json({
       ok: true,
       swept: swept.length,
+      keyMaterialErasedCount: erasedGrantIds.length,
       grantIds: swept.map((g) => g.id),
     });
   } catch (error) {

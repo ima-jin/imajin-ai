@@ -37,6 +37,17 @@ export const vaultDelegationGrants = vaultSchema.table('vault_delegation_grants'
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+
+  // Recipient's X25519 pubkey. ECDH needs the counterparty key, so without this a
+  // grant row cannot be opened by the owner on its own. Nullable: rows written
+  // before #1521 predate it.
+  recipientXPub: text('recipient_x_pub'),
+
+  // The Ed25519 pubkey this grant's ownerSignature must verify against, pinned at
+  // creation. Previously the verifier was chosen from a process-wide Tier 1 flag,
+  // which made Tier 1 a one-way door and stopped Tier-0 and Tier-1 grants
+  // coexisting. Nullable: rows written before #1521 fall back to the old rule.
+  ownerEdPub: text('owner_ed_pub'),
 }, (table) => ({
   // Primary lookup: node checks for its own active grants on a given field.
   grantedToFieldIdx: index('idx_vault_delegation_granted_to_field')
@@ -93,3 +104,47 @@ export const vaultGrantRequests = vaultSchema.table('vault_grant_requests', {
 
 export type VaultGrantRequest = typeof vaultGrantRequests.$inferSelect;
 export type NewVaultGrantRequest = typeof vaultGrantRequests.$inferInsert;
+
+/**
+ * Vault owner envelopes — the owner's durable, recoverable copy of a field key (#1521).
+ *
+ * A v2 entry is encrypted with a random per-field AES key. Before this table, that
+ * key survived in exactly two places: the delegation grant (wrapped to the node),
+ * and — incidentally — the fulfilled `vault_grant_requests` row (wrapped to the
+ * owner). Nothing recorded that the request queue was load-bearing, so pruning it
+ * would have destroyed the owner's only copy of every field key.
+ *
+ * The envelope makes that copy explicit. It is written as
+ * `wrapFieldKey(fieldKey, ownerXPub, nodeXPriv)` and opened by the owner with
+ * `unwrapFieldKey({ encryptedKey: wrappedKey, nonce: wrappedNonce }, senderXPub, ownerXPriv)`
+ * — so `senderXPub` is the wrapper's (node's) pubkey, not the owner's.
+ *
+ * Two things depend on it:
+ *   - **Renewal and porting.** The owner can re-issue a grant after expiry or
+ *     revocation, or issue one to a different recipient, with no cooperation from
+ *     the node holding the current grant.
+ *   - **Safe crypto-erase.** A grant's wrapped key may only be erased when an
+ *     envelope exists for the same (field, keyId), so revocation can never destroy
+ *     the last recoverable copy.
+ */
+export const vaultOwnerEnvelopes = vaultSchema.table('vault_owner_envelopes', {
+  id: text('id').primaryKey(),                          // vwe_{nanoid}
+  field: text('field').notNull(),                       // vault field name
+  keyId: text('key_id').notNull(),                      // keyId of the entry this envelope covers
+  ownerXPub: text('owner_x_pub').notNull(),             // owner's X25519 pubkey the key is wrapped TO
+  senderXPub: text('sender_x_pub').notNull(),           // wrapper's X25519 pubkey; ECDH counterparty for unwrap
+  wrappedKey: text('wrapped_key').notNull(),            // base64: fieldKey wrapped to ownerXPub
+  wrappedNonce: text('wrapped_nonce').notNull(),        // base64: 12-byte AES-GCM IV
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  // keyId identifies the signing key, not the entry — it is derived from the node's
+  // Ed25519 pubkey and is constant across re-seals. This row is therefore upserted
+  // and always holds the CURRENT field key. Superseded generations are deliberately
+  // not retained, so a re-seal crypto-erases the previous value.
+  fieldKeyIdUniq: uniqueIndex('uniq_vault_owner_envelope').on(table.field, table.keyId),
+  // Used by the erase guard and by owner-side renewal / porting.
+  fieldIdx: index('idx_vault_owner_envelopes_field').on(table.field),
+}));
+
+export type VaultOwnerEnvelope = typeof vaultOwnerEnvelopes.$inferSelect;
+export type NewVaultOwnerEnvelope = typeof vaultOwnerEnvelopes.$inferInsert;

@@ -4,7 +4,7 @@ import { requireAdmin, verifySync } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants, vaultGrantRequests } from '@/src/db';
-import { canonicalizeGrantPayload } from '@/src/lib/vault';
+import { canonicalizeGrantPayload, eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
 import { getNodeSigningIdentity, getExternalOwnerEdPublicKey } from '@/src/lib/vault/sealing';
 import { generateId } from '@/src/lib/kernel/id';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
@@ -135,8 +135,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. Supersede any existing active grant for this (subject, grantedTo, field) tuple.
-    await db
+    // 4. Supersede any existing active grant for this (subject, grantedTo, field)
+    //    tuple, erasing its key material so the replaced grant stops being a usable
+    //    copy of the field key.
+    const superseded = await db
       .update(vaultDelegationGrants)
       .set({ status: 'superseded' })
       .where(
@@ -146,7 +148,14 @@ export async function POST(request: NextRequest) {
           eq(vaultDelegationGrants.field, field),
           eq(vaultDelegationGrants.status, 'active'),
         ),
-      );
+      )
+      .returning({
+        id: vaultDelegationGrants.id,
+        field: vaultDelegationGrants.field,
+        keyId: vaultDelegationGrants.keyId,
+      });
+
+    await eraseInactiveGrantKeyMaterial(superseded);
 
     // 5. Insert the new active delegation grant.
     const grantId = generateId('vdg');
@@ -162,6 +171,14 @@ export async function POST(request: NextRequest) {
       ownerSignature,
       status: 'active',
       expiresAt: expiresAtDate,
+      // Self-describing: the owner wrapped the key to the node's X25519 pubkey, so
+      // that is the ECDH counterparty needed to open this grant. Taken from the
+      // request row rather than the request body — the body is attacker-shaped
+      // input, the row was written by this node at seal time.
+      recipientXPub: grantRequest.nodeXPub,
+      // Pin the verifier this signature was checked against, so the grant stays
+      // verifiable if the Tier 1 env later changes.
+      ownerEdPub,
     });
 
     // 6. Mark the grant request as fulfilled.
