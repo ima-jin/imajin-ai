@@ -27,7 +27,7 @@ import { verifySync, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { and, eq, isNull, gt, or, type SQL } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { db, vaultDelegationGrants, vaultGrantRequests, vaultOwnerEnvelopes, type VaultDelegationGrant } from '@/src/db';
+import { db, vaultDelegationGrants, vaultGrantRequests, vaultOwnerEnvelopes, type VaultDelegationGrant, type VaultOwnerEnvelope } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getSealKey, getNodeSigningIdentity, getNodeXPrivateKey, getNodeXPublicKey, getOwnerXPrivateKey, getOwnerXPublicKey, isVaultTier1, getExternalOwnerXPublicKey, getExternalOwnerEdPublicKey } from './sealing';
 import { VaultDelegationError } from './errors';
@@ -328,7 +328,11 @@ export async function sealAndStoreV2(
   await assertEntryIntegrity(entry, vaultAdapters);
   await vaultService.set(entry);
 
-  const expiresAt = options.expiresAt ?? null;
+  // `undefined` means "use the configured default"; an explicit `null` means the
+  // caller genuinely wants a non-expiring grant and must not be overridden.
+  const expiresAt = options.expiresAt === undefined
+    ? defaultGrantExpiry()
+    : options.expiresAt;
 
   // ── Tier 1: external owner agent ────────────────────────────────────────────────
   if (isVaultTier1()) {
@@ -782,7 +786,145 @@ export async function revokeStaticSecretGrant(
   return updated.length > 0;
 }
 
-// ── Delegation helpers ────────────────────────────────────────────────────
+// ── Renewal (#1535) ──────────────────────────────────────────────────────
+
+/**
+ * Default lifetime applied to a grant when the caller does not specify one.
+ *
+ * Read from `VAULT_GRANT_TTL_DAYS`; **unset means grants do not expire**, which is
+ * the current default on purpose.
+ *
+ * Expiry now destroys key material, so an expired grant locks the node out of the
+ * field until someone re-issues. Until the owner agent renews automatically
+ * (#1536), switching this on would mean every v2 secret becomes unreadable one TTL
+ * after it is written, with nothing to recover it. Turn it on once renewal runs.
+ */
+export function defaultGrantExpiry(now: Date = new Date()): Date | null {
+  const raw = process.env.VAULT_GRANT_TTL_DAYS;
+  if (!raw) {
+    return null;
+  }
+
+  const days = Number(raw);
+  if (!Number.isFinite(days) || days <= 0) {
+    log.warn(
+      { value: raw },
+      'Vault: ignoring invalid VAULT_GRANT_TTL_DAYS — grants will not expire',
+    );
+    return null;
+  }
+
+  return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * The Ed25519 key that a NEWLY issued grant's `ownerSignature` must verify
+ * against — the external owner in Tier 1, this node in Tier 0.
+ *
+ * {@link resolveGrantVerifier} answers the same question for a grant that already
+ * exists (and may carry a pin). This answers it for one being created, which is
+ * what the grant endpoint needs before it has a row to consult.
+ */
+export function expectedGrantVerifier(entry: VaultEntry): string {
+  return isVaultTier1() ? getExternalOwnerEdPublicKey() : entry.senderPubkey;
+}
+
+/** The owner envelope for (field, keyId), or undefined when none exists. */
+export async function getOwnerEnvelope(
+  field: string,
+  keyId: string,
+): Promise<VaultOwnerEnvelope | undefined> {
+  const rows = await db
+    .select()
+    .from(vaultOwnerEnvelopes)
+    .where(and(eq(vaultOwnerEnvelopes.field, field), eq(vaultOwnerEnvelopes.keyId, keyId)))
+    .limit(1);
+  return rows[0];
+}
+
+export interface RenewableGrant {
+  field: string;
+  keyId: string;
+  /** 'missing' when no active grant exists at all; 'expiring' when one lapses soon. */
+  reason: 'missing' | 'expiring';
+  expiresAt: string | null;
+  /** Envelope material — the owner opens this with ownerXPriv to recover the field key. */
+  ownerXPub: string;
+  senderXPub: string;
+  wrappedKey: string;
+  wrappedNonce: string;
+}
+
+/**
+ * List the fields whose delegation grant needs issuing or re-issuing, together
+ * with the envelope the owner needs to mint a replacement.
+ *
+ * Envelopes are the enumeration source rather than the vault file: one exists for
+ * every v2 entry, and reading them avoids asserting integrity over every entry
+ * just to build a worklist.
+ *
+ * Returning the envelope is safe. It is the field key wrapped to `ownerXPub`, so
+ * only the holder of `ownerXPriv` can open it — the same reasoning that lets
+ * `GET /api/vault/grants/pending` return `wrappedFieldKey`.
+ */
+export async function listRenewableGrants(options: {
+  nodeDid: string;
+  /** Treat a grant as needing renewal this far ahead of its expiry. */
+  withinMs?: number;
+  now?: Date;
+}): Promise<RenewableGrant[]> {
+  const now = options.now ?? new Date();
+  const horizon = new Date(now.getTime() + (options.withinMs ?? 0));
+
+  const envelopes = await db.select().from(vaultOwnerEnvelopes);
+  const renewable: RenewableGrant[] = [];
+
+  for (const envelope of envelopes) {
+    const rows = await db
+      .select({
+        expiresAt: vaultDelegationGrants.expiresAt,
+      })
+      .from(vaultDelegationGrants)
+      .where(
+        and(
+          eq(vaultDelegationGrants.grantedTo, options.nodeDid),
+          eq(vaultDelegationGrants.field, envelope.field),
+          eq(vaultDelegationGrants.keyId, envelope.keyId),
+          eq(vaultDelegationGrants.status, 'active'),
+        ),
+      )
+      .limit(1);
+
+    const active = rows[0];
+    const common = {
+      field: envelope.field,
+      keyId: envelope.keyId,
+      ownerXPub: envelope.ownerXPub,
+      senderXPub: envelope.senderXPub,
+      wrappedKey: envelope.wrappedKey,
+      wrappedNonce: envelope.wrappedNonce,
+    };
+
+    if (!active) {
+      // Revoked, expired-and-swept, or never granted. Either way the node cannot
+      // read this field until the owner issues a grant.
+      renewable.push({ ...common, reason: 'missing', expiresAt: null });
+      continue;
+    }
+
+    if (active.expiresAt !== null && active.expiresAt <= horizon) {
+      renewable.push({
+        ...common,
+        reason: 'expiring',
+        expiresAt: active.expiresAt.toISOString(),
+      });
+    }
+  }
+
+  return renewable;
+}
+
+// ── Delegation helpers ───────────────────────────────────────────────────
 
 /**
  * Decide which Ed25519 public key a grant's `ownerSignature` must verify against.

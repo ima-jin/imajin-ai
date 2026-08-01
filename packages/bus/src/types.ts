@@ -610,7 +610,12 @@ export interface BusEventMap {
    */
   'vault.grant.fulfilled': {
     grantId: string;
-    requestId: string;
+    /**
+     * Null for an owner-initiated renewal (#1535). A request row exists only to
+     * deliver a field key the owner does not yet have; on renewal they already
+     * hold it in an envelope, so there is nothing to correlate against.
+     */
+    requestId: string | null;
     field: string;
     subject: string;     // ownerDid
     grantedTo: string;   // nodeDid
