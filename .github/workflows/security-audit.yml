@@ -1,0 +1,108 @@
+name: Scheduled Security Audit
+
+# Decouples "a new CVE was published upstream" from "your PR is blocked".
+#
+# The CI audit gate only fails on advisories a change introduces, measured
+# against .github/audit-baseline.json. That deliberately says nothing about
+# advisories published after the baseline was taken against dependencies
+# nobody touched — those are real, but they are not the PR author's problem
+# and blocking them there is what got the gate suppressed originally (#1559).
+#
+# This job is where they surface: a weekly full audit that opens (or updates)
+# an issue. Nobody's PR is held hostage, and a new critical does not wait for
+# someone to happen to run an audit locally.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC — early enough to be triaged during the week.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    name: Scheduled Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # --report never exits non-zero: this workflow reports, it does not gate.
+      # A red scheduled run would be indistinguishable from a broken workflow.
+      - name: Run audit
+        id: audit
+        run: |
+          node scripts/audit-gate.mjs --report > audit-report.txt 2>&1
+          echo "--- report ---"
+          cat audit-report.txt
+          if grep -q "NEW high/critical advisories" audit-report.txt; then
+            echo "has_new=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_new=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # One rolling issue rather than a new one every Monday. A weekly issue
+      # firehose gets muted, and a muted alert is worse than no alert.
+      - name: Open or update the audit issue
+        if: steps.audit.outputs.has_new == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="chore(security): new high/critical dependency advisories"
+          BODY_FILE=issue-body.md
+          {
+            echo "Advisories found that are **not** in \`.github/audit-baseline.json\`."
+            echo
+            echo "Detected by the scheduled audit on $(date -u +%Y-%m-%d). These are"
+            echo "either newly published upstream, or newly reachable from a dependency"
+            echo "change that predates this run."
+            echo
+            echo '```'
+            cat audit-report.txt
+            echo '```'
+            echo
+            echo "Resolve by upgrading or adding a pnpm override. If an advisory genuinely"
+            echo "cannot be fixed, add it to the baseline **with a reason** — that is a"
+            echo "reviewable decision. Note the CI gate will fail on these until they are"
+            echo "either fixed or baselined."
+            echo
+            echo "Priority is not set automatically — triage it on the board."
+            echo
+            echo "_Filed automatically by \`.github/workflows/security-audit.yml\` (#1559)._"
+          } > "$BODY_FILE"
+
+          # Identified by exact title, not by label or --search.
+          #
+          # --search would be wrong: the title contains ':' and parentheses,
+          # which are search-syntax metacharacters, so the query could quietly
+          # match the wrong issue or nothing at all.
+          #
+          # No dedicated label either: the label taxonomy is canonical in
+          # ima-jin/conventions and is consumed here, not extended locally.
+          # `gh issue create` hard-fails on an unknown label, so inventing one
+          # would break this job the first time it had something real to report.
+          EXISTING=$(gh issue list --state open --limit 200 \
+            --json number,title \
+            --jq "[.[] | select(.title == \"$TITLE\") | .number] | first // empty")
+
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body-file "$BODY_FILE"
+            echo "commented on existing issue #$EXISTING"
+          else
+            gh issue create --title "$TITLE" --body-file "$BODY_FILE" --label tech-debt
+            echo "opened a new audit issue"
+          fi
