@@ -5,11 +5,12 @@
   "description": "Telegram broker agent — conversational surface for broker-mediated social coordination",
   "scripts": {
     "dev": "tsx --watch src/index.ts",
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "grammy": "^1.30.0",
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.69.0",
     "@imajin/auth": "workspace:*",
     "dotenv": "^16.0.0"
   },

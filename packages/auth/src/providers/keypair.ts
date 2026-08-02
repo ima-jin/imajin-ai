@@ -10,7 +10,7 @@
 import { createLogger } from '@imajin/logger';
 const log = createLogger('auth');
 
-import type { Keypair, Identity, SignedMessage, IdentityType } from '../types';
+import type { Keypair, SignedMessage, IdentityType } from '../types';
 import * as crypto from '../crypto';
 import { sign, signSync, createChallenge } from '../sign';
 import { verify, verifySync, verifyChallenge } from '../verify';
@@ -53,6 +53,20 @@ export function createDID(publicKey: string): string {
 }
 
 /**
+ * Minimal identity shape derived from a keypair, for signing purposes.
+ * Not the full `Identity` record (that only exists once persisted server-side) —
+ * just enough (`id` + `type`) to satisfy `sign`/`signSync`, plus whatever
+ * caller-supplied metadata should travel alongside it.
+ */
+export interface KeypairIdentity {
+  id: string;
+  type: IdentityType;
+  publicKey: string;
+  metadata?: Record<string, unknown>;
+  createdAt: Date;
+}
+
+/**
  * Create a full identity from a public key
  * 
  * @example
@@ -65,8 +79,8 @@ export function createDID(publicKey: string): string {
 export function createIdentity(
   publicKey: string,
   type: IdentityType,
-  metadata?: Identity['metadata']
-): Identity {
+  metadata?: Record<string, unknown>
+): KeypairIdentity {
   return {
     id: createDID(publicKey),
     type,
@@ -89,7 +103,7 @@ export function createIdentity(
 export async function signMessage<T>(
   payload: T,
   privateKey: string,
-  identity: Pick<Identity, 'id' | 'type'>
+  identity: { id: string; type: IdentityType }
 ): Promise<SignedMessage<T>> {
   return sign(payload, privateKey, identity);
 }
@@ -100,7 +114,7 @@ export async function signMessage<T>(
 export function signMessageSync<T>(
   payload: T,
   privateKey: string,
-  identity: Pick<Identity, 'id' | 'type'>
+  identity: { id: string; type: IdentityType }
 ): SignedMessage<T> {
   return signSync(payload, privateKey, identity);
 }

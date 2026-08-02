@@ -40,7 +40,7 @@ export async function mintAppToken(
   const nonce     = randomBytes(16).toString('hex'); // 32 hex chars ≥ 16 required
   const timestamp = new Date().toISOString();
   const challenge = `${appDid}:${nonce}:${timestamp}`;
-  const signature = signSync(challenge, privateKey);
+  const signature = signSync(challenge, privateKey, { id: appDid, type: 'agent' });
 
   const res = await fetch(`${kernelUrl}/auth/api/apps/token/service`, {
     method: 'POST',

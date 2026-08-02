@@ -10,7 +10,8 @@
   },
   "scripts": {
     "lint": "eslint src",
-    "test": "vitest"
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@noble/ed25519": "^2.3.0",
@@ -20,7 +21,8 @@
   "devDependencies": {
     "@types/react": "^18",
     "typescript": "^5",
-    "vitest": "^1.0.0"
+    "vitest": "^1.0.0",
+    "@types/node": "^22.0.0"
   },
   "peerDependencies": {
     "react": "^18.2.0"
