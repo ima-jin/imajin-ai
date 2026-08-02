@@ -21,6 +21,7 @@ import {
   type ConnectorScope,
   type ReleaseClass,
 } from '@/src/lib/kernel/connector-registry';
+import { buildConnectHref, readConnectOutcome } from '@/src/lib/kernel/connect-outcome';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -137,30 +138,10 @@ async function postScopeToggle(
   return Array.isArray(data.activeScopes) ? data.activeScopes : [...next];
 }
 
-/**
- * Build the connect/reconnect href, threading the current detail page through
- * as `returnTo` so the OAuth callback lands the browser back here instead of on
- * a bare JSON page (#1529). The kernel re-validates this server-side as a
- * same-origin path, so it is a hint rather than a trusted input.
- */
+/** Connect/reconnect href for a connector, carrying `returnTo` (#1529). */
 function connectHref(entry: ConnectorEntry): string {
-  const returnTo = `/auth/connectors/${entry.id}`;
-  return `${entry.connectRoute!}?returnTo=${encodeURIComponent(returnTo)}`;
+  return buildConnectHref(entry.connectRoute!, entry.id);
 }
-
-/**
- * Human copy for the `?error=` codes emitted by the shared OAuth callback
- * handler (see `connector-oauth-routes.ts`). The callback deliberately puts
- * only a stable code in the URL — never raw exception text — so the mapping to
- * something a person can act on lives here.
- */
-const CONNECT_ERROR_COPY: Record<string, string> = {
-  missing_params: "The provider didn't send back a complete authorization response. Please try connecting again.",
-  invalid_state: 'That connection attempt expired or was already used. Please start the connection again.',
-  missing_param: "The provider's response was missing required account information. Please try connecting again.",
-  credential_pending: 'Your credentials were saved and are waiting for owner approval before the connection goes live.',
-  exchange_failed: "We couldn't finish the handshake with the provider. Please try again in a moment.",
-};
 
 // ── Shared subcomponents ──────────────────────────────────────────────────────
 
@@ -181,18 +162,17 @@ function ConnectorStatusBadge({ loading, error, ready, pending }: Readonly<{
  * Renders the outcome of a just-completed OAuth round-trip, read from the query
  * string the callback redirected us back with (#1529).
  *
- * Only reacts to params tagged with *this* connector's id, so a stale
- * `?connected=github` in the URL can't light up the QuickBooks card. On success
- * it also nudges the card to re-fetch status, since the credential was sealed
- * server-side while the browser was away at the provider.
+ * The interpretation lives in `readConnectOutcome` — this component only wires
+ * it to the URL and renders the result. On success it also nudges the card to
+ * re-fetch status, since the credential was sealed server-side while the
+ * browser was away at the provider.
  */
 function ConnectOutcomeBannerInner({ connectorId, onConnected }: Readonly<{
   connectorId: string;
   onConnected: () => void;
 }>) {
   const searchParams = useSearchParams();
-  const connected = searchParams.get('connected') === connectorId;
-  const errorCode = searchParams.get('connector') === connectorId ? searchParams.get('error') : null;
+  const { connected, errorMessage } = readConnectOutcome(searchParams, connectorId);
 
   useEffect(() => {
     if (connected) onConnected();
@@ -206,10 +186,10 @@ function ConnectOutcomeBannerInner({ connectorId, onConnected }: Readonly<{
     );
   }
 
-  if (errorCode) {
+  if (errorMessage) {
     return (
       <output className="block mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-300">
-        {CONNECT_ERROR_COPY[errorCode] ?? "That connection attempt didn't complete. Please try again."}
+        {errorMessage}
       </output>
     );
   }
