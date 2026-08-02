@@ -6,6 +6,7 @@ import { createCallbackHandler, MissingCallbackParamError } from '@/src/lib/kern
 export const GET = createCallbackHandler({
   verifyState,
   connectorName: 'QuickBooks',
+  connectorId: 'quickbooks',
   exchange: async (ownerDid, code, searchParams) => {
     const realmId = searchParams.get('realmId');
     if (!realmId) throw new MissingCallbackParamError('realmId');

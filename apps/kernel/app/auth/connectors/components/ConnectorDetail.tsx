@@ -14,7 +14,8 @@
  * consent_grants row automatically.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   type ConnectorEntry,
   type ConnectorScope,
@@ -136,6 +137,31 @@ async function postScopeToggle(
   return Array.isArray(data.activeScopes) ? data.activeScopes : [...next];
 }
 
+/**
+ * Build the connect/reconnect href, threading the current detail page through
+ * as `returnTo` so the OAuth callback lands the browser back here instead of on
+ * a bare JSON page (#1529). The kernel re-validates this server-side as a
+ * same-origin path, so it is a hint rather than a trusted input.
+ */
+function connectHref(entry: ConnectorEntry): string {
+  const returnTo = `/auth/connectors/${entry.id}`;
+  return `${entry.connectRoute!}?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
+/**
+ * Human copy for the `?error=` codes emitted by the shared OAuth callback
+ * handler (see `connector-oauth-routes.ts`). The callback deliberately puts
+ * only a stable code in the URL — never raw exception text — so the mapping to
+ * something a person can act on lives here.
+ */
+const CONNECT_ERROR_COPY: Record<string, string> = {
+  missing_params: "The provider didn't send back a complete authorization response. Please try connecting again.",
+  invalid_state: 'That connection attempt expired or was already used. Please start the connection again.',
+  missing_param: "The provider's response was missing required account information. Please try connecting again.",
+  credential_pending: 'Your credentials were saved and are waiting for owner approval before the connection goes live.',
+  exchange_failed: "We couldn't finish the handshake with the provider. Please try again in a moment.",
+};
+
 // ── Shared subcomponents ──────────────────────────────────────────────────────
 
 /** Header badge for connector cards — eliminates nested ternary duplication. */
@@ -149,6 +175,58 @@ function ConnectorStatusBadge({ loading, error, ready, pending }: Readonly<{
   // "not configured", which would tell the user to redo work they already did.
   if (pending) return <Badge variant="pending">⏳ Waiting for owner approval</Badge>;
   return <Badge variant="inactive">○ Not configured</Badge>;
+}
+
+/**
+ * Renders the outcome of a just-completed OAuth round-trip, read from the query
+ * string the callback redirected us back with (#1529).
+ *
+ * Only reacts to params tagged with *this* connector's id, so a stale
+ * `?connected=github` in the URL can't light up the QuickBooks card. On success
+ * it also nudges the card to re-fetch status, since the credential was sealed
+ * server-side while the browser was away at the provider.
+ */
+function ConnectOutcomeBannerInner({ connectorId, onConnected }: Readonly<{
+  connectorId: string;
+  onConnected: () => void;
+}>) {
+  const searchParams = useSearchParams();
+  const connected = searchParams.get('connected') === connectorId;
+  const errorCode = searchParams.get('connector') === connectorId ? searchParams.get('error') : null;
+
+  useEffect(() => {
+    if (connected) onConnected();
+  }, [connected, onConnected]);
+
+  if (connected) {
+    return (
+      <output className="block mb-4 px-4 py-3 rounded-lg bg-green-500/10 border border-green-500/30 text-sm text-green-300">
+        ✅ Connected. Your credentials are sealed — grant the scopes you need below.
+      </output>
+    );
+  }
+
+  if (errorCode) {
+    return (
+      <output className="block mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-300">
+        {CONNECT_ERROR_COPY[errorCode] ?? "That connection attempt didn't complete. Please try again."}
+      </output>
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Suspense wrapper — `useSearchParams` needs a boundary above it or the client
+ * build bails out of static rendering for the whole route.
+ */
+function ConnectOutcomeBanner(props: Readonly<{ connectorId: string; onConnected: () => void }>) {
+  return (
+    <Suspense fallback={null}>
+      <ConnectOutcomeBannerInner {...props} />
+    </Suspense>
+  );
 }
 
 /** One scope row inside a ScopeGrantSection. */
@@ -426,6 +504,8 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
         />
       </div>
 
+      <ConnectOutcomeBanner connectorId={entry.id} onConnected={refreshStatus} />
+
       {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
       {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
 
@@ -523,7 +603,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
               <div className="flex items-center justify-between text-sm">
                 <StatusDot ok={true} label="Account connected" />
                 <a
-                  href={entry.connectRoute!}
+                  href={connectHref(entry)}
                   className="text-xs text-gray-600 hover:text-gray-400 transition"
                 >
                   Reconnect
@@ -532,7 +612,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             ) : (
               <div className="space-y-2">
                 <a
-                  href={entry.connectRoute!}
+                  href={connectHref(entry)}
                   className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
                     status.configSealed
                       ? 'bg-amber-500 hover:bg-amber-600 text-black'
@@ -874,6 +954,8 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
         />
       </div>
 
+      <ConnectOutcomeBanner connectorId={entry.id} onConnected={refreshStatus} />
+
       {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
       {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
 
@@ -935,11 +1017,11 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
             {status.tokenSealed ? (
               <div className="flex items-center justify-between text-sm">
                 <StatusDot ok={true} label="Account connected" />
-                <a href={entry.connectRoute!} className="text-xs text-gray-600 hover:text-gray-400 transition">Reconnect</a>
+                <a href={connectHref(entry)} className="text-xs text-gray-600 hover:text-gray-400 transition">Reconnect</a>
               </div>
             ) : (
               <div className="space-y-2">
-                <a href={entry.connectRoute!}
+                <a href={connectHref(entry)}
                   className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
                     status.configSealed ? 'bg-amber-500 hover:bg-amber-600 text-black' : 'bg-white/5 text-gray-600 cursor-not-allowed pointer-events-none'
                   }`} aria-disabled={!status.configSealed}>
