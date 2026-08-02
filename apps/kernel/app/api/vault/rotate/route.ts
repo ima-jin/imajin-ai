@@ -70,6 +70,10 @@ export async function POST(request: NextRequest) {
       previousCid: existing.cid,
       timestamp: entry.timestamp,
       senderDid: entry.senderDid,
+      // Surfaces which custody path the rotation actually took (#1546) — a v2
+      // field must still read 'delegation-grant' after rotating, not silently
+      // downgrade to node-sealed.
+      custodyScheme: entry.custodyScheme ?? 'node-sealed',
       status: published ? 'confirmed' : 'pending',
     });
   } catch (error) {

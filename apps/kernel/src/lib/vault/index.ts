@@ -499,6 +499,23 @@ export async function deleteFromVault(field: string): Promise<VaultEntry | undef
  * Re-seal a new plaintext value for an existing vault field, chaining the
  * previousCid for a tamper-evident history.
  *
+ * Dispatches on the EXISTING entry's custodyScheme (#1546):
+ *   'delegation-grant' (v2) — delegates entirely to sealAndStoreV2, which
+ *     already generates a fresh per-field AES key, chains previousCid, writes
+ *     the owner envelope, and supersedes + crypto-erases the prior active
+ *     grant. Rotation is "re-seal, keep the chain" for v2 fields; it must run
+ *     through the exact same custody machinery a fresh v2 seal does, or the
+ *     two paths silently drift apart.
+ *   'node-sealed' / absent (v1) — unchanged: re-seals with the node's static
+ *     derived key via prepareRotationEntry.
+ *
+ * Before this dispatch existed, EVERY rotation — regardless of the existing
+ * entry's version — hardcoded v1 via prepareRotationEntry. That silently
+ * downgraded a v2 field's custody on its very next rotation: the v1 read path
+ * kept working (via the node's static seal key), so nothing broke visibly,
+ * but the field silently exited delegation-grant custody and the old
+ * vault_delegation_grants row was left dangling, active, and unusable.
+ *
  * Throws if the field does not exist yet — use sealAndStore for initial writes.
  * No plaintext is logged at any point.
  */
@@ -506,6 +523,11 @@ export async function rotateAndStore(field: string, plaintext: string): Promise<
   const existingEntry = await vaultService.get(field);
   if (!existingEntry) {
     throw new Error(`vault rotateAndStore: field '${field}' not found — use sealAndStore for initial writes`);
+  }
+
+  if (existingEntry.custodyScheme === 'delegation-grant') {
+    const { entry } = await sealAndStoreV2(field, plaintext);
+    return entry;
   }
 
   const sealKey = getSealKey();
