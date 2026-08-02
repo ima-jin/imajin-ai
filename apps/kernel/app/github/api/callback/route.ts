@@ -6,5 +6,6 @@ import { createCallbackHandler } from '@/src/lib/kernel/connector-oauth-routes';
 export const GET = createCallbackHandler({
   verifyState,
   connectorName: 'GitHub',
+  connectorId: 'github',
   exchange: (ownerDid, code) => exchangeCodeAndStore(ownerDid, code),
 });

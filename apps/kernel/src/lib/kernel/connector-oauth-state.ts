@@ -17,13 +17,34 @@ interface StatePayload {
   did: string;
   nonce: string;
   iat: number;
+  /**
+   * Same-origin app path to send the browser back to after the callback
+   * completes (#1529). Lives *inside* the signed payload so it inherits the
+   * HMAC — a tampered `returnTo` fails signature verification, which is what
+   * keeps this from becoming an open redirect.
+   */
+  returnTo?: string;
+}
+
+/** Result of a successful {@link OAuthStateHelpers.verifyState}. */
+export interface VerifiedState {
+  /** The owner DID the state token was minted for. */
+  did: string;
+  /** The signed return path, when the connect route supplied one. */
+  returnTo?: string;
 }
 
 export interface OAuthStateHelpers {
-  /** Mint a signed state token binding the owner DID. */
-  signState(ownerDid: string): string;
-  /** Verify a state token and return the bound DID. Throws on tamper/expiry. */
-  verifyState(state: string): string;
+  /**
+   * Mint a signed state token binding the owner DID, and optionally the
+   * same-origin path to return the browser to after the callback.
+   */
+  signState(ownerDid: string, returnTo?: string): string;
+  /**
+   * Verify a state token and return the bound DID (plus `returnTo` when one was
+   * signed in). Throws on tamper/expiry.
+   */
+  verifyState(state: string): VerifiedState;
 }
 
 /**
@@ -44,13 +65,16 @@ export function createOAuthStateHelpers(errorPrefix: string): OAuthStateHelpers 
     return createHmac('sha256', stateSecret()).update(payloadB64).digest('base64url');
   }
 
-  function signState(ownerDid: string): string {
+  function signState(ownerDid: string, returnTo?: string): string {
     const payload: StatePayload = { did: ownerDid, nonce: randomBytes(8).toString('hex'), iat: Date.now() };
+    // Only set the key when present so tokens minted without a returnTo keep
+    // their original shape (and their original length).
+    if (returnTo) payload.returnTo = returnTo;
     const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
     return `${payloadB64}.${sign(payloadB64)}`;
   }
 
-  function verifyState(state: string): string {
+  function verifyState(state: string): VerifiedState {
     const [payloadB64, sig] = state.split('.');
     if (!payloadB64 || !sig) {
       throw new Error(`${errorPrefix}: malformed state`);
@@ -66,7 +90,7 @@ export function createOAuthStateHelpers(errorPrefix: string): OAuthStateHelpers 
     if (Date.now() - payload.iat > STATE_TTL_MS) {
       throw new Error(`${errorPrefix}: expired`);
     }
-    return payload.did;
+    return { did: payload.did, returnTo: payload.returnTo };
   }
 
   return { signState, verifyState };

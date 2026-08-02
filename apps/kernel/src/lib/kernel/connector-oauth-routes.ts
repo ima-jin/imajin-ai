@@ -8,8 +8,8 @@
  *
  * Exports:
  *   createConnectHandler    — GET: requireAuth → buildAuthorizeUrl → redirect
- *   createCallbackHandler   — GET: verifyState → exchange → { connected: true }
- *   MissingCallbackParamError — throw inside `exchange` to return 400 (not 502)
+ *   createCallbackHandler   — GET: verifyState → exchange → redirect into the app
+ *   MissingCallbackParamError — throw inside `exchange` to signal a bad request
  *   createDisconnectHandler — POST: auth → purge vault → revoke grant → event
  *   createConfigureHandler  — OPTIONS + POST: auth → validate → storeConfig
  */
@@ -21,7 +21,9 @@ import { and, eq } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
 import { deleteFromVault } from '@/src/lib/vault';
 import { corsHeaders } from '@/src/lib/kernel/cors';
+import { sanitizeReturnTo } from '@/src/lib/kernel/oauth-return-to';
 import { ConnectorCredentialPendingError, type BaseOAuthConfig } from './connector-oauth';
+import type { VerifiedState } from './connector-oauth-state';
 
 const log = createLogger('kernel');
 
@@ -31,10 +33,15 @@ const log = createLogger('kernel');
  * Build a session-gated `GET` handler that starts the OAuth2 authorize redirect.
  * The caller supplies the connector's `buildAuthorizeUrl` and `signState` so
  * the handler has no knowledge of the specific provider.
+ *
+ * An optional `?returnTo=` query param is validated as a same-origin app path
+ * and signed into `state`, so the callback can put the browser back where the
+ * user started the flow (#1529). An off-origin value is dropped rather than
+ * rejected — the connect still succeeds, it just lands on the default page.
  */
 export function createConnectHandler(
   buildAuthorizeUrl: (ownerDid: string, state: string) => Promise<string>,
-  signState: (ownerDid: string) => string,
+  signState: (ownerDid: string, returnTo?: string) => string,
 ) {
   return async function GET(request: NextRequest) {
     const auth = await requireAuth(request);
@@ -42,8 +49,10 @@ export function createConnectHandler(
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
     const ownerDid = resolveActingDid(auth.identity);
+    const { searchParams } = new URL(request.url);
+    const returnTo = sanitizeReturnTo(searchParams.get('returnTo'));
     try {
-      return NextResponse.redirect(await buildAuthorizeUrl(ownerDid, signState(ownerDid)));
+      return NextResponse.redirect(await buildAuthorizeUrl(ownerDid, signState(ownerDid, returnTo ?? undefined)));
     } catch (err) {
       if (err instanceof ConnectorCredentialPendingError) {
         return NextResponse.json({ error: err.message }, { status: 409 });
@@ -57,7 +66,8 @@ export function createConnectHandler(
 
 /**
  * Throw inside `exchange` when a required provider-specific callback param
- * (e.g. Intuit's `realmId`) is absent. The handler returns 400 instead of 502.
+ * (e.g. Intuit's `realmId`) is absent, so the handler can distinguish a
+ * malformed callback from a genuine token-exchange failure.
  */
 export class MissingCallbackParamError extends Error {
   constructor(param: string) {
@@ -66,49 +76,97 @@ export class MissingCallbackParamError extends Error {
 }
 
 /**
+ * Stable, machine-readable failure codes appended to the landing page as
+ * `?error=`. The UI maps these to human copy — the raw exception text is only
+ * ever written to the server log, never to the URL.
+ */
+export type ConnectCallbackError =
+  | 'missing_params'
+  | 'invalid_state'
+  | 'missing_param'
+  | 'credential_pending'
+  | 'exchange_failed';
+
+/** Where a connector's callback lands the browser when no `returnTo` was signed. */
+function defaultLandingPath(connectorId: string): string {
+  return `/auth/connectors/${connectorId}`;
+}
+
+/**
  * Build a `GET` handler for the OAuth2 callback route. The callback arrives
  * without an imajin session; the signed `state` authenticates the owner DID.
  *
+ * This route is the **browser redirect target** from the provider, not an API
+ * endpoint — so every branch ends in a redirect back into the app rather than a
+ * JSON body the user would be stranded on (#1529). Success lands on the signed
+ * `returnTo` (or `/auth/connectors/<id>`) with `?connected=<id>`; failures land
+ * on the same page with `?error=<code>&connector=<id>`.
+ *
  * `exchange` receives the verified `ownerDid`, `code`, and the raw
  * `URLSearchParams` so callers can extract provider-specific params (e.g.
- * Intuit's `realmId`). Throw `MissingCallbackParamError` to map to 400.
+ * Intuit's `realmId`). Throw `MissingCallbackParamError` for a bad callback.
  */
 export function createCallbackHandler(opts: {
-  verifyState(state: string): string;
+  verifyState(state: string): VerifiedState;
   exchange(ownerDid: string, code: string, searchParams: URLSearchParams): Promise<void>;
   connectorName: string;
+  /** Registry id (e.g. `'quickbooks'`) — drives the default landing page. */
+  connectorId: string;
 }) {
+  const fallback = defaultLandingPath(opts.connectorId);
+
+  /** Build an absolute same-origin redirect to `path` with one param set. */
+  function landing(request: NextRequest, path: string, key: string, value: string) {
+    const url = new URL(path, request.url);
+    url.searchParams.set(key, value);
+    return url;
+  }
+
+  function fail(request: NextRequest, path: string, code: ConnectCallbackError) {
+    const url = landing(request, path, 'error', code);
+    url.searchParams.set('connector', opts.connectorId);
+    return NextResponse.redirect(url);
+  }
+
   return async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code');
     const state = searchParams.get('state');
 
     if (!code || !state) {
-      return NextResponse.json({ error: 'Missing code or state' }, { status: 400 });
+      return fail(request, fallback, 'missing_params');
     }
 
-    let ownerDid: string;
+    let verified: VerifiedState;
     try {
-      ownerDid = opts.verifyState(state);
+      verified = opts.verifyState(state);
     } catch (err) {
+      // A bad state means `returnTo` is unrecoverable (and untrustworthy), so
+      // this branch can only ever land on the default page.
       log.warn({ err: String(err) }, `${opts.connectorName} callback: invalid state`);
-      return NextResponse.json({ error: 'Invalid or expired state' }, { status: 400 });
+      return fail(request, fallback, 'invalid_state');
     }
+
+    const ownerDid = verified.did;
+    // Re-validate after verification: the HMAC already proves we signed this
+    // value, but re-checking keeps a leaked signing key from escalating into an
+    // open redirect.
+    const dest = sanitizeReturnTo(verified.returnTo) ?? fallback;
 
     try {
       await opts.exchange(ownerDid, code, searchParams);
     } catch (err) {
       if (err instanceof MissingCallbackParamError) {
-        return NextResponse.json({ error: err.message }, { status: 400 });
+        return fail(request, dest, 'missing_param');
       }
       if (err instanceof ConnectorCredentialPendingError) {
-        return NextResponse.json({ error: err.message }, { status: 409 });
+        return fail(request, dest, 'credential_pending');
       }
       log.error({ err: String(err), ownerDid }, `${opts.connectorName} callback: token exchange failed`);
-      return NextResponse.json({ error: `${opts.connectorName} connection failed` }, { status: 502 });
+      return fail(request, dest, 'exchange_failed');
     }
 
-    return NextResponse.json({ connected: true });
+    return NextResponse.redirect(landing(request, dest, 'connected', opts.connectorId));
   };
 }
 
