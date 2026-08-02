@@ -28,7 +28,11 @@ vi.mock('../connector', () => ({
   vaultField: (did: string) => `discord-bot-token:${did}`,
 }));
 
-vi.mock('@/src/lib/vault', () => ({ vaultFieldExists: vi.fn().mockResolvedValue(false) }));
+const { statusMock } = vi.hoisted(() => ({ statusMock: vi.fn().mockResolvedValue('absent') }));
+vi.mock('@/src/lib/vault', () => ({
+  vaultFieldExists: vi.fn().mockResolvedValue(false),
+  vaultFieldStatus: statusMock,
+}));
 
 import {
   buildManifestContent,
@@ -37,6 +41,7 @@ import {
   syncConsentGrants,
   publishDiscordScopeManifest,
   discordTokenSealed,
+  discordCredentialPending,
   VALID_DISCORD_SCOPES,
   DISCORD_SCOPE_DESCRIPTORS,
 } from '../scope-manifest';
@@ -114,5 +119,17 @@ describe('publishDiscordScopeManifest', () => {
 describe('discordTokenSealed', () => {
   it('returns false when no token is sealed', async () => {
     expect(await discordTokenSealed('did:owner')).toBe(false);
+  });
+});
+
+describe('discordCredentialPending (#1521)', () => {
+  it('is true when the field status is pending-grant', async () => {
+    statusMock.mockResolvedValue('pending-grant');
+    expect(await discordCredentialPending('did:owner')).toBe(true);
+  });
+
+  it('is false when the field is ready', async () => {
+    statusMock.mockResolvedValue('ready');
+    expect(await discordCredentialPending('did:owner')).toBe(false);
   });
 });

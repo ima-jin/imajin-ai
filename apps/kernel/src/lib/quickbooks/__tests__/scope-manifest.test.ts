@@ -28,8 +28,11 @@ vi.mock('../connector', () => ({
   vaultField: (did: string) => `quickbooks-oauth:${did}`,
 }));
 
-const { mockVaultExists } = vi.hoisted(() => ({ mockVaultExists: vi.fn().mockResolvedValue(false) }));
-vi.mock('@/src/lib/vault', () => ({ vaultFieldExists: mockVaultExists }));
+const { mockVaultExists, mockVaultStatus } = vi.hoisted(() => ({
+  mockVaultExists: vi.fn().mockResolvedValue(false),
+  mockVaultStatus: vi.fn().mockResolvedValue('absent'),
+}));
+vi.mock('@/src/lib/vault', () => ({ vaultFieldExists: mockVaultExists, vaultFieldStatus: mockVaultStatus }));
 
 import {
   buildManifestContent,
@@ -39,6 +42,7 @@ import {
   publishQuickBooksScopeManifest,
   quickbooksConfigSealed,
   quickbooksTokenSealed,
+  quickbooksCredentialPending,
   VALID_QUICKBOOKS_SCOPES,
   QUICKBOOKS_SCOPE_DESCRIPTORS,
 } from '../scope-manifest';
@@ -137,5 +141,26 @@ describe('quickbooksTokenSealed', () => {
   it('returns true when token is sealed', async () => {
     mockVaultExists.mockResolvedValueOnce(true);
     expect(await quickbooksTokenSealed('did:owner')).toBe(true);
+  });
+});
+
+describe('quickbooksCredentialPending (#1521)', () => {
+  it('is false when both config and token are ready', async () => {
+    mockVaultStatus.mockResolvedValue('ready');
+    expect(await quickbooksCredentialPending('did:owner')).toBe(false);
+  });
+
+  it('is true when the config is pending a grant', async () => {
+    mockVaultStatus.mockImplementation((field: string) =>
+      Promise.resolve(field.startsWith('quickbooks-config:') ? 'pending-grant' : 'ready'),
+    );
+    expect(await quickbooksCredentialPending('did:owner')).toBe(true);
+  });
+
+  it('is true when the token is pending a grant', async () => {
+    mockVaultStatus.mockImplementation((field: string) =>
+      Promise.resolve(field.startsWith('quickbooks-oauth:') ? 'pending-grant' : 'ready'),
+    );
+    expect(await quickbooksCredentialPending('did:owner')).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { db, contactHashes, consentGrants } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
-import { sealAndStore, rotateAndStore, deleteFromVault, vaultService } from '@/src/lib/vault';
+import { sealAndStoreV2, rotateAndStore, deleteFromVault, vaultService } from '@/src/lib/vault';
 import { generateId } from '@/src/lib/kernel/id';
 
 /** SHA-256 of a normalised (lowercased, trimmed) string for federation hashing. */
@@ -59,7 +59,17 @@ export async function ensureContactConsentGrant(ownerDid: string): Promise<void>
   });
 }
 
-/** Store or rotate a vault-encrypted email, update contact hash, and seed consent grant. */
+/**
+ * Store or update a vault-encrypted email, update contact hash, and seed
+ * consent grant.
+ *
+ * Initial write goes through `sealAndStoreV2` so the field starts life under
+ * delegation-grant custody. Updates to an existing entry go through
+ * `rotateAndStore`, which dispatches on the entry's existing custody scheme
+ * (imajin-ai#1546) and delegates to `sealAndStoreV2` itself for v2 fields —
+ * so a v2 contact field stays v2 across edits without duplicating that logic
+ * here.
+ */
 export async function processEmailUpdate(profileDid: string, email: string | null | undefined): Promise<void> {
   if (email === undefined) return;
   if (email) {
@@ -68,7 +78,7 @@ export async function processEmailUpdate(profileDid: string, email: string | nul
     if (exists) {
       await rotateAndStore(emailField, String(email));
     } else {
-      await sealAndStore(emailField, String(email));
+      await sealAndStoreV2(emailField, String(email));
     }
     await upsertContactHashes(profileDid, hashContactValue(String(email)), null);
     await ensureContactConsentGrant(profileDid).catch(() => {});
@@ -83,7 +93,11 @@ export async function processEmailUpdate(profileDid: string, email: string | nul
   }
 }
 
-/** Store or rotate a vault-encrypted phone number, update contact hash, and seed consent grant. */
+/**
+ * Store or update a vault-encrypted phone number, update contact hash, and
+ * seed consent grant. See {@link processEmailUpdate} for the initial-seal vs.
+ * rotate split.
+ */
 export async function processPhoneUpdate(profileDid: string, phone: string | null | undefined): Promise<void> {
   if (phone === undefined) return;
   if (phone) {
@@ -92,7 +106,7 @@ export async function processPhoneUpdate(profileDid: string, phone: string | nul
     if (exists) {
       await rotateAndStore(phoneField, String(phone));
     } else {
-      await sealAndStore(phoneField, String(phone));
+      await sealAndStoreV2(phoneField, String(phone));
     }
     const [row] = await db
       .select({ emailHash: contactHashes.emailHash })

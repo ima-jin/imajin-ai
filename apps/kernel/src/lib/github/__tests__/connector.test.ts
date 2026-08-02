@@ -40,7 +40,7 @@ vi.mock('drizzle-orm', () => ({
     { mapWith: (fn: unknown) => fn },
   ),
 }));
-vi.mock('@/src/lib/vault', () => ({ sealAndStore: sealMock, loadAndUnseal: loadMock }));
+vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
 
 /**
  * @/src/db mock — routes select().from(table) to the correct terminal mock
@@ -110,6 +110,7 @@ vi.mock('../allowlist', () => ({
   isRepoAllowed: isRepoAllowedMock,
 }));
 
+import { VaultDelegationError } from '@/src/lib/vault/errors';
 import {
   resolveActiveGrant,
   sealPat,
@@ -688,6 +689,34 @@ describe('exchangeCodeAndStore (#1333)', () => {
       json: async () => ({ error: 'bad_verification_code', error_description: 'expired' }),
     });
     await expect(exchangeCodeAndStore(OWNER, 'code123')).rejects.toThrow(/bad_verification_code/);
+  });
+});
+
+describe('credential pending (#1521)', () => {
+  it('surfaces github_credential_pending when the sealed OAuth token has no active grant yet', async () => {
+    grant(['github:read']);
+    loadMock.mockImplementation((field: string) => {
+      if (field.startsWith('github-oauth:')) {
+        return Promise.reject(new VaultDelegationError('no active grant', { field, nodeDid: 'did:imajin:node' }));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await expect(getIssue(OWNER, REPO, 42)).rejects.toThrow(/github_credential_pending/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('surfaces github_credential_pending when the sealed PAT has no active grant yet (no OAuth bundle)', async () => {
+    grant(['github:read']);
+    loadMock.mockImplementation((field: string) => {
+      if (field.startsWith('github-oauth:') || field.startsWith('github-config:')) {
+        return Promise.resolve(undefined);
+      }
+      return Promise.reject(new VaultDelegationError('no active grant', { field, nodeDid: 'did:imajin:node' }));
+    });
+
+    await expect(listIssues(OWNER, REPO)).rejects.toThrow(/github_credential_pending/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

@@ -6,7 +6,7 @@ const { sealMock, loadMock, whereMock } = vi.hoisted(() => ({
   whereMock: vi.fn(),
 }));
 
-vi.mock('@/src/lib/vault', () => ({ sealAndStore: sealMock, loadAndUnseal: loadMock }));
+vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: whereMock }) }) },
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },

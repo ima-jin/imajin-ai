@@ -19,7 +19,8 @@ import { createLogger } from '@imajin/logger';
 import * as bus from '@imajin/bus';
 import { and, eq } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
-import { sealAndStore, loadAndUnseal } from '@/src/lib/vault';
+import { sealAndStoreV2, loadAndUnseal } from '@/src/lib/vault';
+import { VaultDelegationError } from '@/src/lib/vault/errors';
 
 const log = createLogger('kernel');
 
@@ -51,7 +52,7 @@ export function vaultField(ownerDid: string): string {
  * is the sealed VaultEntry. Callers must validate the token is non-empty.
  */
 export async function sealToken(ownerDid: string, token: string): Promise<void> {
-  await sealAndStore(vaultField(ownerDid), token);
+  await sealAndStoreV2(vaultField(ownerDid), token);
 }
 
 // ── Grant resolution ──────────────────────────────────────────────────────────
@@ -105,7 +106,17 @@ async function requireGrantAndToken(ownerDid: string, scope: string): Promise<st
     );
   }
 
-  const token = await loadAndUnseal(vaultField(ownerDid));
+  let token: string | undefined;
+  try {
+    token = await loadAndUnseal(vaultField(ownerDid));
+  } catch (err) {
+    if (err instanceof VaultDelegationError) {
+      throw new Error(
+        `discord_credential_pending: Discord Bot Token for DID ${ownerDid} is sealed but awaiting owner grant approval`,
+      );
+    }
+    throw err;
+  }
   if (token === undefined) {
     throw new Error(
       `discord_no_token: no Discord Bot Token sealed for DID ${ownerDid} — ` +

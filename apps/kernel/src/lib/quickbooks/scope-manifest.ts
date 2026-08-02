@@ -19,7 +19,7 @@ import {
   type Asset,
 } from '@/src/lib/kernel/scope-manifest-core';
 import { QUICKBOOKS_CONNECTOR_DID, configField, vaultField } from './connector';
-import { vaultFieldExists } from '@/src/lib/vault';
+import { vaultFieldExists, vaultFieldStatus } from '@/src/lib/vault';
 
 // ── Scope registry ────────────────────────────────────────────────────────────
 
@@ -101,4 +101,19 @@ export function quickbooksConfigSealed(ownerDid: string): Promise<boolean> {
 /** Check whether a QuickBooks OAuth token bundle is sealed for ownerDid. */
 export function quickbooksTokenSealed(ownerDid: string): Promise<boolean> {
   return vaultFieldExists(vaultField(ownerDid));
+}
+
+/**
+ * Check whether the QuickBooks config or token is sealed but awaiting owner
+ * grant approval (Tier 1, no active delegation grant yet). Distinct from
+ * `quickbooksConfigSealed`/`quickbooksTokenSealed`, which report `false` for
+ * this state (see field-status.ts) — lets the scope-manifest surface render
+ * "waiting for owner approval" instead of "not connected".
+ */
+export async function quickbooksCredentialPending(ownerDid: string): Promise<boolean> {
+  const [configStatus, tokenStatus] = await Promise.all([
+    vaultFieldStatus(configField(ownerDid)),
+    vaultFieldStatus(vaultField(ownerDid)),
+  ]);
+  return configStatus === 'pending-grant' || tokenStatus === 'pending-grant';
 }

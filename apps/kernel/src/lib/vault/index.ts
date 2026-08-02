@@ -1110,7 +1110,11 @@ export async function _applyDelegationGrant(
   return unsealSecret(entry, fieldKey);
 }
 
-// ── Batch v1→v2 custody migration (#1537) ───────────────────────────────────
+// ── Batch v1→v2 custody migration (#1537) ───────────────────────────
 // Trailing, deliberately isolated: migrate-custody.ts owns this export. Do not
 // add other logic below this line — see the #1537 child-agent boundary notes.
 export * from './migrate-custody';
+
+// ── #1521 — field status (connector v2 custody adoption) ───────────────────
+// Trailing re-export only; see ./field-status.ts for the implementation.
+export { vaultFieldStatus, type VaultFieldStatus } from './field-status';

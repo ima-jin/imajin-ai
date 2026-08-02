@@ -19,7 +19,7 @@ import {
   VALID_GITHUB_SCOPES,
 } from '@/src/lib/github/scope-manifest';
 import { configField, oauthVaultField, vaultField } from '@/src/lib/github/connector';
-import { vaultFieldExists } from '@/src/lib/vault';
+import { vaultFieldStatus } from '@/src/lib/vault';
 
 export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
   name: 'GitHub',
@@ -28,12 +28,23 @@ export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
   readActiveScopes: readActiveGitHubScopes,
   publish: publishGitHubScopeManifest,
   // Token is satisfied by either the OAuth bundle or a PAT fallback (#1354 flag #3).
+  // credentialPending distinguishes "sealed but awaiting owner grant approval"
+  // (Tier 1, #1521) from "not configured" — vaultFieldStatus reports 'ready' only
+  // once a usable grant covers the field, so configSealed/tokenSealed stay false
+  // while a grant is pending and credentialPending carries the reason why.
   getExtraFields: async (ownerDid) => {
-    const [configSealed, oauthTokenSealed, patSealed] = await Promise.all([
-      vaultFieldExists(configField(ownerDid)),
-      vaultFieldExists(oauthVaultField(ownerDid)),
-      vaultFieldExists(vaultField(ownerDid)),
+    const [configStatus, oauthStatus, patStatus] = await Promise.all([
+      vaultFieldStatus(configField(ownerDid)),
+      vaultFieldStatus(oauthVaultField(ownerDid)),
+      vaultFieldStatus(vaultField(ownerDid)),
     ]);
-    return { configSealed, tokenSealed: oauthTokenSealed || patSealed };
+    return {
+      configSealed: configStatus === 'ready',
+      tokenSealed: oauthStatus === 'ready' || patStatus === 'ready',
+      credentialPending:
+        configStatus === 'pending-grant' ||
+        oauthStatus === 'pending-grant' ||
+        patStatus === 'pending-grant',
+    };
   },
 });
