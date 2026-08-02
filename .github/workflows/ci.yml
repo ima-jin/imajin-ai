@@ -47,7 +47,7 @@ jobs:
         run: pnpm audit --prod --audit-level high || echo "::warning::Security audit found high/critical vulnerabilities — review pnpm audit output"
 
   lint-and-typecheck:
-    name: Lint
+    name: Lint & Typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +66,14 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      # vault-core resolves via its built dist/ types (not source), so it must be
+      # built before any consumer's typecheck can resolve `@imajin/vault-core`.
+      - name: Build workspace type dependencies
+        run: pnpm --filter @imajin/vault-core build
+
+      - name: Typecheck
+        run: pnpm typecheck
 
   test:
     name: Test

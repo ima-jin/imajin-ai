@@ -33,7 +33,7 @@ export function rankCandidates(
     return { intent, sharedConnectionCount };
   });
 
-  return ranked
-    .toSorted((a, b) => b.sharedConnectionCount - a.sharedConnectionCount)
+  return [...ranked]
+    .sort((a: RankedCandidate, b: RankedCandidate) => b.sharedConnectionCount - a.sharedConnectionCount)
     .slice(0, cap);
 }

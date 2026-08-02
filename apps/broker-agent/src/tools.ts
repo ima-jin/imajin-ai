@@ -127,7 +127,7 @@ export async function executeTool(
         activityTags: toolInput.activityTags as string[] | undefined,
         sensitiveTags: toolInput.sensitiveTags as string[] | undefined,
         reach: toolInput.reach as 'favourites' | 'one_degree' | 'strangers' | undefined,
-        window: toolInput.window as string | undefined,
+        window: toolInput.window as 'today' | 'tonight' | 'this_weekend' | 'this_week' | 'next_week' | undefined,
       });
       const intent: Record<string, unknown> = result.intent;
       const expiresAt = typeof intent.expiresAt === 'string' ? intent.expiresAt : 'it expires';

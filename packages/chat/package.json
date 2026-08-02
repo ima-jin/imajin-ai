@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@imajin/input": "workspace:*",
     "@imajin/ui": "workspace:*",
@@ -15,6 +18,7 @@
     "swr": "^2.4.1"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "@types/react": "^18",
     "typescript": "^5"
   }

@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@imajin/logger": "workspace:*",
     "@imajin/auth": "workspace:*",
@@ -14,6 +17,10 @@
     "@imajin/notify": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/fair": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^22.0.0"
   },
   "peerDependencies": {
     "next": ">=14"

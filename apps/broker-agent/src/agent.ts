@@ -46,8 +46,8 @@ export async function routeMessage(
   for (let turn = 0; turn < 5; turn++) {
     const response = await client.messages.create({
       model: 'claude-opus-4-7',
-      max_tokens: 1024,
-      thinking: { type: 'adaptive' },
+      max_tokens: 2048,
+      thinking: { type: 'enabled', budget_tokens: 1024 },
       system: SYSTEM_PROMPT,
       tools: BROKER_TOOLS,
       messages,

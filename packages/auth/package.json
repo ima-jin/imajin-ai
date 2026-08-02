@@ -7,6 +7,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@imajin/config": "workspace:*",
     "@imajin/logger": "workspace:*",
@@ -16,7 +19,9 @@
     "@noble/hashes": "^1.7.2"
   },
   "devDependencies": {
-    "drizzle-orm": "^0.45.1"
+    "drizzle-orm": "^0.45.1",
+    "typescript": "^5",
+    "@types/node": "^22.0.0"
   },
   "peerDependencies": {
     "next": ">=14"
