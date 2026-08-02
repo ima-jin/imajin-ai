@@ -35,10 +35,18 @@ jobs:
         with:
           version: 9
 
+      # Deliberately no `cache: 'pnpm'` here, unlike every other job. This job
+      # never runs `pnpm install` (see below), so the pnpm store is never
+      # populated — and setup-node's post-job cache *save* step then hard-fails
+      # with "Path Validation Error: Path(s) specified in the action for caching
+      # do(es) not exist". That failure is invisible while the lockfile is
+      # untouched, because a cache hit skips the save entirely; it only appears
+      # on PRs that change pnpm-lock.yaml, which is what made it look like a
+      # security finding on #1569. `pnpm audit` reads the lockfile and needs
+      # neither node_modules nor a warm store, so there is nothing to cache.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
 
       # No `pnpm install` here on purpose. `pnpm audit` resolves from the
       # lockfile and does not need node_modules — and installing was the ONLY
