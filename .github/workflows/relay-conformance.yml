@@ -40,8 +40,8 @@ jobs:
           # Summary
           echo ""
           echo "=== SUMMARY ==="
-          PASS=$(grep -c "^--- PASS:" results.txt || true)
-          FAIL=$(grep -c "^--- FAIL:" results.txt || true)
+          PASS=$(grep -c "^--- PASS:" results.txt || true) # ci-guard: allow grep -c returns 1 when count is zero; value is used in arithmetic below
+          FAIL=$(grep -c "^--- FAIL:" results.txt || true) # ci-guard: allow grep -c returns 1 when count is zero; value is used in arithmetic below
           TOTAL=$((PASS + FAIL))
           echo "✅ Passed: $PASS"
           echo "❌ Failed: $FAIL"

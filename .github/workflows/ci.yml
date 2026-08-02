@@ -61,7 +61,7 @@ jobs:
           # JSON. The gate decides; a missing or unparseable report still hard-
           # fails (exit 2) inside audit-gate.mjs, so a broken pipeline cannot
           # quietly pass.
-          pnpm audit --prod --audit-level high --json > audit-report.json || true
+          pnpm audit --prod --audit-level high --json > audit-report.json || true # ci-guard: allow pnpm audit exits non-zero on any finding; gate decides below
           node scripts/audit-gate.mjs audit-report.json
 
   lint-and-typecheck:
@@ -148,6 +148,32 @@ jobs:
         run: pnpm build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING || 'postgresql://ci:ci@localhost:5432/ci_build' }}
+
+  ci-guards:
+    name: CI Guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Required-context producer guard
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/ci-guard-required-contexts.mjs
+
+      - name: Swallowed-assertion guard
+        run: node scripts/ci-guard-no-swallowed-assertions.mjs
 
   sonarcloud:
     name: SonarCloud
