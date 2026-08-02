@@ -9,8 +9,8 @@
  *   pnpm audit --prod --audit-level high || echo "::warning::..."
  *
  * The `|| echo` swallowed the exit code, so a job named "Security Audit" could
- * not fail. Across 400 failed CI runs it never once failed on an actual
- * finding — every failure was `Install dependencies`.
+ * not fail. Across 400 failed CI runs it never once failed on a finding —
+ * every failure was `Install dependencies`.
  *
  * Deleting the `|| echo` is the obvious fix and it does not survive contact
  * with reality. `pnpm audit` fails on *any* qualifying advisory, including
@@ -29,48 +29,100 @@
  * appear are reported so it shrinks over time; that direction is one-way by
  * design.
  *
+ * ## Why this reads a file rather than running the audit itself
+ *
+ * An earlier revision shelled out to `pnpm`, which meant resolving the binary
+ * through `PATH` — flagged by sonar S4036, and fairly: a writeable PATH entry
+ * turns a CI gate into arbitrary code execution. Taking the report as input
+ * removes the process spawn entirely and makes this a pure function of its
+ * input, which is also far easier to reason about and to test.
+ *
+ * The caller produces the report:
+ *
+ *   pnpm audit --prod --audit-level high --json > audit-report.json || true
+ *   node scripts/audit-gate.mjs audit-report.json
+ *
  * Usage:
- *   node scripts/audit-gate.mjs            # gate: fail on new advisories
- *   node scripts/audit-gate.mjs --report   # never fail; print status
- *   node scripts/audit-gate.mjs --prune    # rewrite baseline, dropping resolved
+ *   node scripts/audit-gate.mjs [report.json]            # fail on new advisories
+ *   node scripts/audit-gate.mjs [report.json] --report   # never fail; print status
+ *   node scripts/audit-gate.mjs [report.json] --prune    # drop resolved baseline entries
  */
-import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.github', 'audit-baseline.json');
+const DEFAULT_REPORT = 'audit-report.json';
 
-const REPORT_ONLY = process.argv.includes('--report');
-const PRUNE = process.argv.includes('--prune');
+const args = process.argv.slice(2);
+const REPORT_ONLY = args.includes('--report');
+const PRUNE = args.includes('--prune');
+const reportArg = args.find((a) => !a.startsWith('--')) ?? DEFAULT_REPORT;
+const REPORT_PATH = resolve(ROOT, reportArg);
 
 /**
- * Run the audit and return parsed JSON.
+ * Compare strings deterministically.
  *
- * `pnpm audit` exits non-zero when it finds anything at or above the level,
- * which is the normal case here — the exit code is deliberately ignored and
- * the report is read instead. A genuinely broken invocation is detected by
- * unparseable output, not by the exit code.
+ * Always passed explicitly: `Array.prototype.sort` with no comparator coerces
+ * to string and sorts by UTF-16 code unit, which is a correctness trap the
+ * moment the array stops holding strings.
  */
-function runAudit() {
-  const res = spawnSync(
-    'pnpm',
-    ['audit', '--prod', '--audit-level', 'high', '--json'],
-    { cwd: ROOT, encoding: 'utf8', shell: process.platform === 'win32', maxBuffer: 64 * 1024 * 1024 },
-  );
+const byString = (a, b) => {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+};
 
-  if (!res.stdout || !res.stdout.trim()) {
-    console.error('audit-gate: pnpm audit produced no output');
-    console.error(res.stderr ?? '(no stderr)');
+/**
+ * Decode a report buffer, honouring a byte-order mark.
+ *
+ * bash writes UTF-8, but PowerShell 5.1's `>` writes UTF-16LE. Assuming UTF-8
+ * means the documented command works in CI and fails on a Windows dev box with
+ * an unreadable parse error — a genuinely unpleasant way to meet a portability
+ * bug. Decoding by BOM costs four lines and removes the trap.
+ */
+function decodeReport(buf) {
+  if (buf[0] === 0xff && buf[1] === 0xfe) return buf.toString('utf16le').replace(/^\uFEFF/, '');
+  if (buf[0] === 0xfe && buf[1] === 0xff) {
+    // UTF-16BE: node has no decoder, so byte-swap into LE first.
+    const swapped = Buffer.from(buf);
+    swapped.swap16();
+    return swapped.toString('utf16le').replace(/^\uFEFF/, '');
+  }
+  return buf.toString('utf8').replace(/^\uFEFF/, '');
+}
+
+/**
+ * Read the `pnpm audit --json` report.
+ *
+ * Exits 2 rather than 1 on a malformed or missing report: that is a broken
+ * pipeline, not a policy failure, and conflating the two is how a gate ends up
+ * silently passing. `pnpm audit` exits non-zero whenever it reports anything,
+ * so the caller is expected to tolerate that exit code — but it must still
+ * produce parseable JSON, and this is where that is enforced.
+ */
+function readReport() {
+  let buf;
+  try {
+    buf = readFileSync(REPORT_PATH);
+  } catch {
+    console.error(`audit-gate: cannot read audit report at ${REPORT_PATH}`);
+    console.error('audit-gate: expected `pnpm audit --prod --audit-level high --json > <file>`');
+    process.exit(2);
+  }
+
+  const raw = decodeReport(buf);
+
+  if (!raw.trim()) {
+    console.error(`audit-gate: audit report at ${REPORT_PATH} is empty`);
     process.exit(2);
   }
 
   try {
-    return JSON.parse(res.stdout);
+    return JSON.parse(raw);
   } catch {
-    console.error('audit-gate: could not parse pnpm audit JSON output');
-    console.error(res.stdout.slice(0, 2000));
+    console.error(`audit-gate: could not parse audit report at ${REPORT_PATH}`);
+    console.error(raw.slice(0, 2000));
     process.exit(2);
   }
 }
@@ -106,8 +158,7 @@ function collectFindings(report) {
 
 function loadBaseline() {
   try {
-    const parsed = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
-    return parsed;
+    return JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
   } catch {
     return { note: '', created: null, issue: null, advisories: [] };
   }
@@ -115,20 +166,21 @@ function loadBaseline() {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-const report = runAudit();
+const report = readReport();
 const found = collectFindings(report);
 const baseline = loadBaseline();
 const baselineIds = new Set((baseline.advisories ?? []).map((a) => a.id));
 
 const introduced = [...found.values()].filter((a) => !baselineIds.has(a.id));
-const resolved = [...baselineIds].filter((id) => !found.has(id));
+const resolvedIds = [...baselineIds].filter((id) => !found.has(id));
 
 console.log(`audit-gate: ${found.size} high/critical advisories in prod deps`);
-console.log(`            ${baselineIds.size} in baseline, ${introduced.length} new, ${resolved.length} resolved`);
+console.log(`            ${baselineIds.size} in baseline, ${introduced.length} new, ${resolvedIds.length} resolved`);
 
-if (resolved.length > 0) {
+if (resolvedIds.length > 0) {
+  const orderedResolved = [...resolvedIds].sort(byString);
   console.log('\nResolved since the baseline was taken — remove these from .github/audit-baseline.json:');
-  for (const id of resolved.sort()) console.log(`  - ${id}`);
+  for (const id of orderedResolved) console.log(`  - ${id}`);
 }
 
 if (PRUNE) {
@@ -142,8 +194,9 @@ if (PRUNE) {
 }
 
 if (introduced.length > 0) {
+  const ordered = [...introduced].sort((x, y) => byString(x.module, y.module));
   console.log('\nNEW high/critical advisories, not in the baseline:\n');
-  for (const a of introduced.sort((x, y) => x.module.localeCompare(y.module))) {
+  for (const a of ordered) {
     const fix = a.patched && a.patched !== '<0.0.0' ? `upgrade to ${a.patched}` : 'no fix published';
     console.log(`  ${a.severity.toUpperCase()}  ${a.module}  ${a.id}`);
     console.log(`         ${a.title}`);

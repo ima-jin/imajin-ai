@@ -38,15 +38,18 @@ jobs:
           node-version: 22
           cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+      # Deliberately no `pnpm install`. `pnpm audit` resolves from the lockfile,
+      # so installing would only add runtime — and it would run dependency
+      # lifecycle scripts on a schedule, in a job holding an `issues: write`
+      # token. Not a risk worth taking to obtain something we do not need.
+      #
       # --report never exits non-zero: this workflow reports, it does not gate.
       # A red scheduled run would be indistinguishable from a broken workflow.
       - name: Run audit
         id: audit
         run: |
-          node scripts/audit-gate.mjs --report > audit-report.txt 2>&1
+          pnpm audit --prod --audit-level high --json > audit-report.json || true
+          node scripts/audit-gate.mjs audit-report.json --report > audit-report.txt 2>&1
           echo "--- report ---"
           cat audit-report.txt
           if grep -q "NEW high/critical advisories" audit-report.txt; then

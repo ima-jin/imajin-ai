@@ -40,19 +40,29 @@ jobs:
           node-version: 22
           cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Blocking, but only on advisories NOT already in .github/audit-baseline.json.
+      # No `pnpm install` here on purpose. `pnpm audit` resolves from the
+      # lockfile and does not need node_modules — and installing was the ONLY
+      # step that had ever failed this job: all 57 historical "Security Audit"
+      # failures were `Install dependencies`, never a finding (#1559). Dropping
+      # it removes a failure mode that masqueraded as a security signal, and
+      # takes the job's runtime with it.
       #
+      # Blocking, but only on advisories NOT already in .github/audit-baseline.json.
       # This step previously ended in `|| echo "::warning::..."`, which swallowed
-      # the exit code — the job could not fail on a finding, and across 400 failed
-      # CI runs it never did (#1559). Simply removing the `|| echo` would red-light
-      # every unrelated PR the next time an upstream CVE lands, which is how the
-      # suppression got added in the first place. The gate ratchets instead: known
-      # debt is listed in the baseline, anything new fails here.
+      # the exit code, so the job could not fail on a finding at all. Simply
+      # removing the `|| echo` would red-light every unrelated PR the next time an
+      # upstream CVE lands, which is how the suppression got added in the first
+      # place. The gate ratchets instead: known debt is listed in the baseline,
+      # anything new fails here.
       - name: Audit dependencies (critical/high)
-        run: node scripts/audit-gate.mjs
+        run: |
+          # `pnpm audit` exits non-zero whenever it reports anything at all, so
+          # its exit code carries no signal we are not already reading out of the
+          # JSON. The gate decides; a missing or unparseable report still hard-
+          # fails (exit 2) inside audit-gate.mjs, so a broken pipeline cannot
+          # quietly pass.
+          pnpm audit --prod --audit-level high --json > audit-report.json || true
+          node scripts/audit-gate.mjs audit-report.json
 
   lint-and-typecheck:
     name: Lint & Typecheck
