@@ -4,13 +4,56 @@
  * Usage: node scripts/prepare-npm-publish.mjs <package-dir> <output-dir>
  *
  * - Copies distributable files to output dir
- * - Rewrites @imajin/* → @ima-jin/* in package name and deps
+ * - Rewrites @imajin/* → @ima-jin/* in package name, deps, and emitted code
  * - Resolves workspace:* to actual versions
  * - Removes "private" flag and devDependencies
  * - Sets publishConfig for public access
  */
-import { readFileSync, writeFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import {
+  readFileSync,
+  writeFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+} from "node:fs";
+import { join, resolve, extname } from "node:path";
+
+// Emitted code still carries the workspace-internal @imajin/* specifiers. The
+// manifest is rewritten to depend on @ima-jin/*, so the source must agree or
+// the published package resolves nothing at runtime.
+const REWRITABLE_EXTENSIONS = new Set([
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".jsx",
+  ".ts",
+  ".mts",
+  ".cts",
+  ".tsx",
+  ".map",
+]);
+
+function rewriteScopeInTree(dir) {
+  let rewritten = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      rewritten += rewriteScopeInTree(entryPath);
+      continue;
+    }
+    if (!entry.isFile() || !REWRITABLE_EXTENSIONS.has(extname(entry.name))) {
+      continue;
+    }
+    const contents = readFileSync(entryPath, "utf8");
+    if (!contents.includes("@imajin/")) {
+      continue;
+    }
+    writeFileSync(entryPath, contents.replaceAll("@imajin/", "@ima-jin/"));
+    rewritten += 1;
+  }
+  return rewritten;
+}
 
 const [, , pkgDir, outDir] = process.argv;
 if (!pkgDir || !outDir) {
@@ -53,8 +96,11 @@ for (const extra of ["README.md", "LICENSE", "CHANGELOG.md"]) {
   }
 }
 
+// Rewrite @imajin/* → @ima-jin/* inside the copied sources and build output
+const rewrittenFileCount = rewriteScopeInTree(destDir);
+console.log(`  Rewrote @imajin/ → @ima-jin/ in ${rewrittenFileCount} file(s)`);
+
 // Rewrite package name: @imajin/* → @ima-jin/*
-const originalName = pkg.name;
 pkg.name = pkg.name.replaceAll("@imajin/", "@ima-jin/");
 
 // Remove private flag
@@ -80,11 +126,13 @@ if (pkg.exports) {
   for (const [key, value] of Object.entries(pkg.exports)) {
     if (typeof value === "string" && value.startsWith("./src/")) {
       // For tsup-built packages, provide proper ESM/CJS exports
+      // "types" must come first — export conditions are matched in order, so a
+      // later "types" entry is unreachable for resolvers that match on import/require.
       const base = value.replaceAll("./src/", "./dist/").replace(/\.tsx?$/, "");
       pkg.exports[key] = {
+        types: base + ".d.ts",
         import: base + ".mjs",
         require: base + ".js",
-        types: base + ".d.ts",
       };
     }
   }

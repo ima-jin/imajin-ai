@@ -8,15 +8,18 @@ on:
         required: true
         type: choice
         options:
+          - cid
           - tokens
           - config
           - ui
+          - vault-core
           - all
       version_bump:
-        description: "Version bump type"
+        description: "Version bump type (none publishes the version in package.json as-is)"
         required: true
         type: choice
         options:
+          - none
           - patch
           - minor
           - major
@@ -28,8 +31,10 @@ on:
         default: false
 
 env:
-  # Publish order matters — tokens first, then config, then ui
-  ALL_PACKAGES: "tokens config ui"
+  # Publish order matters — a package must be published before anything that
+  # depends on it, since workspace:* deps resolve against the sibling versions.
+  # cid → vault-core, tokens → config → ui
+  ALL_PACKAGES: "cid tokens config ui vault-core"
 
 jobs:
   publish:
@@ -59,6 +64,7 @@ jobs:
           fi
 
       - name: Bump versions
+        if: inputs.version_bump != 'none'
         run: |
           for pkg in ${{ steps.packages.outputs.list }}; do
             echo "::group::Bumping $pkg"
