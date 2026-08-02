@@ -2,6 +2,14 @@
   "name": "@imajin/vault-core",
   "version": "0.1.0",
   "private": true,
+  "description": "Vault entry models, integrity verification, sealing and delegation primitives for Imajin nodes",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ima-jin/imajin-ai.git",
+    "directory": "packages/vault-core"
+  },
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -10,8 +18,12 @@
       "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist/",
+    "src/"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,6 +34,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.9.2",
+    "tsup": "^8.0.0",
     "typescript": "^5.9.3",
     "vitest": "^2.1.9"
   }
