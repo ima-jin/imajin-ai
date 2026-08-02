@@ -43,8 +43,8 @@
 import { eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { db, vaultGrantRequests } from '@/src/db';
-import { isVaultTier1 } from './sealing.js';
-import { loadAndUnseal, sealAndStoreV2, vaultService } from './index.js';
+import { isVaultTier1 } from './sealing';
+import { loadAndUnseal, sealAndStoreV2, vaultService } from './index';
 
 const log = createLogger('kernel');
 

@@ -1091,4 +1091,4 @@ export async function _applyDelegationGrant(
 // ── Batch v1→v2 custody migration (#1537) ───────────────────────────────────
 // Trailing, deliberately isolated: migrate-custody.ts owns this export. Do not
 // add other logic below this line — see the #1537 child-agent boundary notes.
-export * from './migrate-custody.js';
+export * from './migrate-custody';

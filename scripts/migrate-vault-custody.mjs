@@ -45,6 +45,13 @@ const APPLY = process.argv.includes('--apply');
 const limitArg = process.argv.find((arg) => arg.startsWith('--limit='));
 const limit = limitArg ? Number(limitArg.slice('--limit='.length)) : undefined;
 
+// Strip CR/LF (and other control chars) before logging interpolated values, so
+// HTTP-response-derived strings can't forge log lines (log injection, S5145).
+function sanitizeForLog(value) {
+  // eslint-disable-next-line no-control-regex
+  return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ');
+}
+
 let BASE = process.env.KERNEL_BASE_URL || 'http://localhost:3000';
 while (BASE.endsWith('/')) BASE = BASE.slice(0, -1);
 
@@ -81,14 +88,14 @@ async function run() {
 
   if (!res.ok) {
     console.error(`\n❌ request failed: ${res.status}`);
-    console.error(json ?? text);
+    console.error(sanitizeForLog(json ? JSON.stringify(json) : text));
     process.exit(1);
   }
 
   const report = json;
-  console.log(`\ntier1: ${report.tier1}`);
-  console.log(`v1 fields remaining before this run: ${report.totalV1Fields}`);
-  console.log(`candidates this run: ${report.candidateCount}`);
+  console.log(`\ntier1: ${sanitizeForLog(report.tier1)}`);
+  console.log(`v1 fields remaining before this run: ${sanitizeForLog(report.totalV1Fields)}`);
+  console.log(`candidates this run: ${sanitizeForLog(report.candidateCount)}`);
 
   console.log(`\n--- per-field results ---`);
   if (report.results.length === 0) {
@@ -96,11 +103,12 @@ async function run() {
   }
   for (const r of report.results) {
     const ok = r.status === 'upgraded' || r.status === 'would-upgrade';
-    console.log(`  ${ok ? '✓' : '✗'} ${r.field}: ${r.status}${r.error ? ` — ${r.error}` : ''}`);
+    const suffix = r.error ? ` — ${sanitizeForLog(r.error)}` : '';
+    console.log(`  ${ok ? '✓' : '✗'} ${sanitizeForLog(r.field)}: ${sanitizeForLog(r.status)}${suffix}`);
   }
 
   if (report.aborted) {
-    console.error(`\n❌ ABORTED: ${report.abortReason}`);
+    console.error(`\n❌ ABORTED: ${sanitizeForLog(report.abortReason)}`);
     process.exit(1);
   }
 
