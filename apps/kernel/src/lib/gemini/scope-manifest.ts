@@ -18,8 +18,10 @@ import {
   type ConnectorScopeDescriptor,
   type Asset,
 } from '@/src/lib/kernel/scope-manifest-core';
-import { GEMINI_CONNECTOR_DID, vaultField } from './connector';
+import { GEMINI_CONNECTOR_DID, vaultField, geminiKeyPending } from './connector';
 import { vaultFieldExists } from '@/src/lib/vault';
+
+export { geminiKeyPending };
 
 // ── Scope registry ──────────────────────────────────────────────────────────────
 

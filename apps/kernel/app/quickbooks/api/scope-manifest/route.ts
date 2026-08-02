@@ -13,6 +13,7 @@ import {
   findQuickBooksManifestAsset,
   quickbooksConfigSealed,
   quickbooksTokenSealed,
+  quickbooksCredentialPending,
   VALID_QUICKBOOKS_SCOPES,
 } from '@/src/lib/quickbooks/scope-manifest';
 
@@ -23,10 +24,11 @@ export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
   readActiveScopes: readActiveQuickBooksScopes,
   publish: publishQuickBooksScopeManifest,
   getExtraFields: async (ownerDid) => {
-    const [configSealed, tokenSealed] = await Promise.all([
+    const [configSealed, tokenSealed, credentialPending] = await Promise.all([
       quickbooksConfigSealed(ownerDid),
       quickbooksTokenSealed(ownerDid),
+      quickbooksCredentialPending(ownerDid),
     ]);
-    return { configSealed, tokenSealed };
+    return { configSealed, tokenSealed, credentialPending };
   },
 });

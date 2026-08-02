@@ -22,9 +22,27 @@
 import { createLogger } from '@imajin/logger';
 import { and, eq } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
-import { sealAndStore, loadAndUnseal } from '@/src/lib/vault';
+import { sealAndStoreV2, loadAndUnseal } from '@/src/lib/vault';
+import { VaultDelegationError } from '@/src/lib/vault/errors';
 
 const log = createLogger('kernel');
+
+/**
+ * Thrown by `loadConfig` / `loadTokens` when the vault entry exists but is
+ * sealed under a delegation grant that has not arrived yet (Tier 1, owner
+ * agent hasn't responded). Distinct from `${name}_no_config` (nothing sealed
+ * at all) so callers — and the HTTP routes wrapping them — can render
+ * "waiting for owner approval" instead of treating the field as unconfigured,
+ * or letting a raw VaultDelegationError surface as an opaque 500.
+ */
+export class ConnectorCredentialPendingError extends Error {
+  constructor(connectorName: string, field: string) {
+    super(
+      `${connectorName}_credential_pending: credential sealed at '${field}' is awaiting owner grant approval`,
+    );
+    this.name = 'ConnectorCredentialPendingError';
+  }
+}
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -167,11 +185,20 @@ export function createConnectorOAuth<
   }
 
   async function storeConfig(ownerDid: string, config: TConfig): Promise<void> {
-    await sealAndStore(configField(ownerDid), JSON.stringify(config));
+    await sealAndStoreV2(configField(ownerDid), JSON.stringify(config));
   }
 
   async function loadConfig(ownerDid: string): Promise<TConfig> {
-    const raw = await loadAndUnseal(configField(ownerDid));
+    const field = configField(ownerDid);
+    let raw: string | undefined;
+    try {
+      raw = await loadAndUnseal(field);
+    } catch (err) {
+      if (err instanceof VaultDelegationError) {
+        throw new ConnectorCredentialPendingError(opts.name, field);
+      }
+      throw err;
+    }
     if (raw === undefined) {
       throw new Error(`${opts.name}_no_config: DID ${ownerDid} has not configured a ${opts.name} connection`);
     }
@@ -179,11 +206,20 @@ export function createConnectorOAuth<
   }
 
   async function storeTokens(ownerDid: string, tokens: TTokens): Promise<void> {
-    await sealAndStore(tokenField(ownerDid), JSON.stringify(tokens));
+    await sealAndStoreV2(tokenField(ownerDid), JSON.stringify(tokens));
   }
 
   async function loadTokens(ownerDid: string): Promise<TTokens | undefined> {
-    const raw = await loadAndUnseal(tokenField(ownerDid));
+    const field = tokenField(ownerDid);
+    let raw: string | undefined;
+    try {
+      raw = await loadAndUnseal(field);
+    } catch (err) {
+      if (err instanceof VaultDelegationError) {
+        throw new ConnectorCredentialPendingError(opts.name, field);
+      }
+      throw err;
+    }
     if (raw === undefined) return undefined;
     return JSON.parse(raw) as TTokens;
   }

@@ -37,7 +37,8 @@ import { and, eq, gt, sql } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import * as bus from '@imajin/bus';
 import { db, githubActionProposals } from '@/src/db';
-import { sealAndStore, loadAndUnseal } from '@/src/lib/vault';
+import { sealAndStoreV2, loadAndUnseal } from '@/src/lib/vault';
+import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../kernel/connector-oauth';
 import { readReadAllowlist, filterOrgs, filterRepos, isRepoAllowed } from './allowlist';
 import { GITHUB_CONNECTOR_DID } from './constants';
@@ -122,7 +123,7 @@ export const resolveActiveGrant = gh.resolveActiveGrant;
  * returned; the only observable output is the sealed VaultEntry.
  */
 export async function sealPat(ownerDid: string, pat: string): Promise<void> {
-  await sealAndStore(vaultField(ownerDid), pat);
+  await sealAndStoreV2(vaultField(ownerDid), pat);
 }
 
 // ── Rate-limit constants (tune-later per #1371) ────────────────────────────────
@@ -183,7 +184,17 @@ async function requireGrantAndToken(ownerDid: string, scope: string): Promise<st
   const oauthToken = await gh.loadAccessToken(ownerDid);
   if (oauthToken !== undefined) return oauthToken;
 
-  const pat = await loadAndUnseal(vaultField(ownerDid));
+  let pat: string | undefined;
+  try {
+    pat = await loadAndUnseal(vaultField(ownerDid));
+  } catch (err) {
+    if (err instanceof VaultDelegationError) {
+      throw new Error(
+        `github_credential_pending: GitHub PAT for DID ${ownerDid} is sealed but awaiting owner grant approval`,
+      );
+    }
+    throw err;
+  }
   if (pat === undefined) {
     throw new Error(
       `github_no_credential: no GitHub OAuth token or PAT sealed for DID ${ownerDid} — ` +

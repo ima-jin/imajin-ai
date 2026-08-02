@@ -1,28 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { sealMock, loadMock, existsMock, whereMock } = vi.hoisted(() => ({
+const { sealMock, loadMock, existsMock, statusMock, whereMock } = vi.hoisted(() => ({
   sealMock: vi.fn(),
   loadMock: vi.fn(),
   existsMock: vi.fn(),
+  statusMock: vi.fn(),
   whereMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/vault', () => ({
-  sealAndStore: sealMock,
+  sealAndStoreV2: sealMock,
   loadAndUnseal: loadMock,
   vaultFieldExists: existsMock,
+  vaultFieldStatus: statusMock,
 }));
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: whereMock }) }) },
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
 }));
 
+import { VaultDelegationError } from '@/src/lib/vault/errors';
 import {
   resolveActiveGrant,
   sealApiKey,
   loadGeminiCredentials,
   requireGrantAndKey,
   geminiKeySealed,
+  geminiKeyPending,
   vaultField,
   GEMINI_CONNECTOR_DID,
 } from '../connector';
@@ -47,6 +51,8 @@ beforeEach(() => {
   loadMock.mockResolvedValue(undefined);
   existsMock.mockReset();
   existsMock.mockResolvedValue(false);
+  statusMock.mockReset();
+  statusMock.mockResolvedValue('absent');
   whereMock.mockReset();
 });
 
@@ -202,6 +208,12 @@ describe('requireGrantAndKey (fail-closed gate)', () => {
     const key = await requireGrantAndKey(OWNER, 'gemini:infer');
     expect(key).toBe(API_KEY);
   });
+
+  it('throws gemini_credential_pending when the key is sealed but no grant has arrived (#1521)', async () => {
+    grant(['gemini:infer']);
+    loadMock.mockRejectedValue(new VaultDelegationError('no active grant', { field: vaultField(OWNER), nodeDid: 'did:imajin:node' }));
+    await expect(requireGrantAndKey(OWNER, 'gemini:infer')).rejects.toThrow(/gemini_credential_pending/);
+  });
 });
 
 // ── geminiKeySealed ───────────────────────────────────────────────────────────
@@ -216,5 +228,20 @@ describe('geminiKeySealed', () => {
   it('returns false when no key is sealed', async () => {
     existsMock.mockResolvedValue(false);
     expect(await geminiKeySealed(OWNER)).toBe(false);
+  });
+});
+
+describe('geminiKeyPending (#1521)', () => {
+  it('is true when the field status is pending-grant', async () => {
+    statusMock.mockResolvedValue('pending-grant');
+    expect(await geminiKeyPending(OWNER)).toBe(true);
+    expect(statusMock).toHaveBeenCalledWith(vaultField(OWNER));
+  });
+
+  it('is false when the field is ready, absent, or unverifiable', async () => {
+    for (const status of ['ready', 'absent', 'unverifiable']) {
+      statusMock.mockResolvedValue(status);
+      expect(await geminiKeyPending(OWNER)).toBe(false);
+    }
   });
 });

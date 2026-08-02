@@ -12,6 +12,7 @@ import {
   readActiveGeminiScopes,
   findGeminiManifestAsset,
   geminiKeySealed,
+  geminiKeyPending,
   VALID_GEMINI_SCOPES,
 } from '@/src/lib/gemini/scope-manifest';
 
@@ -21,5 +22,11 @@ export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
   findManifestAsset: findGeminiManifestAsset,
   readActiveScopes: readActiveGeminiScopes,
   publish: publishGeminiScopeManifest,
-  getExtraFields: async (ownerDid) => ({ keySealed: await geminiKeySealed(ownerDid) }),
+  getExtraFields: async (ownerDid) => {
+    const [keySealed, credentialPending] = await Promise.all([
+      geminiKeySealed(ownerDid),
+      geminiKeyPending(ownerDid),
+    ]);
+    return { keySealed, credentialPending };
+  },
 });

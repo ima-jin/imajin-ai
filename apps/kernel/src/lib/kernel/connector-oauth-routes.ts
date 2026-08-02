@@ -21,7 +21,7 @@ import { and, eq } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
 import { deleteFromVault } from '@/src/lib/vault';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import type { BaseOAuthConfig } from './connector-oauth';
+import { ConnectorCredentialPendingError, type BaseOAuthConfig } from './connector-oauth';
 
 const log = createLogger('kernel');
 
@@ -42,7 +42,14 @@ export function createConnectHandler(
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
     const ownerDid = resolveActingDid(auth.identity);
-    return NextResponse.redirect(await buildAuthorizeUrl(ownerDid, signState(ownerDid)));
+    try {
+      return NextResponse.redirect(await buildAuthorizeUrl(ownerDid, signState(ownerDid)));
+    } catch (err) {
+      if (err instanceof ConnectorCredentialPendingError) {
+        return NextResponse.json({ error: err.message }, { status: 409 });
+      }
+      throw err;
+    }
   };
 }
 
@@ -93,6 +100,9 @@ export function createCallbackHandler(opts: {
     } catch (err) {
       if (err instanceof MissingCallbackParamError) {
         return NextResponse.json({ error: err.message }, { status: 400 });
+      }
+      if (err instanceof ConnectorCredentialPendingError) {
+        return NextResponse.json({ error: err.message }, { status: 409 });
       }
       log.error({ err: String(err), ownerDid }, `${opts.connectorName} callback: token exchange failed`);
       return NextResponse.json({ error: `${opts.connectorName} connection failed` }, { status: 502 });

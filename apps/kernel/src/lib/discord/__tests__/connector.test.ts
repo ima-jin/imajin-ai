@@ -7,13 +7,14 @@ const { sealMock, loadMock, whereMock, publishMock } = vi.hoisted(() => ({
   publishMock: vi.fn(),
 }));
 
-vi.mock('@/src/lib/vault', () => ({ sealAndStore: sealMock, loadAndUnseal: loadMock }));
+vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: whereMock }) }) },
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
 }));
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
 
+import { VaultDelegationError } from '@/src/lib/vault/errors';
 import {
   resolveActiveGrant,
   sealToken,
@@ -168,6 +169,14 @@ describe('postMessage (#18)', () => {
     });
 
     await expect(postMessage(OWNER, CHANNEL_ID, 'hi')).rejects.toThrow(/Discord API error 403/);
+  });
+
+  it('surfaces discord_credential_pending when the token is sealed but no grant has arrived (#1521)', async () => {
+    grant(['discord:post']);
+    loadMock.mockRejectedValue(new VaultDelegationError('no active grant', { field: vaultField(OWNER), nodeDid: 'did:imajin:node' }));
+
+    await expect(postMessage(OWNER, CHANNEL_ID, 'hi')).rejects.toThrow(/discord_credential_pending/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

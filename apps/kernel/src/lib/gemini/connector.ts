@@ -17,7 +17,8 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
-import { sealAndStore, loadAndUnseal, vaultFieldExists } from '@/src/lib/vault';
+import { sealAndStoreV2, loadAndUnseal, vaultFieldExists, vaultFieldStatus } from '@/src/lib/vault';
+import { VaultDelegationError } from '@/src/lib/vault/errors';
 
 /** Connector app DID — matches the scope-manifest for the gemini connector. */
 export const GEMINI_CONNECTOR_DID = 'did:imajin:gemini-connector';
@@ -60,12 +61,12 @@ export async function sealApiKey(
   baseUrl?: string,
   modelId?: string,
 ): Promise<void> {
-  await sealAndStore(vaultField(ownerDid), apiKey);
+  await sealAndStoreV2(vaultField(ownerDid), apiKey);
   if (baseUrl) {
-    await sealAndStore(baseUrlVaultField(ownerDid), baseUrl);
+    await sealAndStoreV2(baseUrlVaultField(ownerDid), baseUrl);
   }
   if (modelId) {
-    await sealAndStore(modelIdVaultField(ownerDid), modelId);
+    await sealAndStoreV2(modelIdVaultField(ownerDid), modelId);
   }
 }
 
@@ -167,7 +168,17 @@ export async function requireGrantAndKey(ownerDid: string, scope: string): Promi
     );
   }
 
-  const key = await loadAndUnseal(vaultField(ownerDid));
+  let key: string | undefined;
+  try {
+    key = await loadAndUnseal(vaultField(ownerDid));
+  } catch (err) {
+    if (err instanceof VaultDelegationError) {
+      throw new Error(
+        `gemini_credential_pending: Gemini API key for DID ${ownerDid} is sealed but awaiting owner grant approval`,
+      );
+    }
+    throw err;
+  }
   if (key === undefined) {
     throw new Error(
       `gemini_no_key: no Gemini API key sealed for DID ${ownerDid} — ` +
@@ -183,4 +194,15 @@ export async function requireGrantAndKey(ownerDid: string, scope: string): Promi
 /** Check whether a Gemini API key is sealed for ownerDid (no crypto, no value returned). */
 export function geminiKeySealed(ownerDid: string): Promise<boolean> {
   return vaultFieldExists(vaultField(ownerDid));
+}
+
+/**
+ * Check whether a Gemini API key is sealed but awaiting owner grant approval
+ * (Tier 1, no active delegation grant yet). Distinct from `geminiKeySealed` so
+ * the scope-manifest surface can render "waiting for owner approval" instead
+ * of "not connected" — `vaultFieldExists`/`geminiKeySealed` report `false` for
+ * this state (see field-status.ts).
+ */
+export async function geminiKeyPending(ownerDid: string): Promise<boolean> {
+  return (await vaultFieldStatus(vaultField(ownerDid))) === 'pending-grant';
 }

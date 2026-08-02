@@ -12,6 +12,7 @@ import {
   readActiveDiscordScopes,
   findDiscordManifestAsset,
   discordTokenSealed,
+  discordCredentialPending,
   VALID_DISCORD_SCOPES,
 } from '@/src/lib/discord/scope-manifest';
 
@@ -21,5 +22,11 @@ export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
   findManifestAsset: findDiscordManifestAsset,
   readActiveScopes: readActiveDiscordScopes,
   publish: publishDiscordScopeManifest,
-  getExtraFields: async (ownerDid) => ({ tokenSealed: await discordTokenSealed(ownerDid) }),
+  getExtraFields: async (ownerDid) => {
+    const [tokenSealed, credentialPending] = await Promise.all([
+      discordTokenSealed(ownerDid),
+      discordCredentialPending(ownerDid),
+    ]);
+    return { tokenSealed, credentialPending };
+  },
 });

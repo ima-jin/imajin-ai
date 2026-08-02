@@ -29,6 +29,8 @@ interface GitHubStatus {
   validScopes: string[];
   configSealed: boolean;
   tokenSealed: boolean;
+  /** Sealed but awaiting owner grant approval (Tier 1, #1521) — not the same as "not configured". */
+  credentialPending?: boolean;
 }
 
 interface DiscordStatus {
@@ -36,6 +38,7 @@ interface DiscordStatus {
   activeScopes: string[];
   validScopes: string[];
   tokenSealed: boolean;
+  credentialPending?: boolean;
 }
 
 /** Same shape as GitHubStatus — QuickBooks is also Pattern A (OAuth). */
@@ -45,6 +48,7 @@ interface QuickBooksStatus {
   validScopes: string[];
   configSealed: boolean;
   tokenSealed: boolean;
+  credentialPending?: boolean;
 }
 
 /**
@@ -135,12 +139,15 @@ async function postScopeToggle(
 // ── Shared subcomponents ──────────────────────────────────────────────────────
 
 /** Header badge for connector cards — eliminates nested ternary duplication. */
-function ConnectorStatusBadge({ loading, error, ready }: Readonly<{
-  loading: boolean; error: boolean; ready: boolean;
+function ConnectorStatusBadge({ loading, error, ready, pending }: Readonly<{
+  loading: boolean; error: boolean; ready: boolean; pending?: boolean;
 }>) {
   if (loading) return <Badge variant="info">Checking…</Badge>;
   if (error) return <Badge variant="inactive">Unavailable</Badge>;
   if (ready) return <Badge variant="active">● Connected</Badge>;
+  // Sealed but not yet granted by the owner agent (Tier 1) — distinct from
+  // "not configured", which would tell the user to redo work they already did.
+  if (pending) return <Badge variant="pending">⏳ Waiting for owner approval</Badge>;
   return <Badge variant="inactive">○ Not configured</Badge>;
 }
 
@@ -411,7 +418,12 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             <p className="text-sm text-gray-400">{entry.description}</p>
           </div>
         </div>
-        <ConnectorStatusBadge loading={statusLoading} error={!!statusError} ready={readyForRead} />
+        <ConnectorStatusBadge
+          loading={statusLoading}
+          error={!!statusError}
+          ready={readyForRead}
+          pending={status?.credentialPending}
+        />
       </div>
 
       {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
@@ -670,7 +682,12 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             <p className="text-sm text-gray-400">{entry.description}</p>
           </div>
         </div>
-        <ConnectorStatusBadge loading={statusLoading} error={!!statusError} ready={readyForPost} />
+        <ConnectorStatusBadge
+          loading={statusLoading}
+          error={!!statusError}
+          ready={readyForPost}
+          pending={status?.credentialPending}
+        />
       </div>
 
       {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
@@ -849,7 +866,12 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
           <div><h2 className="text-lg font-semibold text-white">{entry.name}</h2>
             <p className="text-sm text-gray-400">{entry.description}</p></div>
         </div>
-        <ConnectorStatusBadge loading={statusLoading} error={!!statusError} ready={readyForRead} />
+        <ConnectorStatusBadge
+          loading={statusLoading}
+          error={!!statusError}
+          ready={readyForRead}
+          pending={status?.credentialPending}
+        />
       </div>
 
       {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}

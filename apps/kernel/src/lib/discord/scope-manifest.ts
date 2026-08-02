@@ -20,7 +20,7 @@ import {
   type Asset,
 } from '@/src/lib/kernel/scope-manifest-core';
 import { DISCORD_CONNECTOR_DID, vaultField } from './connector';
-import { vaultFieldExists } from '@/src/lib/vault';
+import { vaultFieldExists, vaultFieldStatus } from '@/src/lib/vault';
 
 // ── Scope registry ──────────────────────────────────────────────────────────────
 
@@ -87,4 +87,15 @@ export function publishDiscordScopeManifest(ownerDid: string, scopes: readonly s
 /** Check whether a Discord Bot Token is sealed for ownerDid (no crypto, no value returned). */
 export function discordTokenSealed(ownerDid: string): Promise<boolean> {
   return vaultFieldExists(vaultField(ownerDid));
+}
+
+/**
+ * Check whether a Discord Bot Token is sealed but awaiting owner grant approval
+ * (Tier 1, no active delegation grant yet). Distinct from `discordTokenSealed`
+ * so the scope-manifest surface can render "waiting for owner approval" instead
+ * of "not connected" — `discordTokenSealed` reports `false` for this state
+ * (see field-status.ts).
+ */
+export async function discordCredentialPending(ownerDid: string): Promise<boolean> {
+  return (await vaultFieldStatus(vaultField(ownerDid))) === 'pending-grant';
 }

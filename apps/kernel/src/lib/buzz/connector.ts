@@ -16,7 +16,8 @@
  */
 
 import { createLogger } from '@imajin/logger';
-import { sealAndStore, loadAndUnseal } from '@/src/lib/vault';
+import { sealAndStoreV2, loadAndUnseal } from '@/src/lib/vault';
+import { VaultDelegationError } from '@/src/lib/vault/errors';
 import {
   generateNostrPrivkey,
   deriveNostrPubkey,
@@ -52,7 +53,7 @@ export function vaultField(ownerDid: string): string {
 export async function generateAndSeal(ownerDid: string): Promise<{ pubkeyHex: string }> {
   const privkeyHex = generateNostrPrivkey();
   const pubkeyHex = deriveNostrPubkey(privkeyHex);
-  await sealAndStore(vaultField(ownerDid), privkeyHex);
+  await sealAndStoreV2(vaultField(ownerDid), privkeyHex);
   // Private key leaves scope here — only pubkeyHex is returned.
   return { pubkeyHex };
 }
@@ -65,7 +66,17 @@ export async function generateAndSeal(ownerDid: string): Promise<{ pubkeyHex: st
  * that outlives this function.
  */
 export async function getPublicKey(ownerDid: string): Promise<string | undefined> {
-  const privkeyHex = await loadAndUnseal(vaultField(ownerDid));
+  let privkeyHex: string | undefined;
+  try {
+    privkeyHex = await loadAndUnseal(vaultField(ownerDid));
+  } catch (err) {
+    if (err instanceof VaultDelegationError) {
+      throw new Error(
+        `buzz_credential_pending: Nostr key for DID ${ownerDid} is sealed but awaiting owner grant approval`,
+      );
+    }
+    throw err;
+  }
   if (privkeyHex === undefined) return undefined;
   return deriveNostrPubkey(privkeyHex);
 }
@@ -101,7 +112,17 @@ export async function sendKind9(
   groupId: string,
   content: string,
 ): Promise<{ eventId: string }> {
-  const privkeyHex = await loadAndUnseal(vaultField(ownerDid));
+  let privkeyHex: string | undefined;
+  try {
+    privkeyHex = await loadAndUnseal(vaultField(ownerDid));
+  } catch (err) {
+    if (err instanceof VaultDelegationError) {
+      throw new Error(
+        `buzz_credential_pending: Nostr key for DID ${ownerDid} is sealed but awaiting owner grant approval`,
+      );
+    }
+    throw err;
+  }
   if (privkeyHex === undefined) {
     throw new Error(
       `buzz_no_key: no Nostr key sealed for DID ${ownerDid} — run buzz_connect first`,
