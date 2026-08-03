@@ -32,9 +32,11 @@ export { validateManifest, isValidManifest } from './validate';
 // createManifest removed — use getDefaultManifest() or buildFairManifest() instead
 export { canonicalize, canonicalizeForSigning } from './canonical';
 export { signManifest, verifyManifest, platformSign, verifyPlatformSignature } from './sign';
-export { FairAccordion } from './components/FairAccordion';
-export { FairEditor } from './components/FairEditor';
-export type { FairEditorProps } from './components/FairEditor';
+// FairAccordion/FairEditor live in ./react.ts, not here. Both carry their own
+// 'use client' directive, which only survives bundling when they are the sole
+// content of their own output file — re-exporting them from this entry would
+// merge their code into dist/index.js and lose the client boundary, breaking
+// every server-only consumer (see #1574).
 
 export {
   PROTOCOL_FEE_BPS,

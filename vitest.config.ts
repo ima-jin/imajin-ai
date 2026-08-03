@@ -36,6 +36,8 @@ export default defineConfig({
       { find: '@imajin/config', replacement: resolve(__dirname, 'packages/config/src/index.ts') },
       { find: '@imajin/vault-core', replacement: resolve(__dirname, 'packages/vault-core/src/index.ts') },
       { find: '@imajin/db', replacement: resolve(__dirname, 'packages/db/src/index.ts') },
+      { find: '@imajin/fair/react', replacement: resolve(__dirname, 'packages/fair/src/react.ts') },
+      { find: '@imajin/fair', replacement: resolve(__dirname, 'packages/fair/src/index.ts') },
     ],
   },
 });

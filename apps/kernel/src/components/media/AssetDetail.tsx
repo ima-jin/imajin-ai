@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { Asset } from "@/src/db/schemas/media";
-import { FairEditor, isFairManifestV1_1 } from "@imajin/fair";
+import { FairEditor } from "@imajin/fair/react";
+import { isFairManifestV1_1 } from "@imajin/fair";
 import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
 import { FairManifestEditor } from "./FairManifestEditor";
 
