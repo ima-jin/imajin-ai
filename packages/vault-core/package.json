@@ -1,6 +1,6 @@
 {
   "name": "@imajin/vault-core",
-  "version": "0.1.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Vault entry models, integrity verification, sealing and delegation primitives for Imajin nodes",
   "license": "MIT",
