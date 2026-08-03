@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
 import { MarkdownEditor, PayoutSetupBanner } from '@imajin/ui';
-import { FairEditor } from '@imajin/fair';
+import { FairEditor } from '@imajin/fair/react';
 import { apiFetch, buildPublicUrl, eventPath } from '@imajin/config';
 import type { FairManifest } from '@imajin/fair';
 import type { Event, TicketType } from '@/src/db/schema';

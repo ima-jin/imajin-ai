@@ -7,7 +7,7 @@ import { resolveMediaRef } from '@imajin/media';
 import { apiFetch, buildPublicUrl } from '@imajin/config';
 import PriceDisplay from '../../components/PriceDisplay';
 import { OnboardGate } from '@imajin/onboard';
-import { FairAccordion } from '@imajin/fair';
+import { FairAccordion } from '@imajin/fair/react';
 
 interface ContactInfo {
   phone?: string;

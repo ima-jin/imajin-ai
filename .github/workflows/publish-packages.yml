@@ -14,6 +14,7 @@ on:
           - ui
           - vault-core
           - db
+          - fair
           - all
       version_bump:
         description: "Version bump type (none publishes the version in package.json as-is)"
@@ -34,8 +35,8 @@ on:
 env:
   # Publish order matters — a package must be published before anything that
   # depends on it, since workspace:* deps resolve against the sibling versions.
-  # cid → vault-core, tokens → config → ui, db is independent
-  ALL_PACKAGES: "cid tokens config ui vault-core db"
+  # cid → vault-core, tokens → config → ui, db and fair are independent
+  ALL_PACKAGES: "cid tokens config ui vault-core db fair"
 
 jobs:
   publish:

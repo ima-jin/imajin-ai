@@ -1,17 +1,39 @@
 {
   "name": "@imajin/fair",
-  "version": "0.1.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Shared .fair attribution types, validator, builder, and React components",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ima-jin/imajin-ai.git",
+    "directory": "packages/fair"
   },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "!src/__tests__/**",
+    "!src/**/*.test.ts"
+  ],
   "scripts": {
+    "build": "tsup",
     "lint": "eslint src",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@noble/ed25519": "^2.3.0",
@@ -20,6 +42,7 @@
   },
   "devDependencies": {
     "@types/react": "^18",
+    "tsup": "^8.0.0",
     "typescript": "^5",
     "vitest": "^1.0.0",
     "@types/node": "^22.0.0"

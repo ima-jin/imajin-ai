@@ -18,7 +18,7 @@ export const revalidate = 0; // always fresh — event data changes frequently d
 import { Countdown } from './countdown';
 import { EventLobbyAccordion } from './event-lobby-accordion';
 import { SurveyAccordion } from './survey-accordion';
-import { FairAccordion } from '@imajin/fair';
+import { FairAccordion } from '@imajin/fair/react';
 import { TicketsGate } from './tickets-gate';
 import { MagicLinkButton } from './magic-link-button';
 import { ReAuthBanner } from './re-auth-banner';
