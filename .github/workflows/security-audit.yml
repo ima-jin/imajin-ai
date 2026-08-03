@@ -33,10 +33,26 @@ jobs:
         with:
           version: 9
 
+      # No `cache: 'pnpm'`, for the same reason as the `audit` job in ci.yml
+      # (#1569). Caching is coupled to installing: with no `pnpm install` the
+      # pnpm store is never created, so setup-node's post-job cache *save*
+      # step fails the run with "Path Validation Error: Path(s) specified in
+      # the action for caching do(es) not exist".
+      #
+      # Nothing is lost: a restored store would never be read either, since
+      # `pnpm audit` resolves from the lockfile alone. The input's only effect
+      # is a post-job step that can fail for non-security reasons — on a
+      # Monday, with no PR attached, which is the "red scheduled run
+      # indistinguishable from a broken workflow" case the note below names.
+      #
+      # The save only runs on a cache miss, and ci.yml's installing jobs keep a
+      # warm cache under the same lockfile-derived key on refs/heads/main, so
+      # this is latent rather than certain — it surfaces on eviction, or when a
+      # scheduled run races a lockfile change. Dropping the input removes the
+      # save step, so no cache state can trigger it.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
 
       # Deliberately no `pnpm install`. `pnpm audit` resolves from the lockfile,
       # so installing would only add runtime — and it would run dependency
