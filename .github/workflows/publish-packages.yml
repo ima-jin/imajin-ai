@@ -16,6 +16,7 @@ on:
           - db
           - fair
           - pay
+          - auth-client
           - all
       version_bump:
         description: "Version bump type (none publishes the version in package.json as-is)"
@@ -36,8 +37,8 @@ on:
 env:
   # Publish order matters — a package must be published before anything that
   # depends on it, since workspace:* deps resolve against the sibling versions.
-  # cid → vault-core, tokens → config → ui, db/fair/pay are independent
-  ALL_PACKAGES: "cid tokens config ui vault-core db fair pay"
+  # cid → vault-core, tokens → config → ui, db/fair/pay/auth-client are independent
+  ALL_PACKAGES: "cid tokens config ui vault-core db fair pay auth-client"
 
 jobs:
   publish:
