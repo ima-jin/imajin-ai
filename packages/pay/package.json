@@ -1,6 +1,6 @@
 {
   "name": "@imajin/pay",
-  "version": "0.0.1",
+  "version": "0.8.0",
   "description": "Unified payment infrastructure for Imajin ecosystem (Stripe + Solana)",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
