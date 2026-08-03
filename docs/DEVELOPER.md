@@ -180,6 +180,10 @@ rm -rf .next
 pnpm build
 ```
 
+### Publishing a shared package to npm
+
+Some `packages/*` are also published to npm under the `@ima-jin` scope for external consumption (`imajin-cli`, `fixready`, `karaoke`, etc.) — see the [npm publish epic](https://github.com/ima-jin/imajin-ai/issues/1573). If you're normalizing another package for publication, read [`docs/npm-publishing.md`](./npm-publishing.md) first — it covers the in-repo/published-scope mechanism and several gotchas (RSC `'use client'` bundling, tarball leakage, CI wiring) that are easy to miss.
+
 ## Database Schemas
 
 Each service owns a Postgres schema within the shared database. They don't share tables — only the database.
