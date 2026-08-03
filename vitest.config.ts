@@ -35,6 +35,7 @@ export default defineConfig({
       { find: '@imajin/cid', replacement: resolve(__dirname, 'packages/cid/src/index.ts') },
       { find: '@imajin/config', replacement: resolve(__dirname, 'packages/config/src/index.ts') },
       { find: '@imajin/vault-core', replacement: resolve(__dirname, 'packages/vault-core/src/index.ts') },
+      { find: '@imajin/db', replacement: resolve(__dirname, 'packages/db/src/index.ts') },
     ],
   },
 });
