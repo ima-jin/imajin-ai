@@ -77,6 +77,15 @@ jobs:
             echo "::endgroup::"
           done
 
+      # cid has no workspace deps of its own, but vault-core's declaration
+      # build resolves @imajin/cid's types. A single-package dispatch (e.g.
+      # package=vault-core) checks out fresh and never builds cid otherwise,
+      # so the dts step fails with "Cannot find module '@imajin/cid'".
+      # Build it unconditionally first; harmless/idempotent if cid is also in
+      # the selected list below.
+      - name: Build workspace type dependencies
+        run: pnpm --filter @imajin/cid build
+
       - name: Build packages
         run: |
           for pkg in ${{ steps.packages.outputs.list }}; do
