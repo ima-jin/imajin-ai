@@ -1,7 +1,14 @@
 {
   "name": "@imajin/tokens",
   "version": "0.8.0",
+  "private": true,
   "description": "Imajin design tokens — DTCG format, built with Style Dictionary v4",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ima-jin/imajin-ai.git",
+    "directory": "packages/tokens"
+  },
   "main": "./dist/tailwind.js",
   "exports": {
     ".": "./dist/tailwind.js",
@@ -17,7 +24,8 @@
     "build.mjs"
   ],
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "style-dictionary": "^4.4.0"

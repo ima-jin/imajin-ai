@@ -3,7 +3,7 @@ import './globals.css';
 import { NavBar } from './components/NavBar';
 import { Providers } from './providers';
 import { buildPublicUrl } from '@imajin/config';
-import { themeInitScript } from '@imajin/ui';
+import { themeInitScript } from '@imajin/ui/server';
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
 const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';

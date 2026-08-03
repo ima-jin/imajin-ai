@@ -1,6 +1,6 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
-import { themeInitScript } from '@imajin/ui';
+import { themeInitScript } from '@imajin/ui/server';
 import { cookies } from 'next/headers';
 import { NavBarWithUnread } from './components/NavBarWithUnread';
 import { BugReportButton } from '@/src/components/www/bug-report-button';

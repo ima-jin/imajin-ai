@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
-import { NavBar, themeInitScript, buildServiceMetadata, defaultViewport, getServiceRuntimeEnv } from '@imajin/ui';
+import { NavBar } from '@imajin/ui';
+import { themeInitScript, buildServiceMetadata, defaultViewport, getServiceRuntimeEnv } from '@imajin/ui/server';
 import './globals.css';
 export const viewport: Viewport = defaultViewport;
 export const metadata: Metadata = buildServiceMetadata('Market', 'Local commerce — buy and sell with trust on the Imajin network');

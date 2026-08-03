@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { buildServiceMetadata, defaultViewport } from '@imajin/ui';
+import { buildServiceMetadata, defaultViewport } from '@imajin/ui/server';
 import './globals.css';
 import { Providers } from './providers';
 export const viewport: Viewport = defaultViewport;

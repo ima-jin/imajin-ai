@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
-import { NavBar, buildServiceMetadata, defaultViewport, getServiceRuntimeEnv } from '@imajin/ui';
+import { NavBar } from '@imajin/ui';
+import { buildServiceMetadata, defaultViewport, getServiceRuntimeEnv } from '@imajin/ui/server';
 import { LayoutWrapper } from '@/components/LayoutWrapper';
 import './globals.css';
 import { Providers } from './providers';

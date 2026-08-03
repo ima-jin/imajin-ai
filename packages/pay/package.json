@@ -1,17 +1,39 @@
 {
   "name": "@imajin/pay",
   "version": "0.8.0",
+  "private": true,
   "description": "Unified payment infrastructure for Imajin ecosystem (Stripe + Solana)",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts",
-    "./providers": "./src/providers/index.ts"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ima-jin/imajin-ai.git",
+    "directory": "packages/pay"
   },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js",
+      "require": "./dist/providers/index.cjs"
+    }
+  },
+  "files": [
+    "dist/",
+    "src/"
+  ],
   "scripts": {
+    "build": "tsup",
     "lint": "eslint src",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.0",
@@ -20,6 +42,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^2.0.0"
   },
@@ -30,11 +53,5 @@
     "@imajin/auth": {
       "optional": true
     }
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/imajin-ai/imajin-ai.git",
-    "directory": "packages/pay"
   }
 }
