@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   test: {
-    include: ['packages/*/tests/**/*.test.ts', 'apps/**/__tests__/**/*.test.ts'],
+    include: ['packages/*/tests/**/*.test.ts', 'apps/**/__tests__/**/*.test.ts', 'scripts/__tests__/**/*.test.mjs'],
     coverage: {
       // v8 rather than istanbul: no instrumentation step, so the suite runs at
       // close to its normal speed. Must stay major-aligned with the root vitest
