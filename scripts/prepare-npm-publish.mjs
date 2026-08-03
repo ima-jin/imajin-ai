@@ -176,6 +176,18 @@ for (const depType of ["dependencies", "peerDependencies"]) {
   pkg[depType] = newDeps;
 }
 
+// peerDependenciesMeta keys must match the rewritten peerDependencies keys
+// exactly (e.g. "optional: true" for @ima-jin/auth), or npm silently stops
+// treating that peer as optional since the meta entry no longer matches
+// anything in peerDependencies.
+if (pkg.peerDependenciesMeta) {
+  const newMeta = {};
+  for (const [dep, meta] of Object.entries(pkg.peerDependenciesMeta)) {
+    newMeta[dep.replaceAll("@imajin/", "@ima-jin/")] = meta;
+  }
+  pkg.peerDependenciesMeta = newMeta;
+}
+
 // Write modified package.json to output
 writeFileSync(join(destDir, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
 

@@ -1,3 +1,8 @@
+'use client';
+
+// Every export in this file is a component or hook. themeInitScript,
+// buildServiceMetadata, getServiceRuntimeEnv, BRAND, and the acting-as
+// helpers live in ./server.ts instead — see that file for why.
 export { NavBar } from './nav-bar';
 export type { NavBarProps, NavIdentity, ServiceUrls } from './nav-bar';
 export { AppLauncher } from './app-launcher';
@@ -7,7 +12,6 @@ export { BalanceBadge } from './balance-badge';
 export type { BalanceBadgeProps } from './balance-badge';
 export { ImajinFooter } from './footer';
 export { BuildInfo } from './BuildInfo';
-export { BRAND } from './brand';
 export { MarkdownEditor } from './MarkdownEditor';
 export type { MarkdownEditorProps } from './MarkdownEditor';
 export { MarkdownContent } from './MarkdownContent';
@@ -37,9 +41,5 @@ export type {
   AppShellPaneProps,
 } from './app-shell';
 
-export { themeInitScript } from './theme-init';
-
-export { getActingAs, setActingAs, getActingAsHeaders } from './acting-as';
 export { useIdentities } from './use-identities';
 export type { GroupIdentity } from './use-identities';
-export { defaultViewport, buildServiceMetadata, getServiceRuntimeEnv } from './service-layout';

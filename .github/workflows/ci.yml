@@ -93,11 +93,12 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      # cid, vault-core, db, and fair resolve via their built dist/ types
-      # (not source), so they must be built before any consumer's typecheck
-      # can resolve them. cid first — vault-core's declarations reference it.
+      # cid, vault-core, db, fair, config, ui, and pay resolve via their
+      # built dist/ types (not source), so they must be built before any
+      # consumer's typecheck can resolve them. cid first — vault-core's
+      # declarations reference it.
       - name: Build workspace type dependencies
-        run: pnpm --filter @imajin/cid --filter @imajin/vault-core --filter @imajin/db --filter @imajin/fair build
+        run: pnpm --filter @imajin/cid --filter @imajin/vault-core --filter @imajin/db --filter @imajin/fair --filter @imajin/config --filter @imajin/ui --filter @imajin/pay build
 
       - name: Typecheck
         run: pnpm typecheck

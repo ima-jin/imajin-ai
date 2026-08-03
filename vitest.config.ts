@@ -38,6 +38,10 @@ export default defineConfig({
       { find: '@imajin/db', replacement: resolve(__dirname, 'packages/db/src/index.ts') },
       { find: '@imajin/fair/react', replacement: resolve(__dirname, 'packages/fair/src/react.ts') },
       { find: '@imajin/fair', replacement: resolve(__dirname, 'packages/fair/src/index.ts') },
+      { find: '@imajin/ui/server', replacement: resolve(__dirname, 'packages/ui/src/server.ts') },
+      { find: '@imajin/ui', replacement: resolve(__dirname, 'packages/ui/src/index.ts') },
+      { find: '@imajin/pay/providers', replacement: resolve(__dirname, 'packages/pay/src/providers/index.ts') },
+      { find: '@imajin/pay', replacement: resolve(__dirname, 'packages/pay/src/index.ts') },
     ],
   },
 });

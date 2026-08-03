@@ -1202,6 +1202,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(jiti@1.21.7)(postcss@8.5.25)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
@@ -1264,6 +1267,9 @@ importers:
       typescript:
         specifier: ^5
         version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@22.19.17)
 
   packages/vault-core:
     dependencies:
