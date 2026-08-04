@@ -11,16 +11,13 @@
  * in a signed scope-manifest asset. No OAuth App config, no token — the owner
  * just POSTs their desired scopes.
  *
- * Scope release tiers (from the #1196 consent 2×2 / mcp-scope-manifest.md fixture):
- *   media:read       → silent      (materialises immediately on publish)
- *   media:write      → on-consent  (tightened; connector needs explicit consent)
- *   media:share      → on-consent  (touches others — crosses sovereignty boundary)
- *   connections:read → silent      (materialises immediately on publish)
- *   messages:read    → silent      (materialises immediately on publish)
- *   messages:write   → on-consent  (tightened; sends onBehalfOf the human)
+ * Scope release tiers are DERIVED from the declarative vocabulary (#1253) via
+ * the #1196 consent 2×2 — see `packages/auth/src/scope-vocabulary.ts`. To add a
+ * scope to this connector, add one entry there; this module needs no edit.
  *
- * Refs: #1394 (this epic) · #1222 (MCP grant back-port) · #1209 (channel-links) ·
- *       #1207 (projection reactor) · scope-manifest-core (shared implementation)
+ * Refs: #1394 (this epic) · #1253 (vocabulary derivation) · #1222 (MCP grant
+ *       back-port) · #1209 (channel-links) · #1207 (projection reactor) ·
+ *       scope-manifest-core (shared implementation)
  */
 import {
   buildConnectorManifestContent,
@@ -28,68 +25,22 @@ import {
   readActiveConnectorScopes,
   syncConnectorConsentGrants,
   publishConnectorScopeManifest,
-  type ConnectorScopeDescriptor,
   type Asset,
 } from '@/src/lib/kernel/scope-manifest-core';
+import {
+  connectorScopeDescriptors,
+  validScopesForConnector,
+  requiresConsentRow,
+} from '@/src/lib/kernel/scope-projections';
 import { MCP_CONNECTOR_DID, MCP_CHANNEL } from './oauth-config';
 
-// ── Scope registry ─────────────────────────────────────────────────────────────
+// ── Scope registry (derived — #1253) ────────────────────────────────────────
 
-/**
- * All four MCP connector scopes, sourced from the mcp-scope-manifest.md fixture
- * and the #1196 consent 2×2.
- */
-export const MCP_SCOPE_DESCRIPTORS: Readonly<Record<string, ConnectorScopeDescriptor>> = {
-  'media:read': {
-    verb: 'read', surface: 'media',
-    label: 'Read your media assets',
-    release: { discloses_others: false, sensitive: false },
-    // Derived tier: silent → materialises immediately on publish.
-  },
-  'media:write': {
-    verb: 'write', surface: 'media',
-    label: 'Create and update your media assets',
-    release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_CONNECTOR_DID },
-  },
-  'media:share': {
-    verb: 'write', surface: 'media-access',
-    label: "Grant or revoke other people's access to your assets",
-    release: { discloses_others: true, sensitive: false, viewer: MCP_CONNECTOR_DID },
-    // Derived tier: on-consent (discloses_others = true).
-  },
-  'connections:read': {
-    verb: 'read', surface: 'connections',
-    label: 'Read your trust-graph connections',
-    release: { discloses_others: false, sensitive: false },
-    // Derived tier: silent → materialises immediately on publish.
-  },
-  'messages:read': {
-    verb: 'read', surface: 'messages',
-    label: 'List your conversations and read their messages',
-    release: { discloses_others: false, sensitive: false },
-    // Derived tier: silent → materialises immediately on publish.
-  },
-  'messages:write': {
-    verb: 'write', surface: 'messages',
-    label: 'Send messages in your conversations on your behalf',
-    release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_CONNECTOR_DID },
-  },
-};
+const CONNECTOR = 'mcp' as const;
 
-export const VALID_MCP_SCOPES = Object.keys(MCP_SCOPE_DESCRIPTORS) as Array<
-  keyof typeof MCP_SCOPE_DESCRIPTORS
->;
+export const MCP_SCOPE_DESCRIPTORS = connectorScopeDescriptors(CONNECTOR);
 
-function mcpScopeReleaseClass(scopeName: string): 'silent' | 'on-consent' | 'owner-only' | 'never' {
-  const desc = MCP_SCOPE_DESCRIPTORS[scopeName];
-  if (!desc) return 'never';
-  const r = desc.release;
-  if (r.release) return r.release;
-  if (!r.discloses_others && !r.sensitive) return 'silent';
-  if (r.discloses_others && !r.sensitive) return 'on-consent';
-  if (!r.discloses_others && r.sensitive) return 'owner-only';
-  return 'never';
-}
+export const VALID_MCP_SCOPES = validScopesForConnector(CONNECTOR);
 
 // ── Public API (delegates to core) ────────────────────────────────────────────
 
@@ -114,7 +65,7 @@ export function syncConsentGrants(
 ): Promise<void> {
   return syncConnectorConsentGrants(
     ownerDid, MCP_CONNECTOR_DID, manifestAssetId, requestedScopes,
-    (s) => mcpScopeReleaseClass(s) === 'on-consent',
+    (s) => requiresConsentRow(CONNECTOR, s),
   );
 }
 
@@ -122,6 +73,6 @@ export function publishMcpScopeManifest(ownerDid: string, scopes: readonly strin
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: MCP_CONNECTOR_DID, channel: MCP_CHANNEL,
     filename: 'mcp-scope-manifest.md', scopeDescriptors: MCP_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => mcpScopeReleaseClass(s) === 'on-consent',
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
   });
 }

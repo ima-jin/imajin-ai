@@ -13,27 +13,31 @@
  * - Ingestion patterns: 'oauth' (GitHub, QuickBooks) | 'token-paste' (Discord) | 'static-secret' (#1439, delegation-grant sealed API keys)
  * - statusEndpoint: null = backend not yet implemented (#1355, #1356)
  *
+ * Scope lists are DERIVED (#1253): `scopes` on each entry is projected from the
+ * declarative vocabulary in `packages/auth/src/scope-vocabulary.ts` by
+ * `connectorUiScopes()`. Do NOT hand-write them here — that is precisely how
+ * #1393 shipped `messages:*` to prod with no toggle to grant it: the scope was
+ * declared everywhere else and missed in this file, which is the list the
+ * toggles at /auth/connectors/<id> actually render from.
+ *
  * Scope release classes (#1196 consent 2×2):
- *   silent    — freely projectable; materialises on manifest publish
+ *   silent     — freely projectable; materialises on manifest publish
  *   on-consent — materialises only when a consent_grants row exists
- *   never      — structural drop; never materialises
+ *   owner-only — never released to a third party; the owner grants it explicitly
+ *   never      — structural drop; never materialises (omitted from the UI list)
  */
+import { connectorUiScopes } from './scope-projections';
 
 /** How the connector ingests credentials. */
 export type IngestionPattern = 'oauth' | 'token-paste' | 'native' | 'static-secret';
 
-/** Release class from the #1196 consent 2×2. */
-export type ReleaseClass = 'silent' | 'on-consent' | 'never';
-
-/** One grantable scope for a connector. */
-export interface ConnectorScope {
-  /** Scope identifier, e.g. `github:read`. */
-  name: string;
-  /** Human-readable label shown in the UI. */
-  label: string;
-  /** Release tier — determines if this scope materialises immediately or needs consent. */
-  releaseClass: ReleaseClass;
-}
+// Release class and per-scope shape now live in ./scope-projections alongside
+// the derivation, and are re-exported here so existing importers (the connector
+// card, ConnectorDetail) keep working unchanged. The local import is separate
+// because a re-export alone does not bring the name into this module's scope,
+// and `ConnectorEntry.scopes` below refers to it.
+export type { ReleaseClass, ConnectorScope } from './scope-projections';
+import type { ConnectorScope } from './scope-projections';
 
 /**
  * A single connector in the registry. All fields are optional-friendly to let
@@ -55,8 +59,9 @@ export interface ConnectorEntry {
   /** Connector app DID, e.g. `'did:imajin:github-connector'`. */
   connectorDid: string;
   /**
-   * Grantable scopes, in display order. Omit scopes with `never` release class
-   * (e.g. `github:actions`) — they can never materialise and are confusing to show.
+   * Grantable scopes, in display order. Derived via `connectorUiScopes()`, which
+   * drops `never`-class scopes (e.g. `github:actions`) since they can never
+   * materialise and a permanently-dead toggle only confuses people.
    */
   scopes: ConnectorScope[];
   /**
@@ -104,28 +109,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     ingestionPattern: 'native',
     channel: 'mcp',
     connectorDid: 'did:imajin:mcp-connector',
-    scopes: [
-      {
-        name: 'media:read',
-        label: 'Read your media assets',
-        releaseClass: 'silent',
-      },
-      {
-        name: 'media:write',
-        label: 'Create and update your media assets',
-        releaseClass: 'on-consent',
-      },
-      {
-        name: 'media:share',
-        label: "Grant or revoke other people's access to your assets",
-        releaseClass: 'on-consent',
-      },
-      {
-        name: 'connections:read',
-        label: 'Read your trust-graph connections',
-        releaseClass: 'silent',
-      },
-    ],
+    scopes: connectorUiScopes('mcp'),
     statusEndpoint: '/mcp/api/scope-manifest',
     backendPending: false,
     connectRoute: null,
@@ -141,23 +125,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     ingestionPattern: 'oauth',
     channel: 'github',
     connectorDid: 'did:imajin:github-connector',
-    scopes: [
-      {
-        name: 'github:read',
-        label: 'Read your repos, issues and PRs',
-        releaseClass: 'silent',
-      },
-      {
-        name: 'github:write',
-        label: 'Create issues and comments on your repos',
-        releaseClass: 'on-consent',
-      },
-      {
-        name: 'github:org',
-        label: 'Act on repos owned by an org or other people',
-        releaseClass: 'on-consent',
-      },
-    ],
+    scopes: connectorUiScopes('github'),
     statusEndpoint: '/github/api/scope-manifest',
     backendPending: false,
     connectRoute: '/github/api/connect',
@@ -173,18 +141,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     ingestionPattern: 'token-paste',
     channel: 'discord',
     connectorDid: 'did:imajin:discord-connector',
-    scopes: [
-      {
-        name: 'discord:post',
-        label: 'Post messages to Discord channels',
-        releaseClass: 'on-consent',
-      },
-      {
-        name: 'discord:read',
-        label: 'Read messages from Discord channels',
-        releaseClass: 'on-consent',
-      },
-    ],
+    scopes: connectorUiScopes('discord'),
     statusEndpoint: '/discord/api/scope-manifest',
     backendPending: false,
     connectRoute: null,
@@ -200,13 +157,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     ingestionPattern: 'token-paste',
     channel: 'gemini',
     connectorDid: 'did:imajin:gemini-connector',
-    scopes: [
-      {
-        name: 'gemini:infer',
-        label: 'Use your Gemini API key for inference',
-        releaseClass: 'on-consent',
-      },
-    ],
+    scopes: connectorUiScopes('gemini'),
     statusEndpoint: '/gemini/api/scope-manifest',
     backendPending: false,
     connectRoute: null,
@@ -222,18 +173,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     ingestionPattern: 'oauth',
     channel: 'quickbooks',
     connectorDid: 'did:imajin:quickbooks-connector',
-    scopes: [
-      {
-        name: 'quickbooks:read',
-        label: 'Read your QuickBooks invoices',
-        releaseClass: 'silent',
-      },
-      {
-        name: 'quickbooks:write',
-        label: 'Create QuickBooks invoices',
-        releaseClass: 'on-consent',
-      },
-    ],
+    scopes: connectorUiScopes('quickbooks'),
     statusEndpoint: '/quickbooks/api/scope-manifest',
     backendPending: false,
     connectRoute: '/quickbooks/api/connect',

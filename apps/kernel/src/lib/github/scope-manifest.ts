@@ -6,11 +6,9 @@
  * generic DB logic, consent-grant syncing, and publish orchestration live
  * in the core module to avoid duplication across connectors.
  *
- * Scope release tiers (#1196 consent 2×2):
- *   github:read    → silent    (materialises on publish)
- *   github:write   → on-consent (tightened; connector needs explicit consent)
- *   github:org     → on-consent (touches others)
- *   github:actions → never     (structural drop)
+ * Scope release tiers are DERIVED from the declarative vocabulary (#1253) via
+ * the #1196 consent 2×2 — see `packages/auth/src/scope-vocabulary.ts`. To add a
+ * scope to this connector, add one entry there; this module needs no edit.
  */
 import {
   buildConnectorManifestContent,
@@ -18,53 +16,24 @@ import {
   readActiveConnectorScopes,
   syncConnectorConsentGrants,
   publishConnectorScopeManifest,
-  type ConnectorScopeDescriptor,
   type Asset,
 } from '@/src/lib/kernel/scope-manifest-core';
+import {
+  connectorScopeDescriptors,
+  validScopesForConnector,
+  requiresConsentRow,
+} from '@/src/lib/kernel/scope-projections';
 import { GITHUB_CONNECTOR_DID } from './constants';
 
-// ── Scope registry ──────────────────────────────────────────────────────────────
+// ── Scope registry (derived — #1253) ────────────────────────────────────────
 
-/** All four GitHub connector scopes, mirroring the #1203 fixture. */
-export const GITHUB_SCOPE_DESCRIPTORS: Readonly<Record<string, ConnectorScopeDescriptor>> = {
-  'github:read': {
-    verb: 'read', surface: 'repos',
-    label: 'Read your own repos, issues and PRs',
-    release: { discloses_others: false, sensitive: false },
-  },
-  'github:write': {
-    verb: 'write', surface: 'issues',
-    label: 'Open and comment on issues & PRs on your repos',
-    release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: GITHUB_CONNECTOR_DID },
-  },
-  'github:org': {
-    verb: 'write', surface: 'org',
-    label: 'Act on repos owned by an org or other people',
-    release: { discloses_others: true, sensitive: false, viewer: GITHUB_CONNECTOR_DID },
-  },
-  'github:actions': {
-    verb: 'execute', surface: 'actions',
-    label: 'Trigger Actions / deploy / spend CI minutes',
-    release: { discloses_others: true, sensitive: true },
-  },
-};
+const CONNECTOR = 'github' as const;
 
-export const VALID_GITHUB_SCOPES = Object.keys(GITHUB_SCOPE_DESCRIPTORS) as Array<
-  keyof typeof GITHUB_SCOPE_DESCRIPTORS
->;
+export const GITHUB_SCOPE_DESCRIPTORS = connectorScopeDescriptors(CONNECTOR);
+
+export const VALID_GITHUB_SCOPES = validScopesForConnector(CONNECTOR);
 
 const MANIFEST_CHANNEL = 'github';
-
-function githubScopeReleaseClass(scopeName: string): 'silent' | 'on-consent' | 'owner-only' | 'never' {
-  const desc = GITHUB_SCOPE_DESCRIPTORS[scopeName];
-  if (!desc) return 'never';
-  const r = desc.release;
-  if (r.release) return r.release;
-  if (!r.discloses_others && !r.sensitive) return 'silent';
-  if (r.discloses_others && !r.sensitive) return 'on-consent';
-  if (!r.discloses_others && r.sensitive) return 'owner-only';
-  return 'never';
-}
 
 // ── Public API (delegates to core) ─────────────────────────────────────────────
 
@@ -89,7 +58,7 @@ export function syncConsentGrants(
 ): Promise<void> {
   return syncConnectorConsentGrants(
     ownerDid, GITHUB_CONNECTOR_DID, manifestAssetId, requestedScopes,
-    (s) => githubScopeReleaseClass(s) === 'on-consent',
+    (s) => requiresConsentRow(CONNECTOR, s),
   );
 }
 
@@ -97,6 +66,6 @@ export function publishGitHubScopeManifest(ownerDid: string, scopes: readonly st
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: GITHUB_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'github-scope-manifest.md', scopeDescriptors: GITHUB_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => githubScopeReleaseClass(s) === 'on-consent',
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
   });
 }

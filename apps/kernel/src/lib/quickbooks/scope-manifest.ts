@@ -5,9 +5,9 @@
  * identity (connector DID, channel, scope descriptors, filenames). All generic
  * DB logic, consent-grant syncing, and publish orchestration live in the core.
  *
- * Scope release tiers (#1196 consent 2×2):
- *   quickbooks:read  → silent    (owner's own invoices; materialises on publish)
- *   quickbooks:write → on-consent (creates invoices touching customer records)
+ * Scope release tiers are DERIVED from the declarative vocabulary (#1253) via
+ * the #1196 consent 2×2 — see `packages/auth/src/scope-vocabulary.ts`. To add a
+ * scope to this connector, add one entry there; this module needs no edit.
  */
 import {
   buildConnectorManifestContent,
@@ -15,48 +15,25 @@ import {
   readActiveConnectorScopes,
   syncConnectorConsentGrants,
   publishConnectorScopeManifest,
-  type ConnectorScopeDescriptor,
   type Asset,
 } from '@/src/lib/kernel/scope-manifest-core';
+import {
+  connectorScopeDescriptors,
+  validScopesForConnector,
+  requiresConsentRow,
+} from '@/src/lib/kernel/scope-projections';
 import { QUICKBOOKS_CONNECTOR_DID, configField, vaultField } from './connector';
 import { vaultFieldExists, vaultFieldStatus } from '@/src/lib/vault';
 
-// ── Scope registry ────────────────────────────────────────────────────────────
+// ── Scope registry (derived — #1253) ───────────────────────────────────────
 
-/** QuickBooks connector scopes with #1196 release classifications. */
-export const QUICKBOOKS_SCOPE_DESCRIPTORS: Readonly<Record<string, ConnectorScopeDescriptor>> = {
-  'quickbooks:read': {
-    verb: 'read', surface: 'invoices',
-    label: 'Read your QuickBooks invoices',
-    // Owner reading their own invoice data — silent (freely projectable).
-    release: { discloses_others: false, sensitive: false },
-  },
-  'quickbooks:write': {
-    verb: 'write', surface: 'invoices',
-    label: 'Create QuickBooks invoices',
-    // Creating invoices is sent to customers (touches others) → on-consent.
-    release: { discloses_others: true, sensitive: false, viewer: QUICKBOOKS_CONNECTOR_DID },
-  },
-};
+const CONNECTOR = 'quickbooks' as const;
 
-export const VALID_QUICKBOOKS_SCOPES = Object.keys(QUICKBOOKS_SCOPE_DESCRIPTORS) as Array<
-  keyof typeof QUICKBOOKS_SCOPE_DESCRIPTORS
->;
+export const QUICKBOOKS_SCOPE_DESCRIPTORS = connectorScopeDescriptors(CONNECTOR);
+
+export const VALID_QUICKBOOKS_SCOPES = validScopesForConnector(CONNECTOR);
 
 const MANIFEST_CHANNEL = 'quickbooks';
-
-function quickbooksScopeReleaseClass(
-  scopeName: string,
-): 'silent' | 'on-consent' | 'owner-only' | 'never' {
-  const desc = QUICKBOOKS_SCOPE_DESCRIPTORS[scopeName];
-  if (!desc) return 'never';
-  const r = desc.release;
-  if (r.release) return r.release;
-  if (!r.discloses_others && !r.sensitive) return 'silent';
-  if (r.discloses_others && !r.sensitive) return 'on-consent';
-  if (!r.discloses_others && r.sensitive) return 'owner-only';
-  return 'never';
-}
 
 // ── Public API (delegates to core) ───────────────────────────────────────────
 
@@ -81,7 +58,7 @@ export function syncConsentGrants(
 ): Promise<void> {
   return syncConnectorConsentGrants(
     ownerDid, QUICKBOOKS_CONNECTOR_DID, manifestAssetId, requestedScopes,
-    (s) => quickbooksScopeReleaseClass(s) === 'on-consent',
+    (s) => requiresConsentRow(CONNECTOR, s),
   );
 }
 
@@ -89,7 +66,7 @@ export function publishQuickBooksScopeManifest(ownerDid: string, scopes: readonl
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: QUICKBOOKS_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'quickbooks-scope-manifest.md', scopeDescriptors: QUICKBOOKS_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => quickbooksScopeReleaseClass(s) === 'on-consent',
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
   });
 }
 

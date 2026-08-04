@@ -11,6 +11,7 @@
  * handlers under app/.well-known, app/oauth, and app/mcp.
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { CONNECTOR_DIDS, CONNECTOR_CHANNELS, scopesForSurface } from '@imajin/auth/scope-vocabulary';
 
 /** Public origin of the MCP server (Caddy → kernel). e.g. https://mcp.imajin.ai */
 export function getMcpIssuer(): string {
@@ -24,16 +25,17 @@ export const MCP_ISSUER = getMcpIssuer();
  * Connector app DID for the Claude/MCP connector (#1222).
  *
  * This is the DID that appears in the user's MCP scope-manifest as `connector:`
- * and in `auth.channel_links.appDid` for media/connections grant rows. Mirrors
- * GITHUB_CONNECTOR_DID in src/lib/github/connector.ts.
+ * and in `auth.channel_links.appDid` for media/connections grant rows. Sourced
+ * from the scope vocabulary (#1253), which is the only place connector DIDs are
+ * declared.
  */
-export const MCP_CONNECTOR_DID = 'did:imajin:mcp-connector';
+export const MCP_CONNECTOR_DID = CONNECTOR_DIDS.mcp;
 
 /**
  * Channel label for MCP connector rows in `auth.channel_links` (#1222).
  * Matches the `channel:` field in the user's MCP scope-manifest.
  */
-export const MCP_CHANNEL = 'mcp';
+export const MCP_CHANNEL = CONNECTOR_CHANNELS.mcp;
 
 /** RFC 8707 resource indicator == access-token `aud`. Also the JSON-RPC path. */
 export function getMcpResource(): string {
@@ -148,37 +150,21 @@ export function areRedirectUrisAllowed(uris: readonly string[]): boolean {
 }
 
 /**
- * Scopes the MCP surface supports. NOTE: each string must also exist in the
- * shared SCOPES vocabulary in packages/auth/src/scopes.ts so the consent
- * listing (/auth/apps) and validateScopes() recognize it.
+ * Scopes the MCP surface supports — the OAuth token capability ceiling.
  *
- * Scope semantics:
- *   media:read        — list/get/read caller's media
- *   media:write       — create/update caller's own media
- *   media:share       — add/remove allowedDids on caller's assets (crosses
- *                       sovereignty boundary; distinct from media:write)
- *   connections:read  — enumerate caller's trust-graph connections (used by
- *                       connections_list to resolve a name → DID for sharing)
- *   messages:read     — list caller's conversations + read their messages
- *                       (imajin_list_conversations / imajin_read_messages, #1393)
- *   messages:write    — send a message onBehalfOf the caller
- *                       (imajin_send_message, #1393)
+ * DERIVED (#1253): every vocabulary entry tagged `surfaces: ['mcp']`, in
+ * vocabulary order. Previously a hand-maintained tuple that had to be kept in
+ * sync with `SCOPES`, the connector descriptors, and the connector-card list;
+ * #1393 missed one of those copies and shipped an ungrantable scope to prod.
+ *
+ * Note this is a *ceiling*, not ownership: `github:*` is owned by the GitHub
+ * connector but is legitimately carried by MCP tokens, so those entries are
+ * `connector: 'github'` with `surfaces: ['mcp']`.
  *
  * A given client only receives a scope if its registry.apps.requested_scopes
  * includes it — no existing client gains new capability implicitly.
  */
-export const MCP_SCOPES = [
-  'media:read',
-  'media:write',
-  'media:share',
-  'connections:read',
-  'messages:read',
-  'messages:write',
-  'github:read',
-  'github:write',
-  'github:org',
-  'github:actions',
-] as const;
+export const MCP_SCOPES: readonly string[] = scopesForSurface('mcp');
 export const MCP_SCOPE_SET = new Set<string>(MCP_SCOPES);
 
 export const ACCESS_TOKEN_TTL_SECONDS = 600; // matches createAppToken (10 min)

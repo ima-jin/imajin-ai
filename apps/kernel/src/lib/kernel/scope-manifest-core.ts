@@ -11,6 +11,9 @@
  * Each connector's `scope-manifest.ts` is a thin wrapper that passes its
  * own DID, channel label, scope descriptors, and filenames. This module owns
  * the implementation; the wrappers own the connector identity.
+ *
+ * Since #1253 the wrappers no longer hand-write their descriptor maps either —
+ * those are projected from the declarative vocabulary by ./scope-projections.
  */
 import { and, eq, like, sql } from 'drizzle-orm';
 import { db, assets, channelLinks, consentGrants, type Asset } from '@/src/db';
@@ -25,17 +28,12 @@ import { addAssetToGrantsFolder } from '@/src/lib/media/folders';
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
-export interface ConnectorScopeDescriptor {
-  verb: string;
-  surface: string;
-  label: string;
-  release: {
-    discloses_others: boolean;
-    sensitive: boolean;
-    release?: 'on-consent' | 'owner-only' | 'never';
-    viewer?: string;
-  };
-}
+// The descriptor shape now lives in ./scope-projections (client-safe, so the
+// connector card can share it). Re-exported here to keep every existing
+// `import { type ConnectorScopeDescriptor } from '.../scope-manifest-core'`
+// working unchanged.
+export type { ConnectorScopeDescriptor } from './scope-projections';
+import type { ConnectorScopeDescriptor } from './scope-projections';
 
 // ── YAML builder ──────────────────────────────────────────────────────────────
 

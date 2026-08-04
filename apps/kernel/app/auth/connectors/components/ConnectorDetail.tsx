@@ -68,12 +68,16 @@ interface NativeStatus {
 const RELEASE_CLASS_LABEL: Record<ReleaseClass, string> = {
   silent: 'auto-grant',
   'on-consent': 'requires consent',
+  // owner-only (#1253): behind the same consent barrier as on-consent, but it is
+  // never released to a third party — only the owner can ever exercise it.
+  'owner-only': 'owner only',
   never: 'never active',
 };
 
 const RELEASE_CLASS_COLOR: Record<ReleaseClass, string> = {
   silent: 'text-green-400',
   'on-consent': 'text-amber-400',
+  'owner-only': 'text-amber-400',
   never: 'text-gray-600',
 };
 

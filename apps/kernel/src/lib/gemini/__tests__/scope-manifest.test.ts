@@ -81,7 +81,13 @@ describe('readActiveGeminiScopes', () => {
 });
 
 describe('syncConsentGrants', () => {
-  it('marks gemini:infer as on-consent', async () => {
+  /**
+   * gemini:infer derives `owner-only` from the #1196 2×2 (#1253), not
+   * `on-consent` — but it still sits behind a consent barrier, so publishing it
+   * must record a consent_grants row exactly as before. This asserts the tier
+   * change did not silently drop that row.
+   */
+  it('records a consent row for gemini:infer (owner-only is still consent-barriered)', async () => {
     await syncConsentGrants('did:owner', 'asset_x', ['gemini:infer']);
     const [, connDid, , , isOnConsent] = mockSync.mock.calls[0];
     expect(connDid).toBe(GEMINI_CONNECTOR_DID);
