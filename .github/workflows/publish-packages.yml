@@ -95,8 +95,11 @@ jobs:
             echo "::group::Building workspace deps for $pkg"
             # --if-present tolerates workspace deps with no build script
             # (e.g. @imajin/auth is an optional peer dep of pay that ships
-            # raw src/ with no dist/ build step).
-            pnpm --filter "@imajin/$pkg^..." run build --if-present
+            # raw src/ with no dist/ build step). It must precede the script
+            # name -- pnpm forwards anything listed after the script name to
+            # the script itself, which broke tsup with 'Unknown option
+            # --ifPresent' when this was written as '... run build --if-present'.
+            pnpm --filter "@imajin/$pkg^..." run --if-present build
             echo "::endgroup::"
           done
 
