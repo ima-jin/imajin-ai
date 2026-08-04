@@ -29,7 +29,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'quickbooks'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'quickbooks', 'warp'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -140,6 +140,10 @@ describe('pinned scope sets (change these deliberately)', () => {
     ]);
   });
 
+  it('pins the Warp connector card toggles', () => {
+    expect(connectorUiScopes('warp').map((s) => s.name)).toEqual(['warp:dispatch']);
+  });
+
   /**
    * This list is published as `scopes_supported` in the OAuth discovery docs,
    * so both membership AND order are externally visible.
@@ -156,6 +160,7 @@ describe('pinned scope sets (change these deliberately)', () => {
       'github:write',
       'github:org',
       'github:actions',
+      'warp:dispatch',
     ]);
   });
 });
@@ -252,6 +257,7 @@ const GITHUB_DID = 'did:imajin:github-connector';
 const DISCORD_DID = 'did:imajin:discord-connector';
 const GEMINI_DID = 'did:imajin:gemini-connector';
 const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
+const WARP_DID = 'did:imajin:warp-connector';
 
 describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('mcp', () => {
@@ -292,6 +298,35 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
       'quickbooks:read': { verb: 'read', surface: 'invoices', label: 'Read your QuickBooks invoices', release: { discloses_others: false, sensitive: false } },
       'quickbooks:write': { verb: 'write', surface: 'invoices', label: 'Create QuickBooks invoices', release: { discloses_others: true, sensitive: false, viewer: QUICKBOOKS_DID } },
     });
+  });
+});
+
+// ── #1428 ─ the Warp connector's descriptor is new, not a migrated literal ─────
+
+describe('#1428 — warp:dispatch projects as an owner-only connector scope', () => {
+  it('derives owner-only from the 2×2 (own credential, spawns cloud agents)', () => {
+    expect(scopeReleaseClass('warp', 'warp:dispatch')).toBe('owner-only');
+    expect(requiresConsentRow('warp', 'warp:dispatch')).toBe(true);
+  });
+
+  it('emits the connector as the only viewer of the sealed key', () => {
+    expect(connectorScopeDescriptors('warp')).toEqual({
+      'warp:dispatch': {
+        verb: 'dispatch',
+        surface: 'cloud-agents',
+        label: 'Dispatch Warp cloud agents under your own credential',
+        release: { discloses_others: false, sensitive: true, viewer: WARP_DID },
+      },
+    });
+  });
+
+  it('is carried by MCP tokens so a jin speaking MCP can dispatch', () => {
+    expect(MCP_SCOPE_SET.has('warp:dispatch')).toBe(true);
+    expect(filterGrantedScopes('warp:dispatch')).toEqual(['warp:dispatch']);
+  });
+
+  it('renders a toggle on the connector card', () => {
+    expect(getConnector('warp')?.scopes.map((s) => s.name)).toEqual(['warp:dispatch']);
   });
 });
 

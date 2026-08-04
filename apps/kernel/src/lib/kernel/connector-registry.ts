@@ -181,6 +181,24 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     tokenRoute: null,
     disconnectRoute: '/quickbooks/api/disconnect',
   },
+  {
+    id: 'warp',
+    name: 'Warp Cloud Agents',
+    description: 'Seal your own Warp Agent key per-DID so cloud agents you dispatch run under your credential, not a shared one.',
+    icon: '🛰️',
+    ingestionPattern: 'static-secret',
+    channel: 'warp',
+    connectorDid: 'did:imajin:warp-connector',
+    scopes: connectorUiScopes('warp'),
+    statusEndpoint: '/warp/api/scope-manifest',
+    backendPending: false,
+    connectRoute: null,
+    configureRoute: null,
+    tokenRoute: '/warp/api/seal',
+    // Same endpoint as tokenRoute: the static-secret factory serves POST (seal)
+    // and DELETE (revoke the delegation grant) from one route.
+    disconnectRoute: '/warp/api/seal',
+  },
 ] as const;
 
 /** Look up a connector entry by its id. Returns undefined for unknown ids. */

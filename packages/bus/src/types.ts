@@ -622,6 +622,31 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'vault';
   };
+  /**
+   * Emitted when a DID dispatches a Warp cloud agent with its own sealed Warp
+   * Agent key (#1428).
+   *
+   * This is the audit trail for individuated dispatch: `principalDid` is who
+   * fired it and `configName` is the `{username}-jin` tag the run is stamped
+   * with on Warp's side, so a run can be tied back to the credential that
+   * created it.
+   *
+   * Deliberately carries NO prompt and NO credential material — the prompt can
+   * contain anything the caller pasted, and events are persisted and fanned out
+   * to reactors.
+   */
+  'warp.agent.dispatched': {
+    runId: string;
+    principalDid: string;
+    /** Warp `config.name` the run was stamped with, e.g. `veteze-jin`. */
+    configName: string;
+    /** Lifecycle state Warp reported at creation, typically `QUEUED`. */
+    state: string | null;
+    skillSpec: string | null;
+    environmentId: string | null;
+    context_id: string;
+    context_type: 'warp.agent';
+  };
   'broker.release': {
     releaseId: string;
     requester: string;
