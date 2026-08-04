@@ -5,10 +5,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  *
  * Mock architecture:
  *   whereMock          — terminal for channelLinks select().from().where() (grant check)
- *   proposalLimitMock  — terminal for proposals select().from().where().limit() (live grant rows)
+ *   proposalLimitMock  — terminal for proposals select().from().where().orderBy().limit()
+ *                        (the approved-row scan resolved by requireWriteGate)
  *   proposalCountMock  — terminal for proposals select({count}).from().where() (rate-limit count)
  *   proposalInsertMock — terminal for proposals insert().values() (insert pending/done row)
- *   proposalUpdateMock — terminal for proposals update().set().where() (mark done)
+ *   proposalUpdateMock — terminal for proposals update().set().where() (mark done / retire lapsed)
+ *   proposalUpdateSetMock — records the update().set() payload so tests can assert
+ *                           which status transition was written
  */
 const {
   sealMock, loadMock, publishMock,
@@ -17,15 +20,17 @@ const {
   proposalCountMock,
   proposalInsertMock,
   proposalUpdateMock,
+  proposalUpdateSetMock,
 } = vi.hoisted(() => ({
   sealMock: vi.fn(),
   loadMock: vi.fn(),
   publishMock: vi.fn(),
   whereMock: vi.fn(),           // channelLinks grant check
-  proposalLimitMock: vi.fn(),   // proposals select().where().limit()
+  proposalLimitMock: vi.fn(),   // proposals select().where().orderBy().limit()
   proposalCountMock: vi.fn(),   // proposals select({count}).where()
   proposalInsertMock: vi.fn(),  // proposals insert().values()
   proposalUpdateMock: vi.fn(),  // proposals update().set().where()
+  proposalUpdateSetMock: vi.fn(), // proposals update().set() payload recorder
 }));
 
 vi.mock('nanoid', () => ({ nanoid: () => 'test-id-0001' }));
@@ -35,6 +40,9 @@ vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => args,
   eq: (col: unknown, val: unknown) => ({ col, val }),
   gt: (col: unknown, val: unknown) => ({ col, val }),
+  lte: (col: unknown, val: unknown) => ({ col, val }),
+  isNotNull: (col: unknown) => ({ col }),
+  desc: (col: unknown) => ({ col, dir: 'desc' }),
   sql: Object.assign(
     (strings: TemplateStringsArray, ...values: unknown[]) => ({ raw: strings.join('?'), values }),
     { mapWith: (fn: unknown) => fn },
@@ -47,7 +55,7 @@ vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loa
  * based on which table is passed and whether a projection was provided.
  *
  * channelLinks queries   → whereMock (terminal)
- * proposals row queries  → proposalLimitMock (via .where().limit())
+ * proposals row queries  → proposalLimitMock (via .where().orderBy().limit())
  * proposals count queries → proposalCountMock (terminal at .where())
  */
 vi.mock('@/src/db', () => {
@@ -66,6 +74,9 @@ vi.mock('@/src/db', () => {
   // Closure state: updated synchronously in select() before from() is called.
   let _isCountQuery = false;
 
+  // Hoisted out of the select().from() chain to keep callback nesting shallow.
+  const orderedRowQuery = () => ({ limit: proposalLimitMock });
+
   return {
     db: {
       select: (proj?: Record<string, unknown>) => {
@@ -79,12 +90,17 @@ vi.mock('@/src/db', () => {
             if (_isCountQuery) {
               return { where: proposalCountMock };
             }
-            return { where: () => ({ limit: proposalLimitMock }) };
+            return { where: () => ({ orderBy: orderedRowQuery }) };
           },
         };
       },
       insert: () => ({ values: proposalInsertMock }),
-      update: () => ({ set: () => ({ where: proposalUpdateMock }) }),
+      update: () => ({
+        set: (values: unknown) => {
+          proposalUpdateSetMock(values);
+          return { where: proposalUpdateMock };
+        },
+      }),
     },
     channelLinks,
     githubActionProposals,
@@ -215,6 +231,7 @@ beforeEach(() => {
   proposalInsertMock.mockResolvedValue([]);
   proposalUpdateMock.mockReset();
   proposalUpdateMock.mockResolvedValue([]);
+  proposalUpdateSetMock.mockReset();
   // Allowlist mocks — default: allow-all (null), identity filters, repo allowed.
   readAllowlistMock.mockReset();
   readAllowlistMock.mockResolvedValue(null);
@@ -933,6 +950,204 @@ describe('updateIssue confirm rail (#1366)', () => {
     expect(result.status).toBe('done');
     // The result carries the GitHub API response — it must not contain the PAT.
     expect(JSON.stringify(result)).not.toContain(PAT);
+  });
+});
+
+// ── Lapsed approval windows (#1588) ────────────────────────────────────────────
+
+/**
+ * Regression cover for the approve → retry → re-propose loop.
+ *
+ * Windowed approvals are deliberately left at 'approved' after each execution,
+ * and nothing used to retire them once their TTL lapsed. The gate then read
+ * them back with a bare `limit(1)` and no ORDER BY, so an arbitrary row won —
+ * frequently a dead window sitting in front of a live approval. Expiry was
+ * judged on that one row, so the gate re-proposed while a valid approval was
+ * right there in the table. Approving again just added another row the query
+ * never reached, which is why granting a fresh 24h window before the retry
+ * changed nothing.
+ *
+ * The mock DB ignores WHERE clauses, so `proposalLimitMock` stands in for "the
+ * approved rows for this tuple, newest-first" — exactly the page the gate now
+ * scans. Ordering within these fixtures therefore matters.
+ */
+describe('lapsed approval windows (#1588)', () => {
+  /** A windowed approval whose TTL has already elapsed. */
+  function lapsedWindow(id: string, riskTier: 'append' | 'mutate' = 'mutate') {
+    return {
+      id,
+      ownerDid: OWNER,
+      status: 'approved',
+      riskTier,
+      approvedUntil: new Date(Date.now() - 60 * 60 * 1000), // 1hr in the past
+    };
+  }
+
+  /** A windowed approval that is still live. */
+  function liveWindow(id: string, riskTier: 'append' | 'mutate' = 'mutate') {
+    return {
+      id,
+      ownerDid: OWNER,
+      status: 'approved',
+      riskTier,
+      approvedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h window
+    };
+  }
+
+  it('a lapsed window sitting ahead of a fresh 24h approval no longer blocks the write', async () => {
+    grant(['github:write']);
+    // The exact #1588 shape: a dead window AND a live one, dead row first so it
+    // would have won the old `limit(1)` lottery.
+    proposalLimitMock.mockResolvedValue([
+      lapsedWindow('proposal_dead_window'),
+      liveWindow('proposal_fresh_24h'),
+    ]);
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    // Executes under the live approval instead of minting another proposal.
+    expect(result.status).toBe('done');
+    expect(fetch).toHaveBeenCalledOnce();
+
+    // No pending proposal was raised — the loop is gone.
+    const insertedStatuses = proposalInsertMock.mock.calls.map(([row]) => row.status);
+    expect(insertedStatuses).not.toContain('pending');
+    const proposedCall = publishMock.mock.calls.find(([type]) => type === 'action.proposed');
+    expect(proposedCall).toBeUndefined();
+  });
+
+  it('retires the lapsed window to expired rather than done, so it cannot consume write budget', async () => {
+    grant(['github:write']);
+    proposalLimitMock.mockResolvedValue([
+      lapsedWindow('proposal_dead_window'),
+      liveWindow('proposal_fresh_24h'),
+    ]);
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+
+    await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    // The retirement UPDATE ran and wrote 'expired'.
+    const retirement = proposalUpdateSetMock.mock.calls.find(
+      ([values]) => (values as { status?: string }).status === 'expired',
+    );
+    expect(retirement).toBeDefined();
+
+    // 'done' is the rate-limit counter's input, so a lapsed window must never
+    // land there — only the windowed-execution accounting row may.
+    const retiredAsDone = proposalUpdateSetMock.mock.calls.filter(
+      ([values]) => (values as { status?: string }).status === 'done',
+    );
+    expect(retiredAsDone).toHaveLength(0);
+  });
+
+  it('re-proposes when every approval has lapsed — still fail-closed', async () => {
+    grant(['github:write']);
+    proposalLimitMock.mockResolvedValue([
+      lapsedWindow('proposal_dead_1'),
+      lapsedWindow('proposal_dead_2'),
+    ]);
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('pending');
+    expect(fetch).not.toHaveBeenCalled();
+
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(insertedRow.status).toBe('pending');
+
+    // The dead rows were still cleaned up on the way past.
+    const retirement = proposalUpdateSetMock.mock.calls.find(
+      ([values]) => (values as { status?: string }).status === 'expired',
+    );
+    expect(retirement).toBeDefined();
+  });
+
+  it('spends a single-call approval ahead of a live window so it cannot linger', async () => {
+    grant(['github:write']);
+    // Newest-first: the window is newer, but the single-call row must win because
+    // spending it retires it, whereas the window is reusable.
+    proposalLimitMock.mockResolvedValue([
+      liveWindow('proposal_fresh_24h'),
+      { id: 'proposal_single', ownerDid: OWNER, status: 'approved', riskTier: 'mutate', approvedUntil: null },
+    ]);
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('done');
+    // Single-call path: the grant row itself is marked done (no windowed
+    // accounting row inserted).
+    const markedDone = proposalUpdateSetMock.mock.calls.find(
+      ([values]) => (values as { status?: string }).status === 'done',
+    );
+    expect(markedDone).toBeDefined();
+    expect(proposalInsertMock).not.toHaveBeenCalled();
+  });
+
+  it('leaves a clean live window untouched — no retirement write on the happy path', async () => {
+    grant(['github:write']);
+    proposalLimitMock.mockResolvedValue([liveWindow('proposal_fresh_24h')]);
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('done');
+    // Nothing lapsed, so the gate issued no retirement UPDATE.
+    const retirement = proposalUpdateSetMock.mock.calls.find(
+      ([values]) => (values as { status?: string }).status === 'expired',
+    );
+    expect(retirement).toBeUndefined();
+  });
+
+  it('applies to append-tier writes too — a lapsed append window does not block createComment', async () => {
+    grant(['github:write']);
+    proposalLimitMock.mockResolvedValue([
+      lapsedWindow('proposal_dead_append', 'append'),
+      liveWindow('proposal_fresh_append', 'append'),
+    ]);
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_COMMENT,
+    });
+
+    const result = await createComment(OWNER, REPO, 42, 'Eric\u2019s stuck comment');
+
+    expect(result.status).toBe('done');
+    expect(fetch).toHaveBeenCalledOnce();
+    const proposedCall = publishMock.mock.calls.find(([type]) => type === 'action.proposed');
+    expect(proposedCall).toBeUndefined();
+  });
+
+  it('survives a failed retirement write — cleanup is best-effort, the write still lands', async () => {
+    grant(['github:write']);
+    proposalLimitMock.mockResolvedValue([
+      lapsedWindow('proposal_dead_window'),
+      liveWindow('proposal_fresh_24h'),
+    ]);
+    // Retirement UPDATE blows up; the gate must not surface it.
+    proposalUpdateMock.mockRejectedValue(new Error('db unavailable'));
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('done');
+    expect(fetch).toHaveBeenCalledOnce();
   });
 });
 

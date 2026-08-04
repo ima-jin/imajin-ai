@@ -27,13 +27,18 @@
  *      action.proposed, return pending (never throws; caller surfaces to agent).
  *   3. Global write ceiling exceeded even inside a live window → re-propose.
  *
+ * Approval liveness is resolved by scanning the approved rows for the
+ * (ownerDid, scope, riskTier) tuple newest-first and retiring any whose window
+ * has lapsed — see requireWriteGate() and retireLapsedApprovals() for why a
+ * bare `limit(1)` was unsound (#1588).
+ *
  * Security invariants:
  * - Fail-closed: no grant OR no sealed credential ⇒ throw.
  * - Tokens/PAT are NEVER logged, NEVER returned to callers, NEVER echoed.
  * - Per-DID isolation: `github-pat:${did}`, `github-oauth:${did}`, `github-config:${did}`.
  */
 import { nanoid } from 'nanoid';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import * as bus from '@imajin/bus';
 import { db, githubActionProposals } from '@/src/db';
@@ -253,6 +258,199 @@ async function countDoneProposals(
   return rows[0]?.count ?? 0;
 }
 
+// ── Approval liveness (#1588) ────────────────────────────────────────────────
+
+/**
+ * Max approved rows examined per gate check when resolving the live grant.
+ *
+ * The lookup cannot use `limit(1)`: approved rows for a tuple are a mix of live
+ * and lapsed, so taking one arbitrary row can return a dead window while a live
+ * approval sits right behind it (#1588). Scanning a bounded, newest-first page
+ * keeps the freshest approvals always visible. Retirement keeps the real row
+ * count far below this bound.
+ */
+const APPROVAL_SCAN_LIMIT = 50;
+
+type ActionProposalRow = typeof githubActionProposals.$inferSelect;
+
+/**
+ * True when a windowed approval's TTL has elapsed.
+ * Single-call approvals (approvedUntil IS NULL) never lapse — they are consumed
+ * by the next write instead.
+ */
+function hasLapsed(row: Readonly<ActionProposalRow>, now: Date): boolean {
+  return row.approvedUntil !== null && row.approvedUntil <= now;
+}
+
+/**
+ * Pick which live approval to spend, deterministically.
+ *
+ * Single-call approvals win over windows: spending one retires it (the row
+ * becomes 'done' after the write), whereas a window is reusable. Draining
+ * single-call rows first stops them lingering as permanently-live rows. Among
+ * windows the newest approval wins.
+ *
+ * `liveRows` must already be ordered newest-first by the caller.
+ */
+function pickLiveGrant(
+  liveRows: ReadonlyArray<ActionProposalRow>,
+): ActionProposalRow | undefined {
+  return liveRows.find((row) => row.approvedUntil === null) ?? liveRows[0];
+}
+
+/**
+ * Retire every windowed approval for this tuple whose TTL has lapsed (#1588).
+ *
+ * Nothing else in the lifecycle moves a windowed row off 'approved': each
+ * execution under a window inserts a *separate* done row and deliberately
+ * leaves the approval active (see requireWriteGate step 4a). So once a window
+ * expires its row is stranded at 'approved' forever, where it can shadow a
+ * genuinely live approval and strand the caller in an approve → retry →
+ * re-propose loop.
+ *
+ * Retires to 'expired', NOT 'done': countDoneProposals() reads 'done' as "a
+ * write executed" for rate-limit accounting, so an unused lapsed window must
+ * not consume the owner's write budget.
+ *
+ * Best-effort — the gate partitions on expiry independently, so a failure here
+ * costs cleanliness, never correctness.
+ */
+async function retireLapsedApprovals(
+  ownerDid: string,
+  scope: string,
+  risk: 'append' | 'mutate',
+  now: Date,
+  observed: number,
+): Promise<void> {
+  try {
+    await db
+      .update(githubActionProposals)
+      .set({ status: 'expired', updatedAt: now })
+      .where(
+        and(
+          eq(githubActionProposals.ownerDid, ownerDid),
+          eq(githubActionProposals.scope, scope),
+          eq(githubActionProposals.riskTier, risk),
+          eq(githubActionProposals.status, 'approved'),
+          isNotNull(githubActionProposals.approvedUntil),
+          lte(githubActionProposals.approvedUntil, now),
+        ),
+      );
+    log.info({ ownerDid, scope, risk, observed }, 'retired lapsed windowed approvals');
+  } catch (err) {
+    log.error(
+      { err: String(err), ownerDid, scope, risk },
+      'lapsed-approval retirement failed (non-fatal)',
+    );
+  }
+}
+
+/**
+ * Resolve the approval to spend for a (ownerDid, scope, risk) tuple, retiring
+ * any lapsed windows found on the way past (#1588).
+ *
+ * Returns undefined when nothing live covers the write, which sends the caller
+ * down the propose path.
+ */
+async function resolveLiveGrant(
+  ownerDid: string,
+  scope: string,
+  risk: 'append' | 'mutate',
+): Promise<ActionProposalRow | undefined> {
+  // Ordered newest-first and scanned as a page rather than `limit(1)`, so a
+  // lapsed window can never be picked ahead of a live approval.
+  const now = new Date();
+  const approvedRows = await db
+    .select()
+    .from(githubActionProposals)
+    .where(
+      and(
+        eq(githubActionProposals.ownerDid, ownerDid),
+        eq(githubActionProposals.scope, scope),
+        eq(githubActionProposals.riskTier, risk),
+        eq(githubActionProposals.status, 'approved'),
+      ),
+    )
+    .orderBy(desc(githubActionProposals.createdAt), desc(githubActionProposals.id))
+    .limit(APPROVAL_SCAN_LIMIT);
+
+  const liveRows: ActionProposalRow[] = [];
+  let lapsedCount = 0;
+  for (const row of approvedRows) {
+    if (hasLapsed(row, now)) lapsedCount += 1;
+    else liveRows.push(row);
+  }
+
+  // Retire lapsed windows so they stop accumulating as dead 'approved' rows.
+  // Conditional: the common path has nothing to retire and issues no write.
+  if (lapsedCount > 0) {
+    await retireLapsedApprovals(ownerDid, scope, risk, now, lapsedCount);
+  }
+
+  return pickLiveGrant(liveRows);
+}
+
+// ── Rate limits (#1371) ─────────────────────────────────────────────────────
+
+/** Outcome of the ceiling checks. Both fields false/null means "within limits". */
+interface WriteLimitState {
+  /** Global all-tools ceiling tripped. */
+  globalExceeded: boolean;
+  /** Label of the first per-tool sub-limit tripped, or null. */
+  toolLimitLabel: string | null;
+}
+
+/**
+ * Evaluate the global write ceiling, then the per-tool sub-limits.
+ * Both trip even inside a live approval window — no exceptions.
+ * The global ceiling short-circuits: per-tool checks only run when it is clear.
+ */
+async function checkWriteLimits(ownerDid: string, tool: string): Promise<WriteLimitState> {
+  const recentDone = await countDoneProposals(ownerDid, 1);
+  if (recentDone >= GLOBAL_WRITE_CEILING_PER_HOUR) {
+    return { globalExceeded: true, toolLimitLabel: null };
+  }
+
+  for (const limit of PER_TOOL_LIMITS[tool] ?? []) {
+    const toolCount = await countDoneProposals(ownerDid, limit.windowHours, tool);
+    if (toolCount >= limit.ceiling) {
+      return { globalExceeded: false, toolLimitLabel: limit.label };
+    }
+  }
+
+  return { globalExceeded: false, toolLimitLabel: null };
+}
+
+/** True when any ceiling tripped, so the write must be re-raised to the human. */
+function anyLimitExceeded(limits: Readonly<WriteLimitState>): boolean {
+  return limits.globalExceeded || limits.toolLimitLabel !== null;
+}
+
+/**
+ * argsSummary prefix telling the human a limit — not a missing approval — is why
+ * this write came back for confirmation. Null when no limit tripped.
+ */
+function limitAnnotation(limits: Readonly<WriteLimitState>): string | null {
+  if (limits.globalExceeded) return '[RATE_LIMIT]';
+  if (limits.toolLimitLabel !== null) return `[TOOL_RATE_LIMIT:${limits.toolLimitLabel}]`;
+  return null;
+}
+
+/** Log line explaining why the gate took the propose path. */
+function pendingReason(
+  limits: Readonly<WriteLimitState>,
+  tool: string,
+  risk: 'append' | 'mutate',
+): string {
+  if (limits.globalExceeded) {
+    return `Global write ceiling (${GLOBAL_WRITE_CEILING_PER_HOUR}/hr) exceeded — re-raised to human even inside active window`;
+  }
+  if (limits.toolLimitLabel !== null) {
+    return `Per-tool sub-limit (${limits.toolLimitLabel}) exceeded for ${tool} — re-raised to human`;
+  }
+  return `No live ${risk}-tier approval grant — human confirmation required`;
+}
+
 /** Insert a 'done' row for rate-limit accounting under a windowed approval. */
 async function insertDoneRow(
   ownerDid: string,
@@ -283,7 +481,9 @@ async function insertDoneRow(
  * NEVER throws for the pending case — it is a valid expected outcome.
  *
  * Flow:
- * 1. Look for a live 'approved' row matching ownerDid + scope + riskTier.
+ * 1. Scan 'approved' rows matching ownerDid + scope + riskTier, newest-first,
+ *    partition them into live vs lapsed, retire the lapsed ones, and pick a
+ *    live grant from the remainder.
  *    An append-approved row does NOT satisfy a mutate lookup, and vice versa.
  * 2. Check the global write ceiling (all tools, 1hr window).
  *    Trips even inside a live window — no exceptions.
@@ -303,65 +503,28 @@ async function requireWriteGate(
   token: string,
   agentDid?: string,
 ): Promise<WriteGateResult> {
-  // ── 1. Look for a live approval grant for this exact risk tier ────────────
-  const now = new Date();
-  const liveGrants = await db
-    .select()
-    .from(githubActionProposals)
-    .where(
-      and(
-        eq(githubActionProposals.ownerDid, ownerDid),
-        eq(githubActionProposals.scope, scope),
-        eq(githubActionProposals.riskTier, risk),
-        eq(githubActionProposals.status, 'approved'),
-      ),
-    )
-    .limit(1);
+  // ── 1. Resolve a live approval grant for this exact risk tier ─────────────
+  const liveGrant = await resolveLiveGrant(ownerDid, scope, risk);
 
-  const liveGrant = liveGrants[0];
-  const isLive =
-    liveGrant !== undefined &&
-    (liveGrant.approvedUntil === null || liveGrant.approvedUntil > now);
+  // ── 2 + 3. Global write ceiling, then per-tool sub-limits ────────────────
+  const limits = await checkWriteLimits(ownerDid, tool);
 
-  // ── 2. Global write ceiling check ────────────────────────────────────────
-  const recentDone = await countDoneProposals(ownerDid, 1);
-  const globalExceeded = recentDone >= GLOBAL_WRITE_CEILING_PER_HOUR;
-
-  // ── 3. Per-tool sub-limit check (only when global is ok) ────────────────
-  let toolLimitLabel: string | null = null;
-  if (!globalExceeded) {
-    const toolLimits = PER_TOOL_LIMITS[tool] ?? [];
-    for (const limit of toolLimits) {
-      const toolCount = await countDoneProposals(ownerDid, limit.windowHours, tool);
-      if (toolCount >= limit.ceiling) {
-        toolLimitLabel = limit.label;
-        break;
-      }
-    }
-  }
-
-  const anyLimitExceeded = globalExceeded || toolLimitLabel !== null;
-
-  if (isLive && !anyLimitExceeded) {
+  if (liveGrant !== undefined && !anyLimitExceeded(limits)) {
     // ── 4a. Approved path ─────────────────────────────────────────────────
-    if (liveGrant!.approvedUntil !== null) {
+    if (liveGrant.approvedUntil !== null) {
       // Windowed: insert a done row for rate counting; leave the grant active.
       await insertDoneRow(ownerDid, scope, tool, risk, target, argsSummary, agentDid);
       return { status: 'approved', token, singleProposalId: null };
     }
     // Single-call: the grant row itself becomes 'done' after the write.
-    return { status: 'approved', token, singleProposalId: liveGrant!.id };
+    return { status: 'approved', token, singleProposalId: liveGrant.id };
   }
 
   // ── 4b. Pending path: insert proposal + emit action.proposed ─────────────
   const proposalId = `proposal_${nanoid()}`;
-  const limitAnnotation = globalExceeded
-    ? '[RATE_LIMIT]'
-    : toolLimitLabel !== null
-    ? `[TOOL_RATE_LIMIT:${toolLimitLabel}]`
-    : null;
-  const effectiveSummary = limitAnnotation !== null
-    ? `${limitAnnotation} ${argsSummary}`
+  const annotation = limitAnnotation(limits);
+  const effectiveSummary = annotation !== null
+    ? `${annotation} ${argsSummary}`
     : argsSummary;
   await db.insert(githubActionProposals).values({
     id: proposalId,
@@ -397,12 +560,14 @@ async function requireWriteGate(
     log.error({ err: String(err), proposalId, tool, risk }, 'action.proposed publish failed (non-fatal)');
   }
 
-  const reason = globalExceeded
-    ? `Global write ceiling (${GLOBAL_WRITE_CEILING_PER_HOUR}/hr) exceeded — re-raised to human even inside active window`
-    : toolLimitLabel !== null
-    ? `Per-tool sub-limit (${toolLimitLabel}) exceeded for ${tool} — re-raised to human`
-    : `No live ${risk}-tier approval grant — human confirmation required`;
-  log.info({ proposalId, ownerDid, tool, target, risk, globalExceeded, toolLimitLabel }, reason);
+  log.info(
+    {
+      proposalId, ownerDid, tool, target, risk,
+      globalExceeded: limits.globalExceeded,
+      toolLimitLabel: limits.toolLimitLabel,
+    },
+    pendingReason(limits, tool, risk),
+  );
 
   return { status: 'pending', proposalId };
 }
