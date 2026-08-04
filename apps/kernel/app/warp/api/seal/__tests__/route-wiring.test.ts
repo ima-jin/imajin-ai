@@ -14,13 +14,14 @@ import { describe, it, expect, vi } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { staticSecretFactory, manifestFactory, warpConnectorStub, keySealed } = vi.hoisted(() => {
+const { staticSecretFactory, manifestFactory, warpConnectorStub, keySealed, keyPending } = vi.hoisted(() => {
   const handlers = { GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn(), OPTIONS: vi.fn() };
   return {
     staticSecretFactory: vi.fn(() => handlers),
     manifestFactory: vi.fn(() => ({ GET: vi.fn(), POST: vi.fn(), OPTIONS: vi.fn() })),
     warpConnectorStub: { name: 'warp-connector-stub' },
     keySealed: vi.fn(async () => true),
+    keyPending: vi.fn(async () => false),
   };
 });
 
@@ -39,6 +40,7 @@ vi.mock('@/src/lib/warp/scope-manifest', () => ({
   readActiveWarpScopes: vi.fn(),
   findWarpManifestAsset: vi.fn(),
   warpKeySealed: keySealed,
+  warpKeyPending: keyPending,
   VALID_WARP_SCOPES: ['warp:dispatch'],
 }));
 
@@ -87,8 +89,28 @@ describe('/warp/api/scope-manifest', () => {
       { getExtraFields: (did: string) => Promise<Record<string, unknown>> },
     ];
 
-    await expect(opts.getExtraFields('did:imajin:veteze')).resolves.toEqual({ keySealed: true });
+    await expect(opts.getExtraFields('did:imajin:veteze')).resolves.toEqual({
+      keySealed: true,
+      credentialPending: false,
+    });
     expect(keySealed).toHaveBeenCalledWith('did:imajin:veteze');
+  });
+
+  it('distinguishes "awaiting owner approval" from "not connected" (#1603)', async () => {
+    // Under Tier 1 a sealed key is unreadable until the owner agent grants, so
+    // keySealed is false while pending. Reporting only keySealed would render that
+    // as "not connected" and invite re-pasting a key that is already stored.
+    keySealed.mockResolvedValueOnce(false);
+    keyPending.mockResolvedValueOnce(true);
+
+    const [opts] = manifestFactory.mock.calls[0] as [
+      { getExtraFields: (did: string) => Promise<Record<string, unknown>> },
+    ];
+
+    await expect(opts.getExtraFields('did:imajin:veteze')).resolves.toEqual({
+      keySealed: false,
+      credentialPending: true,
+    });
   });
 
   it('exports the handlers the connector card calls', () => {

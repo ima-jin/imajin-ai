@@ -105,10 +105,28 @@ export const vaultGrantRequests = vaultSchema.table('vault_grant_requests', {
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
   grantId: text('grant_id'),                                 // FK → vault_delegation_grants.id once fulfilled
+
+  // The custody pair this request is asking the owner to sign (#1603).
+  //
+  // 0075 only ever needed the node's self-grant, where both values are the node's
+  // own DID, so they were left implicit. Static-secret custody (#1439) uses
+  // subject = principalDid and grantedTo = the connector app DID, and the grant
+  // endpoint needs node-written state to check a returned grant against — the
+  // request body cannot be trusted to name its own grantee.
+  //
+  // Nullable: rows written before #1603 predate the columns and are self-grants by
+  // construction, so NULL is read as "the node's DID".
+  //
+  // `grantedTo` is an authorization label, NOT the ECDH recipient. The field key is
+  // always wrapped to `nodeXPub`, because the node is what unseals on the grantee's
+  // behalf at call time (see loadAndUnsealByGrantee).
+  subject: text('subject'),
+  grantedTo: text('granted_to'),
 }, (table) => ({
   requestIdUniq: uniqueIndex('uniq_vault_grant_request_id').on(table.requestId),
   statusIdx: index('idx_vault_grant_requests_status').on(table.status),
   fieldStatusIdx: index('idx_vault_grant_requests_field_status').on(table.field, table.status),
+  grantedToIdx: index('idx_vault_grant_requests_granted_to').on(table.grantedTo, table.status),
 }));
 
 export type VaultGrantRequest = typeof vaultGrantRequests.$inferSelect;

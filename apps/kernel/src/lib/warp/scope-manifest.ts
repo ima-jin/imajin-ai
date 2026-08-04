@@ -30,7 +30,7 @@ import { WARP_CONNECTOR_DID, WARP_CHANNEL } from './connector';
 
 // Re-exported so a connector route needs only this module, mirroring the Gemini
 // wrapper. `export … from` keeps it a pure re-export rather than a local binding.
-export { warpKeySealed } from './connector';
+export { warpKeySealed, warpKeyPending } from './connector';
 
 // ── Scope registry (derived — #1253) ────────────────────────────────────────
 

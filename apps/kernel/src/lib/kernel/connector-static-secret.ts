@@ -27,6 +27,7 @@ import {
   loadAndUnsealByGrantee,
   revokeStaticSecretGrant,
   vaultFieldExists,
+  vaultFieldStatusForGrantee,
 } from '@/src/lib/vault';
 
 const log = createLogger('kernel');
@@ -59,12 +60,17 @@ export interface ConnectorStaticSecret {
    * Seal a plaintext secret for the principal and mint a delegation grant to
    * the connector DID. Re-calling supersedes the previous grant (rotate
    * semantics). The plaintext is never logged or returned.
+   *
+   * Under Tier 1 the node cannot mint the grant itself, so `grantId` is `null`
+   * and `requestId` identifies the request queued for the external owner agent
+   * (#1603). That is a successful seal with a pending authorization — the secret
+   * is stored, but `requireSecret` fails closed until the owner answers.
    */
   sealAndGrant(
     principalDid: string,
     plaintext: string,
     opts?: { expiresAt?: Date | null },
-  ): Promise<{ grantId: string }>;
+  ): Promise<{ grantId: string | null; requestId: string | null }>;
   /**
    * Load the sealed secret for principalDid via the connector's delegation
    * grant. Returns `undefined` when no grant exists or no secret is sealed.
@@ -87,6 +93,15 @@ export interface ConnectorStaticSecret {
   /** Check whether a secret is sealed for principalDid (no crypto). */
   secretSealed(principalDid: string): Promise<boolean>;
   /**
+   * Whether a secret is sealed but still awaiting the owner agent's grant
+   * (Tier 1, #1603).
+   *
+   * Distinct from `secretSealed`, which reports `false` for this state because the
+   * value cannot yet be read. A connector surface needs both to tell "not
+   * connected" apart from "waiting for owner approval".
+   */
+  secretPending(principalDid: string): Promise<boolean>;
+  /**
    * Resolve whether an ACTIVE channel_links row for ownerDid + scope exists.
    * Fail-closed: DB errors propagate.
    */
@@ -107,14 +122,17 @@ export function createConnectorStaticSecret(
     principalDid: string,
     plaintext: string,
     { expiresAt }: { expiresAt?: Date | null } = {},
-  ): Promise<{ grantId: string }> {
-    const { grantId } = await sealAndGrantStaticSecret(
+  ): Promise<{ grantId: string | null; requestId: string | null }> {
+    const { grantId, requestId } = await sealAndGrantStaticSecret(
       secretField(principalDid),
       plaintext,
       { principalDid, granteeDid: opts.connectorDid, expiresAt: expiresAt ?? null },
     );
-    log.info({ principalDid, connectorDid: opts.connectorDid }, `${opts.name} static secret sealed`);
-    return { grantId };
+    log.info(
+      { principalDid, connectorDid: opts.connectorDid, pendingGrant: grantId === null },
+      `${opts.name} static secret sealed`,
+    );
+    return { grantId, requestId };
   }
 
   async function loadSecret(principalDid: string): Promise<string | undefined> {
@@ -149,6 +167,14 @@ export function createConnectorStaticSecret(
     return vaultFieldExists(secretField(principalDid));
   }
 
+  async function secretPending(principalDid: string): Promise<boolean> {
+    const status = await vaultFieldStatusForGrantee(
+      secretField(principalDid),
+      opts.connectorDid,
+    );
+    return status === 'pending-grant';
+  }
+
   async function resolveActiveGrant(ownerDid: string, requiredScope: string): Promise<boolean> {
     const rows = await db
       .select({ scopes: channelLinks.scopes })
@@ -174,6 +200,7 @@ export function createConnectorStaticSecret(
     requireSecret,
     revokeGrant,
     secretSealed,
+    secretPending,
     resolveActiveGrant,
   };
 }

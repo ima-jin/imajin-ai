@@ -42,9 +42,34 @@ export type VaultFieldStatus = 'absent' | 'ready' | 'pending-grant' | 'unverifia
  *                       looks like before the owner agent responds, and what a
  *                       lapsed grant looks like before it is renewed (#1535).
  *
+ * Only answers for fields granted to THIS NODE. A static-secret field (#1439) is
+ * granted to a connector app DID, so asking this function about one always yields
+ * `pending-grant` even when it is perfectly readable — use
+ * {@link vaultFieldStatusForGrantee} for those.
+ *
  * Never unseals — safe for status checks where the plaintext is not needed.
  */
 export async function vaultFieldStatus(field: string): Promise<VaultFieldStatus> {
+  return vaultFieldStatusForGrantee(field, getNodeSigningIdentity().senderDid);
+}
+
+/**
+ * As {@link vaultFieldStatus}, but for a field whose grant names `granteeDid`
+ * rather than the node (#1603).
+ *
+ * This exists because the grant lookup is the only part of the status that varies
+ * by grantee, and getting it wrong is invisible: a static-secret field checked
+ * against the node's DID finds no grant and reports `pending-grant`, which a
+ * connector surface renders as "waiting for owner approval" for a credential that
+ * actually works.
+ *
+ * The distinction is authorization-only. Whoever `granteeDid` is, the node still
+ * holds the wrapped key and does the decrypting (see `loadAndUnsealByGrantee`).
+ */
+export async function vaultFieldStatusForGrantee(
+  field: string,
+  granteeDid: string,
+): Promise<VaultFieldStatus> {
   const entry = await vaultService.peek(field);
   if (!entry || entry.deleted === true) {
     return 'absent';
@@ -61,13 +86,12 @@ export async function vaultFieldStatus(field: string): Promise<VaultFieldStatus>
     return 'ready';
   }
 
-  const identity = getNodeSigningIdentity();
   const rows = await db
     .select({ id: vaultDelegationGrants.id })
     .from(vaultDelegationGrants)
     .where(
       and(
-        eq(vaultDelegationGrants.grantedTo, identity.senderDid),
+        eq(vaultDelegationGrants.grantedTo, granteeDid),
         eq(vaultDelegationGrants.field, field),
         eq(vaultDelegationGrants.status, 'active'),
         or(

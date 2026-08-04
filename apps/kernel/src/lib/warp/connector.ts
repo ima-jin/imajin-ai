@@ -84,3 +84,14 @@ export const revokeWarpAgentKeyGrant = warpConnector.revokeGrant;
 
 /** Whether a Warp Agent key is sealed for this DID (no crypto, no value read). */
 export const warpKeySealed = warpConnector.secretSealed;
+
+/**
+ * Whether a Warp Agent key is sealed but still awaiting the owner agent's grant
+ * (Tier 1, #1603).
+ *
+ * Distinct from {@link warpKeySealed}, which reports `false` here because the key
+ * cannot be read yet. Dispatch fails closed in this state, so the connector needs
+ * to render "waiting for owner approval" rather than "not connected" — otherwise
+ * the operator's next move is to re-paste a key that is already sealed correctly.
+ */
+export const warpKeyPending = warpConnector.secretPending;

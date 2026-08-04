@@ -371,10 +371,31 @@ describe('POST /api/vault/delegation/grant — renewal', () => {
     expect(mockInsertValues).not.toHaveBeenCalled();
   });
 
-  it('still enforces the grantedTo binding', async () => {
+  it('rejects a renewal naming a grantee with no grant history for the field', async () => {
+    // #1603 relaxed "grantedTo must be this node" so a static-secret grant (which
+    // names a connector app DID) can be renewed at all. The replacement anchor is
+    // grant history this node wrote: a renewal may re-issue existing authority but
+    // must never introduce a grantee out of thin air.
+    mockSelectLimit.mockResolvedValue([]);
+
     const response = await POST(makeRequest(renewalBody({ grantedTo: 'did:imajin:othernode' })) as never);
     expect(response.status).toBe(400);
     expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('renews a grant for a non-node grantee that already held one', async () => {
+    const connectorDid = 'did:imajin:warp-connector';
+    // Node-written state: this grantee has held a grant on the field before.
+    mockSelectLimit.mockResolvedValue([{ id: 'vdg_prior' }]);
+
+    const response = await POST(makeRequest(renewalBody({ grantedTo: connectorDid })) as never);
+
+    expect(response.status).toBe(200);
+    const inserted = mockInsertValues.mock.calls[0]![0] as Record<string, unknown>;
+    expect(inserted.grantedTo).toBe(connectorDid);
+    // The grantee changes who is authorized, never who can decrypt: the key stays
+    // wrapped to this node.
+    expect(inserted.recipientXPub).toBe(NODE_X_PUB);
   });
 
   it('rejects an unparseable expiresAt', async () => {

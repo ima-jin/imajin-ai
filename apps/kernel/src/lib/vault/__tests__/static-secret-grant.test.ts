@@ -35,7 +35,7 @@ type GrantRow = Record<string, unknown> & {
   expiresAt: Date | null;
 };
 
-const { tmpVaultPath, grantStore, envelopeStore } = vi.hoisted(() => {
+const { tmpVaultPath, grantStore, envelopeStore, requestStore } = vi.hoisted(() => {
   // vi.hoisted() runs before ESM imports are initialized, so `join` and
   // `tmpdir` from the top-level imports are not yet available. Use require().
    
@@ -51,7 +51,11 @@ const { tmpVaultPath, grantStore, envelopeStore } = vi.hoisted(() => {
 
   const grantStore = new Map<string, GrantRow>();
   const envelopeStore = new Map<string, Record<string, unknown>>();
-  return { tmpVaultPath, grantStore, envelopeStore };
+  // Tier 1 queues a grant request instead of minting a grant (#1603), so the
+  // double needs somewhere to put one that is not the grant store — conflating
+  // them would make a pending request look like live authorization.
+  const requestStore = new Map<string, Record<string, unknown>>();
+  return { tmpVaultPath, grantStore, envelopeStore, requestStore };
 });
 
 // ── DB mock ─────────────────────────────────────────────────────────────────
@@ -107,6 +111,10 @@ vi.mock('@/src/db', () => {
                 return Promise.resolve([]);
               },
             };
+          }
+          if (table.__table === 'requests') {
+            requestStore.set(String(data.requestId), data);
+            return Promise.resolve([]);
           }
           grantStore.set(String(data.id), data as GrantRow);
           return Promise.resolve([]);
@@ -169,7 +177,7 @@ import {
   loadAndUnsealByGrantee,
   revokeStaticSecretGrant,
 } from '../index.js';
-import { _resetSealingCache } from '../sealing.js';
+import { _resetSealingCache, getNodeXPublicKey } from '../sealing.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -193,6 +201,7 @@ function onlyActiveGrant(): GrantRow | undefined {
 beforeEach(() => {
   grantStore.clear();
   envelopeStore.clear();
+  requestStore.clear();
   _resetSealingCache();
   delete process.env.AUTH_PRIVATE_KEY;
   delete process.env.VAULT_OWNER_X_PUB;
@@ -210,13 +219,15 @@ afterEach(async () => {
 // ── sealAndGrantStaticSecret ──────────────────────────────────────────────────
 
 describe('sealAndGrantStaticSecret', () => {
-  it('returns a non-empty grantId', async () => {
-    const { grantId } = await sealAndGrantStaticSecret(field(), SECRET, {
+  it('returns a non-empty grantId and no request id in Tier 0', async () => {
+    const { grantId, requestId } = await sealAndGrantStaticSecret(field(), SECRET, {
       principalDid: PRINCIPAL,
       granteeDid: GRANTEE,
     });
     expect(typeof grantId).toBe('string');
-    expect(grantId.length).toBeGreaterThan(0);
+    expect(grantId!.length).toBeGreaterThan(0);
+    // Tier 0 mints the grant inline, so there is nothing for an owner agent to do.
+    expect(requestId).toBeNull();
   });
 
   it('stores a grant with subject=principalDid and grantedTo=granteeDid (Option-B shape)', async () => {
@@ -261,15 +272,110 @@ describe('sealAndGrantStaticSecret', () => {
     expect(onlyActiveGrant()!.expiresAt).toBeNull();
   });
 
-  it('throws in Tier 1 mode (VAULT_OWNER_X_PUB + VAULT_OWNER_ED_PUB both set)', async () => {
-    process.env.VAULT_OWNER_X_PUB = 'a'.repeat(64);
+});
+
+// ── Tier 1: external owner agent (#1603) ─────────────────────────────────────
+//
+// This path used to throw outright, which is what made a per-DID connector
+// credential unpromotable to genuine off-server custody. The node seals, hands the
+// field key to the owner agent, and waits — the field is legitimately unreadable
+// in between, which is a pending authorization rather than a failure.
+
+describe('sealAndGrantStaticSecret — Tier 1', () => {
+  const OWNER_X_PUB = 'a'.repeat(64);
+
+  function enableTier1() {
+    process.env.VAULT_OWNER_X_PUB = OWNER_X_PUB;
     process.env.VAULT_OWNER_ED_PUB = 'b'.repeat(64);
-    await expect(
-      sealAndGrantStaticSecret(field('tier1'), SECRET, {
-        principalDid: PRINCIPAL,
-        granteeDid: GRANTEE,
-      }),
-    ).rejects.toThrow(/Tier 1/);
+    _resetSealingCache();
+  }
+
+  it('seals the entry and queues a request instead of minting a grant', async () => {
+    enableTier1();
+
+    const { grantId, requestId } = await sealAndGrantStaticSecret(field('tier1'), SECRET, {
+      principalDid: PRINCIPAL,
+      granteeDid: GRANTEE,
+    });
+
+    expect(grantId).toBeNull();
+    expect(typeof requestId).toBe('string');
+    expect(grantStore.size).toBe(0);
+    expect(requestStore.size).toBe(1);
+  });
+
+  it('records the custody pair on the request so the owner signs the right grant', async () => {
+    enableTier1();
+
+    const { requestId } = await sealAndGrantStaticSecret(field('pair'), SECRET, {
+      principalDid: PRINCIPAL,
+      granteeDid: GRANTEE,
+    });
+
+    const row = requestStore.get(String(requestId))!;
+    expect(row.subject).toBe(PRINCIPAL);
+    expect(row.grantedTo).toBe(GRANTEE);
+    // Without these the owner agent falls back to a node self-grant, which the
+    // connector could never read — the failure would be silent.
+  });
+
+  it('wraps the field key to the NODE, not to anything derived from the grantee', async () => {
+    enableTier1();
+
+    const { requestId } = await sealAndGrantStaticSecret(field('wrap'), SECRET, {
+      principalDid: PRINCIPAL,
+      granteeDid: GRANTEE,
+    });
+
+    const row = requestStore.get(String(requestId))!;
+    // The node unseals on the grantee's behalf at call time, so it must remain the
+    // ECDH recipient. `grantedTo` authorizes; it does not redirect the key.
+    expect(row.nodeXPub).toBe(getNodeXPublicKey());
+    expect(row.ownerXPub).toBe(OWNER_X_PUB);
+  });
+
+  it('writes an owner envelope so the grant can be issued later', async () => {
+    enableTier1();
+
+    await sealAndGrantStaticSecret(field('env'), SECRET, {
+      principalDid: PRINCIPAL,
+      granteeDid: GRANTEE,
+    });
+
+    // Without the envelope the wrapped request key is the only copy, so a lapsed
+    // or pruned request would strand the secret permanently.
+    expect(envelopeStore.size).toBe(1);
+  });
+
+  it('leaves the field unreadable until the owner agent answers', async () => {
+    enableTier1();
+
+    await sealAndGrantStaticSecret(field('pending'), SECRET, {
+      principalDid: PRINCIPAL,
+      granteeDid: GRANTEE,
+    });
+
+    // Fail-closed: sealed, but no grant exists yet.
+    expect(await loadAndUnsealByGrantee(field('pending'), GRANTEE)).toBeUndefined();
+  });
+
+  it('does not revoke the working grant while waiting for the replacement', async () => {
+    // Tier 0 first, so a usable grant exists.
+    await sealAndGrantStaticSecret(field('rotate'), 'old-secret', {
+      principalDid: PRINCIPAL,
+      granteeDid: GRANTEE,
+    });
+    expect(onlyActiveGrant()).toBeDefined();
+
+    enableTier1();
+    await sealAndGrantStaticSecret(field('rotate'), 'new-secret', {
+      principalDid: PRINCIPAL,
+      granteeDid: GRANTEE,
+    });
+
+    // Superseding here would black out the field for the whole round-trip to the
+    // owner agent. The grant endpoint supersedes when it installs the replacement.
+    expect(onlyActiveGrant()).toBeDefined();
   });
 });
 

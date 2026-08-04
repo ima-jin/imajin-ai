@@ -361,6 +361,11 @@ export async function sealAndStoreV2(
       wrappedFieldKeyNonce: wrappedForOwner.nonce,
       status: 'pending',
       expiresAt,
+      // A self-grant: this node is both the granting and receiving party. Written
+      // explicitly (#1603) rather than left NULL so the owner agent never has to
+      // infer the custody shape.
+      subject: identity.senderDid,
+      grantedTo: identity.senderDid,
     });
 
     // Fire-and-forget: emit the request event so the owner agent is notified.
@@ -378,6 +383,8 @@ export async function sealAndStoreV2(
         wrappedFieldKeyNonce: wrappedForOwner.nonce,
         ownerXPub,
         expiresAt: expiresAt?.toISOString() ?? null,
+        grantSubject: identity.senderDid,
+        grantedTo: identity.senderDid,
         context_id: requestId,
         context_type: 'vault',
       },
@@ -634,16 +641,26 @@ export async function loadAndUnseal(field: string): Promise<string | undefined> 
  * factory. Callers are responsible for choosing the vault field name (typically
  * `${secretPrefix}:${principalDid}`).
  *
- * Crypto: identical to sealAndStoreV2 Tier 0 — a random per-field AES-256-GCM
- * key is generated, the plaintext is encrypted, and the field key is ECDH-wrapped
- * to the node's X25519 pubkey using the owner's X25519 private key. The grant
- * is signed by the node's Ed25519 signing identity.
+ * ## Tier 0 (default): the node acts as its own owner agent.
+ * A random per-field AES-256-GCM key is generated, the plaintext is encrypted,
+ * and the field key is ECDH-wrapped to the node's X25519 pubkey using the owner's
+ * X25519 private key. The grant is signed by the node's Ed25519 signing identity
+ * and is active immediately. Returns `{ entry, grantId, requestId: null }`.
+ *
+ * ## Tier 1 (VAULT_OWNER_X_PUB + VAULT_OWNER_ED_PUB set): external owner agent.
+ * The node cannot mint the grant — `ownerXPriv` is not on this machine. It seals
+ * the entry, writes the owner envelope, and queues a `vault_grant_requests` row
+ * carrying the custody pair, then emits `vault.grant.requested`. The field is
+ * readable only once the owner agent answers, so callers must treat
+ * `grantId: null` as "sealed, awaiting owner approval" rather than as failure —
+ * see {@link vaultFieldStatusForGrantee}. Returns `{ entry, grantId: null, requestId }`.
+ *
+ * In BOTH tiers the field key is wrapped to the **node's** X25519 key, never to
+ * anything derived from `granteeDid`. `grantedTo` authorizes; the node decrypts on
+ * the grantee's behalf at call time (see {@link loadAndUnsealByGrantee}).
  *
  * Supersedes any existing active grant for the (principalDid, granteeDid, field)
  * tuple before inserting the new row (rotation semantics).
- *
- * NOTE: Tier 1 (external owner agent) is not yet supported by this function.
- * Calling it in a Tier 1 environment will throw.
  *
  * No plaintext is logged at any point.
  */
@@ -651,13 +668,7 @@ export async function sealAndGrantStaticSecret(
   field: string,
   plaintext: string,
   options: { principalDid: string; granteeDid: string; expiresAt?: Date | null },
-): Promise<{ entry: VaultEntry; grantId: string }> {
-  if (isVaultTier1()) {
-    // Tier 1 requires the external owner agent to re-wrap the field key for
-    // the granteeDid; the request/fulfil flow is not yet implemented here.
-    throw new Error('sealAndGrantStaticSecret: Tier 1 (external owner agent) is not yet supported');
-  }
-
+): Promise<{ entry: VaultEntry; grantId: string | null; requestId: string | null }> {
   const { principalDid, granteeDid, expiresAt = null } = options;
   const identity = getNodeSigningIdentity();
   const fieldKey = randomBytes(32);
@@ -690,6 +701,74 @@ export async function sealAndGrantStaticSecret(
   await vaultService.set(entry);
 
   const nodeXPub = getNodeXPublicKey();
+
+  // ── Tier 1: hand the field key to the external owner agent ─────────────────
+  if (isVaultTier1()) {
+    const ownerXPub = getExternalOwnerXPublicKey();
+
+    // Durable owner copy first: it is what a later renewal or port is issued
+    // from, and it must exist before anything can be superseded and erased.
+    await writeOwnerEnvelope({ field, keyId, fieldKey, ownerXPub });
+
+    // Deliberately NOT superseding the prior grant here. In Tier 1 the
+    // replacement does not exist yet, so revoking the working grant now would
+    // black out the field for the entire round-trip to the owner agent. The
+    // grant endpoint supersedes at the moment it installs the new one.
+    const wrappedForOwner = wrapFieldKey(fieldKey, ownerXPub, getNodeXPrivateKey());
+    const requestId = randomUUID();
+
+    await db.insert(vaultGrantRequests).values({
+      id: generateId('vgr'),
+      field,
+      keyId,
+      requestId,
+      nodeXPub,
+      ownerXPub,
+      wrappedFieldKey: wrappedForOwner.encryptedKey,
+      wrappedFieldKeyNonce: wrappedForOwner.nonce,
+      status: 'pending',
+      expiresAt,
+      // The custody pair the owner must sign (#1603). Without these the owner
+      // agent would default to a node self-grant, which the grantee could never
+      // use.
+      subject: principalDid,
+      grantedTo: granteeDid,
+    });
+
+    publish('vault.grant.requested', {
+      issuer: identity.senderDid,
+      subject: principalDid,
+      scope: 'vault',
+      payload: {
+        field,
+        nodeXPub,
+        nodeDid: identity.senderDid,
+        keyId,
+        requestId,
+        wrappedFieldKey: wrappedForOwner.encryptedKey,
+        wrappedFieldKeyNonce: wrappedForOwner.nonce,
+        ownerXPub,
+        expiresAt: expiresAt?.toISOString() ?? null,
+        grantSubject: principalDid,
+        grantedTo: granteeDid,
+        context_id: requestId,
+        context_type: 'vault',
+      },
+    }).catch((err: unknown) => {
+      log.error(
+        { err: String(err), field, requestId },
+        'Bus publish error for vault.grant.requested',
+      );
+    });
+
+    log.info(
+      { field, requestId, granteeDid },
+      'Vault Tier 1: static-secret grant request created, waiting for owner agent',
+    );
+    return { entry, grantId: null, requestId };
+  }
+
+  // ── Tier 0: the node is its own owner agent ────────────────────────────────
 
   // Durable owner copy before anything is superseded, so the erase below can never
   // remove the last recoverable copy of the current field key.
@@ -737,7 +816,7 @@ export async function sealAndGrantStaticSecret(
     ownerEdPub: identity.senderPubkey,
   });
 
-  return { entry, grantId };
+  return { entry, grantId, requestId: null };
 }
 
 /**
@@ -875,6 +954,15 @@ export interface RenewableGrant {
   senderXPub: string;
   wrappedKey: string;
   wrappedNonce: string;
+  /**
+   * Who the renewed grant must be issued to (#1603).
+   *
+   * The node's own DID for a self-grant, or a connector app DID for a
+   * static-secret credential. Before this field existed the owner agent assumed
+   * the node, so a static-secret grant would silently be renewed to the wrong
+   * grantee — installing a grant nothing reads while the real one stays lapsed.
+   */
+  grantedTo: string;
 }
 
 /**
@@ -888,6 +976,14 @@ export interface RenewableGrant {
  * Returning the envelope is safe. It is the field key wrapped to `ownerXPub`, so
  * only the holder of `ownerXPriv` can open it — the same reasoning that lets
  * `GET /api/vault/grants/pending` return `wrappedFieldKey`.
+ *
+ * ## Grantees (#1603)
+ * A field is no longer necessarily granted to the node. The worklist is therefore
+ * built per (field, grantee): the node itself, plus any other grantee that has
+ * ever held a grant on that field — which is how a static-secret credential
+ * (#1439) granted to a connector app DID becomes renewable at all. Scanning only
+ * for `grantedTo = nodeDid` reported those fields as permanently fine while their
+ * real grant lapsed, turning expiry into a silent lockout.
  */
 export async function listRenewableGrants(options: {
   nodeDid: string;
@@ -902,44 +998,60 @@ export async function listRenewableGrants(options: {
   const renewable: RenewableGrant[] = [];
 
   for (const envelope of envelopes) {
-    const rows = await db
-      .select({
-        expiresAt: vaultDelegationGrants.expiresAt,
-      })
+    // Every grantee this field has been granted to, in any state. A revoked or
+    // superseded row still names a grantee whose access is meant to be renewable;
+    // the node is always included so a never-granted field is still reported.
+    const granteeRows = await db
+      .selectDistinct({ grantedTo: vaultDelegationGrants.grantedTo })
       .from(vaultDelegationGrants)
-      .where(
-        and(
-          eq(vaultDelegationGrants.grantedTo, options.nodeDid),
-          eq(vaultDelegationGrants.field, envelope.field),
-          eq(vaultDelegationGrants.keyId, envelope.keyId),
-          eq(vaultDelegationGrants.status, 'active'),
-        ),
-      )
-      .limit(1);
+      .where(eq(vaultDelegationGrants.field, envelope.field));
 
-    const active = rows[0];
-    const common = {
-      field: envelope.field,
-      keyId: envelope.keyId,
-      ownerXPub: envelope.ownerXPub,
-      senderXPub: envelope.senderXPub,
-      wrappedKey: envelope.wrappedKey,
-      wrappedNonce: envelope.wrappedNonce,
-    };
-
-    if (!active) {
-      // Revoked, expired-and-swept, or never granted. Either way the node cannot
-      // read this field until the owner issues a grant.
-      renewable.push({ ...common, reason: 'missing', expiresAt: null });
-      continue;
+    const grantees = new Set<string>([options.nodeDid]);
+    for (const row of granteeRows) {
+      grantees.add(row.grantedTo);
     }
 
-    if (active.expiresAt !== null && active.expiresAt <= horizon) {
-      renewable.push({
-        ...common,
-        reason: 'expiring',
-        expiresAt: active.expiresAt.toISOString(),
-      });
+    for (const grantedTo of grantees) {
+      const rows = await db
+        .select({
+          expiresAt: vaultDelegationGrants.expiresAt,
+        })
+        .from(vaultDelegationGrants)
+        .where(
+          and(
+            eq(vaultDelegationGrants.grantedTo, grantedTo),
+            eq(vaultDelegationGrants.field, envelope.field),
+            eq(vaultDelegationGrants.keyId, envelope.keyId),
+            eq(vaultDelegationGrants.status, 'active'),
+          ),
+        )
+        .limit(1);
+
+      const active = rows[0];
+      const common = {
+        field: envelope.field,
+        keyId: envelope.keyId,
+        ownerXPub: envelope.ownerXPub,
+        senderXPub: envelope.senderXPub,
+        wrappedKey: envelope.wrappedKey,
+        wrappedNonce: envelope.wrappedNonce,
+        grantedTo,
+      };
+
+      if (!active) {
+        // Revoked, expired-and-swept, or never granted. Either way the grantee
+        // cannot read this field until the owner issues a grant.
+        renewable.push({ ...common, reason: 'missing', expiresAt: null });
+        continue;
+      }
+
+      if (active.expiresAt !== null && active.expiresAt <= horizon) {
+        renewable.push({
+          ...common,
+          reason: 'expiring',
+          expiresAt: active.expiresAt.toISOString(),
+        });
+      }
     }
   }
 
@@ -1115,6 +1227,10 @@ export async function _applyDelegationGrant(
 // add other logic below this line — see the #1537 child-agent boundary notes.
 export * from './migrate-custody';
 
-// ── #1521 — field status (connector v2 custody adoption) ───────────────────
+// ── #1521 — field status (connector v2 custody adoption) ──────────────────────
 // Trailing re-export only; see ./field-status.ts for the implementation.
-export { vaultFieldStatus, type VaultFieldStatus } from './field-status';
+export {
+  vaultFieldStatus,
+  vaultFieldStatusForGrantee,
+  type VaultFieldStatus,
+} from './field-status';
