@@ -9,7 +9,9 @@ export const dynamic = 'force-dynamic';
 
 const log = createLogger('kernel:github:proposals');
 
-const VALID_STATUSES = new Set(['pending', 'approved', 'done', 'denied']);
+// 'expired' is queryable but not shown by default — a lapsed approval window is
+// history, not something awaiting the owner's attention (#1588).
+const VALID_STATUSES = new Set(['pending', 'approved', 'done', 'denied', 'expired']);
 const DEFAULT_STATUSES = ['pending', 'approved'] as const;
 
 export async function OPTIONS(request: NextRequest) {

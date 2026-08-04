@@ -15,7 +15,7 @@ interface Proposal {
   riskTier: string;
   target: string;
   argsSummary: string;
-  status: 'pending' | 'approved' | 'done' | 'denied';
+  status: 'pending' | 'approved' | 'done' | 'denied' | 'expired';
   approvedUntil: string | null;  // ISO string or null
   createdAt: string;
 }
@@ -86,6 +86,8 @@ function ProposalRow({
         return <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-400">done</span>;
       case 'denied':
         return <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-900/60 text-red-400">denied</span>;
+      case 'expired':
+        return <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-800 text-gray-500">expired</span>;
     }
   };
 

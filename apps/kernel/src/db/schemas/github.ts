@@ -7,8 +7,12 @@
  *   pending  → awaiting human approval (surfaced to /jin dashboard)
  *   approved → human approved; approved_until controls single-call vs windowed
  *   done     → write executed; source of truth for rate-limit counting
+ *   denied   → human refused; no grant written
+ *   expired  → a windowed approval whose TTL lapsed unused (#1588). Terminal,
+ *              and deliberately NOT 'done' so it never counts as a write.
  *
- * See migration 0073_github_action_proposals.sql for the full schema rationale.
+ * See migration 0073_github_action_proposals.sql for the full schema rationale
+ * and 0080_github_proposal_expiry.sql for the 'expired' status.
  */
 import { pgSchema, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
 
@@ -34,8 +38,9 @@ export const githubActionProposals = githubSchema.table(
     /** Human-readable summary of args — never raw secrets */
     argsSummary: text('args_summary').notNull(),
     /**
-     * State machine:  pending → approved → done
-     * Windowed rows:  approved row stays; each execution inserts a new done row.
+     * State machine:  pending → approved → done | denied | expired
+     * Windowed rows:  approved row stays; each execution inserts a new done row,
+     *                 and the approval is retired to 'expired' once its TTL lapses.
      */
     status: text('status').notNull().default('pending'),
     /**
@@ -55,12 +60,16 @@ export const githubActionProposals = githubSchema.table(
   (table) => ({
     ownerIdx: index('idx_github_action_proposals_owner').on(table.ownerDid),
     statusIdx: index('idx_github_action_proposals_status').on(table.status),
-    /** Supports live-grant lookup in requireMutateGate() */
+    /**
+     * Supports the live-grant lookup in requireWriteGate(): the tuple predicate
+     * plus the newest-first ordering the approval scan depends on (#1588).
+     */
     gateIdx: index('idx_github_action_proposals_gate').on(
       table.ownerDid,
       table.scope,
       table.riskTier,
       table.status,
+      table.createdAt,
     ),
     /** Supports rate-limit window count */
     doneWindowIdx: index('idx_github_action_proposals_done_window').on(
