@@ -6,8 +6,14 @@
  * generic DB logic, consent-grant syncing, and publish orchestration live
  * in the core module to avoid duplication across connectors.
  *
- * Scope release tiers (#1196 consent 2×2):
- *   gemini:infer → on-consent (user's sealed API key is consumed on each call)
+ * Scope release tiers are DERIVED from the declarative vocabulary (#1253) via
+ * the #1196 consent 2×2 — see `packages/auth/src/scope-vocabulary.ts`. To add a
+ * scope to this connector, add one entry there; this module needs no edit.
+ *
+ * `gemini:infer` is `{ disclosesOthers: false, sensitive: true }`, so the 2×2
+ * derives `owner-only`: the owner's own sealed API key is consumed on every
+ * call and is never released to a third party. This module previously forced
+ * `on-consent` with a hardcoded stub, contradicting its own descriptor (#1253).
  */
 import {
   buildConnectorManifestContent,
@@ -15,35 +21,27 @@ import {
   readActiveConnectorScopes,
   syncConnectorConsentGrants,
   publishConnectorScopeManifest,
-  type ConnectorScopeDescriptor,
   type Asset,
 } from '@/src/lib/kernel/scope-manifest-core';
+import {
+  connectorScopeDescriptors,
+  validScopesForConnector,
+  requiresConsentRow,
+} from '@/src/lib/kernel/scope-projections';
 import { GEMINI_CONNECTOR_DID, vaultField, geminiKeyPending } from './connector';
 import { vaultFieldExists } from '@/src/lib/vault';
 
 export { geminiKeyPending };
 
-// ── Scope registry ──────────────────────────────────────────────────────────────
+// ── Scope registry (derived — #1253) ────────────────────────────────────────
 
-/** Gemini connector scopes with #1196 release classifications. */
-export const GEMINI_SCOPE_DESCRIPTORS: Readonly<Record<string, ConnectorScopeDescriptor>> = {
-  'gemini:infer': {
-    verb: 'infer', surface: 'gemini-api',
-    label: 'Use your Gemini API key for inference',
-    release: { discloses_others: false, sensitive: true, viewer: GEMINI_CONNECTOR_DID },
-  },
-};
+const CONNECTOR = 'gemini' as const;
 
-export const VALID_GEMINI_SCOPES = Object.keys(GEMINI_SCOPE_DESCRIPTORS) as Array<
-  keyof typeof GEMINI_SCOPE_DESCRIPTORS
->;
+export const GEMINI_SCOPE_DESCRIPTORS = connectorScopeDescriptors(CONNECTOR);
+
+export const VALID_GEMINI_SCOPES = validScopesForConnector(CONNECTOR);
 
 const MANIFEST_CHANNEL = 'gemini';
-
-// gemini:infer is on-consent (sensitive: true — user's own API key is consumed).
-function geminiScopeReleaseClass(_scopeName: string): 'on-consent' {
-  return 'on-consent';
-}
 
 // ── Public API (delegates to core) ─────────────────────────────────────────────
 
@@ -68,7 +66,7 @@ export function syncConsentGrants(
 ): Promise<void> {
   return syncConnectorConsentGrants(
     ownerDid, GEMINI_CONNECTOR_DID, manifestAssetId, requestedScopes,
-    (s) => geminiScopeReleaseClass(s) === 'on-consent',
+    (s) => requiresConsentRow(CONNECTOR, s),
   );
 }
 
@@ -76,7 +74,7 @@ export function publishGeminiScopeManifest(ownerDid: string, scopes: readonly st
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: GEMINI_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'gemini-scope-manifest.md', scopeDescriptors: GEMINI_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => geminiScopeReleaseClass(s) === 'on-consent',
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
   });
 }
 

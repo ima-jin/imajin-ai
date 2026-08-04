@@ -6,9 +6,9 @@
  * generic DB logic, consent-grant syncing, and publish orchestration live
  * in the core module to avoid duplication across connectors.
  *
- * Scope release tiers (#1196 consent 2×2):
- *   discord:post → on-consent (touches shared channel, visible to others)
- *   discord:read → on-consent (reads others' messages)
+ * Scope release tiers are DERIVED from the declarative vocabulary (#1253) via
+ * the #1196 consent 2×2 — see `packages/auth/src/scope-vocabulary.ts`. To add a
+ * scope to this connector, add one entry there; this module needs no edit.
  */
 import {
   buildConnectorManifestContent,
@@ -16,38 +16,25 @@ import {
   readActiveConnectorScopes,
   syncConnectorConsentGrants,
   publishConnectorScopeManifest,
-  type ConnectorScopeDescriptor,
   type Asset,
 } from '@/src/lib/kernel/scope-manifest-core';
+import {
+  connectorScopeDescriptors,
+  validScopesForConnector,
+  requiresConsentRow,
+} from '@/src/lib/kernel/scope-projections';
 import { DISCORD_CONNECTOR_DID, vaultField } from './connector';
 import { vaultFieldExists, vaultFieldStatus } from '@/src/lib/vault';
 
-// ── Scope registry ──────────────────────────────────────────────────────────────
+// ── Scope registry (derived — #1253) ────────────────────────────────────────
 
-/** Discord connector scopes with #1196 release classifications. */
-export const DISCORD_SCOPE_DESCRIPTORS: Readonly<Record<string, ConnectorScopeDescriptor>> = {
-  'discord:post': {
-    verb: 'post', surface: 'channels',
-    label: 'Post messages to Discord channels',
-    release: { discloses_others: true, sensitive: false, viewer: DISCORD_CONNECTOR_DID },
-  },
-  'discord:read': {
-    verb: 'read', surface: 'channels',
-    label: 'Read messages from Discord channels',
-    release: { discloses_others: true, sensitive: false, viewer: DISCORD_CONNECTOR_DID },
-  },
-};
+const CONNECTOR = 'discord' as const;
 
-export const VALID_DISCORD_SCOPES = Object.keys(DISCORD_SCOPE_DESCRIPTORS) as Array<
-  keyof typeof DISCORD_SCOPE_DESCRIPTORS
->;
+export const DISCORD_SCOPE_DESCRIPTORS = connectorScopeDescriptors(CONNECTOR);
+
+export const VALID_DISCORD_SCOPES = validScopesForConnector(CONNECTOR);
 
 const MANIFEST_CHANNEL = 'discord';
-
-// Both Discord scopes are on-consent (discloses_others: true, no sensitive flag).
-function discordScopeReleaseClass(_scopeName: string): 'on-consent' {
-  return 'on-consent';
-}
 
 // ── Public API (delegates to core) ─────────────────────────────────────────────
 
@@ -72,7 +59,7 @@ export function syncConsentGrants(
 ): Promise<void> {
   return syncConnectorConsentGrants(
     ownerDid, DISCORD_CONNECTOR_DID, manifestAssetId, requestedScopes,
-    (s) => discordScopeReleaseClass(s) === 'on-consent',
+    (s) => requiresConsentRow(CONNECTOR, s),
   );
 }
 
@@ -80,7 +67,7 @@ export function publishDiscordScopeManifest(ownerDid: string, scopes: readonly s
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: DISCORD_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'discord-scope-manifest.md', scopeDescriptors: DISCORD_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => discordScopeReleaseClass(s) === 'on-consent',
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
   });
 }
 

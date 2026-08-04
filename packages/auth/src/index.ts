@@ -32,6 +32,34 @@ export { getEmailForDid, getDidForEmail } from "./credentials";
 export { emitAttestation } from "./emit-attestation";
 export { SCOPES, validateScopes } from "./scopes";
 export type { Scope } from "./scopes";
+// Declarative scope vocabulary (#1253) — the single source of truth that SCOPES,
+// the MCP capability ceiling, connector scope-manifest descriptors, and the
+// connector-card UI list are all projections of. Client components should import
+// from "@imajin/auth/scope-vocabulary" instead, to stay out of this server index.
+export {
+  SCOPE_VOCABULARY,
+  CONNECTOR_DIDS,
+  CONNECTOR_CHANNELS,
+  isConnectorScope,
+  deriveScopeReleaseTier,
+  viewerForScope,
+  uiLabelForScope,
+  manifestLabelForScope,
+  scopeEntry,
+  isKnownScope,
+  scopesForConnector,
+  scopesForSurface,
+  allScopes,
+} from "./scope-vocabulary";
+export type {
+  ConnectorId,
+  CapabilitySurface,
+  ScopeReleaseTier,
+  ScopeClassification,
+  ScopeVocabularyEntry,
+  PlatformScopeEntry,
+  ConnectorScopeEntry,
+} from "./scope-vocabulary";
 export { requireAppAuth } from "./require-app-auth";
 export type { AppAuthContext, AppAuthResult } from "./require-app-auth";
 export { resolveEffectiveDid } from "./resolve-effective-did";
