@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'quickbooks';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'quickbooks' | 'warp';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -46,6 +46,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   discord: 'did:imajin:discord-connector',
   gemini: 'did:imajin:gemini-connector',
   quickbooks: 'did:imajin:quickbooks-connector',
+  warp: 'did:imajin:warp-connector',
 };
 
 /** Channel label used in `auth.channel_links`. Currently always the id. */
@@ -55,6 +56,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   discord: 'discord',
   gemini: 'gemini',
   quickbooks: 'quickbooks',
+  warp: 'warp',
 };
 
 // ── Release tiers (#1196 consent 2×2) ─────────────────────────────────────────
@@ -233,6 +235,14 @@ export const SCOPE_VOCABULARY = [
   // Consumes the owner's own sealed API key → SELF_SENSITIVE → owner-only.
   { scope: 'gemini:infer', connector: 'gemini', verb: 'infer', surface: 'gemini-api', classification: SELF_SENSITIVE,
     label: 'Use your Gemini API key for inference' },
+
+  // ── Warp connector (#1428) — per-DID Warp Cloud Agent key.
+  // Consumes the owner's own sealed Agent key to spawn cloud agents under their
+  // service-account identity → SELF_SENSITIVE → owner-only. Carried by MCP
+  // tokens so a `{username}-jin` speaking MCP can dispatch (Wire B), which is
+  // the whole point: the credential individuates the dispatch.
+  { scope: 'warp:dispatch', connector: 'warp', verb: 'dispatch', surface: 'cloud-agents', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Dispatch Warp cloud agents using your sealed Warp Agent key', manifestLabel: 'Dispatch Warp cloud agents under your own credential' },
 ] as const satisfies readonly ScopeVocabularyEntry[];
 
 /** Every scope string in the vocabulary, as a literal union. */

@@ -19,7 +19,7 @@ import {
 } from '../src/scope-vocabulary';
 import { SCOPES, validateScopes } from '../src/scopes';
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'quickbooks'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'quickbooks', 'warp'];
 
 const connectorEntries = SCOPE_VOCABULARY.filter(isConnectorScope);
 
