@@ -136,214 +136,103 @@ export interface ConnectorScopeEntry extends BaseScopeEntry {
 
 export type ScopeVocabularyEntry = PlatformScopeEntry | ConnectorScopeEntry;
 
-// ── The vocabulary ────────────────────────────────────────────────────────────
+// ── The four #1196 quadrants, named ────────────────────────────────────────
+//
+// Naming the quadrants means a reader sees the *meaning* of a classification
+// rather than having to apply the 2×2 to a pair of booleans. The derived tier is
+// noted on each; `deriveScopeReleaseTier` is what actually computes it.
+
+/** Owner's own data, nothing sensitive → `silent`. */
+const SELF_ONLY: ScopeClassification = { disclosesOthers: false, sensitive: false };
+/** Exposes other people → `on-consent`. */
+const TOUCHES_OTHERS: ScopeClassification = { disclosesOthers: true, sensitive: false };
+/** Owner's own credential-grade material → `owner-only`. */
+const SELF_SENSITIVE: ScopeClassification = { disclosesOthers: false, sensitive: true };
+/** Both axes → `never`: a structural drop, hidden from the UI. */
+const TOUCHES_OTHERS_SENSITIVE: ScopeClassification = { disclosesOthers: true, sensitive: true };
+
+/** Carried by MCP access tokens (the capability ceiling, not a grant). */
+const MCP_TOKENS: readonly CapabilitySurface[] = ['mcp'];
+
+// ── The vocabulary ────────────────────────────────────────────────────────
 
 /**
- * THE source of truth. Order matters: it determines consent-screen ordering,
- * `scopes_supported` in the OAuth discovery docs, and connector-card toggle
- * order. Append rather than reorder unless you mean to change those.
+ * THE source of truth — one row per scope.
+ *
+ * Order matters: it determines consent-screen ordering, `scopes_supported` in
+ * the OAuth discovery docs, and connector-card toggle order. Append rather than
+ * reorder unless you mean to change those.
+ *
+ * Rows are deliberately dense so the table reads as a table. Connector rows put
+ * machine-readable facts on the first line and human-facing prose on the second:
+ *   line 1 — scope, owning connector, manifest verb/surface, classification, surfaces
+ *   line 2 — consent label, and the manifest/UI labels where they differ
  */
 export const SCOPE_VOCABULARY = [
-  // ── Platform scopes (no owning connector) ──────────────────────────────────
+  // ── Platform scopes — no owning connector, granted via the OAuth consent screen
   { scope: 'profile:read', connector: null, label: 'Read your profile information' },
   { scope: 'identity:read', connector: null, label: 'Read your identity and DID' },
-  {
-    scope: 'identity:write',
-    connector: null,
-    label: 'Resolve or mint soft identities on your behalf (registry get-or-create)',
-  },
+  { scope: 'identity:write', connector: null, label: 'Resolve or mint soft identities on your behalf (registry get-or-create)' },
 
-  // ── MCP / Claude connector ─────────────────────────────────────────────────
-  {
-    scope: 'media:read',
-    connector: 'mcp',
-    label: 'Read your media library (files, folders, and metadata)',
-    manifestLabel: 'Read your media assets',
-    verb: 'read',
-    surface: 'media',
-    classification: { disclosesOthers: false, sensitive: false },
-    surfaces: ['mcp'],
-  },
-  {
-    scope: 'media:write',
-    connector: 'mcp',
-    label: 'Create and upload media on your behalf',
-    manifestLabel: 'Create and update your media assets',
-    verb: 'write',
-    surface: 'media',
-    classification: { disclosesOthers: false, sensitive: false },
-    // Tightened: writing on someone's behalf always warrants explicit consent.
-    releaseOverride: 'on-consent',
-    surfaces: ['mcp'],
-  },
-  {
-    scope: 'media:share',
-    connector: 'mcp',
-    label: 'Share your media with other people',
-    manifestLabel: "Grant or revoke other people's access to your assets",
-    verb: 'write',
-    surface: 'media-access',
-    // Crosses the sovereignty boundary — distinct from media:write.
-    classification: { disclosesOthers: true, sensitive: false },
-    surfaces: ['mcp'],
-  },
+  // ── MCP / Claude connector
+  { scope: 'media:read', connector: 'mcp', verb: 'read', surface: 'media', classification: SELF_ONLY, surfaces: MCP_TOKENS,
+    label: 'Read your media library (files, folders, and metadata)', manifestLabel: 'Read your media assets' },
+  // Tightened: writing on someone's behalf always warrants explicit consent.
+  { scope: 'media:write', connector: 'mcp', verb: 'write', surface: 'media', classification: SELF_ONLY, surfaces: MCP_TOKENS, releaseOverride: 'on-consent',
+    label: 'Create and upload media on your behalf', manifestLabel: 'Create and update your media assets' },
+  // Crosses the sovereignty boundary — distinct from media:write.
+  { scope: 'media:share', connector: 'mcp', verb: 'write', surface: 'media-access', classification: TOUCHES_OTHERS, surfaces: MCP_TOKENS,
+    label: 'Share your media with other people', manifestLabel: "Grant or revoke other people's access to your assets" },
 
   { scope: 'wallet:read', connector: null, label: 'View your wallet balance and transaction history' },
   { scope: 'wallet:write', connector: null, label: 'Create payments and transfers on your behalf' },
 
-  {
-    scope: 'connections:read',
-    connector: 'mcp',
-    label: 'View your connections',
-    manifestLabel: 'Read your trust-graph connections',
-    verb: 'read',
-    surface: 'connections',
-    classification: { disclosesOthers: false, sensitive: false },
-    surfaces: ['mcp'],
-  },
+  { scope: 'connections:read', connector: 'mcp', verb: 'read', surface: 'connections', classification: SELF_ONLY, surfaces: MCP_TOKENS,
+    label: 'View your connections', manifestLabel: 'Read your trust-graph connections' },
 
   { scope: 'events:read', connector: null, label: 'View events you attend or have created' },
   { scope: 'events:write', connector: null, label: 'Create and manage events on your behalf' },
   { scope: 'supply:read', connector: null, label: 'View your supply-chain lots and their stage history' },
-  {
-    scope: 'supply:write',
-    connector: null,
-    label: 'Record supply-chain stages (declare, collect, process, list) on your behalf',
-  },
+  { scope: 'supply:write', connector: null, label: 'Record supply-chain stages (declare, collect, process, list) on your behalf' },
 
-  {
-    scope: 'messages:read',
-    connector: 'mcp',
-    label: 'Read messages in your conversations',
-    manifestLabel: 'List your conversations and read their messages',
-    verb: 'read',
-    surface: 'messages',
-    classification: { disclosesOthers: false, sensitive: false },
-    surfaces: ['mcp'],
-  },
-  {
-    scope: 'messages:write',
-    connector: 'mcp',
-    label: 'Send messages on your behalf',
-    manifestLabel: 'Send messages in your conversations on your behalf',
-    verb: 'write',
-    surface: 'messages',
-    classification: { disclosesOthers: false, sensitive: false },
-    // Tightened: sends onBehalfOf the human.
-    releaseOverride: 'on-consent',
-    surfaces: ['mcp'],
-  },
+  { scope: 'messages:read', connector: 'mcp', verb: 'read', surface: 'messages', classification: SELF_ONLY, surfaces: MCP_TOKENS,
+    label: 'Read messages in your conversations', manifestLabel: 'List your conversations and read their messages' },
+  // Tightened: sends onBehalfOf the human.
+  { scope: 'messages:write', connector: 'mcp', verb: 'write', surface: 'messages', classification: SELF_ONLY, surfaces: MCP_TOKENS, releaseOverride: 'on-consent',
+    label: 'Send messages on your behalf', manifestLabel: 'Send messages in your conversations on your behalf' },
 
   { scope: 'attestations:read', connector: null, label: 'View your attestations and reputation' },
   { scope: 'attestations:write', connector: null, label: 'Issue attestations on your behalf' },
   { scope: 'availability:read', connector: null, label: 'View your availability and coordination intents' },
-  {
-    scope: 'availability:write',
-    connector: null,
-    label: 'Set and cancel availability intents on your behalf',
-  },
+  { scope: 'availability:write', connector: null, label: 'Set and cancel availability intents on your behalf' },
 
-  // ── QuickBooks connector ───────────────────────────────────────────────────
-  {
-    scope: 'quickbooks:read',
-    connector: 'quickbooks',
-    label: 'Read your QuickBooks invoices as supply-chain settlement signals',
-    manifestLabel: 'Read your QuickBooks invoices',
-    verb: 'read',
-    surface: 'invoices',
-    // Owner reading their own invoice data.
-    classification: { disclosesOthers: false, sensitive: false },
-  },
-  {
-    scope: 'quickbooks:write',
-    connector: 'quickbooks',
-    label: 'Create QuickBooks invoices on your behalf (supply-chain settlement)',
-    manifestLabel: 'Create QuickBooks invoices',
-    verb: 'write',
-    surface: 'invoices',
-    // Invoices are sent to customers.
-    classification: { disclosesOthers: true, sensitive: false },
-  },
+  // ── QuickBooks connector — invoices are sent to customers, hence write touches others
+  { scope: 'quickbooks:read', connector: 'quickbooks', verb: 'read', surface: 'invoices', classification: SELF_ONLY,
+    label: 'Read your QuickBooks invoices as supply-chain settlement signals', manifestLabel: 'Read your QuickBooks invoices' },
+  { scope: 'quickbooks:write', connector: 'quickbooks', verb: 'write', surface: 'invoices', classification: TOUCHES_OTHERS,
+    label: 'Create QuickBooks invoices on your behalf (supply-chain settlement)', manifestLabel: 'Create QuickBooks invoices' },
 
-  // ── GitHub connector ───────────────────────────────────────────────────────
-  {
-    scope: 'github:read',
-    connector: 'github',
-    label: 'Read your repos, issues and PRs on GitHub',
-    manifestLabel: 'Read your own repos, issues and PRs',
-    uiLabel: 'Read your repos, issues and PRs',
-    verb: 'read',
-    surface: 'repos',
-    classification: { disclosesOthers: false, sensitive: false },
-    surfaces: ['mcp'],
-  },
-  {
-    scope: 'github:write',
-    connector: 'github',
-    label: 'Open and comment on issues & PRs on your GitHub repos',
-    manifestLabel: 'Open and comment on issues & PRs on your repos',
-    uiLabel: 'Create issues and comments on your repos',
-    verb: 'write',
-    surface: 'issues',
-    classification: { disclosesOthers: false, sensitive: false },
-    releaseOverride: 'on-consent',
-    surfaces: ['mcp'],
-  },
-  {
-    scope: 'github:org',
-    connector: 'github',
-    label: 'Act on repos owned by an org or other people on GitHub',
-    manifestLabel: 'Act on repos owned by an org or other people',
-    verb: 'write',
-    surface: 'org',
-    classification: { disclosesOthers: true, sensitive: false },
-    surfaces: ['mcp'],
-  },
-  {
-    scope: 'github:actions',
-    connector: 'github',
-    label: 'Trigger GitHub Actions / deploy / spend CI minutes',
-    manifestLabel: 'Trigger Actions / deploy / spend CI minutes',
-    verb: 'execute',
-    surface: 'actions',
-    // Both axes true → `never`: a structural drop, hidden from the UI.
-    classification: { disclosesOthers: true, sensitive: true },
-    surfaces: ['mcp'],
-  },
+  // ── GitHub connector
+  { scope: 'github:read', connector: 'github', verb: 'read', surface: 'repos', classification: SELF_ONLY, surfaces: MCP_TOKENS,
+    label: 'Read your repos, issues and PRs on GitHub', manifestLabel: 'Read your own repos, issues and PRs', uiLabel: 'Read your repos, issues and PRs' },
+  { scope: 'github:write', connector: 'github', verb: 'write', surface: 'issues', classification: SELF_ONLY, surfaces: MCP_TOKENS, releaseOverride: 'on-consent',
+    label: 'Open and comment on issues & PRs on your GitHub repos', manifestLabel: 'Open and comment on issues & PRs on your repos', uiLabel: 'Create issues and comments on your repos' },
+  { scope: 'github:org', connector: 'github', verb: 'write', surface: 'org', classification: TOUCHES_OTHERS, surfaces: MCP_TOKENS,
+    label: 'Act on repos owned by an org or other people on GitHub', manifestLabel: 'Act on repos owned by an org or other people' },
+  { scope: 'github:actions', connector: 'github', verb: 'execute', surface: 'actions', classification: TOUCHES_OTHERS_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Trigger GitHub Actions / deploy / spend CI minutes', manifestLabel: 'Trigger Actions / deploy / spend CI minutes' },
 
-  // ── Discord connector ──────────────────────────────────────────────────────
-  {
-    scope: 'discord:post',
-    connector: 'discord',
-    label: 'Post messages to Discord channels on your behalf',
-    manifestLabel: 'Post messages to Discord channels',
-    verb: 'post',
-    surface: 'channels',
-    classification: { disclosesOthers: true, sensitive: false },
-  },
-  {
-    scope: 'discord:read',
-    connector: 'discord',
-    label: 'Read messages from Discord channels on your behalf',
-    manifestLabel: 'Read messages from Discord channels',
-    verb: 'read',
-    surface: 'channels',
-    classification: { disclosesOthers: true, sensitive: false },
-  },
+  // ── Discord connector — both scopes act on shared channels, so both touch others
+  { scope: 'discord:post', connector: 'discord', verb: 'post', surface: 'channels', classification: TOUCHES_OTHERS,
+    label: 'Post messages to Discord channels on your behalf', manifestLabel: 'Post messages to Discord channels' },
+  { scope: 'discord:read', connector: 'discord', verb: 'read', surface: 'channels', classification: TOUCHES_OTHERS,
+    label: 'Read messages from Discord channels on your behalf', manifestLabel: 'Read messages from Discord channels' },
 
-  // ── Gemini connector ───────────────────────────────────────────────────────
-  {
-    scope: 'gemini:infer',
-    connector: 'gemini',
-    // Previously absent from SCOPES entirely (#1253) — validateScopes() rejected
-    // it and the consent screens had no label for it.
-    label: 'Use your Gemini API key for inference',
-    verb: 'infer',
-    surface: 'gemini-api',
-    // Consumes the owner's own sealed API key → sensitive, discloses nobody
-    // else → `owner-only` by the 2×2.
-    classification: { disclosesOthers: false, sensitive: true },
-  },
+  // ── Gemini connector — was missing from SCOPES entirely before #1253, so
+  // validateScopes() rejected it and the consent screens had no label for it.
+  // Consumes the owner's own sealed API key → SELF_SENSITIVE → owner-only.
+  { scope: 'gemini:infer', connector: 'gemini', verb: 'infer', surface: 'gemini-api', classification: SELF_SENSITIVE,
+    label: 'Use your Gemini API key for inference' },
 ] as const satisfies readonly ScopeVocabularyEntry[];
 
 /** Every scope string in the vocabulary, as a literal union. */

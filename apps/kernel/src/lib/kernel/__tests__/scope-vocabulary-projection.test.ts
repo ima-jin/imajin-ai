@@ -256,101 +256,41 @@ const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
 describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('mcp', () => {
     expect(connectorScopeDescriptors('mcp')).toEqual({
-      'media:read': {
-        verb: 'read', surface: 'media',
-        label: 'Read your media assets',
-        release: { discloses_others: false, sensitive: false },
-      },
-      'media:write': {
-        verb: 'write', surface: 'media',
-        label: 'Create and update your media assets',
-        release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_DID },
-      },
-      'media:share': {
-        verb: 'write', surface: 'media-access',
-        label: "Grant or revoke other people's access to your assets",
-        release: { discloses_others: true, sensitive: false, viewer: MCP_DID },
-      },
-      'connections:read': {
-        verb: 'read', surface: 'connections',
-        label: 'Read your trust-graph connections',
-        release: { discloses_others: false, sensitive: false },
-      },
-      'messages:read': {
-        verb: 'read', surface: 'messages',
-        label: 'List your conversations and read their messages',
-        release: { discloses_others: false, sensitive: false },
-      },
-      'messages:write': {
-        verb: 'write', surface: 'messages',
-        label: 'Send messages in your conversations on your behalf',
-        release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_DID },
-      },
+      'media:read': { verb: 'read', surface: 'media', label: 'Read your media assets', release: { discloses_others: false, sensitive: false } },
+      'media:write': { verb: 'write', surface: 'media', label: 'Create and update your media assets', release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_DID } },
+      'media:share': { verb: 'write', surface: 'media-access', label: "Grant or revoke other people's access to your assets", release: { discloses_others: true, sensitive: false, viewer: MCP_DID } },
+      'connections:read': { verb: 'read', surface: 'connections', label: 'Read your trust-graph connections', release: { discloses_others: false, sensitive: false } },
+      'messages:read': { verb: 'read', surface: 'messages', label: 'List your conversations and read their messages', release: { discloses_others: false, sensitive: false } },
+      'messages:write': { verb: 'write', surface: 'messages', label: 'Send messages in your conversations on your behalf', release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_DID } },
     });
   });
 
   it('github', () => {
     expect(connectorScopeDescriptors('github')).toEqual({
-      'github:read': {
-        verb: 'read', surface: 'repos',
-        label: 'Read your own repos, issues and PRs',
-        release: { discloses_others: false, sensitive: false },
-      },
-      'github:write': {
-        verb: 'write', surface: 'issues',
-        label: 'Open and comment on issues & PRs on your repos',
-        release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: GITHUB_DID },
-      },
-      'github:org': {
-        verb: 'write', surface: 'org',
-        label: 'Act on repos owned by an org or other people',
-        release: { discloses_others: true, sensitive: false, viewer: GITHUB_DID },
-      },
-      'github:actions': {
-        verb: 'execute', surface: 'actions',
-        label: 'Trigger Actions / deploy / spend CI minutes',
-        release: { discloses_others: true, sensitive: true },
-      },
+      'github:read': { verb: 'read', surface: 'repos', label: 'Read your own repos, issues and PRs', release: { discloses_others: false, sensitive: false } },
+      'github:write': { verb: 'write', surface: 'issues', label: 'Open and comment on issues & PRs on your repos', release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: GITHUB_DID } },
+      'github:org': { verb: 'write', surface: 'org', label: 'Act on repos owned by an org or other people', release: { discloses_others: true, sensitive: false, viewer: GITHUB_DID } },
+      'github:actions': { verb: 'execute', surface: 'actions', label: 'Trigger Actions / deploy / spend CI minutes', release: { discloses_others: true, sensitive: true } },
     });
   });
 
   it('discord', () => {
     expect(connectorScopeDescriptors('discord')).toEqual({
-      'discord:post': {
-        verb: 'post', surface: 'channels',
-        label: 'Post messages to Discord channels',
-        release: { discloses_others: true, sensitive: false, viewer: DISCORD_DID },
-      },
-      'discord:read': {
-        verb: 'read', surface: 'channels',
-        label: 'Read messages from Discord channels',
-        release: { discloses_others: true, sensitive: false, viewer: DISCORD_DID },
-      },
+      'discord:post': { verb: 'post', surface: 'channels', label: 'Post messages to Discord channels', release: { discloses_others: true, sensitive: false, viewer: DISCORD_DID } },
+      'discord:read': { verb: 'read', surface: 'channels', label: 'Read messages from Discord channels', release: { discloses_others: true, sensitive: false, viewer: DISCORD_DID } },
     });
   });
 
   it('gemini', () => {
     expect(connectorScopeDescriptors('gemini')).toEqual({
-      'gemini:infer': {
-        verb: 'infer', surface: 'gemini-api',
-        label: 'Use your Gemini API key for inference',
-        release: { discloses_others: false, sensitive: true, viewer: GEMINI_DID },
-      },
+      'gemini:infer': { verb: 'infer', surface: 'gemini-api', label: 'Use your Gemini API key for inference', release: { discloses_others: false, sensitive: true, viewer: GEMINI_DID } },
     });
   });
 
   it('quickbooks', () => {
     expect(connectorScopeDescriptors('quickbooks')).toEqual({
-      'quickbooks:read': {
-        verb: 'read', surface: 'invoices',
-        label: 'Read your QuickBooks invoices',
-        release: { discloses_others: false, sensitive: false },
-      },
-      'quickbooks:write': {
-        verb: 'write', surface: 'invoices',
-        label: 'Create QuickBooks invoices',
-        release: { discloses_others: true, sensitive: false, viewer: QUICKBOOKS_DID },
-      },
+      'quickbooks:read': { verb: 'read', surface: 'invoices', label: 'Read your QuickBooks invoices', release: { discloses_others: false, sensitive: false } },
+      'quickbooks:write': { verb: 'write', surface: 'invoices', label: 'Create QuickBooks invoices', release: { discloses_others: true, sensitive: false, viewer: QUICKBOOKS_DID } },
     });
   });
 });
