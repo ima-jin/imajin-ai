@@ -37,7 +37,9 @@ on:
 env:
   # Publish order matters — a package must be published before anything that
   # depends on it, since workspace:* deps resolve against the sibling versions.
-  # cid → vault-core, tokens → config → ui, db/fair/pay/auth-client are independent
+  # cid → vault-core; tokens → config → ui; fair → ui; db/pay/auth-client are
+  # independent (the "Build workspace type dependencies" step below builds
+  # each selected package's @imajin/* deps automatically, regardless of order).
   ALL_PACKAGES: "cid tokens config ui vault-core db fair pay auth-client"
 
 jobs:
@@ -80,14 +82,23 @@ jobs:
             echo "::endgroup::"
           done
 
-      # cid has no workspace deps of its own, but vault-core's declaration
-      # build resolves @imajin/cid's types. A single-package dispatch (e.g.
-      # package=vault-core) checks out fresh and never builds cid otherwise,
-      # so the dts step fails with "Cannot find module '@imajin/cid'".
-      # Build it unconditionally first; harmless/idempotent if cid is also in
-      # the selected list below.
+      # A selected package's dts build resolves its @imajin/* workspace
+      # deps' types (e.g. vault-core → cid, config → tokens, ui → config/fair).
+      # A single-package dispatch checks out fresh and never builds those
+      # siblings otherwise, so the dts step fails with "Cannot find module
+      # '@imajin/<dep>'". `^...` selects only a package's dependencies
+      # (topologically ordered), not the package itself — harmless/idempotent
+      # if a dependency is also in the selected list below.
       - name: Build workspace type dependencies
-        run: pnpm --filter @imajin/cid build
+        run: |
+          for pkg in ${{ steps.packages.outputs.list }}; do
+            echo "::group::Building workspace deps for $pkg"
+            # --if-present tolerates workspace deps with no build script
+            # (e.g. @imajin/auth is an optional peer dep of pay that ships
+            # raw src/ with no dist/ build step).
+            pnpm --filter "@imajin/$pkg^..." run build --if-present
+            echo "::endgroup::"
+          done
 
       - name: Build packages
         run: |
