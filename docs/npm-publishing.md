@@ -2,6 +2,21 @@
 
 Reference notes from the npm-publish epic ([#1573](https://github.com/ima-jin/imajin-ai/issues/1573)). Read this before normalizing another package for publication — several of these were discovered the hard way (real build failures caught before merge, not theoretical).
 
+## Two registries, one canonical
+
+`.github/workflows/publish-packages.yml` publishes each selected package to **two** registries ([#1595](https://github.com/ima-jin/imajin-ai/issues/1595)):
+
+- **npmjs.org — canonical.** The only install path. `imajin-cli`, `fixready`, and `karaoke` install `@ima-jin/*` from here anonymously, with no auth and no `.npmrc`. Authenticated with `secrets.NPM_TOKEN`.
+- **`npm.pkg.github.com` — visibility only.** Its sole purpose is populating the `ima-jin/imajin-ai` → **Packages** sidebar, which GitHub renders only for packages actually hosted on GitHub Packages (the `repository` + `directory` fields give the npm→GitHub backlink on the npmjs page, but do nothing for the sidebar). Nothing installs from here. Authenticated with the ephemeral `GITHUB_TOKEN` — **never a PAT**; publishing from a workflow in this repo is also what auto-connects each package to the repo. Requires `packages: write` on the job.
+
+Both publishes run from the same prepared tarball via `scripts/publish-package.sh <pkg> <registry-url> <dry-run>`, in separate steps so each registry's token is only in scope for its own step. npmjs goes first, so a GitHub Packages failure can never block the canonical publish.
+
+### The `registries` dispatch input
+
+Defaults to `both`; `npmjs` and `github-packages` publish to just one. The single-registry options exist because **npm returns a 409 for a version that already exists**, which fails the whole step — so publishing a version that is already live on one registry but missing from the other (e.g. the original GitHub Packages backfill of `0.8.0`/`0.6.1`) requires skipping the registry that already has it. Reach for these when the two registries have drifted; otherwise leave it on `both`.
+
+`.npmrc` note: `actions/setup-node` only writes auth for `registry.npmjs.org`, so `publish-package.sh` writes a throwaway project-level `.npmrc` into the temp publish dir for the GitHub Packages leg. The `${NODE_AUTH_TOKEN}` in it is single-quoted on purpose — npm expands it when reading the file, so no token value ever lands on disk, and npm never packs `.npmrc` into a tarball. Do not "fix" it into a real interpolation.
+
 ## The mechanism
 
 In-repo, nothing is renamed. Packages keep their `@imajin/*` names and `workspace:*` references. `scripts/prepare-npm-publish.mjs` rewrites `@imajin/` → `@ima-jin/` in both the manifest and the emitted code at publish time, and strips `private: true` in the publish copy. The published identity is `@ima-jin/*` (the scope we own on npm — `@imajin` is not ours); the codebase's import surface stays `@imajin/*`. Do not rename in-repo or rewrite imports to match the published scope.
