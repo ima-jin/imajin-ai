@@ -165,6 +165,16 @@ describe('dispatch is stamped with the caller jin identity', () => {
     expect(await resolveJinName('did:imajin:Chris.Smith')).toBe('chris-smith-jin');
   });
 
+  it('still labels the run when the DID has no sluggable segment either', async () => {
+    lookupIdentityMock.mockResolvedValue(null);
+    expect(await resolveJinName('did:imajin:...')).toBe('jin');
+  });
+
+  it('ignores a handle that slugifies to nothing', async () => {
+    lookupIdentityMock.mockResolvedValue({ did: PRINCIPAL, handle: '***' });
+    expect(await resolveJinName(PRINCIPAL)).toBe('veteze-jin');
+  });
+
   it('lets an explicit name override the default tag', async () => {
     respondJson(QUEUED_RUN);
     await dispatchAgentRun(PRINCIPAL, { prompt: 'go', name: 'nightly-dependency-check' });
@@ -225,6 +235,37 @@ describe('dispatch config surface', () => {
     await dispatchAgentRun(PRINCIPAL, { prompt: 'go', environmentId: 'UAOTHER' });
 
     expect(lastConfig().environment_id).toBe('UAOTHER');
+  });
+
+  it('forwards computer use only when the caller asks for it', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', computerUseEnabled: true });
+
+    expect(lastConfig().computer_use_enabled).toBe(true);
+  });
+
+  it('forwards an explicit false rather than dropping it', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', computerUseEnabled: false });
+
+    expect(lastConfig().computer_use_enabled).toBe(false);
+  });
+
+  it('forwards the model and base prompt overrides', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', modelId: 'auto', basePrompt: 'be brief' });
+
+    expect(lastConfig()).toMatchObject({ model_id: 'auto', base_prompt: 'be brief' });
+  });
+
+  it('sends a title only when one is given', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', title: 'Nightly' });
+    expect(lastRequestBody().title).toBe('Nightly');
+
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+    expect(lastRequestBody()).not.toHaveProperty('title');
   });
 
   it('omits optional config fields rather than sending nulls', async () => {

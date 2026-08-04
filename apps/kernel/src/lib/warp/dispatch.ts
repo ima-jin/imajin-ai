@@ -37,11 +37,36 @@ const log = createLogger('kernel');
 
 const DEFAULT_WARP_API_BASE_URL = 'https://app.warp.dev/api/v1';
 
+/**
+ * Drop every trailing `char`.
+ *
+ * Index walking rather than a regex: the obvious patterns for this (`/\/+$/`,
+ * `/^-+|-+$/`) are anchored quantifiers that backtrack super-linearly, and both
+ * call sites take externally-influenced input (a configured base URL, a handle).
+ * A linear scan removes the need to reason about that at all.
+ */
+function trimTrailing(value: string, char: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === char) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
+/** Drop every leading and trailing `char`. See {@link trimTrailing}. */
+function trimSurrounding(value: string, char: string): string {
+  let start = 0;
+  while (start < value.length && value[start] === char) {
+    start += 1;
+  }
+  return trimTrailing(value.slice(start), char);
+}
+
 /** Warp REST base URL. Overridable so tests never point at the real platform. */
 function warpApiBaseUrl(): string {
   const configured = process.env.WARP_API_BASE_URL?.trim();
   const base = configured && configured.length > 0 ? configured : DEFAULT_WARP_API_BASE_URL;
-  return base.replaceAll(/\/+$/g, '');
+  return trimTrailing(base, '/');
 }
 
 /**
@@ -131,10 +156,8 @@ export interface WarpAgentRun {
 
 /** Strip a handle down to what Warp's `config.name` filter can round-trip. */
 function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9-]+/g, '-')
-    .replaceAll(/^-+|-+$/g, '');
+  const collapsed = value.toLowerCase().replaceAll(/[^a-z0-9-]+/g, '-');
+  return trimSurrounding(collapsed, '-');
 }
 
 /**
@@ -276,7 +299,10 @@ function toAgentRun(payload: unknown, fallbackRunId?: string): WarpAgentRun {
  * applies its own defaults (team default model, no environment) instead of
  * receiving an explicit "nothing".
  */
-function buildConfig(input: DispatchAgentRunInput, jinName: string): WarpAgentConfig {
+function buildConfig(
+  input: DispatchAgentRunInput,
+  jinName: string,
+): WarpAgentConfig & { name: string } {
   const imajinMcp: Record<string, WarpMcpServerConfig> = input.attachImajinMcp
     ? { imajin: { url: getMcpResource() } }
     : {};
@@ -350,7 +376,7 @@ export async function dispatchAgentRun(
     payload: {
       runId: run.runId,
       principalDid,
-      configName: config.name ?? jinName,
+      configName: config.name,
       state: run.state,
       skillSpec: config.skill_spec ?? null,
       environmentId: config.environment_id ?? null,

@@ -26,9 +26,11 @@ import {
   validScopesForConnector,
   requiresConsentRow,
 } from '@/src/lib/kernel/scope-projections';
-import { WARP_CONNECTOR_DID, WARP_CHANNEL, warpKeySealed } from './connector';
+import { WARP_CONNECTOR_DID, WARP_CHANNEL } from './connector';
 
-export { warpKeySealed };
+// Re-exported so a connector route needs only this module, mirroring the Gemini
+// wrapper. `export … from` keeps it a pure re-export rather than a local binding.
+export { warpKeySealed } from './connector';
 
 // ── Scope registry (derived — #1253) ────────────────────────────────────────
 
