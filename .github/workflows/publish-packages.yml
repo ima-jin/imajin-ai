@@ -1,4 +1,4 @@
-name: Publish Packages to npm
+name: Publish Packages
 
 on:
   workflow_dispatch:
@@ -28,6 +28,20 @@ on:
           - minor
           - major
         default: patch
+      registries:
+        # npmjs.org is canonical; GitHub Packages is a visibility-only mirror
+        # that populates the repo's Packages sidebar. The single-registry
+        # options exist because a version already live on one registry makes
+        # that registry's publish fail with a 409 — backfilling existing
+        # versions to GitHub Packages requires skipping npmjs entirely.
+        description: "Registries to publish to"
+        required: true
+        type: choice
+        options:
+          - both
+          - npmjs
+          - github-packages
+        default: both
       dry_run:
         description: "Dry run (skip actual publish)"
         required: false
@@ -47,6 +61,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Required to publish to npm.pkg.github.com with the ephemeral
+      # GITHUB_TOKEN. Publishing from a workflow in this repo is also what
+      # auto-connects each package to the repo (and so renders the sidebar).
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -118,38 +136,33 @@ jobs:
             echo "::endgroup::"
           done
 
-      - name: Prepare and publish
+      # npmjs.org first: it is the canonical registry and the only install path
+      # for consumers, so a GitHub Packages failure must never be able to block
+      # it. Each registry gets its own step so its token is scoped to just that
+      # step — NPM_TOKEN is never present while publishing to GitHub Packages,
+      # and vice versa.
+      - name: Publish to npmjs.org
+        if: inputs.registries != 'github-packages'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           for pkg in ${{ steps.packages.outputs.list }}; do
-            echo "::group::Publishing @ima-jin/$pkg"
+            echo "::group::Publishing @ima-jin/$pkg to npmjs.org"
+            bash scripts/publish-package.sh "$pkg" "https://registry.npmjs.org" "${{ inputs.dry_run }}"
+            echo "::endgroup::"
+          done
 
-            PUBLISH_DIR=$(mktemp -d)
-
-            # Prepare the package (rewrite names, resolve deps)
-            node scripts/prepare-npm-publish.mjs "packages/$pkg" "$PUBLISH_DIR"
-
-            # Show what we're about to publish
-            echo "--- package.json ---"
-            cat "$PUBLISH_DIR/package.json"
-            echo ""
-            echo "--- files ---"
-            find "$PUBLISH_DIR" -type f | head -50
-
-            if [ "${{ inputs.dry_run }}" = "true" ]; then
-              echo "DRY RUN — skipping publish"
-              cd "$PUBLISH_DIR"
-              npm publish --dry-run --access public 2>&1 || true
-              cd -
-            else
-              cd "$PUBLISH_DIR"
-              npm publish --access public
-              cd -
-              echo "Published @ima-jin/$pkg"
-            fi
-
-            rm -rf "$PUBLISH_DIR"
+      # Visibility-only mirror. This is what populates the repo's Packages
+      # sidebar; no consumer installs from here. Auth is the ephemeral
+      # GITHUB_TOKEN — deliberately not a PAT.
+      - name: Publish to GitHub Packages
+        if: inputs.registries != 'npmjs'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for pkg in ${{ steps.packages.outputs.list }}; do
+            echo "::group::Publishing @ima-jin/$pkg to GitHub Packages"
+            bash scripts/publish-package.sh "$pkg" "https://npm.pkg.github.com" "${{ inputs.dry_run }}"
             echo "::endgroup::"
           done
 
