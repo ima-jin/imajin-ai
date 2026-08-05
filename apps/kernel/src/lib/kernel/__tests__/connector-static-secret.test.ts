@@ -243,18 +243,14 @@ describe('secretPending', () => {
     expect(statusMock).toHaveBeenCalledWith(c.secretField(PRINCIPAL), CONNECTOR_DID);
   });
 
-  it('is false once the owner agent has granted', async () => {
-    statusMock.mockResolvedValue('ready');
-    expect(await makeConnector().secretPending(PRINCIPAL)).toBe(false);
-  });
-
-  it('is false when nothing is sealed at all', async () => {
-    statusMock.mockResolvedValue('absent');
-    expect(await makeConnector().secretPending(PRINCIPAL)).toBe(false);
-  });
-
-  it('is false for an unverifiable entry rather than inviting a wait', async () => {
-    statusMock.mockResolvedValue('unverifiable');
+  /**
+   * `pending-grant` is the ONLY state that means "wait for the owner". Everything
+   * else must read false, including `unverifiable` — a corrupt entry needs
+   * re-sealing, and telling the operator to wait for an approval that will never
+   * come is worse than telling them nothing is connected.
+   */
+  it.each(['ready', 'absent', 'unverifiable'])('is false for a %s field', async (status) => {
+    statusMock.mockResolvedValue(status);
     expect(await makeConnector().secretPending(PRINCIPAL)).toBe(false);
   });
 });
