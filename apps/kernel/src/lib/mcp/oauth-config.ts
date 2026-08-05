@@ -177,6 +177,41 @@ export function filterGrantedScopes(requested: string | null | undefined): strin
   return requested.split(/\s+/).filter((s) => s.length > 0 && MCP_SCOPE_SET.has(s));
 }
 
+/**
+ * Resolve the scopes to grant for an authorization request.
+ *
+ * RFC 6749 §3.3 makes `scope` OPTIONAL on the authorization request: when the
+ * client omits it the AS "MUST ... process the request using a pre-defined
+ * default value" — it must NOT fail. For a dynamically registered client the
+ * natural default is the scope set that client registered at DCR time.
+ *
+ * Previously both /oauth/authorize gates ran the raw param through
+ * filterGrantedScopes() unconditionally, so an ABSENT `scope` produced an empty
+ * list and dead-ended the ceremony with `error=invalid_scope`. Any MCP client
+ * that omits `scope` and relies on the AS default could never connect.
+ *
+ * Widening remains impossible:
+ *   - an EXPLICIT scope is intersected with the client's registered set, so a
+ *     client can never ask for more than it registered;
+ *   - the fallback re-runs the registered set through filterGrantedScopes(), so
+ *     the MCP ceiling still applies even if a stale registry row holds a scope
+ *     we no longer support.
+ *
+ * Returns [] only when the client genuinely has no usable scopes — callers keep
+ * emitting `invalid_scope` for that case, which is the correct response.
+ */
+export function resolveGrantedScopes(
+  scopeParam: string | null | undefined,
+  registeredScopes: readonly string[] | null | undefined,
+): string[] {
+  const registered = registeredScopes ?? [];
+  if (!scopeParam || scopeParam.trim().length === 0) {
+    return filterGrantedScopes(registered.join(' '));
+  }
+  const allowed = new Set(registered);
+  return filterGrantedScopes(scopeParam).filter((s) => allowed.has(s));
+}
+
 /** PKCE S256: base64url(SHA-256(verifier)). */
 export function pkceChallengeFromVerifier(verifier: string): string {
   return createHash('sha256').update(verifier).digest('base64url');

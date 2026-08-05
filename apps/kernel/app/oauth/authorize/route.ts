@@ -10,7 +10,7 @@ import {
   getMcpIssuer,
   getMcpResource,
   AUTHORIZATION_CODE_TTL_MS,
-  filterGrantedScopes,
+  resolveGrantedScopes,
   generateOpaqueToken,
   hashToken,
   redirectUriMatches,
@@ -117,9 +117,11 @@ export async function GET(request: NextRequest) {
     return errorRedirect(redirectUri, state, 'invalid_target', 'unknown resource');
   }
 
-  // 3. Scope = requested ∩ MCP-supported ∩ client-registered.
-  const registered = new Set(client.requestedScopes ?? []);
-  const granted = filterGrantedScopes(scopeParam).filter((s) => registered.has(s));
+  // 3. Scope = requested ∩ MCP-supported ∩ client-registered — or, when the
+  //    client omits `scope` entirely, its registered set (RFC 6749 §3.3 default).
+  //    Failing an absent `scope` locked out every client that relies on the AS
+  //    default instead of sending the param.
+  const granted = resolveGrantedScopes(scopeParam, client.requestedScopes);
   if (granted.length === 0) {
     return errorRedirect(redirectUri, state, 'invalid_scope');
   }
@@ -246,9 +248,11 @@ async function validateConsentRequest(
     return { error: NextResponse.json({ error: 'invalid_target', error_description: 'unknown resource' }, { status: 400 }) };
   }
 
-  // Scope = requested ∩ MCP-supported ∩ client-registered.
-  const registered = new Set(client.requestedScopes ?? []);
-  const granted = filterGrantedScopes(scopeParam).filter((s) => registered.has(s));
+  // Scope = requested ∩ MCP-supported ∩ client-registered — or the client's
+  // registered set when `scope` is absent (RFC 6749 §3.3 default). The GET gate
+  // normally forwards a resolved scope to the consent UI, so this mirrors it for
+  // defence in depth rather than as the primary path.
+  const granted = resolveGrantedScopes(scopeParam, client.requestedScopes);
   if (granted.length === 0) {
     return { error: NextResponse.json({ error: 'invalid_scope' }, { status: 400 }) };
   }
