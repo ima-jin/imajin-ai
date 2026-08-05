@@ -286,6 +286,20 @@ export interface BusEventMap {
   'profile.update': {
     profileDid: string;
   };
+  /**
+   * A brokered field value for `subjectDid` changed (#1517).
+   *
+   * Consumed by the `broker-predicate-invalidation` reactor to revoke cached
+   * predicate claims derived from those fields, so a claim cannot outlive the
+   * value it was computed from.
+   *
+   * `subjectDid` is NOT required to be a profile DID. The reactor keys purely on
+   * `(subject, field)` and nothing in the invalidation path is profile-specific,
+   * so any surface that mutates a brokered field publishes this same event with
+   * its own subject. The name is kept for the existing `bus_chain_configs` row
+   * rather than renamed for accuracy; the contract is "a brokered field for this
+   * subject changed".
+   */
   'profile.field.changed': {
     subjectDid: string;
     fields: string[];
@@ -992,6 +1006,18 @@ export interface BrokerPredicateClaim {
   cached?: boolean;
   issuedAt: string;
   expiresAt: string;
+  /**
+   * Cache keys of the primitive claims this claim was composed from (#1514).
+   *
+   * `overlaps` is a composition over the warm `contains` cache, so it records
+   * which primitives produced it — "booleans consuming booleans" provenance.
+   *
+   * Deliberately cache keys ONLY, never the per-primitive booleans: knowing
+   * that *something* in the declared set matched is the disclosure the subject
+   * consented to, whereas knowing *which* term matched would reveal a specific
+   * value from the sovereign set. Match-without-disclosure holds at this seam.
+   */
+  composedFrom?: string[];
 }
 
 /** Broker request — asks for consented field release */
@@ -1067,7 +1093,16 @@ export interface BrokerPipelineState {
   fieldGrants?: Record<string, BrokerResolvedFieldGrant>;
   // resolved by scope reactor
   filteredData?: Record<string, unknown>;
+  /** Requester-facing claims, one per posed predicate. */
   predicateClaims?: BrokerPredicateClaim[];
+  /**
+   * Freshly evaluated primitive claims the release reactor should persist as
+   * cache rows (#1515). Distinct from `predicateClaims`: a composed `overlaps`
+   * claim is returned to the requester but NOT cached, while the per-term
+   * `contains` primitives it decomposed into ARE cached and shared across
+   * requesters.
+   */
+  predicateCacheWrites?: BrokerPredicateClaim[];
   // resolved by release reactor
   envelope?: BrokerRelease['envelope'];
 }

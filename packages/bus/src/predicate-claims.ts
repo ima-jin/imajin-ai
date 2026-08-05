@@ -17,6 +17,18 @@ interface PredicateClaimOptions {
   now?: Date;
 }
 
+/**
+ * Outcome of resolving one field's posed predicates.
+ *
+ * `claims` is what the requester receives. `cacheWrites` is what should be
+ * persisted as warm cache rows — they differ for `overlaps`, which returns a
+ * composed claim while caching only the `contains` primitives beneath it.
+ */
+export interface BrokerPredicateResolution {
+  claims: BrokerPredicateClaim[];
+  cacheWrites: BrokerPredicateClaim[];
+}
+
 interface CachedAttestationRow {
   id?: string;
   payload?: unknown;
@@ -229,16 +241,141 @@ function assertPredicateAllowed(field: string, predicate: BrokerPredicateRequest
   }
 }
 
+/**
+ * Resolve the `contains(field, term)` under-primitive (#1514).
+ *
+ * This is the ONLY set predicate that is cached. Its cache key depends on a
+ * single canonical term, so the warm set per subject is small, bounded, and
+ * reusable across every requester who declares that term — which is what makes
+ * a fixed vocabulary (#1444) pay for itself.
+ */
+async function resolveContainsPrimitive(options: {
+  subject: string;
+  field: string;
+  value: unknown;
+  term: string;
+  now: Date;
+  expiresAt: Date;
+}): Promise<{ claim: BrokerPredicateClaim; fresh: boolean }> {
+  const cacheKey = brokerPredicateCacheKey({
+    subject: options.subject,
+    field: options.field,
+    predicate: 'contains',
+    arg: options.term,
+  });
+
+  const cached = await readCachedPredicateClaim({ subject: options.subject, cacheKey });
+  if (cached) return { claim: cached, fresh: false };
+
+  return {
+    fresh: true,
+    claim: {
+      field: options.field,
+      predicate: 'contains',
+      arg: options.term,
+      result: evaluatePredicate(options.field, options.value, 'contains', options.term),
+      valueHash: hashJson(options.value),
+      cacheKey,
+      issuedAt: options.now.toISOString(),
+      expiresAt: options.expiresAt.toISOString(),
+    },
+  };
+}
+
+/**
+ * Compose `overlaps(declaredSet, sovereignSet)` as a disjunction of cached
+ * `contains` primitives (#1514).
+ *
+ * Every declared term is resolved through the warm `contains` cache and the
+ * booleans are OR-ed. The composition itself is deliberately NOT cached: its
+ * key would depend on the whole declared set, so every distinct dish/menu would
+ * mint a new row and the cache would grow without ever being reused. Caching
+ * the primitives instead means two requesters declaring overlapping sets share
+ * every term they have in common.
+ *
+ * No short-circuit on the first `true`. Evaluating every term keeps the warm
+ * set complete for the next requester and avoids leaking, through timing or
+ * through the number of cache writes, which term produced the match.
+ */
+async function resolveOverlapsClaim(options: {
+  subject: string;
+  field: string;
+  value: unknown;
+  declaredArg: unknown;
+  now: Date;
+  expiresAt: Date;
+}): Promise<{ claim: BrokerPredicateClaim; cacheWrites: BrokerPredicateClaim[] }> {
+  // `contains` is the primitive `overlaps` is defined in terms of, so a field
+  // that permits `overlaps` must also permit `contains`. The vocabulary pairs
+  // them; this guards against a future entry that forgets to.
+  assertPredicateAllowed(options.field, 'contains');
+
+  const declaredTerms = [...new Set(normalizeSet(options.field, options.declaredArg))];
+  const cacheWrites: BrokerPredicateClaim[] = [];
+  const inputs: BrokerPredicateClaim[] = [];
+
+  for (const term of declaredTerms) {
+    const { claim, fresh } = await resolveContainsPrimitive({
+      subject: options.subject,
+      field: options.field,
+      value: options.value,
+      term,
+      now: options.now,
+      expiresAt: options.expiresAt,
+    });
+    inputs.push(claim);
+    if (fresh) cacheWrites.push(claim);
+  }
+
+  return {
+    cacheWrites,
+    claim: {
+      field: options.field,
+      predicate: 'overlaps',
+      arg: declaredTerms,
+      result: inputs.some((input) => input.result),
+      valueHash: hashJson(options.value),
+      cacheKey: brokerPredicateCacheKey({
+        subject: options.subject,
+        field: options.field,
+        predicate: 'overlaps',
+        arg: declaredTerms,
+      }),
+      composedFrom: inputs.map((input) => input.cacheKey),
+      issuedAt: options.now.toISOString(),
+      expiresAt: options.expiresAt.toISOString(),
+    },
+  };
+}
+
 export async function resolveBrokerPredicateClaimsForField(
   options: PredicateClaimOptions
-): Promise<BrokerPredicateClaim[]> {
+): Promise<BrokerPredicateResolution> {
   const now = options.now ?? new Date();
   const expiresAt = new Date(now.getTime() + DEFAULT_CLAIM_TTL_MS);
   const claims: BrokerPredicateClaim[] = [];
+  const cacheWrites: BrokerPredicateClaim[] = [];
 
   for (const predicateRequest of normalizePredicates(options.predicates)) {
     const { predicate } = predicateRequest;
     assertPredicateAllowed(options.field, predicate);
+
+    // `overlaps` composes over the warm `contains` cache rather than being
+    // evaluated and cached as its own opaque claim.
+    if (predicate === 'overlaps') {
+      const composed = await resolveOverlapsClaim({
+        subject: options.subject,
+        field: options.field,
+        value: options.value,
+        declaredArg: predicateRequest.arg,
+        now,
+        expiresAt,
+      });
+      claims.push(composed.claim);
+      cacheWrites.push(...composed.cacheWrites);
+      continue;
+    }
+
     const arg = normalizePredicateArg(options.field, predicate, predicateRequest.arg);
     const cacheKey = brokerPredicateCacheKey({
       subject: options.subject,
@@ -252,7 +389,7 @@ export async function resolveBrokerPredicateClaimsForField(
       continue;
     }
 
-    claims.push({
+    const claim: BrokerPredicateClaim = {
       field: options.field,
       predicate,
       arg,
@@ -261,8 +398,10 @@ export async function resolveBrokerPredicateClaimsForField(
       cacheKey,
       issuedAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
-    });
+    };
+    claims.push(claim);
+    cacheWrites.push(claim);
   }
 
-  return claims;
+  return { claims, cacheWrites };
 }

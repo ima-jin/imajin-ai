@@ -343,13 +343,19 @@ async function buildProfileUpdates(
   return updates;
 }
 
+/**
+ * Brokered fields this route changes directly, for `profile.field.changed` (#1517).
+ *
+ * `email` / `phone` are deliberately ABSENT: they are vault-backed and written by
+ * `processEmailUpdate` / `processPhoneUpdate`, which emit the event themselves so
+ * every caller of those helpers is covered. Listing them here too would emit twice
+ * per save.
+ */
 function brokerChangedFieldsFromBody(body: Record<string, any>): string[] {
   const fields = new Set<string>();
   if (body.displayName !== undefined) fields.add('displayName');
   if (body.avatar !== undefined || body.avatarAssetId !== undefined) fields.add('avatar');
   if (body.bio !== undefined) fields.add('bio');
-  if (body.email !== undefined) fields.add('email');
-  if (body.phone !== undefined) fields.add('phone');
   return [...fields];
 }
 

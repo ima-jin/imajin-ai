@@ -156,7 +156,10 @@ export const releaseReactor: BrokerReactor = async (state) => {
     'Release envelope constructed'
   );
   if (Object.values(fieldModes).includes('attestation')) {
-    await emitPredicateClaimAttestations(predicateClaims, request);
+    // Persist only the freshly evaluated primitives (#1514/#1515): a composed
+    // `overlaps` claim is returned to the requester but never cached, while the
+    // `contains` primitives it decomposed into become the shared warm set.
+    await emitPredicateClaimAttestations(state.predicateCacheWrites ?? [], request);
     await emitReleaseAttestation(envelope, filteredData, fieldModes, predicateClaims, request);
   }
 
