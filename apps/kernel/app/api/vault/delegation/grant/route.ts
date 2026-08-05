@@ -46,6 +46,16 @@ interface GrantBody {
 interface GrantTrustContext {
   ownerEdPub: string;
   recipientXPub: string;
+  /**
+   * The only `grantedTo` this flow will accept, taken from node-written state.
+   *
+   * Before #1603 this was implicitly "this node's DID", asserted directly against
+   * the body. Static-secret custody (#1439) legitimately grants to a connector app
+   * DID instead, so the node's own DID is no longer the right constant — but the
+   * body still cannot be trusted to name its own grantee, or an owner agent could
+   * be induced to install a grant for a DID the node never asked about.
+   */
+  expectedGrantedTo: string;
 }
 
 /** Either the resolved trust anchors, or the rejection to return verbatim. */
@@ -89,6 +99,9 @@ async function resolveHandshake(requestId: string, ownerXPub: string): Promise<T
       // Written by this node at seal time, so it is the trustworthy record of
       // which key the owner wrapped to.
       recipientXPub: grantRequest.nodeXPub,
+      // The grantee this node asked for. NULL on rows predating #1603, which are
+      // self-grant requests by construction — nothing else could have written one.
+      expectedGrantedTo: grantRequest.grantedTo ?? getNodeSigningIdentity().senderDid,
     },
   };
 }
@@ -98,7 +111,12 @@ async function resolveHandshake(requestId: string, ownerXPub: string): Promise<T
  * place. Both are node-written state, and together they pin the field, the key
  * generation, and the owner identity.
  */
-async function resolveRenewal(field: string, keyId: string, ownerXPub: string): Promise<TrustResolution> {
+async function resolveRenewal(
+  field: string,
+  keyId: string,
+  ownerXPub: string,
+  grantedTo: string,
+): Promise<TrustResolution> {
   const entry = await vaultService.peek(field);
   if (!entry || entry.deleted === true) {
     return reject(`No vault entry for field '${field}' — a renewal needs an entry to grant against`, 404);
@@ -129,6 +147,32 @@ async function resolveRenewal(field: string, keyId: string, ownerXPub: string): 
     return reject('ownerXPub does not match the owner envelope for this field', 400);
   }
 
+  // A renewal has no request row, so the anchor for `grantedTo` is the grant
+  // history this node already wrote for the field. Renewing to a grantee that
+  // never held a grant here would be minting new authority under the name of a
+  // renewal, so it is rejected.
+  const nodeDid = getNodeSigningIdentity().senderDid;
+  if (grantedTo !== nodeDid) {
+    const known = await db
+      .select({ id: vaultDelegationGrants.id })
+      .from(vaultDelegationGrants)
+      .where(
+        and(
+          eq(vaultDelegationGrants.field, field),
+          eq(vaultDelegationGrants.grantedTo, grantedTo),
+        ),
+      )
+      .limit(1);
+
+    if (known.length === 0) {
+      return reject(
+        `grantedTo '${grantedTo}' has no grant history for field '${field}' — ` +
+          'a renewal cannot introduce a new grantee',
+        400,
+      );
+    }
+  }
+
   return {
     ok: true,
     context: {
@@ -136,6 +180,7 @@ async function resolveRenewal(field: string, keyId: string, ownerXPub: string): 
       // The owner wrapped the key to this node, so the ECDH counterparty is our
       // own X25519 pubkey — derived, never taken from the body.
       recipientXPub: getNodeXPublicKey(),
+      expectedGrantedTo: grantedTo,
     },
   };
 }
@@ -192,19 +237,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Resolve this node's identity up-front so it is available for both the
-    // grantedTo assertion and the bus publish at the end.
+    // Resolve this node's identity up-front so it is available for the bus
+    // publish at the end.
     const identity = getNodeSigningIdentity();
-
-    // Defense-in-depth: the canonical grant payload is signed by the owner and
-    // includes grantedTo, but an owner agent could accidentally sign a grant
-    // meant for a different node. Reject early if grantedTo doesn't match ours.
-    if (grantedTo !== identity.senderDid) {
-      return NextResponse.json(
-        { error: `grantedTo '${grantedTo}' does not match this node's DID` },
-        { status: 400 },
-      );
-    }
 
     const expiresAtDate = expiresAt ? new Date(expiresAt) : null;
     if (expiresAt && Number.isNaN(expiresAtDate?.getTime())) {
@@ -214,15 +249,32 @@ export async function POST(request: NextRequest) {
     // 1. Resolve the trust anchors from node-written state, per flow.
     const resolution = requestId
       ? await resolveHandshake(requestId, ownerXPub)
-      : await resolveRenewal(field, keyId, ownerXPub);
+      : await resolveRenewal(field, keyId, ownerXPub, grantedTo);
 
     if (!resolution.ok) {
       return resolution.response;
     }
 
-    const { ownerEdPub, recipientXPub } = resolution.context;
+    const { ownerEdPub, recipientXPub, expectedGrantedTo } = resolution.context;
 
-    // 2. Verify the owner signature over the canonical payload. This is the trust
+    // 2. Defense-in-depth: the canonical payload is signed by the owner and
+    //    includes grantedTo, but an owner agent could sign a grant for the wrong
+    //    recipient. Before #1603 this asserted `grantedTo === this node`, which is
+    //    no longer correct — a static-secret grant names a connector app DID. The
+    //    check is now against the grantee this NODE recorded, so it still refuses
+    //    anything the node did not ask for while allowing the delegated shape.
+    if (grantedTo !== expectedGrantedTo) {
+      log.warn(
+        { field, requestId: requestId ?? null, grantedTo, expectedGrantedTo },
+        'Vault delegation/grant: grantedTo does not match node-recorded grantee',
+      );
+      return NextResponse.json(
+        { error: `grantedTo '${grantedTo}' does not match the grantee this node recorded` },
+        { status: 400 },
+      );
+    }
+
+    // 3. Verify the owner signature over the canonical payload. This is the trust
     //    anchor for both flows.
     const canonical = canonicalizeGrantPayload({
       subject,
@@ -244,7 +296,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Supersede any existing active grant for this (subject, grantedTo, field)
+    // 4. Supersede any existing active grant for this (subject, grantedTo, field)
     //    tuple, erasing its key material so the replaced grant stops being a usable
     //    copy of the field key.
     const superseded = await db
@@ -266,7 +318,7 @@ export async function POST(request: NextRequest) {
 
     await eraseInactiveGrantKeyMaterial(superseded);
 
-    // 4. Insert the new active delegation grant.
+    // 5. Insert the new active delegation grant.
     const grantId = generateId('vdg');
     await db.insert(vaultDelegationGrants).values({
       id: grantId,
@@ -287,7 +339,7 @@ export async function POST(request: NextRequest) {
       ownerEdPub,
     });
 
-    // 5. Mark the grant request as fulfilled. A renewal has no request row to
+    // 6. Mark the grant request as fulfilled. A renewal has no request row to
     //    close out.
     if (requestId) {
       await db
@@ -296,7 +348,7 @@ export async function POST(request: NextRequest) {
         .where(eq(vaultGrantRequests.requestId, requestId));
     }
 
-    // 6. Non-fatal bus notification — emit a dedicated grant.fulfilled event so
+    // 7. Non-fatal bus notification — emit a dedicated grant.fulfilled event so
     //    consumers can track grant lifecycle without misinterpreting the generic
     //    vault.secret.updated event (which uses keyId as a cid proxy).
     publish('vault.grant.fulfilled', {

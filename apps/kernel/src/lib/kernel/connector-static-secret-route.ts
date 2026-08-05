@@ -13,7 +13,7 @@
  * ```
  *
  * Route semantics:
- *   GET    — `{ secretSealed: boolean, ...extraFields }` — credential status.
+ *   GET    — `{ secretSealed, credentialPending, ...extraFields }` — credential status.
  *   POST   — body `{ secret, expiresAt? }` → seals + grants; `{ sealed: true }`.
  *   DELETE — revokes the delegation grant; `{ revoked: boolean }`.
  *
@@ -84,7 +84,10 @@ export function createConnectorStaticSecretRoutes(
 
   /**
    * Returns the credential status for the session owner:
-   *   - `secretSealed` — whether a secret is already sealed.
+   *   - `secretSealed` — whether a secret is sealed AND readable.
+   *   - `credentialPending` — sealed but awaiting the owner agent's grant
+   *     (Tier 1, #1603). Both are false when nothing is sealed; `secretSealed` is
+   *     false while this is true, because the value cannot be read yet.
    *   - `...extraFields` — connector-specific metadata (optional).
    */
   async function GET(request: NextRequest): Promise<NextResponse> {
@@ -96,12 +99,16 @@ export function createConnectorStaticSecretRoutes(
     }
     const principalDid = resolveActingDid(auth.identity);
 
-    const [secretSealed, extraFields] = await Promise.all([
+    const [secretSealed, credentialPending, extraFields] = await Promise.all([
       opts.connector.secretSealed(principalDid),
+      opts.connector.secretPending(principalDid),
       opts.getExtraFields ? opts.getExtraFields(principalDid) : Promise.resolve({}),
     ]);
 
-    return NextResponse.json({ secretSealed, ...extraFields }, { headers: cors });
+    return NextResponse.json(
+      { secretSealed, credentialPending, ...extraFields },
+      { headers: cors },
+    );
   }
 
   // ── POST ─────────────────────────────────────────────────────────────────

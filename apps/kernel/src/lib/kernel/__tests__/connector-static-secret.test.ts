@@ -7,11 +7,12 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { sealGrantMock, loadGranteeMock, revokeGrantMock, existsMock, whereMock } = vi.hoisted(() => ({
+const { sealGrantMock, loadGranteeMock, revokeGrantMock, existsMock, statusMock, whereMock } = vi.hoisted(() => ({
   sealGrantMock: vi.fn(),
   loadGranteeMock: vi.fn(),
   revokeGrantMock: vi.fn(),
   existsMock: vi.fn(),
+  statusMock: vi.fn(),
   whereMock: vi.fn(),
 }));
 
@@ -20,6 +21,7 @@ vi.mock('@/src/lib/vault', () => ({
   loadAndUnsealByGrantee: loadGranteeMock,
   revokeStaticSecretGrant: revokeGrantMock,
   vaultFieldExists: existsMock,
+  vaultFieldStatusForGrantee: statusMock,
 }));
 
 vi.mock('@/src/db', () => ({
@@ -56,10 +58,11 @@ function noGrant() {
 }
 
 beforeEach(() => {
-  sealGrantMock.mockReset().mockResolvedValue({ entry: {}, grantId: 'vdg_mock' });
+  sealGrantMock.mockReset().mockResolvedValue({ entry: {}, grantId: 'vdg_mock', requestId: null });
   loadGranteeMock.mockReset().mockResolvedValue(undefined);
   revokeGrantMock.mockReset().mockResolvedValue(false);
   existsMock.mockReset().mockResolvedValue(false);
+  statusMock.mockReset().mockResolvedValue('absent');
   whereMock.mockReset().mockResolvedValue([]);
 });
 
@@ -117,6 +120,18 @@ describe('sealAndGrant', () => {
     const c = makeConnector();
     const result = await c.sealAndGrant(PRINCIPAL, SECRET);
     expect(result.grantId).toBe('vdg_mock');
+    expect(result.requestId).toBeNull();
+  });
+
+  it('reports a pending Tier-1 seal as a null grantId plus a requestId (#1603)', async () => {
+    // Tier 1 cannot mint the grant on the node, so this is a successful seal with
+    // authorization still outstanding — not a failure the caller should retry.
+    sealGrantMock.mockResolvedValue({ entry: {}, grantId: null, requestId: 'req-42' });
+
+    const result = await makeConnector().sealAndGrant(PRINCIPAL, SECRET);
+
+    expect(result.grantId).toBeNull();
+    expect(result.requestId).toBe('req-42');
   });
 });
 
@@ -212,6 +227,31 @@ describe('secretSealed', () => {
   it('returns false when no secret is sealed', async () => {
     existsMock.mockResolvedValue(false);
     expect(await makeConnector().secretSealed(PRINCIPAL)).toBe(false);
+  });
+});
+
+// ── secretPending (#1603) ────────────────────────────────────────────────────
+
+describe('secretPending', () => {
+  it('asks about the CONNECTOR DID, not the node', async () => {
+    statusMock.mockResolvedValue('pending-grant');
+    const c = makeConnector();
+
+    expect(await c.secretPending(PRINCIPAL)).toBe(true);
+    // Checking the node instead would report every static-secret field as pending,
+    // which is the exact misreport #1603 fixes.
+    expect(statusMock).toHaveBeenCalledWith(c.secretField(PRINCIPAL), CONNECTOR_DID);
+  });
+
+  /**
+   * `pending-grant` is the ONLY state that means "wait for the owner". Everything
+   * else must read false, including `unverifiable` — a corrupt entry needs
+   * re-sealing, and telling the operator to wait for an approval that will never
+   * come is worse than telling them nothing is connected.
+   */
+  it.each(['ready', 'absent', 'unverifiable'])('is false for a %s field', async (status) => {
+    statusMock.mockResolvedValue(status);
+    expect(await makeConnector().secretPending(PRINCIPAL)).toBe(false);
   });
 });
 

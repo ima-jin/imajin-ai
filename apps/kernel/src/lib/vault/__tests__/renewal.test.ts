@@ -116,6 +116,17 @@ vi.mock('@/src/db', () => {
           });
         },
       }),
+      // listRenewableGrants enumerates the grantees a field has ever been granted
+      // to (#1603), so it is no longer a node-only scan.
+      selectDistinct: () => ({
+        from: () => ({
+          where: () => Promise.resolve(
+            [...new Set([...grantStore.values()].map((row) => String(row.grantedTo)))].map(
+              (grantedTo) => ({ grantedTo }),
+            ),
+          ),
+        }),
+      }),
     },
     vaultDelegationGrants,
     vaultOwnerEnvelopes,

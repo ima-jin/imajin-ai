@@ -600,6 +600,21 @@ export interface BusEventMap {
     wrappedFieldKeyNonce: string;  // base64: 12-byte AES-GCM nonce for the above
     ownerXPub: string;             // expected owner's X25519 pubkey (must match VAULT_OWNER_X_PUB)
     expiresAt: string | null;
+    /**
+     * The custody pair the owner agent is being asked to sign (#1603).
+     *
+     * For the node's own secrets both are `nodeDid` (a self-grant). For a
+     * static-secret connector credential (#1439) `grantSubject` is the principal
+     * who owns the key and `grantedTo` is the connector app DID.
+     *
+     * Named `grantSubject` rather than `subject` because the envelope already has
+     * a `subject` field and they are not always the same DID.
+     *
+     * `grantedTo` authorizes; it is NOT the ECDH recipient. The field key is
+     * always wrapped to `nodeXPub`.
+     */
+    grantSubject: string;
+    grantedTo: string;
     context_id: string;
     context_type: 'vault';
   };
