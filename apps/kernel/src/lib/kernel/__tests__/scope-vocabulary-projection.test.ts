@@ -29,7 +29,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'quickbooks', 'warp'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'quickbooks', 'warp'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -131,6 +131,10 @@ describe('pinned scope sets (change these deliberately)', () => {
 
   it('pins the Gemini connector card toggles', () => {
     expect(connectorUiScopes('gemini').map((s) => s.name)).toEqual(['gemini:infer']);
+  });
+
+  it('pins the Anthropic connector card toggles', () => {
+    expect(connectorUiScopes('anthropic').map((s) => s.name)).toEqual(['anthropic:infer']);
   });
 
   it('pins the QuickBooks connector card toggles', () => {
@@ -256,6 +260,7 @@ const MCP_DID = 'did:imajin:mcp-connector';
 const GITHUB_DID = 'did:imajin:github-connector';
 const DISCORD_DID = 'did:imajin:discord-connector';
 const GEMINI_DID = 'did:imajin:gemini-connector';
+const ANTHROPIC_DID = 'did:imajin:anthropic-connector';
 const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
 const WARP_DID = 'did:imajin:warp-connector';
 
@@ -290,6 +295,14 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('gemini', () => {
     expect(connectorScopeDescriptors('gemini')).toEqual({
       'gemini:infer': { verb: 'infer', surface: 'gemini-api', label: 'Use your Gemini API key for inference', release: { discloses_others: false, sensitive: true, viewer: GEMINI_DID } },
+    });
+  });
+
+  // #1621 — new descriptor, not a migrated literal. Mirrors Gemini's shape
+  // because it is the same kind of credential under the same 2×2 quadrant.
+  it('anthropic', () => {
+    expect(connectorScopeDescriptors('anthropic')).toEqual({
+      'anthropic:infer': { verb: 'infer', surface: 'anthropic-api', label: 'Use your Anthropic API key for inference', release: { discloses_others: false, sensitive: true, viewer: ANTHROPIC_DID } },
     });
   });
 

@@ -320,6 +320,28 @@ describe('POST /api/inference/capture — pipeline outcomes', () => {
       expect.objectContaining({ error: 'Inference pipeline failed' }),
     );
   });
+
+  /**
+   * #1621 removed the env-key fallback, so "nobody sealed a brain" is now a real
+   * runtime outcome rather than an impossible one. It surfaces as a pipeline
+   * failure, and the response must not carry credential material — the resolver
+   * names DIDs and connectors, never keys.
+   */
+  it('surfaces a pipeline failure when no DID has sealed a brain', async () => {
+    mockInfer.mockRejectedValueOnce(
+      new Error(
+        'Inference policy failed: inference_no_brain: no model credential sealed for ' +
+        `${OWNER_DID} — connect Google Gemini (grant 'gemini:infer', seal a key at /gemini/api/token)`,
+      ),
+    );
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(500);
+    const body = JSON.stringify(await res.json());
+    expect(body).toContain('Inference pipeline failed');
+    expect(body).not.toMatch(/sk-|AIzaSy/);
+  });
 });
 
 describe('POST /api/inference/capture — request validation', () => {

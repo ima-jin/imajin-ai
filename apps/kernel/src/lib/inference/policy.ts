@@ -1,29 +1,37 @@
 /**
- * Inference policy layer (#1213) — the pluggable brain.
+ * Inference policy layer (#1213) — where the brain gets plugged in.
  *
- * Signature: infer(ctx, vocab) → CandidateIntent[]
+ * Signature: infer(ctx, vocab, credentialContext) → CandidateIntent[]
  *
- * Uses @imajin/llm (Vercel AI SDK) with the vocabulary's model adapter to
- * produce a ranked list of candidate intents from the transcript + priors.
- * The LLM is prompted with the vocab's systemPrompt so it knows the intent
- * vocabulary and expected JSON output schema.
+ * The vocabulary supplies the intent schema (systemPrompt + consent tiers); the
+ * MODEL comes from a sealed connector card via `resolveBrain` (#1621). Two axes
+ * decide which card:
+ *   - WHOSE credential (#1624): the acting owner DID first, then the invoking
+ *     app/org DID, so an app can subsidise compute without moving attribution.
+ *   - WHICH provider (#1621): each DID's sealed connectors, in resolver order.
+ *
+ * The kernel holds no model credential of its own and there is no env fallback,
+ * so the credential context is required rather than optional — a call with no
+ * DID has no brain to run on, and making it optional is exactly how the capture
+ * route silently lost per-DID resolution.
  */
 
 import { eq } from 'drizzle-orm';
 import { db, inferenceSessions } from '@/src/db';
 import { getModel, generateText } from '@imajin/llm';
 import { createLogger } from '@imajin/logger';
-import { loadGeminiCredentials } from '@/src/lib/gemini/connector';
+import { resolveBrain, type BrainCredentialContext } from './brain';
 import type { CandidateIntent, InferenceContext, IntentVocabulary } from './types';
 
 const log = createLogger('kernel:inference:policy');
 
-export interface ModelCredentialContext {
-  /** Acting supplier/user DID. Consent and attribution stay attached here. */
-  ownerDid?: string;
-  /** Invoking app/org DID that may provide model credentials. */
-  appDid?: string;
-}
+/**
+ * Owner/app DID context for credential resolution (#1624).
+ *
+ * Declared by the brain resolver, which owns the walk order; re-exported here
+ * because callers reach it through `infer`.
+ */
+export type ModelCredentialContext = BrainCredentialContext;
 
 const SYSTEM_SUFFIX = `
 Respond with a JSON array of candidate intents, ranked by confidence (highest first).
@@ -40,30 +48,45 @@ Return ONLY the JSON array, no surrounding text.
  * Updates the session row with the resulting candidate intents and advances
  * status to ready for consent gate.
  *
- * @param credentialContext - Optional owner/app DID context for credential resolution.
- *   When provided and `vocab.modelChannel === 'gemini'`, credentials are
- *   resolved from the acting owner DID first, then the invoking app/org DID,
- *   falling back to GEMINI_API_KEY / GEMINI_BASE_URL env vars. Consent and
- *   attribution remain attached to the owner DID.
+ * @param credentialContext - Whose sealed card may supply the model: the acting
+ *   owner DID, optionally with an invoking app/org DID that may subsidise it
+ *   (#1624). A bare string is treated as the owner DID. Required: there is no
+ *   kernel-owned or env-var brain, so a call with no DID cannot resolve a
+ *   credential. Throws `NoBrainSealedError` when none of the DIDs has sealed one.
+ *   Consent and attribution stay attached to the owner DID regardless of which
+ *   DID paid.
  */
 export async function infer(
   ctx: InferenceContext,
   vocab: IntentVocabulary,
-  credentialContext?: string | ModelCredentialContext,
+  credentialContext: string | ModelCredentialContext,
 ): Promise<CandidateIntent[]> {
-  const modelConfig = await resolveModelConfig(vocab, normalizeCredentialContext(credentialContext));
-  const model = getModel(vocab.modelProvider, vocab.modelId, modelConfig);
-
-  const systemPrompt = `${vocab.systemPrompt}\n\n${SYSTEM_SUFFIX}`;
-  const userMessage = buildUserMessage(ctx);
-
-  log.info(
-    { sessionId: ctx.sessionId, vocab: vocab.name, model: vocab.modelId },
-    'running inference policy',
-  );
-
   let rawText: string;
   try {
+    // Brain resolution is inside the try so a missing connection marks the
+    // session failed like any other policy failure — otherwise the session
+    // would sit in `inferring` forever with no candidates and no explanation.
+    const brain = await resolveBrain(credentialContext);
+    const model = getModel(brain.provider, brain.modelId, {
+      apiKey: brain.apiKey,
+      ...(brain.baseURL === undefined ? {} : { baseURL: brain.baseURL }),
+    });
+
+    const systemPrompt = `${vocab.systemPrompt}\n\n${SYSTEM_SUFFIX}`;
+    const userMessage = buildUserMessage(ctx);
+
+    log.info(
+      {
+        sessionId: ctx.sessionId,
+        vocab: vocab.name,
+        connector: brain.connector,
+        // Which DID's card paid — the owner's own, or the app subsidising it.
+        credentialDid: brain.credentialDid,
+        model: brain.modelId,
+      },
+      'running inference policy',
+    );
+
     const result = await generateText({ model, system: systemPrompt, prompt: userMessage });
     rawText = result.text;
   } catch (err) {
@@ -95,67 +118,6 @@ export async function infer(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Resolve optional model config (apiKey, baseURL) for the vocab's provider.
- *
- * For `modelChannel === 'gemini'`: try the acting owner DID's sealed
- * connection first, then the invoking app/org DID's sealed connection, then
- * fall back to GEMINI_API_KEY / GEMINI_BASE_URL env vars. This replaces the old
- * "set OPENAI_API_KEY=$GEMINI_API_KEY in kernel env" workaround and supports
- * app-subsidized inference without changing attribution.
- * Returns `undefined` for all other channels (lets the SDK use its own env
- * var defaults).
- */
-async function resolveModelConfig(
-  vocab: IntentVocabulary,
-  credentialContext: ModelCredentialContext,
-): Promise<{ apiKey?: string; baseURL?: string } | undefined> {
-  if (vocab.modelChannel !== 'gemini') {
-    return undefined;
-  }
-  for (const did of credentialOwnerDids(credentialContext)) {
-    const creds = await loadGeminiCredentials(did);
-    if (creds) {
-      return {
-        apiKey: creds.apiKey,
-        ...(creds.baseUrl ? { baseURL: creds.baseUrl } : {}),
-      };
-    }
-  }
-
-  // Env-var fallback — keeps local dev working without a sealed connection.
-  const apiKey = process.env.GEMINI_API_KEY;
-  const baseURL = process.env.GEMINI_BASE_URL;
-  if (apiKey || baseURL) {
-    return {
-      ...(apiKey ? { apiKey } : {}),
-      ...(baseURL ? { baseURL } : {}),
-    };
-  }
-
-  return undefined;
-}
-
-function normalizeCredentialContext(
-  credentialContext?: string | ModelCredentialContext,
-): ModelCredentialContext {
-  if (typeof credentialContext === 'string') {
-    return { ownerDid: credentialContext };
-  }
-  return credentialContext ?? {};
-}
-
-function credentialOwnerDids(credentialContext: ModelCredentialContext): string[] {
-  const seen = new Set<string>();
-  const dids: string[] = [];
-  for (const did of [credentialContext.ownerDid, credentialContext.appDid]) {
-    if (!did || seen.has(did)) continue;
-    seen.add(did);
-    dids.push(did);
-  }
-  return dids;
-}
 
 function buildUserMessage(ctx: InferenceContext): string {
   const lines: string[] = [

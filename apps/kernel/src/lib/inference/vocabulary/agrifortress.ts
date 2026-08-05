@@ -14,7 +14,8 @@
  * ALL intents are 'deliberate' — the one-confirm tap IS the consent gate.
  * AgriFortress: voice = count + intent; photo = evidence, NOT measurement.
  *
- * Model: Gemini via OpenAI-compat (GEMINI_BASE_URL env var).
+ * Model: none declared. The farmer's own sealed connector card decides which
+ * brain runs this vocabulary (#1621).
  *
  * Hard boundary: resolve() MUST NOT import Imajin kernel internals. It calls
  * the catalyst-power supply domain API exclusively.
@@ -28,14 +29,6 @@ const SUPPLY_API_KEY = process.env.AGRIFORTRESS_SUPPLY_API_KEY ?? '';
 
 export const agrifortressVocabulary: IntentVocabulary = {
   name: 'agrifortress',
-  // Gemini via OpenAI-compatible endpoint.
-  // Credentials are resolved in priority order:
-  //   1. Per-DID sealed Gemini connector (gemini:infer grant + sealed API key).
-  //   2. GEMINI_API_KEY + GEMINI_BASE_URL env vars (local-dev fallback).
-  // No OPENAI_API_KEY assumption — set GEMINI_API_KEY / GEMINI_BASE_URL instead.
-  modelProvider: 'openai',
-  modelChannel: 'gemini',
-  modelId: process.env.GEMINI_MODEL_ID ?? 'gemini-2.0-flash',
 
   systemPrompt: `
 You are the AgriFortress supply-chain inference engine. A farmer speaks a voice note

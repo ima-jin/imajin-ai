@@ -11,8 +11,11 @@
  *   import { getModel, calculateCost } from '@imajin/llm';
  */
 
-// Provider factory
-export { getModel, resolveModel } from './providers';
+// Provider factory. `resolveModel` was removed in #1621: it resolved a model
+// with no credential and relied on ambient env API keys, which is precisely the
+// shared-brain coupling per-DID sealed keys replace. Resolve the caller's
+// credential (kernel: `resolveBrain`) and call `getModel` with it.
+export { getModel, MissingApiKeyError } from './providers';
 export type { ProviderName } from './providers';
 
 // Cost tracking

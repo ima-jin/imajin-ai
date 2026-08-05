@@ -11,7 +11,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, queryLogs } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { generateText } from 'ai';
-import { resolveModel, calculateCost, createPresenceTools } from '@imajin/llm';
+import { calculateCost, createPresenceTools } from '@imajin/llm';
+import { resolvePresenceBrain } from '@/src/lib/inference/presence-brain';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 import { buildPublicUrl } from '@imajin/config';
@@ -90,13 +91,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Non-fatal: proceed with defaults
   }
 
-  // 5. Resolve model from presence config
-  const presenceConfig = (presenceData.config ?? {}) as {
-    model?: string;
-    provider?: string;
-    temperature?: number;
-  };
-  const { model, modelId } = resolveModel(presenceConfig);
+  // 5. Resolve the model from the PRESENCE OWNER's sealed connector card (#1621).
+  //    The presence speaks on their behalf, so it runs on their brain and their
+  //    credential. This supersedes any `model`/`provider` in the presence config:
+  //    the per-DID sealed modelId is the owner's model choice, and the kernel
+  //    holds no env key to fall back on.
+  const brain = await resolvePresenceBrain(resolvedTargetDid);
+  if (!brain.ok) {
+    log.warn({ targetDid: resolvedTargetDid, cause: brain.cause }, 'presence brain unavailable');
+    return NextResponse.json({ error: brain.error }, { status: brain.status });
+  }
+  const { model, modelId } = brain;
 
   // 6. Build system prompt from soul.md + context.md
   const soulMd = presenceData.soul ?? '';

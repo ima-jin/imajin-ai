@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'quickbooks' | 'warp';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'quickbooks' | 'warp';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -45,6 +45,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   github: 'did:imajin:github-connector',
   discord: 'did:imajin:discord-connector',
   gemini: 'did:imajin:gemini-connector',
+  anthropic: 'did:imajin:anthropic-connector',
   quickbooks: 'did:imajin:quickbooks-connector',
   warp: 'did:imajin:warp-connector',
 };
@@ -55,6 +56,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   github: 'github',
   discord: 'discord',
   gemini: 'gemini',
+  anthropic: 'anthropic',
   quickbooks: 'quickbooks',
   warp: 'warp',
 };
@@ -237,6 +239,12 @@ export const SCOPE_VOCABULARY = [
   // Consumes the owner's own sealed API key → SELF_SENSITIVE → owner-only.
   { scope: 'gemini:infer', connector: 'gemini', verb: 'infer', surface: 'gemini-api', classification: SELF_SENSITIVE,
     label: 'Use your Gemini API key for inference' },
+
+  // ── Anthropic connector (#1621) — the second brain a DID can seal.
+  // Same shape as gemini:infer: the owner's own key is consumed on every call
+  // and never released to a third party → SELF_SENSITIVE → owner-only.
+  { scope: 'anthropic:infer', connector: 'anthropic', verb: 'infer', surface: 'anthropic-api', classification: SELF_SENSITIVE,
+    label: 'Use your Anthropic API key for inference' },
 
   // ── Warp connector (#1428) — per-DID Warp Cloud Agent key.
   // Consumes the owner's own sealed Agent key to spawn cloud agents under their

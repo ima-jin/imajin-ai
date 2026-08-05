@@ -106,6 +106,13 @@ export interface ResolutionReceipt {
 /**
  * The interface a tenant implements to mount the inference shell.
  *
+ * A vocabulary declares the INTENT SCHEMA — the intent types, their consent
+ * tiers, and how each resolves. It deliberately says nothing about which model
+ * runs: model selection belongs to the human, resolved at call time from the
+ * acting DID's sealed connector cards (#1621). `modelProvider`, `modelId`, and
+ * `modelChannel` used to live here and were removed for that reason — a vocab
+ * that pinned a model was choosing a brain on the user's behalf.
+ *
  * Hard boundary rules:
  *  - resolve() receives ONLY CandidateIntent + ownerDid. It MUST NOT import
  *    any Imajin kernel internals.
@@ -115,20 +122,6 @@ export interface ResolutionReceipt {
 export interface IntentVocabulary {
   /** Stable tenant identifier, e.g. 'imajin' | 'agrifortress'. */
   name: string;
-  /** Provider for @imajin/llm getModel() — selects the model adapter. */
-  modelProvider: 'anthropic' | 'openai' | 'ollama';
-  /** Model ID for the inference call, e.g. 'claude-sonnet-4-20250514'. */
-  modelId: string;
-  /**
-   * Optional channel for per-DID credential resolution.
-   *
-   * When set to `'gemini'`, policy.ts resolves the model credentials (API key,
-   * base URL) from the per-DID Gemini connector vault field (gemini:infer grant
-   * required) instead of the global OPENAI_API_KEY env var. Falls back to
-   * GEMINI_API_KEY / GEMINI_BASE_URL env vars when no connection is sealed for
-   * the ownerDid. Omit for all other providers.
-   */
-  modelChannel?: 'gemini';
   /**
    * Vocab-specific system prompt fragment injected into the policy call.
    * Should describe the available intent types and the expected JSON output

@@ -29,9 +29,9 @@ vi.mock('@imajin/logger', () => ({
   createLogger: vi.fn(() => ({ info: vi.fn(), error: vi.fn(), warn: vi.fn() })),
 }));
 
-const mockLoadGeminiCredentials = vi.hoisted(() => vi.fn());
-vi.mock('@/src/lib/gemini/connector', () => ({
-  loadGeminiCredentials: mockLoadGeminiCredentials,
+const mockResolveBrain = vi.hoisted(() => vi.fn());
+vi.mock('../brain', () => ({
+  resolveBrain: mockResolveBrain,
 }));
 
 // ─── Subject ────────────────────────────────────────────────────────────────
@@ -54,11 +54,20 @@ const CTX: InferenceContext = {
 
 const VOCAB: IntentVocabulary = {
   name: 'agrifortress',
-  modelProvider: 'openai',
-  modelId: 'gemini-2.0-flash',
   systemPrompt: 'You are the AgriFortress engine.',
   resolveConsentTier: (_intentType: string) => 'deliberate',
   resolve: vi.fn(),
+};
+
+const OWNER = 'did:imajin:farmer';
+
+const GEMINI_BRAIN = {
+  connector: 'gemini' as const,
+  credentialDid: OWNER,
+  provider: 'openai' as const,
+  modelId: 'gemini-2.0-flash',
+  apiKey: 'AIzaSy-SEALED',
+  baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
 };
 
 const MOCK_MODEL = {};
@@ -69,118 +78,85 @@ beforeEach(() => {
   mockUpdateSet.mockImplementation(() => ({ where: mockUpdateSetWhere }));
   mockUpdateSetWhere.mockResolvedValue(undefined);
   mockDbUpdate.mockImplementation(() => ({ set: mockUpdateSet }));
-  mockLoadGeminiCredentials.mockResolvedValue(undefined);
+  mockResolveBrain.mockResolvedValue(GEMINI_BRAIN);
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('infer — inference policy layer', () => {
-  it('calls getModel with the vocab modelProvider and modelId (no ownerDid)', async () => {
+  /**
+   * #1621: the model comes from the acting DID's sealed connection, never from
+   * the vocabulary and never from an env var. The vocab no longer carries
+   * modelProvider/modelId at all.
+   */
+  it('builds the model from the brain resolved for the acting DID', async () => {
     mockGenerateText.mockResolvedValueOnce({
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.95, metadata: { product: 'maize' } }]),
     });
 
-    await infer(CTX, VOCAB);
+    await infer(CTX, VOCAB, OWNER);
 
-    // No modelChannel on VOCAB, so getModel called with no config (undefined).
-    expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash', undefined);
+    expect(mockResolveBrain).toHaveBeenCalledWith(OWNER);
+    expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash', {
+      apiKey: 'AIzaSy-SEALED',
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    });
   });
 
-  it('resolves Gemini credentials from vault when modelChannel is gemini and ownerDid provided', async () => {
+  it('drives whichever provider the owner sealed', async () => {
+    mockResolveBrain.mockResolvedValueOnce({
+      connector: 'anthropic',
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4-20250514',
+      apiKey: 'sk-ant-SEALED',
+    });
     mockGenerateText.mockResolvedValueOnce({
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
     });
-    const GEMINI_VOCAB = { ...VOCAB, modelChannel: 'gemini' as const };
-    const CREDS = { apiKey: 'AIzaSy-TEST', baseUrl: 'https://example.com/openai' };
-    mockLoadGeminiCredentials.mockResolvedValueOnce(CREDS);
 
-    await infer(CTX, GEMINI_VOCAB, 'did:imajin:farmer');
+    await infer(CTX, VOCAB, OWNER);
 
-    expect(mockLoadGeminiCredentials).toHaveBeenCalledWith('did:imajin:farmer');
-    expect(mockGetModel).toHaveBeenCalledWith(
-      'openai',
-      'gemini-2.0-flash',
-      { apiKey: 'AIzaSy-TEST', baseURL: 'https://example.com/openai' },
-    );
+    expect(mockGetModel).toHaveBeenCalledWith('anthropic', 'claude-sonnet-4-20250514', {
+      apiKey: 'sk-ant-SEALED',
+    });
   });
 
-  it('falls back to app DID Gemini credentials when owner DID has no sealed connection', async () => {
+  /**
+   * #1624: an app/org DID may supply the credential. `infer` forwards the whole
+   * context and lets the resolver decide the walk order — which DID actually
+   * wins is asserted in brain.test.ts, the module that owns that policy.
+   */
+  it('forwards the owner and app DID context to the resolver', async () => {
     mockGenerateText.mockResolvedValueOnce({
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
     });
-    const GEMINI_VOCAB = { ...VOCAB, modelChannel: 'gemini' as const };
-    const CREDS = { apiKey: 'AIzaSy-APP', baseUrl: 'https://app.example.com/openai' };
-    mockLoadGeminiCredentials
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(CREDS);
 
-    await infer(CTX, GEMINI_VOCAB, {
-      ownerDid: 'did:imajin:farmer',
+    await infer(CTX, VOCAB, { ownerDid: OWNER, appDid: 'did:imajin:agrifortress' });
+
+    expect(mockResolveBrain).toHaveBeenCalledWith({
+      ownerDid: OWNER,
       appDid: 'did:imajin:agrifortress',
     });
-
-    expect(mockLoadGeminiCredentials).toHaveBeenNthCalledWith(1, 'did:imajin:farmer');
-    expect(mockLoadGeminiCredentials).toHaveBeenNthCalledWith(2, 'did:imajin:agrifortress');
-    expect(mockGetModel).toHaveBeenCalledWith(
-      'openai',
-      'gemini-2.0-flash',
-      { apiKey: 'AIzaSy-APP', baseURL: 'https://app.example.com/openai' },
-    );
   });
 
-  it('does not check the same DID twice when owner and app DID match', async () => {
+  it('accepts a bare owner DID string, keeping the MCP call site unchanged', async () => {
     mockGenerateText.mockResolvedValueOnce({
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
     });
-    const GEMINI_VOCAB = { ...VOCAB, modelChannel: 'gemini' as const };
-    mockLoadGeminiCredentials.mockResolvedValueOnce(undefined);
-    vi.stubEnv('GEMINI_API_KEY', 'env-api-key');
 
-    await infer(CTX, GEMINI_VOCAB, {
-      ownerDid: 'did:imajin:farmer',
-      appDid: 'did:imajin:farmer',
-    });
+    await infer(CTX, VOCAB, OWNER);
 
-    expect(mockLoadGeminiCredentials).toHaveBeenCalledTimes(1);
-    expect(mockLoadGeminiCredentials).toHaveBeenCalledWith('did:imajin:farmer');
-
-    vi.unstubAllEnvs();
+    expect(mockResolveBrain).toHaveBeenCalledWith(OWNER);
   });
 
-  it('falls back to env vars when modelChannel is gemini but no connection is sealed', async () => {
-    mockGenerateText.mockResolvedValueOnce({
-      text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
-    });
-    const GEMINI_VOCAB = { ...VOCAB, modelChannel: 'gemini' as const };
-    mockLoadGeminiCredentials.mockResolvedValueOnce(undefined); // no connection
-    vi.stubEnv('GEMINI_API_KEY', 'env-api-key');
-    vi.stubEnv('GEMINI_BASE_URL', 'https://env-base.example.com');
+  it('marks the session failed when no DID has sealed a brain', async () => {
+    mockResolveBrain.mockRejectedValueOnce(new Error('inference_no_brain: nothing sealed'));
 
-    await infer(CTX, GEMINI_VOCAB, 'did:imajin:farmer');
+    await expect(infer(CTX, VOCAB, OWNER)).rejects.toThrow('Inference policy failed');
 
-    expect(mockGetModel).toHaveBeenCalledWith(
-      'openai',
-      'gemini-2.0-flash',
-      { apiKey: 'env-api-key', baseURL: 'https://env-base.example.com' },
-    );
-
-    vi.unstubAllEnvs();
-  });
-
-  it('passes undefined config when modelChannel is gemini but no connection and no env vars', async () => {
-    mockGenerateText.mockResolvedValueOnce({
-      text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
-    });
-    const GEMINI_VOCAB = { ...VOCAB, modelChannel: 'gemini' as const };
-    mockLoadGeminiCredentials.mockResolvedValueOnce(undefined);
-    vi.stubEnv('GEMINI_API_KEY', '');
-    vi.stubEnv('GEMINI_BASE_URL', '');
-
-    await infer(CTX, GEMINI_VOCAB, 'did:imajin:farmer');
-
-    expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash', undefined);
-
-    vi.unstubAllEnvs();
+    expect(mockGenerateText).not.toHaveBeenCalled();
+    const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
+    expect(setArg['status']).toBe('failed');
   });
 
   it('calls generateText with the vocab systemPrompt injected', async () => {
@@ -188,7 +164,7 @@ describe('infer — inference policy layer', () => {
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
     });
 
-    await infer(CTX, VOCAB);
+    await infer(CTX, VOCAB, OWNER);
 
     expect(mockGenerateText).toHaveBeenCalledOnce();
     const args = mockGenerateText.mock.calls[0][0] as { system?: string; prompt?: string };
@@ -202,7 +178,7 @@ describe('infer — inference policy layer', () => {
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.8, metadata: {} }]),
     });
 
-    await infer(CTX, VOCAB);
+    await infer(CTX, VOCAB, OWNER);
 
     const args = mockGenerateText.mock.calls[0][0] as { prompt?: string };
     expect(args.prompt).toContain('did:imajin:eric');
@@ -216,7 +192,7 @@ describe('infer — inference policy layer', () => {
       ]),
     });
 
-    const candidates = await infer(CTX, VOCAB);
+    const candidates = await infer(CTX, VOCAB, OWNER);
 
     expect(candidates).toHaveLength(2);
     expect(candidates[0]!.intentType).toBe('supply.received');
@@ -231,7 +207,7 @@ describe('infer — inference policy layer', () => {
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
     });
 
-    const candidates = await infer(CTX, VOCAB);
+    const candidates = await infer(CTX, VOCAB, OWNER);
 
     expect(candidates[0]!.consentTier).toBe('deliberate');
   });
@@ -241,7 +217,7 @@ describe('infer — inference policy layer', () => {
       text: '```json\n[{"intentType":"supply.received","confidence":0.9,"metadata":{}}]\n```',
     });
 
-    const candidates = await infer(CTX, VOCAB);
+    const candidates = await infer(CTX, VOCAB, OWNER);
 
     expect(candidates).toHaveLength(1);
     expect(candidates[0]!.intentType).toBe('supply.received');
@@ -250,7 +226,7 @@ describe('infer — inference policy layer', () => {
   it('returns empty array and marks session failed when LLM throws', async () => {
     mockGenerateText.mockRejectedValueOnce(new Error('LLM quota exceeded'));
 
-    await expect(infer(CTX, VOCAB)).rejects.toThrow('Inference policy failed');
+    await expect(infer(CTX, VOCAB, OWNER)).rejects.toThrow('Inference policy failed');
 
     expect(mockUpdateSet).toHaveBeenCalledOnce();
     const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
@@ -260,7 +236,7 @@ describe('infer — inference policy layer', () => {
   it('returns empty array (no throw) when model response is not valid JSON', async () => {
     mockGenerateText.mockResolvedValueOnce({ text: 'Not JSON at all' });
 
-    const candidates = await infer(CTX, VOCAB);
+    const candidates = await infer(CTX, VOCAB, OWNER);
 
     expect(candidates).toEqual([]);
   });
@@ -274,7 +250,7 @@ describe('infer — inference policy layer', () => {
       ]),
     });
 
-    const candidates = await infer(CTX, VOCAB);
+    const candidates = await infer(CTX, VOCAB, OWNER);
 
     expect(candidates).toHaveLength(1);
     expect(candidates[0]!.intentType).toBe('supply.received');
@@ -285,7 +261,7 @@ describe('infer — inference policy layer', () => {
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
     });
 
-    await infer(CTX, VOCAB);
+    await infer(CTX, VOCAB, OWNER);
 
     expect(mockUpdateSet).toHaveBeenCalledOnce();
     const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
