@@ -129,8 +129,8 @@ export interface ConnectorEntry {
 export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'mcp',
-    name: 'Claude / MCP',
-    description: 'Grant Claude Desktop access to your media, connections, and other Imajin capabilities.',
+    name: 'Imajin MCP',
+    description: 'Grant any MCP client access to your media, connections, and other Imajin capabilities.',
     icon: '🤖',
     ingestionPattern: 'native',
     channel: 'mcp',
