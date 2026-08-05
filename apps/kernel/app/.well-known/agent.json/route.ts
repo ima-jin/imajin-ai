@@ -1,18 +1,30 @@
 import { NextResponse } from 'next/server';
 import { SERVICES } from '@imajin/config';
 import { getMcpIssuer } from '@/src/lib/mcp/oauth-config';
+import { nodeUrl } from '@/src/lib/http/node-url';
 
 /**
- * /.well-known/agent.json — A2A Agent Card (RFC-32 / epic #965, issue #966).
+ * /.well-known/agent.json — Agent Card (RFC-32 / epic #965, issue #966).
  *
- * Describes this Imajin node as an A2A-compliant agent. Auto-generated from:
+ * Describes this Imajin node to a stranger's agent. Auto-generated from:
  *   - SERVICES manifest (@imajin/config) → skills
- *   - RELAY_DID env var               → federation status
- *   - MCP_PUBLIC_URL env var           → MCP endpoint
- *   - NEXT_PUBLIC_DOMAIN env var       → node URL
+ *   - RELAY_DID env var                  → federation status
+ *   - MCP_PUBLIC_URL env var             → MCP endpoint
+ *   - nodeUrl()                          → node URL
+ *
+ * ADVERTISE ONLY WHAT RESOLVES (#1614). This card is the front door for cold
+ * agent contact, so every URL in it must be reachable. The A2A protocol block
+ * was removed because `/api/a2a/tasks` has no route handler — a stranger doing
+ * everything right (apex → card → taskEndpoint) got a Next.js 404 instead of an
+ * auth challenge. Re-add `protocols.a2a` in the same commit that ships the
+ * endpoint, not before.
  *
  * Spec: https://google.github.io/A2A/specification/
  */
+
+// nodeUrl() reads a runtime (non-NEXT_PUBLIC_) env var, which a statically
+// rendered handler would bake at build time. Cache-Control still bounds the cost.
+export const dynamic = 'force-dynamic';
 
 /** Map kernel/core services to A2A skill objects. Infrastructure and meta services are excluded. */
 function buildSkills() {
@@ -40,9 +52,7 @@ function detectWireSchemes(): string[] {
 }
 
 export function GET() {
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
-  const protocol = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
-  const nodeUrl = `${protocol}${domain}`;
+  const node = nodeUrl();
 
   const isFederated = !!process.env.RELAY_DID;
   const mcpEndpoint = `${getMcpIssuer()}/mcp`;
@@ -53,13 +63,18 @@ export function GET() {
 
     name: 'imajin-node',
     description: 'Imajin node — sovereign identity, attribution, and settlement',
-    url: nodeUrl,
+    url: node,
     version: '1.0.0',
 
+    /**
+     * These describe A2A task-lifecycle behaviour. With no A2A task system on
+     * this node, all three are false — claiming otherwise is the same class of
+     * dishonesty as advertising the dead taskEndpoint (#1614).
+     */
     capabilities: {
       streaming: false,
-      pushNotifications: true,
-      stateTransitionHistory: true,
+      pushNotifications: false,
+      stateTransitionHistory: false,
     },
 
     /**
@@ -79,9 +94,11 @@ export function GET() {
     defaultInputModes: ['text'],
     defaultOutputModes: ['text', 'json'],
 
-    /** Protocol surfaces this node speaks */
+    /**
+     * Protocol surfaces this node actually speaks. MCP only — see the
+     * advertise-only-what-resolves note above before adding to this list.
+     */
     protocols: {
-      a2a: { version: '0.2', taskEndpoint: `${nodeUrl}/api/a2a/tasks` },
       mcp: { version: '2025-03-26', endpoint: mcpEndpoint },
     },
 
@@ -89,14 +106,14 @@ export function GET() {
     settlement: {
       http402: true,
       wireSchemes: detectWireSchemes(),
-      fairPolicyUrl: `${nodeUrl}/.well-known/fair-policy.json`,
+      fairPolicyUrl: `${node}/.well-known/fair-policy.json`,
     },
 
     /** DFOS federation status */
     federation: {
       enabled: isFederated,
       ...(isFederated && { relayDid: process.env.RELAY_DID }),
-      dfosEndpoint: `${nodeUrl}/registry/relay/.well-known/dfos-relay`,
+      dfosEndpoint: `${node}/registry/relay/.well-known/dfos-relay`,
     },
 
     skills: buildSkills(),

@@ -34,7 +34,8 @@ type AgentCard = {
   authentication: { schemes: string[]; oauth2: { authorizationUrl: string; tokenUrl: string; discoveryUrl: string } };
   defaultInputModes: string[];
   defaultOutputModes: string[];
-  protocols: { a2a: { version: string; taskEndpoint: string }; mcp: { version: string; endpoint: string } };
+  // `a2a` is deliberately absent until /api/a2a/tasks exists (#1614).
+  protocols: { mcp: { version: string; endpoint: string } };
   settlement: { http402: boolean; wireSchemes: string[]; fairPolicyUrl: string };
   federation: { enabled: boolean; relayDid?: string; dfosEndpoint: string };
   skills: Array<{ id: string; name: string; description: string; tags: string[]; inputModes: string[]; outputModes: string[] }>;
@@ -61,6 +62,10 @@ describe('GET /.well-known/agent.json', () => {
   beforeEach(() => {
     delete process.env.NEXT_PUBLIC_DOMAIN;
     delete process.env.NEXT_PUBLIC_SERVICE_PREFIX;
+    // nodeUrl() consults these first (#1614), so an ambient value in the
+    // developer's shell would otherwise decide what the card advertises.
+    delete process.env.APP_URL;
+    delete process.env.NEXT_PUBLIC_BASE_URL;
     delete process.env.RELAY_DID;
     delete process.env.STRIPE_SECRET_KEY;
     delete process.env.MJNX_ENABLED;
@@ -72,9 +77,29 @@ describe('GET /.well-known/agent.json', () => {
     expect(card.schemaVersion).toBe('0.2');
     expect(card.name).toBe('imajin-node');
     expect(card.version).toBe('1.0.0');
-    expect(card.capabilities).toMatchObject({ streaming: false, pushNotifications: true, stateTransitionHistory: true });
     expect(card.defaultInputModes).toContain('text');
     expect(card.defaultOutputModes).toContain('json');
+  });
+
+  // #1614 — the card is the front door for cold agent contact, so it must not
+  // claim surfaces or capabilities that do not exist.
+  it('does not advertise an A2A protocol block while /api/a2a/tasks is absent', () => {
+    const card = invoke();
+    expect('a2a' in card.protocols).toBe(false);
+  });
+
+  it('reports every A2A task-lifecycle capability as false (nothing backs them)', () => {
+    const card = invoke();
+    expect(card.capabilities).toMatchObject({
+      streaming: false,
+      pushNotifications: false,
+      stateTransitionHistory: false,
+    });
+  });
+
+  it('still advertises MCP, which is live', () => {
+    const card = invoke();
+    expect(card.protocols.mcp.endpoint).toBe('https://mcp.test.example/mcp');
   });
 
   it('builds node URL from env vars', () => {
@@ -85,6 +110,46 @@ describe('GET /.well-known/agent.json', () => {
   it('defaults node URL to https://imajin.ai when env vars are absent', () => {
     const card = invoke();
     expect(card.url).toBe('https://imajin.ai');
+  });
+
+  // The shape prod actually runs: the prefix is a full origin, not a bare scheme.
+  // Concatenating prefix + domain produced https://jin.imajin.ai/imajin.ai, so
+  // every advertised URL 404'd (#1614).
+  it('does not double the host into a path segment in single-domain mode', () => {
+    const card = invoke({
+      NEXT_PUBLIC_SERVICE_PREFIX: 'https://jin.imajin.ai/',
+      NEXT_PUBLIC_DOMAIN: 'imajin.ai',
+    });
+    expect(card.url).toBe('https://jin.imajin.ai');
+    expect(card.settlement.fairPolicyUrl).toBe('https://jin.imajin.ai/.well-known/fair-policy.json');
+    expect(card.federation.dfosEndpoint).toBe(
+      'https://jin.imajin.ai/registry/relay/.well-known/dfos-relay',
+    );
+  });
+
+  it('advertises no URL containing a doubled host segment', () => {
+    const card = invoke({
+      NEXT_PUBLIC_SERVICE_PREFIX: 'https://jin.imajin.ai/',
+      NEXT_PUBLIC_DOMAIN: 'imajin.ai',
+    });
+    const advertised = [
+      card.url,
+      card.settlement.fairPolicyUrl,
+      card.federation.dfosEndpoint,
+    ];
+    for (const url of advertised) {
+      expect(url).not.toContain('/imajin.ai/');
+      expect(url.endsWith('/imajin.ai')).toBe(false);
+    }
+  });
+
+  it('prefers an explicit APP_URL over the prefix convention', () => {
+    const card = invoke({
+      APP_URL: 'https://jin.imajin.ai',
+      NEXT_PUBLIC_SERVICE_PREFIX: 'https://',
+      NEXT_PUBLIC_DOMAIN: 'wrong.example',
+    });
+    expect(card.url).toBe('https://jin.imajin.ai');
   });
 
   it('includes MCP endpoint from mock MCP_ISSUER', () => {

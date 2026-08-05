@@ -5,6 +5,7 @@ import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 import { verifyChainLog } from '@/src/lib/auth/chain-providers';
 import { buildDidDocument } from '@/src/lib/auth/did-document';
 import { createLogger } from '@imajin/logger';
+import { nodeUrl } from '@/src/lib/http/node-url';
 
 const log = createLogger('kernel');
 
@@ -96,10 +97,9 @@ export async function GET(
       );
     }
 
-    const domain = process.env.NEXT_PUBLIC_DOMAIN ?? 'imajin.ai';
-    const protocol = process.env.NEXT_PUBLIC_SERVICE_PREFIX ?? 'https://';
-    const nodeUrl = `${protocol}${domain}`;
-    const chainEndpoint = `${nodeUrl}/auth/api/identity/${encodeURIComponent(imajinDid)}/chain`;
+    // A cold verifier is told to FOLLOW this endpoint and re-verify the chain
+    // itself, so a malformed origin breaks resolution outright (#1614).
+    const chainEndpoint = `${nodeUrl()}/auth/api/identity/${encodeURIComponent(imajinDid)}/chain`;
 
     const doc = buildDidDocument(imajinDid, result, {
       chainEndpoint,

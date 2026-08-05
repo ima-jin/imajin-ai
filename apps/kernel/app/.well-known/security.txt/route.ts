@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server";
+import { nodeUrl } from "@/src/lib/http/node-url";
 
 /**
  * /.well-known/security.txt — RFC 9116 vulnerability disclosure discovery.
  *
  * The standard file every security researcher (and most automated scanners)
  * checks first when they want to report an issue. Generated dynamically from
- * NEXT_PUBLIC_DOMAIN so each node in the federated network serves its own,
- * pointing reporters at this node's operator and policy.
+ * this node's public origin so each node in the federated network serves its
+ * own, pointing reporters at this node's operator and policy.
  *
  * Spec: https://www.rfc-editor.org/rfc/rfc9116
  */
+
+// nodeUrl() reads a runtime (non-NEXT_PUBLIC_) env var, which a statically
+// rendered handler would bake at build time. Cache-Control still bounds the cost.
+export const dynamic = "force-dynamic";
 
 const SECURITY_EMAIL = process.env.SECURITY_CONTACT_EMAIL || "ryan@imajin.ai";
 const POLICY_URL =
@@ -26,9 +31,9 @@ function expiresOneYearOut(): string {
 }
 
 export function GET() {
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai";
-  const protocol = process.env.NEXT_PUBLIC_SERVICE_PREFIX || "https://";
-  const canonical = `${protocol}${domain}/.well-known/security.txt`;
+  // RFC 9116 §2.5.2 requires Canonical to be the URI this file is served at, so a
+  // doubled host segment (#1614) made the field self-contradictory for scanners.
+  const canonical = `${nodeUrl()}/.well-known/security.txt`;
 
   const lines = [
     `Contact: mailto:${SECURITY_EMAIL}`,

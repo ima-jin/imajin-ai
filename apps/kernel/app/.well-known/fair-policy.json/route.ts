@@ -6,6 +6,7 @@ import {
   BUYER_CREDIT_DEFAULT_BPS,
   SCOPE_FEE_DEFAULT_BPS,
 } from '@imajin/fair';
+import { nodeUrl } from '@/src/lib/http/node-url';
 
 /**
  * /.well-known/fair-policy.json — RFC-32 §3.3
@@ -24,17 +25,20 @@ import {
  * Epic: #965 · Issue: #967
  */
 
+// nodeUrl() reads a runtime (non-NEXT_PUBLIC_) env var, which a statically
+// rendered handler would bake at build time. Cache-Control still bounds the cost.
+export const dynamic = 'force-dynamic';
+
 function bpsToRate(bps: number): number {
   return bps / 10000;
 }
 
 export function GET() {
-  const domain = process.env.NEXT_PUBLIC_DOMAIN ?? 'imajin.ai';
-  const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX ?? 'https://';
-
   const policy = {
     version: '1.0.0',
-    node: `${prefix}${domain}`,
+    // Was `${prefix}${domain}`, which doubled the host into a path segment in
+    // single-domain mode (#1614).
+    node: nodeUrl(),
     fees: {
       mjn: {
         rateBps: PROTOCOL_FEE_BPS,
