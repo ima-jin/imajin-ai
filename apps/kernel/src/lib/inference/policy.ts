@@ -18,6 +18,13 @@ import type { CandidateIntent, InferenceContext, IntentVocabulary } from './type
 
 const log = createLogger('kernel:inference:policy');
 
+export interface ModelCredentialContext {
+  /** Acting supplier/user DID. Consent and attribution stay attached here. */
+  ownerDid?: string;
+  /** Invoking app/org DID that may provide model credentials. */
+  appDid?: string;
+}
+
 const SYSTEM_SUFFIX = `
 Respond with a JSON array of candidate intents, ranked by confidence (highest first).
 Each object must have exactly these fields:
@@ -33,18 +40,18 @@ Return ONLY the JSON array, no surrounding text.
  * Updates the session row with the resulting candidate intents and advances
  * status to ready for consent gate.
  *
- * @param ownerDid - Optional owner DID for per-DID credential resolution.
+ * @param credentialContext - Optional owner/app DID context for credential resolution.
  *   When provided and `vocab.modelChannel === 'gemini'`, credentials are
- *   resolved from the sealed Gemini connector vault field for this DID,
- *   falling back to GEMINI_API_KEY / GEMINI_BASE_URL env vars. When absent,
- *   provider env var defaults apply.
+ *   resolved from the acting owner DID first, then the invoking app/org DID,
+ *   falling back to GEMINI_API_KEY / GEMINI_BASE_URL env vars. Consent and
+ *   attribution remain attached to the owner DID.
  */
 export async function infer(
   ctx: InferenceContext,
   vocab: IntentVocabulary,
-  ownerDid?: string,
+  credentialContext?: string | ModelCredentialContext,
 ): Promise<CandidateIntent[]> {
-  const modelConfig = await resolveModelConfig(vocab, ownerDid);
+  const modelConfig = await resolveModelConfig(vocab, normalizeCredentialContext(credentialContext));
   const model = getModel(vocab.modelProvider, vocab.modelId, modelConfig);
 
   const systemPrompt = `${vocab.systemPrompt}\n\n${SYSTEM_SUFFIX}`;
@@ -92,22 +99,23 @@ export async function infer(
 /**
  * Resolve optional model config (apiKey, baseURL) for the vocab's provider.
  *
- * For `modelChannel === 'gemini'`: try the per-DID sealed connection first;
- * fall back to GEMINI_API_KEY / GEMINI_BASE_URL env vars. This replaces the
- * old "set OPENAI_API_KEY=$GEMINI_API_KEY in kernel env" workaround.
+ * For `modelChannel === 'gemini'`: try the acting owner DID's sealed
+ * connection first, then the invoking app/org DID's sealed connection, then
+ * fall back to GEMINI_API_KEY / GEMINI_BASE_URL env vars. This replaces the old
+ * "set OPENAI_API_KEY=$GEMINI_API_KEY in kernel env" workaround and supports
+ * app-subsidized inference without changing attribution.
  * Returns `undefined` for all other channels (lets the SDK use its own env
  * var defaults).
  */
 async function resolveModelConfig(
   vocab: IntentVocabulary,
-  ownerDid?: string,
+  credentialContext: ModelCredentialContext,
 ): Promise<{ apiKey?: string; baseURL?: string } | undefined> {
   if (vocab.modelChannel !== 'gemini') {
     return undefined;
   }
-
-  if (ownerDid) {
-    const creds = await loadGeminiCredentials(ownerDid);
+  for (const did of credentialOwnerDids(credentialContext)) {
+    const creds = await loadGeminiCredentials(did);
     if (creds) {
       return {
         apiKey: creds.apiKey,
@@ -127,6 +135,26 @@ async function resolveModelConfig(
   }
 
   return undefined;
+}
+
+function normalizeCredentialContext(
+  credentialContext?: string | ModelCredentialContext,
+): ModelCredentialContext {
+  if (typeof credentialContext === 'string') {
+    return { ownerDid: credentialContext };
+  }
+  return credentialContext ?? {};
+}
+
+function credentialOwnerDids(credentialContext: ModelCredentialContext): string[] {
+  const seen = new Set<string>();
+  const dids: string[] = [];
+  for (const did of [credentialContext.ownerDid, credentialContext.appDid]) {
+    if (!did || seen.has(did)) continue;
+    seen.add(did);
+    dids.push(did);
+  }
+  return dids;
 }
 
 function buildUserMessage(ctx: InferenceContext): string {

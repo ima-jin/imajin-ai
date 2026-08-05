@@ -23,6 +23,8 @@ export interface CaptureEvent {
   kind: CaptureKind;
   /** Owner DID the asset and session are pinned to. */
   ownerDid: string;
+  /** Invoking app/org DID that may provide inference credentials. */
+  appDid?: string;
 }
 
 // ---------------------------------------------------------------------------

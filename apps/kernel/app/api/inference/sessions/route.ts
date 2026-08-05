@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
   const rows = await db
     .select({
       id: inferenceSessions.id,
+      appDid: inferenceSessions.appDid,
       vocabularyName: inferenceSessions.vocabularyName,
       assetId: inferenceSessions.assetId,
       chosenIntentType: inferenceSessions.chosenIntentType,

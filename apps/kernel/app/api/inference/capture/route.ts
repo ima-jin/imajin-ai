@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAppAuth, requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
@@ -14,6 +14,15 @@ import { getVocabulary, listVocabularyNames } from '@/src/lib/inference/vocabula
 const log = createLogger('kernel:inference:capture-route');
 
 export const dynamic = 'force-dynamic';
+
+interface InferenceAuthContext {
+  ownerDid: string;
+  appDid?: string;
+}
+
+type InferenceAuthResult =
+  | { ok: true; context: InferenceAuthContext }
+  | { ok: false; error: string; status: number };
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -49,11 +58,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+  const auth = await resolveInferenceAuth(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
-  const ownerDid = resolveActingDid(authResult.identity);
+  const { ownerDid, appDid } = auth.context;
 
   let formData: FormData;
   try {
@@ -96,6 +105,7 @@ export async function POST(request: NextRequest) {
       filename: originalName,
       mimeType,
       ownerDid,
+      ...(appDid ? { appDid } : {}),
       vocabularyName: vocabName,
     });
 
@@ -103,7 +113,7 @@ export async function POST(request: NextRequest) {
     const ctx = await gatherContext(captureEvent.sessionId, captureEvent.assetId, ownerDid);
 
     // 3. Run inference policy.
-    const candidates = await infer(ctx, vocab);
+    const candidates = await infer(ctx, vocab, appDid ? { ownerDid, appDid } : { ownerDid });
     const topIntent = candidates[0];
 
     if (!topIntent) {
@@ -155,4 +165,34 @@ export async function POST(request: NextRequest) {
       { status: 500, headers: cors },
     );
   }
+}
+
+async function resolveInferenceAuth(request: NextRequest): Promise<InferenceAuthResult> {
+  const appResult = await requireAppAuth(request, { scope: 'infer:provide' });
+  if ('appAuth' in appResult) {
+    const ownerDid = appResult.appAuth.userDid || request.headers.get('x-acting-for') || '';
+    if (!ownerDid) {
+      return {
+        ok: false,
+        error: 'App-authenticated inference requires a delegating user DID or X-Acting-For header',
+        status: 400,
+      };
+    }
+    return { ok: true, context: { ownerDid, appDid: appResult.appAuth.appDid } };
+  }
+
+  const authResult = await requireAuth(request);
+  if ('error' in authResult) {
+    const hasAppAuthHint = Boolean(
+      request.headers.get('x-app-did') ||
+      request.headers.get('x-app-authorization') ||
+      request.headers.get('x-acting-for'),
+    );
+    if (hasAppAuthHint || appResult.status === 403) {
+      return { ok: false, error: appResult.error, status: appResult.status };
+    }
+    return { ok: false, error: authResult.error, status: authResult.status };
+  }
+
+  return { ok: true, context: { ownerDid: resolveActingDid(authResult.identity) } };
 }

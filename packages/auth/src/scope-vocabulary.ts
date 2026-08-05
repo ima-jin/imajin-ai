@@ -208,6 +208,7 @@ export const SCOPE_VOCABULARY = [
   { scope: 'attestations:write', connector: null, label: 'Issue attestations on your behalf' },
   { scope: 'availability:read', connector: null, label: 'View your availability and coordination intents' },
   { scope: 'availability:write', connector: null, label: 'Set and cancel availability intents on your behalf' },
+  { scope: 'infer:provide', connector: null, label: 'Provide app-owned inference credentials for delegated inference' },
 
   // ── QuickBooks connector — invoices are sent to customers, hence write touches others
   { scope: 'quickbooks:read', connector: 'quickbooks', verb: 'read', surface: 'invoices', classification: SELF_ONLY,
