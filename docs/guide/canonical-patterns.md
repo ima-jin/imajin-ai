@@ -32,6 +32,12 @@
 | **Rate limiting** | `rateLimit(key, limit, windowMs)`, `getClientIP` | `@imajin/config` | Hand-roll a limiter. Key by IP *and* (for abuse-sensitive flows) by email/subject. |
 | **Order + tickets creation** | `createOrderWithTickets(...)`, `validateCart(...)` | `apps/events/src/lib/checkout-common.ts` | Insert orders/tickets and sold-count logic inline. |
 
+## Connector lifecycle and app-facing invocation
+
+Apps witness and invoke; profiles own connector lifecycle. A vertical app must not implement connector selection, OAuth, token-paste, token storage, or credential refresh. The user connects a provider on their Imajin profile once, then apps call kernel app-auth routes with the user's consent.
+
+Use `GET /connections/api/connectors/status` with the `connectors:read-status` app scope to render live connected-service state. The response is only `{ id, connected, scopes }[]`; it never includes token, config, or secret fields. For actions, call the connector/domain route with the existing connector scope, such as `quickbooks:write`; the route resolves app-auth `userDid`, unseals the user's profile-owned token server-side, and returns only action output.
+
 ## The rule of thumb
 
 > If you find yourself writing logic that *feels* like it belongs to a primitive

@@ -42,7 +42,7 @@ describe('SCOPE_VOCABULARY structure', () => {
   });
 
   it('uses `surface:verb`-shaped scope strings', () => {
-    const malformed = SCOPE_VOCABULARY.map((e) => e.scope).filter((s) => !/^[a-z]+:[a-z]+$/.test(s));
+    const malformed = SCOPE_VOCABULARY.map((e) => e.scope).filter((s) => !/^[a-z]+:[a-z-]+$/.test(s));
     expect(malformed).toEqual([]);
   });
 
@@ -222,5 +222,16 @@ describe('SCOPES is a faithful projection', () => {
   it('includes gemini:infer', () => {
     expect(SCOPES['gemini:infer']).toBe('Use your Gemini API key for inference');
     expect(validateScopes(['gemini:infer']).invalid).toEqual([]);
+  });
+
+  it('includes connectors:read-status as an app-registration scope, not a connector grant', () => {
+    const entry = scopeEntry('connectors:read-status');
+    expect(entry).toMatchObject({
+      scope: 'connectors:read-status',
+      connector: null,
+      label: 'Read your connector connection status',
+    });
+    expect(entry && isConnectorScope(entry)).toBe(false);
+    expect(validateScopes(['connectors:read-status']).invalid).toEqual([]);
   });
 });
