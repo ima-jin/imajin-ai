@@ -1,5 +1,5 @@
 /**
- * End-to-end invalidation loop for #1517.
+ * End-to-end cache lifecycle for the broker predicate cache (#1517, #1515).
  *
  * Unlike `broker-predicate-invalidation.test.ts`, which asserts the reactor's
  * SQL in isolation, this exercises the whole cycle against a stateful in-memory
@@ -9,6 +9,11 @@
  *   broker() → serve it from cache (no re-evaluation)
  *   profile.field.changed → reactor revokes the cached claim
  *   broker() → cache miss → re-evaluate against the NEW value → re-cache
+ *
+ * A claim stops being usable by either of two INDEPENDENT mechanisms, both
+ * covered here: explicit revocation (`revoked_at`, driven by a field change) and
+ * self-expiry (`expires_at` lapsing, the TTL backstop for changes nothing
+ * announced). The expiry path is #1515's remaining requirement.
  *
  * The `emitAttestation` mock writes into the same in-memory table the cache read
  * path queries, so the persistence hop is real rather than assumed.
@@ -114,11 +119,19 @@ vi.mock('@imajin/auth', () => ({
 vi.mock('../src/publish', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
 
 import { broker } from '../src/broker';
+import { brokerPredicateCacheKey } from '../src/predicate-claims';
 import { brokerPredicateInvalidationReactor } from '../src/reactors/broker-predicate-invalidation';
 import { isBrokerRelease, type BrokerPredicateClaim } from '../src/types';
 
 const TRAVELER = 'did:imajin:traveler';
 const RESTAURANT = 'did:imajin:restaurant';
+
+const PEANUT_CACHE_KEY = brokerPredicateCacheKey({
+  subject: TRAVELER,
+  field: 'allergies',
+  predicate: 'contains',
+  arg: 'peanut',
+});
 
 /** Ask "does this traveler's allergy set contain peanut?" against a given value. */
 async function askPeanut(allergies: string): Promise<BrokerPredicateClaim> {
@@ -139,8 +152,57 @@ async function askPeanut(allergies: string): Promise<BrokerPredicateClaim> {
   return result.data.allergies as BrokerPredicateClaim;
 }
 
+/**
+ * Every predicate cache row, live or not. Excludes the release-level
+ * `broker.release` attestation, which lands in the same table but is an audit
+ * record rather than a cache entry.
+ */
+function predicateRows(): AttestationRow[] {
+  return rows.filter((row) => row.context_type === 'broker.predicate');
+}
+
+/**
+ * Cache rows the broker would actually accept: neither revoked nor expired.
+ * Mirrors the read path's own liveness predicate, so "live" here means the same
+ * thing it means in SQL.
+ */
 function livePredicateRows(): AttestationRow[] {
-  return rows.filter((row) => row.context_type === 'broker.predicate' && row.revoked_at === null);
+  const now = Date.now();
+  return rows.filter((row) => (
+    row.context_type === 'broker.predicate'
+    && row.revoked_at === null
+    && (row.expires_at === null || Date.parse(row.expires_at) > now)
+  ));
+}
+
+/**
+ * Write a predicate cache row directly, as a previous release would have left
+ * one behind. `expiresAt` in the past produces a lapsed row.
+ */
+function seedPeanutClaim(options: { result: boolean; expiresAt: Date; revokedAt?: Date }): void {
+  rows.push({
+    subject_did: TRAVELER,
+    type: 'broker.release',
+    context_id: PEANUT_CACHE_KEY,
+    context_type: 'broker.predicate',
+    payload: {
+      field: 'allergies',
+      predicate: 'contains',
+      arg: 'peanut',
+      result: options.result,
+      valueHash: 'seeded',
+      cacheKey: PEANUT_CACHE_KEY,
+      issuedAt: new Date(options.expiresAt.getTime() - 60 * 60 * 1000).toISOString(),
+      expiresAt: options.expiresAt.toISOString(),
+    },
+    issued_at: new Date(options.expiresAt.getTime() - 60 * 60 * 1000).toISOString(),
+    expires_at: options.expiresAt.toISOString(),
+    revoked_at: options.revokedAt?.toISOString() ?? null,
+  });
+}
+
+function hoursFromNow(hours: number): Date {
+  return new Date(Date.now() + hours * 60 * 60 * 1000);
 }
 
 async function mutateAllergies(): Promise<void> {
@@ -240,5 +302,71 @@ describe('predicate cache invalidation (end to end)', () => {
     }, {});
 
     expect(livePredicateRows()).toHaveLength(1);
+  });
+});
+
+// ── #1515: the expiry path ────────────────────────────────────────────────
+//
+// Revocation handles changes the platform knows about. Expiry is the backstop for
+// everything else — a value mutated by a path that never emitted an event, or a
+// claim simply old enough that it should be re-derived rather than trusted.
+
+describe('predicate cache expiry (end to end)', () => {
+  it('ignores a lapsed claim, re-evaluates against the current value, and re-caches', async () => {
+    // A claim that answered `true` an hour ago and has since lapsed. It is NOT
+    // revoked — expiry alone must be enough to stop it being served.
+    seedPeanutClaim({ result: true, expiresAt: hoursFromNow(-1) });
+    expect(predicateRows()).toHaveLength(1);
+    expect(livePredicateRows()).toHaveLength(0);
+
+    // The traveler's set no longer contains peanut, so the honest answer is now
+    // `false`. Serving the lapsed row would return the stale `true`.
+    const claim = await askPeanut('shellfish');
+
+    expect(claim.cached).toBeUndefined();
+    expect(claim.result).toBe(false);
+
+    // Re-cached: a fresh row with a future expiry, alongside the lapsed one.
+    const live = livePredicateRows();
+    expect(live).toHaveLength(1);
+    expect(live[0].payload.result).toBe(false);
+    expect(live[0].expires_at).not.toBeNull();
+    expect(Date.parse(String(live[0].expires_at))).toBeGreaterThan(Date.now());
+
+    // The follow-up request is a hit on the row just written, not a third eval.
+    const next = await askPeanut('shellfish');
+    expect(next.cached).toBe(true);
+    expect(next.result).toBe(false);
+    expect(livePredicateRows()).toHaveLength(1);
+  });
+
+  it('serves a claim that is still within its TTL', async () => {
+    // Same seeded shape, still live. Contradicts the current value on purpose:
+    // `true` coming back proves the cached row was used rather than re-derived.
+    seedPeanutClaim({ result: true, expiresAt: hoursFromNow(1) });
+
+    const claim = await askPeanut('shellfish');
+
+    expect(claim.cached).toBe(true);
+    expect(claim.result).toBe(true);
+    // Nothing new minted — a live row must not be duplicated.
+    expect(predicateRows()).toHaveLength(1);
+  });
+
+  it('treats expiry and revocation as independent — either one is disqualifying', async () => {
+    // Revoked but not yet expired.
+    seedPeanutClaim({ result: true, expiresAt: hoursFromNow(1), revokedAt: new Date() });
+
+    const claim = await askPeanut('shellfish');
+    expect(claim.cached).toBeUndefined();
+    expect(claim.result).toBe(false);
+  });
+
+  it('persists every minted claim with a TTL so it can lapse on its own', async () => {
+    await askPeanut('peanuts');
+
+    const [minted] = predicateRows();
+    expect(minted.expires_at).not.toBeNull();
+    expect(Date.parse(String(minted.expires_at))).toBeGreaterThan(Date.parse(minted.issued_at));
   });
 });
