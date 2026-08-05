@@ -24,8 +24,10 @@
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
+import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { getMcpResource } from '@/src/lib/mcp/oauth-config';
 import { requireAgentKey } from './connector';
+import { readEnvironmentId } from './environment';
 import { WarpApiError } from './errors';
 
 // Re-exported so callers of the client get the error type from one import; the
@@ -70,14 +72,40 @@ function warpApiBaseUrl(): string {
 }
 
 /**
- * Environment every dispatch lands in when the caller names none.
+ * Environment a dispatch lands in, resolved highest-precedence first:
+ *   1. `perCall` — this dispatch explicitly named one.
+ *   2. the caller's own stored default (`warp-environment-id:{principalDid}`).
+ *   3. the node DID's stored default — the node-wide setting.
+ *   4. undefined ⇒ `environment_id` is omitted and Warp applies its own default.
  *
- * Left unset by default: a cloud agent with no environment gets a bare sandbox
- * with none of the repo or tooling, which is a confusing default to imply.
+ * There is no env var in this chain by design (#1632): configuration belongs to a
+ * DID, so the node-wide default is just the node's own stored field rather than a
+ * second, process-scoped mechanism that no connector card could show or change.
+ *
+ * The node lookup is skipped whenever it cannot change the answer — the caller
+ * already has a value, the caller *is* the node, or the node DID is unresolvable.
+ * A failure reading it degrades to "no default": a preference must never be able
+ * to fail a dispatch that is otherwise fully authorized.
  */
-function defaultEnvironmentId(): string | undefined {
-  const configured = process.env.WARP_DEFAULT_ENVIRONMENT_ID?.trim();
-  return configured && configured.length > 0 ? configured : undefined;
+async function resolveEnvironmentId(
+  principalDid: string,
+  perCall: string | undefined,
+): Promise<string | undefined> {
+  if (perCall !== undefined) return perCall;
+
+  const own = await readEnvironmentId(principalDid);
+  if (own !== undefined) return own;
+
+  let nodeDid = '';
+  try {
+    nodeDid = await getNodeDid();
+  } catch (err) {
+    log.warn({ err: String(err) }, 'Could not resolve node DID for Warp environment default');
+    return undefined;
+  }
+
+  if (nodeDid.length === 0 || nodeDid === principalDid) return undefined;
+  return readEnvironmentId(nodeDid);
 }
 
 // ── Types (mirroring Warp's published schema) ────────────────────────────────
@@ -122,6 +150,10 @@ export interface DispatchAgentRunInput {
   name?: string;
   modelId?: string;
   basePrompt?: string;
+  /**
+   * Cloud environment UID for this run. Omit to inherit the caller's stored
+   * default, then the node's — see {@link resolveEnvironmentId}.
+   */
   environmentId?: string;
   /**
    * Skill to use as the base prompt, `owner/repo:skill-name` or
@@ -298,16 +330,20 @@ function toAgentRun(payload: unknown, fallbackRunId?: string): WarpAgentRun {
  * Undefined fields are omitted entirely rather than sent as null, so Warp
  * applies its own defaults (team default model, no environment) instead of
  * receiving an explicit "nothing".
+ *
+ * `environmentId` arrives already resolved rather than being read here, so this
+ * stays a pure projection of its inputs and the precedence rules live in exactly
+ * one place ({@link resolveEnvironmentId}).
  */
 function buildConfig(
   input: DispatchAgentRunInput,
   jinName: string,
+  environmentId: string | undefined,
 ): WarpAgentConfig & { name: string } {
   const imajinMcp: Record<string, WarpMcpServerConfig> = input.attachImajinMcp
     ? { imajin: { url: getMcpResource() } }
     : {};
   const mcpServers = { ...imajinMcp, ...input.mcpServers };
-  const environmentId = input.environmentId ?? defaultEnvironmentId();
 
   return {
     name: input.name ?? jinName,
@@ -329,6 +365,9 @@ function buildConfig(
  * `warp:dispatch` grant or has no sealed key — a revoked grant therefore kills
  * dispatch immediately, with no key rotation involved.
  *
+ * When the caller names no `environmentId`, their stored default is used, then
+ * the node's (#1632).
+ *
  * Emits `warp.agent.dispatched` fire-and-forget for the audit trail. The event
  * carries the run's identity and configuration, never the prompt or the key.
  */
@@ -342,9 +381,16 @@ export async function dispatchAgentRun(
   }
 
   // Authority gate + unwrap. Everything below holds credential material.
+  //
+  // The environment and jin-name lookups run after the gate deliberately: both
+  // hit the DB, and an unauthorized caller should not be able to make us do that
+  // work before being turned away.
   const agentKey = await requireAgentKey(principalDid);
-  const jinName = await resolveJinName(principalDid);
-  const config = buildConfig(input, jinName);
+  const [jinName, environmentId] = await Promise.all([
+    resolveJinName(principalDid),
+    resolveEnvironmentId(principalDid, input.environmentId),
+  ]);
+  const config = buildConfig(input, jinName, environmentId);
 
   const payload = await warpFetch(agentKey, '/agent/run', {
     method: 'POST',
