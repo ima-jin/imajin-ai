@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 import {
   wantsHtml,
@@ -83,6 +83,66 @@ describe('respondUnauthorized', () => {
   it('uses the supplied returnTo path in the redirect', () => {
     const res = respondUnauthorized(makeRequest({ accept: 'text/html' }), '/my/path');
     expect(res.headers.get('location')).toContain(encodeURIComponent('/my/path'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// respondUnauthorized — redirect origin (#1608)
+// ---------------------------------------------------------------------------
+
+/**
+ * Behind Caddy, request.url is Next's internal fallback origin
+ * (http://localhost:3000) regardless of the public host the browser used, so
+ * the login redirect must be anchored to the configured public origin instead.
+ */
+describe('respondUnauthorized redirect origin', () => {
+  const INTERNAL_URL = 'http://localhost:3000/media/api/assets/asset_abc';
+  const originalAppUrl = process.env.APP_URL;
+  const originalBaseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  beforeEach(() => {
+    delete process.env.APP_URL;
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+  });
+
+  afterEach(() => {
+    if (originalAppUrl === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = originalAppUrl;
+    if (originalBaseUrl === undefined) delete process.env.NEXT_PUBLIC_BASE_URL;
+    else process.env.NEXT_PUBLIC_BASE_URL = originalBaseUrl;
+  });
+
+  it('anchors to APP_URL, never the internal request origin', () => {
+    process.env.APP_URL = 'https://jin.imajin.ai';
+    const res = respondUnauthorized(
+      makeRequest({ accept: 'text/html' }, INTERNAL_URL),
+      '/media/api/assets/asset_abc',
+    );
+    const location = res.headers.get('location') ?? '';
+    expect(new URL(location).origin).toBe('https://jin.imajin.ai');
+    expect(location).not.toContain('localhost');
+    expect(new URL(location).pathname).toBe('/auth/login');
+  });
+
+  it('anchors to NEXT_PUBLIC_BASE_URL when APP_URL is unset', () => {
+    process.env.NEXT_PUBLIC_BASE_URL = 'https://dev-jin.imajin.ai';
+    const res = respondUnauthorized(makeRequest({ accept: 'text/html' }, INTERNAL_URL), '/x');
+    expect(new URL(res.headers.get('location') ?? '').origin).toBe('https://dev-jin.imajin.ai');
+  });
+
+  it('falls back to the request origin in local dev', () => {
+    const res = respondUnauthorized(makeRequest({ accept: 'text/html' }, INTERNAL_URL), '/x');
+    expect(new URL(res.headers.get('location') ?? '').origin).toBe('http://localhost:3000');
+  });
+
+  it('preserves the next param when re-anchoring', () => {
+    process.env.APP_URL = 'https://jin.imajin.ai';
+    const res = respondUnauthorized(
+      makeRequest({ accept: 'text/html' }, INTERNAL_URL),
+      '/media/api/assets/asset_abc',
+    );
+    const next = new URL(res.headers.get('location') ?? '').searchParams.get('next');
+    expect(next).toBe('/media/api/assets/asset_abc');
   });
 });
 

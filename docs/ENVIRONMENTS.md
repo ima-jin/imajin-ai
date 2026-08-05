@@ -100,6 +100,7 @@ Each service has a `.env.local` file. Common variables:
 | `NEXT_PUBLIC_SERVICE_PREFIX` | URL scheme prefix | `https://` (prod) or `http://` (dev) |
 | `NEXT_PUBLIC_DOMAIN` | Base domain | `imajin.ai` |
 | `NEXT_PUBLIC_BASE_URL` | Service's own base URL | `http://localhost:3006` |
+| `APP_URL` | Kernel's public origin for server-side browser redirects (runtime, not build-inlined — origin only) | `https://jin.imajin.ai` |
 
 **⚠️ Service-to-service URLs must come from env vars — never hardcode URLs.**
 
