@@ -60,6 +60,10 @@ done
 
 DATABASE_URL="postgresql://${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 
+# Public origin of the kernel in local dev. Every kernel sub-service is
+# consolidated behind this single port with a path prefix.
+KERNEL_URL="http://localhost:3000"
+
 # ── Portable sed -i ───────────────────────────────────────────────────────────
 sed_inplace() {
   if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -207,20 +211,27 @@ for app in "${APPS[@]}"; do
     set_env "$local_env" "PAY_SERVICE_API_KEY"           "\"${PAY_API_KEY}\""
 
     # ── Kernel: local dev public URLs ──────────────────────────────────────
+    # APP_URL is the node's public origin, used server-side to anchor
+    # browser-facing redirects (#1608). It MUST be set here: .env.example ships
+    # the deploy placeholder (https://your-node.imajin.ai) and it outranks
+    # NEXT_PUBLIC_BASE_URL, so leaving it unpatched sends every local login
+    # redirect to a domain that does not resolve. Distinct from
+    # NEXT_PUBLIC_APP_URL below, which is the chat app's URL.
+    set_env "$local_env" "APP_URL"                       "${KERNEL_URL}"
     set_env "$local_env" "NEXT_PUBLIC_SERVICE_PREFIX"    "http://localhost:"
     set_env "$local_env" "NEXT_PUBLIC_DISABLE_INVITE_GATE" "true"
-    set_env "$local_env" "NEXT_PUBLIC_BASE_URL"          "http://localhost:3000"
-    set_env "$local_env" "NEXT_PUBLIC_APP_URL"           "http://localhost:3000/chat"
-    set_env "$local_env" "NEXT_PUBLIC_AUTH_URL"          "http://localhost:3000/auth"
-    set_env "$local_env" "NEXT_PUBLIC_WWW_URL"           "http://localhost:3000"
-    set_env "$local_env" "NEXT_PUBLIC_CHAT_URL"          "http://localhost:3000/chat"
-    set_env "$local_env" "NEXT_PUBLIC_CONNECTIONS_URL"   "http://localhost:3000/connections"
-    set_env "$local_env" "NEXT_PUBLIC_PAY_URL"           "http://localhost:3000/pay"
-    set_env "$local_env" "NEXT_PUBLIC_PROFILE_URL"       "http://localhost:3000/profile"
-    set_env "$local_env" "NEXT_PUBLIC_REGISTRY_URL"      "http://localhost:3000/registry"
-    set_env "$local_env" "NEXT_PUBLIC_MEDIA_SERVICE_URL" "http://localhost:3000/media"
-    set_env "$local_env" "NEXT_PUBLIC_MEDIA_URL"         "http://localhost:3000/media"
-    set_env "$local_env" "NEXT_PUBLIC_NOTIFY_URL"        "http://localhost:3000/notify"
+    set_env "$local_env" "NEXT_PUBLIC_BASE_URL"          "${KERNEL_URL}"
+    set_env "$local_env" "NEXT_PUBLIC_APP_URL"           "${KERNEL_URL}/chat"
+    set_env "$local_env" "NEXT_PUBLIC_AUTH_URL"          "${KERNEL_URL}/auth"
+    set_env "$local_env" "NEXT_PUBLIC_WWW_URL"           "${KERNEL_URL}"
+    set_env "$local_env" "NEXT_PUBLIC_CHAT_URL"          "${KERNEL_URL}/chat"
+    set_env "$local_env" "NEXT_PUBLIC_CONNECTIONS_URL"   "${KERNEL_URL}/connections"
+    set_env "$local_env" "NEXT_PUBLIC_PAY_URL"           "${KERNEL_URL}/pay"
+    set_env "$local_env" "NEXT_PUBLIC_PROFILE_URL"       "${KERNEL_URL}/profile"
+    set_env "$local_env" "NEXT_PUBLIC_REGISTRY_URL"      "${KERNEL_URL}/registry"
+    set_env "$local_env" "NEXT_PUBLIC_MEDIA_SERVICE_URL" "${KERNEL_URL}/media"
+    set_env "$local_env" "NEXT_PUBLIC_MEDIA_URL"         "${KERNEL_URL}/media"
+    set_env "$local_env" "NEXT_PUBLIC_NOTIFY_URL"        "${KERNEL_URL}/notify"
     set_env "$local_env" "NEXT_PUBLIC_EVENTS_URL"        "http://localhost:3006"
     set_env "$local_env" "NEXT_PUBLIC_COFFEE_URL"        "http://localhost:3100"
     set_env "$local_env" "NEXT_PUBLIC_DYKIL_URL"         "http://localhost:3101"
@@ -233,16 +244,16 @@ for app in "${APPS[@]}"; do
   else
     # ── Userspace apps: fix stale service URLs from old multi-port arch ────
     # All kernel sub-services are now consolidated at :3000 with path prefixes.
-    set_env "$local_env" "AUTH_SERVICE_URL"         "http://localhost:3000/auth"
-    set_env "$local_env" "AUTH_URL"                 "http://localhost:3000/auth"
-    set_env "$local_env" "PAY_SERVICE_URL"          "http://localhost:3000/pay"
-    set_env "$local_env" "PROFILE_SERVICE_URL"      "http://localhost:3000/profile"
-    set_env "$local_env" "PROFILE_URL"              "http://localhost:3000/profile"
-    set_env "$local_env" "CONNECTIONS_SERVICE_URL"  "http://localhost:3000/connections"
-    set_env "$local_env" "CHAT_SERVICE_URL"         "http://localhost:3000/chat"
-    set_env "$local_env" "MEDIA_SERVICE_URL"        "http://localhost:3000/media"
-    set_env "$local_env" "NOTIFY_SERVICE_URL"       "http://localhost:3000/notify"
-    set_env "$local_env" "REGISTRY_URL"             "http://localhost:3000/registry"
+    set_env "$local_env" "AUTH_SERVICE_URL"         "${KERNEL_URL}/auth"
+    set_env "$local_env" "AUTH_URL"                 "${KERNEL_URL}/auth"
+    set_env "$local_env" "PAY_SERVICE_URL"          "${KERNEL_URL}/pay"
+    set_env "$local_env" "PROFILE_SERVICE_URL"      "${KERNEL_URL}/profile"
+    set_env "$local_env" "PROFILE_URL"              "${KERNEL_URL}/profile"
+    set_env "$local_env" "CONNECTIONS_SERVICE_URL"  "${KERNEL_URL}/connections"
+    set_env "$local_env" "CHAT_SERVICE_URL"         "${KERNEL_URL}/chat"
+    set_env "$local_env" "MEDIA_SERVICE_URL"        "${KERNEL_URL}/media"
+    set_env "$local_env" "NOTIFY_SERVICE_URL"       "${KERNEL_URL}/notify"
+    set_env "$local_env" "REGISTRY_URL"             "${KERNEL_URL}/registry"
 
     # ── Shared secrets (must match kernel) ─────────────────────────────────
     set_env "$local_env" "ATTESTATION_INTERNAL_API_KEY" "\"${ATTESTATION_KEY}\""
@@ -274,7 +285,7 @@ if [[ -f "$BROKER_EXAMPLE" ]]; then
     warn "broker-agent/.env.local already exists (use --force to overwrite)"
   else
     cp "$BROKER_EXAMPLE" "$BROKER_LOCAL"
-    set_env "$BROKER_LOCAL" "KERNEL_URL" "http://localhost:3000"
+    set_env "$BROKER_LOCAL" "KERNEL_URL" "${KERNEL_URL}"
     ok "broker-agent/.env.local (fill in TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY, APP_DID, APP_PRIVATE_KEY)"
   fi
 fi
