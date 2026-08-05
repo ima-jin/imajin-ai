@@ -1,208 +1,78 @@
 /**
  * Gemini connector backend library (#1432).
  *
- * Connects a human DID's Gemini API Key (sealed in imajin-vault) to the
- * Gemini inference surface via the OpenAI-compatible endpoint, gated by an
- * active `auth.channel_links` row for the gemini connector app DID + the
- * required scope.
+ * Connects a human DID's Gemini API Key (sealed in imajin-vault) to the Gemini
+ * inference surface via the OpenAI-compatible endpoint, gated by an active
+ * `auth.channel_links` row for the gemini connector app DID + the required scope.
  *
- * Mirrors the Discord connector's security shape exactly:
- * - Fail-closed on every gate: no active grant OR no sealed key ⇒ throw.
- * - Key is NEVER logged, NEVER returned to callers, NEVER echoed.
- * - Per-DID vault field isolation: `gemini-api-key:${ownerDid}`.
- * - Cross-DID reads are structurally impossible: field name encodes owner DID.
- *
- * Optional metadata (baseUrl, modelId) stored in separate vault fields so the
- * per-DID Gemini endpoint and model override can be sealed alongside the key.
+ * The custody mechanics this connector originally defined — per-DID vault fields,
+ * the fail-closed grant gate, the pending-grant distinction, optional sealed
+ * baseUrl/modelId — were extracted into `createConnectorTokenPaste` in #1621 when
+ * the Anthropic connector became the second instance of the same shape. Behaviour
+ * is unchanged, including the `gemini_*` error prefixes callers match on.
  */
-import { and, eq } from 'drizzle-orm';
-import { db, channelLinks } from '@/src/db';
-import { sealAndStoreV2, loadAndUnseal, vaultFieldExists, vaultFieldStatus } from '@/src/lib/vault';
-import { VaultDelegationError } from '@/src/lib/vault/errors';
+import {
+  createConnectorTokenPaste,
+  type TokenPasteCredentials,
+} from '@/src/lib/kernel/connector-token-paste';
 
 /** Connector app DID — matches the scope-manifest for the gemini connector. */
 export const GEMINI_CONNECTOR_DID = 'did:imajin:gemini-connector';
 
-/** Channel name — matches the scope-manifest fixture `channel:` field. */
-const GEMINI_CHANNEL = 'gemini';
+/** Scope the owner grants to let their key be used for inference. */
+export const GEMINI_INFER_SCOPE = 'gemini:infer';
 
-// ── Vault field helpers ───────────────────────────────────────────────────────
-
-/**
- * Per-DID vault field name for a Gemini API key.
- *
- * Encoding ownerDid in the field name ensures per-DID isolation at the vault
- * layer: different DIDs cannot share or cross-read each other's keys.
- */
-export function vaultField(ownerDid: string): string {
-  return `gemini-api-key:${ownerDid}`;
-}
-
-/** Optional per-DID vault field for the Gemini base URL override. */
-function baseUrlVaultField(ownerDid: string): string {
-  return `gemini-base-url:${ownerDid}`;
-}
-
-/** Optional per-DID vault field for the Gemini model ID override. */
-function modelIdVaultField(ownerDid: string): string {
-  return `gemini-model-id:${ownerDid}`;
-}
+const gemini = createConnectorTokenPaste({
+  id: 'gemini',
+  displayName: 'Gemini',
+  connectorDid: GEMINI_CONNECTOR_DID,
+  channel: 'gemini',
+});
 
 /**
- * Seal and store a Gemini API key (and optionally baseUrl / modelId) for the
- * given DID.
+ * Per-DID vault field for the Gemini API key.
  *
- * The plaintext key is never logged or returned; the only observable output
- * is a successful vault write. Callers must validate the key is non-empty.
+ * Encoding ownerDid in the field name keeps per-DID isolation at the vault layer:
+ * different DIDs cannot share or cross-read each other's keys.
  */
-export async function sealApiKey(
-  ownerDid: string,
-  apiKey: string,
-  baseUrl?: string,
-  modelId?: string,
-): Promise<void> {
-  await sealAndStoreV2(vaultField(ownerDid), apiKey);
-  if (baseUrl) {
-    await sealAndStoreV2(baseUrlVaultField(ownerDid), baseUrl);
-  }
-  if (modelId) {
-    await sealAndStoreV2(modelIdVaultField(ownerDid), modelId);
-  }
-}
+export const vaultField = gemini.vaultField;
 
-// ── Grant resolution ──────────────────────────────────────────────────────────
+/** Seal an API key, plus an optional base URL and model id, for this DID. */
+export const sealApiKey = gemini.sealApiKey;
+
+/** True when an active `channel_links` row for this DID carries the scope. */
+export const resolveActiveGrant = gemini.resolveActiveGrant;
 
 /**
- * Check whether an active `channel_links` row exists for this DID + scope.
+ * Fail-closed gate for callers that require the grant to be present, as opposed
+ * to `loadGeminiCredentials` which returns `undefined` gracefully.
  *
- * Returns `true` only when at least one ACTIVE row for the gemini channel
- * and the gemini connector app DID contains the requested scope.
- * Fail-closed: any DB error propagates as a thrown exception.
+ * Throws `gemini_no_grant`, `gemini_no_key`, or `gemini_credential_pending`.
  */
-export async function resolveActiveGrant(ownerDid: string, requiredScope: string): Promise<boolean> {
-  const rows = await db
-    .select({ scopes: channelLinks.scopes })
-    .from(channelLinks)
-    .where(
-      and(
-        eq(channelLinks.channel, GEMINI_CHANNEL),
-        eq(channelLinks.did, ownerDid),
-        eq(channelLinks.appDid, GEMINI_CONNECTOR_DID),
-        eq(channelLinks.status, 'active'),
-      ),
-    );
+export const requireGrantAndKey = gemini.requireGrantAndKey;
 
-  return rows.some((row) => {
-    const scopes = Array.isArray(row.scopes) ? (row.scopes as string[]) : [];
-    return scopes.includes(requiredScope);
-  });
-}
-
-// ── Credential resolution ─────────────────────────────────────────────────────
-
-export interface GeminiCredentials {
-  apiKey: string;
-  baseUrl?: string;
-  modelId?: string;
-}
+/** Whether a Gemini API key is sealed for this DID (no crypto, no value returned). */
+export const geminiKeySealed = gemini.keySealed;
 
 /**
- * Resolve sealed Gemini credentials for a DID.
+ * Whether a key is sealed but awaiting owner grant approval (Tier 1, #1603).
  *
- * Checks for an active `gemini:infer` grant AND a sealed API key.
- * Returns the credentials (apiKey, optional baseUrl, optional modelId) when
- * both gates pass, or `undefined` when no connection is configured for the DID.
- *
- * Fail-closed: vault or DB errors propagate. Returns `undefined` only when
- * no active grant exists or no key has been sealed for this DID.
- *
- * The resolved key is returned only to the calling scope; it must not be
- * logged, stored in plaintext, or returned to external callers.
+ * Distinct from `geminiKeySealed`, which reports `false` for this state, so the
+ * scope-manifest surface can render "waiting for owner approval" rather than
+ * "not connected".
  */
-export async function loadGeminiCredentials(ownerDid: string): Promise<GeminiCredentials | undefined> {
-  const hasGrant = await resolveActiveGrant(ownerDid, 'gemini:infer');
-  if (!hasGrant) {
-    return undefined;
-  }
+export const geminiKeyPending = gemini.keyPending;
 
-  const apiKey = await loadAndUnseal(vaultField(ownerDid));
-  if (apiKey === undefined) {
-    return undefined;
-  }
-
-  const [baseUrl, modelId] = await Promise.all([
-    loadAndUnseal(baseUrlVaultField(ownerDid)),
-    loadAndUnseal(modelIdVaultField(ownerDid)),
-  ]);
-
-  return {
-    apiKey,
-    ...(baseUrl !== undefined && { baseUrl }),
-    ...(modelId !== undefined && { modelId }),
-  };
-}
-
-// ── Gate helper (fail-closed, used only for strict enforcement) ───────────────
+export type GeminiCredentials = TokenPasteCredentials;
 
 /**
- * Resolve the connector grant and unseal the API key. Fail-closed on both gates.
+ * Resolve sealed Gemini credentials for a DID, or `undefined` when no connection
+ * is configured.
  *
- * This is the mandatory entry point for callers that require the grant to be
- * present (as opposed to `loadGeminiCredentials`, which returns `undefined`
- * gracefully when no connection exists).
- *
- * The resolved key is returned only to the calling scope; it must not be
- * logged, stored in plaintext, or returned to external callers.
- *
- * Throws:
- *   - `gemini_no_grant` — no active channel_links row for ownerDid + scope.
- *   - `gemini_no_key`   — no sealed API key in the vault for ownerDid.
- *   - Any vault integrity error from loadAndUnseal.
+ * Fail-closed: vault or DB errors propagate. The resolved key is returned only to
+ * the calling scope; it must not be logged, stored in plaintext, or returned to
+ * external callers.
  */
-export async function requireGrantAndKey(ownerDid: string, scope: string): Promise<string> {
-  const hasGrant = await resolveActiveGrant(ownerDid, scope);
-  if (!hasGrant) {
-    throw new Error(
-      `gemini_no_grant: DID ${ownerDid} has no active '${scope}' grant — ` +
-      `use the Gemini connector to seal your API key and enable this scope`,
-    );
-  }
-
-  let key: string | undefined;
-  try {
-    key = await loadAndUnseal(vaultField(ownerDid));
-  } catch (err) {
-    if (err instanceof VaultDelegationError) {
-      throw new Error(
-        `gemini_credential_pending: Gemini API key for DID ${ownerDid} is sealed but awaiting owner grant approval`,
-      );
-    }
-    throw err;
-  }
-  if (key === undefined) {
-    throw new Error(
-      `gemini_no_key: no Gemini API key sealed for DID ${ownerDid} — ` +
-      `use the Gemini connector token route to store a key first`,
-    );
-  }
-
-  return key;
-}
-
-// ── Status helper ─────────────────────────────────────────────────────────────
-
-/** Check whether a Gemini API key is sealed for ownerDid (no crypto, no value returned). */
-export function geminiKeySealed(ownerDid: string): Promise<boolean> {
-  return vaultFieldExists(vaultField(ownerDid));
-}
-
-/**
- * Check whether a Gemini API key is sealed but awaiting owner grant approval
- * (Tier 1, no active delegation grant yet). Distinct from `geminiKeySealed` so
- * the scope-manifest surface can render "waiting for owner approval" instead
- * of "not connected" — `vaultFieldExists`/`geminiKeySealed` report `false` for
- * this state (see field-status.ts).
- */
-export async function geminiKeyPending(ownerDid: string): Promise<boolean> {
-  return (await vaultFieldStatus(vaultField(ownerDid))) === 'pending-grant';
+export function loadGeminiCredentials(ownerDid: string): Promise<GeminiCredentials | undefined> {
+  return gemini.loadCredentials(ownerDid, GEMINI_INFER_SCOPE);
 }
