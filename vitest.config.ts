@@ -3,7 +3,16 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   test: {
-    include: ['packages/*/tests/**/*.test.ts', 'apps/**/__tests__/**/*.test.ts', 'scripts/__tests__/**/*.test.mjs'],
+    include: [
+      'packages/*/tests/**/*.test.ts',
+      'apps/**/__tests__/**/*.test.ts',
+      // Component tests (#1604). Each one opts into jsdom with a
+      // `// @vitest-environment jsdom` docblock rather than switching the whole
+      // suite: jsdom costs real setup time per file and ~1800 of these tests are
+      // pure Node logic that has no use for a DOM.
+      'apps/**/__tests__/**/*.test.tsx',
+      'scripts/__tests__/**/*.test.mjs',
+    ],
     coverage: {
       // v8 rather than istanbul: no instrumentation step, so the suite runs at
       // close to its normal speed. Must stay major-aligned with the root vitest
@@ -13,11 +22,23 @@ export default defineConfig({
       // so a regression is greppable without opening the dashboard.
       reporter: ['text-summary', 'lcov'],
       reportsDirectory: 'coverage',
-      include: ['apps/*/src/**/*.ts', 'apps/*/app/**/*.ts', 'packages/*/src/**/*.ts'],
+      // .tsx is included (#1604) because SonarCloud counts executable lines it
+      // parses itself, not lines present in the lcov report: a component absent
+      // from the report is measured as 0% covered rather than skipped. Leaving
+      // .tsx out therefore capped new-code coverage on any UI change.
+      include: [
+        'apps/*/src/**/*.ts',
+        'apps/*/src/**/*.tsx',
+        'apps/*/app/**/*.ts',
+        'apps/*/app/**/*.tsx',
+        'packages/*/src/**/*.ts',
+        'packages/*/src/**/*.tsx',
+      ],
       exclude: [
         // Tests describe behaviour, they are not behaviour under test.
         '**/__tests__/**',
         '**/*.test.ts',
+        '**/*.test.tsx',
         '**/*.d.ts',
         // Build output and generated artefacts.
         '**/dist/**',
@@ -26,6 +47,10 @@ export default defineConfig({
       ],
     },
   },
+  // The kernel tsconfig sets `jsx: "preserve"` because Next.js owns that
+  // transform in the app build. Vitest has no such downstream step, so state the
+  // automatic runtime explicitly rather than relying on esbuild's inference.
+  esbuild: { jsx: 'automatic' },
   resolve: {
     alias: [
       // Regex form: string aliases lose the trailing slash via path.resolve,

@@ -40,6 +40,23 @@ export type { ReleaseClass, ConnectorScope } from './scope-projections';
 import type { ConnectorScope } from './scope-projections';
 
 /**
+ * Per-connector copy for the credential-paste step (#1604).
+ *
+ * The generic `CredentialPasteConnectorCard` renders identically for every
+ * paste-style connector; only these strings differ ("Bot Token" vs "API key").
+ * Declaring them here is what makes adding a paste-style connector a registry
+ * entry rather than a new component plus a dispatcher line.
+ */
+export interface CredentialUiCopy {
+  /** Step heading, e.g. `'Bot Token'`. Also used for the sealed-state label. */
+  label: string;
+  /** Input placeholder, e.g. `'Discord Bot Token'`. */
+  placeholder: string;
+  /** Help text under the input — say where the credential comes from. */
+  hint: string;
+}
+
+/**
  * A single connector in the registry. All fields are optional-friendly to let
  * entries with `backendPending: true` omit routes they don't have yet.
  */
@@ -94,8 +111,17 @@ export interface ConnectorEntry {
    * POST route that disconnects the connector — purges sealed credentials,
    * revokes the channel_links grant, and publishes a bus event.
    * `null` for connectors that do not yet implement disconnect (e.g. native, pending).
+   *
+   * Static-secret connectors serve seal and revoke from one route, so theirs
+   * equals `tokenRoute` and is called with DELETE (see `disconnectMethod`).
    */
   disconnectRoute: string | null;
+  /**
+   * Credential-step copy for paste-style connectors (`token-paste`,
+   * `static-secret`). `null` for patterns with no paste step — native connectors
+   * have no credential, and OAuth connectors collect theirs via redirect.
+   */
+  credentialUi: CredentialUiCopy | null;
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -116,6 +142,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     configureRoute: null,
     tokenRoute: null,
     disconnectRoute: null,
+    credentialUi: null,
   },
   {
     id: 'github',
@@ -132,6 +159,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     configureRoute: '/github/api/configure',
     tokenRoute: null,
     disconnectRoute: '/github/api/disconnect',
+    credentialUi: null,
   },
   {
     id: 'discord',
@@ -148,6 +176,11 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     configureRoute: null,
     tokenRoute: '/discord/api/token',
     disconnectRoute: '/discord/api/disconnect',
+    credentialUi: {
+      label: 'Bot Token',
+      placeholder: 'Discord Bot Token',
+      hint: 'Token is sealed server-side and never returned. Found in Discord Developer Portal → Bot → Token.',
+    },
   },
   {
     id: 'gemini',
@@ -164,6 +197,11 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     configureRoute: null,
     tokenRoute: '/gemini/api/token',
     disconnectRoute: null,
+    credentialUi: {
+      label: 'API Key',
+      placeholder: 'Gemini API Key',
+      hint: 'Key is sealed server-side and never returned. Create one in Google AI Studio → Get API key.',
+    },
   },
   {
     id: 'quickbooks',
@@ -180,6 +218,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     configureRoute: '/quickbooks/api/configure',
     tokenRoute: null,
     disconnectRoute: '/quickbooks/api/disconnect',
+    credentialUi: null,
   },
   {
     id: 'warp',
@@ -198,6 +237,11 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     // Same endpoint as tokenRoute: the static-secret factory serves POST (seal)
     // and DELETE (revoke the delegation grant) from one route.
     disconnectRoute: '/warp/api/seal',
+    credentialUi: {
+      label: 'Agent Key',
+      placeholder: 'Warp Agent Key',
+      hint: 'Key is sealed server-side and never returned. Revoking here kills dispatch immediately without rotating the key.',
+    },
   },
 ] as const;
 
