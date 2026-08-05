@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
 import { emitAttestation } from '@imajin/auth';
-import type { BrokerRelease, BrokerReactor } from '../types';
+import type {
+  BrokerFieldReleaseMode,
+  BrokerPredicateClaim,
+  BrokerRelease,
+  BrokerReactor,
+} from '../types';
 
 const log = createLogger('bus:broker:release');
 
@@ -21,9 +26,14 @@ const log = createLogger('bus:broker:release');
 async function emitReleaseAttestation(
   envelope: BrokerRelease['envelope'],
   filteredData: Record<string, unknown>,
+  fieldModes: Record<string, BrokerFieldReleaseMode>,
+  predicateClaims: BrokerPredicateClaim[],
   request: { requester: string; subject: string; purpose: string; scope: string }
 ): Promise<void> {
   try {
+    const fields = Object.keys(filteredData);
+    const rawFields = fields.filter((field) => fieldModes[field] === 'raw');
+    const attestationFields = fields.filter((field) => fieldModes[field] === 'attestation');
     await emitAttestation({
       issuer_did: request.subject,
       subject_did: request.subject,
@@ -34,8 +44,13 @@ async function emitReleaseAttestation(
         requester: request.requester,
         purpose: request.purpose,
         scope: request.scope,
-        fields: Object.keys(filteredData),
+        fields,
+        fieldModes,
+        rawFields,
+        attestationFields,
+        predicateClaims,
         consentReference: envelope.consentReference,
+        consentReferences: envelope.consentReferences,
       },
     });
   } catch (err) {
@@ -44,6 +59,53 @@ async function emitReleaseAttestation(
       'emitAttestation (broker.release) failed'
     );
   }
+}
+
+async function emitPredicateClaimAttestations(
+  claims: BrokerPredicateClaim[],
+  request: { subject: string }
+): Promise<void> {
+  for (const claim of claims) {
+    if (claim.cached) continue;
+    try {
+      await emitAttestation({
+        issuer_did: request.subject,
+        subject_did: request.subject,
+        type: 'broker.release',
+        context_id: claim.cacheKey,
+        context_type: 'broker.predicate',
+        payload: { ...claim },
+        expires_at: claim.expiresAt,
+      });
+    } catch (err) {
+      log.error(
+        { err: String(err), cacheKey: claim.cacheKey },
+        'emitAttestation (broker.predicate) failed'
+      );
+    }
+  }
+}
+
+function fieldModesForState(
+  fields: string[],
+  state: Parameters<BrokerReactor>[0]
+): Record<string, BrokerFieldReleaseMode> {
+  const fieldModes: Record<string, BrokerFieldReleaseMode> = {};
+  for (const field of fields) {
+    fieldModes[field] = state.fieldGrants?.[field]?.mode ?? (state.mode === 'raw' ? 'raw' : 'attestation');
+  }
+  return fieldModes;
+}
+
+function consentReferencesForState(
+  fields: string[],
+  state: Parameters<BrokerReactor>[0]
+): Record<string, string> {
+  const consentReferences: Record<string, string> = {};
+  for (const field of fields) {
+    consentReferences[field] = state.fieldGrants?.[field]?.consentReference ?? state.consentReference ?? '';
+  }
+  return consentReferences;
 }
 
 /**
@@ -74,6 +136,10 @@ export const releaseReactor: BrokerReactor = async (state) => {
     throw new Error('Release reactor: consent metadata missing');
   }
 
+  const fields = Object.keys(filteredData);
+  const fieldModes = fieldModesForState(fields, state);
+  const consentReferences = consentReferencesForState(fields, state);
+  const predicateClaims = state.predicateClaims ?? [];
   const envelope: BrokerRelease['envelope'] = {
     releaseId: randomUUID(),
     scopeId: request.scope,
@@ -81,15 +147,17 @@ export const releaseReactor: BrokerReactor = async (state) => {
     issuedAt: new Date().toISOString(),
     consentReference,
     mode,
+    fieldModes,
+    consentReferences,
   };
 
   log.info(
-    { releaseId: envelope.releaseId, mode, fields: Object.keys(filteredData) },
+    { releaseId: envelope.releaseId, mode, fields },
     'Release envelope constructed'
   );
-
-  if (mode === 'attestation') {
-    await emitReleaseAttestation(envelope, filteredData, request);
+  if (Object.values(fieldModes).includes('attestation')) {
+    await emitPredicateClaimAttestations(predicateClaims, request);
+    await emitReleaseAttestation(envelope, filteredData, fieldModes, predicateClaims, request);
   }
 
   return {

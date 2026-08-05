@@ -60,9 +60,11 @@ export default defineConfig({
       // Subpath first: string aliases match by prefix, so the bare '@imajin/auth'
       // entry would otherwise swallow '@imajin/auth/scope-vocabulary' (same
       // ordering requirement as @imajin/fair/react below).
+      { find: '@imajin/auth/broker-consent-vocabulary', replacement: resolve(__dirname, 'packages/auth/src/broker-consent-vocabulary.ts') },
       { find: '@imajin/auth/scope-vocabulary', replacement: resolve(__dirname, 'packages/auth/src/scope-vocabulary.ts') },
       { find: '@imajin/cid', replacement: resolve(__dirname, 'packages/cid/src/index.ts') },
       { find: '@imajin/config', replacement: resolve(__dirname, 'packages/config/src/index.ts') },
+      { find: '@imajin/logger', replacement: resolve(__dirname, 'packages/logger/src/index.ts') },
       { find: '@imajin/vault-core', replacement: resolve(__dirname, 'packages/vault-core/src/index.ts') },
       { find: '@imajin/db', replacement: resolve(__dirname, 'packages/db/src/index.ts') },
       { find: '@imajin/fair/react', replacement: resolve(__dirname, 'packages/fair/src/react.ts') },

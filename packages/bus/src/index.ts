@@ -10,6 +10,7 @@ import { webhookReactor } from './reactors/webhook';
 import { matchEngineReactor } from './match/engine';
 import { notifyMatchDeliveryReactor } from './reactors/notify-match-delivery';
 import { supplyRecorderReactor } from './reactors/supply-recorder';
+import { brokerPredicateInvalidationReactor } from './reactors/broker-predicate-invalidation';
 
 // Auto-register built-in reactors on import
 registerReactor('attestation', attestationReactor);
@@ -23,6 +24,7 @@ registerReactor('webhook', webhookReactor);
 registerReactor('match-engine', matchEngineReactor);
 registerReactor('notify-match-delivery', notifyMatchDeliveryReactor);
 registerReactor('supply-recorder', supplyRecorderReactor);
+registerReactor('broker-predicate-invalidation', brokerPredicateInvalidationReactor);
 
 export { publish } from './publish';
 export { broker } from './broker';
@@ -44,6 +46,11 @@ export type {
   ChainConfig,
   ReactorHandler,
   BrokerRequest,
+  BrokerFieldReleaseMode,
+  BrokerReleaseEnvelopeMode,
+  BrokerResolvedFieldGrant,
+  BrokerPredicateRequest,
+  BrokerPredicateClaim,
   BrokerRelease,
   BrokerRejection,
   BrokerRejectionReason,

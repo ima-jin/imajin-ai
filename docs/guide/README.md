@@ -31,6 +31,7 @@
 - **[Proof Model](./proof-model.md)** — what is user-signed vs platform-signed vs merely logged, and what that means for independent verification.
 - **[.fair Legal Boundaries](./fair-legal-boundaries.md)** — `.fair` is a machine-readable payout instruction, not a legal instrument. What it does and does not cover.
 - **[.fair Settlement Disclosure](./fair-settlement-disclosure.md)** — the three-layer composable disclosure model for settlement lot manifests: floor, community overlay, and subject gates. How to configure per-deployment profiles and unlock on-consent fields via consent grants.
+- **[Broker Consent Vocabulary](./broker-consent-vocabulary.md)** — canonical broker purposes, fields, release modes, predicates, and term registries for consent config.
 - **[SECURITY.md](../../SECURITY.md)** — responsible disclosure + honest list of known limitations.
 
 ## Quick Links

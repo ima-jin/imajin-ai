@@ -1,5 +1,6 @@
 import { createLogger } from '@imajin/logger';
-import type { BrokerRejection, BrokerReactor } from '../types';
+import type { BrokerFieldReleaseMode, BrokerPredicateClaim, BrokerRejection, BrokerReactor } from '../types';
+import { resolveBrokerPredicateClaimsForField } from '../predicate-claims';
 
 const log = createLogger('bus:broker:scope');
 
@@ -11,7 +12,7 @@ const log = createLogger('bus:broker:scope');
  * If the intersection is empty → rejection with 'no_consent'.
  */
 export const scopeReactor: BrokerReactor = async (state) => {
-  const { request, allowedFields } = state;
+  const { request, allowedFields, fieldGrants } = state;
 
   if (!allowedFields) {
     log.error({}, 'Scope reactor called without resolved consent');
@@ -25,7 +26,8 @@ export const scopeReactor: BrokerReactor = async (state) => {
   }
 
   // Intersect requested fields with consented fields
-  const intersection = request.fields.filter((f) => allowedFields.includes(f));
+  const allowedFieldSet = new Set(allowedFields);
+  const intersection = request.fields.filter((f) => allowedFieldSet.has(f));
 
   if (intersection.length === 0) {
     log.warn(
@@ -47,10 +49,47 @@ export const scopeReactor: BrokerReactor = async (state) => {
   const rawData = request.data || {};
   const filteredData: Record<string, unknown> = {};
   const missingFields: string[] = [];
+  const predicateClaims: BrokerPredicateClaim[] = [...(state.predicateClaims ?? [])];
+
+  const modeForField = (field: string): BrokerFieldReleaseMode => {
+    const grant = fieldGrants?.[field];
+    if (grant) return grant.mode;
+    return state.mode === 'raw' ? 'raw' : 'attestation';
+  };
 
   for (const field of intersection) {
     if (field in rawData) {
-      filteredData[field] = rawData[field];
+      const fieldMode = modeForField(field);
+      if (fieldMode === 'raw') {
+        filteredData[field] = rawData[field];
+        continue;
+      }
+
+      const predicates = request.predicates?.[field];
+      if (!predicates) {
+        filteredData[field] = { attested: true };
+        continue;
+      }
+
+      try {
+        const claims = await resolveBrokerPredicateClaimsForField({
+          subject: request.subject,
+          field,
+          value: rawData[field],
+          predicates,
+        });
+        predicateClaims.push(...claims);
+        filteredData[field] = claims.length === 1 ? claims[0] : claims;
+      } catch (err) {
+        log.warn({ field, err: String(err) }, 'Predicate evaluation failed — rejecting');
+        const rejection: BrokerRejection = {
+          status: 'rejected',
+          reason: 'requester_unauthorized',
+          fields: [field],
+          details: `Predicate evaluation failed for ${field}: ${String(err)}`,
+        };
+        return rejection;
+      }
     } else {
       missingFields.push(field);
     }
@@ -68,5 +107,6 @@ export const scopeReactor: BrokerReactor = async (state) => {
   return {
     ...state,
     filteredData,
+    predicateClaims,
   };
 };

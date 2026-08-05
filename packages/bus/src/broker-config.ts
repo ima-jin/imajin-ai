@@ -1,5 +1,10 @@
 import { createLogger } from '@imajin/logger';
-import type { BrokerRejectionReason } from './types';
+import type {
+  BrokerFieldReleaseMode,
+  BrokerReleaseEnvelopeMode,
+  BrokerRejectionReason,
+  BrokerResolvedFieldGrant,
+} from './types';
 
 const log = createLogger('bus:broker:config');
 
@@ -47,6 +52,17 @@ const CONSENT_DEFAULTS: Record<ConsentKey, ConsentEntry[]> = {
   'did:imajin:alice|did:imajin:bob|analytics': [
     { allowedFields: ['name', 'email', 'age'], mode: 'raw', consentRef: 'consent-alice-bob-raw-001' },
   ],
+  // Tripian/restaurant example: raw preferences coexist with computed attestations.
+  'did:imajin:traveler|did:imajin:restaurant|restaurant_reservation': [
+    { allowedFields: ['dietary'], mode: 'raw', consentRef: 'consent-traveler-restaurant-raw-001' },
+    { allowedFields: ['allergies'], mode: 'attestation', consentRef: 'consent-traveler-restaurant-att-001' },
+  ],
+
+  // Conflict example: same field granted raw and attestation resolves private.
+  'did:imajin:mixed|did:imajin:partner|conflict-test': [
+    { allowedFields: ['email'], mode: 'raw', consentRef: 'consent-mixed-partner-raw-001' },
+    { allowedFields: ['email'], mode: 'attestation', consentRef: 'consent-mixed-partner-att-001' },
+  ],
 
   // Example: carol allows anyone for event registration
   'did:imajin:carol|*|event-registration': [
@@ -69,30 +85,70 @@ function buildLookupKeys(subject: string, requester: string, purpose: string): C
 }
 
 /** Resolved consent shape returned to the broker pipeline. */
-type ResolvedConsent = { allowedFields: string[]; mode: 'attestation' | 'raw'; consentRef: string };
+export interface ResolvedConsent {
+  allowedFields: string[];
+  mode: BrokerReleaseEnvelopeMode;
+  consentRef: string;
+  fieldGrants: Record<string, BrokerResolvedFieldGrant>;
+}
+
+function summarizeMode(fieldGrants: Record<string, BrokerResolvedFieldGrant>): BrokerReleaseEnvelopeMode {
+  const modes = new Set<BrokerFieldReleaseMode>(
+    Object.values(fieldGrants).map((grant) => grant.mode)
+  );
+  if (modes.size === 1) return modes.values().next().value ?? 'attestation';
+  return 'mixed';
+}
+
+function composeFieldGrant(
+  existing: BrokerResolvedFieldGrant | undefined,
+  field: string,
+  entry: ConsentEntry
+): BrokerResolvedFieldGrant {
+  if (!existing) {
+    return { field, mode: entry.mode, consentReference: entry.consentRef };
+  }
+
+  // Same-field conflicts default to the more private mode.
+  if (existing.mode === 'attestation' || entry.mode === 'attestation') {
+    return {
+      field,
+      mode: 'attestation',
+      consentReference: existing.mode === 'attestation'
+        ? existing.consentReference
+        : entry.consentRef,
+    };
+  }
+
+  return existing;
+}
 
 /**
  * Compose a set of consent entries permissively (most-specific first):
  * - Unions their allowed field sets
  * - Returns the consentRef of the most specific match
- * - Prefers 'raw' mode if any entry allows it (most permissive)
+ * - Carries mode per field; same-field conflicts prefer attestation
  */
 function composeEntries(entries: ConsentEntry[]): ResolvedConsent | undefined {
   const unionFields = new Set<string>();
-  let mode: 'attestation' | 'raw' = 'attestation';
   let primaryRef = '';
+  const fieldGrants: Record<string, BrokerResolvedFieldGrant> = {};
 
   for (const entry of entries) {
     for (const f of entry.allowedFields) {
       unionFields.add(f);
+      fieldGrants[f] = composeFieldGrant(fieldGrants[f], f, entry);
     }
-    if (entry.mode === 'raw') mode = 'raw';
     if (!primaryRef) primaryRef = entry.consentRef;
   }
 
   if (unionFields.size === 0) return undefined;
-
-  return { allowedFields: Array.from(unionFields), mode, consentRef: primaryRef };
+  return {
+    allowedFields: Array.from(unionFields),
+    mode: summarizeMode(fieldGrants),
+    consentRef: primaryRef,
+    fieldGrants,
+  };
 }
 
 /**

@@ -38,7 +38,12 @@ export const consentReactor: BrokerReactor = async (state) => {
   }
 
   log.info(
-    { allowedFields: resolved.allowedFields, mode: resolved.mode, consentRef: resolved.consentRef },
+    {
+      allowedFields: resolved.allowedFields,
+      mode: resolved.mode,
+      fieldGrants: resolved.fieldGrants,
+      consentRef: resolved.consentRef,
+    },
     'Consent resolved'
   );
 
@@ -47,5 +52,6 @@ export const consentReactor: BrokerReactor = async (state) => {
     allowedFields: resolved.allowedFields,
     mode: resolved.mode,
     consentReference: resolved.consentRef,
+    fieldGrants: resolved.fieldGrants,
   };
 };
