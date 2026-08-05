@@ -343,6 +343,16 @@ async function buildProfileUpdates(
   return updates;
 }
 
+function brokerChangedFieldsFromBody(body: Record<string, any>): string[] {
+  const fields = new Set<string>();
+  if (body.displayName !== undefined) fields.add('displayName');
+  if (body.avatar !== undefined || body.avatarAssetId !== undefined) fields.add('avatar');
+  if (body.bio !== undefined) fields.add('bio');
+  if (body.email !== undefined) fields.add('email');
+  if (body.phone !== undefined) fields.add('phone');
+  return [...fields];
+}
+
 // ---------------------------------------------------------------------------
 // Route handlers
 // ---------------------------------------------------------------------------
@@ -465,6 +475,20 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     publish('profile.update', { issuer: identity.id, subject: identity.id, scope: 'profile', payload: { profileDid } }).catch(() => {});
+    const changedFields = brokerChangedFieldsFromBody(body);
+    if (changedFields.length > 0) {
+      publish('profile.field.changed', {
+        issuer: identity.id,
+        subject: profileDid,
+        scope: 'profile',
+        payload: {
+          subjectDid: profileDid,
+          fields: changedFields,
+          context_id: profileDid,
+          context_type: 'profile',
+        },
+      }).catch(() => {});
+    }
     return NextResponse.json(updated, { headers: cors });
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to update profile');

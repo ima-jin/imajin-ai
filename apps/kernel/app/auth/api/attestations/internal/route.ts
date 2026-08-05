@@ -5,7 +5,7 @@
  * Signs the attestation using the platform keypair (AUTH_PRIVATE_KEY).
  * Authenticated via Bearer token (ATTESTATION_INTERNAL_API_KEY).
  *
- * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, issued_at?, nostr_sig? }
+ * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, issued_at?, expires_at?, nostr_sig? }
  * No session cookie required — service-to-service only.
  *
  * For type `imajin/nostr-key-binding`: nostr_sig and issued_at are required.
@@ -25,6 +25,14 @@ const log = createLogger('kernel');
 
 function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+}
+
+function resolveExpiresAt(value: unknown): Date | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed;
 }
 
 export async function POST(request: NextRequest) {
@@ -71,6 +79,10 @@ export async function POST(request: NextRequest) {
 
   // Accept issued_at so the caller can pre-compute nostr_sig over the exact canonical form.
   const issuedAtMs = resolveIssuedAt(body.issued_at);
+  const expiresAt = resolveExpiresAt(body.expires_at);
+  if (expiresAt === undefined) {
+    return NextResponse.json({ error: 'expires_at must be a valid ISO 8601 date' }, { status: 400 });
+  }
 
   const canonicalPayload = canonicalize({
     subject_did,
@@ -115,6 +127,7 @@ export async function POST(request: NextRequest) {
         signature,
         nostrSig: nostrSigToStore,
         issuedAt: new Date(issuedAtMs),
+        expiresAt,
       })
       .returning();
 

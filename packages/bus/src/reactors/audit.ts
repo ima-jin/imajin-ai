@@ -145,6 +145,7 @@ export const auditReactor: BrokerReactor = async (state) => {
       purpose: request.purpose,
       scope: request.scope,
       mode: envelope.mode,
+      fieldModes: envelope.fieldModes,
       issuedAt: envelope.issuedAt,
     },
   }).catch((err: unknown) => {

@@ -189,6 +189,19 @@ export async function broker<T extends BrokerEventType>(
 
   // Preview mode: return what would be released without envelope / audit
   if (request.preview) {
+    const previewFields = Object.keys(state.filteredData);
+    const fieldModes = Object.fromEntries(
+      previewFields.map((field) => [
+        field,
+        state.fieldGrants?.[field]?.mode ?? (state.mode === 'raw' ? 'raw' : 'attestation'),
+      ])
+    );
+    const consentReferences = Object.fromEntries(
+      previewFields.map((field) => [
+        field,
+        state.fieldGrants?.[field]?.consentReference ?? state.consentReference ?? 'preview',
+      ])
+    );
     const previewRelease = {
       status: 'released' as const,
       data: state.filteredData,
@@ -199,6 +212,8 @@ export async function broker<T extends BrokerEventType>(
         issuedAt: new Date().toISOString(),
         consentReference: state.consentReference || 'preview',
         mode: state.mode || 'attestation',
+        fieldModes,
+        consentReferences,
       },
       preview: true as const,
       enforced,

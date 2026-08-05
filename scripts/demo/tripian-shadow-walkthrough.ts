@@ -15,8 +15,8 @@
  *   #1050  GET  /api/broker/audit        (shadow-flagged rows)
  *
  * It ASSERTS (does not merely print): dietary released raw, allergies released
- * as attestation, budget not released, every decision enforced:false, and the
- * audit rows are shadow-flagged.
+ * as a computed attestation without the raw list, budget not released, every
+ * decision enforced:false, and the audit rows are shadow-flagged.
  *
  * Usage (run against a live dev kernel):
  *   cd apps/kernel
@@ -228,21 +228,23 @@ interface BrokerOutcome {
   data: Record<string, unknown>;
 }
 
-/** Issue one shadow-mode broker request for a single field and normalize the result. */
+/** Issue one shadow-mode broker request and normalize the result. */
 async function brokerShadow(
   cfg: Readonly<Config>,
   travelerDid: string,
-  field: string,
-  value: string,
+  fields: string[],
+  data: Record<string, string>,
+  predicates?: Record<string, unknown>,
 ): Promise<BrokerOutcome> {
   const { status, json } = await postJson(cfg, '/api/broker/request', {
     type: 'profile.field.request',
     requester: cfg.agentDid,
     subject: travelerDid,
     purpose: PURPOSE,
-    fields: [field],
+    fields,
     scope: SCOPE,
-    data: { [field]: value },
+    data,
+    predicates,
     mode: 'shadow',
   });
 
@@ -315,29 +317,32 @@ async function main(): Promise<void> {
     step('Seed traveler consent grants (dietary=raw, allergies=attestation, budget=none)');
     await seedConsent(sql, travelerDid, cfg.agentDid);
 
-    step('Restaurant requests each field via the broker in SHADOW mode (#1231)');
-    const dietary = await brokerShadow(cfg, travelerDid, 'dietary', unsealed.dietary);
-    info(`dietary: http=${dietary.status} released=${dietary.released} mode=${String(dietary.releaseMode)} enforced=${String(dietary.enforced)}`);
-    assert(dietary.status === 200, 'dietary request returns HTTP 200 (non-blocking)');
-    assert(dietary.released, 'dietary is released');
-    assert(dietary.releaseMode === 'raw', 'dietary is released in RAW mode');
-    assert(dietary.data.dietary === PREFS.dietary, 'dietary raw value is present');
-    assert(dietary.enforced === false, 'dietary decision is advisory (enforced:false)');
+    step('Restaurant requests dietary + allergy gate via the broker in SHADOW mode (#1231/#1511)');
+    const restaurantRelease = await brokerShadow(
+      cfg,
+      travelerDid,
+      ['dietary', 'allergies'],
+      { dietary: unsealed.dietary, allergies: unsealed.allergies },
+      { allergies: { predicate: 'overlaps', arg: ['peanut', 'egg', 'wheat'] } },
+    );
+    info(`restaurant: http=${restaurantRelease.status} released=${restaurantRelease.released} mode=${String(restaurantRelease.releaseMode)} enforced=${String(restaurantRelease.enforced)}`);
+    assert(restaurantRelease.status === 200, 'restaurant request returns HTTP 200 (non-blocking)');
+    assert(restaurantRelease.released, 'dietary + allergy gate is released');
+    assert(restaurantRelease.releaseMode === 'mixed', 'release is MIXED mode (dietary raw, allergies attestation)');
+    assert(restaurantRelease.data.dietary === PREFS.dietary, 'dietary raw value is present');
+    const allergyClaim = restaurantRelease.data.allergies as Record<string, unknown> | undefined;
+    assert(allergyClaim?.predicate === 'overlaps', 'allergies response is a predicate claim');
+    assert(allergyClaim?.result === true, 'allergy overlap predicate returns true for the declared dish set');
+    assert(!JSON.stringify(restaurantRelease.data).includes(unsealed.allergies), 'raw allergies value is absent from broker response');
+    assert(restaurantRelease.enforced === false, 'restaurant decision is advisory (enforced:false)');
 
-    const allergies = await brokerShadow(cfg, travelerDid, 'allergies', unsealed.allergies);
-    info(`allergies: http=${allergies.status} released=${allergies.released} mode=${String(allergies.releaseMode)} enforced=${String(allergies.enforced)}`);
-    assert(allergies.status === 200, 'allergies request returns HTTP 200 (non-blocking)');
-    assert(allergies.released, 'allergies is released');
-    assert(allergies.releaseMode === 'attestation', 'allergies is released in ATTESTATION mode');
-    assert(allergies.enforced === false, 'allergies decision is advisory (enforced:false)');
-
-    step('Verify the attestation-mode field minted a signed claim, not just mode=attestation (#1508)');
+    step('Verify the attestation-mode field minted a signed claim, not just mode=attestation (#1508/#1515)');
     const releaseAttestations = await getBrokerReleaseAttestations(cfg, travelerDid);
     const allergiesAttestation = releaseAttestations.find(
-      (a) => a.contextId === allergies.releaseId,
+      (a) => a.contextId === restaurantRelease.releaseId,
     );
-    info(`broker.release attestations for traveler: ${releaseAttestations.length} (releaseId=${String(allergies.releaseId)})`);
-    assert(!!allergiesAttestation, 'a broker.release attestation exists referencing the allergies releaseId');
+    info(`broker.release attestations for traveler: ${releaseAttestations.length} (releaseId=${String(restaurantRelease.releaseId)})`);
+    assert(!!allergiesAttestation, 'a broker.release attestation exists referencing the mixed releaseId');
     assert(
       typeof allergiesAttestation?.signature === 'string' && (allergiesAttestation.signature as string).length > 0,
       'the attestation carries a non-empty signature — a signed claim, not a bare tag',
@@ -347,8 +352,12 @@ async function main(): Promise<void> {
       !attestationPayload.includes(unsealed.allergies),
       'the attestation payload never carries the raw allergies value (withheld, unchanged)',
     );
+    assert(
+      attestationPayload.includes('predicateClaims'),
+      'the release attestation carries predicate claim metadata',
+    );
 
-    const budget = await brokerShadow(cfg, travelerDid, 'budget', unsealed.budget);
+    const budget = await brokerShadow(cfg, travelerDid, ['budget'], { budget: unsealed.budget });
     info(`budget: http=${budget.status} released=${budget.released} enforced=${String(budget.enforced)}`);
     assert(budget.status === 200, 'budget request returns HTTP 200 even when denied (non-blocking)');
     assert(!budget.released, 'budget is NOT released (no consent)');

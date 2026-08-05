@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { broker } from '@imajin/bus';
+import type { BrokerRequest } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -20,6 +21,7 @@ const log = createLogger('kernel');
  *   fields      string[]  required  — requested field names
  *   scope       string    optional  — service scope (defaults to 'default')
  *   data        object    optional  — inline subject data for Phase 1 broker
+ *   predicates  object    optional  — per-field predicate(s) for attestation releases
  *   preview     boolean   optional  — dry-run mode; skips release + audit
  *   mode        string    optional  — 'enforce' (default) | 'shadow'
  *
@@ -51,6 +53,9 @@ export async function POST(request: Request) {
   const fields = Array.isArray(body.fields) ? (body.fields as unknown[]).filter((f): f is string => typeof f === 'string') : null;
   const scope = typeof body.scope === 'string' ? body.scope : 'default';
   const data = typeof body.data === 'object' && body.data !== null ? (body.data as Record<string, unknown>) : undefined;
+  const predicates = typeof body.predicates === 'object' && body.predicates !== null && !Array.isArray(body.predicates)
+    ? body.predicates as BrokerRequest['predicates']
+    : undefined;
   const preview = body.preview === true;
   const mode = body.mode === undefined ? 'enforce' : body.mode;
 
@@ -81,6 +86,7 @@ export async function POST(request: Request) {
     purpose,
     scope,
     data,
+    predicates,
     preview,
     mode,
   });

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { broker } from '../src/broker';
-import type { BrokerRequest, BrokerRelease, BrokerRejection } from '../src/types';
+import type { BrokerPredicateClaim, BrokerRequest, BrokerRelease, BrokerRejection } from '../src/types';
 
 // Mock publish so audit events don't actually fire during tests
 vi.mock('../src/publish', () => ({
@@ -54,6 +54,17 @@ describe('bus.broker()', () => {
     expect(result).toHaveProperty('status', 'rejected');
   }
 
+  function assertPredicateClaim(value: unknown): asserts value is BrokerPredicateClaim {
+    expect(value).toEqual(expect.objectContaining({
+      field: expect.any(String),
+      predicate: expect.any(String),
+      result: expect.any(Boolean),
+      cacheKey: expect.any(String),
+      issuedAt: expect.any(String),
+      expiresAt: expect.any(String),
+    }));
+  }
+
   // --------------------------------------------------------------------------
   // Valid consent → full release with envelope
   // --------------------------------------------------------------------------
@@ -63,11 +74,12 @@ describe('bus.broker()', () => {
     const result = await broker('profile.read', request);
 
     assertRelease(result);
-    expect(result.data).toEqual({ name: 'Alice', email: 'alice@example.com' });
+    expect(result.data).toEqual({ name: { attested: true }, email: { attested: true } });
     expect(result.envelope).toBeDefined();
     expect(result.envelope.scopeId).toBe('test');
     expect(result.envelope.purpose).toBe('marketing');
     expect(result.envelope.mode).toBe('attestation');
+    expect(result.envelope.fieldModes).toEqual({ name: 'attestation', email: 'attestation' });
     expect(result.envelope.consentReference).toBe('consent-alice-bob-001');
     expect(result.envelope.releaseId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     expect(result.envelope.issuedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -103,7 +115,7 @@ describe('bus.broker()', () => {
 
     assertRelease(result);
     // alice|bob|marketing only consents to name + email, not age
-    expect(result.data).toEqual({ name: 'Alice', email: 'alice@example.com' });
+    expect(result.data).toEqual({ name: { attested: true }, email: { attested: true } });
     expect(Object.keys(result.data)).not.toContain('age');
   });
 
@@ -128,7 +140,7 @@ describe('bus.broker()', () => {
 
     assertRelease(result);
     expect(result.preview).toBe(true);
-    expect(result.data).toEqual({ name: 'Alice', email: 'alice@example.com' });
+    expect(result.data).toEqual({ name: { attested: true }, email: { attested: true } });
 
     // Envelope should still be present (release reactor runs in preview for envelope construction?)
     // Actually per spec: "preview: when true, run consent + scope but skip release envelope + audit"
@@ -179,10 +191,10 @@ describe('bus.broker()', () => {
 
     assertRelease(result);
     expect(result.data).toEqual({
-      name: 'Alice',
-      email: 'alice@example.com',
-      phone: '+1-555-0123',
-      address: '123 Main St',
+      name: { attested: true },
+      email: { attested: true },
+      phone: { attested: true },
+      address: { attested: true },
     });
   });
 
@@ -201,8 +213,8 @@ describe('bus.broker()', () => {
 
     assertRelease(result);
     expect(result.data).toEqual({
-      name: 'Alice',
-      avatar: 'https://example.com/alice.png',
+      name: { attested: true },
+      avatar: { attested: true },
     });
   });
 
@@ -220,6 +232,51 @@ describe('bus.broker()', () => {
 
     assertRelease(result);
     expect(result.envelope.mode).toBe('raw');
+    expect(result.envelope.fieldModes).toEqual({ name: 'raw', email: 'raw', age: 'raw' });
+    expect(result.data).toEqual({ name: 'Alice', email: 'alice@example.com', age: 30 });
+  });
+
+  it('supports mixed raw and attestation fields without raw-biased collapse', async () => {
+    const request = makeRequest({
+      requester: 'did:imajin:restaurant',
+      subject: 'did:imajin:traveler',
+      purpose: 'restaurant_reservation',
+      fields: ['dietary', 'allergies'],
+      data: { dietary: 'vegetarian', allergies: 'peanuts; shellfish' },
+      predicates: {
+        allergies: { predicate: 'overlaps', arg: ['peanut', 'egg', 'wheat'] },
+      },
+    });
+    const result = await broker('profile.read', request);
+
+    assertRelease(result);
+    expect(result.envelope.mode).toBe('mixed');
+    expect(result.envelope.fieldModes).toEqual({ dietary: 'raw', allergies: 'attestation' });
+    expect(result.data.dietary).toBe('vegetarian');
+    assertPredicateClaim(result.data.allergies);
+    expect(result.data.allergies).toEqual(expect.objectContaining({
+      field: 'allergies',
+      predicate: 'overlaps',
+      arg: ['peanut', 'egg', 'wheat'],
+      result: true,
+    }));
+    expect(JSON.stringify(result.data.allergies)).not.toContain('shellfish');
+  });
+
+  it('resolves conflicting same-field grants to attestation, not raw', async () => {
+    const request = makeRequest({
+      requester: 'did:imajin:partner',
+      subject: 'did:imajin:mixed',
+      purpose: 'conflict-test',
+      fields: ['email'],
+      data: { email: 'private@example.com' },
+    });
+    const result = await broker('profile.read', request);
+
+    assertRelease(result);
+    expect(result.envelope.mode).toBe('attestation');
+    expect(result.envelope.fieldModes).toEqual({ email: 'attestation' });
+    expect(result.data.email).toEqual({ attested: true });
   });
 
   // --------------------------------------------------------------------------
@@ -245,6 +302,9 @@ describe('bus.broker()', () => {
           purpose: 'marketing',
           scope: 'test',
           fields: ['name', 'email'],
+          fieldModes: { name: 'attestation', email: 'attestation' },
+          rawFields: [],
+          attestationFields: ['name', 'email'],
           consentReference: 'consent-alice-bob-001',
         }),
       })
@@ -309,6 +369,7 @@ describe('bus.broker()', () => {
           purpose: 'marketing',
           scope: 'test',
           mode: 'attestation',
+          fieldModes: { name: 'attestation', email: 'attestation' },
         }),
       })
     );
@@ -374,7 +435,7 @@ describe('bus.broker()', () => {
 
     assertRelease(result);
     expect(result.enforced).toBe(false);
-    expect(result.data).toEqual({ name: 'Alice', email: 'alice@example.com' });
+    expect(result.data).toEqual({ name: { attested: true }, email: { attested: true } });
     // Full pipeline ran: the release audit event still fires (unlike preview).
     expect(mockPublish).toHaveBeenCalledWith('broker.release', expect.anything());
   });

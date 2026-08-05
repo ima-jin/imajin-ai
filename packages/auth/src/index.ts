@@ -60,6 +60,39 @@ export type {
   PlatformScopeEntry,
   ConnectorScopeEntry,
 } from "./scope-vocabulary";
+export {
+  BROKER_RELEASE_MODES,
+  BROKER_PREDICATE_NAMES,
+  BROKER_TERM_VOCABULARIES,
+  BROKER_FIELD_VOCABULARY,
+  BROKER_PURPOSE_VOCABULARY,
+  brokerFieldEntry,
+  brokerPurposeEntry,
+  brokerTermVocabulary,
+  isKnownBrokerField,
+  isKnownBrokerPurpose,
+  isBrokerReleaseMode,
+  isBrokerPredicateName,
+  allBrokerPurposes,
+  allBrokerFields,
+  brokerFieldsForPurpose,
+  isBrokerFieldAllowedForPurpose,
+  brokerPredicatesForField,
+  validateBrokerPurposeFields,
+  normalizeBrokerTerm,
+} from "./broker-consent-vocabulary";
+export type {
+  BrokerReleaseMode,
+  BrokerPredicateName,
+  BrokerFieldValueType,
+  BrokerTermVocabularyId,
+  BrokerTermEntry,
+  BrokerTermVocabulary,
+  BrokerFieldVocabularyEntry,
+  BrokerFieldName,
+  BrokerPurposeVocabularyEntry,
+  BrokerPurpose,
+} from "./broker-consent-vocabulary";
 export { requireAppAuth } from "./require-app-auth";
 export type { AppAuthContext, AppAuthResult } from "./require-app-auth";
 export { resolveEffectiveDid } from "./resolve-effective-did";

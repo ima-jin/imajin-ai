@@ -8,6 +8,7 @@ export async function emitAttestation(params: {
   context_id: string;
   context_type: string;
   payload?: Record<string, unknown>;
+  expires_at?: string;
 }): Promise<void> {
   const authServiceUrl = process.env.AUTH_SERVICE_URL;
   const internalApiKey = process.env.AUTH_INTERNAL_API_KEY;

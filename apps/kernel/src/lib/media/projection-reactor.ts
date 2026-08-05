@@ -259,8 +259,16 @@ async function decideFieldRelease(
         data: { [field]: value },
       };
       const result = await broker(PROJECTION_BROKER_TYPE, request);
+      // The broker is used here as a GATE ("may this field materialize?"), not
+      // as the disclosure channel. Per-field attestation mode (#1511/#1516)
+      // redacts `result.data[field]` down to a signed predicate claim or the
+      // `{ attested: true }` sentinel, which is the correct shape to hand a
+      // third-party requester but NOT something to persist into the owner's own
+      // projection home. So we materialize the authored value from the signed
+      // document and use the broker purely for the allow/deny decision (which
+      // its audit reactor still records).
       if (isBrokerRelease(result) && field in result.data) {
-        return { release: true, value: result.data[field] };
+        return { release: true, value };
       }
       return { release: false };
     }

@@ -286,6 +286,12 @@ export interface BusEventMap {
   'profile.update': {
     profileDid: string;
   };
+  'profile.field.changed': {
+    subjectDid: string;
+    fields: string[];
+    context_id: string;
+    context_type: 'profile';
+  };
   'profile.field.request': {
     requester: string;
     subject: string;
@@ -669,7 +675,8 @@ export interface BusEventMap {
     fields: string[];
     purpose: string;
     scope: string;
-    mode: 'attestation' | 'raw';
+    mode: BrokerReleaseEnvelopeMode;
+    fieldModes?: Record<string, BrokerFieldReleaseMode>;
     issuedAt: string;
   };
   'broker.rejection': {
@@ -955,6 +962,38 @@ export type BusEventType = keyof BusEventMap;
  */
 export type BrokerMode = 'enforce' | 'shadow';
 
+/** Broker release form for an individual field. */
+export type BrokerFieldReleaseMode = 'attestation' | 'raw';
+
+/** Release envelope summary mode. `mixed` means field-level modes differ. */
+export type BrokerReleaseEnvelopeMode = BrokerFieldReleaseMode | 'mixed';
+
+/** Field-level consent metadata resolved by the consent reactor. */
+export interface BrokerResolvedFieldGrant {
+  field: string;
+  mode: BrokerFieldReleaseMode;
+  consentReference: string;
+}
+
+/** Fixed-vocabulary predicate request for attestation-mode fields (#1514). */
+export interface BrokerPredicateRequest {
+  predicate: 'eq' | 'gte' | 'lte' | 'is_empty' | 'contains' | 'overlaps';
+  arg?: unknown;
+}
+
+/** Signed-claim payload shape returned instead of raw values in attestation mode. */
+export interface BrokerPredicateClaim {
+  field: string;
+  predicate: BrokerPredicateRequest['predicate'];
+  result: boolean;
+  arg?: unknown;
+  valueHash?: string;
+  cacheKey: string;
+  cached?: boolean;
+  issuedAt: string;
+  expiresAt: string;
+}
+
 /** Broker request — asks for consented field release */
 export interface BrokerRequest<T extends BrokerEventType = BrokerEventType> {
   type: T;
@@ -964,6 +1003,8 @@ export interface BrokerRequest<T extends BrokerEventType = BrokerEventType> {
   purpose: string;          // declared purpose
   scope: string;            // service scope
   data?: Record<string, unknown>; // subject data to filter (Phase 1: inline)
+  /** Optional per-field predicates for computed attestation releases (#1514). */
+  predicates?: Record<string, BrokerPredicateRequest | BrokerPredicateRequest[]>;
   preview?: boolean;        // dry-run mode
   mode?: BrokerMode;        // enforcement mode; defaults to 'enforce'
 }
@@ -978,7 +1019,9 @@ export interface BrokerRelease {
     purpose: string;
     issuedAt: string;
     consentReference: string;
-    mode: 'attestation' | 'raw';   // release form — NOT the broker enforcement mode
+    mode: BrokerReleaseEnvelopeMode;   // release form — NOT the broker enforcement mode
+    fieldModes?: Record<string, BrokerFieldReleaseMode>;
+    consentReferences?: Record<string, string>;
   };
   preview?: boolean;
   enforced?: boolean;       // false in shadow mode — decision is advisory, not binding
@@ -1019,10 +1062,12 @@ export interface BrokerPipelineState {
   request: BrokerRequest;
   // resolved by consent reactor
   allowedFields?: string[];
-  mode?: 'attestation' | 'raw';
+  mode?: BrokerReleaseEnvelopeMode;
   consentReference?: string;
+  fieldGrants?: Record<string, BrokerResolvedFieldGrant>;
   // resolved by scope reactor
   filteredData?: Record<string, unknown>;
+  predicateClaims?: BrokerPredicateClaim[];
   // resolved by release reactor
   envelope?: BrokerRelease['envelope'];
 }
