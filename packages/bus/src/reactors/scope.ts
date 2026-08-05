@@ -50,6 +50,7 @@ export const scopeReactor: BrokerReactor = async (state) => {
   const filteredData: Record<string, unknown> = {};
   const missingFields: string[] = [];
   const predicateClaims: BrokerPredicateClaim[] = [...(state.predicateClaims ?? [])];
+  const predicateCacheWrites: BrokerPredicateClaim[] = [...(state.predicateCacheWrites ?? [])];
 
   const modeForField = (field: string): BrokerFieldReleaseMode => {
     const grant = fieldGrants?.[field];
@@ -72,13 +73,14 @@ export const scopeReactor: BrokerReactor = async (state) => {
       }
 
       try {
-        const claims = await resolveBrokerPredicateClaimsForField({
+        const { claims, cacheWrites } = await resolveBrokerPredicateClaimsForField({
           subject: request.subject,
           field,
           value: rawData[field],
           predicates,
         });
         predicateClaims.push(...claims);
+        predicateCacheWrites.push(...cacheWrites);
         filteredData[field] = claims.length === 1 ? claims[0] : claims;
       } catch (err) {
         log.warn({ field, err: String(err) }, 'Predicate evaluation failed — rejecting');
@@ -108,5 +110,6 @@ export const scopeReactor: BrokerReactor = async (state) => {
     ...state,
     filteredData,
     predicateClaims,
+    predicateCacheWrites,
   };
 };

@@ -10,6 +10,43 @@ export function hashContactValue(value: string): string {
 }
 
 /**
+ * Announce that a brokered contact field's value changed (#1517).
+ *
+ * Emitted HERE rather than at each call site so every path that mutates a
+ * vault-backed contact value inherits it — the profile PUT route today, and
+ * anything added later. The `broker-predicate-invalidation` reactor consumes
+ * this to revoke cached predicate claims derived from the field, so a stale
+ * claim can never outlive the value it was computed from.
+ *
+ * Awaited (not fire-and-forget) because the invalidation reactor is registered
+ * `await: true`: serving a stale claim about contact data is worse than adding a
+ * few milliseconds to the write. Errors are contained — a failed invalidation
+ * must not fail the contact write, and the claim's `expiresAt` TTL remains a
+ * backstop.
+ *
+ * Dynamic import mirrors `lib/calendar/index.ts`, keeping the bus off this
+ * module's static import graph.
+ */
+async function publishContactFieldChanged(profileDid: string, field: 'email' | 'phone'): Promise<void> {
+  try {
+    const { publish } = await import('@imajin/bus');
+    await publish('profile.field.changed', {
+      issuer: profileDid,
+      subject: profileDid,
+      scope: 'profile',
+      payload: {
+        subjectDid: profileDid,
+        fields: [field],
+        context_id: profileDid,
+        context_type: 'profile',
+      },
+    });
+  } catch {
+    // Non-fatal: the write is authoritative and the claim TTL still bounds staleness.
+  }
+}
+
+/**
  * Upsert contact hashes for a DID. Pass null for a field to clear its hash.
  * No plaintext is ever stored here — hashes only.
  */
@@ -91,6 +128,10 @@ export async function processEmailUpdate(profileDid: string, email: string | nul
       .limit(1);
     await upsertContactHashes(profileDid, null, row?.phoneHash ?? null);
   }
+
+  // Both branches changed the field: a new value, or its removal. Either way any
+  // claim derived from the old value is now wrong.
+  await publishContactFieldChanged(profileDid, 'email');
 }
 
 /**
@@ -124,4 +165,6 @@ export async function processPhoneUpdate(profileDid: string, phone: string | nul
       .limit(1);
     await upsertContactHashes(profileDid, row?.emailHash ?? null, null);
   }
+
+  await publishContactFieldChanged(profileDid, 'phone');
 }

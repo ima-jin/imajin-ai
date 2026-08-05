@@ -40,6 +40,9 @@ vi.mock('@/src/lib/kernel/id', () => ({
   generateId: (prefix: string) => `${prefix}_test123`,
 }));
 
+const mockPublish = vi.fn().mockResolvedValue(undefined);
+vi.mock('@imajin/bus', () => ({ publish: (...args: unknown[]) => mockPublish(...args) }));
+
 import { hashContactValue, processEmailUpdate, processPhoneUpdate } from '../vault-contacts';
 
 beforeEach(() => {
@@ -122,5 +125,57 @@ describe('processPhoneUpdate', () => {
   it('deletes vault entry when phone is cleared (falsy)', async () => {
     await processPhoneUpdate('did:imajin:owner', '');
     expect(mockDeleteFromVault).toHaveBeenCalledWith('contact:phone:did:imajin:owner');
+  });
+});
+
+// ── #1517: brokered-field invalidation is emitted here, not at the call sites ──
+
+describe('profile.field.changed emission', () => {
+  function changedFieldsFor(call: unknown[]): unknown {
+    return (call[1] as { payload: { fields: string[] } }).payload.fields;
+  }
+
+  it('announces the email field on write so dependent claims are invalidated', async () => {
+    await processEmailUpdate('did:imajin:owner', 'new@example.com');
+
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+    const [call] = mockPublish.mock.calls;
+    expect(call[0]).toBe('profile.field.changed');
+    expect(changedFieldsFor(call)).toEqual(['email']);
+    expect(call[1]).toEqual(expect.objectContaining({
+      subject: 'did:imajin:owner',
+      scope: 'profile',
+    }));
+  });
+
+  it('announces the email field on clear, since removal also invalidates', async () => {
+    await processEmailUpdate('did:imajin:owner', '');
+
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+    expect(changedFieldsFor(mockPublish.mock.calls[0])).toEqual(['email']);
+  });
+
+  it('announces the phone field on write and on clear', async () => {
+    await processPhoneUpdate('did:imajin:owner', '+1-555-0100');
+    expect(changedFieldsFor(mockPublish.mock.calls[0])).toEqual(['phone']);
+
+    mockPublish.mockClear();
+    await processPhoneUpdate('did:imajin:owner', '');
+    expect(changedFieldsFor(mockPublish.mock.calls[0])).toEqual(['phone']);
+  });
+
+  it('stays silent when the field was not supplied at all', async () => {
+    await processEmailUpdate('did:imajin:owner', undefined);
+    await processPhoneUpdate('did:imajin:owner', undefined);
+
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('never fails the contact write when invalidation publishing throws', async () => {
+    mockPublish.mockRejectedValueOnce(new Error('bus down'));
+
+    await expect(processEmailUpdate('did:imajin:owner', 'new@example.com')).resolves.toBeUndefined();
+    // The vault write still happened — the value is authoritative.
+    expect(mockSealAndStoreV2).toHaveBeenCalled();
   });
 });

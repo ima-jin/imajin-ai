@@ -35,6 +35,19 @@ describe('BROKER_FIELD_VOCABULARY', () => {
     }
   });
 
+  /**
+   * `overlaps` is implemented as a disjunction of `contains` primitives (#1514),
+   * so a field offering `overlaps` without `contains` would be undecomposable.
+   */
+  it('only offers overlaps on fields that also offer contains', () => {
+    const undecomposable = BROKER_FIELD_VOCABULARY
+      .filter((entry) => entry.allowedPredicates.includes('overlaps'))
+      .filter((entry) => !entry.allowedPredicates.includes('contains'))
+      .map((entry) => entry.field);
+
+    expect(undecomposable).toEqual([]);
+  });
+
   it('requires string_set fields with set predicates to name a term vocabulary', () => {
     const setPredicateFields = BROKER_FIELD_VOCABULARY.filter((entry) =>
       entry.allowedPredicates.includes('contains') || entry.allowedPredicates.includes('overlaps')
