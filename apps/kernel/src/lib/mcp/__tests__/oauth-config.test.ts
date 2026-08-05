@@ -3,9 +3,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DCR_ALLOWED_REDIRECT_URIS,
+  MCP_SCOPES,
   areRedirectUrisAllowed,
   isLoopbackRedirectUri,
   redirectUriMatches,
+  resolveGrantedScopes,
   getMcpIssuer,
   getMcpResource,
   getAuthorizationEndpoint,
@@ -117,6 +119,64 @@ describe('isLoopbackRedirectUri', () => {
   it('returns false for malformed URIs', () => {
     expect(isLoopbackRedirectUri('not-a-url')).toBe(false);
     expect(isLoopbackRedirectUri('')).toBe(false);
+  });
+});
+
+describe('resolveGrantedScopes — RFC 6749 §3.3 default scope', () => {
+  // Derive fixtures from the live vocabulary so these stay correct as the
+  // MCP scope ceiling changes; hardcoded literals would silently rot.
+  const [scopeA, scopeB] = MCP_SCOPES;
+  const UNSUPPORTED = 'totally:not-a-real-scope';
+
+  it('has at least two MCP scopes to exercise (fixture sanity)', () => {
+    expect(MCP_SCOPES.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('falls back to the registered set when `scope` is ABSENT (the bug)', () => {
+    // Regression: an omitted `scope` used to yield [] → error=invalid_scope,
+    // dead-ending any MCP client that relies on the AS default.
+    expect(resolveGrantedScopes(null, [scopeA, scopeB])).toEqual([scopeA, scopeB]);
+    expect(resolveGrantedScopes(undefined, [scopeA])).toEqual([scopeA]);
+  });
+
+  it('falls back to the registered set when `scope` is empty or whitespace', () => {
+    expect(resolveGrantedScopes('', [scopeA])).toEqual([scopeA]);
+    expect(resolveGrantedScopes('   ', [scopeA])).toEqual([scopeA]);
+    expect(resolveGrantedScopes('\t\n', [scopeA])).toEqual([scopeA]);
+  });
+
+  it('intersects an EXPLICIT scope with the registered set', () => {
+    expect(resolveGrantedScopes(scopeA, [scopeA, scopeB])).toEqual([scopeA]);
+    expect(resolveGrantedScopes(`${scopeA} ${scopeB}`, [scopeA, scopeB])).toEqual([scopeA, scopeB]);
+  });
+
+  it('never lets an explicit scope widen beyond what the client registered', () => {
+    // Client registered only scopeA but asks for scopeB too → scopeB dropped.
+    expect(resolveGrantedScopes(`${scopeA} ${scopeB}`, [scopeA])).toEqual([scopeA]);
+  });
+
+  it('applies the MCP ceiling to the fallback, so a stale registry row cannot widen', () => {
+    // A registry row holding a scope no longer in the MCP vocabulary must not
+    // leak through the absent-scope fallback.
+    expect(resolveGrantedScopes(null, [scopeA, UNSUPPORTED])).toEqual([scopeA]);
+  });
+
+  it('applies the MCP ceiling to an explicit scope too', () => {
+    expect(resolveGrantedScopes(UNSUPPORTED, [scopeA, UNSUPPORTED])).toEqual([]);
+  });
+
+  it('returns [] when the client has no registered scopes (invalid_scope preserved)', () => {
+    expect(resolveGrantedScopes(null, [])).toEqual([]);
+    expect(resolveGrantedScopes(null, null)).toEqual([]);
+    expect(resolveGrantedScopes(null, undefined)).toEqual([]);
+  });
+
+  it('returns [] when an explicit scope shares nothing with the registered set', () => {
+    expect(resolveGrantedScopes(scopeB, [scopeA])).toEqual([]);
+  });
+
+  it('tolerates irregular whitespace between explicit scopes', () => {
+    expect(resolveGrantedScopes(`  ${scopeA}   ${scopeB}  `, [scopeA, scopeB])).toEqual([scopeA, scopeB]);
   });
 });
 
