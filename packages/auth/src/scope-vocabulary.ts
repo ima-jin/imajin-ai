@@ -175,6 +175,7 @@ export const SCOPE_VOCABULARY = [
   { scope: 'profile:read', connector: null, label: 'Read your profile information' },
   { scope: 'identity:read', connector: null, label: 'Read your identity and DID' },
   { scope: 'identity:write', connector: null, label: 'Resolve or mint soft identities on your behalf (registry get-or-create)' },
+  { scope: 'connectors:read-status', connector: null, label: 'Read your connector connection status' },
 
   // ── MCP / Claude connector
   { scope: 'media:read', connector: 'mcp', verb: 'read', surface: 'media', classification: SELF_ONLY, surfaces: MCP_TOKENS,

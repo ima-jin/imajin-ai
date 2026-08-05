@@ -141,9 +141,10 @@ describe('exchangeCodeAndStore (#1210)', () => {
 
 describe('createInvoice (#1210 write-back)', () => {
   it('posts an invoice stamped with the lot correlationId and normalizes the result', async () => {
+    const accessToken = 'qb-access-token-SUPER-SECRET';
     grant(['quickbooks:write']);
     setConfig();
-    sealedTokens();
+    sealedTokens({ accessToken });
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       json: async () => ({ Invoice: { Id: '55', DocNumber: '1042', TotalAmt: 42, Balance: 42, CurrencyRef: { value: 'CAD' }, TxnDate: '2026-07-10', CustomerRef: { name: 'David' }, PrivateNote: 'imajin-lot:lot_eggs_1' } }),
@@ -160,11 +161,13 @@ describe('createInvoice (#1210 write-back)', () => {
     const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toContain('sandbox-quickbooks.api.intuit.com/v3/company/r1/invoice');
     expect(init.method).toBe('POST');
+    expect(init.headers).toMatchObject({ Authorization: `Bearer ${accessToken}` });
     const sent = JSON.parse(init.body as string);
     expect(sent.CustomerRef).toEqual({ value: '12' });
     expect(sent.PrivateNote).toBe('imajin-lot:lot_eggs_1');
     expect(sent.Line[0].Amount).toBe(42);
     expect(sent.Line[0].SalesItemLineDetail.ItemRef).toEqual({ value: '7' });
+    expect(JSON.stringify(invoice)).not.toContain(accessToken);
   });
 
   it('fails closed without a quickbooks:write grant', async () => {
