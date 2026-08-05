@@ -89,7 +89,7 @@ describe('connector status pills', () => {
     render(<ConnectionsPage />);
 
     await waitFor(() => {
-      expect(pillFor('Claude / MCP')).toContain('Connected');
+      expect(pillFor('Imajin MCP')).toContain('Connected');
     });
   });
 
