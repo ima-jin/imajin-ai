@@ -50,9 +50,10 @@ describe('every live connector resolves to a non-pending card', () => {
   });
 
   it('renders backend-pending entries as pending regardless of pattern', () => {
-    for (const entry of CONNECTOR_REGISTRY) {
-      if (entry.backendPending) expect(connectorCardKind(entry)).toBe('pending');
-    }
+    // Synthetic rather than a loop over the registry: every entry currently
+    // declares a live backend, so a loop would assert nothing and quietly pass.
+    const pending: ConnectorEntry = { ...(getConnector('gemini') as ConnectorEntry), backendPending: true };
+    expect(connectorCardKind(pending)).toBe('pending');
   });
 });
 
