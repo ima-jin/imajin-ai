@@ -25,8 +25,13 @@ import type { NextRequest } from "next/server";
  * 401 into a Host-header open redirect. A trusted env var has no such surface.
  */
 
-/** Normalise a configured base URL down to a bare origin, or null if unusable. */
-function toOrigin(value: string | undefined): string | null {
+/**
+ * Normalise a configured base URL down to a bare origin, or null if unusable.
+ *
+ * Exported so the machine-readable discovery documents (`nodeUrl()`) normalise
+ * configured origins exactly the same way this module's redirects do.
+ */
+export function toOrigin(value: string | undefined): string | null {
   if (!value) return null;
   try {
     // `.origin` strips any path (`.../chat`), trailing slash, and — critically —
