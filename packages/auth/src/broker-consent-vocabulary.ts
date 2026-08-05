@@ -112,162 +112,77 @@ export interface BrokerFieldVocabularyEntry {
   termVocabulary?: BrokerTermVocabularyId;
 }
 
+// ── Shared predicate / mode sets ──────────────────────────────────────────
+//
+// Named once and referenced per row so the table reads as a table: each entry
+// below states what is DIFFERENT about the field, not the boilerplate it shares
+// with its neighbours. Same idiom as the named quadrants in `scope-vocabulary.ts`.
+
+/** Free-text scalars: exact match or presence only. */
+const TEXT_PREDICATES = ['eq', 'is_empty'] as const satisfies readonly BrokerPredicateName[];
+/** Opaque values where only presence is a safe question. */
+const PRESENCE_PREDICATES = ['is_empty'] as const satisfies readonly BrokerPredicateName[];
+/** Ordered numerics: thresholds are the whole point (e.g. `age >= 21`). */
+const NUMERIC_PREDICATES = ['eq', 'gte', 'lte'] as const satisfies readonly BrokerPredicateName[];
+/** Timestamps: thresholds plus presence. */
+const TEMPORAL_PREDICATES = ['eq', 'gte', 'lte', 'is_empty'] as const satisfies readonly BrokerPredicateName[];
+/** Set fields: the registry-bound `contains` primitive and its `overlaps` composition. */
+const SET_PREDICATES = ['contains', 'overlaps', 'is_empty'] as const satisfies readonly BrokerPredicateName[];
+
+/** Remote config may choose any release form for this field. */
+const ANY_MODE = ['raw', 'attestation', 'none'] as const satisfies readonly BrokerReleaseMode[];
+/** No meaningful claim to compute — disclose it or withhold it. */
+const RAW_OR_NONE = ['raw', 'none'] as const satisfies readonly BrokerReleaseMode[];
+
+// ── The vocabulary ────────────────────────────────────────────────────────
+//
+// Rows are dense on purpose: line 1 carries the machine-readable facts
+// (field, value type, predicates, modes, term vocabulary) and line 2 the
+// human-facing prose.
+
 export const BROKER_FIELD_VOCABULARY = [
-  {
-    field: 'name',
-    label: 'Preferred name',
-    description: 'Display or preferred name for a person or party.',
-    valueType: 'string',
-    allowedPredicates: ['eq', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'displayName',
-    label: 'Display name',
-    description: 'Public profile display name.',
-    valueType: 'string',
-    allowedPredicates: ['eq', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'avatar',
-    label: 'Avatar',
-    description: 'Public avatar URL or media reference.',
-    valueType: 'string',
-    allowedPredicates: ['is_empty'],
-    allowedModes: ['raw', 'none'],
-  },
-  {
-    field: 'bio',
-    label: 'Bio',
-    description: 'Public profile biography or short description.',
-    valueType: 'string',
-    allowedPredicates: ['is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'email',
-    label: 'Email address',
-    description: 'Contact email address.',
-    valueType: 'string',
-    allowedPredicates: ['eq', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'phone',
-    label: 'Phone number',
-    description: 'Contact phone number.',
-    valueType: 'string',
-    allowedPredicates: ['eq', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'address',
-    label: 'Address',
-    description: 'Mailing or service address.',
-    valueType: 'string',
-    allowedPredicates: ['is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'age',
-    label: 'Age',
-    description: 'Age in years.',
-    valueType: 'number',
-    allowedPredicates: ['eq', 'gte', 'lte'],
-    allowedModes: ['attestation', 'raw', 'none'],
-  },
-  {
-    field: 'legal_name',
-    label: 'Legal name',
-    description: 'Legal name for regulated hospitality check-in flows.',
-    valueType: 'string',
-    allowedPredicates: ['eq', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'dietary',
-    label: 'Dietary preferences',
-    description: 'Dietary preference set declared by the traveler/subject.',
-    valueType: 'string_set',
-    termVocabulary: 'dietary_preference',
-    allowedPredicates: ['contains', 'overlaps', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'allergies',
-    label: 'Allergies',
-    description: 'Allergen set declared by the traveler/subject.',
-    valueType: 'string_set',
-    termVocabulary: 'allergen',
-    allowedPredicates: ['contains', 'overlaps', 'is_empty'],
-    allowedModes: ['attestation', 'raw', 'none'],
-  },
-  {
-    field: 'accessibility_needs',
-    label: 'Accessibility needs',
-    description: 'Accessibility accommodation set.',
-    valueType: 'string_set',
-    termVocabulary: 'accessibility_need',
-    allowedPredicates: ['contains', 'overlaps', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'budget',
-    label: 'Budget',
-    description: 'Budget or spending threshold for a reservation or service.',
-    valueType: 'number',
-    allowedPredicates: ['eq', 'gte', 'lte'],
-    allowedModes: ['attestation', 'raw', 'none'],
-  },
-  {
-    field: 'party_size',
-    label: 'Party size',
-    description: 'Number of guests in a reservation.',
-    valueType: 'number',
-    allowedPredicates: ['eq', 'gte', 'lte'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'reservation_time',
-    label: 'Reservation time',
-    description: 'Requested reservation date/time.',
-    valueType: 'iso_datetime',
-    allowedPredicates: ['eq', 'gte', 'lte', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'arrival_time',
-    label: 'Arrival time',
-    description: 'Expected arrival/check-in date/time.',
-    valueType: 'iso_datetime',
-    allowedPredicates: ['eq', 'gte', 'lte', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'ticketType',
-    label: 'Ticket type',
-    description: 'Event registration ticket class.',
-    valueType: 'string',
-    allowedPredicates: ['eq', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'locale',
-    label: 'Locale',
-    description: 'Preferred locale/language tag.',
-    valueType: 'string',
-    allowedPredicates: ['eq', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
-  {
-    field: 'timezone',
-    label: 'Timezone',
-    description: 'Preferred IANA timezone.',
-    valueType: 'string',
-    allowedPredicates: ['eq', 'is_empty'],
-    allowedModes: ['raw', 'attestation', 'none'],
-  },
+  { field: 'name', valueType: 'string', allowedPredicates: TEXT_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Preferred name', description: 'Display or preferred name for a person or party.' },
+  { field: 'displayName', valueType: 'string', allowedPredicates: TEXT_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Display name', description: 'Public profile display name.' },
+  { field: 'avatar', valueType: 'string', allowedPredicates: PRESENCE_PREDICATES, allowedModes: RAW_OR_NONE,
+    label: 'Avatar', description: 'Public avatar URL or media reference.' },
+  { field: 'bio', valueType: 'string', allowedPredicates: PRESENCE_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Bio', description: 'Public profile biography or short description.' },
+  { field: 'email', valueType: 'string', allowedPredicates: TEXT_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Email address', description: 'Contact email address.' },
+  { field: 'phone', valueType: 'string', allowedPredicates: TEXT_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Phone number', description: 'Contact phone number.' },
+  { field: 'address', valueType: 'string', allowedPredicates: PRESENCE_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Address', description: 'Mailing or service address.' },
+  { field: 'legal_name', valueType: 'string', allowedPredicates: TEXT_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Legal name', description: 'Legal name for regulated hospitality check-in flows.' },
+  { field: 'age', valueType: 'number', allowedPredicates: NUMERIC_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Age', description: 'Age in years.' },
+  { field: 'budget', valueType: 'number', allowedPredicates: NUMERIC_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Budget', description: 'Budget or spending threshold for a reservation or service.' },
+  { field: 'party_size', valueType: 'number', allowedPredicates: NUMERIC_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Party size', description: 'Number of guests in a reservation.' },
+  { field: 'reservation_time', valueType: 'iso_datetime', allowedPredicates: TEMPORAL_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Reservation time', description: 'Requested reservation date/time.' },
+  { field: 'arrival_time', valueType: 'iso_datetime', allowedPredicates: TEMPORAL_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Arrival time', description: 'Expected arrival/check-in date/time.' },
+
+  // Set fields — each MUST name a term vocabulary before it can be used with
+  // `contains` / `overlaps`, because a term mismatch is a false negative (#1444).
+  { field: 'dietary', valueType: 'string_set', termVocabulary: 'dietary_preference', allowedPredicates: SET_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Dietary preferences', description: 'Dietary preference set declared by the traveler/subject.' },
+  { field: 'allergies', valueType: 'string_set', termVocabulary: 'allergen', allowedPredicates: SET_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Allergies', description: 'Allergen set declared by the traveler/subject.' },
+  { field: 'accessibility_needs', valueType: 'string_set', termVocabulary: 'accessibility_need', allowedPredicates: SET_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Accessibility needs', description: 'Accessibility accommodation set.' },
+
+  { field: 'ticketType', valueType: 'string', allowedPredicates: TEXT_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Ticket type', description: 'Event registration ticket class.' },
+  { field: 'locale', valueType: 'string', allowedPredicates: TEXT_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Locale', description: 'Preferred locale/language tag.' },
+  { field: 'timezone', valueType: 'string', allowedPredicates: TEXT_PREDICATES, allowedModes: ANY_MODE,
+    label: 'Timezone', description: 'Preferred IANA timezone.' },
 ] as const satisfies readonly BrokerFieldVocabularyEntry[];
 
 export type BrokerFieldName = typeof BROKER_FIELD_VOCABULARY[number]['field'];
