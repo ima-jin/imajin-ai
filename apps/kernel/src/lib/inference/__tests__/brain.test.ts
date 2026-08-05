@@ -1,0 +1,284 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// ─── Mocks ──────────────────────────────────────────────────────────────────
+
+const { mockLoadGemini, mockLoadAnthropic } = vi.hoisted(() => ({
+  mockLoadGemini: vi.fn(),
+  mockLoadAnthropic: vi.fn(),
+}));
+
+vi.mock('@/src/lib/gemini/connector', () => ({
+  loadGeminiCredentials: mockLoadGemini,
+}));
+
+vi.mock('@/src/lib/anthropic/connector', () => ({
+  loadAnthropicCredentials: mockLoadAnthropic,
+}));
+
+vi.mock('@imajin/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+}));
+
+// ─── Subject ────────────────────────────────────────────────────────────────
+
+import { resolveBrain, listBrainConnectors, NoBrainSealedError } from '../brain';
+
+const OWNER = 'did:imajin:farmer';
+const APP = 'did:imajin:agrifortress';
+const GEMINI_KEY = 'AIzaSy-GEMINI-SEALED';
+const ANTHROPIC_KEY = 'sk-ant-SEALED';
+const APP_KEY = 'AIzaSy-APP-SEALED';
+
+beforeEach(() => {
+  // resetAllMocks, not clearAllMocks: resolution short-circuits on the first
+  // sealed connector, so a test that seals Gemini leaves its queued Anthropic
+  // `mockResolvedValueOnce` unconsumed. clearAllMocks keeps those queues, which
+  // then satisfy a later test that expects nothing to be sealed.
+  vi.resetAllMocks();
+  mockLoadGemini.mockResolvedValue(undefined);
+  mockLoadAnthropic.mockResolvedValue(undefined);
+});
+
+// ─── Resolution order ───────────────────────────────────────────────────────
+
+describe('resolveBrain — connection-first resolution (#1621)', () => {
+  it('resolves the sealed Gemini connection as an OpenAI-compatible brain', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain).toEqual({
+      connector: 'gemini',
+      credentialDid: OWNER,
+      provider: 'openai',
+      modelId: 'gemini-2.0-flash',
+      apiKey: GEMINI_KEY,
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    });
+    expect(mockLoadGemini).toHaveBeenCalledWith(OWNER);
+  });
+
+  it('falls through to Anthropic when no Gemini connection is sealed', async () => {
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain).toEqual({
+      connector: 'anthropic',
+      credentialDid: OWNER,
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4-20250514',
+      apiKey: ANTHROPIC_KEY,
+    });
+    expect(mockLoadGemini).toHaveBeenCalledWith(OWNER);
+    expect(mockLoadAnthropic).toHaveBeenCalledWith(OWNER);
+  });
+
+  it('prefers the first sealed connector and does not consult later ones', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain.connector).toBe('gemini');
+    expect(mockLoadAnthropic).not.toHaveBeenCalled();
+  });
+
+  it('resolves per-DID for the acting identity, not a shared credential', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    await resolveBrain('did:imajin:alice');
+
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: 'other-key' });
+    await resolveBrain('did:imajin:bob');
+
+    expect(mockLoadGemini).toHaveBeenNthCalledWith(1, 'did:imajin:alice');
+    expect(mockLoadGemini).toHaveBeenNthCalledWith(2, 'did:imajin:bob');
+  });
+});
+
+// ─── Whose card pays (#1624) ────────────────────────────────────────────────
+
+describe('resolveBrain — owner then app/org DID', () => {
+  /**
+   * The walk is DID-major and owner-first on purpose: a human's own sealed brain
+   * must outrank the app's, so an app can never quietly displace the credential
+   * a user chose. Only if the owner has sealed nothing does the app subsidise.
+   */
+  it('prefers the owner\'s own card over the app\'s', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+
+    const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP });
+
+    expect(brain.credentialDid).toBe(OWNER);
+    expect(brain.apiKey).toBe(GEMINI_KEY);
+    expect(mockLoadGemini).toHaveBeenCalledTimes(1);
+    expect(mockLoadGemini).toHaveBeenCalledWith(OWNER);
+  });
+
+  it('falls back to the app/org card when the owner has sealed nothing', async () => {
+    mockLoadGemini
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ apiKey: APP_KEY, baseUrl: 'https://app.example/openai' });
+
+    const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP });
+
+    expect(brain).toEqual({
+      connector: 'gemini',
+      credentialDid: APP,
+      provider: 'openai',
+      modelId: 'gemini-2.0-flash',
+      apiKey: APP_KEY,
+      baseURL: 'https://app.example/openai',
+    });
+    expect(mockLoadGemini).toHaveBeenNthCalledWith(1, OWNER);
+    expect(mockLoadGemini).toHaveBeenNthCalledWith(2, APP);
+  });
+
+  it('exhausts every connector for the owner before trying the app', async () => {
+    mockLoadAnthropic
+      .mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY })
+      .mockResolvedValueOnce({ apiKey: 'app-anthropic-key' });
+
+    const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP });
+
+    // Owner's Anthropic beats the app's Gemini: DID-major, not connector-major.
+    expect(brain.credentialDid).toBe(OWNER);
+    expect(brain.connector).toBe('anthropic');
+  });
+
+  it('checks a DID only once when owner and app are the same', async () => {
+    await resolveBrain({ ownerDid: OWNER, appDid: OWNER }).catch(() => undefined);
+
+    expect(mockLoadGemini).toHaveBeenCalledTimes(1);
+    expect(mockLoadAnthropic).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a bare string as the owner DID, with no app subsidy', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain.credentialDid).toBe(OWNER);
+    expect(mockLoadGemini).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves from the app alone when no owner DID is supplied', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: APP_KEY });
+
+    const brain = await resolveBrain({ appDid: APP });
+
+    expect(brain.credentialDid).toBe(APP);
+    expect(mockLoadGemini).toHaveBeenCalledWith(APP);
+  });
+});
+
+// ─── The owner's sealed model choice ────────────────────────────────────────
+
+describe('resolveBrain — sealing a key is choosing a model', () => {
+  it('uses the sealed modelId over the connector default', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY, modelId: 'gemini-2.5-pro' });
+
+    expect((await resolveBrain(OWNER)).modelId).toBe('gemini-2.5-pro');
+  });
+
+  it('uses the sealed baseUrl over the connector default', async () => {
+    mockLoadGemini.mockResolvedValueOnce({
+      apiKey: GEMINI_KEY,
+      baseUrl: 'https://my-gateway.example/openai',
+    });
+
+    expect((await resolveBrain(OWNER)).baseURL).toBe('https://my-gateway.example/openai');
+  });
+
+  it('lets an Anthropic owner pick their Claude model', async () => {
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-20250514' });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain.modelId).toBe('claude-opus-4-20250514');
+    expect(brain.provider).toBe('anthropic');
+  });
+
+  it('omits baseURL for Anthropic when none is sealed, leaving the SDK default', async () => {
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+
+    expect(await resolveBrain(OWNER)).not.toHaveProperty('baseURL');
+  });
+});
+
+// ─── Fail closed ────────────────────────────────────────────────────────────
+
+describe('resolveBrain — fail closed with no env fallback', () => {
+  /**
+   * The whole point of #1621: the kernel brings no brain. Env keys are being
+   * removed, so a stray GEMINI_API_KEY / ANTHROPIC_API_KEY in the process must
+   * NOT satisfy resolution — otherwise a user's inference silently runs on a
+   * shared node credential.
+   */
+  it('throws even when env API keys are present', async () => {
+    vi.stubEnv('GEMINI_API_KEY', 'env-gemini-key');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'env-anthropic-key');
+    vi.stubEnv('OPENAI_API_KEY', 'env-openai-key');
+
+    await expect(resolveBrain(OWNER)).rejects.toBeInstanceOf(NoBrainSealedError);
+
+    vi.unstubAllEnvs();
+  });
+
+  it('names every available connector and its scope so the error is actionable', async () => {
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err).toBeInstanceOf(NoBrainSealedError);
+    expect(err.message).toContain('inference_no_brain');
+    expect(err.message).toContain(OWNER);
+    expect(err.message).toContain('gemini:infer');
+    expect(err.message).toContain('/gemini/api/token');
+    expect(err.message).toContain('anthropic:infer');
+    expect(err.message).toContain('/anthropic/api/token');
+  });
+
+  it('reports every DID it tried, so a failed app subsidy is visible', async () => {
+    const err = await resolveBrain({ ownerDid: OWNER, appDid: APP })
+      .catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err.triedDids).toEqual([OWNER, APP]);
+    expect(err.message).toContain(OWNER);
+    expect(err.message).toContain(APP);
+  });
+
+  it('carries the available connector ids for programmatic callers', async () => {
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err.availableConnectors).toEqual(['gemini', 'anthropic']);
+    expect(err.triedDids).toEqual([OWNER]);
+  });
+
+  it('fails closed rather than resolving when no DID is supplied at all', async () => {
+    const err = await resolveBrain({}).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err).toBeInstanceOf(NoBrainSealedError);
+    expect(err.triedDids).toEqual([]);
+    expect(mockLoadGemini).not.toHaveBeenCalled();
+  });
+
+  it('never puts a credential in the error message', async () => {
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as Error);
+
+    expect(err.message).not.toContain(GEMINI_KEY);
+    expect(err.message).not.toContain(ANTHROPIC_KEY);
+  });
+
+  it('propagates a connector failure instead of masking it as "no brain"', async () => {
+    mockLoadGemini.mockRejectedValueOnce(new Error('vault integrity failure'));
+
+    await expect(resolveBrain(OWNER)).rejects.toThrow('vault integrity failure');
+  });
+});
+
+// ─── The table is the source of truth ───────────────────────────────────────
+
+describe('listBrainConnectors', () => {
+  it('reports the brain connectors in resolution order', () => {
+    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic']);
+  });
+});

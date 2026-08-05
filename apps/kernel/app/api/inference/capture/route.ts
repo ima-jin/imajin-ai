@@ -112,7 +112,10 @@ export async function POST(request: NextRequest) {
     // 2. Gather context (transcribe + telemetry).
     const ctx = await gatherContext(captureEvent.sessionId, captureEvent.assetId, ownerDid);
 
-    // 3. Run inference policy.
+    // 3. Run inference policy. The model comes from a sealed connector card
+    //    (#1621): the owner's own first, then the invoking app/org DID if it is
+    //    subsidising the compute (#1624). Consent and attribution stay with the
+    //    owner either way.
     const candidates = await infer(ctx, vocab, appDid ? { ownerDid, appDid } : { ownerDid });
     const topIntent = candidates[0];
 

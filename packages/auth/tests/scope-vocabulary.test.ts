@@ -19,7 +19,7 @@ import {
 } from '../src/scope-vocabulary';
 import { SCOPES, validateScopes } from '../src/scopes';
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'quickbooks', 'warp'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'quickbooks', 'warp'];
 
 const connectorEntries = SCOPE_VOCABULARY.filter(isConnectorScope);
 
@@ -222,6 +222,21 @@ describe('SCOPES is a faithful projection', () => {
   it('includes gemini:infer', () => {
     expect(SCOPES['gemini:infer']).toBe('Use your Gemini API key for inference');
     expect(validateScopes(['gemini:infer']).invalid).toEqual([]);
+  });
+
+  /**
+   * #1621: the second brain a DID can seal. Classified exactly like
+   * gemini:infer — the owner's own credential, consumed per call, released to
+   * nobody — so it must derive owner-only rather than on-consent.
+   */
+  it('includes anthropic:infer as an owner-only connector scope', () => {
+    expect(SCOPES['anthropic:infer']).toBe('Use your Anthropic API key for inference');
+    expect(validateScopes(['anthropic:infer']).invalid).toEqual([]);
+
+    const entry = scopeEntry('anthropic:infer') as ConnectorScopeEntry;
+    expect(entry.connector).toBe('anthropic');
+    expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
+    expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.anthropic);
   });
 
   it('includes connectors:read-status as an app-registration scope, not a connector grant', () => {

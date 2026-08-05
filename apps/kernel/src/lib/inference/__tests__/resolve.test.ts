@@ -104,8 +104,6 @@ const MOCK_RECEIPT = {
 
 const VOCAB: IntentVocabulary = {
   name: 'agrifortress',
-  modelProvider: 'openai',
-  modelId: 'gemini-2.0-flash',
   systemPrompt: '',
   resolveConsentTier: () => 'deliberate',
   resolve: vi.fn().mockResolvedValue(MOCK_RECEIPT),

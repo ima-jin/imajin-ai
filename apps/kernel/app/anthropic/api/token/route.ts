@@ -1,26 +1,25 @@
 /**
- * GET + POST /gemini/api/token (#1432)
+ * GET + POST /anthropic/api/token (#1621)
  *
- * Pattern B credential ingestion for the Gemini connector: seals a Gemini
- * API key in the vault WITHOUT requiring the key to be passed through a
- * chat client.
+ * Pattern B credential ingestion for the Anthropic connector: seals an
+ * Anthropic API key in the vault WITHOUT requiring the key to be passed
+ * through a chat client. Mirrors /gemini/api/token (#1432).
  *
  * POST — seals the API key; accepts `{ token: string, baseUrl?: string, modelId?: string }`.
- *        `token` is the Gemini API key. `baseUrl` and `modelId` are optional; a
- *        sealed `modelId` is how the owner picks which model runs (#1621), and
- *        omitting them falls back to the resolver's constants, not env vars.
+ *        `token` is the Anthropic API key. `baseUrl` and `modelId` are optional
+ *        overrides — `modelId` is how the owner picks which Claude model runs.
  * GET  — returns `{ keySealed: boolean }` (existence check, never the key).
  *
  * Security invariants:
  *   - The key value is never logged, never returned, never echoed.
  *   - Sealed value is accessible only via server-side `loadAndUnseal`.
- *   - Per-DID isolation: `gemini-api-key:${ownerDid}`.
+ *   - Per-DID isolation: `anthropic-api-key:${ownerDid}`.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
-import { sealApiKey, vaultField } from '@/src/lib/gemini/connector';
+import { sealApiKey, vaultField } from '@/src/lib/anthropic/connector';
 import { vaultFieldExists } from '@/src/lib/vault';
 
 const log = createLogger('kernel');
@@ -29,7 +28,7 @@ export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
-// ── GET /gemini/api/token ─────────────────────────────────────────────────────
+// ── GET /anthropic/api/token ──────────────────────────────────────────────────
 
 /** Returns `{ keySealed: boolean }` — whether an API key is already sealed. */
 export async function GET(request: NextRequest) {
@@ -45,17 +44,15 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ keySealed }, { headers: cors });
 }
 
-// ── POST /gemini/api/token ────────────────────────────────────────────────────
+// ── POST /anthropic/api/token ─────────────────────────────────────────────────
 
 /**
- * Seal a Gemini API key for the session owner.
+ * Seal an Anthropic API key for the session owner.
  *
- * Body: `{ "token": "<Gemini API Key>", "baseUrl"?: "...", "modelId"?: "..." }`
+ * Body: `{ "token": "<Anthropic API Key>", "baseUrl"?: "...", "modelId"?: "..." }`
  *
  * The key must be non-empty. It is sealed immediately and never echoed back.
  * Re-posting replaces the previously sealed key (rotate semantics).
- * `baseUrl` and `modelId` are optional — omit to use the brain resolver's
- * defaults for this connector (#1621).
  */
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -83,11 +80,14 @@ export async function POST(request: NextRequest) {
 
   try {
     await sealApiKey(ownerDid, token, baseUrl || undefined, modelId || undefined);
-    log.info({ ownerDid }, 'Gemini API key sealed');
+    log.info({ ownerDid }, 'Anthropic API key sealed');
   } catch (err) {
-    log.error({ err: String(err), ownerDid }, 'Gemini API key sealing failed');
+    // Log the cause server-side, but do NOT echo it: this is a credential path,
+    // and an upstream error message can embed the value being sealed. The
+    // response says what failed, never what the key was.
+    log.error({ err: String(err), ownerDid }, 'Anthropic API key sealing failed');
     return NextResponse.json(
-      { error: 'Failed to seal Gemini API key', detail: String(err) },
+      { error: 'Failed to seal Anthropic API key' },
       { status: 500, headers: cors },
     );
   }

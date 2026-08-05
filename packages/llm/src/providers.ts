@@ -3,8 +3,15 @@
  *
  * Usage:
  *   import { getModel } from '@imajin/llm';
- *   const model = getModel('anthropic', 'claude-sonnet-4-20250514');
+ *   const model = getModel('anthropic', 'claude-sonnet-4-20250514', { apiKey });
  *   const { text } = await generateText({ model, system: '...', prompt: '...' });
+ *
+ * Credentials are ALWAYS passed in — this factory never reads an API key from
+ * the environment. Ambient `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` fallbacks were
+ * removed in #1621: inference credentials are sealed per-DID and resolved from
+ * the acting identity's connector cards, so an env fallback would silently run a
+ * user's inference on a shared node key. Callers resolve the credential first
+ * (see `resolveBrain` in the kernel) and hand it over explicitly.
  */
 
 import { createAnthropic } from '@ai-sdk/anthropic';
@@ -20,10 +27,35 @@ interface ProviderConfig {
 }
 
 /**
+ * Thrown when a key-bearing provider is asked for a model without a credential.
+ *
+ * Deliberately loud: the previous behaviour was to pass `undefined` through to
+ * the SDK, which then failed at request time with an opaque upstream 401 that
+ * looked like a provider outage rather than a missing connection.
+ */
+export class MissingApiKeyError extends Error {
+  constructor(provider: ProviderName) {
+    super(
+      `llm_missing_api_key: provider '${provider}' requires an explicit apiKey — ` +
+      `resolve the caller's sealed credential and pass it to getModel(). ` +
+      `Environment API keys are not consulted.`,
+    );
+    this.name = 'MissingApiKeyError';
+  }
+}
+
+function requireApiKey(provider: ProviderName, apiKey: string | undefined): string {
+  if (!apiKey) {
+    throw new MissingApiKeyError(provider);
+  }
+  return apiKey;
+}
+
+/**
  * Get a Vercel AI SDK model instance.
  *
- * For Anthropic/OpenAI: reads API key from config or env (ANTHROPIC_API_KEY / OPENAI_API_KEY).
- * For Ollama: points to local inference server, no API key needed.
+ * For Anthropic/OpenAI: `config.apiKey` is REQUIRED (see MissingApiKeyError).
+ * For Ollama: points to a local inference server, no API key needed.
  */
 export function getModel(
   provider: ProviderName,
@@ -33,14 +65,14 @@ export function getModel(
   switch (provider) {
     case 'anthropic': {
       const anthropic = createAnthropic({
-        apiKey: config?.apiKey ?? process.env.ANTHROPIC_API_KEY,
+        apiKey: requireApiKey(provider, config?.apiKey),
         ...(config?.baseURL && { baseURL: config.baseURL }),
       });
       return anthropic(model);
     }
     case 'openai': {
       const openai = createOpenAI({
-        apiKey: config?.apiKey ?? process.env.OPENAI_API_KEY,
+        apiKey: requireApiKey(provider, config?.apiKey),
         ...(config?.baseURL && { baseURL: config.baseURL }),
       });
       return openai(model);
@@ -62,25 +94,3 @@ export function getModel(
   }
 }
 
-/**
- * Resolve a model from .imajin/config.json settings.
- *
- * Config format: { model: "claude-sonnet-4-20250514", provider: "anthropic" }
- * Or shorthand: { model: "default" } → falls back to Anthropic Sonnet.
- */
-export function resolveModel(presenceConfig: {
-  model?: string;
-  provider?: string;
-  temperature?: number;
-}): { model: LanguageModelV1; modelId: string; provider: ProviderName } {
-  const provider = (presenceConfig.provider as ProviderName) ?? 'anthropic';
-  const modelId = presenceConfig.model === 'default' || !presenceConfig.model
-    ? 'claude-sonnet-4-20250514'
-    : presenceConfig.model;
-
-  return {
-    model: getModel(provider, modelId),
-    modelId,
-    provider,
-  };
-}

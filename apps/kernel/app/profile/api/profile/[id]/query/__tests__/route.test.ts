@@ -1,0 +1,246 @@
+/**
+ * Tests for POST /profile/api/profile/:id/query (#1621).
+ *
+ * A presence speaks on its owner's behalf, so it must run on the OWNER's sealed
+ * brain — not the requester's, and not a shared node env key. These pin that,
+ * plus the two new failure modes introduced when the env fallback was removed:
+ * no sealed brain (409) and a resolver fault (503).
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// ─── Mocks ───────────────────────────────────────────────────────────────────
+
+const {
+  mockRequireAuth,
+  mockFindFirst,
+  mockInsertValues,
+  mockResolveBrain,
+  mockGetModel,
+  mockGenerateText,
+  mockCalculateCost,
+} = vi.hoisted(() => ({
+  mockRequireAuth: vi.fn(),
+  mockFindFirst: vi.fn(),
+  mockInsertValues: vi.fn(),
+  mockResolveBrain: vi.fn(),
+  mockGetModel: vi.fn(),
+  mockGenerateText: vi.fn(),
+  mockCalculateCost: vi.fn(),
+}));
+
+vi.mock('@/src/db', () => ({
+  db: {
+    query: { profiles: { findFirst: mockFindFirst } },
+    insert: () => ({ values: mockInsertValues }),
+  },
+  queryLogs: {},
+}));
+
+vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
+
+vi.mock('ai', () => ({ generateText: mockGenerateText }));
+
+vi.mock('@imajin/llm', () => ({
+  getModel: mockGetModel,
+  calculateCost: mockCalculateCost,
+  createPresenceTools: () => ({}),
+}));
+
+// NoBrainSealedError must be a real class so the route's `instanceof` branch
+// works, and it must be hoisted: vi.mock factories run before module-level
+// declarations are initialised.
+const { NoBrainSealedError } = vi.hoisted(() => {
+  class NoBrainSealedError extends Error {
+    constructor(ownerDid: string) {
+      super(`inference_no_brain: DID ${ownerDid} has no model credential sealed`);
+      this.name = 'NoBrainSealedError';
+    }
+  }
+  return { NoBrainSealedError };
+});
+
+vi.mock('@/src/lib/inference/brain', () => ({
+  resolveBrain: mockResolveBrain,
+  NoBrainSealedError,
+}));
+
+vi.mock('nanoid', () => ({ nanoid: () => 'query_1' }));
+vi.mock('@imajin/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+}));
+vi.mock('@imajin/config', () => ({ buildPublicUrl: () => 'https://imajin.test/profile' }));
+
+import { POST } from '../route';
+
+// ─── Fixtures ────────────────────────────────────────────────────────────────
+
+const OWNER_DID = 'did:imajin:presence-owner';
+const REQUESTER_DID = 'did:imajin:presence-owner'; // self-query: skips the trust hop
+const OWNER_KEY = 'sk-ant-OWNER-SEALED';
+
+const BRAIN = {
+  connector: 'anthropic' as const,
+  provider: 'anthropic' as const,
+  modelId: 'claude-sonnet-4-20250514',
+  apiKey: OWNER_KEY,
+};
+
+type RouteArgs = Parameters<typeof POST>;
+
+function makeReq(body: unknown = { message: 'hello' }): RouteArgs[0] {
+  return { json: async () => body, headers: new Headers() } as unknown as RouteArgs[0];
+}
+
+const params = { params: Promise.resolve({ id: OWNER_DID }) } as unknown as RouteArgs[1];
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockRequireAuth.mockResolvedValue({ identity: { id: REQUESTER_DID } });
+  mockFindFirst.mockResolvedValue({
+    did: OWNER_DID,
+    displayName: 'Owner',
+    featureToggles: { inference_enabled: true },
+  });
+  mockResolveBrain.mockResolvedValue(BRAIN);
+  mockGetModel.mockReturnValue({});
+  mockGenerateText.mockResolvedValue({
+    text: 'an answer',
+    usage: { promptTokens: 10, completionTokens: 5 },
+  });
+  mockCalculateCost.mockReturnValue(0);
+  mockInsertValues.mockResolvedValue(undefined);
+  // No presence document — the route falls back to a default system prompt.
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
+});
+
+// ─── Owner-brain resolution ──────────────────────────────────────────────────
+
+describe('presence query — runs on the owner\'s sealed brain (#1621)', () => {
+  it('resolves the brain for the presence owner, not the requester', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:someone-else' } });
+    // A different requester would need the trust hop; make it pass.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ connected: true, distance: 1 }),
+    }));
+
+    await POST(makeReq(), params);
+
+    expect(mockResolveBrain).toHaveBeenCalledWith(OWNER_DID);
+  });
+
+  it('passes the owner\'s sealed credential to the model factory', async () => {
+    await POST(makeReq(), params);
+
+    expect(mockGetModel).toHaveBeenCalledWith('anthropic', 'claude-sonnet-4-20250514', {
+      apiKey: OWNER_KEY,
+    });
+  });
+
+  it('forwards a sealed baseURL when the owner sealed one', async () => {
+    mockResolveBrain.mockResolvedValueOnce({
+      ...BRAIN,
+      connector: 'gemini',
+      provider: 'openai',
+      modelId: 'gemini-2.0-flash',
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    });
+
+    await POST(makeReq(), params);
+
+    expect(mockGetModel).toHaveBeenCalledWith('openai', 'gemini-2.0-flash', {
+      apiKey: OWNER_KEY,
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    });
+  });
+
+  it('bills against the resolved model, not a vocab-declared one', async () => {
+    mockCalculateCost.mockReturnValueOnce(0);
+
+    const res = await POST(makeReq(), params);
+
+    expect(mockCalculateCost).toHaveBeenCalledWith('claude-sonnet-4-20250514', 10, 5);
+    expect(await res.json()).toMatchObject({ model: 'claude-sonnet-4-20250514' });
+  });
+
+  it('never returns the owner credential in the response', async () => {
+    const res = await POST(makeReq(), params);
+
+    expect(JSON.stringify(await res.json())).not.toContain(OWNER_KEY);
+  });
+});
+
+// ─── Failure modes introduced by removing the env fallback ───────────────────
+
+describe('presence query — no env fallback', () => {
+  it('returns 409 when the owner has sealed no brain', async () => {
+    mockResolveBrain.mockRejectedValueOnce(new NoBrainSealedError(OWNER_DID));
+
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'This profile has not connected a model for inference',
+    });
+    expect(mockGenerateText).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 when brain resolution faults for another reason', async () => {
+    mockResolveBrain.mockRejectedValueOnce(new Error('vault unavailable'));
+
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'Inference unavailable' });
+  });
+
+  it('does not leak the resolver failure detail to the caller', async () => {
+    mockResolveBrain.mockRejectedValueOnce(new Error(`vault said ${OWNER_KEY}`));
+
+    const res = await POST(makeReq(), params);
+
+    expect(JSON.stringify(await res.json())).not.toContain(OWNER_KEY);
+  });
+});
+
+// ─── Gates that must run before any brain is resolved ────────────────────────
+
+describe('presence query — gates', () => {
+  it('rejects an unauthenticated caller before resolving a brain', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
+
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(401);
+    expect(mockResolveBrain).not.toHaveBeenCalled();
+  });
+
+  it('404s an unknown profile without resolving a brain', async () => {
+    mockFindFirst.mockResolvedValueOnce(undefined);
+
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(404);
+    expect(mockResolveBrain).not.toHaveBeenCalled();
+  });
+
+  it('403s when the profile has not enabled inference', async () => {
+    mockFindFirst.mockResolvedValueOnce({
+      did: OWNER_DID,
+      displayName: 'Owner',
+      featureToggles: { inference_enabled: false },
+    });
+
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(403);
+    expect(mockResolveBrain).not.toHaveBeenCalled();
+  });
+
+  it('400s a request with no message', async () => {
+    const res = await POST(makeReq({}), params);
+
+    expect(res.status).toBe(400);
+    expect(mockGenerateText).not.toHaveBeenCalled();
+  });
+});

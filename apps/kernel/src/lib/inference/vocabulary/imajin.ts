@@ -23,8 +23,6 @@ const SILENT_TYPES = new Set(['note.self', 'receipt.file', 'discovery.context'])
 
 export const imajinVocabulary: IntentVocabulary = {
   name: 'imajin',
-  modelProvider: 'anthropic',
-  modelId: 'claude-sonnet-4-20250514',
 
   systemPrompt: `
 You are the Imajin intention inference engine. Given a transcript + ambient context,
