@@ -5,11 +5,13 @@
  *
  * Extracted from the old monolithic /auth/connectors page (#1494) so the
  * connectors landing can become a registry-driven grid that links into this
- * detail view at /auth/connectors/[id]. Behavior is unchanged from #1354 +
- * #1397 + #1490:
- *   ingestionPattern === 'native'      → NativeConnectorCard (scope toggles only)
- *   ingestionPattern === 'oauth'       → per-connector OAuth card
- *   ingestionPattern === 'token-paste' → per-connector token-paste card
+ * detail view at /auth/connectors/[id].
+ *
+ * Routing is a projection of `ingestionPattern` (#1604 — see
+ * `connector-card-kind.ts`), not a per-id list:
+ *   'native'                        → NativeConnectorCard (scope toggles only)
+ *   'oauth'                         → per-connector OAuth card
+ *   'token-paste' | 'static-secret' → CredentialPasteConnectorCard
  * All on-consent scopes use grant-by-edit — toggling in the UI writes the
  * consent_grants row automatically.
  */
@@ -19,8 +21,16 @@ import { useSearchParams } from 'next/navigation';
 import {
   type ConnectorEntry,
   type ConnectorScope,
+  type CredentialUiCopy,
   type ReleaseClass,
 } from '@/src/lib/kernel/connector-registry';
+import {
+  connectorCardKind,
+  credentialBodyKey,
+  credentialSealed,
+  disconnectMethod,
+  type CredentialSealedFlags,
+} from '@/src/lib/kernel/connector-card-kind';
 import { buildConnectHref, readConnectOutcome } from '@/src/lib/kernel/connect-outcome';
 
 // ── Types ─────────────────────────────────────────────────────
@@ -35,11 +45,17 @@ interface GitHubStatus {
   credentialPending?: boolean;
 }
 
-interface DiscordStatus {
+/**
+ * Status shape for paste-a-credential connectors (Discord, Gemini, Warp).
+ *
+ * The sealed-credential boolean arrives under a different name per connector
+ * (`tokenSealed` / `keySealed` / `secretSealed`) because each backend named it
+ * before it was ever read generically. `credentialSealed()` normalises them.
+ */
+interface CredentialPasteStatus extends CredentialSealedFlags {
   manifestAssetId: string | null;
   activeScopes: string[];
   validScopes: string[];
-  tokenSealed: boolean;
   credentialPending?: boolean;
 }
 
@@ -296,29 +312,36 @@ function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantE
 // ── Shared disconnect hook + component ──────────────────────────────────────────────
 
 /**
- * Encapsulates the disconnect state + handler shared by all connector cards
- * (GitHub, Discord, QuickBooks). Deduplicated from the three near-identical
- * inline copies that previously lived in each card (#1490 Sonar fix).
+ * Encapsulates the disconnect state + handler shared by all connector cards.
+ * Deduplicated from the near-identical inline copies that previously lived in
+ * each card (#1490 Sonar fix).
  *
- * @param disconnectRoute  The `entry.disconnectRoute` POST URL.
+ * @param disconnectRoute  The `entry.disconnectRoute` URL, or null when the
+ *                         connector has no disconnect route yet (e.g. Gemini).
+ *                         Null makes the handler a no-op so the hook can still
+ *                         be called unconditionally.
  * @param confirmMessage   Text shown in the browser confirm dialog.
  * @param onSuccess        Called (synchronously) after a successful disconnect;
  *                         typically `() => { void fetchStatus(); }`.
+ * @param method           Verb the route expects. Static-secret connectors serve
+ *                         seal and revoke from one route, so theirs is DELETE.
  */
 function useDisconnect(
-  disconnectRoute: string,
+  disconnectRoute: string | null,
   confirmMessage: string,
   onSuccess: () => void,
+  method: 'POST' | 'DELETE' = 'POST',
 ) {
   const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   async function handleDisconnect() {
+    if (!disconnectRoute) return;
     if (!window.confirm(confirmMessage)) return;
     setDisconnecting(true);
     setDisconnectError(null);
     try {
-      const r = await fetch(disconnectRoute, { method: 'POST' });
+      const r = await fetch(disconnectRoute, { method });
       if (!r.ok) {
         const data = await r.json().catch(() => ({})) as { error?: string };
         throw new Error(data.error ?? `${r.status} ${r.statusText}`);
@@ -647,22 +670,67 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   );
 }
 
-// ── Discord card (token-paste, Pattern B) ────────────────────────────────────────────────────────────────
+// ── Credential-paste card (token-paste + static-secret) — #1604 ──────────────
 
-function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
-  const [status, setStatus] = useState<DiscordStatus | null>(null);
+/**
+ * Copy fallback for a paste-style connector whose registry entry omits
+ * `credentialUi`. The dispatch guard test requires every paste-style entry to
+ * declare it, so this only keeps the component total — it is not a licence to
+ * skip the registry copy.
+ */
+function credentialCopy(entry: ConnectorEntry): CredentialUiCopy {
+  return entry.credentialUi ?? {
+    label: 'Credential',
+    placeholder: `${entry.name} credential`,
+    hint: 'Sealed server-side and never returned.',
+  };
+}
+
+/**
+ * Confirm text for disconnecting a paste-style connector.
+ *
+ * Static-secret connectors revoke a delegation grant, which crypto-erases the
+ * wrapped field key rather than deleting the ciphertext — so the two patterns
+ * genuinely promise different things and the dialog should not lie about which.
+ */
+function disconnectConfirmMessage(entry: ConnectorEntry, credentialLabel: string): string {
+  if (entry.ingestionPattern === 'static-secret') {
+    return `Disconnect ${entry.name}? This revokes the delegation grant, which kills access immediately.`;
+  }
+  return `Disconnect ${entry.name}? This will revoke the grant and delete the sealed ${credentialLabel}.`;
+}
+
+/**
+ * Card for connectors whose credential is pasted in-app rather than collected
+ * through an OAuth redirect: `ingestionPattern` of `'token-paste'` (Discord,
+ * Gemini) or `'static-secret'` (Warp).
+ *
+ * Generalised from the old `DiscordConnectorCard`, which was reachable only via
+ * an `entry.id === 'discord'` dispatcher branch — the omission that left Gemini
+ * (#1432) and Warp (#1428) rendering "Coming soon" against live backends. Every
+ * per-connector difference is now read from the registry entry:
+ *   - copy            → `entry.credentialUi`
+ *   - seal route      → `entry.tokenRoute`, body key from `credentialBodyKey`
+ *   - disconnect      → `entry.disconnectRoute` + verb from `disconnectMethod`;
+ *                       hidden entirely when the connector has no such route
+ *   - sealed boolean  → normalised by `credentialSealed`
+ */
+function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+  const [status, setStatus] = useState<CredentialPasteStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
 
-  // Token paste state
-  const [tokenInput, setTokenInput] = useState('');
+  // Credential paste state
+  const [credentialInput, setCredentialInput] = useState('');
   const [sealing, setSealing] = useState(false);
   const [sealError, setSealError] = useState<string | null>(null);
-  const [showTokenInput, setShowTokenInput] = useState(false);
+  const [showCredentialInput, setShowCredentialInput] = useState(false);
 
   // Scope grant state
   const [grantingScope, setGrantingScope] = useState<string | null>(null);
   const [grantError, setGrantError] = useState<string | null>(null);
+
+  const ui = credentialCopy(entry);
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -670,7 +738,7 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
     try {
       const r = await fetch(entry.statusEndpoint!);
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-      setStatus(await r.json() as DiscordStatus);
+      setStatus(await r.json() as CredentialPasteStatus);
     } catch (err: unknown) {
       setStatusError(String(err));
     } finally {
@@ -682,7 +750,7 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
     try {
       const r = await fetch(entry.statusEndpoint!);
       if (!r.ok) return;
-      setStatus(await r.json() as DiscordStatus);
+      setStatus(await r.json() as CredentialPasteStatus);
       setStatusError(null);
     } catch { /* non-fatal */ }
   }, [entry.statusEndpoint]);
@@ -690,15 +758,20 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
   const { disconnecting, disconnectError, handleDisconnect } = useDisconnect(
-    entry.disconnectRoute!,
-    'Disconnect Discord? This will revoke the grant and delete the sealed bot token.',
+    entry.disconnectRoute,
+    disconnectConfirmMessage(entry, ui.label),
     () => { void fetchStatus(); },
+    disconnectMethod(entry),
   );
 
   const activeSet = new Set(status?.activeScopes ?? []);
-  const readyForPost = status !== null && status.tokenSealed && activeSet.has('discord:post');
+  const sealed = status !== null && credentialSealed(status);
+  // Connected = a sealed credential plus at least one active scope. The old
+  // Discord card hardcoded `discord:post`, which reported "Not configured" for a
+  // deliberate read-only grant; any active scope means the connector can act.
+  const ready = sealed && activeSet.size > 0;
 
-  async function handleSealToken(e: React.FormEvent) {
+  async function handleSealCredential(e: React.FormEvent) {
     e.preventDefault();
     setSealing(true);
     setSealError(null);
@@ -706,14 +779,14 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       const r = await fetch(entry.tokenRoute!, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: tokenInput.trim() }),
+        body: JSON.stringify({ [credentialBodyKey(entry)]: credentialInput.trim() }),
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({})) as { error?: string };
         throw new Error(data.error ?? `${r.status} ${r.statusText}`);
       }
-      setTokenInput('');
-      setShowTokenInput(false);
+      setCredentialInput('');
+      setShowCredentialInput(false);
       void refreshStatus();
     } catch (err: unknown) {
       setSealError(String(err));
@@ -749,7 +822,7 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
         <ConnectorStatusBadge
           loading={statusLoading}
           error={!!statusError}
-          ready={readyForPost}
+          ready={ready}
           pending={status?.credentialPending}
         />
       </div>
@@ -760,20 +833,20 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       {!statusLoading && !statusError && status && (
         <div className="space-y-6">
 
-          {/* ── Step 1: Bot Token ── */}
+          {/* ── Step 1: the credential ── */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                 <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
-                  status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+                  sealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
                 }`}>
-                  {status.tokenSealed ? '✓' : '1'}
+                  {sealed ? '✓' : '1'}
                 </span>
-                {' '}Bot Token
+                {' '}{ui.label}
               </h3>
-              {status.tokenSealed && !showTokenInput && (
+              {sealed && !showCredentialInput && (
                 <button type="button"
-                  onClick={() => setShowTokenInput(true)}
+                  onClick={() => setShowCredentialInput(true)}
                   className="text-xs text-gray-600 hover:text-gray-400 transition"
                 >
                   Replace
@@ -781,29 +854,29 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
               )}
             </div>
 
-            {!status.tokenSealed || showTokenInput ? (
-              <form onSubmit={(e) => { void handleSealToken(e); }} className="space-y-2">
+            {!sealed || showCredentialInput ? (
+              <form onSubmit={(e) => { void handleSealCredential(e); }} className="space-y-2">
                 <input
                   type="password"
-                  value={tokenInput}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                  placeholder="Discord Bot Token"
+                  value={credentialInput}
+                  onChange={(e) => setCredentialInput(e.target.value)}
+                  placeholder={ui.placeholder}
                   required
                   autoComplete="off"
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 font-mono"
                 />
-                <p className="text-xs text-gray-700">Token is sealed server-side and never returned. Found in Discord Developer Portal → Bot → Token.</p>
+                <p className="text-xs text-gray-700">{ui.hint}</p>
                 {sealError && <p className="text-red-400 text-xs">{sealError}</p>}
                 <div className="flex gap-2 pt-1">
                   <button
                     type="submit"
-                    disabled={sealing || !tokenInput.trim()}
+                    disabled={sealing || !credentialInput.trim()}
                     className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition"
                   >
-                    {sealing ? 'Sealing…' : status.tokenSealed ? 'Replace token' : 'Seal token'}
+                    {sealing ? 'Sealing…' : `${sealed ? 'Replace' : 'Seal'} ${ui.label}`}
                   </button>
-                  {showTokenInput && (
-                    <button type="button" onClick={() => { setShowTokenInput(false); setSealError(null); }}
+                  {showCredentialInput && (
+                    <button type="button" onClick={() => { setShowCredentialInput(false); setSealError(null); }}
                       className="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-gray-400 text-sm rounded-lg transition">
                       Cancel
                     </button>
@@ -811,7 +884,7 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                 </div>
               </form>
             ) : (
-              <StatusDot ok={true} label="Bot token sealed" />
+              <StatusDot ok={true} label={`${ui.label} sealed`} />
             )}
           </div>
 
@@ -822,11 +895,10 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             stepNumber={2}
             grantingScope={grantingScope}
             grantError={grantError}
-            tokenSealed={status.tokenSealed}
-            noTokenHint="Seal a bot token (step 1) to enable scope grants."
+            tokenSealed={sealed}
+            noTokenHint={`Seal your ${ui.label} (step 1) to enable scope grants.`}
             onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
           />
-
 
           {status.manifestAssetId && (
             <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
@@ -834,10 +906,10 @@ function DiscordConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             </div>
           )}
 
-          {/* Disconnect */}
-          {status.tokenSealed && (
+          {/* Disconnect — only for connectors that expose a disconnect route. */}
+          {sealed && entry.disconnectRoute && (
             <DisconnectSection
-              label="Disconnect Discord"
+              label={`Disconnect ${entry.name}`}
               disconnecting={disconnecting}
               disconnectError={disconnectError}
               onDisconnect={() => { void handleDisconnect(); }}
@@ -1177,23 +1249,36 @@ function PendingConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
 /**
- * Class-aware connector detail dispatcher (#1397).
+ * Per-id OAuth cards, pending their consolidation into one `OAuthConnectorCard`
+ * (the explicit fast-follow to #1604). This is the last id-keyed dispatch in the
+ * file; `connector-card-dispatch.test.ts` pins the ids so a new OAuth connector
+ * fails a test here instead of silently rendering "Coming soon".
+ */
+const OAUTH_CARDS: Record<string, (props: Readonly<{ entry: ConnectorEntry }>) => React.ReactElement> = {
+  github: GitHubConnectorCard,
+  quickbooks: QuickBooksConnectorCard,
+};
+
+/**
+ * Pattern-aware connector detail dispatcher (#1397, routed by ingestion pattern
+ * in #1604).
  *
- * Routing priority:
- *   1. backendPending → PendingConnectorCard (no API calls)
- *   2. ingestionPattern === 'native' → NativeConnectorCard (scope toggles only)
- *   3. Per-connector OAuth / token-paste cards (id-keyed)
- *   4. PendingConnectorCard fallback for unknown future connectors
- *
- * Adding a new native connector: set ingestionPattern: 'native' in the registry
- * — no code change needed here.
- * Adding a new OAuth/token-paste connector: add an id branch below.
+ * Adding a connector whose `ingestionPattern` already has a card — native or
+ * credential-paste — needs no change here: a registry entry is the whole job.
+ * A brand-new ingestion pattern is a typecheck failure in `connectorCardKind`,
+ * which is the point: it can no longer fall through to "Coming soon" unnoticed.
  */
 export function ConnectorDetail({ entry }: Readonly<{ entry: ConnectorEntry }>) {
-  if (entry.backendPending) return <PendingConnectorCard entry={entry} />;
-  if (entry.ingestionPattern === 'native') return <NativeConnectorCard entry={entry} />;
-  if (entry.id === 'github') return <GitHubConnectorCard entry={entry} />;
-  if (entry.id === 'discord') return <DiscordConnectorCard entry={entry} />;
-  if (entry.id === 'quickbooks') return <QuickBooksConnectorCard entry={entry} />;
-  return <PendingConnectorCard entry={entry} />;
+  switch (connectorCardKind(entry)) {
+    case 'pending':
+      return <PendingConnectorCard entry={entry} />;
+    case 'native':
+      return <NativeConnectorCard entry={entry} />;
+    case 'credential-paste':
+      return <CredentialPasteConnectorCard entry={entry} />;
+    case 'oauth': {
+      const OAuthCard = OAUTH_CARDS[entry.id];
+      return OAuthCard ? <OAuthCard entry={entry} /> : <PendingConnectorCard entry={entry} />;
+    }
+  }
 }

@@ -24,33 +24,40 @@ import {
   CONNECTOR_REGISTRY,
   type ConnectorEntry,
 } from '@/src/lib/kernel/connector-registry';
+import {
+  credentialSealed,
+  type CredentialSealedFlags,
+} from '@/src/lib/kernel/connector-card-kind';
 
-// ── Status pill ───────────────────────────────────────────────────────────────
+// ── Status pill ────────────────────────────────────────────────────────────
 
 /**
  * Minimal, booleans-only shape of a connector scope-manifest status response.
- * Every connector endpoint returns `activeScopes`; OAuth/token-paste connectors
- * additionally return `tokenSealed`. We read nothing else — no scope names or
- * config values are surfaced on the grid.
+ * Every connector endpoint returns `activeScopes`; credential-bearing connectors
+ * additionally return a sealed boolean under one of the names in
+ * `CredentialSealedFlags`. We read nothing else — no scope names or config values
+ * are surfaced on the grid.
  */
-interface GridStatus {
+interface GridStatus extends CredentialSealedFlags {
   activeScopes?: string[];
-  tokenSealed?: boolean;
 }
 
 type PillState = 'loading' | 'connected' | 'disconnected' | 'error' | 'pending';
 
 /**
  * Derive the connected boolean for a connector from its status payload:
- *   - native      → at least one active scope
- *   - oauth /      → credential (token) sealed
- *     token-paste
+ *   - native → at least one active scope (there is no credential to seal)
+ *   - everything else → a sealed credential
+ *
+ * The sealed boolean is normalised (#1604): Discord reports `tokenSealed`, Gemini
+ * `keySealed`, and static-secret connectors `secretSealed`, so reading only
+ * `tokenSealed` showed Gemini and Warp as "Not connected" with a key sealed.
  */
 function deriveConnected(entry: ConnectorEntry, status: GridStatus): boolean {
   if (entry.ingestionPattern === 'native') {
     return (status.activeScopes?.length ?? 0) > 0;
   }
-  return status.tokenSealed === true;
+  return credentialSealed(status);
 }
 
 function StatusPill({ state }: Readonly<{ state: PillState }>) {
