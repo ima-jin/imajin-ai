@@ -7,15 +7,32 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { requireAgentKeyMock, lookupIdentityMock, publishMock, logMock } = vi.hoisted(() => ({
+const {
+  requireAgentKeyMock,
+  lookupIdentityMock,
+  publishMock,
+  logMock,
+  readEnvironmentIdMock,
+  getNodeDidMock,
+} = vi.hoisted(() => ({
   requireAgentKeyMock: vi.fn(),
   lookupIdentityMock: vi.fn(),
   publishMock: vi.fn(),
   logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  readEnvironmentIdMock: vi.fn(),
+  getNodeDidMock: vi.fn(),
 }));
 
 vi.mock('../connector', () => ({
   requireAgentKey: requireAgentKeyMock,
+}));
+
+vi.mock('../environment', () => ({
+  readEnvironmentId: readEnvironmentIdMock,
+}));
+
+vi.mock('@/src/lib/kernel/node-identity', () => ({
+  getNodeDid: getNodeDidMock,
 }));
 
 vi.mock('@/src/lib/kernel/lookup', () => ({
@@ -35,9 +52,23 @@ import { dispatchAgentRun, getAgentRun, resolveJinName, WarpApiError } from '../
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const PRINCIPAL = 'did:imajin:veteze';
+const NODE_DID = 'did:imajin:this-node';
 const AGENT_KEY = 'warp-agent-key-SUPER-SECRET-VALUE';
 const BASE_URL = 'https://warp.test/api/v1';
 const RUN_ID = '019f9990-2a46-7552-b177-3a23b17eef2e';
+const OWN_ENV = 'L2DO7swtN7Ku3G7gVPwziI';
+const NODE_ENV = 'NODEWIDEENVUID';
+
+/**
+ * Point the environment store at a value per DID, defaulting to "nothing stored".
+ *
+ * Keyed rather than sequenced because the resolution order is the thing under
+ * test: a call-order-based stub would still pass if the chain looked up the wrong
+ * DID.
+ */
+function storeEnvironments(byDid: Record<string, string>): void {
+  readEnvironmentIdMock.mockImplementation(async (did: string) => byDid[did]);
+}
 
 interface FetchCall {
   url: string;
@@ -84,13 +115,17 @@ const QUEUED_RUN = { run_id: RUN_ID, state: 'QUEUED' };
 
 beforeEach(() => {
   process.env.WARP_API_BASE_URL = BASE_URL;
-  delete process.env.WARP_DEFAULT_ENVIRONMENT_ID;
 
   requireAgentKeyMock.mockReset().mockResolvedValue(AGENT_KEY);
   lookupIdentityMock.mockReset().mockResolvedValue({ did: PRINCIPAL, handle: 'veteze' });
   publishMock.mockReset().mockResolvedValue(undefined);
   logMock.info.mockReset();
+  logMock.warn.mockReset();
   logMock.error.mockReset();
+
+  readEnvironmentIdMock.mockReset();
+  storeEnvironments({});
+  getNodeDidMock.mockReset().mockResolvedValue(NODE_DID);
 
   vi.stubGlobal('fetch', vi.fn());
 });
@@ -99,7 +134,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   delete process.env.WARP_API_BASE_URL;
-  delete process.env.WARP_DEFAULT_ENVIRONMENT_ID;
 });
 
 // ── The wire ──────────────────────────────────────────────────────────────────
@@ -221,22 +255,6 @@ describe('dispatch config surface', () => {
     expect(lastConfig().skill_spec).toBe('ima-jin/imajin-ai:catalyst');
   });
 
-  it('applies WARP_DEFAULT_ENVIRONMENT_ID when the caller names no environment', async () => {
-    process.env.WARP_DEFAULT_ENVIRONMENT_ID = 'UA17BXYZ';
-    respondJson(QUEUED_RUN);
-    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
-
-    expect(lastConfig().environment_id).toBe('UA17BXYZ');
-  });
-
-  it('prefers an explicit environment over the configured default', async () => {
-    process.env.WARP_DEFAULT_ENVIRONMENT_ID = 'UA17BXYZ';
-    respondJson(QUEUED_RUN);
-    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', environmentId: 'UAOTHER' });
-
-    expect(lastConfig().environment_id).toBe('UAOTHER');
-  });
-
   it('forwards computer use only when the caller asks for it', async () => {
     respondJson(QUEUED_RUN);
     await dispatchAgentRun(PRINCIPAL, { prompt: 'go', computerUseEnabled: true });
@@ -277,6 +295,98 @@ describe('dispatch config surface', () => {
     expect(config).not.toHaveProperty('skill_spec');
     expect(config).not.toHaveProperty('environment_id');
     expect(config).not.toHaveProperty('computer_use_enabled');
+  });
+});
+
+// ── Environment resolution (#1632) ───────────────────────────────────────────
+//
+// The default used to be a single node-wide env var. It is now resolved from
+// DIDs — caller first, then the node — so these pin the order, and pin that a
+// missing or broken default degrades rather than failing the run.
+
+describe('environment resolution is DID-keyed', () => {
+  it('uses the caller stored default when the dispatch names none', async () => {
+    storeEnvironments({ [PRINCIPAL]: OWN_ENV });
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    expect(lastConfig().environment_id).toBe(OWN_ENV);
+  });
+
+  it('prefers an explicit environment over every stored default', async () => {
+    storeEnvironments({ [PRINCIPAL]: OWN_ENV, [NODE_DID]: NODE_ENV });
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', environmentId: 'UAEXPLICIT' });
+
+    expect(lastConfig().environment_id).toBe('UAEXPLICIT');
+  });
+
+  it('falls back to the node DID default when the caller has none', async () => {
+    storeEnvironments({ [NODE_DID]: NODE_ENV });
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    expect(lastConfig().environment_id).toBe(NODE_ENV);
+  });
+
+  it('prefers the caller own default over the node default', async () => {
+    storeEnvironments({ [PRINCIPAL]: OWN_ENV, [NODE_DID]: NODE_ENV });
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    expect(lastConfig().environment_id).toBe(OWN_ENV);
+  });
+
+  it('omits environment_id entirely when no DID has a default', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    expect(lastConfig()).not.toHaveProperty('environment_id');
+  });
+
+  it('does not read the node default twice when the caller IS the node', async () => {
+    storeEnvironments({ [NODE_DID]: NODE_ENV });
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(NODE_DID, { prompt: 'go' });
+
+    expect(lastConfig().environment_id).toBe(NODE_ENV);
+    expect(readEnvironmentIdMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the node lookup entirely when the dispatch names an environment', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', environmentId: 'UAEXPLICIT' });
+
+    expect(readEnvironmentIdMock).not.toHaveBeenCalled();
+    expect(getNodeDidMock).not.toHaveBeenCalled();
+  });
+
+  it('dispatches without an environment when the node DID is unresolvable', async () => {
+    getNodeDidMock.mockResolvedValue('');
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    expect(lastConfig()).not.toHaveProperty('environment_id');
+  });
+
+  it('still dispatches when resolving the node DID throws', async () => {
+    // A preference lookup must never take down an authorized run.
+    getNodeDidMock.mockRejectedValue(new Error('relay_config unreachable'));
+    respondJson(QUEUED_RUN);
+
+    const run = await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    expect(run.runId).toBe(RUN_ID);
+    expect(lastConfig()).not.toHaveProperty('environment_id');
+  });
+
+  it('records the resolved environment on the bus event for the audit trail', async () => {
+    storeEnvironments({ [NODE_DID]: NODE_ENV });
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    const [, event] = publishMock.mock.calls[0] as [string, { payload: { environmentId: unknown } }];
+    expect(event.payload.environmentId).toBe(NODE_ENV);
   });
 });
 

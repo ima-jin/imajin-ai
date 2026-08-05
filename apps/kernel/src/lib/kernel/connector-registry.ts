@@ -57,6 +57,49 @@ export interface CredentialUiCopy {
 }
 
 /**
+ * One non-secret configuration value on a connector card (#1632).
+ *
+ * Distinct from `credentialUi`, which describes the *credential* step: a setting
+ * is a plain preference that is safe to read back and display, so the card renders
+ * it as a text input showing the current value rather than a write-only password
+ * field.
+ */
+export interface ConnectorSettingField {
+  /**
+   * Field name, used verbatim as both the JSON key on the settings route and the
+   * property read back from its GET response, e.g. `'environmentId'`.
+   */
+  key: string;
+  /** Section heading, e.g. `'Default Environment'`. */
+  label: string;
+  /** Input placeholder — ideally an example value. */
+  placeholder: string;
+  /** Help text under the input: what this changes, and what unset means. */
+  hint: string;
+}
+
+/**
+ * A connector's non-secret settings section, if it has one (#1632).
+ *
+ * Declared here rather than branched on in the card for the same reason the rest
+ * of this registry exists: #1604 shipped two connectors whose backends were live
+ * but whose UI said "Coming soon", because rendering was keyed off connector id
+ * instead of derived from data. A settings section any connector can opt into by
+ * adding a registry entry cannot repeat that.
+ */
+export interface ConnectorSettingsUi {
+  /**
+   * Route serving `GET` (read current values), `PUT` (store one), and `DELETE`
+   * (clear one). Deliberately separate from `tokenRoute`: settings are not
+   * credentials, and overloading the seal route's `DELETE` would make it
+   * ambiguous between revoking a credential and clearing a preference.
+   */
+  route: string;
+  /** Settings to render, in display order. */
+  fields: readonly ConnectorSettingField[];
+}
+
+/**
  * A single connector in the registry. All fields are optional-friendly to let
  * entries with `backendPending: true` omit routes they don't have yet.
  */
@@ -122,6 +165,11 @@ export interface ConnectorEntry {
    * have no credential, and OAuth connectors collect theirs via redirect.
    */
   credentialUi: CredentialUiCopy | null;
+  /**
+   * Non-secret configuration the card lets the owner edit, or `null` when the
+   * connector has nothing to configure beyond its credential and scopes.
+   */
+  settings: ConnectorSettingsUi | null;
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -143,6 +191,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     tokenRoute: null,
     disconnectRoute: null,
     credentialUi: null,
+    settings: null,
   },
   {
     id: 'github',
@@ -160,6 +209,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     tokenRoute: null,
     disconnectRoute: '/github/api/disconnect',
     credentialUi: null,
+    settings: null,
   },
   {
     id: 'discord',
@@ -181,6 +231,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       placeholder: 'Discord Bot Token',
       hint: 'Token is sealed server-side and never returned. Found in Discord Developer Portal → Bot → Token.',
     },
+    settings: null,
   },
   {
     id: 'gemini',
@@ -202,6 +253,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       placeholder: 'Gemini API Key',
       hint: 'Key is sealed server-side and never returned. Create one in Google AI Studio → Get API key.',
     },
+    settings: null,
   },
   {
     id: 'anthropic',
@@ -223,6 +275,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       placeholder: 'Anthropic API Key',
       hint: 'Key is sealed server-side and never returned. Create one in the Anthropic Console → API keys.',
     },
+    settings: null,
   },
   {
     id: 'quickbooks',
@@ -240,6 +293,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     tokenRoute: null,
     disconnectRoute: '/quickbooks/api/disconnect',
     credentialUi: null,
+    settings: null,
   },
   {
     id: 'warp',
@@ -262,6 +316,19 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       label: 'Agent Key',
       placeholder: 'Warp Agent Key',
       hint: 'Key is sealed server-side and never returned. Revoking here kills dispatch immediately without rotating the key.',
+    },
+    // #1632: the environment default is stored per-DID, not in an env var, so the
+    // card is where it is set. Unset falls back to the node DID's default.
+    settings: {
+      route: '/warp/api/environment',
+      fields: [
+        {
+          key: 'environmentId',
+          label: 'Default Environment',
+          placeholder: 'e.g. L2DO7swtN7Ku3G7gVPwziI',
+          hint: 'Cloud environment your dispatches use when they name none — a persistent workspace with the repo cloned and dependencies installed. Leave unset to inherit the node default, or run in a bare sandbox if there is none.',
+        },
+      ],
     },
   },
 ] as const;

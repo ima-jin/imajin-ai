@@ -108,6 +108,61 @@ describe('credential-paste entries carry everything their card needs', () => {
   });
 });
 
+// ─── #1632 settings guard ──────────────────────────────────────────────────
+//
+// Non-secret settings are a registry declaration for the same reason card routing
+// is: the card renders whatever an entry declares, so an incomplete declaration is
+// a half-rendered section rather than a compile error.
+
+const SETTINGS_ENTRIES = CONNECTOR_REGISTRY.filter((e) => e.settings !== null);
+
+describe('connector settings declarations are complete', () => {
+  it('is declared explicitly on every entry, so adding one is a visible choice', () => {
+    for (const entry of CONNECTOR_REGISTRY) {
+      expect(entry).toHaveProperty('settings');
+    }
+  });
+
+  it.each(SETTINGS_ENTRIES.map((e) => e.id))('gives %s a route and at least one field', (id) => {
+    const settings = (getConnector(id) as ConnectorEntry).settings!;
+    expect(settings.route).toBeTruthy();
+    expect(settings.fields.length).toBeGreaterThan(0);
+  });
+
+  it.each(SETTINGS_ENTRIES.map((e) => e.id))('gives every %s field complete copy', (id) => {
+    const settings = (getConnector(id) as ConnectorEntry).settings!;
+    for (const field of settings.fields) {
+      // The key is both the JSON body key and the property read back from GET, so
+      // a blank one silently reads and writes nothing.
+      expect(field.key).toBeTruthy();
+      expect(field.label).toBeTruthy();
+      expect(field.placeholder).toBeTruthy();
+      expect(field.hint).toBeTruthy();
+    }
+  });
+
+  it.each(SETTINGS_ENTRIES.map((e) => e.id))('keeps %s field keys unique', (id) => {
+    const settings = (getConnector(id) as ConnectorEntry).settings!;
+    const keys = settings.fields.map((f) => f.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('routes settings somewhere other than the credential route', () => {
+    // Overloading the seal route would make its DELETE ambiguous between revoking
+    // a credential and clearing a preference.
+    for (const entry of SETTINGS_ENTRIES) {
+      expect(entry.settings!.route).not.toBe(entry.tokenRoute);
+      expect(entry.settings!.route).not.toBe(entry.disconnectRoute);
+    }
+  });
+
+  it('lets Warp set its default environment from the card', () => {
+    const warp = getConnector('warp') as ConnectorEntry;
+    expect(warp.settings?.route).toBe('/warp/api/environment');
+    expect(warp.settings?.fields.map((f) => f.key)).toEqual(['environmentId']);
+  });
+});
+
 describe('credentialSealed normalises the per-connector flag names', () => {
   const cases: ReadonlyArray<{ status: CredentialSealedFlags; expected: boolean }> = [
     { status: { tokenSealed: true }, expected: true },

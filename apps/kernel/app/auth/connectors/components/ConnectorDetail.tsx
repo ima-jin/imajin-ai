@@ -21,6 +21,7 @@ import { useSearchParams } from 'next/navigation';
 import {
   type ConnectorEntry,
   type ConnectorScope,
+  type ConnectorSettingsUi,
   type CredentialUiCopy,
   type ReleaseClass,
 } from '@/src/lib/kernel/connector-registry';
@@ -305,6 +306,139 @@ function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantE
         ))}
       </div>
       {!tokenSealed && <p className="text-xs text-gray-600 mt-2">{noTokenHint}</p>}
+    </div>
+  );
+}
+
+// ── Non-secret settings section (#1632) ──────────────────────────────────────
+
+/**
+ * Editable non-secret settings for a connector, driven entirely by
+ * `entry.settings` (#1632).
+ *
+ * The caller renders it only when `entry.settings` is non-null, so a connector
+ * opts in by adding a registry entry — the alternative, an `entry.id === 'warp'`
+ * branch, is the exact shape of the bug #1604 removed from this file.
+ *
+ * Values are read back and shown in plain `type="text"` inputs, which is the
+ * whole reason this is separate from the credential step: a setting is a
+ * preference the owner needs to *see* to change confidently, while a credential
+ * must stay write-only.
+ */
+function ConnectorSettingsSection({ settings, stepNumber }: Readonly<{
+  settings: ConnectorSettingsUi;
+  stepNumber: string | number;
+}>) {
+  // Draft values keyed by field key. Empty string means "no value set".
+  const [values, setValues] = useState<Record<string, string>>({});
+  // Server-confirmed values, so Save/Clear can tell a real edit from a no-op.
+  const [saved, setSaved] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const { route, fields } = settings;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(route);
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+      const data = await r.json() as Record<string, unknown>;
+      const next: Record<string, string> = {};
+      for (const field of fields) {
+        const value = data[field.key];
+        next[field.key] = typeof value === 'string' ? value : '';
+      }
+      setValues(next);
+      setSaved(next);
+      setError(null);
+    } catch (err: unknown) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [route, fields]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  /**
+   * Persist one field. An emptied input is a clear (DELETE) rather than a write
+   * of the empty string, so "select all, delete, save" does what it looks like.
+   */
+  async function save(key: string) {
+    const value = (values[key] ?? '').trim();
+    setBusyKey(key);
+    setError(null);
+    try {
+      const r = await fetch(route, {
+        method: value.length === 0 ? 'DELETE' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        ...(value.length === 0 ? {} : { body: JSON.stringify({ [key]: value }) }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+      setValues((prev) => ({ ...prev, [key]: value }));
+      setSaved((prev) => ({ ...prev, [key]: value }));
+    } catch (err: unknown) {
+      setError(String(err));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  const anySaved = fields.some((field) => (saved[field.key] ?? '').length > 0);
+
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+          anySaved ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-gray-500'
+        }`}>
+          {anySaved ? '✓' : stepNumber}
+        </span>
+        {' '}Settings
+      </h3>
+
+      {loading && <p className="text-gray-500 text-xs">Loading settings…</p>}
+      {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
+
+      {!loading && (
+        <div className="space-y-4">
+          {fields.map((field) => {
+            const value = values[field.key] ?? '';
+            const dirty = value.trim() !== (saved[field.key] ?? '');
+            return (
+              <div key={field.key} className="space-y-2">
+                <label htmlFor={`setting-${field.key}`} className="text-sm text-gray-300 block">
+                  {field.label}
+                </label>
+                <input
+                  id={`setting-${field.key}`}
+                  type="text"
+                  value={value}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                  placeholder={field.placeholder}
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 font-mono"
+                />
+                <p className="text-xs text-gray-700">{field.hint}</p>
+                <button
+                  type="button"
+                  onClick={() => { void save(field.key); }}
+                  disabled={busyKey !== null || !dirty}
+                  className="px-4 py-1.5 bg-white/10 hover:bg-white/20 disabled:opacity-40 text-gray-200 text-sm rounded-lg transition"
+                >
+                  {busyKey === field.key ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -888,11 +1022,20 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
             )}
           </div>
 
-          {/* ── Step 2: Scope grants ── */}
+          {/*
+            ── Step 2 (optional): non-secret settings ──
+            Present only for connectors that declare `settings` (#1632), which
+            shifts scope grants to step 3 for those and leaves it at 2 otherwise.
+          */}
+          {entry.settings && (
+            <ConnectorSettingsSection settings={entry.settings} stepNumber={2} />
+          )}
+
+          {/* ── Scope grants ── */}
           <ScopeGrantSection
             entry={entry}
             activeSet={activeSet}
-            stepNumber={2}
+            stepNumber={entry.settings ? 3 : 2}
             grantingScope={grantingScope}
             grantError={grantError}
             tokenSealed={sealed}
