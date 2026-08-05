@@ -111,6 +111,14 @@ describe('captureGesture', () => {
     expect(rowArg.id).toMatch(/^session_/);
   });
 
+  it('persists appDid when the capture is invoked by an app/org DID', async () => {
+    const result = await captureGesture({ ...BASE_INPUT, appDid: 'did:imajin:agrifortress' });
+
+    const rowArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(rowArg.appDid).toBe('did:imajin:agrifortress');
+    expect(result.appDid).toBe('did:imajin:agrifortress');
+  });
+
   it('publishes inference.capture DFOS event with correct payload', async () => {
     await captureGesture(BASE_INPUT);
 
@@ -121,6 +129,14 @@ describe('captureGesture', () => {
     expect(payload['ownerDid']).toBe('did:imajin:farmer');
     expect(payload['kind']).toBe('voice');
     expect(payload['vocabularyName']).toBe('agrifortress');
+  });
+
+  it('publishes appDid in inference.capture when provided', async () => {
+    await captureGesture({ ...BASE_INPUT, appDid: 'did:imajin:agrifortress' });
+
+    const { payload } = mockPublishContentEvent.mock.calls[0][0] as { payload: Record<string, unknown> };
+    expect(payload['ownerDid']).toBe('did:imajin:farmer');
+    expect(payload['appDid']).toBe('did:imajin:agrifortress');
   });
 
   it('returns a CaptureEvent with sessionId, assetId, kind, ownerDid', async () => {

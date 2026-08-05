@@ -20,6 +20,8 @@ export interface CaptureGestureInput {
   filename: string;
   mimeType: string;
   ownerDid: string;
+  /** Invoking app/org DID that may provide inference credentials. */
+  appDid?: string;
   /** Mounted vocabulary name — stored on the session for routing. */
   vocabularyName: string;
 }
@@ -32,7 +34,7 @@ export interface CaptureGestureInput {
  * stage of the pipeline (context.ts → gatherContext()).
  */
 export async function captureGesture(input: CaptureGestureInput): Promise<CaptureEvent> {
-  const { buffer, filename, mimeType, ownerDid, vocabularyName } = input;
+  const { buffer, filename, mimeType, ownerDid, appDid, vocabularyName } = input;
 
   // Derive capture kind from MIME type.
   const kind = mimeKind(mimeType);
@@ -58,6 +60,7 @@ export async function captureGesture(input: CaptureGestureInput): Promise<Captur
   await db.insert(inferenceSessions).values({
     id: sessionId,
     ownerDid,
+    ...(appDid ? { appDid } : {}),
     vocabularyName,
     assetId: asset.id,
     status: 'capturing',
@@ -71,6 +74,7 @@ export async function captureGesture(input: CaptureGestureInput): Promise<Captur
       assetId: asset.id,
       kind,
       ownerDid,
+      ...(appDid ? { appDid } : {}),
       vocabularyName,
       capturedAt: new Date().toISOString(),
     },
@@ -78,9 +82,9 @@ export async function captureGesture(input: CaptureGestureInput): Promise<Captur
     log.error({ err: String(err), sessionId }, 'DFOS inference.capture publish failed (non-fatal)');
   });
 
-  log.info({ sessionId, assetId: asset.id, kind, ownerDid, vocabularyName }, 'gesture captured');
+  log.info({ sessionId, assetId: asset.id, kind, ownerDid, appDid, vocabularyName }, 'gesture captured');
 
-  return { sessionId, assetId: asset.id, kind, ownerDid };
+  return { sessionId, assetId: asset.id, kind, ownerDid, ...(appDid ? { appDid } : {}) };
 }
 
 // ---------------------------------------------------------------------------

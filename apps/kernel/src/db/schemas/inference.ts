@@ -21,6 +21,7 @@ export const inferenceSessions = inferenceSchema.table(
   {
     id: text('id').primaryKey(),                          // session_xxx (nanoid)
     ownerDid: text('owner_did').notNull(),
+    appDid: text('app_did'),
     vocabularyName: text('vocabulary_name').notNull(),    // 'imajin' | 'agrifortress' | …
     assetId: text('asset_id').notNull(),                  // recording / capture asset
     transcript: text('transcript'),                       // pinned after context.ts
@@ -41,6 +42,7 @@ export const inferenceSessions = inferenceSchema.table(
   },
   (table) => ({
     ownerIdx: index('idx_inference_sessions_owner').on(table.ownerDid),
+    appIdx: index('idx_inference_sessions_app').on(table.appDid),
     assetIdx: index('idx_inference_sessions_asset').on(table.assetId),
     statusIdx: index('idx_inference_sessions_status').on(table.status),
     createdIdx: index('idx_inference_sessions_created').on(table.createdAt),

@@ -104,6 +104,49 @@ describe('infer — inference policy layer', () => {
     );
   });
 
+  it('falls back to app DID Gemini credentials when owner DID has no sealed connection', async () => {
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
+    });
+    const GEMINI_VOCAB = { ...VOCAB, modelChannel: 'gemini' as const };
+    const CREDS = { apiKey: 'AIzaSy-APP', baseUrl: 'https://app.example.com/openai' };
+    mockLoadGeminiCredentials
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(CREDS);
+
+    await infer(CTX, GEMINI_VOCAB, {
+      ownerDid: 'did:imajin:farmer',
+      appDid: 'did:imajin:agrifortress',
+    });
+
+    expect(mockLoadGeminiCredentials).toHaveBeenNthCalledWith(1, 'did:imajin:farmer');
+    expect(mockLoadGeminiCredentials).toHaveBeenNthCalledWith(2, 'did:imajin:agrifortress');
+    expect(mockGetModel).toHaveBeenCalledWith(
+      'openai',
+      'gemini-2.0-flash',
+      { apiKey: 'AIzaSy-APP', baseURL: 'https://app.example.com/openai' },
+    );
+  });
+
+  it('does not check the same DID twice when owner and app DID match', async () => {
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
+    });
+    const GEMINI_VOCAB = { ...VOCAB, modelChannel: 'gemini' as const };
+    mockLoadGeminiCredentials.mockResolvedValueOnce(undefined);
+    vi.stubEnv('GEMINI_API_KEY', 'env-api-key');
+
+    await infer(CTX, GEMINI_VOCAB, {
+      ownerDid: 'did:imajin:farmer',
+      appDid: 'did:imajin:farmer',
+    });
+
+    expect(mockLoadGeminiCredentials).toHaveBeenCalledTimes(1);
+    expect(mockLoadGeminiCredentials).toHaveBeenCalledWith('did:imajin:farmer');
+
+    vi.unstubAllEnvs();
+  });
+
   it('falls back to env vars when modelChannel is gemini but no connection is sealed', async () => {
     mockGenerateText.mockResolvedValueOnce({
       text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
