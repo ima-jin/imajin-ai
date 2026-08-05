@@ -1,7 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const { mockWhere, mockFrom, mockSelect } = vi.hoisted(() => {
+  const mockWhere = vi.fn();
+  const mockFrom = vi.fn(() => ({ where: mockWhere }));
+  const mockSelect = vi.fn(() => ({ from: mockFrom }));
+  return { mockWhere, mockFrom, mockSelect };
+});
 
 vi.mock('@/src/db', () => ({
-  db: {},
+  db: { select: mockSelect },
   channelLinks: {
     channel: 'channel',
     appDid: 'appDid',
@@ -12,11 +19,15 @@ vi.mock('@/src/db', () => ({
 }));
 
 vi.mock('drizzle-orm', () => ({
-  and: vi.fn(),
-  eq: vi.fn(),
+  and: (...args: unknown[]) => ({ and: args }),
+  eq: (...args: unknown[]) => ({ eq: args }),
 }));
-import { buildConnectorConnectionStatus, type ConnectorStatusRow } from '../connector-status';
-import type { ConnectorEntry } from '../connector-registry';
+import {
+  buildConnectorConnectionStatus,
+  readConnectorConnectionStatus,
+  type ConnectorStatusRow,
+} from '../connector-status';
+import { CONNECTOR_REGISTRY, type ConnectorEntry } from '../connector-registry';
 
 const REGISTRY: readonly ConnectorEntry[] = [
   {
@@ -97,5 +108,83 @@ describe('buildConnectorConnectionStatus (#1540)', () => {
       { id: 'quickbooks', connected: false, scopes: [] },
       { id: 'gemini', connected: false, scopes: [] },
     ]);
+  });
+
+  /**
+   * `channel_links.scopes` is a jsonb column, so a malformed or legacy row can
+   * hold something other than an array of strings. Treating that as "connected"
+   * would have the app assert a profile fact the grant does not support.
+   */
+  it.each([
+    ['null', null],
+    ['an object', { 'quickbooks:write': true }],
+    ['a bare string', 'quickbooks:write'],
+    ['mixed junk entries', [42, null, 'quickbooks:write']],
+  ])('ignores non-string scope payloads when scopes is %s', (_label, scopes) => {
+    const rows: ConnectorStatusRow[] = [
+      { channel: 'quickbooks', appDid: 'did:imajin:quickbooks-connector', scopes },
+    ];
+
+    const [quickbooks] = buildConnectorConnectionStatus(rows, REGISTRY);
+    const expected = Array.isArray(scopes) ? ['quickbooks:write'] : [];
+
+    expect(quickbooks).toEqual({
+      id: 'quickbooks',
+      connected: expected.length > 0,
+      scopes: expected,
+    });
+  });
+
+  it('defaults to the real connector registry', () => {
+    expect(buildConnectorConnectionStatus([]).map((status) => status.id)).toEqual(
+      CONNECTOR_REGISTRY.map((connector) => connector.id),
+    );
+  });
+});
+
+describe('readConnectorConnectionStatus (#1540)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFrom.mockImplementation(() => ({ where: mockWhere }));
+    mockSelect.mockImplementation(() => ({ from: mockFrom }));
+    mockWhere.mockResolvedValue([]);
+  });
+
+  it('reads only the acting DID\'s active links and never selects credential columns', async () => {
+    await readConnectorConnectionStatus('did:imajin:supplier');
+
+    expect(mockSelect).toHaveBeenCalledWith({
+      channel: 'channel',
+      appDid: 'appDid',
+      scopes: 'scopes',
+    });
+    expect(mockWhere).toHaveBeenCalledWith({
+      and: [
+        { eq: ['did', 'did:imajin:supplier'] },
+        { eq: ['status', 'active'] },
+      ],
+    });
+  });
+
+  it('projects the returned rows through the real connector registry', async () => {
+    mockWhere.mockResolvedValueOnce([
+      { channel: 'gemini', appDid: 'did:imajin:gemini-connector', scopes: ['gemini:infer'] },
+    ]);
+
+    const statuses = await readConnectorConnectionStatus('did:imajin:supplier');
+
+    expect(statuses).toEqual(
+      CONNECTOR_REGISTRY.map((connector) => ({
+        id: connector.id,
+        connected: connector.id === 'gemini',
+        scopes: connector.id === 'gemini' ? ['gemini:infer'] : [],
+      })),
+    );
+  });
+
+  it('propagates database errors so the route can fail closed', async () => {
+    mockWhere.mockRejectedValueOnce(new Error('connection reset'));
+
+    await expect(readConnectorConnectionStatus('did:imajin:supplier')).rejects.toThrow('connection reset');
   });
 });

@@ -113,6 +113,24 @@ describe('GET /connections/api/connectors/status (#1540)', () => {
     expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
+  it('returns 500 without leaking the underlying failure when the status read throws', async () => {
+    mockReadStatus.mockRejectedValueOnce(new Error('connection reset at did:imajin:supplier'));
+
+    const res = await GET(makeReq());
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Connector status unavailable' });
+  });
+
+  it('keeps CORS and no-store headers on the failure response', async () => {
+    mockReadStatus.mockRejectedValueOnce(new Error('connection reset'));
+
+    const res = await GET(makeReq());
+
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://agri.example');
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+
   it('answers CORS pre-flight', async () => {
     const res = await OPTIONS(makeReq());
     expect(res.status).toBe(204);
