@@ -207,6 +207,13 @@ for app in "${APPS[@]}"; do
     set_env "$local_env" "PAY_SERVICE_API_KEY"           "\"${PAY_API_KEY}\""
 
     # ── Kernel: local dev public URLs ──────────────────────────────────────
+    # APP_URL is the node's public origin, used server-side to anchor
+    # browser-facing redirects (#1608). It MUST be set here: .env.example ships
+    # the deploy placeholder (https://your-node.imajin.ai) and it outranks
+    # NEXT_PUBLIC_BASE_URL, so leaving it unpatched sends every local login
+    # redirect to a domain that does not resolve. Distinct from
+    # NEXT_PUBLIC_APP_URL below, which is the chat app's URL.
+    set_env "$local_env" "APP_URL"                       "http://localhost:3000"
     set_env "$local_env" "NEXT_PUBLIC_SERVICE_PREFIX"    "http://localhost:"
     set_env "$local_env" "NEXT_PUBLIC_DISABLE_INVITE_GATE" "true"
     set_env "$local_env" "NEXT_PUBLIC_BASE_URL"          "http://localhost:3000"
