@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { publicOrigin } from "./public-origin";
 
 /**
  * Shared route-response helpers for kernel HTTP routes.
@@ -57,7 +58,12 @@ export function buildErrorHtml(title: string, message: string): string {
  * 401 Unauthorized.
  *
  * - JSON clients: 401 with `WWW-Authenticate: Bearer`.
- * - HTML clients: 302 redirect to `/auth/login?next=<returnTo>`.
+ * - HTML clients: 307 redirect to `/auth/login?next=<returnTo>`.
+ *
+ * The redirect is anchored to the TRUSTED PUBLIC origin, never `request.url`.
+ * Behind Caddy the latter is Next's internal fallback origin, so browser share
+ * links 307'd to an unreachable `https://localhost:3000/auth/login?next=...`
+ * and dead-ended (#1608). See publicOrigin() for the resolution order.
  */
 export function respondUnauthorized(
   request: NextRequest,
@@ -66,7 +72,10 @@ export function respondUnauthorized(
   if (wantsHtml(request)) {
     const next = returnTo ?? request.nextUrl.pathname;
     return NextResponse.redirect(
-      new URL(`/auth/login?next=${encodeURIComponent(next)}`, request.url),
+      new URL(
+        `/auth/login?next=${encodeURIComponent(next)}`,
+        publicOrigin(request),
+      ),
     );
   }
   return NextResponse.json(
