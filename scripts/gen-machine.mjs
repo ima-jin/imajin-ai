@@ -8,7 +8,7 @@
 //   node scripts/gen-machine.mjs pr 1329               # one PR (description)
 //   node scripts/gen-machine.mjs --dry 1327            # print, don't write
 //
-// Env: OLLAMA_URL (default http://192.168.1.234:11434), MODEL (default qwen3.5:9b),
+// Env: OLLAMA_URL (default http://192.168.1.234:11434), MODEL (default qwen3:14b),
 //      REPO (default ima-jin/imajin-ai)
 
 import { createHash } from "node:crypto";
@@ -16,8 +16,11 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 
-const OLLAMA = process.env.OLLAMA_URL ?? "http://192.168.1.234:11434";
-const MODEL = process.env.MODEL ?? "qwen3.5:9b";
+// Plaintext http is deliberate: Ollama serves its API without TLS, and this
+// default addresses a private-LAN host rather than the internet. Point
+// OLLAMA_URL at an https reverse proxy if you expose the box beyond the LAN.
+const OLLAMA = process.env.OLLAMA_URL ?? "http://192.168.1.234:11434"; // NOSONAR — private-LAN Ollama endpoint, no TLS listener to talk to
+const MODEL = process.env.MODEL ?? "qwen3:14b";
 const REPO = process.env.REPO ?? "ima-jin/imajin-ai";
 const DRY = process.argv.includes("--dry");
 
@@ -35,12 +38,18 @@ CRITICAL OUTPUT CONTRACT:
 - Emit the spec ONCE, wrapped EXACTLY between a line "<<<SPEC>>>" and a line "<<<END>>>". Nothing before or after.`;
 
 function gh(args) {
-  return execFileSync("gh", args, { encoding: "utf8", maxBuffer: 20 * 1024 * 1024 });
+  // Resolved via PATH by design: this is a developer-workstation script, `gh` is
+  // an explicit prerequisite, and an absolute path would break across the
+  // macOS/Linux/Windows installs the team uses. execFileSync spawns without a
+  // shell, so the argv list is never shell-interpreted.
+  return execFileSync("gh", args, { encoding: "utf8", maxBuffer: 20 * 1024 * 1024 }); // NOSONAR — dev-only script, no elevated privileges
 }
 
+// Both issues and PRs expose the same three fields to `gh ... view --json`.
+const ARTIFACT_FIELDS = "body,title,url";
+
 function fetchArtifact(kind, num) {
-  const field = kind === "pr" ? "body,title,url" : "body,title,url";
-  const json = JSON.parse(gh([kind, "view", String(num), "--repo", REPO, "--json", field]));
+  const json = JSON.parse(gh([kind, "view", String(num), "--repo", REPO, "--json", ARTIFACT_FIELDS]));
   return { title: json.title, body: json.body ?? "", url: json.url };
 }
 
@@ -71,8 +80,10 @@ async function compress(title, body) {
   const data = await res.json();
   let out = data.response;
   out = out.replace(/<think>[\s\S]*?<\/think>/gi, "");
-  const matches = [...out.matchAll(/<<<SPEC>>>([\s\S]*?)<<<END>>>/g)];
-  if (matches.length) return matches[matches.length - 1][1].trim();
+  // Last match wins: a model that ignores the "emit once" contract and restates
+  // the spec should have its final answer taken, not its first draft.
+  const lastMatch = [...out.matchAll(/<<<SPEC>>>([\s\S]*?)<<<END>>>/g)].at(-1);
+  if (lastMatch) return lastMatch[1].trim();
   return out.trim();
 }
 
@@ -115,4 +126,9 @@ async function main() {
   await genOne(kind, target);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+try {
+  await main();
+} catch (e) {
+  console.error(e);
+  process.exit(1);
+}
