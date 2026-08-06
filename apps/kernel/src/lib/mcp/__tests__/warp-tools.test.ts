@@ -1,5 +1,5 @@
 /**
- * Tests for the Warp MCP tools (#1428).
+ * Tests for the Warp MCP tools (#1428, #1639).
  *
  * The connector and dispatch client are mocked; their own behaviour is covered in
  * `src/lib/warp/__tests__`. What matters here is that every tool is scope-gated,
@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { McpContent, McpToolContext } from '../types';
+import { makeAgentRun } from '@/src/lib/warp/__tests__/run-fixture';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,11 @@ vi.mock('@/src/lib/warp/connector', () => ({
 vi.mock('@/src/lib/warp/dispatch', () => ({
   dispatchAgentRun: vi.fn(),
   getAgentRun: vi.fn(),
+  getAgentRunTranscript: vi.fn(),
+  getAgentRunConversation: vi.fn(),
+  listAgentRuns: vi.fn(),
+  cancelAgentRun: vi.fn(),
+  sendFollowup: vi.fn(),
 }));
 
 // Deliberately NOT importing `../tools` (the registry): it eagerly pulls in every
@@ -27,7 +33,15 @@ vi.mock('@/src/lib/warp/dispatch', () => ({
 // tools/index.ts; behaviour is what is worth testing here.
 import { warpTools } from '../tools/warp';
 import { sealWarpAgentKey } from '@/src/lib/warp/connector';
-import { dispatchAgentRun, getAgentRun } from '@/src/lib/warp/dispatch';
+import {
+  cancelAgentRun,
+  dispatchAgentRun,
+  getAgentRun,
+  getAgentRunConversation,
+  getAgentRunTranscript,
+  listAgentRuns,
+  sendFollowup,
+} from '@/src/lib/warp/dispatch';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -38,18 +52,17 @@ const ctx: McpToolContext = {
 };
 
 const AGENT_KEY = 'warp-agent-key-SUPER-SECRET-VALUE';
-const RUN = {
-  runId: '019f9990-2a46-7552-b177-3a23b17eef2e',
-  state: 'QUEUED',
-  sessionLink: 'https://app.warp.dev/session/abc',
-  title: null,
-  configName: 'veteze-jin',
-};
+const RUN = makeAgentRun({ state: 'QUEUED' });
+const RUN_ID = RUN.runId;
 
 function tool(name: string) {
   const t = warpTools.find((x) => x.name === name);
   if (!t) throw new Error(`tool ${name} not found`);
   return t;
+}
+
+async function call(name: string, args: Record<string, unknown>) {
+  return (await tool(name).handler(args, ctx)) as McpContent[];
 }
 
 function parseResult(content: McpContent[]) {
@@ -61,20 +74,48 @@ function dispatchInput(): Record<string, unknown> {
   return vi.mocked(dispatchAgentRun).mock.calls[0][1] as unknown as Record<string, unknown>;
 }
 
+/** The filters `listAgentRuns` was called with. */
+function listInput(): Record<string, unknown> {
+  return vi.mocked(listAgentRuns).mock.calls[0][1] as unknown as Record<string, unknown>;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(dispatchAgentRun).mockResolvedValue(RUN);
-  vi.mocked(getAgentRun).mockResolvedValue({ ...RUN, state: 'SUCCEEDED' });
+  vi.mocked(getAgentRun).mockResolvedValue(makeAgentRun({ state: 'SUCCEEDED' }));
+  vi.mocked(getAgentRunTranscript).mockResolvedValue({
+    runId: RUN_ID,
+    content: 'transcript text',
+    contentType: 'text/plain',
+    truncated: false,
+  });
+  vi.mocked(getAgentRunConversation).mockResolvedValue({
+    runId: RUN_ID,
+    conversationId: 'conv-1',
+    steps: [{ id: 'step-1', messages: [], steps: [] }],
+  });
+  vi.mocked(listAgentRuns).mockResolvedValue({
+    runs: [RUN],
+    hasNextPage: true,
+    nextCursor: 'cursor-2',
+  });
+  vi.mocked(cancelAgentRun).mockResolvedValue({ runId: RUN_ID, cancelled: true });
+  vi.mocked(sendFollowup).mockResolvedValue({ runId: RUN_ID, accepted: true });
 });
 
 // ─── Registry ──────────────────────────────────────────────────────────────
 
 describe('registration', () => {
-  it('exports exactly the three warp tools', () => {
+  it('exports the seal, dispatch, and run-surface tools', () => {
     expect(warpTools.map((t) => t.name)).toEqual([
       'warp_seal_key',
       'warp_dispatch_agent',
       'warp_get_run',
+      'warp_list_runs',
+      'warp_get_transcript',
+      'warp_get_conversation',
+      'warp_send_followup',
+      'warp_cancel_run',
     ]);
   });
 
@@ -89,17 +130,26 @@ describe('registration', () => {
       expect(t.inputSchema.additionalProperties).toBe(false);
     }
   });
+
+  it('documents every advertised argument so a caller need not guess', () => {
+    for (const t of warpTools) {
+      const properties = t.inputSchema.properties as Record<string, { description?: string }>;
+      for (const [name, schema] of Object.entries(properties)) {
+        expect(schema.description, `${t.name}.${name}`).toBeTruthy();
+      }
+    }
+  });
 });
 
 // ─── warp_seal_key ─────────────────────────────────────────────────────────
 
 describe('warp_seal_key', () => {
   it('seals under the caller DID and never echoes the key back', async () => {
-    const res = await tool('warp_seal_key').handler({ key: AGENT_KEY }, ctx);
+    const res = await call('warp_seal_key', { key: AGENT_KEY });
 
     expect(sealWarpAgentKey).toHaveBeenCalledWith(ctx.did, AGENT_KEY);
 
-    const out = parseResult(res as McpContent[]);
+    const out = parseResult(res);
     expect(out).toEqual({ sealed: true, did: ctx.did });
     expect(JSON.stringify(out)).not.toContain(AGENT_KEY);
   });
@@ -114,12 +164,12 @@ describe('warp_seal_key', () => {
 
 describe('warp_dispatch_agent', () => {
   it('dispatches as the caller DID and returns run id, state, and session link', async () => {
-    const res = await tool('warp_dispatch_agent').handler({ prompt: 'Fix the login error' }, ctx);
+    const res = await call('warp_dispatch_agent', { prompt: 'Fix the login error' });
 
     expect(vi.mocked(dispatchAgentRun).mock.calls[0][0]).toBe(ctx.did);
     expect(dispatchInput()).toEqual({ prompt: 'Fix the login error' });
-    expect(parseResult(res as McpContent[])).toMatchObject({
-      runId: RUN.runId,
+    expect(parseResult(res)).toMatchObject({
+      runId: RUN_ID,
       state: 'QUEUED',
       sessionLink: RUN.sessionLink,
       configName: 'veteze-jin',
@@ -127,17 +177,14 @@ describe('warp_dispatch_agent', () => {
   });
 
   it('maps snake_case MCP arguments onto the client input', async () => {
-    await tool('warp_dispatch_agent').handler(
-      {
-        prompt: 'go',
-        title: 'Nightly',
-        skill_spec: 'ima-jin/imajin-ai:catalyst',
-        environment_id: 'UA17BXYZ',
-        model_id: 'auto',
-        base_prompt: 'be brief',
-      },
-      ctx,
-    );
+    await call('warp_dispatch_agent', {
+      prompt: 'go',
+      title: 'Nightly',
+      skill_spec: 'ima-jin/imajin-ai:catalyst',
+      environment_id: 'UA17BXYZ',
+      model_id: 'auto',
+      base_prompt: 'be brief',
+    });
 
     expect(dispatchInput()).toEqual({
       prompt: 'go',
@@ -150,14 +197,11 @@ describe('warp_dispatch_agent', () => {
   });
 
   it('passes an mcp_servers map through and honours attach_imajin_mcp', async () => {
-    await tool('warp_dispatch_agent').handler(
-      {
-        prompt: 'go',
-        attach_imajin_mcp: true,
-        mcp_servers: { imajin: { url: 'https://mcp.example/mcp' } },
-      },
-      ctx,
-    );
+    await call('warp_dispatch_agent', {
+      prompt: 'go',
+      attach_imajin_mcp: true,
+      mcp_servers: { imajin: { url: 'https://mcp.example/mcp' } },
+    });
 
     expect(dispatchInput()).toMatchObject({
       attachImajinMcp: true,
@@ -166,12 +210,12 @@ describe('warp_dispatch_agent', () => {
   });
 
   it('ignores an mcp_servers argument that is not a map', async () => {
-    await tool('warp_dispatch_agent').handler({ prompt: 'go', mcp_servers: ['nope'] }, ctx);
+    await call('warp_dispatch_agent', { prompt: 'go', mcp_servers: ['nope'] });
     expect(dispatchInput()).not.toHaveProperty('mcpServers');
   });
 
   it('omits attach_imajin_mcp when it is not a boolean, rather than coercing', async () => {
-    await tool('warp_dispatch_agent').handler({ prompt: 'go', attach_imajin_mcp: 'yes' }, ctx);
+    await call('warp_dispatch_agent', { prompt: 'go', attach_imajin_mcp: 'yes' });
     expect(dispatchInput()).not.toHaveProperty('attachImajinMcp');
   });
 
@@ -192,14 +236,222 @@ describe('warp_dispatch_agent', () => {
 
 describe('warp_get_run', () => {
   it('reads the run as the caller DID', async () => {
-    const res = await tool('warp_get_run').handler({ run_id: RUN.runId }, ctx);
+    const res = await call('warp_get_run', { run_id: RUN_ID });
 
-    expect(getAgentRun).toHaveBeenCalledWith(ctx.did, RUN.runId);
-    expect(parseResult(res as McpContent[])).toMatchObject({ state: 'SUCCEEDED' });
+    expect(getAgentRun).toHaveBeenCalledWith(ctx.did, RUN_ID);
+    expect(parseResult(res)).toMatchObject({ state: 'SUCCEEDED' });
+  });
+
+  it('returns the expanded run detail — timing, cost, and artifacts (#1639)', async () => {
+    vi.mocked(getAgentRun).mockResolvedValueOnce(
+      makeAgentRun({
+        state: 'FAILED',
+        runTime: 'PT2M30S',
+        startedAt: '2026-08-06T02:00:00Z',
+        statusMessage: { message: 'sandbox died', errorCode: 'sandbox_error', retryable: true },
+        requestUsage: { inferenceCost: 12, computeCost: 3, platformCost: 1 },
+        artifacts: [
+          {
+            artifactType: 'PULL_REQUEST',
+            createdAt: '2026-08-06T02:01:00Z',
+            data: { url: 'https://github.com/ima-jin/imajin-ai/pull/1', branch: 'feat/x' },
+          },
+        ],
+      }),
+    );
+
+    expect(parseResult(await call('warp_get_run', { run_id: RUN_ID }))).toMatchObject({
+      state: 'FAILED',
+      runTime: 'PT2M30S',
+      startedAt: '2026-08-06T02:00:00Z',
+      statusMessage: { errorCode: 'sandbox_error', retryable: true },
+      requestUsage: { inferenceCost: 12, computeCost: 3, platformCost: 1 },
+      artifacts: [
+        {
+          artifactType: 'PULL_REQUEST',
+          data: { url: 'https://github.com/ima-jin/imajin-ai/pull/1', branch: 'feat/x' },
+        },
+      ],
+    });
   });
 
   it('throws without a lookup when run_id is missing', async () => {
     await expect(tool('warp_get_run').handler({}, ctx)).rejects.toThrow(/run_id is required/);
     expect(getAgentRun).not.toHaveBeenCalled();
+  });
+});
+
+// ─── warp_list_runs ────────────────────────────────────────────────────────
+
+describe('warp_list_runs', () => {
+  it('lists as the caller DID with no filters when none are given', async () => {
+    const res = await call('warp_list_runs', {});
+
+    expect(vi.mocked(listAgentRuns).mock.calls[0][0]).toBe(ctx.did);
+    expect(listInput()).toEqual({});
+    expect(parseResult(res)).toMatchObject({
+      hasNextPage: true,
+      nextCursor: 'cursor-2',
+      runs: [{ runId: RUN_ID }],
+    });
+  });
+
+  it('maps snake_case filters onto the client input', async () => {
+    await call('warp_list_runs', {
+      name: 'veteze-jin',
+      state: 'INPROGRESS',
+      environment_id: 'UA17BXYZ',
+      created_after: '2026-08-01T00:00:00Z',
+      limit: 50,
+      cursor: 'cursor-1',
+    });
+
+    expect(listInput()).toEqual({
+      name: 'veteze-jin',
+      states: ['INPROGRESS'],
+      environmentId: 'UA17BXYZ',
+      createdAfter: '2026-08-01T00:00:00Z',
+      limit: 50,
+      cursor: 'cursor-1',
+    });
+  });
+
+  it('accepts a list of states, matching any of them', async () => {
+    await call('warp_list_runs', { state: ['QUEUED', ' INPROGRESS '] });
+    expect(listInput()).toEqual({ states: ['QUEUED', 'INPROGRESS'] });
+  });
+
+  it('drops non-string and blank state entries instead of failing the list', async () => {
+    await call('warp_list_runs', { state: ['QUEUED', 7, '', null] });
+    expect(listInput()).toEqual({ states: ['QUEUED'] });
+  });
+
+  it('omits state entirely when the argument carries no usable value', async () => {
+    await call('warp_list_runs', { state: 42 });
+    expect(listInput()).not.toHaveProperty('states');
+  });
+
+  it('omits a non-numeric limit rather than coercing it', async () => {
+    await call('warp_list_runs', { limit: '50' });
+    expect(listInput()).not.toHaveProperty('limit');
+  });
+});
+
+// ─── warp_get_transcript ───────────────────────────────────────────────────
+
+describe('warp_get_transcript', () => {
+  it('reads the transcript as the caller DID, with no cap by default', async () => {
+    const res = await call('warp_get_transcript', { run_id: RUN_ID });
+
+    expect(getAgentRunTranscript).toHaveBeenCalledWith(ctx.did, RUN_ID, {});
+    expect(parseResult(res)).toEqual({
+      runId: RUN_ID,
+      content: 'transcript text',
+      contentType: 'text/plain',
+      truncated: false,
+    });
+  });
+
+  it('passes max_chars through as the cap', async () => {
+    await call('warp_get_transcript', { run_id: RUN_ID, max_chars: 1000 });
+    expect(getAgentRunTranscript).toHaveBeenCalledWith(ctx.did, RUN_ID, { maxChars: 1000 });
+  });
+
+  it('ignores a non-numeric max_chars rather than coercing it', async () => {
+    await call('warp_get_transcript', { run_id: RUN_ID, max_chars: 'lots' });
+    expect(getAgentRunTranscript).toHaveBeenCalledWith(ctx.did, RUN_ID, {});
+  });
+
+  it('throws without a read when run_id is missing', async () => {
+    await expect(tool('warp_get_transcript').handler({}, ctx)).rejects.toThrow(
+      /run_id is required/,
+    );
+    expect(getAgentRunTranscript).not.toHaveBeenCalled();
+  });
+});
+
+// ─── warp_get_conversation ─────────────────────────────────────────────────
+
+describe('warp_get_conversation', () => {
+  it('reads the conversation as the caller DID', async () => {
+    const res = await call('warp_get_conversation', { run_id: RUN_ID });
+
+    expect(getAgentRunConversation).toHaveBeenCalledWith(ctx.did, RUN_ID);
+    expect(parseResult(res)).toMatchObject({
+      conversationId: 'conv-1',
+      steps: [{ id: 'step-1' }],
+    });
+  });
+
+  it('throws without a read when run_id is missing', async () => {
+    await expect(tool('warp_get_conversation').handler({}, ctx)).rejects.toThrow(
+      /run_id is required/,
+    );
+    expect(getAgentRunConversation).not.toHaveBeenCalled();
+  });
+});
+
+// ─── warp_send_followup ────────────────────────────────────────────────────
+
+describe('warp_send_followup', () => {
+  it('sends as the caller DID and reports acceptance', async () => {
+    const res = await call('warp_send_followup', { run_id: RUN_ID, message: 'use the v2 API' });
+
+    expect(sendFollowup).toHaveBeenCalledWith(ctx.did, RUN_ID, { message: 'use the v2 API' });
+    expect(parseResult(res)).toEqual({ runId: RUN_ID, accepted: true });
+  });
+
+  it('passes an explicit mode through', async () => {
+    await call('warp_send_followup', { run_id: RUN_ID, message: 'rethink it', mode: 'plan' });
+    expect(sendFollowup).toHaveBeenCalledWith(ctx.did, RUN_ID, {
+      message: 'rethink it',
+      mode: 'plan',
+    });
+  });
+
+  it('forwards an unknown mode so the client owns the closed set', async () => {
+    vi.mocked(sendFollowup).mockRejectedValueOnce(new Error('warp_invalid_mode: nope'));
+    await expect(
+      tool('warp_send_followup').handler({ run_id: RUN_ID, message: 'go', mode: 'nope' }, ctx),
+    ).rejects.toThrow(/warp_invalid_mode/);
+  });
+
+  it('throws without sending when message is missing', async () => {
+    await expect(tool('warp_send_followup').handler({ run_id: RUN_ID }, ctx)).rejects.toThrow(
+      /message is required/,
+    );
+    expect(sendFollowup).not.toHaveBeenCalled();
+  });
+
+  it('throws without sending when run_id is missing', async () => {
+    await expect(tool('warp_send_followup').handler({ message: 'go' }, ctx)).rejects.toThrow(
+      /run_id is required/,
+    );
+    expect(sendFollowup).not.toHaveBeenCalled();
+  });
+});
+
+// ─── warp_cancel_run ───────────────────────────────────────────────────────
+
+describe('warp_cancel_run', () => {
+  it('cancels as the caller DID', async () => {
+    const res = await call('warp_cancel_run', { run_id: RUN_ID });
+
+    expect(cancelAgentRun).toHaveBeenCalledWith(ctx.did, RUN_ID);
+    expect(parseResult(res)).toEqual({ runId: RUN_ID, cancelled: true });
+  });
+
+  it('surfaces a refusal instead of reporting a cancellation that did not happen', async () => {
+    vi.mocked(cancelAgentRun).mockRejectedValueOnce(
+      new Error('warp_api_error: 400 run already terminal'),
+    );
+    await expect(tool('warp_cancel_run').handler({ run_id: RUN_ID }, ctx)).rejects.toThrow(
+      /already terminal/,
+    );
+  });
+
+  it('throws without cancelling when run_id is missing', async () => {
+    await expect(tool('warp_cancel_run').handler({}, ctx)).rejects.toThrow(/run_id is required/);
+    expect(cancelAgentRun).not.toHaveBeenCalled();
   });
 });
