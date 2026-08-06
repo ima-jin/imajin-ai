@@ -80,7 +80,10 @@ describe('listApiSpecs', () => {
     expect(auth?.title).toBeTruthy();
     expect(auth?.version).toBeTruthy();
     expect(auth?.paths.length).toBeGreaterThan(0);
-    expect(auth?.paths).toEqual([...(auth?.paths ?? [])].sort());
+    // Same comparator as `summarise`: locale collation orders the `{param}`
+    // segments differently from default code-unit sort, so asserting against a
+    // bare `.sort()` here would fail on paths like `/api/identity/{did}/sign`.
+    expect(auth?.paths).toEqual([...(auth?.paths ?? [])].sort((a, b) => a.localeCompare(b)));
   });
 
   it('gives every summary a non-empty service and endpoint', () => {
