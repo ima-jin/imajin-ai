@@ -16,7 +16,7 @@ on:
 jobs:
   conformance:
     name: DFOS Conformance Suite
-    runs-on: ubuntu-latest
+    runs-on: imajin-runner
     steps:
       - name: Set up Go
         uses: actions/setup-go@v5
