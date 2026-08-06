@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the tool registry so the gate can be exercised without pulling in the
 // db-backed media tools (vitest does not resolve the @/* path alias). This still
@@ -19,7 +19,20 @@ vi.mock('../tools', () => {
   return { ALL_TOOLS: tools, toolByName: (n: string) => byName.get(n) };
 });
 
+// Mock the Gate 2 (channel_links) lookup so the stale-token cross-check can be
+// exercised without a database. Defaults to "no grant" in beforeEach, which is
+// the pre-#1647 behaviour every other test in this file asserts.
+const mockResolveGrant = vi.hoisted(() => vi.fn<(did: string, scope: string) => Promise<boolean>>());
+vi.mock('../mcp-grant', () => ({
+  resolveActiveMcpGrant: (...args: [string, string]) => mockResolveGrant(...args),
+}));
+
 import { handleMcpRpc } from '../server';
+
+beforeEach(() => {
+  mockResolveGrant.mockReset();
+  mockResolveGrant.mockResolvedValue(false);
+});
 
 function call(name: string, scopes: string[]) {
   const ctx = { did: 'did:imajin:user', appDid: 'did:imajin:app', scopes: new Set(scopes) };
@@ -165,6 +178,51 @@ describe('discovery:read scope gate (read != dispatch)', () => {
     const dispatch = await call('t_dispatch', ['warp:dispatch', 'discovery:read']);
     expect(discovery.result.isError).toBe(false);
     expect(dispatch.result.isError).toBe(false);
+  });
+});
+
+/**
+ * #1647 — a scope toggled on in the dashboard writes a `channel_links` row
+ * immediately (Gate 2), but the access token stays frozen at issuance (Gate 1).
+ * Without the cross-check the user sees a bare `insufficient_scope` and has no
+ * way to tell "enable the scope" from "refresh your token".
+ */
+describe('stale-token detection (#1647)', () => {
+  it('returns scope_token_stale when token lacks scope but channel_links grant is active', async () => {
+    mockResolveGrant.mockResolvedValue(true);
+    const res = await call('t_write', ['media:read']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('scope_token_stale');
+    expect(res.result.content[0].text).toContain('refresh your token');
+    expect(mockResolveGrant).toHaveBeenCalledWith('did:imajin:user', 'media:write');
+  });
+
+  it('returns insufficient_scope when token lacks scope and no channel_links grant exists', async () => {
+    mockResolveGrant.mockResolvedValue(false);
+    const res = await call('t_write', ['media:read']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('insufficient_scope');
+    expect(res.result.content[0].text).not.toContain('scope_token_stale');
+  });
+
+  it('does not cross-check when token has the required scope', async () => {
+    const res = await call('t_write', ['media:write']);
+    expect(res.result.isError).toBe(false);
+    expect(mockResolveGrant).not.toHaveBeenCalled();
+  });
+
+  it('does not cross-check for tools with no requiredScope', async () => {
+    const res = await call('t_ping', ['media:read']);
+    expect(res.result.isError).toBe(false);
+    expect(mockResolveGrant).not.toHaveBeenCalled();
+  });
+
+  it('cross-checks each scope independently (messages:read)', async () => {
+    mockResolveGrant.mockResolvedValue(true);
+    const res = await call('t_msg_read', ['media:read']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('scope_token_stale');
+    expect(mockResolveGrant).toHaveBeenCalledWith('did:imajin:user', 'messages:read');
   });
 });
 
