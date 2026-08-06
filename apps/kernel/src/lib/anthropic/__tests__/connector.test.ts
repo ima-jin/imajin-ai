@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { sealMock, loadMock, existsMock, statusMock, whereMock } = vi.hoisted(() => ({
+const { sealMock, sealV1Mock, loadMock, existsMock, statusMock, whereMock } = vi.hoisted(() => ({
   sealMock: vi.fn(),
+  sealV1Mock: vi.fn(),
   loadMock: vi.fn(),
   existsMock: vi.fn(),
   statusMock: vi.fn(),
@@ -9,6 +10,7 @@ const { sealMock, loadMock, existsMock, statusMock, whereMock } = vi.hoisted(() 
 }));
 
 vi.mock('@/src/lib/vault', () => ({
+  sealAndStore: sealV1Mock,
   sealAndStoreV2: sealMock,
   loadAndUnseal: loadMock,
   vaultFieldExists: existsMock,
@@ -17,6 +19,9 @@ vi.mock('@/src/lib/vault', () => ({
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: whereMock }) }) },
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
+}));
+vi.mock('@imajin/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 import { VaultDelegationError } from '@/src/lib/vault/errors';
@@ -47,6 +52,7 @@ function noGrant() {
 beforeEach(() => {
   vi.clearAllMocks();
   sealMock.mockResolvedValue(undefined);
+  sealV1Mock.mockResolvedValue(undefined);
   loadMock.mockResolvedValue(undefined);
   existsMock.mockResolvedValue(false);
   statusMock.mockResolvedValue('absent');
@@ -93,26 +99,35 @@ describe('resolveActiveGrant', () => {
 // ── Sealing ───────────────────────────────────────────────────────────────────
 
 describe('sealApiKey', () => {
-  it('seals the API key under the per-DID vault field', async () => {
+  it('seals the API key under the per-DID vault field, with delegation-grant custody', async () => {
     await sealApiKey(OWNER, API_KEY);
     const [field, plaintext] = sealMock.mock.calls[0] as [string, string];
     expect(field).toBe(vaultField(OWNER));
     expect(plaintext).toBe(API_KEY);
   });
 
-  it('seals the optional baseUrl under its own field', async () => {
+  /**
+   * The endpoint and the model name are neither secret nor authority-bearing, so
+   * they are node-sealed (v1) rather than delegation-grant (#1637). Under Tier 1
+   * a v2 write is unreadable until the owner agent approves it, which would mean
+   * a model override silently not applying.
+   */
+  it('seals the optional baseUrl node-sealed, under its own field', async () => {
     await sealApiKey(OWNER, API_KEY, BASE_URL);
-    expect(sealMock.mock.calls[1]).toEqual([`anthropic-base-url:${OWNER}`, BASE_URL]);
+    expect(sealV1Mock.mock.calls[0]).toEqual([`anthropic-base-url:${OWNER}`, BASE_URL]);
+    expect(sealMock).toHaveBeenCalledOnce();
   });
 
-  it('seals the optional modelId — the owner choosing their Claude model', async () => {
+  it('seals the optional modelId node-sealed — the owner choosing their Claude model', async () => {
     await sealApiKey(OWNER, API_KEY, undefined, MODEL_ID);
-    expect(sealMock.mock.calls[1]).toEqual([`anthropic-model-id:${OWNER}`, MODEL_ID]);
+    expect(sealV1Mock.mock.calls[0]).toEqual([`anthropic-model-id:${OWNER}`, MODEL_ID]);
+    expect(sealMock).toHaveBeenCalledOnce();
   });
 
   it('writes only the key when the optional fields are omitted', async () => {
     await sealApiKey(OWNER, API_KEY);
     expect(sealMock).toHaveBeenCalledOnce();
+    expect(sealV1Mock).not.toHaveBeenCalled();
   });
 });
 
@@ -155,6 +170,18 @@ describe('loadAnthropicCredentials', () => {
       baseUrl: BASE_URL,
       modelId: MODEL_ID,
     });
+  });
+
+  it('returns undefined when the key is sealed but awaiting owner approval (#1637)', async () => {
+    grant(['anthropic:infer']);
+    loadMock.mockRejectedValueOnce(
+      new VaultDelegationError('awaiting grant', {
+        field: vaultField(OWNER),
+        nodeDid: 'did:imajin:node',
+      }),
+    );
+
+    await expect(loadAnthropicCredentials(OWNER)).resolves.toBeUndefined();
   });
 });
 

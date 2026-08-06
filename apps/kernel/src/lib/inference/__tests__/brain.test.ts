@@ -268,10 +268,81 @@ describe('resolveBrain — fail closed with no env fallback', () => {
     expect(err.message).not.toContain(ANTHROPIC_KEY);
   });
 
-  it('propagates a connector failure instead of masking it as "no brain"', async () => {
+  it('reports connector probe failures on the error rather than swallowing them', async () => {
     mockLoadGemini.mockRejectedValueOnce(new Error('vault integrity failure'));
 
-    await expect(resolveBrain(OWNER)).rejects.toThrow('vault integrity failure');
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err).toBeInstanceOf(NoBrainSealedError);
+    expect(err.failures).toEqual([
+      { connector: 'gemini', credentialDid: OWNER, cause: 'Error: vault integrity failure' },
+    ]);
+  });
+});
+
+// ─── One bad card does not take the others down (#1637) ─────────────────────
+
+describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
+  /**
+   * The #1637 failure in one test: Gemini is first in BRAIN_CONNECTORS, and under
+   * Tier 1 its sealed-but-ungranted key made `loadCredentials` throw. That escaped
+   * resolution entirely, so a healthy Anthropic key was never reached and ALL
+   * inference for the DID went down.
+   */
+  it('falls through to a healthy connector when an earlier one throws', async () => {
+    mockLoadGemini.mockRejectedValueOnce(new Error('gemini_credential_pending'));
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain.connector).toBe('anthropic');
+    expect(brain.apiKey).toBe(ANTHROPIC_KEY);
+  });
+
+  it('keeps walking to the app/org DID when the owner\'s card throws', async () => {
+    mockLoadGemini
+      .mockRejectedValueOnce(new Error('vault unavailable'))
+      .mockResolvedValueOnce({ apiKey: APP_KEY });
+
+    const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP });
+
+    expect(brain.credentialDid).toBe(APP);
+    expect(brain.apiKey).toBe(APP_KEY);
+  });
+
+  it('still fails closed when every connector throws', async () => {
+    mockLoadGemini.mockRejectedValue(new Error('gemini boom'));
+    mockLoadAnthropic.mockRejectedValue(new Error('anthropic boom'));
+
+    const err = await resolveBrain({ ownerDid: OWNER, appDid: APP })
+      .catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err).toBeInstanceOf(NoBrainSealedError);
+    // Every (DID, connector) pair was attempted, and each failure is recorded.
+    expect(err.failures.map((f) => `${f.credentialDid}/${f.connector}`)).toEqual([
+      `${OWNER}/gemini`,
+      `${OWNER}/anthropic`,
+      `${APP}/gemini`,
+      `${APP}/anthropic`,
+    ]);
+  });
+
+  it('says the walk was degraded without embedding the underlying error', async () => {
+    mockLoadGemini.mockRejectedValueOnce(new Error(`vault said ${GEMINI_KEY}`));
+
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err.message).toContain('1 connector probe(s) failed');
+    // A vault/provider message can carry the value being read, so it stays in
+    // `failures` and the logs — never in the message a surface may echo.
+    expect(err.message).not.toContain(GEMINI_KEY);
+  });
+
+  it('records no failures when the DIDs simply have nothing sealed', async () => {
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err.failures).toEqual([]);
+    expect(err.message).not.toContain('probe(s) failed');
   });
 });
 

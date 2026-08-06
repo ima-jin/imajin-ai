@@ -25,6 +25,12 @@ export type PresenceBrainResult =
  *   409 — the owner has sealed no brain. Actionable by the owner, not a fault.
  *   503 — resolution itself broke (vault/DB). Transient, retryable.
  *
+ * A `NoBrainSealedError` that carries connector `failures` lands in the SECOND
+ * bucket, not the first (#1637). `resolveBrain` now skips a connector that
+ * throws instead of aborting the whole walk, so "nothing resolved" no longer
+ * implies "nothing is connected" — telling an owner with a sealed-but-pending
+ * card to go connect a model would be both wrong and unactionable.
+ *
  * `cause` is for server-side logging only. It must not be returned to a caller:
  * an upstream message can carry credential material.
  */
@@ -41,7 +47,7 @@ export async function resolvePresenceBrain(ownerDid: string): Promise<PresenceBr
       }),
     };
   } catch (err) {
-    if (err instanceof NoBrainSealedError) {
+    if (err instanceof NoBrainSealedError && err.failures.length === 0) {
       return {
         ok: false,
         status: 409,
