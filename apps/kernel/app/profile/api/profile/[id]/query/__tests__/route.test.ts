@@ -49,11 +49,21 @@ vi.mock('@imajin/llm', () => ({
 // NoBrainSealedError must be a real class so the route's `instanceof` branch
 // works, and it must be hoisted: vi.mock factories run before module-level
 // declarations are initialised.
+//
+// `failures` mirrors the real shape (#1637): empty means "the owner genuinely
+// connected nothing", which is the 409 the tests below assert. A non-empty
+// `failures` means the walk was degraded by a throwing connector and maps to 503
+// instead.
 const { NoBrainSealedError } = vi.hoisted(() => {
   class NoBrainSealedError extends Error {
-    constructor(ownerDid: string) {
+    readonly failures: readonly { connector: string; credentialDid: string; cause: string }[];
+    constructor(
+      ownerDid: string,
+      failures: readonly { connector: string; credentialDid: string; cause: string }[] = [],
+    ) {
       super(`inference_no_brain: DID ${ownerDid} has no model credential sealed`);
       this.name = 'NoBrainSealedError';
+      this.failures = failures;
     }
   }
   return { NoBrainSealedError };
@@ -187,6 +197,25 @@ describe('presence query — no env fallback', () => {
 
   it('returns 503 when brain resolution faults for another reason', async () => {
     mockResolveBrain.mockRejectedValueOnce(new Error('vault unavailable'));
+
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'Inference unavailable' });
+  });
+
+  /**
+   * A connector that threw is skipped rather than aborting resolution (#1637),
+   * so "no brain" can now mean "a card exists but could not be read". That is a
+   * retryable fault, not the owner failing to connect anything, and it must not
+   * be reported as the actionable 409.
+   */
+  it('returns 503 when the walk was degraded by a failing connector', async () => {
+    mockResolveBrain.mockRejectedValueOnce(
+      new NoBrainSealedError(OWNER_DID, [
+        { connector: 'gemini', credentialDid: OWNER_DID, cause: 'VaultDelegationError' },
+      ]),
+    );
 
     const res = await POST(makeReq(), params);
 

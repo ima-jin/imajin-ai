@@ -135,6 +135,20 @@ const BRAIN_CONNECTORS: readonly BrainConnector[] = [
 ];
 
 /**
+ * A connector that threw while being probed, rather than answering "nothing
+ * sealed" (#1637).
+ *
+ * `cause` is a stringified error kept for server-side diagnosis only. It is
+ * deliberately NOT folded into {@link NoBrainSealedError}'s message, which
+ * reaches HTTP surfaces: an upstream message can embed the value being read.
+ */
+export interface BrainConnectorFailure {
+  connector: BrainConnectorId;
+  credentialDid: string;
+  cause: string;
+}
+
+/**
  * Thrown when none of the candidate DIDs has sealed a brain.
  *
  * Carries the connectors that are actually available to seal, derived from the
@@ -145,19 +159,36 @@ export class NoBrainSealedError extends Error {
   /** DIDs that were checked, in the order they were tried. */
   readonly triedDids: readonly string[];
   readonly availableConnectors: readonly BrainConnectorId[];
+  /**
+   * Connectors that errored during the walk instead of reporting "not sealed".
+   *
+   * Empty in the ordinary "user has connected nothing" case. Non-empty means the
+   * resolution was degraded, and this is the only place that survives to say so
+   * — without it, skipping a throwing connector would turn a vault fault into an
+   * indistinguishable "you have no brain".
+   */
+  readonly failures: readonly BrainConnectorFailure[];
 
-  constructor(triedDids: readonly string[], connectors: readonly BrainConnector[]) {
+  constructor(
+    triedDids: readonly string[],
+    connectors: readonly BrainConnector[],
+    failures: readonly BrainConnectorFailure[] = [],
+  ) {
     const options = connectors
       .map((c) => `${c.name} (grant '${c.scope}', seal a key at ${c.tokenRoute})`)
       .join(' or ');
     const subject = triedDids.length > 0 ? triedDids.join(', ') : '(no DID supplied)';
+    const degraded = failures.length > 0
+      ? ` ${failures.length} connector probe(s) failed and were skipped — see kernel logs.`
+      : '';
     super(
       `inference_no_brain: no model credential sealed for ${subject} — ` +
-      `connect ${options}. The kernel brings no brain of its own.`,
+      `connect ${options}. The kernel brings no brain of its own.${degraded}`,
     );
     this.name = 'NoBrainSealedError';
     this.triedDids = triedDids;
     this.availableConnectors = connectors.map((c) => c.id);
+    this.failures = failures;
   }
 }
 
@@ -194,6 +225,14 @@ function credentialDids(context: string | BrainCredentialContext): string[] {
  * `NoBrainSealedError` when none is — there is no env-var fallback and no
  * node-level default credential.
  *
+ * A connector that THROWS is skipped rather than aborting the walk (#1637). One
+ * card's custody problem is not the other cards' problem: before this, a Gemini
+ * key awaiting Tier 1 owner approval escaped as a raw `VaultDelegationError`,
+ * which meant a healthy Anthropic key later in the table was never tried and the
+ * caller lost the actionable `NoBrainSealedError` as well. Skipping still fails
+ * closed — with nothing resolvable the walk ends in `NoBrainSealedError`, whose
+ * `failures` records what was skipped — and each failure is logged.
+ *
  * The returned `apiKey` is for the immediate call only: never log it, persist
  * it, or include it in a response body.
  */
@@ -201,10 +240,23 @@ export async function resolveBrain(
   context: string | BrainCredentialContext,
 ): Promise<ResolvedBrain> {
   const dids = credentialDids(context);
+  const failures: BrainConnectorFailure[] = [];
 
   for (const did of dids) {
     for (const connector of BRAIN_CONNECTORS) {
-      const creds = await connector.load(did);
+      let creds: SealedCredentials | undefined;
+      try {
+        creds = await connector.load(did);
+      } catch (err) {
+        // Never log `err` alongside anything unsealed, and never surface it to a
+        // caller: a vault/provider message can carry the value being read.
+        log.warn(
+          { credentialDid: did, connector: connector.id, err: String(err) },
+          'brain connector probe failed — skipping this connector',
+        );
+        failures.push({ connector: connector.id, credentialDid: did, cause: String(err) });
+        continue;
+      }
       if (!creds) {
         continue;
       }
@@ -236,5 +288,5 @@ export async function resolveBrain(
     }
   }
 
-  throw new NoBrainSealedError(dids, BRAIN_CONNECTORS);
+  throw new NoBrainSealedError(dids, BRAIN_CONNECTORS, failures);
 }

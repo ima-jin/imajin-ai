@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { sealMock, loadMock, existsMock, statusMock, whereMock } = vi.hoisted(() => ({
+const { sealMock, sealV1Mock, loadMock, existsMock, statusMock, whereMock } = vi.hoisted(() => ({
   sealMock: vi.fn(),
+  sealV1Mock: vi.fn(),
   loadMock: vi.fn(),
   existsMock: vi.fn(),
   statusMock: vi.fn(),
@@ -9,6 +10,7 @@ const { sealMock, loadMock, existsMock, statusMock, whereMock } = vi.hoisted(() 
 }));
 
 vi.mock('@/src/lib/vault', () => ({
+  sealAndStore: sealV1Mock,
   sealAndStoreV2: sealMock,
   loadAndUnseal: loadMock,
   vaultFieldExists: existsMock,
@@ -17,6 +19,9 @@ vi.mock('@/src/lib/vault', () => ({
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: whereMock }) }) },
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
+}));
+vi.mock('@imajin/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 import { VaultDelegationError } from '@/src/lib/vault/errors';
@@ -47,6 +52,8 @@ function noGrant() {
 beforeEach(() => {
   sealMock.mockReset();
   sealMock.mockResolvedValue(undefined);
+  sealV1Mock.mockReset();
+  sealV1Mock.mockResolvedValue(undefined);
   loadMock.mockReset();
   loadMock.mockResolvedValue(undefined);
   existsMock.mockReset();
@@ -110,37 +117,37 @@ describe('resolveActiveGrant', () => {
 // ── sealApiKey ────────────────────────────────────────────────────────────────
 
 describe('sealApiKey', () => {
-  it('seals the API key under the per-DID vault field', async () => {
+  it('seals the API key under the per-DID vault field with delegation-grant custody', async () => {
     await sealApiKey(OWNER, API_KEY);
     const [field, plaintext] = sealMock.mock.calls[0] as [string, string];
     expect(field).toBe(vaultField(OWNER));
     expect(plaintext).toBe(API_KEY);
   });
 
-  it('also seals baseUrl when provided', async () => {
+  it('seals baseUrl node-sealed (v1), not delegation-grant (#1637)', async () => {
     await sealApiKey(OWNER, API_KEY, BASE_URL);
-    expect(sealMock).toHaveBeenCalledTimes(2);
-    const secondCall = sealMock.mock.calls[1] as [string, string];
-    expect(secondCall[0]).toBe(`gemini-base-url:${OWNER}`);
-    expect(secondCall[1]).toBe(BASE_URL);
+    expect(sealMock).toHaveBeenCalledTimes(1);
+    expect(sealV1Mock).toHaveBeenCalledTimes(1);
+    expect(sealV1Mock.mock.calls[0]).toEqual([`gemini-base-url:${OWNER}`, BASE_URL]);
   });
 
-  it('also seals modelId when provided', async () => {
+  it('seals modelId node-sealed (v1), not delegation-grant (#1637)', async () => {
     await sealApiKey(OWNER, API_KEY, undefined, MODEL_ID);
-    expect(sealMock).toHaveBeenCalledTimes(2);
-    const secondCall = sealMock.mock.calls[1] as [string, string];
-    expect(secondCall[0]).toBe(`gemini-model-id:${OWNER}`);
-    expect(secondCall[1]).toBe(MODEL_ID);
+    expect(sealMock).toHaveBeenCalledTimes(1);
+    expect(sealV1Mock).toHaveBeenCalledTimes(1);
+    expect(sealV1Mock.mock.calls[0]).toEqual([`gemini-model-id:${OWNER}`, MODEL_ID]);
   });
 
-  it('seals all three when all are provided', async () => {
+  it('seals all three, one under v2 custody and two under v1', async () => {
     await sealApiKey(OWNER, API_KEY, BASE_URL, MODEL_ID);
-    expect(sealMock).toHaveBeenCalledTimes(3);
+    expect(sealMock).toHaveBeenCalledTimes(1);
+    expect(sealV1Mock).toHaveBeenCalledTimes(2);
   });
 
   it('does not seal baseUrl or modelId when omitted', async () => {
     await sealApiKey(OWNER, API_KEY);
     expect(sealMock).toHaveBeenCalledTimes(1);
+    expect(sealV1Mock).not.toHaveBeenCalled();
   });
 });
 
@@ -185,6 +192,46 @@ describe('loadGeminiCredentials', () => {
     expect(result?.apiKey).toBe(API_KEY);
     expect(result?.baseUrl).toBe(BASE_URL);
     expect(result?.modelId).toBe(MODEL_ID);
+  });
+
+  /**
+   * #1637: this used to throw, which took the whole brain walk down with it — so
+   * a Gemini key awaiting Tier 1 approval meant a healthy Anthropic key was never
+   * tried. `undefined` is the documented answer for "no usable connection".
+   */
+  it('returns undefined when the key is sealed but awaiting owner approval', async () => {
+    grant(['gemini:infer']);
+    loadMock.mockRejectedValueOnce(
+      new VaultDelegationError('no active grant', {
+        field: vaultField(OWNER),
+        nodeDid: 'did:imajin:node',
+      }),
+    );
+
+    await expect(loadGeminiCredentials(OWNER)).resolves.toBeUndefined();
+  });
+
+  it('still propagates a non-delegation vault failure', async () => {
+    grant(['gemini:infer']);
+    loadMock.mockRejectedValueOnce(new Error('vault integrity failure'));
+
+    await expect(loadGeminiCredentials(OWNER)).rejects.toThrow('vault integrity failure');
+  });
+
+  it('degrades an unreadable baseUrl/modelId to "no override" instead of failing', async () => {
+    grant(['gemini:infer']);
+    loadMock
+      .mockResolvedValueOnce(API_KEY)
+      .mockRejectedValueOnce(
+        // A pre-#1637 v2 config entry whose grant never arrived.
+        new VaultDelegationError('no active grant', {
+          field: `gemini-base-url:${OWNER}`,
+          nodeDid: 'did:imajin:node',
+        }),
+      )
+      .mockRejectedValueOnce(new Error('corrupt entry'));
+
+    await expect(loadGeminiCredentials(OWNER)).resolves.toEqual({ apiKey: API_KEY });
   });
 });
 

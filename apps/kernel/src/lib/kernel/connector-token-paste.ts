@@ -17,11 +17,48 @@
  * Optional `baseUrl` and `modelId` live in sibling fields so a per-DID endpoint
  * and model override can be sealed alongside the key. A sealed `modelId` is how
  * the owner chooses which model runs — sealing a key IS choosing your brain.
+ *
+ * ## Two custody classes, not one (#1637)
+ * All three fields used to go through `sealAndStoreV2`, i.e.
+ * `custodyScheme: 'delegation-grant'`. That is right for the API key and wrong
+ * for the other two.
+ *
+ * - `${id}-api-key:{did}` — **v2, delegation-grant.** Authority-bearing secret
+ *   material: revoking the grant crypto-erases the wrapped field key, so access
+ *   dies immediately without rotating the key upstream. Worth the machinery.
+ * - `${id}-base-url:{did}` and `${id}-model-id:{did}` — **v1, node-sealed.**
+ *   An endpoint and a model name are neither secret nor authority-bearing;
+ *   nothing is protected by making `gemini-2.0-flash` revocable. Under Tier 1
+ *   (#1603) delegation-grant custody costs an out-of-band owner-approval round
+ *   trip before the value is readable at all, so a sealed model override would
+ *   silently not apply — inference would quietly run the connector default —
+ *   for as long as approval took. Same reasoning, same conclusion as
+ *   `../warp/environment.ts` (#1632); these fields simply predate it.
+ *
+ * ## Migration of already-sealed v2 config fields
+ * Read-compatible rather than migrated. `loadAndUnseal` dispatches on the stored
+ * entry's own `custodyScheme`, so a pre-#1637 v2 `-base-url` / `-model-id` entry
+ * keeps resolving wherever its grant is active (every Tier 0 node), and an
+ * unreadable one is reported as "no override" instead of taking the connector
+ * down (see {@link loadOptionalConfig}). The next write through `sealApiKey`
+ * lands as v1 and the anomaly is gone. These are recoverable non-secrets — a
+ * value the owner can re-type on the connector card — so spending a
+ * `migrate-custody` pass and a Tier 1 grant round trip per field to preserve
+ * them was not worth it.
  */
 import { and, eq } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
 import { db, channelLinks } from '@/src/db';
-import { sealAndStoreV2, loadAndUnseal, vaultFieldExists, vaultFieldStatus } from '@/src/lib/vault';
+import {
+  sealAndStore,
+  sealAndStoreV2,
+  loadAndUnseal,
+  vaultFieldExists,
+  vaultFieldStatus,
+} from '@/src/lib/vault';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
+
+const log = createLogger('kernel');
 
 /** Options that parameterize the factory for one provider. */
 export interface ConnectorTokenPasteOptions {
@@ -53,6 +90,11 @@ export interface ConnectorTokenPaste {
    * Seal an API key, and optionally a base URL and model id, for this DID.
    * Re-sealing replaces the previous values (rotate semantics). The plaintext is
    * never logged or returned; a successful vault write is the only output.
+   *
+   * An omitted `baseUrl` / `modelId` leaves any previously sealed value in
+   * place; it is deliberately NOT a clear. The connector card posts only the
+   * pasted key, so treating omission as "delete" would silently drop the
+   * owner's model choice every time they rotated a key.
    */
   sealApiKey(ownerDid: string, apiKey: string, baseUrl?: string, modelId?: string): Promise<void>;
   /**
@@ -61,10 +103,13 @@ export interface ConnectorTokenPaste {
    */
   resolveActiveGrant(ownerDid: string, requiredScope: string): Promise<boolean>;
   /**
-   * Resolve sealed credentials, or `undefined` when this DID has no connection.
+   * Resolve sealed credentials, or `undefined` when this DID has no usable
+   * connection — including one whose key is sealed but still awaiting the owner
+   * agent's grant (#1603).
    *
    * Returning `undefined` rather than throwing is what lets a resolver try the
-   * next provider; use `requireGrantAndKey` where the grant is mandatory.
+   * next provider; use `requireGrantAndKey` where the grant is mandatory and the
+   * pending state must be named.
    */
   loadCredentials(ownerDid: string, scope: string): Promise<TokenPasteCredentials | undefined>;
   /**
@@ -93,18 +138,45 @@ export function createConnectorTokenPaste(
   const baseUrlField = (ownerDid: string) => `${opts.id}-base-url:${ownerDid}`;
   const modelIdField = (ownerDid: string) => `${opts.id}-model-id:${ownerDid}`;
 
+  /**
+   * Read a non-secret config field, treating any failure as "not set".
+   *
+   * Never throws. A model name or endpoint override must not be able to take
+   * down a connector whose key is perfectly good: the two cases that get here
+   * are a pre-#1637 v2 entry with no active grant (Tier 1 pending, or a lapsed
+   * grant) and a corrupt entry, and for both the honest answer is "there is no
+   * usable override", which degrades to the connector default. The failure is
+   * logged so it stays visible rather than silently swallowed.
+   *
+   * Same shape, and the same reasoning, as `readEnvironmentId` in
+   * `../warp/environment.ts` (#1632).
+   */
+  async function loadOptionalConfig(field: string): Promise<string | undefined> {
+    try {
+      return await loadAndUnseal(field);
+    } catch (err) {
+      log.warn(
+        { err: String(err), field, connector: opts.id },
+        `${opts.displayName} connector config field unreadable — treating as unset`,
+      );
+      return undefined;
+    }
+  }
+
   async function sealApiKey(
     ownerDid: string,
     apiKey: string,
     baseUrl?: string,
     modelId?: string,
   ): Promise<void> {
+    // The key is the only secret here, so it is the only field that earns
+    // delegation-grant custody (#1637).
     await sealAndStoreV2(keyField(ownerDid), apiKey);
     if (baseUrl) {
-      await sealAndStoreV2(baseUrlField(ownerDid), baseUrl);
+      await sealAndStore(baseUrlField(ownerDid), baseUrl);
     }
     if (modelId) {
-      await sealAndStoreV2(modelIdField(ownerDid), modelId);
+      await sealAndStore(modelIdField(ownerDid), modelId);
     }
   }
 
@@ -136,14 +208,32 @@ export function createConnectorTokenPaste(
       return undefined;
     }
 
-    const apiKey = await loadAndUnseal(keyField(ownerDid));
+    // A v2 key with no active grant throws VaultDelegationError. That is a
+    // legitimate, expected state under Tier 1 — sealed, awaiting owner approval
+    // — and this function is documented to answer `undefined` for "no usable
+    // connection" so a resolver can try the next provider. Letting the throw
+    // escape meant one pending key took every later connector down with it
+    // (#1637). `requireGrantAndKey` is where the state gets a name.
+    let apiKey: string | undefined;
+    try {
+      apiKey = await loadAndUnseal(keyField(ownerDid));
+    } catch (err) {
+      if (err instanceof VaultDelegationError) {
+        log.warn(
+          { connector: opts.id, ownerDid },
+          `${opts.displayName} API key is sealed but awaiting owner grant approval — treating this DID as unconnected`,
+        );
+        return undefined;
+      }
+      throw err;
+    }
     if (apiKey === undefined) {
       return undefined;
     }
 
     const [baseUrl, modelId] = await Promise.all([
-      loadAndUnseal(baseUrlField(ownerDid)),
-      loadAndUnseal(modelIdField(ownerDid)),
+      loadOptionalConfig(baseUrlField(ownerDid)),
+      loadOptionalConfig(modelIdField(ownerDid)),
     ]);
 
     return {
