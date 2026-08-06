@@ -14,7 +14,7 @@ env:
 jobs:
   check-migrations:
     name: Check Migrations
-    runs-on: imajin-runner
+    runs-on: imajin-runner-8-32
     steps:
       - uses: actions/checkout@v4
 
@@ -27,7 +27,7 @@ jobs:
 
   audit:
     name: Security Audit
-    runs-on: imajin-runner
+    runs-on: imajin-runner-8-32
     steps:
       - uses: actions/checkout@v4
 
@@ -74,7 +74,7 @@ jobs:
 
   lint-and-typecheck:
     name: Lint & Typecheck
-    runs-on: imajin-runner
+    runs-on: imajin-runner-8-32
     steps:
       - uses: actions/checkout@v4
 
@@ -105,7 +105,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: imajin-runner
+    runs-on: imajin-runner-8-32
     steps:
       - uses: actions/checkout@v4
 
@@ -137,7 +137,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: imajin-runner
+    runs-on: imajin-runner-8-32
     needs: [lint-and-typecheck, test]
     steps:
       - uses: actions/checkout@v4
@@ -161,7 +161,7 @@ jobs:
 
   ci-guards:
     name: CI Guards
-    runs-on: imajin-runner
+    runs-on: imajin-runner-8-32
     steps:
       - uses: actions/checkout@v4
 
@@ -187,7 +187,7 @@ jobs:
 
   sonarcloud:
     name: SonarCloud
-    runs-on: imajin-runner
+    runs-on: imajin-runner-8-32
     # Needs the coverage artifact produced by the Test job. This also means a
     # failing suite short-circuits the scan, which is fine — the gate would be
     # judging an incomplete picture anyway.
