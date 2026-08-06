@@ -29,10 +29,11 @@ vi.mock('@imajin/logger', () => ({
 
 vi.mock('@/src/lib/warp/dispatch', () => ({
   dispatchAgentRun: vi.fn(),
+  watchRun: vi.fn(),
 }));
 
 import { POST, OPTIONS } from '../route';
-import { dispatchAgentRun } from '@/src/lib/warp/dispatch';
+import { dispatchAgentRun, watchRun } from '@/src/lib/warp/dispatch';
 import { WarpApiError } from '@/src/lib/warp/errors';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockRequireAuth.mockResolvedValue({ identity: { id: OWNER_DID } });
   vi.mocked(dispatchAgentRun).mockResolvedValue(RUN);
+  vi.mocked(watchRun).mockResolvedValue(undefined);
 });
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
@@ -183,6 +185,33 @@ describe('successful dispatch', () => {
   it('carries the CORS headers', async () => {
     const res = await POST(makeReq({ prompt: 'go' }));
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://app.imajin.ai');
+  });
+});
+
+// ─── Completion watch (#1639) ─────────────────────────────────────────────
+
+describe('background completion watch', () => {
+  it('watches the dispatched run as the acting DID', async () => {
+    await POST(makeReq({ prompt: 'go' }));
+
+    expect(watchRun).toHaveBeenCalledWith(OWNER_DID, RUN.runId);
+  });
+
+  it('never blocks the response on the watch, which runs for up to 30 minutes', async () => {
+    // A watch that never settles: if the route awaited it, this would hang.
+    vi.mocked(watchRun).mockReturnValue(new Promise<void>(() => {}));
+
+    const res = await POST(makeReq({ prompt: 'go' }));
+
+    expect(res.status).toBe(201);
+  });
+
+  it('does not watch anything when the dispatch itself failed', async () => {
+    vi.mocked(dispatchAgentRun).mockRejectedValueOnce(new Error('warp_no_grant: nope'));
+
+    await POST(makeReq({ prompt: 'go' }));
+
+    expect(watchRun).not.toHaveBeenCalled();
   });
 });
 
