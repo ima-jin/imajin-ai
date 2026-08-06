@@ -12,6 +12,7 @@ import {
   pkceChallengeFromVerifier,
   generateOpaqueToken,
   hashToken,
+  resolveRefreshScopes,
   safeEqual,
 } from '@/src/lib/mcp/oauth-config';
 
@@ -232,13 +233,32 @@ async function handleRefreshToken(form: FormData) {
   }
 
   const [client] = await db
-    .select({ appDid: registryApps.appDid })
+    .select({ appDid: registryApps.appDid, requestedScopes: registryApps.requestedScopes })
     .from(registryApps)
     .where(and(eq(registryApps.id, record.clientId), eq(registryApps.status, 'active')))
     .limit(1);
   if (!client) {
     return tokenError('invalid_client', 401, 'client inactive');
   }
+
+  // Re-resolve the scope from CURRENT state instead of the frozen record.scope
+  // (#1630): registered ∩ MCP ceiling. record.scope was captured when the
+  // original authorization code was minted, so every successor in the rotation
+  // lineage inherited it — a scope toggled on after first-connect could never
+  // reach the JWT `scope` claim that server.ts's per-tool gate reads, and the
+  // only fix was a full re-authorize. See resolveRefreshScopes().
+  //
+  // Resolved BEFORE the rotation consume below so an unusable registration
+  // fails without burning the presented refresh token.
+  const granted = resolveRefreshScopes(client.requestedScopes);
+  if (granted.length === 0) {
+    log.warn(
+      { clientId: record.clientId, userDid: record.userDid },
+      'oauth: refresh denied — client has no grantable scopes',
+    );
+    return tokenError('invalid_scope', 400, 'client has no grantable scopes');
+  }
+  const scope = granted.join(' ');
 
   // Atomic rotation: consume the presented token only if still active. Losing the
   // race (concurrent rotation) yields 0 rows → deny, so a token can't rotate twice.
@@ -252,10 +272,12 @@ async function handleRefreshToken(form: FormData) {
   }
 
   // Issue successor, then link the rotation chain (rotatedTo powers reuse audit).
+  // The successor stores the RE-RESOLVED scope, so the lineage tracks the
+  // registration from here on rather than re-freezing the original string.
   const successor = await issueRefreshToken({
     clientId: record.clientId,
     userDid: record.userDid,
-    scope: record.scope,
+    scope,
     attestationId: record.attestationId,
   });
   await db
@@ -266,17 +288,24 @@ async function handleRefreshToken(form: FormData) {
   const accessToken = await mintAccessToken({
     userDid: record.userDid,
     appDid: client.appDid,
-    scope: record.scope,
+    scope,
     attestationId: record.attestationId,
   });
 
-  log.info({ clientId: record.clientId, userDid: record.userDid }, 'oauth: refresh_token → rotated tokens');
+  log.info(
+    {
+      clientId: record.clientId,
+      userDid: record.userDid,
+      ...(scope === record.scope ? {} : { previousScope: record.scope, scope }),
+    },
+    'oauth: refresh_token → rotated tokens',
+  );
 
   return tokenResponse({
     access_token: accessToken,
     token_type: 'Bearer',
     expires_in: ACCESS_TOKEN_TTL_SECONDS,
     refresh_token: successor.token,
-    scope: record.scope,
+    scope,
   });
 }

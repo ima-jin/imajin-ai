@@ -212,6 +212,38 @@ export function resolveGrantedScopes(
   return filterGrantedScopes(scopeParam).filter((s) => allowed.has(s));
 }
 
+/**
+ * Re-resolve the scope string to carry on a REFRESH cycle (#1630).
+ *
+ * A refresh used to mint its successor tokens from the scope string frozen on
+ * the ORIGINAL authorization code, so the whole rotation lineage was stuck with
+ * whatever the client held at first-connect. A scope added to the vocabulary and
+ * toggled on afterwards (e.g. `messages:read`, #1393) never reached the JWT, so
+ * the per-tool gate in server.ts (`ctx.scopes.has(...)`, which reads the JWT
+ * `scope` claim) answered `insufficient_scope` forever — even though the live
+ * channel_links gate would have allowed the call. The only escape was a full
+ * disconnect + re-authorize in the client.
+ *
+ * So a refresh now recomputes registered ∩ MCP-ceiling from CURRENT state:
+ *   - `registry.apps.requested_scopes` — what the client is registered for;
+ *   - `MCP_SCOPE_SET` (via filterGrantedScopes) — the surface ceiling, so a
+ *     stale registry row holding a retired scope can't leak through.
+ *
+ * Widening past the client's registration stays impossible: this is an
+ * intersection, never a union, and it never consults the requested scope from
+ * the caller. Two consequences are deliberate:
+ *   - a scope REMOVED from the registration disappears on the next refresh;
+ *   - a scope ADDED to the registration appears on the next refresh, without a
+ *     re-authorization ceremony (the #1630 tradeoff — see the issue).
+ *
+ * Returns [] when the client has nothing grantable left; callers must treat that
+ * as `invalid_scope` rather than minting a scopeless token.
+ */
+export function resolveRefreshScopes(registeredScopes: readonly string[] | null | undefined): string[] {
+  const registered = registeredScopes ?? [];
+  return [...new Set(filterGrantedScopes(registered.join(' ')))];
+}
+
 /** PKCE S256: base64url(SHA-256(verifier)). */
 export function pkceChallengeFromVerifier(verifier: string): string {
   return createHash('sha256').update(verifier).digest('base64url');
