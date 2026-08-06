@@ -134,7 +134,7 @@ function summarise(service: string, text: string): ApiSpecSummary {
     version: stringOrNull(parsed.info?.version),
     paths:
       typeof paths === 'object' && paths !== null && !Array.isArray(paths)
-        ? Object.keys(paths).sort()
+        ? Object.keys(paths).sort((a, b) => a.localeCompare(b))
         : [],
   };
 }

@@ -134,7 +134,7 @@ const listScopesTool: McpTool = {
       mcpCeiling: [...MCP_SCOPES],
       // The scopes on THIS token, so a denial can be diagnosed in one call
       // instead of by trial and error against every tool.
-      tokenScopes: [...ctx.scopes].sort(),
+      tokenScopes: [...ctx.scopes].sort((a, b) => a.localeCompare(b)),
     });
   },
 };
@@ -185,7 +185,7 @@ const getScopeManifestTool: McpTool = {
     const statuses = await readConnectorConnectionStatus(ctx.did);
     return json({
       did: ctx.did,
-      tokenScopes: [...ctx.scopes].sort(),
+      tokenScopes: [...ctx.scopes].sort((a, b) => a.localeCompare(b)),
       connectors: connectorCatalogue(),
       status: statuses,
     });
