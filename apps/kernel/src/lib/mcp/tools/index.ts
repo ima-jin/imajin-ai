@@ -10,6 +10,7 @@ import { discordTools } from './discord';
 import { buzzTools } from './buzz';
 import { messagesTools } from './messages';
 import { warpTools } from './warp';
+import { discoveryTools } from './discovery';
 
 /**
  * The MCP tool registry. To add a tool: create `./<tool>.ts` exporting an
@@ -23,6 +24,10 @@ import { warpTools } from './warp';
  * ctx.did and are gated by the 'media:write' scope per-tool (#1170).
  * Connections + share tools (#1195): connections_list (connections:read) and
  * media_grant_access (media:share) enable one-click share-by-name from Claude.
+ * Discovery tools (#1636): read-only self-description of the node — API specs,
+ * the scope vocabulary, and the caller's own connector status — gated by
+ * 'discovery:read' so a dispatched agent can learn the system instead of
+ * grepping source and guessing.
  */
 export const ALL_TOOLS: McpTool[] = [
   pingTool,
@@ -36,6 +41,7 @@ export const ALL_TOOLS: McpTool[] = [
   ...buzzTools,
   ...messagesTools,
   ...warpTools,
+  ...discoveryTools,
 ];
 
 const TOOLS_BY_NAME = new Map<string, McpTool>(ALL_TOOLS.map((t) => [t.name, t]));

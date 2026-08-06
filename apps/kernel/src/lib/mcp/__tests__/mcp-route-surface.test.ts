@@ -35,6 +35,8 @@ vi.mock('@/src/lib/mcp/oauth-config', () => ({
     'github:write',
     'github:org',
     'github:actions',
+    'warp:dispatch',
+    'discovery:read',
   ]),
 }));
 
@@ -142,6 +144,17 @@ describe('POST /mcp surface scope gate (#1337)', () => {
 
   it('allows a github:write token through the surface gate', async () => {
     h.tokenPayload = validPayload({ scope: 'github:write' });
+    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
+    expect(res.status).toBe(200);
+  });
+
+  /**
+   * #1636: a Warp agent connecting purely to read specs holds nothing else, so a
+   * `discovery:read`-only token has to clear the surface gate on its own —
+   * otherwise the scope is grantable but unusable.
+   */
+  it('allows a discovery:read-only token through the surface gate', async () => {
+    h.tokenPayload = validPayload({ scope: 'discovery:read' });
     const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
     expect(res.status).toBe(200);
   });

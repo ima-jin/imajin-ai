@@ -253,6 +253,24 @@ export const SCOPE_VOCABULARY = [
   // the whole point: the credential individuates the dispatch.
   { scope: 'warp:dispatch', connector: 'warp', verb: 'dispatch', surface: 'cloud-agents', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
     label: 'Dispatch Warp cloud agents using your sealed Warp Agent key', manifestLabel: 'Dispatch Warp cloud agents under your own credential' },
+  // Read-only self-description of the node (#1636): the OpenAPI specs it serves,
+  // the scope vocabulary itself, and the caller's OWN connector grant state. A
+  // dispatched cloud agent that can read these starts from what the system
+  // actually exposes instead of grepping source and guessing, which is where the
+  // stale assumptions — and the failed PRs — come from.
+  //
+  // Owned by the Warp connector because that is who needs it and who it is
+  // granted to; carried by MCP tokens because the dev kernel's MCP endpoint is
+  // the wire the agent reads over.
+  //
+  // SELF_ONLY → `silent`: every byte is either already public (the specs) or the
+  // owner's own connector state, and nothing here is credential-grade — the
+  // sealed keys themselves stay behind `warp:dispatch`. Reads only; there is no
+  // write counterpart, by design (writes go through git/PR).
+  { scope: 'discovery:read', connector: 'warp', verb: 'read', surface: 'discovery', classification: SELF_ONLY, surfaces: MCP_TOKENS,
+    label: 'Read Imajin API specs, the scope vocabulary, and your connector status',
+    manifestLabel: 'Read the node API specs, scope vocabulary, and your connector status',
+    uiLabel: 'Read API specs, scope vocabulary, and your connector status' },
 ] as const satisfies readonly ScopeVocabularyEntry[];
 
 /** Every scope string in the vocabulary, as a literal union. */

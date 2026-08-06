@@ -54,18 +54,31 @@ beforeEach(() => {
 // ─── Derived scope set ───────────────────────────────────────────────────────
 
 describe('scope set is derived from the vocabulary', () => {
-  it('accepts exactly warp:dispatch in the POST validator', () => {
-    expect(VALID_WARP_SCOPES).toEqual(['warp:dispatch']);
+  it('accepts exactly the two Warp scopes in the POST validator', () => {
+    expect(VALID_WARP_SCOPES).toEqual(['warp:dispatch', 'discovery:read']);
   });
 
   it('describes warp:dispatch as an owner-only cloud-agent scope in the manifest', () => {
-    expect(WARP_SCOPE_DESCRIPTORS).toEqual({
-      'warp:dispatch': {
-        verb: 'dispatch',
-        surface: 'cloud-agents',
-        label: 'Dispatch Warp cloud agents under your own credential',
-        release: { discloses_others: false, sensitive: true, viewer: WARP_DID },
-      },
+    expect(WARP_SCOPE_DESCRIPTORS['warp:dispatch']).toEqual({
+      verb: 'dispatch',
+      surface: 'cloud-agents',
+      label: 'Dispatch Warp cloud agents under your own credential',
+      release: { discloses_others: false, sensitive: true, viewer: WARP_DID },
+    });
+  });
+
+  /**
+   * #1636: read-only self-description, so `silent` and no named viewer — the
+   * sealed Agent key stays behind `warp:dispatch`. If this ever derives a consent
+   * barrier, publishing the manifest stops activating the scope and the whole
+   * low-friction read the scope exists for is gone.
+   */
+  it('describes discovery:read as a silent read scope with no viewer', () => {
+    expect(WARP_SCOPE_DESCRIPTORS['discovery:read']).toEqual({
+      verb: 'read',
+      surface: 'discovery',
+      label: 'Read the node API specs, scope vocabulary, and your connector status',
+      release: { discloses_others: false, sensitive: false },
     });
   });
 });
@@ -105,6 +118,8 @@ describe('every core call carries the Warp identity', () => {
     expect(opts.filename).toBe('warp-scope-manifest.md');
     // owner-only sits behind a consent barrier, so a grant must be recorded.
     expect(opts.isOnConsent('warp:dispatch')).toBe(true);
+    // silent needs no consent row — it materialises on publish.
+    expect(opts.isOnConsent('discovery:read')).toBe(false);
   });
 
   it('records a consent row when the owner grants warp:dispatch', async () => {

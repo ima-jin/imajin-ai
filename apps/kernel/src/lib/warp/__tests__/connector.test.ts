@@ -35,9 +35,11 @@ import {
   warpKeyField,
   sealWarpAgentKey,
   requireAgentKey,
+  requireDiscoveryGrant,
   revokeWarpAgentKeyGrant,
   WARP_CONNECTOR_DID,
   WARP_CHANNEL,
+  WARP_DISCOVERY_SCOPE,
   WARP_DISPATCH_SCOPE,
 } from '../connector';
 
@@ -65,6 +67,7 @@ describe('connector identity', () => {
     expect(WARP_CONNECTOR_DID).toBe('did:imajin:warp-connector');
     expect(WARP_CHANNEL).toBe('warp');
     expect(WARP_DISPATCH_SCOPE).toBe('warp:dispatch');
+    expect(WARP_DISCOVERY_SCOPE).toBe('discovery:read');
   });
 });
 
@@ -120,6 +123,38 @@ describe('requireAgentKey is authority-gated', () => {
     const [field, granteeDid] = loadGranteeMock.mock.calls[0] as [string, string];
     expect(field).toBe(`warp-agent-key:${PRINCIPAL}`);
     expect(granteeDid).toBe(WARP_CONNECTOR_DID);
+  });
+});
+
+// ── Discovery gate (#1636) ────────────────────────────────────────────────
+
+describe('requireDiscoveryGrant is authority-gated but credential-free', () => {
+  it('refuses when no active channel_links row carries discovery:read', async () => {
+    await expect(requireDiscoveryGrant(PRINCIPAL)).rejects.toThrow(/warp_no_grant/);
+  });
+
+  it('passes on an active discovery:read row without touching the vault', async () => {
+    withScopes([WARP_DISCOVERY_SCOPE]);
+
+    await expect(requireDiscoveryGrant(PRINCIPAL)).resolves.toBeUndefined();
+    // No sealed key is involved, so no unseal may be attempted — a read of the
+    // node's own specs must never reach for the caller's Warp Agent key.
+    expect(loadGranteeMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The two directions that make the split worth having: a DID that can dispatch
+   * cannot implicitly read, and a DID that can read cannot implicitly dispatch.
+   */
+  it('is not satisfied by warp:dispatch alone', async () => {
+    withScopes([WARP_DISPATCH_SCOPE]);
+    await expect(requireDiscoveryGrant(PRINCIPAL)).rejects.toThrow(/warp_no_grant/);
+  });
+
+  it('does not itself satisfy the dispatch gate', async () => {
+    withScopes([WARP_DISCOVERY_SCOPE]);
+    await expect(requireAgentKey(PRINCIPAL)).rejects.toThrow(/warp_no_grant/);
+    expect(loadGranteeMock).not.toHaveBeenCalled();
   });
 });
 

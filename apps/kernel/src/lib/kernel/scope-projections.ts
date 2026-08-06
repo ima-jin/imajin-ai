@@ -25,10 +25,13 @@ import {
   type ConnectorScopeEntry,
   type ScopeReleaseTier,
   type ScopeReleaseOverride,
+  SCOPE_VOCABULARY,
   deriveScopeReleaseTier,
+  isConnectorScope,
   manifestLabelForScope,
   uiLabelForScope,
   scopesForConnector,
+  scopesForSurface,
   viewerForScope,
 } from '@imajin/auth/scope-vocabulary';
 
@@ -148,4 +151,48 @@ export function connectorUiScopes(connector: ConnectorId): ConnectorScope[] {
       releaseClass: deriveScopeReleaseTier(entry),
     }))
     .filter((scope) => scope.releaseClass !== 'never');
+}
+
+// ── Discovery catalogue (#1636) ───────────────────────────────────────────────
+
+/**
+ * One scope as reported by the read-only discovery surface.
+ *
+ * A sixth projection of the same table, and the one an agent reads: it answers
+ * "what may I ask for, and what would granting it mean" without the agent having
+ * to open `scope-vocabulary.ts` and infer the 2×2 by hand.
+ */
+export interface ScopeCatalogueEntry {
+  /** The scope string, e.g. `media:read`. */
+  scope: string;
+  /** Consent-screen label, written from the owner's point of view. */
+  label: string;
+  /** Owning connector, or `null` for a platform scope granted via OAuth consent. */
+  connector: ConnectorId | null;
+  /**
+   * Release tier for connector-owned scopes, or `null` for platform scopes —
+   * those carry no #1196 classification, so reporting a tier would invent one.
+   */
+  releaseClass: ScopeReleaseTier | null;
+  /** True when an MCP access token may carry this scope (the capability ceiling). */
+  mcpToken: boolean;
+}
+
+/**
+ * The whole vocabulary, in vocabulary order.
+ *
+ * Includes `never`-class scopes, unlike {@link connectorUiScopes}: a dead toggle
+ * confuses a person, but an agent reading the catalogue is better off knowing the
+ * scope exists and can never materialise than concluding it is available.
+ */
+export function scopeCatalogue(): ScopeCatalogueEntry[] {
+  const mcpCeiling = new Set(scopesForSurface('mcp'));
+
+  return SCOPE_VOCABULARY.map((entry) => ({
+    scope: entry.scope,
+    label: entry.label,
+    connector: entry.connector,
+    releaseClass: isConnectorScope(entry) ? deriveScopeReleaseTier(entry) : null,
+    mcpToken: mcpCeiling.has(entry.scope),
+  }));
 }

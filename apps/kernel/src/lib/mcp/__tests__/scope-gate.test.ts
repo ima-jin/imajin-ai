@@ -11,6 +11,8 @@ vi.mock('../tools', () => {
     { name: 't_connections', requiredScope: 'connections:read', description: 'c', inputSchema: {}, handler: () => [{ type: 'text', text: 'connections-ok' }] },
     { name: 't_msg_read',    requiredScope: 'messages:read',    description: 'mr', inputSchema: {}, handler: () => [{ type: 'text', text: 'messages-read-ok' }] },
     { name: 't_msg_write',   requiredScope: 'messages:write',   description: 'mw', inputSchema: {}, handler: () => [{ type: 'text', text: 'messages-write-ok' }] },
+    { name: 't_dispatch',    requiredScope: 'warp:dispatch',    description: 'd', inputSchema: {}, handler: () => [{ type: 'text', text: 'dispatch-ok' }] },
+    { name: 't_discovery',   requiredScope: 'discovery:read',   description: 'dr', inputSchema: {}, handler: () => [{ type: 'text', text: 'discovery-ok' }] },
     { name: 't_ping',        description: 'p', inputSchema: {}, handler: () => [{ type: 'text', text: 'pong' }] },
   ];
   const byName = new Map(tools.map((t) => [t.name, t]));
@@ -121,6 +123,48 @@ describe('messages scope gate (read != write)', () => {
     const res = await call('t_msg_write', ['messages:write']);
     expect(res.result.isError).toBe(false);
     expect(res.result.content[0].text).toBe('messages-write-ok');
+  });
+});
+
+/**
+ * #1636 — the read-only discovery surface is a scope of its own.
+ *
+ * The point of splitting it out of `warp:dispatch` is that reading what the
+ * system exposes must not imply the ability to spend money on a cloud agent, and
+ * vice versa. These assert the gate keeps that split in both directions.
+ */
+describe('discovery:read scope gate (read != dispatch)', () => {
+  it('allows a discovery:read-only token calling a discovery tool', async () => {
+    const res = await call('t_discovery', ['discovery:read']);
+    expect(res.result.isError).toBe(false);
+    expect(res.result.content[0].text).toBe('discovery-ok');
+  });
+
+  it('denies a discovery:read-only token calling the dispatch tool, in-band', async () => {
+    const res = await call('t_dispatch', ['discovery:read']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('insufficient_scope');
+    expect(res.result.content[0].text).toContain('warp:dispatch');
+  });
+
+  it('denies a dispatch-only token calling a discovery tool, in-band', async () => {
+    const res = await call('t_discovery', ['warp:dispatch']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('insufficient_scope');
+    expect(res.result.content[0].text).toContain('discovery:read');
+  });
+
+  it('denies a media-only token calling a discovery tool, in-band', async () => {
+    const res = await call('t_discovery', ['media:read', 'media:write']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('discovery:read');
+  });
+
+  it('allows a token holding both Warp scopes to call either tool', async () => {
+    const discovery = await call('t_discovery', ['warp:dispatch', 'discovery:read']);
+    const dispatch = await call('t_dispatch', ['warp:dispatch', 'discovery:read']);
+    expect(discovery.result.isError).toBe(false);
+    expect(dispatch.result.isError).toBe(false);
   });
 });
 
