@@ -172,6 +172,14 @@ describe('fixture sanity', () => {
   });
 });
 
+// Also serves as the regression guard for the #1647 consent-timeout scenario:
+// a tool call clears Gate 1 (token scope) and Gate 2 (channel_links grant), but
+// the MCP client's approval prompt times out client-side. Before the retry the
+// client refreshes its token — and the successor token must carry the scopes
+// from the LIVE `requestedScopes`, not the frozen `record.scope`. The fixtures
+// below encode exactly that: `record.scope` holds only SCOPE_A while the client
+// registration already carries SCOPE_A + SCOPE_B, so a refresh that regressed to
+// the frozen string would silently drop SCOPE_B and fail the retry at Gate 1.
 describe('POST /oauth/token refresh — newly registered scope reaches the token (#1630)', () => {
   beforeEach(() => {
     // The scope was toggled on AFTER the original OAuth dance.
@@ -199,6 +207,20 @@ describe('POST /oauth/token refresh — newly registered scope reaches the token
     await callRefresh();
     expect(mintedScope()).not.toBe(SCOPE_A);
     expect(successorScope()).not.toBe(SCOPE_A);
+  });
+
+  it('survives a consent-timeout retry: scope absent from record.scope, present in requestedScopes (#1647)', async () => {
+    // Precondition — the frozen authorization-code scope really is missing the
+    // scope the retry needs; without this the assertion below proves nothing.
+    expect(h.refreshRow?.scope).toBe(SCOPE_A);
+    expect(String(h.refreshRow?.scope)).not.toContain(SCOPE_B);
+    expect(h.clientRow?.requestedScopes).toContain(SCOPE_B);
+
+    await callRefresh();
+
+    // The retry after the timed-out approval prompt clears Gate 1.
+    expect(mintedScope().split(' ')).toContain(SCOPE_B);
+    expect(successorScope().split(' ')).toContain(SCOPE_B);
   });
 
   it('keeps the rest of the rotation contract intact', async () => {

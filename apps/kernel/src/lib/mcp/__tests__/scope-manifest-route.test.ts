@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── MCP scope-manifest route wiring test ─────────────────────────────────────
 //
@@ -22,7 +22,8 @@ vi.mock('@/src/lib/kernel/scope-manifest-route', () => ({
 vi.mock('@/src/lib/mcp/scope-manifest', () => ({
   findMcpManifestAsset: vi.fn(),
   readActiveMcpScopes: vi.fn(),
-  publishMcpScopeManifest: vi.fn(),
+  publishMcpScopeManifest: vi.fn(async () => 'asset_published'),
+  widenMcpClientScopes: vi.fn(async () => undefined),
   VALID_MCP_SCOPES: ['media:read', 'media:write', 'media:share', 'connections:read'],
 }));
 
@@ -33,8 +34,22 @@ import {
   findMcpManifestAsset,
   readActiveMcpScopes,
   publishMcpScopeManifest,
+  widenMcpClientScopes,
   VALID_MCP_SCOPES,
 } from '@/src/lib/mcp/scope-manifest';
+
+type Publish = (ownerDid: string, scopes: readonly string[]) => Promise<string>;
+
+/** The wrapped `publish` the route handed to the factory. */
+function publish(): Publish {
+  return capturedOpts.current?.publish as Publish;
+}
+
+beforeEach(() => {
+  vi.mocked(publishMcpScopeManifest).mockClear();
+  vi.mocked(widenMcpClientScopes).mockClear();
+  vi.mocked(widenMcpClientScopes).mockResolvedValue(undefined);
+});
 
 describe('MCP scope-manifest route wiring', () => {
   it('calls createConnectorScopeManifestRoute with name: MCP', () => {
@@ -45,13 +60,43 @@ describe('MCP scope-manifest route wiring', () => {
     expect(capturedOpts.current?.validScopes).toBe(VALID_MCP_SCOPES);
   });
 
-  it('passes the MCP publisher functions', () => {
+  it('passes the MCP reader functions', () => {
     expect(capturedOpts.current?.findManifestAsset).toBe(findMcpManifestAsset);
     expect(capturedOpts.current?.readActiveScopes).toBe(readActiveMcpScopes);
-    expect(capturedOpts.current?.publish).toBe(publishMcpScopeManifest);
   });
 
   it('does NOT pass getExtraFields (native connector has no credentials)', () => {
     expect(capturedOpts.current?.getExtraFields).toBeUndefined();
+  });
+});
+
+// ── publish wrapper (#1647) ───────────────────────────────────────────────────
+//
+// `publish` is no longer the bare publisher: it also widens the owner's DCR
+// client registrations so the next token refresh picks up the newly toggled
+// scopes. Without it `registry.apps.requested_scopes` stays frozen at
+// registration time and Gate 1 (the JWT `scope` claim) never sees the scope.
+
+describe('MCP scope-manifest route — publish wrapper', () => {
+  it('delegates to publishMcpScopeManifest and returns its asset id', async () => {
+    const assetId = await publish()('did:owner', ['media:read']);
+    expect(publishMcpScopeManifest).toHaveBeenCalledWith('did:owner', ['media:read']);
+    expect(assetId).toBe('asset_published');
+  });
+
+  it('widens the client registrations with the same owner + scopes', async () => {
+    await publish()('did:owner', ['media:read', 'media:write']);
+    expect(widenMcpClientScopes).toHaveBeenCalledWith('did:owner', ['media:read', 'media:write']);
+  });
+
+  it('does not widen when the core publish throws', async () => {
+    vi.mocked(publishMcpScopeManifest).mockRejectedValueOnce(new Error('publish failed'));
+    await expect(publish()('did:owner', ['media:read'])).rejects.toThrow('publish failed');
+    expect(widenMcpClientScopes).not.toHaveBeenCalled();
+  });
+
+  it('still resolves when widening rejects (fire-and-forget)', async () => {
+    vi.mocked(widenMcpClientScopes).mockRejectedValueOnce(new Error('widen failed'));
+    await expect(publish()('did:owner', ['media:read'])).resolves.toBe('asset_published');
   });
 });

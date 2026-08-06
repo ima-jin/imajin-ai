@@ -17,8 +17,12 @@
  *
  * Refs: #1394 (this epic) · #1253 (vocabulary derivation) · #1222 (MCP grant
  *       back-port) · #1209 (channel-links) · #1207 (projection reactor) ·
+ *       #1647 (widening frozen DCR registrations) ·
  *       scope-manifest-core (shared implementation)
  */
+import { and, eq, gt, isNull } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+import { db, oauthRefreshTokens, registryApps } from '@/src/db';
 import {
   buildConnectorManifestContent,
   findConnectorManifestAsset,
@@ -33,6 +37,8 @@ import {
   requiresConsentRow,
 } from '@/src/lib/kernel/scope-projections';
 import { MCP_CONNECTOR_DID, MCP_CHANNEL } from './oauth-config';
+
+const log = createLogger('kernel');
 
 // ── Scope registry (derived — #1253) ────────────────────────────────────────
 
@@ -75,4 +81,101 @@ export function publishMcpScopeManifest(ownerDid: string, scopes: readonly strin
     filename: 'mcp-scope-manifest.md', scopeDescriptors: MCP_SCOPE_DESCRIPTORS,
     scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
   });
+}
+
+// ── DCR registration widening (#1647) ─────────────────────────────────────────
+
+/**
+ * Client IDs the owner currently holds a live MCP session for.
+ *
+ * `auth.oauth_refresh_tokens` is the only link between a resource-owner DID and
+ * the DCR client registrations acting on its behalf: the row carries both
+ * `userDid` and `clientId`. Revoked and expired rows are excluded so a
+ * long-disconnected client is never silently re-widened.
+ */
+async function activeMcpClientIds(ownerDid: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ clientId: oauthRefreshTokens.clientId })
+    .from(oauthRefreshTokens)
+    .where(
+      and(
+        eq(oauthRefreshTokens.userDid, ownerDid),
+        isNull(oauthRefreshTokens.revokedAt),
+        gt(oauthRefreshTokens.expiresAt, new Date()),
+      ),
+    );
+
+  const clientIds = new Set<string>();
+  for (const row of rows) clientIds.add(row.clientId);
+  return [...clientIds];
+}
+
+/** Union `incoming` into one active client registration's `requestedScopes`. */
+async function widenOneClientRegistration(
+  clientId: string,
+  incoming: readonly string[],
+): Promise<void> {
+  const [app] = await db
+    .select({ requestedScopes: registryApps.requestedScopes })
+    .from(registryApps)
+    .where(and(eq(registryApps.id, clientId), eq(registryApps.status, 'active')))
+    .limit(1);
+
+  if (!app) return;
+
+  const existing = Array.isArray(app.requestedScopes) ? app.requestedScopes : [];
+  const existingSet = new Set(existing);
+  const missing = incoming.filter((scope) => !existingSet.has(scope));
+  if (missing.length === 0) return;
+
+  await db
+    .update(registryApps)
+    .set({ requestedScopes: [...existingSet, ...missing], updatedAt: new Date() })
+    .where(eq(registryApps.id, clientId));
+
+  log.info({ clientId, added: missing }, 'widened MCP client requestedScopes (#1647)');
+}
+
+/**
+ * Widen `requestedScopes` on active MCP client registrations for the given
+ * owner DID to include the scopes they just toggled on (#1647).
+ *
+ * DCR registrations freeze `requestedScopes` at registration time. When the
+ * vocabulary expands (e.g. `messages:*` added by #1393), existing clients
+ * never pick up the new scopes — the token refresh path intersects with
+ * `requestedScopes`, so scopes missing from the registration never reach
+ * the JWT `scope` claim (Gate 1 blocks forever).
+ *
+ * This function finds the user's active MCP client registrations via their
+ * active refresh tokens and adds any missing scopes from the publish request.
+ * The next token refresh then picks them up via `resolveRefreshScopes`.
+ *
+ * Never widens past the MCP ceiling: every incoming scope is filtered through
+ * `VALID_MCP_SCOPES` first, so a bogus scope string can never be written into a
+ * registration.
+ *
+ * Idempotent: calling with the same scopes twice is a no-op.
+ *
+ * Fire-and-forget: the publish that triggered this already succeeded, so a
+ * failure here is degraded (the user must reconnect) rather than fatal. Errors
+ * are logged and swallowed — this never throws.
+ */
+export async function widenMcpClientScopes(
+  ownerDid: string,
+  scopes: readonly string[],
+): Promise<void> {
+  try {
+    const ceiling = new Set(VALID_MCP_SCOPES);
+    const incoming = [...new Set(scopes.filter((scope) => ceiling.has(scope)))];
+    if (incoming.length === 0) return;
+
+    for (const clientId of await activeMcpClientIds(ownerDid)) {
+      await widenOneClientRegistration(clientId, incoming);
+    }
+  } catch (err) {
+    log.error(
+      { err: String(err), ownerDid },
+      'widenMcpClientScopes failed (non-fatal) — clients keep their frozen requestedScopes',
+    );
+  }
 }

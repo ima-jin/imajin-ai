@@ -5,6 +5,7 @@
  * decoded JSON-RPC message + tool context into a response object (or null for
  * notifications). Tools come from the registry — adding tools never touches this.
  */
+import { resolveActiveMcpGrant } from './mcp-grant';
 import { ALL_TOOLS, toolByName } from './tools';
 import type { McpToolContext } from './types';
 
@@ -32,6 +33,31 @@ function ok(id: JsonRpcMessage['id'], result: unknown) {
 }
 function rpcError(id: JsonRpcMessage['id'], code: number, message: string) {
   return { jsonrpc: '2.0' as const, id: id ?? null, error: { code, message } };
+}
+
+/**
+ * Build the in-band denial for a tool whose required scope is absent from the
+ * caller's token (Gate 1).
+ *
+ * Gate 1 reads the JWT, which is frozen at issuance; Gate 2 (`channel_links`,
+ * written by the scope-manifest projection) is live. Toggling a scope on in the
+ * dashboard therefore satisfies Gate 2 immediately while Gate 1 keeps failing
+ * until the token is refreshed. Cross-checking the live grant here lets the
+ * client tell those two states apart (#1647):
+ *   - grant active  → `scope_token_stale`: refresh the access token.
+ *   - no grant      → `insufficient_scope`: enable the scope in the manifest.
+ */
+async function denyForMissingScope(
+  id: JsonRpcMessage['id'],
+  toolName: string,
+  requiredScope: string,
+  ownerDid: string,
+) {
+  const text = (await resolveActiveMcpGrant(ownerDid, requiredScope))
+    ? `Error: scope_token_stale — '${toolName}' requires '${requiredScope}'; the grant is active in your scope-manifest but your access token is stale — refresh your token to pick it up`
+    : `Error: insufficient_scope — '${toolName}' requires the '${requiredScope}' grant — enable it in your MCP scope-manifest`;
+
+  return ok(id, { content: [{ type: 'text', text }], isError: true });
 }
 
 /**
@@ -82,10 +108,7 @@ export async function handleMcpRpc(
       // read-only token cannot reach a write tool, and vice versa. Returned
       // in-band (isError) per MCP convention so the model sees why it was denied.
       if (tool.requiredScope && !ctx.scopes.has(tool.requiredScope)) {
-        return ok(msg.id, {
-          content: [{ type: 'text', text: `Error: insufficient_scope — '${tool.name}' requires the '${tool.requiredScope}' grant` }],
-          isError: true,
-        });
+        return denyForMissingScope(msg.id, tool.name, tool.requiredScope, ctx.did);
       }
       try {
         const args = (msg.params?.arguments as Record<string, unknown>) ?? {};
