@@ -16,7 +16,8 @@ on:
 jobs:
   conformance:
     name: DFOS Conformance Suite
-    runs-on: imajin-runner
+    runs-on: imajin-self-hosted
+    container: imajin-ci:latest
     steps:
       - name: Set up Go
         uses: actions/setup-go@v5
