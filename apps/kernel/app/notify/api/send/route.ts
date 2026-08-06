@@ -5,6 +5,7 @@ import { withLogger } from '@imajin/logger';
 import { db, notifications, preferences, identities, profiles } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { getTemplate } from '@/src/lib/notify/templates';
+import { buildNotificationFrame, pushNotificationToDid } from '@/src/lib/notify/ws-push';
 import { sendEmail } from '@imajin/email';
 
 export async function OPTIONS(request: NextRequest) {
@@ -112,8 +113,12 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   const emailEnabled = pref ? pref.email : true;
   const inappEnabled = pref ? pref.inapp : true;
 
-  // Store notification
+  // Store notification. `createdAt` is set explicitly rather than left to the
+  // column default so the WS frame below carries the same timestamp the row does
+  // — a client that receives the push and later reads the row must not see two
+  // different creation times for one notification.
   const id = `ntf_${nanoid(16)}`;
+  const createdAt = new Date();
   await db.insert(notifications).values({
     id,
     recipientDid: to,
@@ -124,12 +129,23 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     data: data as any,
     channelsSent: [],
     read: false,
+    createdAt,
   });
 
   const channelsSent: string[] = [];
 
   if (inappEnabled) {
     channelsSent.push('inapp');
+
+    // Real-time push down any socket the recipient has open (#1644). Gated on the
+    // in-app preference because a WS frame *is* in-app delivery, and awaited only
+    // so `channelsSent` can record whether anyone was actually listening — the
+    // push itself never fails the request.
+    const delivered = await pushNotificationToDid(
+      to,
+      buildNotificationFrame({ id, scope, title, body: notifBody, data, createdAt }),
+    );
+    if (delivered) channelsSent.push('ws');
   }
 
   // Send email if enabled and template has email config
