@@ -8,6 +8,7 @@ import {
   isLoopbackRedirectUri,
   redirectUriMatches,
   resolveGrantedScopes,
+  resolveRefreshScopes,
   getMcpIssuer,
   getMcpResource,
   getAuthorizationEndpoint,
@@ -177,6 +178,41 @@ describe('resolveGrantedScopes — RFC 6749 §3.3 default scope', () => {
 
   it('tolerates irregular whitespace between explicit scopes', () => {
     expect(resolveGrantedScopes(`  ${scopeA}   ${scopeB}  `, [scopeA, scopeB])).toEqual([scopeA, scopeB]);
+  });
+});
+
+describe('resolveRefreshScopes — re-resolution on refresh (#1630)', () => {
+  const [scopeA, scopeB] = MCP_SCOPES;
+  const UNSUPPORTED = 'totally:not-a-real-scope';
+
+  it('returns the client\u2019s current registration ∩ the MCP ceiling', () => {
+    expect(resolveRefreshScopes([scopeA, scopeB])).toEqual([scopeA, scopeB]);
+    expect(resolveRefreshScopes([scopeA])).toEqual([scopeA]);
+  });
+
+  it('picks up a scope added to the registration after authorization (the bug)', () => {
+    // The refresh lineage used to carry the original scope string forever, so a
+    // scope toggled on later never reached the JWT.
+    expect(resolveRefreshScopes([scopeA, scopeB])).toContain(scopeB);
+  });
+
+  it('drops a scope removed from the registration', () => {
+    expect(resolveRefreshScopes([scopeA])).not.toContain(scopeB);
+  });
+
+  it('applies the MCP ceiling, so a stale registry row cannot widen', () => {
+    expect(resolveRefreshScopes([scopeA, UNSUPPORTED])).toEqual([scopeA]);
+    expect(resolveRefreshScopes([UNSUPPORTED])).toEqual([]);
+  });
+
+  it('de-duplicates repeated registry entries', () => {
+    expect(resolveRefreshScopes([scopeA, scopeA, scopeB])).toEqual([scopeA, scopeB]);
+  });
+
+  it('returns [] for an empty / absent registration (callers must fail closed)', () => {
+    expect(resolveRefreshScopes([])).toEqual([]);
+    expect(resolveRefreshScopes(null)).toEqual([]);
+    expect(resolveRefreshScopes(undefined)).toEqual([]);
   });
 });
 
