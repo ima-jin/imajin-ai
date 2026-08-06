@@ -22,12 +22,20 @@
  * Fails closed with 403 when the caller has no active `warp:dispatch` grant and
  * 409 when no key is sealed (or its grant was revoked). The key is never logged,
  * echoed, or included in any error body.
+ *
+ * On success the run is also watched to completion in the background (#1639), so
+ * `warp.run.completed` lands on the bus without the caller polling for it.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
-import { dispatchAgentRun, type DispatchAgentRunInput, type WarpMcpServerConfig } from '@/src/lib/warp/dispatch';
+import {
+  dispatchAgentRun,
+  watchRun,
+  type DispatchAgentRunInput,
+  type WarpMcpServerConfig,
+} from '@/src/lib/warp/dispatch';
 import { warpErrorResponse } from '@/src/lib/warp/route-errors';
 
 const log = createLogger('kernel');
@@ -111,6 +119,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const run = await dispatchAgentRun(principalDid, input);
+
+    // Fire-and-forget, deliberately un-awaited: the watch polls for up to 30
+    // minutes, so putting it in the response path would turn a 201 into a
+    // timeout. `watchRun` never rejects, so there is nothing here to catch — it
+    // logs its own failures and the dispatch stands either way.
+    void watchRun(principalDid, run.runId);
+
     return NextResponse.json(run, { status: 201, headers: cors });
   } catch (err) {
     log.error({ err: String(err), principalDid }, 'Warp dispatch failed');

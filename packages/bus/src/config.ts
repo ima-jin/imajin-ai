@@ -263,6 +263,16 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'vault.delegation.revoked': [
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #1639 Stage 3 — the completion event IS the notification: `emit` puts it on
+  // the live event stream, so an orchestrating agent is woken by a dispatched run
+  // finishing instead of polling `get_run` for it. A DB row in
+  // `kernel.bus_chain_configs` overrides this per node/scope as usual.
+  'warp.run.completed': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'warp.run.timeout': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
   'broker.release': [
     { type: 'emit', config: {}, enabled: true },
   ],

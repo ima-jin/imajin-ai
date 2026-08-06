@@ -32,6 +32,12 @@
  *   - `GET  /agent/runs`                     → {@link listAgentRuns}
  *   - `POST /agent/runs/{runId}/cancel`      → {@link cancelAgentRun}
  *   - `POST /agent/runs/{runId}/followups`   → {@link sendFollowup}
+ *
+ * ## Completion watch (#1639, Stage 3)
+ * Warp publishes no webhooks, so {@link watchRun} polls a dispatched run until it
+ * stops and puts the outcome on the bus as `warp.run.completed` (or
+ * `warp.run.timeout`). That is what turns dispatch from "fire and poll by hand"
+ * into a closed loop.
  */
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -1145,4 +1151,273 @@ export async function sendFollowup(
   log.info({ principalDid, runId: id, mode: input.mode ?? null }, 'Warp run follow-up accepted');
 
   return { runId: id, accepted: true };
+}
+
+// ── Completion watch (#1639) ──────────────────────────────────────────────────
+
+/** A terminal state, i.e. one nothing further will happen from. */
+export type WarpRunTerminalState = 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+
+/**
+ * Terminal run states.
+ *
+ * `BLOCKED` is deliberately absent: a blocked run is waiting on a human, not
+ * finished, and a watch that treated it as an ending would report a completion
+ * for work that is still going to happen.
+ */
+const TERMINAL_STATES = new Set<string>(['SUCCEEDED', 'FAILED', 'CANCELLED']);
+
+/**
+ * Gaps between polls, in ms, applied in order and then held at the last value.
+ *
+ * Increasing rather than fixed because run durations are bimodal: most finish in
+ * the first minute, and the ones that do not run for many minutes. A flat 5s
+ * would cost ~360 reads on a 30-minute run for no extra information.
+ */
+export const WATCH_POLL_INTERVALS_MS: readonly number[] = [5_000, 10_000, 30_000, 60_000];
+
+/** How long a watch waits for a terminal state before giving up. */
+export const WATCH_TIMEOUT_MS = 30 * 60 * 1_000;
+
+/**
+ * Consecutive failed reads after which a watch stops.
+ *
+ * A read can fail transiently (a 502, a dropped connection) and retrying is
+ * right. It can also fail permanently in ways that are not classifiable up front,
+ * and a watch that retried those for the full 30 minutes would just be noise.
+ */
+const WATCH_MAX_CONSECUTIVE_ERRORS = 5;
+
+/** State reported when a watch never managed to read the run even once. */
+const UNKNOWN_STATE = 'UNKNOWN';
+
+/** Stand-in for an artifact Warp returned without an `artifact_type`. */
+const UNKNOWN_ARTIFACT_TYPE = 'UNKNOWN';
+
+export interface WatchRunOptions {
+  /** Override the poll schedule. Tests pass short gaps; production uses the default. */
+  intervalsMs?: readonly number[];
+  /** Override the total budget. Defaults to {@link WATCH_TIMEOUT_MS}. */
+  timeoutMs?: number;
+  /** Injectable delay, so a test does not have to wait real seconds. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Wait `ms`, without holding the process open.
+ *
+ * The timer is unref'd: a watch may have a 60-second sleep in flight when a
+ * deploy restarts the kernel, and a pending completion event is not worth
+ * delaying a shutdown for.
+ */
+function sleepFor(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms) as unknown as { unref?: () => void };
+    timer.unref?.();
+  });
+}
+
+/**
+ * Whether retrying this error is pointless.
+ *
+ * A revoked grant, a purged key, or a run this credential cannot see will answer
+ * the same way for the rest of the watch, so the budget is better abandoned than
+ * spent. Everything else is treated as transient and retried.
+ */
+function isUnrecoverableWatchError(err: unknown): boolean {
+  if (err instanceof WarpApiError) {
+    return err.status === 401 || err.status === 403 || err.status === 404;
+  }
+
+  const message = err instanceof Error ? err.message : String(err);
+  return message.startsWith('warp_no_grant') || message.startsWith('warp_no_secret');
+}
+
+/**
+ * Flatten a run's artifacts to the fields a bus listener acts on.
+ *
+ * `data` is Warp's own per-type object; `url` and `branch` are lifted out of it
+ * because for a `PULL_REQUEST` artifact they are the PR linkage this issue exists
+ * to stop people searching GitHub for. The rest of `data` is dropped rather than
+ * passed through: it is unbounded, and events are persisted.
+ */
+function toEventArtifacts(
+  artifacts: WarpRunArtifact[],
+): Array<{ type: string; url: string | null; branch: string | null }> {
+  return artifacts.map((artifact) => ({
+    type: artifact.artifactType ?? UNKNOWN_ARTIFACT_TYPE,
+    url: optionalString(artifact.data?.url) ?? null,
+    branch: optionalString(artifact.data?.branch) ?? null,
+  }));
+}
+
+/** How a watch ended. */
+type WatchOutcome =
+  | { kind: 'terminal'; run: WarpAgentRun; state: WarpRunTerminalState }
+  | { kind: 'timeout'; lastKnownState: string }
+  /** Reads kept failing, or failed in a way retrying cannot fix. */
+  | { kind: 'abandoned'; lastKnownState: string };
+
+/**
+ * Poll `runId` until it is terminal, the budget runs out, or reads stop working.
+ *
+ * The final sleep is truncated to the remaining budget, so the deadline gets one
+ * last read landing exactly on it rather than being overshot by up to a minute.
+ */
+async function pollUntilTerminal(
+  principalDid: string,
+  runId: string,
+  options: WatchRunOptions,
+): Promise<WatchOutcome> {
+  const intervals =
+    options.intervalsMs !== undefined && options.intervalsMs.length > 0
+      ? options.intervalsMs
+      : WATCH_POLL_INTERVALS_MS;
+  const timeoutMs = options.timeoutMs ?? WATCH_TIMEOUT_MS;
+  const sleep = options.sleep ?? sleepFor;
+
+  const deadline = Date.now() + timeoutMs;
+  let lastKnownState = UNKNOWN_STATE;
+  let consecutiveErrors = 0;
+
+  for (let attempt = 0; ; attempt += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return { kind: 'timeout', lastKnownState };
+
+    await sleep(Math.min(intervals[Math.min(attempt, intervals.length - 1)], remaining));
+
+    let run: WarpAgentRun;
+    try {
+      run = await getAgentRun(principalDid, runId);
+      consecutiveErrors = 0;
+    } catch (err) {
+      consecutiveErrors += 1;
+      const fatal = isUnrecoverableWatchError(err);
+      log.warn(
+        { err: String(err), principalDid, runId, consecutiveErrors, fatal },
+        'Warp run watch could not read the run',
+      );
+      if (fatal || consecutiveErrors >= WATCH_MAX_CONSECUTIVE_ERRORS) {
+        return { kind: 'abandoned', lastKnownState };
+      }
+      continue;
+    }
+
+    lastKnownState = run.state ?? lastKnownState;
+    if (run.state !== null && TERMINAL_STATES.has(run.state)) {
+      return { kind: 'terminal', run, state: run.state as WarpRunTerminalState };
+    }
+  }
+}
+
+async function publishRunCompleted(
+  principalDid: string,
+  run: WarpAgentRun,
+  state: WarpRunTerminalState,
+): Promise<void> {
+  await publish('warp.run.completed', {
+    issuer: principalDid,
+    subject: principalDid,
+    scope: 'warp',
+    payload: {
+      runId: run.runId,
+      state,
+      title: run.title,
+      configName: run.configName,
+      runTime: run.runTime,
+      statusMessage: run.statusMessage,
+      requestUsage: run.requestUsage,
+      artifacts: toEventArtifacts(run.artifacts),
+      sessionLink: run.sessionLink,
+      principalDid,
+      completedAt: new Date().toISOString(),
+      // Same context as `warp.agent.dispatched`, so dispatch and completion are
+      // one thread rather than two unrelated rows.
+      context_id: run.runId,
+      context_type: 'warp.agent',
+    },
+  });
+}
+
+async function publishRunTimeout(
+  principalDid: string,
+  runId: string,
+  lastKnownState: string,
+): Promise<void> {
+  await publish('warp.run.timeout', {
+    issuer: principalDid,
+    subject: principalDid,
+    scope: 'warp',
+    payload: {
+      runId,
+      lastKnownState,
+      principalDid,
+      timedOutAt: new Date().toISOString(),
+      context_id: runId,
+      context_type: 'warp.agent',
+    },
+  });
+}
+
+/**
+ * Watch a dispatched run to its end and put the outcome on the bus (#1639).
+ *
+ * Publishes `warp.run.completed` on a terminal state and `warp.run.timeout` when
+ * the budget runs out, so an orchestrating agent never has to poll `getAgentRun`
+ * by hand — which was the whole manual step this stage removes.
+ *
+ * Reads with the caller's own sealed key, through {@link getAgentRun}, so a watch
+ * has exactly the authority the dispatch had and dies with the grant.
+ *
+ * **Never rejects and never throws.** This is started fire-and-forget from the
+ * dispatch route, where an unhandled rejection would be a process-level event for
+ * something as inconsequential as a failed status read. Every failure is logged
+ * and swallowed instead.
+ *
+ * Returns a promise that resolves when the watch is done, so callers that *do*
+ * care (tests, a future synchronous "dispatch and wait") can await it.
+ */
+export async function watchRun(
+  principalDid: string,
+  runId: string,
+  options: WatchRunOptions = {},
+): Promise<void> {
+  try {
+    const id = requireRunId(runId);
+    const outcome = await pollUntilTerminal(principalDid, id, options);
+
+    if (outcome.kind === 'terminal') {
+      log.info(
+        {
+          principalDid,
+          runId: id,
+          state: outcome.state,
+          runTime: outcome.run.runTime,
+          errorCode: outcome.run.statusMessage?.errorCode ?? null,
+        },
+        'Warp cloud agent run reached a terminal state',
+      );
+      await publishRunCompleted(principalDid, outcome.run, outcome.state);
+      return;
+    }
+
+    if (outcome.kind === 'timeout') {
+      log.warn(
+        { principalDid, runId: id, lastKnownState: outcome.lastKnownState },
+        'Warp run watch timed out before the run reached a terminal state',
+      );
+      await publishRunTimeout(principalDid, id, outcome.lastKnownState);
+      return;
+    }
+
+    // Abandoned: the run may still be running, but nothing is going to report on
+    // it. No event, because we know nothing about the outcome — only that we can
+    // no longer see it, which the warn above already records.
+    log.warn(
+      { principalDid, runId: id, lastKnownState: outcome.lastKnownState },
+      'Warp run watch abandoned; the run is no longer readable',
+    );
+  } catch (err) {
+    log.error({ err: String(err), principalDid, runId }, 'Warp run watch failed');
+  }
 }

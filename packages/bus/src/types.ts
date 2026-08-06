@@ -682,6 +682,76 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'warp.agent';
   };
+  /**
+   * A dispatched Warp run reached a terminal state (#1639, Stage 3).
+   *
+   * Warp has no webhooks, so the kernel watches the run it dispatched and
+   * publishes this when it stops. Together with `warp.agent.dispatched` — same
+   * `context_id` (the run id), same `context_type` — it closes the audit loop: an
+   * orchestrating agent learns the outcome from the bus instead of polling.
+   *
+   * Carries everything a listener needs without a follow-up read: which dispatch
+   * this completes (`runId` / `principalDid`), whether it worked (`state`, plus
+   * `statusMessage.errorCode` when it did not), what it produced (`artifacts`,
+   * which is where a PULL_REQUEST url and branch live), and what it cost
+   * (`runTime`, `requestUsage`).
+   *
+   * Carries NO prompt, NO transcript, and NO credential material — same
+   * invariant as `warp.agent.dispatched`, because events are persisted and fanned
+   * out to reactors.
+   */
+  'warp.run.completed': {
+    runId: string;
+    /**
+     * The terminal state.
+     *
+     * `CANCELLED` is included alongside Warp's two natural endings: a cancelled
+     * run is just as finished, and reporting it as a completion is honest where
+     * watching it for another 30 minutes and then claiming a timeout would not
+     * be.
+     */
+    state: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+    title: string | null;
+    /** Warp `config.name`, e.g. `veteze-jin` — the dispatching credential's tag. */
+    configName: string | null;
+    /** Server-computed ISO-8601 duration, e.g. `PT2M30S`. */
+    runTime: string | null;
+    /**
+     * Why the run ended where it did. `retryable` is nullable because Warp only
+     * states it on some terminal errors, and inventing `false` for "unstated"
+     * would tell a listener not to retry something Warp never ruled out.
+     */
+    statusMessage: { message: string; errorCode: string | null; retryable: boolean | null } | null;
+    requestUsage: { inferenceCost: number | null; computeCost: number | null; platformCost: number | null } | null;
+    /**
+     * What the run produced, flattened to the fields a listener acts on. `type`
+     * is Warp's `artifact_type` (`PULL_REQUEST`, `PLAN`, …) and `url`/`branch`
+     * are lifted out of its per-type `data` when present.
+     */
+    artifacts: Array<{ type: string; url: string | null; branch: string | null }>;
+    sessionLink: string | null;
+    /** Who dispatched it — the DID whose sealed key fired and watched the run. */
+    principalDid: string;
+    completedAt: string;
+    context_id: string;
+    context_type: 'warp.agent';
+  };
+  /**
+   * A watched Warp run did not reach a terminal state before the watch gave up
+   * (#1639, Stage 3).
+   *
+   * Published instead of `warp.run.completed` so a silent watch is never mistaken
+   * for a run still in flight: the run may well still be going, but nothing will
+   * report on it again. `lastKnownState` is the final state the watch observed.
+   */
+  'warp.run.timeout': {
+    runId: string;
+    lastKnownState: string;
+    principalDid: string;
+    timedOutAt: string;
+    context_id: string;
+    context_type: 'warp.agent';
+  };
   'broker.release': {
     releaseId: string;
     requester: string;
