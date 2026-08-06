@@ -47,7 +47,17 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => logMock,
 }));
 
-import { dispatchAgentRun, getAgentRun, resolveJinName, WarpApiError } from '../dispatch';
+import {
+  cancelAgentRun,
+  dispatchAgentRun,
+  getAgentRun,
+  getAgentRunConversation,
+  getAgentRunTranscript,
+  listAgentRuns,
+  resolveJinName,
+  sendFollowup,
+  WarpApiError,
+} from '../dispatch';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -73,6 +83,12 @@ function storeEnvironments(byDid: Record<string, string>): void {
 interface FetchCall {
   url: string;
   init: RequestInit;
+}
+
+function fetchCall(index: number): FetchCall {
+  const calls = vi.mocked(globalThis.fetch).mock.calls;
+  const [url, init] = calls[index] as [string, RequestInit];
+  return { url, init };
 }
 
 function lastFetchCall(): FetchCall {
@@ -107,6 +123,44 @@ function respondNonJson(status: number): void {
     statusText: 'Bad Gateway',
     json: async () => {
       throw new Error('not json');
+    },
+  } as unknown as Response);
+}
+
+/** Queue an unfollowed redirect, as `redirect: 'manual'` surfaces one. */
+function respondRedirect(location: string, status = 302): void {
+  vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+    ok: false,
+    status,
+    statusText: 'Found',
+    headers: new Headers(location.length === 0 ? {} : { location }),
+    json: async () => ({}),
+    text: async () => '',
+  } as unknown as Response);
+}
+
+/** Queue a text/plain response, as the transcript download answers. */
+function respondText(body: string, contentType = 'text/plain', status = 200): void {
+  vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: 'Test',
+    headers: new Headers({ 'content-type': contentType }),
+    text: async () => body,
+    json: async () => {
+      throw new Error('not json');
+    },
+  } as unknown as Response);
+}
+
+/** Queue a 200 with no body at all, as the mutation endpoints may answer. */
+function respondEmpty(): void {
+  vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: async () => {
+      throw new Error('unexpected end of JSON input');
     },
   } as unknown as Response);
 }
@@ -562,5 +616,519 @@ describe('getAgentRun', () => {
   it('rejects an empty run id', async () => {
     await expect(getAgentRun(PRINCIPAL, '  ')).rejects.toThrow(/warp_invalid_run_id/);
     expect(requireAgentKeyMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── Full run parse (#1639) ────────────────────────────────────────────────────
+//
+// The response always carried these; we only read five of them. These pin the
+// rest, and pin that each one degrades to null rather than failing the read.
+
+describe('getAgentRun parses the whole run body', () => {
+  const FULL_RUN = {
+    run_id: RUN_ID,
+    state: 'FAILED',
+    session_link: 'https://app.warp.dev/session/abc',
+    title: 'Nightly',
+    created_at: '2026-08-05T10:00:00Z',
+    started_at: '2026-08-05T10:00:05Z',
+    updated_at: '2026-08-05T10:02:35Z',
+    run_time: 'PT2M30S',
+    status_message: {
+      message: 'Team has no remaining add-on credits',
+      error_code: 'insufficient_credits',
+      retryable: false,
+    },
+    source: 'API',
+    execution_location: 'REMOTE',
+    session_id: 'session-uuid',
+    conversation_id: 'conversation-uuid',
+    parent_run_id: 'parent-uuid',
+    trigger_url: 'https://linear.app/issue/ABC-1',
+    is_sandbox_running: true,
+    request_usage: { inference_cost: 0.42, compute_cost: 0.1, platform_cost: 0 },
+    creator: { type: 'service_account', uid: 'sa-1', display_name: 'veteze-jin' },
+    executor: { type: 'user', uid: 'u-1', display_name: 'Veteze' },
+    agent_config: {
+      name: 'veteze-jin',
+      model_id: 'auto',
+      environment_id: OWN_ENV,
+      skill_spec: 'ima-jin/imajin-ai:catalyst',
+    },
+    agent_skill: { name: 'catalyst', full_path: '.warp/skills/catalyst/SKILL.md' },
+    schedule: { schedule_id: 's-1', schedule_name: 'nightly', cron_schedule: '0 3 * * *' },
+    artifacts: [
+      {
+        artifact_type: 'PULL_REQUEST',
+        created_at: '2026-08-05T10:02:00Z',
+        data: { url: 'https://github.com/ima-jin/imajin-ai/pull/1638', branch: 'fix/1630' },
+      },
+    ],
+  };
+
+  it('surfaces the lifecycle timestamps and the server-computed run time', async () => {
+    respondJson(FULL_RUN);
+    const run = await getAgentRun(PRINCIPAL, RUN_ID);
+
+    expect(run).toMatchObject({
+      createdAt: '2026-08-05T10:00:00Z',
+      startedAt: '2026-08-05T10:00:05Z',
+      updatedAt: '2026-08-05T10:02:35Z',
+      runTime: 'PT2M30S',
+    });
+  });
+
+  it('surfaces the structured status message that explains a failure', async () => {
+    respondJson(FULL_RUN);
+    const run = await getAgentRun(PRINCIPAL, RUN_ID);
+
+    expect(run.statusMessage).toEqual({
+      message: 'Team has no remaining add-on credits',
+      errorCode: 'insufficient_credits',
+      retryable: false,
+    });
+  });
+
+  it('surfaces provenance, cost, and the resolved config', async () => {
+    respondJson(FULL_RUN);
+    const run = await getAgentRun(PRINCIPAL, RUN_ID);
+
+    expect(run).toMatchObject({
+      source: 'API',
+      executionLocation: 'REMOTE',
+      sessionId: 'session-uuid',
+      conversationId: 'conversation-uuid',
+      parentRunId: 'parent-uuid',
+      triggerUrl: 'https://linear.app/issue/ABC-1',
+      isSandboxRunning: true,
+      modelId: 'auto',
+      environmentId: OWN_ENV,
+      skillSpec: 'ima-jin/imajin-ai:catalyst',
+    });
+    expect(run.requestUsage).toEqual({ inferenceCost: 0.42, computeCost: 0.1, platformCost: 0 });
+    expect(run.creator).toEqual({
+      type: 'service_account',
+      uid: 'sa-1',
+      displayName: 'veteze-jin',
+    });
+    expect(run.executor?.displayName).toBe('Veteze');
+    expect(run.agentSkill).toEqual({
+      name: 'catalyst',
+      fullPath: '.warp/skills/catalyst/SKILL.md',
+      bundledSkillId: null,
+    });
+    expect(run.schedule?.cronSchedule).toBe('0 3 * * *');
+  });
+
+  it('surfaces the pull request artifact, which is the PR linkage', async () => {
+    respondJson(FULL_RUN);
+    const run = await getAgentRun(PRINCIPAL, RUN_ID);
+
+    expect(run.artifacts).toHaveLength(1);
+    expect(run.artifacts[0]).toMatchObject({
+      artifactType: 'PULL_REQUEST',
+      data: { url: 'https://github.com/ima-jin/imajin-ai/pull/1638', branch: 'fix/1630' },
+    });
+  });
+
+  it('never surfaces the prompt, so a run stays safe to log and publish', async () => {
+    respondJson({ ...FULL_RUN, prompt: 'a prompt that must not be persisted' });
+    const run = await getAgentRun(PRINCIPAL, RUN_ID);
+
+    expect(run).not.toHaveProperty('prompt');
+    expect(JSON.stringify(run)).not.toContain('must not be persisted');
+  });
+
+  it('degrades every absent or malformed field to null rather than throwing', async () => {
+    respondJson({
+      run_id: RUN_ID,
+      state: 'QUEUED',
+      status_message: { error_code: 'invalid_request' },
+      request_usage: 'not an object',
+      creator: [],
+      artifacts: ['not an object'],
+    });
+
+    const run = await getAgentRun(PRINCIPAL, RUN_ID);
+
+    expect(run).toMatchObject({
+      createdAt: null,
+      startedAt: null,
+      runTime: null,
+      // No `message` means there is nothing to report, so the whole field is null.
+      statusMessage: null,
+      requestUsage: null,
+      creator: null,
+      artifacts: [],
+    });
+  });
+
+  it('reads a config that arrived under `config` rather than `agent_config`', async () => {
+    respondJson({ run_id: RUN_ID, config: { name: 'veteze-jin', model_id: 'auto' } });
+    const run = await getAgentRun(PRINCIPAL, RUN_ID);
+
+    expect(run).toMatchObject({ configName: 'veteze-jin', modelId: 'auto' });
+  });
+});
+
+// ── Transcript (#1639) ────────────────────────────────────────────────────────
+
+describe('getAgentRunTranscript', () => {
+  const DOWNLOAD_URL = 'https://storage.warp.test/transcripts/abc?signature=xyz';
+
+  it('asks Warp not to follow the redirect, then downloads the transcript', async () => {
+    respondRedirect(DOWNLOAD_URL);
+    respondText('user: go\nassistant: done');
+
+    const transcript = await getAgentRunTranscript(PRINCIPAL, RUN_ID);
+
+    const api = fetchCall(0);
+    expect(api.url).toBe(`${BASE_URL}/agent/runs/${RUN_ID}/transcript`);
+    expect(api.init.redirect).toBe('manual');
+    expect(fetchCall(1).url).toBe(DOWNLOAD_URL);
+    expect(transcript).toMatchObject({
+      runId: RUN_ID,
+      content: 'user: go\nassistant: done',
+      contentType: 'text/plain',
+      truncated: false,
+    });
+  });
+
+  it('never presents the sealed key to the pre-signed download URL', async () => {
+    respondRedirect(DOWNLOAD_URL);
+    respondText('transcript');
+
+    await getAgentRunTranscript(PRINCIPAL, RUN_ID);
+
+    // The signature is the credential on that host; ours has no business there.
+    expect(fetchCall(1).init).toBeUndefined();
+    expect(JSON.stringify(vi.mocked(globalThis.fetch).mock.calls[1])).not.toContain(AGENT_KEY);
+  });
+
+  it('reads a transcript served inline instead of via a redirect', async () => {
+    respondText('inline transcript', 'application/json');
+
+    const transcript = await getAgentRunTranscript(PRINCIPAL, RUN_ID);
+
+    expect(transcript.content).toBe('inline transcript');
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it('truncates at the cap and says so rather than returning an unbounded body', async () => {
+    respondRedirect(DOWNLOAD_URL);
+    respondText('0123456789');
+
+    const transcript = await getAgentRunTranscript(PRINCIPAL, RUN_ID, { maxChars: 4 });
+
+    expect(transcript.content).toBe('0123');
+    expect(transcript.truncated).toBe(true);
+  });
+
+  it('fails as an upstream fault when the redirect carries no Location', async () => {
+    respondRedirect('');
+
+    const err = (await getAgentRunTranscript(PRINCIPAL, RUN_ID).catch(
+      (e: unknown) => e,
+    )) as WarpApiError;
+
+    expect(err).toBeInstanceOf(WarpApiError);
+    expect(err.status).toBe(502);
+  });
+
+  it('maps a failed download to the status the storage host reported', async () => {
+    respondRedirect(DOWNLOAD_URL);
+    respondText('expired', 'text/plain', 403);
+
+    const err = (await getAgentRunTranscript(PRINCIPAL, RUN_ID).catch(
+      (e: unknown) => e,
+    )) as WarpApiError;
+
+    expect(err.status).toBe(403);
+  });
+
+  it('maps a Warp problem document from the transcript endpoint itself', async () => {
+    respondJson({ title: 'Not found', type: '…/errors/resource_not_found' }, 404);
+
+    const err = (await getAgentRunTranscript(PRINCIPAL, RUN_ID).catch(
+      (e: unknown) => e,
+    )) as WarpApiError;
+
+    expect(err.status).toBe(404);
+    expect(err.code).toBe('resource_not_found');
+  });
+
+  it('is gated by the same grant, and rejects a blank run id first', async () => {
+    await expect(getAgentRunTranscript(PRINCIPAL, ' ')).rejects.toThrow(/warp_invalid_run_id/);
+    expect(requireAgentKeyMock).not.toHaveBeenCalled();
+
+    requireAgentKeyMock.mockRejectedValue(new Error('warp_no_grant: nope'));
+    await expect(getAgentRunTranscript(PRINCIPAL, RUN_ID)).rejects.toThrow(/warp_no_grant/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
+// ── Conversation (#1639) ──────────────────────────────────────────────────────
+
+describe('getAgentRunConversation', () => {
+  it('GETs the normalized conversation and passes the step tree through', async () => {
+    respondJson({
+      conversation_id: 'conversation-uuid',
+      steps: [
+        {
+          id: 'step-1',
+          messages: [
+            { role: 'assistant', content: [{ type: 'text', text: 'working' }] },
+            {
+              role: 'tool',
+              content: [
+                { type: 'action', id: 'a1', category: 'COMMAND', name: 'run_command', input: {} },
+              ],
+            },
+          ],
+          steps: [],
+        },
+      ],
+    });
+
+    const conversation = await getAgentRunConversation(PRINCIPAL, RUN_ID);
+
+    const { url, init } = lastFetchCall();
+    expect(url).toBe(`${BASE_URL}/agent/runs/${RUN_ID}/conversation`);
+    expect(init.method).toBe('GET');
+    expect(conversation.conversationId).toBe('conversation-uuid');
+    expect(conversation.steps[0].messages[1].content[0]).toMatchObject({
+      type: 'action',
+      name: 'run_command',
+    });
+  });
+
+  it('returns an empty step list rather than null when there is nothing to walk', async () => {
+    respondJson({ conversation_id: 'c1' });
+    const conversation = await getAgentRunConversation(PRINCIPAL, RUN_ID);
+
+    expect(conversation.steps).toEqual([]);
+  });
+
+  it('treats a non-object payload as an upstream fault', async () => {
+    respondJson('not a conversation');
+
+    const err = (await getAgentRunConversation(PRINCIPAL, RUN_ID).catch(
+      (e: unknown) => e,
+    )) as WarpApiError;
+
+    expect(err).toBeInstanceOf(WarpApiError);
+    expect(err.status).toBe(502);
+  });
+
+  it('url-encodes the run id so a hostile value cannot reshape the path', async () => {
+    respondJson({ steps: [] });
+    await getAgentRunConversation(PRINCIPAL, '../../agent/runs');
+
+    expect(lastFetchCall().url).toBe(
+      `${BASE_URL}/agent/runs/..%2F..%2Fagent%2Fruns/conversation`,
+    );
+  });
+});
+
+// ── Run history (#1639) ───────────────────────────────────────────────────────
+
+describe('listAgentRuns', () => {
+  it('GETs /agent/runs with no query when no filters are given', async () => {
+    respondJson({ runs: [], page_info: { has_next_page: false } });
+    await listAgentRuns(PRINCIPAL);
+
+    const { url, init } = lastFetchCall();
+    expect(url).toBe(`${BASE_URL}/agent/runs`);
+    expect(init.method).toBe('GET');
+    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${AGENT_KEY}`);
+  });
+
+  it('repeats `state` rather than comma-joining it, which is the only shape Warp reads', async () => {
+    respondJson({ runs: [], page_info: { has_next_page: false } });
+    await listAgentRuns(PRINCIPAL, { states: ['QUEUED', 'INPROGRESS'] });
+
+    const query = new URL(lastFetchCall().url).searchParams;
+    expect(query.getAll('state')).toEqual(['QUEUED', 'INPROGRESS']);
+  });
+
+  it('maps the documented filters onto Warp snake_case parameters', async () => {
+    respondJson({ runs: [], page_info: { has_next_page: false } });
+    await listAgentRuns(PRINCIPAL, {
+      name: 'veteze-jin',
+      environmentId: OWN_ENV,
+      createdAfter: '2026-08-01T00:00:00Z',
+      cursor: 'cursor-1',
+    });
+
+    const query = new URL(lastFetchCall().url).searchParams;
+    expect(query.get('name')).toBe('veteze-jin');
+    expect(query.get('environment_id')).toBe(OWN_ENV);
+    expect(query.get('created_after')).toBe('2026-08-01T00:00:00Z');
+    expect(query.get('cursor')).toBe('cursor-1');
+  });
+
+  it('clamps an out-of-range page size instead of failing the read', async () => {
+    respondJson({ runs: [], page_info: { has_next_page: false } });
+    await listAgentRuns(PRINCIPAL, { limit: 5000 });
+    expect(new URL(lastFetchCall().url).searchParams.get('limit')).toBe('500');
+
+    respondJson({ runs: [], page_info: { has_next_page: false } });
+    await listAgentRuns(PRINCIPAL, { limit: 0 });
+    expect(new URL(lastFetchCall().url).searchParams.get('limit')).toBe('1');
+  });
+
+  it('returns the parsed runs and the pagination cursor', async () => {
+    respondJson({
+      runs: [
+        { run_id: 'run-1', state: 'SUCCEEDED', run_time: 'PT10S' },
+        { run_id: 'run-2', state: 'QUEUED' },
+      ],
+      page_info: { has_next_page: true, next_cursor: 'cursor-2' },
+    });
+
+    const page = await listAgentRuns(PRINCIPAL, { name: 'veteze-jin' });
+
+    expect(page.runs.map((run) => run.runId)).toEqual(['run-1', 'run-2']);
+    expect(page.runs[0].runTime).toBe('PT10S');
+    expect(page).toMatchObject({ hasNextPage: true, nextCursor: 'cursor-2' });
+  });
+
+  it('skips an item with no run id rather than losing the whole page', async () => {
+    respondJson({
+      runs: [{ state: 'QUEUED' }, { run_id: 'run-2', state: 'QUEUED' }],
+      page_info: { has_next_page: false },
+    });
+
+    const page = await listAgentRuns(PRINCIPAL);
+
+    expect(page.runs.map((run) => run.runId)).toEqual(['run-2']);
+    expect(page.nextCursor).toBeNull();
+  });
+
+  it('treats a non-object payload as an upstream fault', async () => {
+    respondJson([]);
+
+    const err = (await listAgentRuns(PRINCIPAL).catch((e: unknown) => e)) as WarpApiError;
+
+    expect(err).toBeInstanceOf(WarpApiError);
+    expect(err.status).toBe(502);
+  });
+
+  it('is gated by the same grant as dispatch', async () => {
+    requireAgentKeyMock.mockRejectedValue(new Error('warp_no_grant: nope'));
+
+    await expect(listAgentRuns(PRINCIPAL)).rejects.toThrow(/warp_no_grant/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
+// ── Cancel (#1639) ────────────────────────────────────────────────────────────
+
+describe('cancelAgentRun', () => {
+  it('POSTs to the cancel endpoint with the caller own key', async () => {
+    respondJson(RUN_ID);
+
+    const result = await cancelAgentRun(PRINCIPAL, RUN_ID);
+
+    const { url, init } = lastFetchCall();
+    expect(url).toBe(`${BASE_URL}/agent/runs/${RUN_ID}/cancel`);
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${AGENT_KEY}`);
+    expect(result).toEqual({ runId: RUN_ID, cancelled: true });
+  });
+
+  it('succeeds when Warp answers 200 with no parseable body', async () => {
+    respondEmpty();
+
+    await expect(cancelAgentRun(PRINCIPAL, RUN_ID)).resolves.toEqual({
+      runId: RUN_ID,
+      cancelled: true,
+    });
+  });
+
+  it('surfaces the PENDING conflict as retryable rather than flattening it', async () => {
+    respondJson(
+      {
+        title: 'Conflict',
+        type: '…/errors/conflict',
+        retryable: true,
+      },
+      409,
+    );
+
+    const err = (await cancelAgentRun(PRINCIPAL, RUN_ID).catch((e: unknown) => e)) as WarpApiError;
+
+    expect(err.status).toBe(409);
+    expect(err.code).toBe('conflict');
+    expect(err.retryable).toBe(true);
+  });
+
+  it('rejects a blank run id before unwrapping the credential', async () => {
+    await expect(cancelAgentRun(PRINCIPAL, '   ')).rejects.toThrow(/warp_invalid_run_id/);
+    expect(requireAgentKeyMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── Follow-ups (#1639) ────────────────────────────────────────────────────────
+
+describe('sendFollowup', () => {
+  it('POSTs the trimmed message to the followups endpoint', async () => {
+    respondJson({});
+
+    const ack = await sendFollowup(PRINCIPAL, RUN_ID, { message: '  use pnpm, not npm  ' });
+
+    const { url, init } = lastFetchCall();
+    expect(url).toBe(`${BASE_URL}/agent/runs/${RUN_ID}/followups`);
+    expect(init.method).toBe('POST');
+    expect(lastRequestBody()).toEqual({ message: 'use pnpm, not npm' });
+    expect(ack).toEqual({ runId: RUN_ID, accepted: true });
+  });
+
+  it('forwards an explicit mode, since Warp does not infer it from the message', async () => {
+    respondJson({});
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'replan', mode: 'plan' });
+
+    expect(lastRequestBody()).toMatchObject({ mode: 'plan' });
+  });
+
+  it('omits mode entirely when the caller names none', async () => {
+    respondJson({});
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'carry on' });
+
+    expect(lastRequestBody()).not.toHaveProperty('mode');
+  });
+
+  it('rejects an unknown mode rather than letting it silently downgrade', async () => {
+    await expect(
+      sendFollowup(PRINCIPAL, RUN_ID, {
+        message: 'go',
+        mode: 'yolo' as unknown as 'normal',
+      }),
+    ).rejects.toThrow(/warp_invalid_mode/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty message before making a network call', async () => {
+    await expect(sendFollowup(PRINCIPAL, RUN_ID, { message: '   ' })).rejects.toThrow(
+      /warp_invalid_message/,
+    );
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('is gated by the same grant as dispatch', async () => {
+    requireAgentKeyMock.mockRejectedValue(new Error('warp_no_secret: nothing sealed'));
+
+    await expect(sendFollowup(PRINCIPAL, RUN_ID, { message: 'go' })).rejects.toThrow(
+      /warp_no_secret/,
+    );
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the sealed key out of the request body and the log line', async () => {
+    respondJson({});
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'go', mode: 'normal' });
+
+    expect(JSON.stringify(lastRequestBody())).not.toContain(AGENT_KEY);
+    expect(JSON.stringify(logMock.info.mock.calls)).not.toContain(AGENT_KEY);
   });
 });

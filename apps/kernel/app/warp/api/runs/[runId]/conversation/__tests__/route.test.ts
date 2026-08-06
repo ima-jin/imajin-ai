@@ -1,10 +1,5 @@
 /**
- * Tests for GET /warp/api/runs/{runId} (#1428).
- *
- * The point of this route is that a run is read with the *caller's* own sealed
- * key, so cross-DID reads are structurally impossible rather than checked. These
- * pin that the acting DID is always what gets used, and that the same
- * `warp:dispatch` gate applies to reads as to dispatch.
+ * Tests for GET /warp/api/runs/{runId}/conversation (#1639).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -27,23 +22,28 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 vi.mock('@/src/lib/warp/dispatch', () => ({
-  getAgentRun: vi.fn(),
+  getAgentRunConversation: vi.fn(),
 }));
 
 import { GET, OPTIONS } from '../route';
-import { getAgentRun } from '@/src/lib/warp/dispatch';
+import { getAgentRunConversation } from '@/src/lib/warp/dispatch';
 import { WarpApiError } from '@/src/lib/warp/errors';
-import { makeAgentRun } from '@/src/lib/warp/__tests__/run-fixture';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const OWNER_DID = 'did:imajin:veteze';
 const RUN_ID = '019f9990-2a46-7552-b177-3a23b17eef2e';
-const RUN = makeAgentRun({
+const CONVERSATION = {
   runId: RUN_ID,
-  runTime: 'PT2M30S',
-  statusMessage: { message: 'Completed', errorCode: null, retryable: null },
-});
+  conversationId: 'conversation-uuid',
+  steps: [
+    {
+      id: 'step-1',
+      messages: [{ role: 'assistant', content: [{ type: 'text', text: 'done' }] }],
+      steps: [],
+    },
+  ],
+};
 
 type RouteRequest = Parameters<typeof GET>[0];
 
@@ -54,71 +54,56 @@ function makeReq(): RouteRequest {
 beforeEach(() => {
   vi.clearAllMocks();
   mockRequireAuth.mockResolvedValue({ identity: { id: OWNER_DID } });
-  vi.mocked(getAgentRun).mockResolvedValue(RUN);
+  vi.mocked(getAgentRunConversation).mockResolvedValue(CONVERSATION);
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe('GET /warp/api/runs/{runId}', () => {
-  it('returns 401 without a lookup when unauthenticated', async () => {
+describe('GET /warp/api/runs/{runId}/conversation', () => {
+  it('returns 401 without a read when unauthenticated', async () => {
     mockRequireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
 
     const res = await GET(makeReq(), { params: { runId: RUN_ID } });
 
     expect(res.status).toBe(401);
-    expect(getAgentRun).not.toHaveBeenCalled();
+    expect(getAgentRunConversation).not.toHaveBeenCalled();
   });
 
-  it('reads the run as the acting DID and surfaces state + session link', async () => {
+  it('reads as the acting DID and passes the step tree through untouched', async () => {
     const res = await GET(makeReq(), { params: { runId: RUN_ID } });
 
-    expect(getAgentRun).toHaveBeenCalledWith(OWNER_DID, RUN_ID);
+    expect(getAgentRunConversation).toHaveBeenCalledWith(OWNER_DID, RUN_ID);
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({
-      runId: RUN_ID,
-      state: 'SUCCEEDED',
-      sessionLink: RUN.sessionLink,
-    });
-  });
-
-  it('passes the expanded telemetry through to the caller (#1639)', async () => {
-    const res = await GET(makeReq(), { params: { runId: RUN_ID } });
-
-    expect(await res.json()).toMatchObject({
-      runTime: 'PT2M30S',
-      statusMessage: { message: 'Completed' },
-      artifacts: [],
-    });
+    expect(await res.json()).toEqual(CONVERSATION);
   });
 
   it('returns 400 for a blank run id', async () => {
-    const res = await GET(makeReq(), { params: { runId: '   ' } });
+    const res = await GET(makeReq(), { params: { runId: '' } });
 
     expect(res.status).toBe(400);
-    expect(getAgentRun).not.toHaveBeenCalled();
+    expect(getAgentRunConversation).not.toHaveBeenCalled();
   });
 
   it('returns 403 when the caller holds no warp:dispatch grant', async () => {
-    vi.mocked(getAgentRun).mockRejectedValueOnce(new Error('warp_no_grant: nope'));
+    vi.mocked(getAgentRunConversation).mockRejectedValueOnce(new Error('warp_no_grant: nope'));
 
     const res = await GET(makeReq(), { params: { runId: RUN_ID } });
 
     expect(res.status).toBe(403);
-    expect(await res.json()).toMatchObject({ error: 'warp_no_grant' });
   });
 
-  it('maps an unknown run upstream to the same status Warp reported', async () => {
-    vi.mocked(getAgentRun).mockRejectedValueOnce(
-      new WarpApiError('warp_api_error: 404 Not found', {
-        status: 404,
-        code: 'resource_not_found',
+  it('passes through the 422 Warp uses for an unsupported conversation format', async () => {
+    vi.mocked(getAgentRunConversation).mockRejectedValueOnce(
+      new WarpApiError('warp_api_error: 422 Unsupported', {
+        status: 422,
+        code: 'operation_not_supported',
       }),
     );
 
     const res = await GET(makeReq(), { params: { runId: RUN_ID } });
 
-    expect(res.status).toBe(404);
-    expect(await res.json()).toMatchObject({ code: 'resource_not_found' });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ code: 'operation_not_supported' });
   });
 
   it('carries the CORS headers and answers pre-flight', async () => {
