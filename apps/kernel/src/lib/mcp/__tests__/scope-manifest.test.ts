@@ -28,6 +28,15 @@ vi.mock('../oauth-config', () => ({
   MCP_CHANNEL: 'mcp',
 }));
 
+// widenMcpClientScopes (#1647) pulls the real DB handle into this module, and
+// `createDb` throws without DATABASE_URL. Stub it out — the widen path has its
+// own suite (scope-manifest-widen.test.ts).
+vi.mock('@/src/db', () => ({
+  db: {},
+  oauthRefreshTokens: {},
+  registryApps: {},
+}));
+
 import {
   buildManifestContent,
   findMcpManifestAsset,
