@@ -325,6 +325,18 @@ function broadcastMessage(conversationId, message) {
 }
 
 /**
+ * Paths that push an arbitrary JSON frame to every socket for one DID.
+ *
+ * `did-push` is the general name (#1644 — notification frames); `bump-notify` is
+ * the original bump-specific path and stays an alias so existing callers keep
+ * working. Both are the same DID fan-out — only the frame differs.
+ */
+const DID_PUSH_PATHS = new Set([
+  '/chat/api/internal/did-push',
+  '/chat/api/internal/bump-notify',
+]);
+
+/**
  * Set up a local HTTP endpoint on the main server for broadcasting.
  * Next.js API routes call this to push messages through the WS server.
  */
@@ -333,7 +345,7 @@ function setupBroadcastRoute(server) {
   server.removeAllListeners('request');
 
   server.on('request', (req, res) => {
-    if (req.method === 'POST' && req.url === '/chat/api/internal/bump-notify') {
+    if (req.method === 'POST' && DID_PUSH_PATHS.has(req.url)) {
       const internalKey = req.headers['x-internal-key'];
       if (!internalKey || internalKey !== process.env.AUTH_INTERNAL_API_KEY) {
         res.writeHead(401);

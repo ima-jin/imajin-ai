@@ -1,10 +1,10 @@
 /**
- * `warp.run.*` completion events (#1639, Stage 3).
+ * `warp.run.*` completion events (#1639, Stage 3; #1644).
  *
  * The completion event IS the notification mechanism, so what matters here is
- * that it reaches the live event stream by default rather than falling through to
- * an empty chain — a run finishing with nothing configured would otherwise be a
- * silent no-op.
+ * that it reaches both the live event stream and the notify reactor by default
+ * rather than falling through to an empty chain — a run finishing with nothing
+ * configured would otherwise be a silent no-op.
  */
 import { describe, it, expect, vi } from 'vitest';
 
@@ -21,14 +21,28 @@ const WARP_SCOPE = 'warp';
 
 describe('warp.run.* default chains', () => {
   it.each(['warp.run.completed', 'warp.run.timeout'] as const)(
-    'emits %s to the live stream by default',
+    'emits %s to the live stream and notifies by default',
     async (eventType) => {
       const cfg = await getChainConfig(eventType, WARP_SCOPE);
 
-      expect(cfg.reactors.map((r) => r.type)).toEqual(['emit']);
-      expect(cfg.reactors[0].enabled).toBe(true);
+      // Mirrors migration 0084. `notify` is what turns the event into a durable
+      // notification row and, through it, a WebSocket push to the dispatching DID
+      // (#1644); `emit` keeps the live stream #1639 added.
+      expect(cfg.reactors.map((r) => r.type)).toEqual(['emit', 'notify']);
+      expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
     },
   );
+
+  it.each([
+    ['warp.run.completed', 'Run {{state}}: {{title}}'],
+    ['warp.run.timeout', 'Run {{runId}} last seen {{lastKnownState}}'],
+  ] as const)('configures the %s notification body from payload fields', async (eventType, body) => {
+    const cfg = await getChainConfig(eventType, WARP_SCOPE);
+    const notify = cfg.reactors.find((r) => r.type === 'notify');
+
+    expect(notify?.config.body).toBe(body);
+    expect(typeof notify?.config.title).toBe('string');
+  });
 });
 
 describe('warp.run.completed payload', () => {

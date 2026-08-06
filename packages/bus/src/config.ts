@@ -263,15 +263,28 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'vault.delegation.revoked': [
     { type: 'emit', config: {}, enabled: true },
   ],
-  // #1639 Stage 3 — the completion event IS the notification: `emit` puts it on
-  // the live event stream, so an orchestrating agent is woken by a dispatched run
-  // finishing instead of polling `get_run` for it. A DB row in
-  // `kernel.bus_chain_configs` overrides this per node/scope as usual.
+  // #1639 Stage 3 — `emit` puts the outcome on the live event stream, so an
+  // orchestrating agent is woken by a dispatched run finishing instead of polling
+  // `get_run` for it. #1644 adds `notify`, which turns that into a durable
+  // notification row AND a WebSocket push to the dispatching DID (the reactor
+  // sends to `event.subject`, which watchRun() sets to that DID).
+  // Kept in sync with migration 0084. A DB row in `kernel.bus_chain_configs`
+  // REPLACES this list, which is why the migration repeats `emit`.
   'warp.run.completed': [
     { type: 'emit', config: {}, enabled: true },
+    {
+      type: 'notify',
+      config: { title: 'Warp run completed', body: 'Run {{state}}: {{title}}' },
+      enabled: true,
+    },
   ],
   'warp.run.timeout': [
     { type: 'emit', config: {}, enabled: true },
+    {
+      type: 'notify',
+      config: { title: 'Warp run timed out', body: 'Run {{runId}} last seen {{lastKnownState}}' },
+      enabled: true,
+    },
   ],
   'broker.release': [
     { type: 'emit', config: {}, enabled: true },
