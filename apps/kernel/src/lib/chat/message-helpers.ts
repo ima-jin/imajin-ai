@@ -1,6 +1,7 @@
 import { eq, and, ne } from 'drizzle-orm';
 import { db, conversationsV2, conversationMembers, messagesV2 } from '@/src/db';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
+import { canonicalDmConversationDid } from '@/src/lib/chat/dm-guard';
 import { unfurlLinks } from '@/src/lib/chat/unfurl';
 
 /**
@@ -39,21 +40,29 @@ export async function resolveConversationName(
  * Ensure a conversation record exists and that `effectiveDid` is tracked as a member.
  * Idempotent — safe to call on every message send.
  *
- * Cognitive complexity: 1 (≤ 15)
+ * A DM key that is not the canonical `dmDid()` of the pair is rewritten first,
+ * so a raw person DID can never open a second thread beside the canonical one
+ * (#1649). Returns the conversation DID that was actually ensured — callers
+ * must use it for everything downstream.
+ *
+ * Cognitive complexity: 2 (≤ 15)
  */
 export async function ensureConversation(
   did: string,
   effectiveDid: string,
   conversationName?: string | null,
-): Promise<void> {
+  recipientDid: string | null = null,
+): Promise<string> {
+  const canonicalDid = await canonicalDmConversationDid(did, effectiveDid, recipientDid);
+
   const existing = await db.query.conversationsV2.findFirst({
-    where: eq(conversationsV2.did, did),
+    where: eq(conversationsV2.did, canonicalDid),
   });
 
   if (!existing) {
-    const name = await resolveConversationName(did, conversationName);
+    const name = await resolveConversationName(canonicalDid, conversationName);
     await db.insert(conversationsV2).values({
-      did,
+      did: canonicalDid,
       name,
       createdBy: effectiveDid,
     }).onConflictDoNothing();
@@ -61,10 +70,12 @@ export async function ensureConversation(
 
   // Always ensure the sender is a conversation member (idempotent)
   await db.insert(conversationMembers).values({
-    conversationDid: did,
+    conversationDid: canonicalDid,
     memberDid: effectiveDid,
     role: 'member',
   }).onConflictDoNothing();
+
+  return canonicalDid;
 }
 
 /**

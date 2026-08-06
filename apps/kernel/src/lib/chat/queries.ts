@@ -26,6 +26,7 @@ import { checkAccess } from '@/src/lib/kernel/access';
 import { generateId } from '@/src/lib/kernel/utils';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
 import { parseConversationDid } from './conversation-did';
+import { resolveDmConversationTarget } from './dm-guard';
 import { countUnread, extractMessagePreview, resolveDmParticipant } from './conversation-helpers';
 import { hasCapability, requiredCapability, CAPABILITY_MESSAGES, type Capability } from './capabilities';
 import { processMentions } from './mentions';
@@ -244,6 +245,8 @@ export interface SendMessageParams {
   mediaAssetId?: string | null;
   mediaMeta?: unknown;
   conversationName?: string | null;
+  /** The other party in a DM, when the caller knows it (#1649, #855). */
+  recipientDid?: string | null;
 }
 
 export type SendMessageResult =
@@ -255,13 +258,16 @@ export type SendMessageResult =
  * Enforces verified-tier, capability, access, and content validation, then
  * emits `message.send`, broadcasts over the chat WebSocket, and processes
  * @mentions — identical to the REST POST handler.
+ *
+ * A DM key that is not the canonical `dmDid()` of the pair is rewritten before
+ * anything is written, and opening a new DM thread requires an active
+ * connection with the counterparty (#1649, #855).
  */
 export async function sendConversationMessage(params: SendMessageParams): Promise<SendMessageResult> {
   const {
     senderDid,
     senderTier,
     senderHandle,
-    conversationDid,
     content,
     replyToMessageId,
     mediaType,
@@ -275,6 +281,16 @@ export async function sendConversationMessage(params: SendMessageParams): Promis
   if (!isVerifiedTier(senderTier ?? undefined)) {
     return { ok: false, status: 403, error: 'Please verify your account to send messages' };
   }
+
+  const target = await resolveDmConversationTarget({
+    conversationDid: params.conversationDid,
+    senderDid,
+    recipientDid: params.recipientDid ?? null,
+  });
+  if (!target.ok) {
+    return { ok: false, status: target.status, error: target.error };
+  }
+  const conversationDid = target.conversationDid;
 
   const access = await checkAccess(senderDid, conversationDid);
   if (!access.allowed) {
