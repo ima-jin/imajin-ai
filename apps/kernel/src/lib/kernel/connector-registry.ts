@@ -298,7 +298,10 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'warp',
     name: 'Warp Cloud Agents',
-    description: 'Seal your own Warp Agent key per-DID so cloud agents you dispatch run under your credential, not a shared one.',
+    // #1636: the connector now carries a second, credential-free scope, so the
+    // copy names the read surface too — a card that only mentions dispatch makes
+    // `discovery:read` look like a mis-filed toggle.
+    description: 'Seal your own Warp Agent key per-DID so cloud agents you dispatch run under your credential, not a shared one — and let them read this node\'s API specs and your connector status.',
     icon: '🛰️',
     ingestionPattern: 'static-secret',
     channel: 'warp',

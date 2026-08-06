@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  allScopes,
   isKnownScope,
   scopeEntry,
   scopesForConnector,
@@ -12,6 +13,7 @@ import {
   connectorScopeDescriptors,
   validScopesForConnector,
   connectorUiScopes,
+  scopeCatalogue,
   scopeReleaseClass,
   requiresConsentRow,
 } from '../scope-projections';
@@ -145,7 +147,7 @@ describe('pinned scope sets (change these deliberately)', () => {
   });
 
   it('pins the Warp connector card toggles', () => {
-    expect(connectorUiScopes('warp').map((s) => s.name)).toEqual(['warp:dispatch']);
+    expect(connectorUiScopes('warp').map((s) => s.name)).toEqual(['warp:dispatch', 'discovery:read']);
   });
 
   /**
@@ -165,6 +167,7 @@ describe('pinned scope sets (change these deliberately)', () => {
       'github:org',
       'github:actions',
       'warp:dispatch',
+      'discovery:read',
     ]);
   });
 });
@@ -323,13 +326,11 @@ describe('#1428 — warp:dispatch projects as an owner-only connector scope', ()
   });
 
   it('emits the connector as the only viewer of the sealed key', () => {
-    expect(connectorScopeDescriptors('warp')).toEqual({
-      'warp:dispatch': {
-        verb: 'dispatch',
-        surface: 'cloud-agents',
-        label: 'Dispatch Warp cloud agents under your own credential',
-        release: { discloses_others: false, sensitive: true, viewer: WARP_DID },
-      },
+    expect(connectorScopeDescriptors('warp')['warp:dispatch']).toEqual({
+      verb: 'dispatch',
+      surface: 'cloud-agents',
+      label: 'Dispatch Warp cloud agents under your own credential',
+      release: { discloses_others: false, sensitive: true, viewer: WARP_DID },
     });
   });
 
@@ -339,7 +340,88 @@ describe('#1428 — warp:dispatch projects as an owner-only connector scope', ()
   });
 
   it('renders a toggle on the connector card', () => {
-    expect(getConnector('warp')?.scopes.map((s) => s.name)).toEqual(['warp:dispatch']);
+    expect(getConnector('warp')?.scopes.map((s) => s.name)).toContain('warp:dispatch');
+  });
+});
+
+// ── #1636 ─ the read-only discovery scope ──────────────────────────────────────
+
+describe('#1636 — discovery:read is grantable end-to-end', () => {
+  /**
+   * The five-projection walk #1393 taught us to do. A scope that is grantable
+   * server-side but has no toggle is worse than a missing scope: it looks like a
+   * bug in the caller.
+   */
+  it('reaches every MCP projection', () => {
+    expect(isKnownScope('discovery:read')).toBe(true);
+    expect(MCP_SCOPE_SET.has('discovery:read')).toBe(true);
+    expect(filterGrantedScopes('discovery:read')).toEqual(['discovery:read']);
+    expect(Object.keys(connectorScopeDescriptors('warp'))).toContain('discovery:read');
+    expect(validScopesForConnector('warp')).toContain('discovery:read');
+    expect(getConnector('warp')?.scopes.map((s) => s.name)).toContain('discovery:read');
+  });
+
+  /**
+   * `silent`, not `owner-only`: the payload is public specs plus the owner's own
+   * connector state. Deriving a consent barrier here would make the low-friction
+   * read the scope exists to provide impossible.
+   */
+  it('derives silent from the 2×2, so it needs no consent row', () => {
+    expect(scopeReleaseClass('warp', 'discovery:read')).toBe('silent');
+    expect(requiresConsentRow('warp', 'discovery:read')).toBe(false);
+  });
+
+  it('names no viewer, because a silent scope is released to nobody in particular', () => {
+    expect(connectorScopeDescriptors('warp')['discovery:read']).toEqual({
+      verb: 'read',
+      surface: 'discovery',
+      label: 'Read the node API specs, scope vocabulary, and your connector status',
+      release: { discloses_others: false, sensitive: false },
+    });
+  });
+
+  /**
+   * The whole point of splitting it out of `warp:dispatch`: a DID can read what
+   * the system exposes without being handed the ability to spend money, and
+   * revoking one must not revoke the other.
+   */
+  it('is independent of warp:dispatch', () => {
+    expect(filterGrantedScopes('discovery:read')).not.toContain('warp:dispatch');
+    expect(scopeReleaseClass('warp', 'warp:dispatch')).toBe('owner-only');
+    expect(scopeReleaseClass('warp', 'discovery:read')).toBe('silent');
+  });
+});
+
+// ── Discovery catalogue projection (#1636) ───────────────────────────────────
+
+describe('scopeCatalogue', () => {
+  it('reports every vocabulary scope, in vocabulary order', () => {
+    expect(scopeCatalogue().map((e) => e.scope)).toEqual([...allScopes()]);
+  });
+
+  it('carries the derived release class for connector scopes and null for platform ones', () => {
+    for (const entry of scopeCatalogue()) {
+      if (entry.connector === null) {
+        expect(entry.releaseClass, entry.scope).toBeNull();
+      } else {
+        expect(entry.releaseClass, entry.scope).toBe(scopeReleaseClass(entry.connector, entry.scope));
+      }
+    }
+  });
+
+  it('flags exactly the scopes an MCP token may carry', () => {
+    const flagged = scopeCatalogue().filter((e) => e.mcpToken).map((e) => e.scope);
+    expect(flagged).toEqual([...MCP_SCOPES]);
+  });
+
+  /**
+   * Unlike the connector card, the catalogue keeps `never` scopes. A dead toggle
+   * confuses a person; an agent is better off knowing the scope exists and can
+   * never materialise than concluding it is available.
+   */
+  it('keeps never-class scopes the connector card hides', () => {
+    expect(scopeCatalogue().map((e) => e.scope)).toContain('github:actions');
+    expect(scopeCatalogue().find((e) => e.scope === 'github:actions')?.releaseClass).toBe('never');
   });
 });
 

@@ -239,6 +239,36 @@ describe('SCOPES is a faithful projection', () => {
     expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.anthropic);
   });
 
+  /**
+   * #1636: the read-only discovery surface. Classified SELF_ONLY — public API
+   * specs plus the owner's own connector state, nothing credential-grade — so it
+   * must derive `silent` rather than inheriting `warp:dispatch`'s owner-only
+   * barrier. The sealed Agent key stays behind `warp:dispatch`.
+   */
+  it('includes discovery:read as a silent Warp-owned scope carried by MCP tokens', () => {
+    expect(SCOPES['discovery:read']).toBe(
+      'Read Imajin API specs, the scope vocabulary, and your connector status',
+    );
+    expect(validateScopes(['discovery:read']).invalid).toEqual([]);
+
+    const entry = scopeEntry('discovery:read') as ConnectorScopeEntry;
+    expect(entry.connector).toBe('warp');
+    expect(entry.verb).toBe('read');
+    expect(entry.surface).toBe('discovery');
+    expect(deriveScopeReleaseTier(entry)).toBe('silent');
+    // A silent scope has no named viewer: there is no consent barrier to name one
+    // behind.
+    expect(viewerForScope(entry)).toBeUndefined();
+    expect(scopesForSurface('mcp')).toContain('discovery:read');
+  });
+
+  it('gives the Warp connector a read scope distinct from its dispatch scope', () => {
+    expect(scopesForConnector('warp').map((e) => e.scope)).toEqual([
+      'warp:dispatch',
+      'discovery:read',
+    ]);
+  });
+
   it('includes connectors:read-status as an app-registration scope, not a connector grant', () => {
     const entry = scopeEntry('connectors:read-status');
     expect(entry).toMatchObject({
