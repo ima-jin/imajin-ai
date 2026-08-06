@@ -12,6 +12,7 @@
  *   imajin_read_messages      — requiredScope: 'messages:read'
  * Write tier (capability, onBehalfOf signing):
  *   imajin_send_message       — requiredScope: 'messages:write'
+ *   imajin_send_dm            — requiredScope: 'messages:write'
  *
  * Both gates apply, exactly like every other MCP-native tool:
  *   1. server.ts checks ctx.scopes.has(requiredScope)     (OAuth token gate)
@@ -37,6 +38,7 @@ import {
   readConversationMessages,
   sendTextMessageAsDid,
 } from '@/src/lib/chat/queries';
+import { dmDid } from '@/src/lib/chat/conversation-did';
 
 // ── Read tools ──────────────────────────────────────────────────────────────
 
@@ -165,8 +167,55 @@ const sendMessageTool: McpTool = {
   },
 };
 
+const sendDmTool: McpTool = {
+  name: 'imajin_send_dm',
+  requiredScope: 'messages:write',
+  description:
+    'Send a direct message to a person by their DID, authored on your behalf (onBehalfOf you). ' +
+    'The DM conversation is derived deterministically from the two DIDs, so you do not need to know — ' +
+    'or first create — the conversation id. ' +
+    'Use connections_list (or an identity lookup) to resolve a name to the recipient DID. ' +
+    'Requires an active messages:write grant in your scope-manifest.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      to: {
+        type: 'string',
+        description: 'Person DID to send the DM to (from connections_list or identity lookup)',
+      },
+      content: {
+        type: 'string',
+        description: 'Message text to send',
+      },
+    },
+    required: ['to', 'content'],
+    additionalProperties: false,
+  },
+  async handler(args, ctx) {
+    await requireMcpGrant(ctx.did, 'messages:write');
+    const toDid = str(args, 'to');
+    if (toDid === undefined) throw new Error('to is required');
+    const content = str(args, 'content');
+    if (content === undefined) throw new Error('content is required');
+
+    const conversationDid = dmDid(ctx.did, toDid);
+    const result = await sendTextMessageAsDid(ctx.did, conversationDid, content);
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+
+    return json({
+      sent: true,
+      conversation_id: conversationDid,
+      message_id: result.message?.id ?? null,
+      created_at: result.message?.createdAt ?? null,
+    });
+  },
+};
+
 export const messagesTools: McpTool[] = [
   listConversationsTool,
   readMessagesTool,
   sendMessageTool,
+  sendDmTool,
 ];
