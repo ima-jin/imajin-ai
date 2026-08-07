@@ -52,14 +52,30 @@ const MCP_DID = 'did:imajin:mcp-connector';
 // ── Descriptor / constant tests ───────────────────────────────────────────────
 
 describe('MCP_SCOPE_DESCRIPTORS', () => {
-  it('defines all eight MCP scopes', () => {
+  it('defines all nine MCP scopes', () => {
     expect(new Set(VALID_MCP_SCOPES)).toEqual(
       new Set([
         'media:read', 'media:write', 'media:share', 'connections:read',
         'messages:read', 'messages:write',
+        // #1679 — re-homed from the Warp connector, which could not publish it
+        // without a sealed Agent key.
+        'discovery:read',
         'inference:read', 'inference:write',
       ]),
     );
+  });
+
+  /**
+   * #1679: `silent` and credential-free, so publishing this manifest is the whole
+   * grant — no consent row, no key, no second step. If it ever derives a consent
+   * barrier here the move has bought nothing.
+   */
+  it('discovery:read is silent with no viewer (credential-free read)', () => {
+    const r = MCP_SCOPE_DESCRIPTORS['discovery:read'].release;
+    expect(r.discloses_others).toBe(false);
+    expect(r.sensitive).toBe(false);
+    expect(r.release).toBeUndefined();
+    expect(r.viewer).toBeUndefined();
   });
 
   it('media:read is silent (no release override, discloses_others: false)', () => {
@@ -162,6 +178,7 @@ describe('syncConsentGrants', () => {
     expect(isOnConsent('media:read')).toBe(false);
     expect(isOnConsent('connections:read')).toBe(false);
     expect(isOnConsent('inference:read')).toBe(false);
+    expect(isOnConsent('discovery:read')).toBe(false);
     // unknown scope → never tier
     expect(isOnConsent('unknown:scope')).toBe(false);
   });

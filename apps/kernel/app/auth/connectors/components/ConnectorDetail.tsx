@@ -245,6 +245,11 @@ function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onT
   onToggle: (name: string, enable: boolean) => void;
 }>) {
   const isLocked = scope.releaseClass === 'never';
+  // #1679: the credential step gates the scopes that SPEND the credential, not
+  // the whole card. A read-only scope that unseals nothing stays grantable with
+  // no key in place — otherwise it is structurally hostage to a credential its
+  // holder may never want, which is how `discovery:read` ended up ungrantable.
+  const credentialBlocked = !tokenSealed && !scope.credentialFree;
   let badge: React.ReactNode;
   if (isGranting) badge = <Badge variant="info">Saving…</Badge>;
   else if (isLocked) badge = <Badge variant="inactive">N/A</Badge>;
@@ -265,7 +270,7 @@ function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onT
         <input
           type="checkbox"
           checked={isActive}
-          disabled={isLocked || !tokenSealed || isGranting || isAnyGranting}
+          disabled={isLocked || credentialBlocked || isGranting || isAnyGranting}
           onChange={(e) => { onToggle(scope.name, e.target.checked); }}
           className="w-4 h-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
         />
@@ -289,6 +294,9 @@ function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantE
   onToggle: (name: string, enable: boolean) => void;
 }>) {
   const hasActive = activeSet.size > 0;
+  // Only worth saying when the credential actually blocks something: on a card
+  // whose scopes are all credential-free the hint would be a lie (#1679).
+  const showNoTokenHint = !tokenSealed && entry.scopes.some((scope) => !scope.credentialFree);
   return (
     <div>
       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
@@ -313,7 +321,7 @@ function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantE
           />
         ))}
       </div>
-      {!tokenSealed && <p className="text-xs text-gray-600 mt-2">{noTokenHint}</p>}
+      {showNoTokenHint && <p className="text-xs text-gray-600 mt-2">{noTokenHint}</p>}
     </div>
   );
 }

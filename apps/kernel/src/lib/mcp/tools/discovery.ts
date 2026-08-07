@@ -17,8 +17,13 @@
  * ## Two gates, same as every other MCP tool
  *   1. `handleMcpRpc` checks the token carries `discovery:read` (the OAuth gate).
  *   2. Each handler calls `requireDiscoveryGrant(ctx.did)` (the sovereignty gate:
- *      an active `warp` channel_links row, written when the owner publishes their
- *      Warp scope-manifest with the scope enabled).
+ *      an active `mcp` channel_links row, written when the owner publishes their
+ *      MCP scope-manifest with the scope enabled).
+ *
+ * The scope moved from the Warp connector to the MCP one in #1679: it consumes
+ * no sealed credential, so gating it on a card that first demands a Warp Agent
+ * key made a read-only surface hostage to a credential its readers never use.
+ * Same scope string, same tools, same two gates — a different channel row.
  *
  * The manifest gate applies even to `imajin_list_api_specs`, whose payload is
  * already public over HTTP. That is on purpose: the value of the gate is that
@@ -33,7 +38,7 @@
  */
 import type { McpTool } from '../types';
 import { num, str, json } from './utils';
-import { requireDiscoveryGrant, WARP_DISCOVERY_SCOPE } from '@/src/lib/warp/connector';
+import { requireDiscoveryGrant, MCP_DISCOVERY_SCOPE } from '../mcp-grant';
 import { listApiSpecs, readApiSpec, SPEC_MAX_CHARS } from '@/src/lib/kernel/api-specs';
 import { readConnectorConnectionStatus } from '@/src/lib/kernel/connector-status';
 import { CONNECTOR_REGISTRY } from '@/src/lib/kernel/connector-registry';
@@ -44,7 +49,7 @@ import { MCP_SCOPES } from '../oauth-config';
 
 const listApiSpecsTool: McpTool = {
   name: 'imajin_list_api_specs',
-  requiredScope: WARP_DISCOVERY_SCOPE,
+  requiredScope: MCP_DISCOVERY_SCOPE,
   description:
     'List the OpenAPI specs this Imajin node serves — one per kernel service ' +
     '(auth, media, connections, chat, pay, profile, registry, notify). Returns ' +
@@ -52,7 +57,7 @@ const listApiSpecsTool: McpTool = {
     'version, and the path templates it documents, so you can see what the API ' +
     'actually exposes before reading source. Start here, then call ' +
     'imajin_get_api_spec for the one you need. Requires an active discovery:read ' +
-    'grant on the Warp connector.',
+    'grant on the Imajin MCP connector.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   async handler(_args, ctx) {
     await requireDiscoveryGrant(ctx.did);
@@ -64,14 +69,14 @@ const listApiSpecsTool: McpTool = {
 
 const getApiSpecTool: McpTool = {
   name: 'imajin_get_api_spec',
-  requiredScope: WARP_DISCOVERY_SCOPE,
+  requiredScope: MCP_DISCOVERY_SCOPE,
   description:
     'Read one service\'s OpenAPI spec source as YAML — the authoritative ' +
     'description of its routes, parameters, and responses. Returns ' +
     '{ service, endpoint, content, contentType, truncated }; content is capped ' +
     'and truncated is true when it was cut. Use imajin_list_api_specs first to ' +
     'see which services have a spec. Requires an active discovery:read grant on ' +
-    'the Warp connector.',
+    'the Imajin MCP connector.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -113,7 +118,7 @@ const getApiSpecTool: McpTool = {
 
 const listScopesTool: McpTool = {
   name: 'imajin_list_scopes',
-  requiredScope: WARP_DISCOVERY_SCOPE,
+  requiredScope: MCP_DISCOVERY_SCOPE,
   description:
     'Read the declarative scope vocabulary: every scope this node recognises, its ' +
     'consent label, the connector that owns it (null for platform scopes granted ' +
@@ -122,7 +127,7 @@ const listScopesTool: McpTool = {
     'returns the MCP capability ceiling and the scopes your own token currently ' +
     'holds — read this before assuming a capability exists or guessing why a call ' +
     'returned insufficient_scope. Requires an active discovery:read grant on the ' +
-    'Warp connector.',
+    'Imajin MCP connector.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   async handler(_args, ctx) {
     await requireDiscoveryGrant(ctx.did);
@@ -168,7 +173,7 @@ function connectorCatalogue() {
 
 const getScopeManifestTool: McpTool = {
   name: 'imajin_get_scope_manifest',
-  requiredScope: WARP_DISCOVERY_SCOPE,
+  requiredScope: MCP_DISCOVERY_SCOPE,
   description:
     'Read your own connector state: for every connector, whether it is connected ' +
     'and which of its scopes are active for you right now, alongside what each ' +
@@ -177,7 +182,7 @@ const getScopeManifestTool: McpTool = {
     'live channel_links rows, so they reflect your published scope-manifests ' +
     'rather than what the code hopes is granted. Only your own DID is visible; no ' +
     'credentials or connector config are ever returned. Requires an active ' +
-    'discovery:read grant on the Warp connector.',
+    'discovery:read grant on the Imajin MCP connector.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   async handler(_args, ctx) {
     await requireDiscoveryGrant(ctx.did);

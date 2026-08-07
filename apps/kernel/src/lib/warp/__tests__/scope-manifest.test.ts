@@ -54,8 +54,14 @@ beforeEach(() => {
 // ─── Derived scope set ───────────────────────────────────────────────────────
 
 describe('scope set is derived from the vocabulary', () => {
-  it('accepts exactly the two Warp scopes in the POST validator', () => {
-    expect(VALID_WARP_SCOPES).toEqual(['warp:dispatch', 'discovery:read']);
+  /**
+   * One scope, since #1679 moved `discovery:read` to the MCP connector: this
+   * connector's validator now accepts exactly what its sealed Agent key can pay
+   * for. A credential-free read has no business being POSTable here — the card
+   * that publishes this manifest asks for the key first.
+   */
+  it('accepts exactly the one Warp scope in the POST validator', () => {
+    expect(VALID_WARP_SCOPES).toEqual(['warp:dispatch']);
   });
 
   it('describes warp:dispatch as an owner-only cloud-agent scope in the manifest', () => {
@@ -68,18 +74,12 @@ describe('scope set is derived from the vocabulary', () => {
   });
 
   /**
-   * #1636: read-only self-description, so `silent` and no named viewer — the
-   * sealed Agent key stays behind `warp:dispatch`. If this ever derives a consent
-   * barrier, publishing the manifest stops activating the scope and the whole
-   * low-friction read the scope exists for is gone.
+   * #1679: `discovery:read` is gone from this manifest. Leaving it here would
+   * keep writing a `warp` channel_links row for a scope the MCP gate no longer
+   * reads — an active grant that grants nothing.
    */
-  it('describes discovery:read as a silent read scope with no viewer', () => {
-    expect(WARP_SCOPE_DESCRIPTORS['discovery:read']).toEqual({
-      verb: 'read',
-      surface: 'discovery',
-      label: 'Read the node API specs, scope vocabulary, and your connector status',
-      release: { discloses_others: false, sensitive: false },
-    });
+  it('no longer describes discovery:read', () => {
+    expect(WARP_SCOPE_DESCRIPTORS).not.toHaveProperty('discovery:read');
   });
 });
 
@@ -118,7 +118,7 @@ describe('every core call carries the Warp identity', () => {
     expect(opts.filename).toBe('warp-scope-manifest.md');
     // owner-only sits behind a consent barrier, so a grant must be recorded.
     expect(opts.isOnConsent('warp:dispatch')).toBe(true);
-    // silent needs no consent row — it materialises on publish.
+    // A scope this connector does not own is never consentable through it.
     expect(opts.isOnConsent('discovery:read')).toBe(false);
   });
 
