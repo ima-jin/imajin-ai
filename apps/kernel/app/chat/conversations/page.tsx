@@ -4,7 +4,9 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useIdentity, LoginPrompt } from '@/src/contexts/IdentityContext';
 import { NewChatModal } from '@/app/chat/components/NewChatModal';
+import { DeleteConversationButton } from '@/app/chat/components/DeleteConversationButton';
 import { conversationPath } from '@/src/lib/chat/conversation-did';
+import { canDeleteConversation } from '@/src/lib/chat/conversation-permissions';
 import { useWebSocket } from '@/src/hooks/useWebSocket';
 import { buildPublicUrl } from '@imajin/config';
 
@@ -27,6 +29,7 @@ interface Conversation {
 
 interface DisplayConversation {
   key: string;
+  did: string;
   href: string;
   name: string;
   type: string;
@@ -35,6 +38,8 @@ interface DisplayConversation {
   unread: number;
   subtitle: string;
   otherParticipantDid?: string;
+  /** Creator-only: the API refuses a delete from anyone else (#1651). */
+  canDelete: boolean;
 }
 
 function formatTime(dateStr: string | null): string {
@@ -167,6 +172,12 @@ export default function ConversationsPage() {
     setOnlineStatus((prev) => ({ ...prev, [lastMessage.did]: lastMessage.online }));
   }, [lastMessage]);
 
+  // Drop the row locally rather than refetching: the record is gone server-side,
+  // so a refetch would only re-render the same list one round trip later.
+  const handleDeleted = useCallback((did: string) => {
+    setConversations((prev) => prev.filter((conv) => conv.did !== did));
+  }, []);
+
   const allConversations = useMemo((): DisplayConversation[] => {
     return conversations.map((conv) => {
       const name = displayName(conv);
@@ -179,6 +190,7 @@ export default function ConversationsPage() {
 
       return {
         key: conv.did,
+        did: conv.did,
         href: `/chat/conversations/${conversationPath(conv.did)}`,
         name,
         type: conv.type,
@@ -187,9 +199,10 @@ export default function ConversationsPage() {
         unread: conv.unread,
         subtitle,
         otherParticipantDid: conv.otherParticipant?.did,
+        canDelete: canDeleteConversation(conv, identity?.did),
       };
     });
-  }, [conversations]);
+  }, [conversations, identity?.did]);
 
   const filteredConversations = useMemo(() => {
     if (!debouncedSearch.trim()) return allConversations;
@@ -263,6 +276,8 @@ export default function ConversationsPage() {
                 key={conv.key}
                 conv={conv}
                 onlineStatus={onlineStatus}
+                onDeleted={handleDeleted}
+                onDeleteError={setError}
               />
             ))}
           </div>
@@ -282,9 +297,13 @@ export default function ConversationsPage() {
 function ConversationRow({
   conv,
   onlineStatus,
+  onDeleted,
+  onDeleteError,
 }: Readonly<{
   conv: DisplayConversation;
   onlineStatus: Record<string, boolean>;
+  onDeleted: (did: string) => void;
+  onDeleteError: (message: string) => void;
 }>) {
   const isGroup = conv.type === 'group';
   const isEvent = conv.type === 'event';
@@ -306,43 +325,58 @@ function ConversationRow({
     : false;
 
   return (
-    <Link
-      href={conv.href}
-      className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-    >
-      <div className="relative flex-shrink-0">
-        <div
-          className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold ${iconBg}`}
-        >
-          {icon}
-        </div>
-        {isOnline && (
-          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800" />
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <span
-              className={`truncate text-gray-900 dark:text-white ${
-                conv.unread ? 'font-bold' : 'font-medium'
-              }`}
-            >
-              {conv.name}
-            </span>
-            {conv.unread > 0 && (
-              <span className="flex-shrink-0 bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
-                {conv.unread}
-              </span>
-            )}
+    // The delete control is a sibling of the link, not a child: a button nested
+    // inside an anchor is invalid HTML and swallows the row's own navigation.
+    <div className="flex items-center hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+      <Link
+        href={conv.href}
+        className="flex flex-1 min-w-0 items-center gap-4 p-4"
+      >
+        <div className="relative flex-shrink-0">
+          <div
+            className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold ${iconBg}`}
+          >
+            {icon}
           </div>
-          <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
-            {formatTime(conv.lastMessageAt || conv.createdAt)}
-          </span>
+          {isOnline && (
+            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-800" />
+          )}
         </div>
-        <p className="text-sm text-gray-500 truncate mt-1">{conv.subtitle}</p>
-      </div>
-    </Link>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className={`truncate text-gray-900 dark:text-white ${
+                  conv.unread ? 'font-bold' : 'font-medium'
+                }`}
+              >
+                {conv.name}
+              </span>
+              {conv.unread > 0 && (
+                <span className="flex-shrink-0 bg-orange-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[1.25rem] text-center">
+                  {conv.unread}
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
+              {formatTime(conv.lastMessageAt || conv.createdAt)}
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 truncate mt-1">{conv.subtitle}</p>
+        </div>
+      </Link>
+
+      {conv.canDelete && (
+        <div className="flex-shrink-0 pr-4">
+          <DeleteConversationButton
+            did={conv.did}
+            name={conv.name}
+            onDeleted={onDeleted}
+            onError={onDeleteError}
+          />
+        </div>
+      )}
+    </div>
   );
 }
