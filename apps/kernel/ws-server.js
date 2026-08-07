@@ -1,6 +1,6 @@
 const { WebSocketServer } = require('ws');
 
-/** @type {Map<import('ws').WebSocket, { did: string, subscriptions: Set<string> }>} */
+/** @type {Map<import('ws').WebSocket, { did: string, alsoDids: Set<string>, subscriptions: Set<string> }>} */
 const socketMeta = new Map();
 /** @type {Map<string, Set<import('ws').WebSocket>>} */
 const didSockets = new Map();
@@ -183,6 +183,40 @@ async function broadcastPresenceChange(did, isOnline) {
   }
 }
 
+/**
+ * Verify that agentDid has an active agent delegation for principalDid.
+ * Checks identity_members via an internal HTTP call (same pattern as
+ * authenticateWithCookie and authenticateWsToken — ws-server.js is plain
+ * CJS outside Next, so it calls back into the app routes).
+ *
+ * Returns true only when an active (not revoked) role='agent' membership
+ * exists. Never throws.
+ */
+async function verifyAgentDelegation(agentDid, principalDid) {
+  const port = process.env.PORT || '3000';
+  const key = process.env.AUTH_INTERNAL_API_KEY;
+  if (!key) {
+    console.error('[WS] AUTH_INTERNAL_API_KEY not set, denying register_also');
+    return false;
+  }
+  try {
+    const res = await fetch(`http://localhost:${port}/auth/api/internal/verify-delegation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-key': key,
+      },
+      body: JSON.stringify({ agentDid, principalDid }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.allowed === true;
+  } catch (err) {
+    console.error('[WS] Delegation verify error:', err.message);
+    return false;
+  }
+}
+
 function setupWebSocket(server) {
   wss = new WebSocketServer({ noServer: true });
 
@@ -199,7 +233,7 @@ function setupWebSocket(server) {
     const did = await authenticateWithCookie(req);
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const meta = { did: did || null, subscriptions: new Set(), authenticated: !!did };
+      const meta = { did: did || null, alsoDids: new Set(), subscriptions: new Set(), authenticated: !!did };
       socketMeta.set(ws, meta);
 
       if (did) {
@@ -246,6 +280,30 @@ function setupWebSocket(server) {
 
           if (msg.type === 'ping') {
             ws.send(JSON.stringify({ type: 'pong' }));
+          } else if (msg.type === 'register_also' && msg.did) {
+            // Agent delegation: also receive notifications for this DID (#1545/#1653).
+            // MUST verify the authenticated DID has an active agent delegation
+            // (identity_members role='agent', not revoked) for the target DID.
+            const alsoDid = msg.did;
+            if (alsoDid === meta.did) {
+              // Self-registration is a no-op — already registered under own DID.
+              ws.send(JSON.stringify({ type: 'registered_also', did: alsoDid }));
+            } else if (meta.alsoDids.size >= 5) {
+              // Cap: max 5 also-registrations per socket to prevent abuse.
+              ws.send(JSON.stringify({ type: 'error', message: 'Too many register_also registrations' }));
+            } else if (!meta.alsoDids.has(alsoDid)) {
+              const allowed = await verifyAgentDelegation(meta.did, alsoDid);
+              if (allowed) {
+                meta.alsoDids.add(alsoDid);
+                if (!didSockets.has(alsoDid)) didSockets.set(alsoDid, new Set());
+                didSockets.get(alsoDid).add(ws);
+                console.log(`[WS] ${meta.did} registered also for: ${alsoDid} (delegation verified)`);
+                ws.send(JSON.stringify({ type: 'registered_also', did: alsoDid }));
+              } else {
+                console.log(`[WS] ${meta.did} denied register_also for: ${alsoDid} (no delegation)`);
+                ws.send(JSON.stringify({ type: 'error', message: 'Not authorized to register for this DID' }));
+              }
+            }
           } else if (msg.type === 'subscribe') {
             if (msg.conversationId) meta.subscriptions.add(msg.conversationId);
             if (msg.did) meta.subscriptions.add(msg.did);
@@ -263,6 +321,14 @@ function setupWebSocket(server) {
 
       ws.on('close', async () => {
         const closeDid = meta.did;
+        // Clean up alsoDids registrations
+        for (const alsoDid of meta.alsoDids) {
+          const sockets = didSockets.get(alsoDid);
+          if (sockets) {
+            sockets.delete(ws);
+            if (sockets.size === 0) didSockets.delete(alsoDid);
+          }
+        }
         socketMeta.delete(ws);
         if (closeDid) {
           const sockets = didSockets.get(closeDid);
