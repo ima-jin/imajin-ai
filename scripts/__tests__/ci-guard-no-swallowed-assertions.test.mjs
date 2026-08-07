@@ -2,8 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const SCRIPT = new URL('../ci-guard-no-swallowed-assertions.mjs', import.meta.url).pathname;
+// fileURLToPath, not `.pathname`: on Windows the latter yields "/D:/...", which
+// node then resolves against the cwd into "C:\D:\..." and cannot load.
+const SCRIPT = fileURLToPath(new URL('../ci-guard-no-swallowed-assertions.mjs', import.meta.url));
 
 function makeTempRepo() {
   const dir = mkdtempSync(join(tmpdir(), 'swallow-guard-'));
