@@ -521,3 +521,194 @@ describe('dispatch by ingestion pattern', () => {
     expect(await screen.findByPlaceholderText('Google Gemini credential')).toBeDefined();
   });
 });
+
+// ── GitHub device flow (#1391) ────────────────────────────────────────────
+
+describe('GitHub auth-mode selector (#1391)', () => {
+  const STATUS = '/github/api/scope-manifest';
+
+  function githubStatus(overrides: StatusBody = {}): StatusBody {
+    return {
+      manifestAssetId: null,
+      activeScopes: [],
+      validScopes: ['github:read'],
+      configSealed: false,
+      tokenSealed: false,
+      ...overrides,
+    };
+  }
+
+  async function renderGitHub(overrides: StatusBody = {}) {
+    const spy = installFetch({ [STATUS]: githubStatus(overrides) });
+    render(<ConnectorDetail entry={entryFor('github')} />);
+    await screen.findByPlaceholderText('OAuth App Client ID');
+    return spy;
+  }
+
+  it('defaults to device mode and hides the secret and callback fields', async () => {
+    await renderGitHub();
+
+    expect((screen.getByLabelText(/Device flow \(recommended\)/) as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByPlaceholderText('Client Secret')).toBeNull();
+    expect(screen.queryByPlaceholderText('Redirect URI')).toBeNull();
+  });
+
+  it('reveals the secret and callback fields when manual mode is selected', async () => {
+    await renderGitHub();
+
+    fireEvent.click(screen.getByLabelText(/Manual \(client ID \+ secret \+ callback\)/));
+
+    expect(screen.getByPlaceholderText('Client Secret')).toBeDefined();
+    expect(screen.getByPlaceholderText('Redirect URI')).toBeDefined();
+  });
+
+  it('posts a clientId-only device config — no secret, no redirect URI', async () => {
+    const spy = await renderGitHub();
+
+    const clientId = screen.getByPlaceholderText('OAuth App Client ID');
+    fireEvent.change(clientId, { target: { value: '  Iv1.deadbeef  ' } });
+    fireEvent.submit(clientId.closest('form') as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(requestBody(spy, '/github/api/configure')).toEqual({
+        flow: 'device',
+        clientId: 'Iv1.deadbeef',
+      });
+    });
+  });
+
+  it('still posts the full triple in manual mode', async () => {
+    const spy = await renderGitHub();
+
+    fireEvent.click(screen.getByLabelText(/Manual \(client ID \+ secret \+ callback\)/));
+    fireEvent.change(screen.getByPlaceholderText('OAuth App Client ID'), { target: { value: 'Iv1.web' } });
+    fireEvent.change(screen.getByPlaceholderText('Client Secret'), { target: { value: 'csecret' } });
+    const redirect = screen.getByPlaceholderText('Redirect URI');
+    fireEvent.change(redirect, { target: { value: 'https://imajin.test/github/api/callback' } });
+    fireEvent.submit(redirect.closest('form') as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(requestBody(spy, '/github/api/configure')).toEqual({
+        flow: 'authorization_code',
+        clientId: 'Iv1.web',
+        clientSecret: 'csecret',
+        redirectUri: 'https://imajin.test/github/api/callback',
+      });
+    });
+  });
+
+  it('adopts the authorization-code mode the owner already sealed', async () => {
+    installFetch({ [STATUS]: githubStatus({ configSealed: true, flow: 'authorization_code' }) });
+
+    render(<ConnectorDetail entry={entryFor('github')} />);
+
+    // Step 2 is the provider redirect, not the device button.
+    expect(await screen.findByText('Connect GitHub Account →')).toBeDefined();
+    expect(screen.queryByText('Connect with device flow →')).toBeNull();
+  });
+
+  it('offers the device connect button once a device config is sealed', async () => {
+    installFetch({ [STATUS]: githubStatus({ configSealed: true, flow: 'device' }) });
+
+    render(<ConnectorDetail entry={entryFor('github')} />);
+
+    expect(await screen.findByRole('button', { name: 'Connect with device flow →' })).toBeDefined();
+    expect(screen.getByText('OAuth App config sealed (device flow)')).toBeDefined();
+  });
+});
+
+describe('GitHub device connect round-trip (#1391)', () => {
+  const STATUS = '/github/api/scope-manifest';
+
+  /** Status + device-start bodies for a sealed device config. */
+  function installDeviceFetch(startBody: StatusBody) {
+    return installFetch({
+      [STATUS]: {
+        manifestAssetId: null,
+        activeScopes: [],
+        validScopes: ['github:read'],
+        configSealed: true,
+        tokenSealed: false,
+        flow: 'device',
+      },
+      '/github/api/device/start': startBody,
+    });
+  }
+
+  it('shows the user code and the verification link after starting', async () => {
+    installDeviceFetch({
+      ticket: 'ticket-1',
+      userCode: 'ABCD-1234',
+      verificationUri: 'https://github.com/login/device',
+      interval: 5,
+    });
+
+    render(<ConnectorDetail entry={entryFor('github')} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect with device flow →' }));
+
+    expect(await screen.findByText('ABCD-1234')).toBeDefined();
+    const link = screen.getByRole('link', { name: 'https://github.com/login/device' });
+    expect(link.getAttribute('href')).toBe('https://github.com/login/device');
+  });
+
+  it('prefers the pre-filled verification link when the provider sends one', async () => {
+    installDeviceFetch({
+      ticket: 'ticket-1',
+      userCode: 'ABCD-1234',
+      verificationUri: 'https://github.com/login/device',
+      verificationUriComplete: 'https://github.com/login/device?user_code=ABCD-1234',
+      interval: 5,
+    });
+
+    render(<ConnectorDetail entry={entryFor('github')} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect with device flow →' }));
+
+    await screen.findByText('ABCD-1234');
+    const link = screen.getByRole('link', { name: 'https://github.com/login/device' });
+    expect(link.getAttribute('href')).toBe('https://github.com/login/device?user_code=ABCD-1234');
+  });
+
+  it('surfaces a device-start failure (e.g. device flow not enabled on the app)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === '/github/api/device/start') {
+          return jsonResponse({ error: 'github_device_code: device_flow_disabled' }, false);
+        }
+        return jsonResponse({
+          manifestAssetId: null,
+          activeScopes: [],
+          validScopes: ['github:read'],
+          configSealed: true,
+          tokenSealed: false,
+          flow: 'device',
+        });
+      }),
+    );
+
+    render(<ConnectorDetail entry={entryFor('github')} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect with device flow →' }));
+
+    expect(await screen.findByText(/device_flow_disabled/)).toBeDefined();
+  });
+
+  it('cannot be started before a config is sealed', async () => {
+    const spy = installFetch({
+      [STATUS]: {
+        manifestAssetId: null,
+        activeScopes: [],
+        validScopes: ['github:read'],
+        configSealed: false,
+        tokenSealed: false,
+        flow: null,
+      },
+    });
+
+    render(<ConnectorDetail entry={entryFor('github')} />);
+    const button = await screen.findByRole('button', { name: 'Connect with device flow →' });
+
+    expect(button.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(button);
+    expect(spy.mock.calls.some(([input]) => String(input) === '/github/api/device/start')).toBe(false);
+  });
+});

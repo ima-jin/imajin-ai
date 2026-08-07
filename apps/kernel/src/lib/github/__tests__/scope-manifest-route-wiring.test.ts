@@ -8,10 +8,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // apart. GET/POST/OPTIONS behaviour is tested in
 // src/lib/kernel/__tests__/scope-manifest-route.test.ts.
 
-const { capturedOpts, mockHandlers, statusMock } = vi.hoisted(() => ({
+const { capturedOpts, mockHandlers, statusMock, readConfigFlowMock } = vi.hoisted(() => ({
   capturedOpts: { current: null as Record<string, unknown> | null },
   mockHandlers: { GET: vi.fn(), POST: vi.fn(), OPTIONS: vi.fn() },
   statusMock: vi.fn(),
+  readConfigFlowMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/kernel/scope-manifest-route', () => ({
@@ -32,6 +33,7 @@ vi.mock('@/src/lib/github/connector', () => ({
   configField: (did: string) => `github-config:${did}`,
   oauthVaultField: (did: string) => `github-oauth:${did}`,
   vaultField: (did: string) => `github-pat:${did}`,
+  readConfigFlow: readConfigFlowMock,
 }));
 
 vi.mock('@/src/lib/vault', () => ({ vaultFieldStatus: statusMock }));
@@ -44,6 +46,8 @@ const OWNER = 'did:imajin:owner';
 describe('GitHub scope-manifest route wiring (#1521)', () => {
   beforeEach(() => {
     statusMock.mockReset();
+    readConfigFlowMock.mockReset();
+    readConfigFlowMock.mockResolvedValue(null);
   });
 
   async function getExtraFields(): Promise<Record<string, unknown>> {
@@ -53,10 +57,12 @@ describe('GitHub scope-manifest route wiring (#1521)', () => {
 
   it('reports configSealed/tokenSealed true and credentialPending false when everything is ready', async () => {
     statusMock.mockResolvedValue('ready');
+    readConfigFlowMock.mockResolvedValue('authorization_code');
     expect(await getExtraFields()).toEqual({
       configSealed: true,
       tokenSealed: true,
       credentialPending: false,
+      flow: 'authorization_code',
     });
   });
 
@@ -68,6 +74,7 @@ describe('GitHub scope-manifest route wiring (#1521)', () => {
       configSealed: false,
       tokenSealed: false,
       credentialPending: true,
+      flow: null,
     });
   });
 
@@ -84,6 +91,23 @@ describe('GitHub scope-manifest route wiring (#1521)', () => {
       configSealed: false,
       tokenSealed: false,
       credentialPending: false,
+      flow: null,
     });
+  });
+
+  // ── Device flow discriminator (#1391) ──────────────────────────────────────
+
+  it('reports the sealed device-mode flow so the UI can show the right step 2', async () => {
+    statusMock.mockResolvedValue('ready');
+    readConfigFlowMock.mockResolvedValue('device');
+
+    expect(await getExtraFields()).toMatchObject({ flow: 'device' });
+  });
+
+  it('degrades the flow to null rather than failing the whole status read', async () => {
+    statusMock.mockResolvedValue('ready');
+    readConfigFlowMock.mockRejectedValue(new Error('vault down'));
+
+    expect(await getExtraFields()).toMatchObject({ configSealed: true, flow: null });
   });
 });

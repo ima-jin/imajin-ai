@@ -61,10 +61,29 @@ const { FakeConnectorCredentialPendingError } = vi.hoisted(() => {
 });
 vi.mock('../connector-oauth', () => ({ ConnectorCredentialPendingError: FakeConnectorCredentialPendingError }));
 
-import { createConnectHandler, createCallbackHandler, MissingCallbackParamError } from '../connector-oauth-routes';
+import {
+  createConnectHandler,
+  createCallbackHandler,
+  createConfigureHandler,
+  createDeviceStartHandler,
+  createDevicePollHandler,
+  MissingCallbackParamError,
+} from '../connector-oauth-routes';
+import type { BaseOAuthConfig } from '../connector-oauth';
 
 function makeRequest(url: string) {
   return { url } as unknown as import('next/server').NextRequest;
+}
+
+/** A request whose `json()` resolves to `body` (or throws when omitted). */
+function makeJsonRequest(body: unknown, url = 'https://kernel.test/api') {
+  return {
+    url,
+    json: async () => {
+      if (body === undefined) throw new Error('not json');
+      return body;
+    },
+  } as unknown as import('next/server').NextRequest;
 }
 
 beforeEach(() => {
@@ -252,5 +271,271 @@ describe('createCallbackHandler', () => {
     );
     const res = await call(handler);
     expect(res.headers.location).toBe('https://kernel.test/auth/settings?error=exchange_failed&connector=github');
+  });
+});
+
+// ─── Device flow (#1391) ─────────────────────────────────────────────────────
+
+describe('createConfigureHandler — device vs authorization-code bodies', () => {
+  function handlerFor(supportsDeviceFlow: boolean) {
+    const storeConfig = vi.fn().mockResolvedValue(undefined);
+    const { POST } = createConfigureHandler<BaseOAuthConfig>({
+      buildConfig: (base) => base,
+      storeConfig,
+      supportsDeviceFlow,
+    });
+    return { POST, storeConfig };
+  }
+
+  async function post(handler: ReturnType<typeof handlerFor>, body: unknown) {
+    return (await handler.POST(makeJsonRequest(body))) as {
+      status: number;
+      json(): Promise<{ error?: string; flow?: string }>;
+    };
+  }
+
+  it('seals a clientId-only config as device mode', async () => {
+    const handler = handlerFor(true);
+
+    const res = await post(handler, { clientId: 'cid-device' });
+
+    expect(res.status).toBe(201);
+    expect((await res.json()).flow).toBe('device');
+    expect(handler.storeConfig).toHaveBeenCalledWith('did:imajin:owner', {
+      clientId: 'cid-device',
+      flow: 'device',
+    });
+  });
+
+  it('honours an explicit device flow even when the connector could infer otherwise', async () => {
+    const handler = handlerFor(true);
+
+    const res = await post(handler, { flow: 'device', clientId: 'cid-device' });
+
+    expect(res.status).toBe(201);
+    expect(handler.storeConfig).toHaveBeenCalledWith('did:imajin:owner', {
+      clientId: 'cid-device',
+      flow: 'device',
+    });
+  });
+
+  it('refuses to seal a secret alongside a device-mode request', async () => {
+    const handler = handlerFor(true);
+
+    const res = await post(handler, { flow: 'device', clientId: 'cid', clientSecret: 'csecret' });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/device flow takes clientId only/);
+    expect(handler.storeConfig).not.toHaveBeenCalled();
+  });
+
+  it('rejects device mode on a connector that did not opt in', async () => {
+    const handler = handlerFor(false);
+
+    const res = await post(handler, { clientId: 'cid-device' });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/does not support device flow/);
+    expect(handler.storeConfig).not.toHaveBeenCalled();
+  });
+
+  it('still accepts a pre-#1391 three-field body as authorization code', async () => {
+    const handler = handlerFor(true);
+
+    const res = await post(handler, {
+      clientId: 'cid',
+      clientSecret: 'csecret',
+      redirectUri: 'https://imajin.test/cb',
+    });
+
+    expect(res.status).toBe(201);
+    expect(handler.storeConfig).toHaveBeenCalledWith('did:imajin:owner', {
+      clientId: 'cid',
+      clientSecret: 'csecret',
+      redirectUri: 'https://imajin.test/cb',
+      flow: 'authorization_code',
+    });
+  });
+
+  it('still rejects a half-filled authorization-code body', async () => {
+    const handler = handlerFor(true);
+
+    const res = await post(handler, { clientId: 'cid', clientSecret: 'csecret' });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/clientId, clientSecret and redirectUri are required/);
+  });
+});
+
+describe('createDeviceStartHandler', () => {
+  const GRANT = {
+    deviceCode: 'dev-code-xyz',
+    userCode: 'ABCD-1234',
+    verificationUri: 'https://github.com/login/device',
+    expiresIn: 900,
+    interval: 5,
+  };
+
+  function handlerFor(requestDeviceCode: (did: string) => Promise<typeof GRANT>) {
+    return createDeviceStartHandler({
+      requestDeviceCode,
+      signDeviceTicket: (did, code) => `ticket(${did}|${code})`,
+      connectorName: 'github',
+    });
+  }
+
+  it('returns the user code, verification URI, and a signed ticket', async () => {
+    const handler = handlerFor(async () => GRANT);
+
+    const res = (await handler(makeJsonRequest({}))) as {
+      status: number;
+      json(): Promise<Record<string, unknown>>;
+    };
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({
+      ticket: 'ticket(did:imajin:owner|dev-code-xyz)',
+      userCode: 'ABCD-1234',
+      verificationUri: 'https://github.com/login/device',
+      interval: 5,
+    });
+  });
+
+  it('never returns the raw device code to the browser', async () => {
+    const handler = handlerFor(async () => GRANT);
+
+    const res = (await handler(makeJsonRequest({}))) as { json(): Promise<Record<string, unknown>> };
+
+    expect(await res.json()).not.toHaveProperty('deviceCode');
+  });
+
+  it('returns 401 without starting a flow when unauthenticated', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'unauthorized', status: 401 });
+    const requestDeviceCode = vi.fn();
+    const handler = handlerFor(requestDeviceCode);
+
+    const res = (await handler(makeJsonRequest({}))) as { status: number };
+
+    expect(res.status).toBe(401);
+    expect(requestDeviceCode).not.toHaveBeenCalled();
+  });
+
+  it('maps a missing config to 400 rather than a 500', async () => {
+    const handler = handlerFor(async () => {
+      throw new Error('github_no_config: DID did:imajin:owner has not configured a github connection');
+    });
+
+    const res = (await handler(makeJsonRequest({}))) as { status: number };
+
+    expect(res.status).toBe(400);
+  });
+
+  it('maps a pending credential to 409', async () => {
+    const handler = handlerFor(async () => {
+      throw new FakeConnectorCredentialPendingError('github_credential_pending: waiting for owner');
+    });
+
+    const res = (await handler(makeJsonRequest({}))) as { status: number };
+
+    expect(res.status).toBe(409);
+  });
+
+  it('maps a provider-side device endpoint failure to 502', async () => {
+    const handler = handlerFor(async () => {
+      throw new Error('github_device_code: device_flow_disabled');
+    });
+
+    const res = (await handler(makeJsonRequest({}))) as { status: number; json(): Promise<{ error: string }> };
+
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toMatch(/device_flow_disabled/);
+  });
+});
+
+describe('createDevicePollHandler', () => {
+  function handlerFor(
+    pollDeviceTokenOnce: ReturnType<typeof vi.fn>,
+    verify: (ticket: string) => { did: string; deviceCode: string } =
+      () => ({ did: 'did:imajin:owner', deviceCode: 'dev-code-xyz' }),
+  ) {
+    return createDevicePollHandler({
+      pollDeviceTokenOnce,
+      verifyDeviceTicket: verify,
+      connectorName: 'github',
+    });
+  }
+
+  it('polls with the device code carried by the ticket', async () => {
+    const poll = vi.fn().mockResolvedValue('pending');
+    const handler = handlerFor(poll);
+
+    const res = (await handler(makeJsonRequest({ ticket: 't' }))) as {
+      status: number;
+      json(): Promise<{ status: string }>;
+    };
+
+    expect(poll).toHaveBeenCalledWith('did:imajin:owner', 'dev-code-xyz');
+    expect((await res.json()).status).toBe('pending');
+  });
+
+  it('passes the authorized status through once the server sealed the token', async () => {
+    const handler = handlerFor(vi.fn().mockResolvedValue('authorized'));
+
+    const res = (await handler(makeJsonRequest({ ticket: 't' }))) as { json(): Promise<{ status: string }> };
+
+    expect((await res.json()).status).toBe('authorized');
+  });
+
+  it('never returns a token, only a status', async () => {
+    const handler = handlerFor(vi.fn().mockResolvedValue('authorized'));
+
+    const res = (await handler(makeJsonRequest({ ticket: 't' }))) as { json(): Promise<Record<string, unknown>> };
+
+    expect(Object.keys(await res.json())).toEqual(['status']);
+  });
+
+  it('rejects a ticket minted for a different DID', async () => {
+    const poll = vi.fn();
+    const handler = handlerFor(poll, () => ({ did: 'did:imajin:mallory', deviceCode: 'dev-code-xyz' }));
+
+    const res = (await handler(makeJsonRequest({ ticket: 't' }))) as { status: number };
+
+    expect(res.status).toBe(403);
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  it('rejects a tampered or expired ticket without polling', async () => {
+    const poll = vi.fn();
+    const handler = handlerFor(poll, () => { throw new Error('github_device: signature mismatch'); });
+
+    const res = (await handler(makeJsonRequest({ ticket: 't' }))) as {
+      status: number;
+      json(): Promise<{ error: string }>;
+    };
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('invalid or expired ticket');
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  it('requires a ticket in the body', async () => {
+    const poll = vi.fn();
+    const handler = handlerFor(poll);
+
+    const res = (await handler(makeJsonRequest({}))) as { status: number };
+
+    expect(res.status).toBe(400);
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 without polling when unauthenticated', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'unauthorized', status: 401 });
+    const poll = vi.fn();
+    const handler = handlerFor(poll);
+
+    const res = (await handler(makeJsonRequest({ ticket: 't' }))) as { status: number };
+
+    expect(res.status).toBe(401);
+    expect(poll).not.toHaveBeenCalled();
   });
 });
