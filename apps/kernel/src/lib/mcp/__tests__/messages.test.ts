@@ -21,6 +21,7 @@ import {
   readConversationMessages,
   sendTextMessageAsDid,
 } from '@/src/lib/chat/queries';
+import { dmDid } from '@/src/lib/chat/conversation-did';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -178,6 +179,65 @@ describe('imajin_send_message', () => {
     });
     await expect(
       tool('imajin_send_message').handler({ conversation_id: 'did:imajin:dm:abc', content: 'yo' }, ctx),
+    ).rejects.toThrow(/verify your account/);
+  });
+});
+
+// ─── imajin_send_dm ───────────────────────────────────────────────────────────
+
+describe('imajin_send_dm', () => {
+  const recipient = 'did:imajin:other';
+
+  it('requires the messages:write scope', () => {
+    expect(tool('imajin_send_dm').requiredScope).toBe('messages:write');
+  });
+
+  it('requires both to and content', () => {
+    expect(tool('imajin_send_dm').inputSchema.required).toEqual(['to', 'content']);
+  });
+
+  it('gates on messages:write and sends to the canonical dmDid conversation', async () => {
+    vi.mocked(sendTextMessageAsDid).mockResolvedValueOnce({
+      ok: true,
+      message: { id: 'msg_dm', createdAt: new Date('2026-07-04T00:00:00Z') } as never,
+    });
+
+    const res = await tool('imajin_send_dm').handler({ to: recipient, content: 'yo' }, ctx);
+
+    const expectedDid = dmDid(ctx.did, recipient);
+    expect(requireMcpGrant).toHaveBeenCalledWith(ctx.did, 'messages:write');
+    expect(sendTextMessageAsDid).toHaveBeenCalledWith(ctx.did, expectedDid, 'yo');
+
+    const out = parseResult(res as McpContent[]);
+    expect(out).toMatchObject({
+      sent: true,
+      conversation_id: expectedDid,
+      message_id: 'msg_dm',
+    });
+  });
+
+  it('derives the same conversation DID regardless of who sends first', async () => {
+    expect(dmDid(ctx.did, recipient)).toBe(dmDid(recipient, ctx.did));
+  });
+
+  it('throws when to is missing', async () => {
+    await expect(tool('imajin_send_dm').handler({ content: 'yo' }, ctx)).rejects.toThrow(/to/);
+    expect(sendTextMessageAsDid).not.toHaveBeenCalled();
+  });
+
+  it('throws when content is missing', async () => {
+    await expect(tool('imajin_send_dm').handler({ to: recipient }, ctx)).rejects.toThrow(/content/);
+    expect(sendTextMessageAsDid).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a send failure as an error', async () => {
+    vi.mocked(sendTextMessageAsDid).mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      error: 'Please verify your account to send messages',
+    });
+    await expect(
+      tool('imajin_send_dm').handler({ to: recipient, content: 'yo' }, ctx),
     ).rejects.toThrow(/verify your account/);
   });
 });
