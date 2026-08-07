@@ -737,6 +737,79 @@ export interface BusEventMap {
     context_type: 'warp.agent';
   };
   /**
+   * A watched Warp run moved while it was still running (#1682).
+   *
+   * `warp.run.completed` closed the loop on a run *ending*; this closes it on a
+   * run *happening*. The watch already reads the run every poll, so the deltas
+   * were being observed and thrown away — a 30-minute run was 30 minutes of
+   * silence for anything downstream.
+   *
+   * Published only when something actually changed since the previous poll, so a
+   * quiet run stays quiet: `changed` names what moved, which is what lets a
+   * consumer wake on a new tool call and ignore a cost tick.
+   *
+   * Never published for a terminal state — that is `warp.run.completed`'s job,
+   * and duplicating it here would make every run report its ending twice.
+   *
+   * Carries NO prompt and NO credential material, the same invariant as the rest
+   * of `warp.*`. Conversation text is summarised and truncated rather than
+   * passed through, because events are persisted and a run's messages are
+   * unbounded.
+   */
+  'warp.run.progress': {
+    runId: string;
+    /** Who dispatched it — the DID whose sealed key fired and watches the run. */
+    principalDid: string;
+    /** The state observed on this poll, e.g. `INPROGRESS`. */
+    state: string | null;
+    /** The state observed on the previous poll; null on the first sighting. */
+    previousState: string | null;
+    /** What moved since the last progress event. Never empty. */
+    changed: Array<'state' | 'messages' | 'usage' | 'statusMessage' | 'artifacts'>;
+    /** One-line human summary, e.g. `QUEUED → INPROGRESS`. Notification body fodder. */
+    summary: string;
+    /**
+     * Conversation messages seen since the last poll, summarised.
+     *
+     * Capped: a burst longer than the cap keeps the most recent messages and
+     * reports the true size in `newMessageCount`, because the tail is what an
+     * agent deciding whether to intervene needs.
+     */
+    newMessages: Array<{
+      /** Position in the run's flattened message stream — monotonic across polls. */
+      index: number;
+      /** The step it belongs to, so delegated sub-steps stay distinguishable. */
+      stepId: string | null;
+      role: string;
+      /** Distinct block types, in order: `text`, `action`, `action_result`, `event`. */
+      blockTypes: string[];
+      /** Tool/action names lifted out of `action` blocks. */
+      actions: string[];
+      /** Text blocks joined and truncated; null when the message carried none. */
+      text: string | null;
+    }>;
+    /** How many new messages appeared. May exceed `newMessages.length` (cap). */
+    newMessageCount: number;
+    /** Running total of messages observed for this run. */
+    totalMessageCount: number;
+    /** Cost snapshot as of this poll — the running spend, not a delta. */
+    requestUsage: { inferenceCost: number | null; computeCost: number | null; platformCost: number | null } | null;
+    /**
+     * Why the run is in the state it is in, when Warp populated it early.
+     *
+     * The same object shape as `warp.run.completed` rather than a bare string:
+     * a mid-run error is only actionable with its `errorCode` and `retryable`.
+     */
+    statusMessage: { message: string; errorCode: string | null; retryable: boolean | null } | null;
+    /** Artifacts so far — a PR can be opened long before the run ends. */
+    artifacts: Array<{ type: string; url: string | null; branch: string | null }>;
+    /** Successful run reads so far in this watch, starting at 1. */
+    pollCount: number;
+    observedAt: string;
+    context_id: string;
+    context_type: 'warp.agent';
+  };
+  /**
    * A watched Warp run did not reach a terminal state before the watch gave up
    * (#1639, Stage 3).
    *

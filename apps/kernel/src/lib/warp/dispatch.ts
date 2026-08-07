@@ -38,6 +38,13 @@
  * stops and puts the outcome on the bus as `warp.run.completed` (or
  * `warp.run.timeout`). That is what turns dispatch from "fire and poll by hand"
  * into a closed loop.
+ *
+ * ## Progress watch (#1682)
+ * The same poll now also reports the run while it is still going, as
+ * `warp.run.progress`: state transitions, new conversation messages, cost
+ * movement, artifacts, and any early error. Those deltas were already being read
+ * and discarded, which made a 30-minute run 30 minutes of silence. Terminal
+ * behaviour is untouched — progress is never published for a terminal state.
  */
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -1201,6 +1208,15 @@ export interface WatchRunOptions {
   timeoutMs?: number;
   /** Injectable delay, so a test does not have to wait real seconds. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Publish `warp.run.progress` while the run is still going (#1682). Defaults
+   * to on.
+   *
+   * The off switch exists for the caller that only wants the outcome — turning
+   * it off also stops the conversation read, which is the expensive half of a
+   * poll cycle.
+   */
+  progress?: boolean;
 }
 
 /**
@@ -1251,6 +1267,360 @@ function toEventArtifacts(
   }));
 }
 
+// ── Progress watch (#1682) ────────────────────────────────────────────────────
+
+/**
+ * States a run sits in before a worker has picked it up.
+ *
+ * The conversation read is skipped while a run is in one of these: there is
+ * nothing in it yet, and `GET /conversation` is the expensive half of a poll
+ * cycle where `GET /runs/{id}` is metadata only.
+ */
+const PRE_START_STATES = new Set<string>(['QUEUED', 'PENDING']);
+
+/**
+ * Most summarised messages one progress event carries.
+ *
+ * A burst longer than this keeps the *most recent* messages: `newMessageCount`
+ * still reports the true size, and the tail is what an agent deciding whether to
+ * intervene actually needs.
+ */
+const PROGRESS_MAX_NEW_MESSAGES = 20;
+
+/** Cap on the text lifted out of a single conversation message. */
+const PROGRESS_MESSAGE_TEXT_MAX_CHARS = 500;
+
+/**
+ * How deep the step tree is walked.
+ *
+ * Warp nests a step per delegation, so the tree is shallow in practice. The cap
+ * is here because the shape is passed through from an upstream response rather
+ * than modelled, and an unbounded recursion over one is a stack overflow waiting
+ * for a pathological payload.
+ */
+const PROGRESS_MAX_STEP_DEPTH = 32;
+
+/** Stand-in for a role or block type Warp returned without one. */
+const PROGRESS_UNKNOWN = 'unknown';
+
+/** What moved between two polls. */
+type ProgressChange = 'state' | 'messages' | 'usage' | 'statusMessage' | 'artifacts';
+
+/** One conversation message, reduced to what a watcher acts on. */
+interface ProgressMessage {
+  index: number;
+  stepId: string | null;
+  role: string;
+  blockTypes: string[];
+  actions: string[];
+  text: string | null;
+}
+
+/** A message in the flattened stream, with the step it came from. */
+interface FlatMessage {
+  stepId: string | null;
+  message: Record<string, unknown>;
+}
+
+/** What the previous poll saw, so this one can say what changed. */
+interface ProgressTracker {
+  previousState: string | null;
+  messageCount: number;
+  usage: WarpRunUsage | null;
+  statusMessage: WarpRunStatusMessage | null;
+  artifactCount: number;
+  pollCount: number;
+}
+
+function newProgressTracker(): ProgressTracker {
+  return {
+    previousState: null,
+    messageCount: 0,
+    usage: null,
+    statusMessage: null,
+    artifactCount: 0,
+    pollCount: 0,
+  };
+}
+
+/**
+ * Depth-first walk of the step tree into one ordered message stream.
+ *
+ * Depth-first is what makes the index stable: a step's own messages come before
+ * its children's, and Warp only ever appends, so a message's position never
+ * changes between polls. That is the whole basis of the "seen up to N" diff.
+ *
+ * Defensive at every level because `steps` is passed through from Warp rather
+ * than parsed — a malformed node is skipped, not thrown over.
+ */
+function flattenConversation(steps: unknown, depth = 0): FlatMessage[] {
+  if (!Array.isArray(steps) || depth >= PROGRESS_MAX_STEP_DEPTH) return [];
+
+  const flat: FlatMessage[] = [];
+  for (const rawStep of steps) {
+    const step = objectOrNull(rawStep);
+    if (step === null) continue;
+
+    const stepId = optionalString(step.id) ?? null;
+    if (Array.isArray(step.messages)) {
+      for (const rawMessage of step.messages) {
+        const message = objectOrNull(rawMessage);
+        if (message !== null) flat.push({ stepId, message });
+      }
+    }
+
+    flat.push(...flattenConversation(step.steps, depth + 1));
+  }
+  return flat;
+}
+
+function truncateText(value: string, maxChars: number): string {
+  return value.length <= maxChars ? value : `${value.slice(0, maxChars)}…`;
+}
+
+/**
+ * Reduce one message to the fields a progress event carries.
+ *
+ * Blocks are summarised rather than passed through: Warp's block union is
+ * unbounded and carries whole command outputs, and a bus event is persisted and
+ * fanned out. `blockTypes` and `actions` are what a listener branches on; `text`
+ * is truncated because it is for a human reading a notification, not a
+ * transcript — {@link getAgentRunTranscript} is still the way to get that.
+ */
+function toProgressMessage(index: number, entry: FlatMessage): ProgressMessage {
+  const blocks = Array.isArray(entry.message.content) ? entry.message.content : [];
+
+  const blockTypes: string[] = [];
+  const actions: string[] = [];
+  const texts: string[] = [];
+
+  for (const rawBlock of blocks) {
+    const block = objectOrNull(rawBlock);
+    if (block === null) continue;
+
+    const type = optionalString(block.type) ?? PROGRESS_UNKNOWN;
+    if (!blockTypes.includes(type)) blockTypes.push(type);
+
+    const name = optionalString(block.name);
+    if (name !== undefined && !actions.includes(name)) actions.push(name);
+
+    const text = optionalString(block.text);
+    if (text !== undefined) texts.push(text);
+  }
+
+  const text = texts.join('\n');
+  return {
+    index,
+    stepId: entry.stepId,
+    role: optionalString(entry.message.role) ?? PROGRESS_UNKNOWN,
+    blockTypes,
+    actions,
+    text: text.length === 0 ? null : truncateText(text, PROGRESS_MESSAGE_TEXT_MAX_CHARS),
+  };
+}
+
+/**
+ * The run's messages so far, or null when they could not be read.
+ *
+ * Null rather than a throw: a failed conversation read must not cost the caller
+ * the state transition it was about to report, and it must not count against the
+ * consecutive-error budget that governs the run read — that budget exists to
+ * decide whether the *run* is still observable.
+ */
+async function readConversationMessages(
+  principalDid: string,
+  runId: string,
+): Promise<FlatMessage[] | null> {
+  try {
+    const conversation = await getAgentRunConversation(principalDid, runId);
+    return flattenConversation(conversation.steps);
+  } catch (err) {
+    log.warn(
+      { err: String(err), principalDid, runId },
+      'Warp run watch could not read the conversation; progress continues without it',
+    );
+    return null;
+  }
+}
+
+function usageMoved(before: WarpRunUsage | null, after: WarpRunUsage | null): boolean {
+  if (before === null || after === null) return before !== after;
+  return (
+    before.inferenceCost !== after.inferenceCost ||
+    before.computeCost !== after.computeCost ||
+    before.platformCost !== after.platformCost
+  );
+}
+
+function statusMessageMoved(
+  before: WarpRunStatusMessage | null,
+  after: WarpRunStatusMessage | null,
+): boolean {
+  if (before === null || after === null) return before !== after;
+  return (
+    before.message !== after.message ||
+    before.errorCode !== after.errorCode ||
+    before.retryable !== after.retryable
+  );
+}
+
+/**
+ * One readable line for the notification body.
+ *
+ * The notify reactor substitutes flat scalar keys only, so a listener-facing
+ * summary has to be computed here rather than assembled from `newMessages`
+ * downstream.
+ */
+function progressSummary(
+  changed: readonly ProgressChange[],
+  previousState: string | null,
+  state: string | null,
+  newMessageCount: number,
+  statusMessage: WarpRunStatusMessage | null,
+): string {
+  const parts: string[] = [];
+
+  if (changed.includes('state')) {
+    const now = state ?? UNKNOWN_STATE;
+    parts.push(previousState === null ? now : `${previousState} → ${now}`);
+  }
+  if (changed.includes('messages')) {
+    parts.push(`${newMessageCount} new message${newMessageCount === 1 ? '' : 's'}`);
+  }
+  if (changed.includes('artifacts')) {
+    parts.push('new artifact');
+  }
+  if (changed.includes('statusMessage') && statusMessage !== null) {
+    parts.push(statusMessage.errorCode ?? statusMessage.message);
+  }
+  if (changed.includes('usage')) {
+    parts.push('cost updated');
+  }
+
+  // Only reachable when the sole change was a status message being cleared.
+  return parts.length === 0 ? 'updated' : parts.join('; ');
+}
+
+async function publishRunProgress(
+  principalDid: string,
+  run: WarpAgentRun,
+  fields: {
+    changed: ProgressChange[];
+    previousState: string | null;
+    newMessages: ProgressMessage[];
+    newMessageCount: number;
+    totalMessageCount: number;
+    pollCount: number;
+  },
+): Promise<void> {
+  await publish('warp.run.progress', {
+    issuer: principalDid,
+    subject: principalDid,
+    scope: 'warp',
+    payload: {
+      runId: run.runId,
+      principalDid,
+      state: run.state,
+      previousState: fields.previousState,
+      changed: fields.changed,
+      summary: progressSummary(
+        fields.changed,
+        fields.previousState,
+        run.state,
+        fields.newMessageCount,
+        run.statusMessage,
+      ),
+      newMessages: fields.newMessages,
+      newMessageCount: fields.newMessageCount,
+      totalMessageCount: fields.totalMessageCount,
+      requestUsage: run.requestUsage,
+      statusMessage: run.statusMessage,
+      artifacts: toEventArtifacts(run.artifacts),
+      pollCount: fields.pollCount,
+      observedAt: new Date().toISOString(),
+      // Same context as `warp.agent.dispatched` and `warp.run.completed`, so a
+      // dispatch, everything it did, and its outcome are one thread.
+      context_id: run.runId,
+      context_type: 'warp.agent',
+    },
+  });
+}
+
+/**
+ * Report what this poll saw, if anything moved.
+ *
+ * Silence is the point: a poll where nothing changed publishes nothing, so the
+ * event rate tracks the run's activity rather than the poll schedule. That is
+ * what makes it safe to put progress on the same notify chain as the terminal
+ * events.
+ *
+ * Never throws — the caller is mid-watch, and a failed progress publish must not
+ * cost the completion event that is the watch's actual job.
+ */
+async function reportProgress(
+  principalDid: string,
+  runId: string,
+  run: WarpAgentRun,
+  tracker: ProgressTracker,
+): Promise<void> {
+  try {
+    const changed: ProgressChange[] = [];
+    const previousState = tracker.previousState;
+    const state = run.state;
+
+    if (state !== previousState) changed.push('state');
+    tracker.previousState = state;
+
+    let newMessages: ProgressMessage[] = [];
+    let newMessageCount = 0;
+
+    if (state !== null && !PRE_START_STATES.has(state)) {
+      const flat = await readConversationMessages(principalDid, runId);
+      if (flat !== null && flat.length > tracker.messageCount) {
+        const fresh = flat
+          .slice(tracker.messageCount)
+          .map((entry, offset) => toProgressMessage(tracker.messageCount + offset, entry));
+
+        newMessageCount = fresh.length;
+        newMessages = fresh.slice(-PROGRESS_MAX_NEW_MESSAGES);
+        tracker.messageCount = flat.length;
+        changed.push('messages');
+      }
+    }
+
+    if (usageMoved(tracker.usage, run.requestUsage)) {
+      tracker.usage = run.requestUsage;
+      changed.push('usage');
+    }
+
+    if (statusMessageMoved(tracker.statusMessage, run.statusMessage)) {
+      tracker.statusMessage = run.statusMessage;
+      changed.push('statusMessage');
+    }
+
+    if (run.artifacts.length !== tracker.artifactCount) {
+      tracker.artifactCount = run.artifacts.length;
+      changed.push('artifacts');
+    }
+
+    if (changed.length === 0) return;
+
+    await publishRunProgress(principalDid, run, {
+      changed,
+      previousState,
+      newMessages,
+      newMessageCount,
+      totalMessageCount: tracker.messageCount,
+      pollCount: tracker.pollCount,
+    });
+  } catch (err) {
+    log.warn(
+      { err: String(err), principalDid, runId },
+      'Warp run watch could not publish progress; the watch continues',
+    );
+  }
+}
+
 /** How a watch ended. */
 type WatchOutcome =
   | { kind: 'terminal'; run: WarpAgentRun; state: WarpRunTerminalState }
@@ -1263,6 +1633,10 @@ type WatchOutcome =
  *
  * The final sleep is truncated to the remaining budget, so the deadline gets one
  * last read landing exactly on it rather than being overshot by up to a minute.
+ *
+ * Every non-terminal read is also handed to {@link reportProgress} (#1682). A
+ * terminal read is not: `warp.run.completed` already carries that state, and
+ * publishing both would make every run report its ending twice.
  */
 async function pollUntilTerminal(
   principalDid: string,
@@ -1275,8 +1649,10 @@ async function pollUntilTerminal(
       : WATCH_POLL_INTERVALS_MS;
   const timeoutMs = options.timeoutMs ?? WATCH_TIMEOUT_MS;
   const sleep = options.sleep ?? sleepFor;
+  const reportsProgress = options.progress !== false;
 
   const deadline = Date.now() + timeoutMs;
+  const tracker = newProgressTracker();
   let lastKnownState = UNKNOWN_STATE;
   let consecutiveErrors = 0;
 
@@ -1304,8 +1680,13 @@ async function pollUntilTerminal(
     }
 
     lastKnownState = run.state ?? lastKnownState;
+    tracker.pollCount += 1;
     if (run.state !== null && TERMINAL_STATES.has(run.state)) {
       return { kind: 'terminal', run, state: run.state as WarpRunTerminalState };
+    }
+
+    if (reportsProgress) {
+      await reportProgress(principalDid, runId, run, tracker);
     }
   }
 }
@@ -1366,8 +1747,14 @@ async function publishRunTimeout(
  * the budget runs out, so an orchestrating agent never has to poll `getAgentRun`
  * by hand — which was the whole manual step this stage removes.
  *
- * Reads with the caller's own sealed key, through {@link getAgentRun}, so a watch
- * has exactly the authority the dispatch had and dies with the grant.
+ * Along the way it publishes `warp.run.progress` whenever a poll sees the run
+ * move (#1682) — a state transition, new conversation messages, cost, an
+ * artifact, or an early error. Polls where nothing changed publish nothing, so a
+ * quiet run stays quiet. Pass `progress: false` to watch for the outcome only.
+ *
+ * Reads with the caller's own sealed key, through {@link getAgentRun} and
+ * {@link getAgentRunConversation}, so a watch has exactly the authority the
+ * dispatch had and dies with the grant.
  *
  * **Never rejects and never throws.** This is started fire-and-forget from the
  * dispatch route, where an unhandled rejection would be a process-level event for

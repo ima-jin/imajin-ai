@@ -24,7 +24,10 @@
  * echoed, or included in any error body.
  *
  * On success the run is also watched to completion in the background (#1639), so
- * `warp.run.completed` lands on the bus without the caller polling for it.
+ * `warp.run.completed` lands on the bus without the caller polling for it. The
+ * same watch reports the run while it is still going as `warp.run.progress`
+ * (#1682), so the caller sees state changes, new tool calls, cost, and early
+ * errors instead of a silence that only ends at the outcome.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
