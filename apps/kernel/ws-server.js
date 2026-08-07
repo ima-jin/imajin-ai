@@ -1,8 +1,14 @@
 const { WebSocketServer } = require('ws');
+const { createAlsoRegistry } = require('./src/lib/ws/also-registry');
 
-/** @type {Map<import('ws').WebSocket, { did: string, subscriptions: Set<string> }>} */
+/** @type {Map<import('ws').WebSocket, { did: string, alsoDids: Set<string>, subscriptions: Set<string> }>} */
 const socketMeta = new Map();
-/** @type {Map<string, Set<import('ws').WebSocket>>} */
+/**
+ * Sockets a DID owns. Presence is derived from these set sizes (1 => online,
+ * 0 => offline), so delegated `register_also` sockets deliberately live in the
+ * separate registry below rather than here.
+ * @type {Map<string, Set<import('ws').WebSocket>>}
+ */
 const didSockets = new Map();
 /** @type {Map<string, Map<string, { did: string, name: string, timeout: NodeJS.Timeout }>>} */
 const typingStatus = new Map(); // conversationId -> Map<did, {did, name, timeout}>
@@ -183,6 +189,49 @@ async function broadcastPresenceChange(did, isOnline) {
   }
 }
 
+/**
+ * Verify that agentDid has an active agent delegation for principalDid.
+ * Checks identity_members via an internal HTTP call (same pattern as
+ * authenticateWithCookie and authenticateWsToken — ws-server.js is plain
+ * CJS outside Next, so it calls back into the app routes).
+ *
+ * Returns true only when an active (not revoked) role='agent' membership
+ * exists. Never throws.
+ */
+async function verifyAgentDelegation(agentDid, principalDid) {
+  const port = process.env.PORT || '3000';
+  const key = process.env.AUTH_INTERNAL_API_KEY;
+  if (!key) {
+    console.error('[WS] AUTH_INTERNAL_API_KEY not set, denying register_also');
+    return false;
+  }
+  try {
+    const res = await fetch(`http://localhost:${port}/auth/api/internal/verify-delegation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-key': key,
+      },
+      body: JSON.stringify({ agentDid, principalDid }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.allowed === true;
+  } catch (err) {
+    console.error('[WS] Delegation verify error:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Delegated `register_also` fan-out (#1653). Held apart from `didSockets` so a
+ * delegate socket never masquerades as the principal for presence purposes.
+ */
+const alsoRegistry = createAlsoRegistry({
+  verifyDelegation: verifyAgentDelegation,
+  log: (message) => console.log('[WS]', message),
+});
+
 function setupWebSocket(server) {
   wss = new WebSocketServer({ noServer: true });
 
@@ -199,7 +248,7 @@ function setupWebSocket(server) {
     const did = await authenticateWithCookie(req);
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const meta = { did: did || null, subscriptions: new Set(), authenticated: !!did };
+      const meta = { did: did || null, alsoDids: new Set(), subscriptions: new Set(), authenticated: !!did };
       socketMeta.set(ws, meta);
 
       if (did) {
@@ -246,6 +295,11 @@ function setupWebSocket(server) {
 
           if (msg.type === 'ping') {
             ws.send(JSON.stringify({ type: 'pong' }));
+          } else if (msg.type === 'register_also' || msg.type === 'unregister_also') {
+            // Agent delegation: also receive notifications for this DID (#1545/#1653).
+            // The registry verifies the delegation before it registers anything.
+            const frame = await alsoRegistry.handle(ws, meta, msg);
+            if (frame && ws.readyState === 1) ws.send(JSON.stringify(frame));
           } else if (msg.type === 'subscribe') {
             if (msg.conversationId) meta.subscriptions.add(msg.conversationId);
             if (msg.did) meta.subscriptions.add(msg.did);
@@ -263,6 +317,7 @@ function setupWebSocket(server) {
 
       ws.on('close', async () => {
         const closeDid = meta.did;
+        alsoRegistry.cleanup(ws, meta);
         socketMeta.delete(ws);
         if (closeDid) {
           const sockets = didSockets.get(closeDid);
@@ -290,7 +345,8 @@ function setupWebSocket(server) {
  * Returns true if at least one socket received the message.
  */
 function sendToDid(did, payload) {
-  const sockets = didSockets.get(did);
+  // Own sockets plus any delegate registered for this DID (#1653).
+  const sockets = alsoRegistry.recipientsFor(did, didSockets.get(did));
   if (!sockets) return false;
   const msg = JSON.stringify(payload);
   let sent = false;
