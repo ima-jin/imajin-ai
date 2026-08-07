@@ -1078,8 +1078,12 @@ single entry in the registry — the `/mcp` route handler and JSON-RPC dispatch 
 | `connections_list` | `connections:read` | List trust-graph connections |
 | `github_create_issue` | `github:write` | Create a GitHub issue on behalf of DID |
 | `github_create_comment` | `github:write` | Create a GitHub issue comment |
-| `github_list_issues` | `github:read` | List issues in a repo |
+| `github_list_issues` | `github:read` | List issues in a repo (paginated; PRs excluded by default) |
 | `github_get_issue` | `github:read` | Get a single issue |
+| `github_list_pull_requests` | `github:read` | List PRs with head/base/draft/merge state |
+| `github_get_pull_request` | `github:read` | Get a single PR incl. mergeability + diff size |
+| `github_list_comments` | `github:read` | Read the discussion on an issue or PR |
+| `github_search_issues` | `github:read` | GitHub query syntax (`is:open label:bug`) |
 | `github_connect` | `github:write` | Seal a GitHub PAT in the vault |
 | `discord_send_message` | `discord:write` | Send a Discord message |
 | `discord_connect` | `discord:write` | Seal a Discord bot token in the vault |
@@ -1108,7 +1112,8 @@ connector DID + scope-manifest + vault-sealed credential + MCP tools.
 - **Connector DID:** `did:imajin:github-connector`
 - **Credential:** fine-grained GitHub PAT, sealed in the vault under `github-pat:${ownerDid}`
 - **Scope fixture:** `apps/kernel/src/lib/media/__tests__/fixtures/github-scope-manifest.md`
-- **Tools:** `github_create_issue`, `github_create_comment`, `github_list_issues`, `github_get_issue`, `github_connect`
+- **Tools:** `github_create_issue`, `github_create_comment`, `github_list_issues`, `github_get_issue`, `github_list_pull_requests`, `github_get_pull_request`, `github_list_comments`, `github_search_issues`, `github_connect`
+- **Read pagination:** list tools follow the GitHub `Link: rel="next"` header up to `limit` (default 100, ceiling 300) and return `{ count, limit, has_more, incomplete?, ... }`. `has_more` is the contract: a truncated listing must never read as a complete one.
 - **Attribution:** work is owner-pinned to the human's DID (authorship accrues to the human, not the connector)
 - **Bus events:** `github.issue.created`, `github.comment.created` (non-fatal, post-action)
 - **Fail-closed:** no active `channel_links` row OR no sealed PAT → throw, no GitHub API call
