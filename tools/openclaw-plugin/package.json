@@ -1,0 +1,17 @@
+{
+  "name": "@openclaw/imajin-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenClaw plugin for Imajin network — identity, attestation, attribution, settlement, discovery",
+  "type": "module",
+  "dependencies": {
+    "@noble/ed25519": "^2.3.0",
+    "@noble/hashes": "^1.8.0",
+    "ws": "^8.20.0"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
