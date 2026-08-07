@@ -13,6 +13,8 @@ vi.mock('../tools', () => {
     { name: 't_msg_write',   requiredScope: 'messages:write',   description: 'mw', inputSchema: {}, handler: () => [{ type: 'text', text: 'messages-write-ok' }] },
     { name: 't_dispatch',    requiredScope: 'warp:dispatch',    description: 'd', inputSchema: {}, handler: () => [{ type: 'text', text: 'dispatch-ok' }] },
     { name: 't_discovery',   requiredScope: 'discovery:read',   description: 'dr', inputSchema: {}, handler: () => [{ type: 'text', text: 'discovery-ok' }] },
+    { name: 't_infer_read',  requiredScope: 'inference:read',   description: 'ir', inputSchema: {}, handler: () => [{ type: 'text', text: 'inference-read-ok' }] },
+    { name: 't_infer_write', requiredScope: 'inference:write',  description: 'iw', inputSchema: {}, handler: () => [{ type: 'text', text: 'inference-write-ok' }] },
     { name: 't_ping',        description: 'p', inputSchema: {}, handler: () => [{ type: 'text', text: 'pong' }] },
   ];
   const byName = new Map(tools.map((t) => [t.name, t]));
@@ -223,6 +225,56 @@ describe('stale-token detection (#1647)', () => {
     expect(res.result.isError).toBe(true);
     expect(res.result.content[0].text).toContain('scope_token_stale');
     expect(mockResolveGrant).toHaveBeenCalledWith('did:imajin:user', 'messages:read');
+  });
+});
+
+/**
+ * #1298 — the inference tools used to gate on `media:write` / `media:read`, so
+ * any agent that could upload a file could also drive the intention-inference
+ * pipeline and have a supply attestation signed on the owner's behalf. These
+ * assert the two grants are now genuinely separate in both directions.
+ */
+describe('inference scope gate (decoupled from media — #1298)', () => {
+  it('denies a media:write token calling the capture tool, in-band', async () => {
+    const res = await call('t_infer_write', ['media:read', 'media:write', 'media:share']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('insufficient_scope');
+    expect(res.result.content[0].text).toContain('inference:write');
+  });
+
+  it('denies a media:read token calling the status tool, in-band', async () => {
+    const res = await call('t_infer_read', ['media:read']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('insufficient_scope');
+    expect(res.result.content[0].text).toContain('inference:read');
+  });
+
+  it('allows an inference:write token calling the capture tool', async () => {
+    const res = await call('t_infer_write', ['inference:write']);
+    expect(res.result.isError).toBe(false);
+    expect(res.result.content[0].text).toBe('inference-write-ok');
+  });
+
+  it('allows an inference:read token calling the status tool', async () => {
+    const res = await call('t_infer_read', ['inference:read']);
+    expect(res.result.isError).toBe(false);
+    expect(res.result.content[0].text).toBe('inference-read-ok');
+  });
+
+  it('keeps read and write separate from each other', async () => {
+    const readWithWrite = await call('t_infer_read', ['inference:write']);
+    expect(readWithWrite.result.isError).toBe(true);
+    expect(readWithWrite.result.content[0].text).toContain('inference:read');
+
+    const writeWithRead = await call('t_infer_write', ['inference:read']);
+    expect(writeWithRead.result.isError).toBe(true);
+    expect(writeWithRead.result.content[0].text).toContain('inference:write');
+  });
+
+  it('does not let an inference grant reach the media tools', async () => {
+    const res = await call('t_write', ['inference:read', 'inference:write']);
+    expect(res.result.isError).toBe(true);
+    expect(res.result.content[0].text).toContain('media:write');
   });
 });
 

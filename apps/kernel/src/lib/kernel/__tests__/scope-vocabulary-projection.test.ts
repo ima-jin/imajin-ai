@@ -116,6 +116,8 @@ describe('pinned scope sets (change these deliberately)', () => {
       'connections:read',
       'messages:read',
       'messages:write',
+      'inference:read',
+      'inference:write',
     ]);
   });
 
@@ -168,6 +170,8 @@ describe('pinned scope sets (change these deliberately)', () => {
       'github:actions',
       'warp:dispatch',
       'discovery:read',
+      'inference:read',
+      'inference:write',
     ]);
   });
 });
@@ -276,6 +280,9 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
       'connections:read': { verb: 'read', surface: 'connections', label: 'Read your trust-graph connections', release: { discloses_others: false, sensitive: false } },
       'messages:read': { verb: 'read', surface: 'messages', label: 'List your conversations and read their messages', release: { discloses_others: false, sensitive: false } },
       'messages:write': { verb: 'write', surface: 'messages', label: 'Send messages in your conversations on your behalf', release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_DID } },
+      // #1298 — new descriptors, not migrated literals.
+      'inference:read': { verb: 'read', surface: 'inference', label: 'Read inference session status and attestations', release: { discloses_others: false, sensitive: false } },
+      'inference:write': { verb: 'write', surface: 'inference', label: 'Trigger the inference pipeline and sign attestations on your behalf', release: { discloses_others: false, sensitive: true, viewer: MCP_DID } },
     });
   });
 
@@ -392,6 +399,48 @@ describe('#1636 — discovery:read is grantable end-to-end', () => {
   });
 });
 
+// ── #1298 ─ the inference MCP surface has scopes of its own ───────────────────
+
+describe('#1298 — inference:* is grantable end-to-end and independent of media:*', () => {
+  it.each(['inference:read', 'inference:write'])('reaches every MCP projection for %s', (scope) => {
+    expect(isKnownScope(scope)).toBe(true);
+    expect(MCP_SCOPE_SET.has(scope)).toBe(true);
+    expect(filterGrantedScopes(scope)).toEqual([scope]);
+    expect(Object.keys(connectorScopeDescriptors('mcp'))).toContain(scope);
+    expect(validScopesForConnector('mcp')).toContain(scope);
+    expect(getConnector('mcp')?.scopes.map((s) => s.name)).toContain(scope);
+  });
+
+  it('leaves inference:read silent — reading your own session needs no consent row', () => {
+    expect(scopeReleaseClass('mcp', 'inference:read')).toBe('silent');
+    expect(requiresConsentRow('mcp', 'inference:read')).toBe(false);
+  });
+
+  /**
+   * `owner-only`, the same quadrant as `gemini:infer`: exercising it has an
+   * attestation signed on the owner's behalf, which is credential-grade. Stricter
+   * than `media:write`, whose on-consent tier is an explicit override.
+   */
+  it('derives owner-only for inference:write, so publishing it records consent', () => {
+    expect(scopeReleaseClass('mcp', 'inference:write')).toBe('owner-only');
+    expect(requiresConsentRow('mcp', 'inference:write')).toBe(true);
+    expect(connectorScopeDescriptors('mcp')['inference:write'].release.viewer).toBe(MCP_DID);
+  });
+
+  /**
+   * The point of #1298: granting media no longer grants inference. Each scope
+   * survives filtering on its own and drags nothing else along.
+   */
+  it('does not travel with the media scopes in either direction', () => {
+    expect(filterGrantedScopes('media:read media:write')).not.toContain('inference:write');
+    expect(filterGrantedScopes('media:read media:write')).not.toContain('inference:read');
+    expect(filterGrantedScopes('inference:read inference:write')).toEqual([
+      'inference:read',
+      'inference:write',
+    ]);
+  });
+});
+
 // ── Discovery catalogue projection (#1636) ───────────────────────────────────
 
 describe('scopeCatalogue', () => {
@@ -430,6 +479,8 @@ describe('requiresConsentRow', () => {
     expect(requiresConsentRow('mcp', 'media:read')).toBe(false);
     expect(requiresConsentRow('mcp', 'media:write')).toBe(true);
     expect(requiresConsentRow('mcp', 'media:share')).toBe(true);
+    expect(requiresConsentRow('mcp', 'inference:read')).toBe(false);
+    expect(requiresConsentRow('mcp', 'inference:write')).toBe(true);
     expect(requiresConsentRow('gemini', 'gemini:infer')).toBe(true);
   });
 

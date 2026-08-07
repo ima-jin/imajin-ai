@@ -52,11 +52,12 @@ const MCP_DID = 'did:imajin:mcp-connector';
 // ── Descriptor / constant tests ───────────────────────────────────────────────
 
 describe('MCP_SCOPE_DESCRIPTORS', () => {
-  it('defines all six MCP scopes', () => {
+  it('defines all eight MCP scopes', () => {
     expect(new Set(VALID_MCP_SCOPES)).toEqual(
       new Set([
         'media:read', 'media:write', 'media:share', 'connections:read',
         'messages:read', 'messages:write',
+        'inference:read', 'inference:write',
       ]),
     );
   });
@@ -102,6 +103,23 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
     expect(r.release).toBe('on-consent');
     expect(r.viewer).toBe(MCP_DID);
   });
+
+  // #1298 — the inference surface stopped riding the media scopes.
+  it('inference:read is silent (no release override, discloses_others: false)', () => {
+    const r = MCP_SCOPE_DESCRIPTORS['inference:read'].release;
+    expect(r.discloses_others).toBe(false);
+    expect(r.sensitive).toBe(false);
+    expect(r.release).toBeUndefined();
+  });
+
+  it('inference:write is owner-only (derived from sensitive: true, signs attestations)', () => {
+    const r = MCP_SCOPE_DESCRIPTORS['inference:write'].release;
+    expect(r.discloses_others).toBe(false);
+    expect(r.sensitive).toBe(true);
+    // No explicit override — the 2×2 derives owner-only on its own.
+    expect(r.release).toBeUndefined();
+    expect(r.viewer).toBe(MCP_DID);
+  });
 });
 
 // ── Delegation tests ──────────────────────────────────────────────────────────
@@ -138,9 +156,12 @@ describe('syncConsentGrants', () => {
     // on-consent scopes
     expect(isOnConsent('media:write')).toBe(true);
     expect(isOnConsent('media:share')).toBe(true);
+    // owner-only scopes still record a consent row (#1298)
+    expect(isOnConsent('inference:write')).toBe(true);
     // silent scopes
     expect(isOnConsent('media:read')).toBe(false);
     expect(isOnConsent('connections:read')).toBe(false);
+    expect(isOnConsent('inference:read')).toBe(false);
     // unknown scope → never tier
     expect(isOnConsent('unknown:scope')).toBe(false);
   });

@@ -4,8 +4,10 @@
  * inference_capture ΓÇö trigger the inference pipeline from an asset or text.
  * inference_status  ΓÇö read session status + attestation for the agent.
  *
- * Both tools require the 'inference:write' scope gate (agents that can write
- * media can also trigger inference ΓÇö add a separate scope if needed later).
+ * inference_capture requires 'inference:write'; inference_status requires
+ * 'inference:read'. Decoupled from the media scopes in #1298 ΓÇö holding
+ * media:write no longer implies the ability to drive the pipeline or have an
+ * attestation signed on the owner's behalf.
  */
 
 import type { McpTool } from '../types';
@@ -27,7 +29,7 @@ import { createAsset } from '@/src/lib/media/create-asset';
 
 const inferenceCaptureTool: McpTool = {
   name: 'inference_capture',
-  requiredScope: 'media:write',
+  requiredScope: 'inference:write',
   description:
     'Trigger the intention inference pipeline from text input or an existing asset ID. ' +
     'Returns the session ID, inferred candidate intents, and status. ' +
@@ -134,7 +136,7 @@ const inferenceCaptureTool: McpTool = {
 
 const inferenceStatusTool: McpTool = {
   name: 'inference_status',
-  requiredScope: 'media:read',
+  requiredScope: 'inference:read',
   description: 'Read the status and attestation of an inference session by ID.',
   inputSchema: {
     type: 'object',
