@@ -3,7 +3,7 @@ import { MarkdownContent } from '@imajin/ui';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 
 interface Props {
-  searchParams: { type?: string; handle?: string };
+  searchParams: Promise<{ type?: string; handle?: string }>;
 }
 
 async function getCreatorPage(handle: string) {
@@ -17,7 +17,8 @@ async function getCreatorPage(handle: string) {
   }
 }
 
-export default async function SuccessPage({ searchParams }: Readonly<Props>) {
+export default async function SuccessPage(props: Readonly<Props>) {
+  const searchParams = await props.searchParams;
   const isSubscription = searchParams.type === 'subscription';
   const handle = searchParams.handle;
 

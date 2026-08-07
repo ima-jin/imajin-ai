@@ -15,10 +15,8 @@ export async function OPTIONS(request: NextRequest) {
  * DELETE /api/devices/[id]
  * Remove a device. Users can only remove their own devices.
  */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const cors = corsHeaders(request);
 
   try {

@@ -26,10 +26,8 @@ export async function OPTIONS(request: NextRequest) {
  * 'deliberate' intents (e.g. AgriFortress supply.received). Nothing is
  * sent / spent / disclosed without this call succeeding.
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { sessionId: string } },
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ sessionId: string }> }) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { sessionId } = params;
 

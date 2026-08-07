@@ -1,5 +1,7 @@
 'use client';
 
+import { use } from 'react';
+
 /**
  * /auth/connectors/[id] — per-connector detail view (#1494).
  *
@@ -13,7 +15,8 @@ import Link from 'next/link';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
 import { ConnectorDetail } from '../components/ConnectorDetail';
 
-export default function ConnectorDetailPage({ params }: Readonly<{ params: { id: string } }>) {
+export default function ConnectorDetailPage(props: Readonly<{ params: Promise<{ id: string }> }>) {
+  const params = use(props.params);
   const { id } = params;
   const entry = getConnector(id);
 

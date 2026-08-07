@@ -14,7 +14,8 @@ const log = createLogger('kernel');
  * to non-owners; this route enforces owner-only scoping via did match in the WHERE clause.
  * The note dies sealed — nobody ever knew it existed.
  */
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   let issuerId: string;
   let did: string;
 

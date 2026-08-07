@@ -12,10 +12,8 @@ const PROFILE_SERVICE_URL =
  * GET /api/resolve/:did — Resolve DID to profile info (handle, displayName)
  * Server-side proxy to profile service so clients don't make cross-service calls.
  */
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { did: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const { did } = params;
 
   if (!did) {

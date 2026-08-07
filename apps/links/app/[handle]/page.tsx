@@ -7,10 +7,11 @@ import { buildPublicUrl } from '@imajin/config';
 import LinkButton from './link-button';
 
 interface PageProps {
-  params: { handle: string };
+  params: Promise<{ handle: string }>;
 }
 
-export async function generateMetadata({ params }: Readonly<PageProps>): Promise<Metadata> {
+export async function generateMetadata(props: Readonly<PageProps>): Promise<Metadata> {
+  const params = await props.params;
   const page = await db.query.linkPages.findFirst({
     where: eq(linkPages.handle, params.handle),
   });
@@ -59,7 +60,8 @@ interface Theme {
   buttonStyle?: 'rounded' | 'square' | 'pill';
 }
 
-export default async function LinksPage({ params }: Readonly<PageProps>) {
+export default async function LinksPage(props: Readonly<PageProps>) {
+  const params = await props.params;
   const page = await db.query.linkPages.findFirst({
     where: eq(linkPages.handle, params.handle),
   });

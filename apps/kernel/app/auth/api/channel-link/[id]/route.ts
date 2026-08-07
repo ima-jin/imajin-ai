@@ -16,10 +16,8 @@ const log = createLogger('kernel');
  *
  * Revocation is immediate. Subsequent resolve calls return 404.
  */
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id } = params;
 
   // Determine caller identity (user or bot).

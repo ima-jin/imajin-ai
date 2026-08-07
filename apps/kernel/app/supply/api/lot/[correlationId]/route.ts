@@ -6,6 +6,10 @@ export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
-export function GET(request: NextRequest, { params }: { params: { correlationId: string } }) {
+export async function GET(
+  request: NextRequest,
+  props: { params: Promise<{ correlationId: string }> }
+) {
+  const params = await props.params;
   return handleLotGet(request, params.correlationId);
 }

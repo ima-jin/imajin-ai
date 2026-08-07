@@ -6,10 +6,8 @@ import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 
 const log = createLogger('kernel');
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { field: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ field: string }> }) {
+  const params = await props.params;
   if (!(await requireAdmin())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }

@@ -12,10 +12,8 @@ const log = createLogger('kernel');
 
 const INVITE_COOLDOWN_DAYS = 7;
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { code: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  const params = await props.params;
   const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

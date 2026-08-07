@@ -9,10 +9,8 @@ export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { code: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  const params = await props.params;
   const [invite] = await db
     .select()
     .from(invites)
@@ -42,10 +40,8 @@ export async function GET(
   return response;
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { code: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  const params = await props.params;
   const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (!session?.did) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

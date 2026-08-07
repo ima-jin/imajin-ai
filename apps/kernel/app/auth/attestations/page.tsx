@@ -13,7 +13,8 @@ interface SearchParams {
   doc_role?: string;
 }
 
-export default async function AttestationsPage({ searchParams }: Readonly<{ searchParams: Promise<SearchParams> }>) {
+export default async function AttestationsPage(props: Readonly<{ searchParams: Promise<SearchParams> }>) {
+  const searchParams = await props.searchParams;
   const resolvedSearchParams = await searchParams;
   const { sessionDid, effectiveDid } = await getEffectiveDid();
 

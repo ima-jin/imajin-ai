@@ -9,10 +9,11 @@ import { buildPublicUrl } from '@imajin/config';
 const MARKET_URL = process.env.NEXT_PUBLIC_APP_URL || buildPublicUrl('market');
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const params = await props.params;
   const [listing] = await db
     .select()
     .from(listings)

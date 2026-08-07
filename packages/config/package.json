@@ -29,7 +29,7 @@
     "@imajin/tokens": "workspace:*"
   },
   "peerDependencies": {
-    "next": ">=14"
+    "next": ">=15.5.21"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

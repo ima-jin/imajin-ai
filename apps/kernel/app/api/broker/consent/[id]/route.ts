@@ -8,10 +8,8 @@ import { db, consentGrants } from '@/src/db';
 const log = createLogger('kernel');
 
 // DELETE /api/broker/consent/:id — revoke a grant (owner only).
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

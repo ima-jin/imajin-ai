@@ -50,10 +50,8 @@ function resolveApprovedUntil(ttl: TtlOption): Date | null {
   return new Date(Date.now() + ms);
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { proposalId: string } },
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ proposalId: string }> }) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { proposalId } = params;
 
@@ -192,10 +190,8 @@ export async function POST(
  * the agent may re-propose at the next invocation. This enforces the
  * two-panel invariant: the panel IS the authorization surface, denial is explicit.
  */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { proposalId: string } },
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ proposalId: string }> }) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { proposalId } = params;
 

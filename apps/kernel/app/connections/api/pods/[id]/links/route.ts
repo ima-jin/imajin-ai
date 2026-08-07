@@ -3,7 +3,8 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { db, podLinks } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -20,7 +21,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
   return NextResponse.json({ link }, { status: 201 });
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 

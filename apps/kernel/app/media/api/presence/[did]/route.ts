@@ -14,10 +14,8 @@ function requireInternalAuth(request: NextRequest): boolean {
 // ---------------------------------------------------------------------------
 // GET /api/presence/[did] — read .imajin folder contents for a DID
 // ---------------------------------------------------------------------------
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { did: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   if (!requireInternalAuth(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

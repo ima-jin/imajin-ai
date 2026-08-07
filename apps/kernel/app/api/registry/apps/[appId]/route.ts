@@ -4,10 +4,8 @@ import { eq } from 'drizzle-orm';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 
 // GET /api/registry/apps/:appId — app detail (public)
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { appId: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ appId: string }> }) {
+  const params = await props.params;
   const [app] = await db
     .select({
       id: registryApps.id,
@@ -35,10 +33,8 @@ export async function GET(
 }
 
 // PATCH /api/registry/apps/:appId — update (owner only)
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { appId: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ appId: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -84,10 +80,8 @@ export async function PATCH(
 }
 
 // DELETE /api/registry/apps/:appId — soft revoke (owner only)
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { appId: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ appId: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

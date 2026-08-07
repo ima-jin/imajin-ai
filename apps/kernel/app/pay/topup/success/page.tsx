@@ -6,10 +6,11 @@ import { eq } from 'drizzle-orm';
 import Link from 'next/link';
 
 interface SuccessPageProps {
-  searchParams: { session_id?: string };
+  searchParams: Promise<{ session_id?: string }>;
 }
 
-export default async function TopupSuccessPage({ searchParams }: Readonly<SuccessPageProps>) {
+export default async function TopupSuccessPage(props: Readonly<SuccessPageProps>) {
+  const searchParams = await props.searchParams;
   const session = await getSession();
 
   if (!session) {

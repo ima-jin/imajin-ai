@@ -16,10 +16,8 @@ const CONTENT_TYPES: Record<string, string> = {
   webp: 'image/webp',
 };
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { path: string[] } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ path: string[] }> }) {
+  const params = await props.params;
   try {
     const requestedPath = params.path.join('/');
 

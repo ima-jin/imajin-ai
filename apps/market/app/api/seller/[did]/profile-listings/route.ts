@@ -9,10 +9,8 @@ import { eq, and, desc } from 'drizzle-orm';
  * GET /api/seller/:did/profile-listings — Public profile listings endpoint
  * No auth required. Returns active listings only if seller has enabled profile integration.
  */
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { did: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const { did } = params;
 
   if (!did) {

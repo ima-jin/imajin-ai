@@ -7,13 +7,14 @@ import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, asc, and } from 'drizzle-orm';
 
 interface RouteParams {
-  params: { handle: string };
+  params: Promise<{ handle: string }>;
 }
 
 /**
  * GET /api/pages/:handle - Get links page with all links
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const { handle } = params;
 
   try {
@@ -52,7 +53,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 /**
  * PUT /api/pages/:handle - Update links page (owner only)
  */
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const { handle } = params;
 
   // Require authentication
@@ -112,7 +114,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 /**
  * DELETE /api/pages/:handle - Delete links page (owner only)
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const { handle } = params;
 
   // Require authentication

@@ -52,12 +52,13 @@ const nextConfig = {
       { protocol: 'http', hostname: 'localhost' },
     ],
   },
+  // Renamed from `experimental.serverComponentsExternalPackages` in Next 15.
+  serverExternalPackages: [
+    '@metalabel/dfos-protocol',
+    '@lore-vcs/sdk',
+    'koffi',
+  ],
   experimental: {
-    serverComponentsExternalPackages: [
-      '@metalabel/dfos-protocol',
-      '@lore-vcs/sdk',
-      'koffi',
-    ],
     serverActions: { bodySizeLimit: '2gb' },
   },
   webpack: (config, { isServer }) => {

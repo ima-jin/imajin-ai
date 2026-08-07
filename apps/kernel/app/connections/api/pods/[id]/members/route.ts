@@ -7,7 +7,8 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAuth(request, { verifyChain: true });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -41,7 +42,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
   return NextResponse.json({ member }, { status: 201 });
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAuth(request, { verifyChain: true });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -76,7 +78,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   return NextResponse.json({ member: updated });
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireAuth(request, { verifyChain: true });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 

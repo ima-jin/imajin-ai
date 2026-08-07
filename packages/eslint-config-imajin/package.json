@@ -14,7 +14,7 @@
     "@typescript-eslint/eslint-plugin": ">=8",
     "typescript-eslint": ">=8",
     "eslint": ">=9",
-    "eslint-config-next": ">=14",
+    "eslint-config-next": ">=15",
     "eslint-plugin-sonarjs": ">=2",
     "globals": ">=15"
   }
