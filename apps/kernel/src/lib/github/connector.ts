@@ -32,6 +32,14 @@
  * has lapsed — see requireWriteGate() and retireLapsedApprovals() for why a
  * bare `limit(1)` was unsound (#1588).
  *
+ * ── Read depth (#1528) ────────────────────────────────────────────────────────
+ * All list verbs (listIssues / listPullRequests / listComments / searchIssues)
+ * walk `Link: rel="next"` via collectPaginated() and return a
+ * GitHubListResult<T> whose `hasMore` says whether results were left behind.
+ * Silent truncation is the bug being fixed: a caller that cannot distinguish
+ * "all of them" from "the first N" will confidently draw wrong conclusions.
+ * Every read verb stays on `github:read` — no new scopes, no confirm rail.
+ *
  * Security invariants:
  * - Fail-closed: no grant OR no sealed credential ⇒ throw.
  * - Tokens/PAT are NEVER logged, NEVER returned to callers, NEVER echoed.
@@ -47,6 +55,19 @@ import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../kernel/connector-oauth';
 import { readReadAllowlist, filterOrgs, filterRepos, isRepoAllowed } from './allowlist';
 import { GITHUB_CONNECTOR_DID } from './constants';
+import {
+  isPullRequest,
+  normalizeLimit,
+  parseNextLink,
+  withPerPage,
+  MAX_PAGES_PER_LIST,
+  type GitHubComment,
+  type GitHubIssue,
+  type GitHubIssueType,
+  type GitHubListResult,
+  type GitHubPullRequest,
+  type PaginatedCollection,
+} from './entities';
 
 const log = createLogger('kernel');
 
@@ -54,6 +75,31 @@ const log = createLogger('kernel');
 // `./constants` module so `./scope-manifest` can read it without importing this
 // module (which would re-form the connector → allowlist → scope-manifest cycle).
 export { GITHUB_CONNECTOR_DID } from './constants';
+
+// Entity shapes and pagination primitives live in the I/O-free `./entities` leaf
+// (#1528) so the MCP tool layer and its tests can use them without dragging in
+// the DB/vault/bus. Re-exported here so `./connector` stays a valid single
+// import surface — same arrangement as `./allowlist` → `./allowlist-match`.
+export {
+  labelNames,
+  isPullRequest,
+  normalizeLimit,
+  parseNextLink,
+  DEFAULT_LIST_LIMIT,
+  MAX_LIST_LIMIT,
+} from './entities';
+export type {
+  GitHubComment,
+  GitHubIssue,
+  GitHubIssueType,
+  GitHubLabel,
+  GitHubListResult,
+  GitHubMilestone,
+  GitHubPullRef,
+  GitHubPullRequest,
+  GitHubUserRef,
+  PaginatedCollection,
+} from './entities';
 
 /** GitHub REST API constants. */
 const GITHUB_API_BASE = 'https://api.github.com';
@@ -647,19 +693,39 @@ export async function markProposalDone(
 
 interface GitHubApiOptions {
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  /**
+   * Either an API path (`/repos/o/r/issues`) or an absolute `https://api.github.com/...`
+   * URL. The absolute form exists so a `Link: rel="next"` URL — which GitHub hands
+   * back fully qualified, cursor params included — can be replayed verbatim.
+   */
   path: string;
   token: string;
   body?: Record<string, unknown>;
 }
 
 /**
+ * A GitHub REST response: the parsed body plus the raw headers (#1528).
+ *
+ * Headers are surfaced because the body alone cannot tell you whether a listing
+ * is complete — that lives in `Link: rel="next"`. Returning them is what lets
+ * the list verbs say "there is more" instead of silently truncating.
+ */
+export interface GitHubApiResponse<T> {
+  data: T;
+  /** Raw response headers. `undefined` only if the fetch impl omitted them. */
+  headers: Headers | undefined;
+}
+
+/**
  * Call the GitHub REST API. Throws a descriptive error on non-2xx responses.
  *
  * The bearer token (OAuth access token or PAT) is only used in the Authorization
- * header; it is never logged. The returned value is the parsed JSON response body.
+ * header; it is never logged.
  */
-async function callGitHubApi(opts: Readonly<GitHubApiOptions>): Promise<unknown> {
-  const url = `${GITHUB_API_BASE}${opts.path}`;
+async function callGitHubApi<T = unknown>(
+  opts: Readonly<GitHubApiOptions>,
+): Promise<GitHubApiResponse<T>> {
+  const url = opts.path.startsWith('http') ? opts.path : `${GITHUB_API_BASE}${opts.path}`;
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     Authorization: `Bearer ${opts.token}`,
@@ -679,29 +745,59 @@ async function callGitHubApi(opts: Readonly<GitHubApiOptions>): Promise<unknown>
     throw new Error(`GitHub API error ${res.status} ${res.statusText}: ${text}`);
   }
 
-  return res.json() as Promise<unknown>;
+  const data = (await res.json()) as T;
+  return { data, headers: res.headers };
+}
+
+// ── Pagination (#1528) ────────────────────────────────────────────────────────
+
+/**
+ * Walk `Link: rel="next"` until `limit` kept items are collected or the pages
+ * run out.
+ *
+ * `keep` is applied per item BEFORE the limit is counted, so a filter that drops
+ * most of a page (e.g. excluding PRs from `/issues`) still fills the requested
+ * limit rather than returning a short page. `extract` adapts endpoints whose
+ * body is an envelope rather than a bare array (e.g. `/search/issues`).
+ */
+async function collectPaginated<T>(
+  firstPath: string,
+  token: string,
+  limit: number,
+  keep: (item: T) => boolean = () => true,
+  extract: (data: unknown) => T[] = (data) => (Array.isArray(data) ? (data as T[]) : []),
+): Promise<PaginatedCollection<T>> {
+  const items: T[] = [];
+  let nextUrl: string | null = withPerPage(firstPath, limit);
+  let pages = 0;
+  let truncated = false;
+
+  while (nextUrl !== null && pages < MAX_PAGES_PER_LIST) {
+    const { data, headers } = await callGitHubApi({ method: 'GET', path: nextUrl, token });
+    pages += 1;
+
+    for (const item of extract(data)) {
+      if (!keep(item)) continue;
+      if (items.length >= limit) {
+        truncated = true;
+        break;
+      }
+      items.push(item);
+    }
+
+    if (truncated) break;
+
+    nextUrl = parseNextLink(headers);
+    if (nextUrl !== null && items.length >= limit) {
+      truncated = true;
+      break;
+    }
+  }
+
+  return { items, hasMore: truncated || nextUrl !== null, pages };
 }
 
 // ── Public GitHub actions ─────────────────────────────────────────────────────
-
-export interface GitHubIssue {
-  number: number;
-  html_url: string;
-  title: string;
-  state: string;
-  body: string | null;
-  user: { login: string } | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface GitHubComment {
-  id: number;
-  html_url: string;
-  body: string;
-  user: { login: string } | null;
-  created_at: string;
-}
 
 /**
  * Create a GitHub issue on behalf of ownerDid (append tier — confirm rail required).
@@ -742,12 +838,12 @@ export async function createIssue(
   }
 
   // Step 3: execute the write.
-  const data = await callGitHubApi({
+  const { data } = await callGitHubApi<GitHubIssue>({
     method: 'POST',
     path: `/repos/${repo}/issues`,
     token: gate.token,
     body: { title, body },
-  }) as GitHubIssue;
+  });
 
   // Step 4: attribution bus event (non-fatal).
   try {
@@ -833,12 +929,12 @@ export async function createComment(
   }
 
   // Step 3: execute the write.
-  const data = await callGitHubApi({
+  const { data } = await callGitHubApi<GitHubComment>({
     method: 'POST',
     path: `/repos/${repo}/issues/${issueNumber}/comments`,
     token: gate.token,
     body: { body },
-  }) as GitHubComment;
+  });
 
   // Step 4: attribution bus event (non-fatal).
   try {
@@ -886,23 +982,68 @@ export async function createComment(
   return { status: 'done', data };
 }
 
+/** Optional filters for `listIssues` (#1528). */
+export interface ListIssuesOptions {
+  state?: 'open' | 'closed' | 'all';
+  /**
+   * Which rows to keep. `/issues` returns issues AND pull requests; the default
+   * `'issue'` drops PRs so the verb means what its name says. Use `'pr'` or
+   * `'all'` to opt back in.
+   */
+  type?: GitHubIssueType;
+  /** Max rows returned; clamped to [1, MAX_LIST_LIMIT]. Defaults to 100. */
+  limit?: number;
+  /** Comma-separated label names, passed through to GitHub. */
+  labels?: string;
+  /** Only issues updated at or after this ISO-8601 timestamp. */
+  since?: string;
+  sort?: 'created' | 'updated' | 'comments';
+  direction?: 'asc' | 'desc';
+}
+
+/** Build the `/issues` query string from the caller's options. */
+function issuesQuery(opts: Readonly<ListIssuesOptions>): string {
+  const params = new URLSearchParams({ state: opts.state ?? 'open' });
+  if (opts.labels !== undefined && opts.labels.length > 0) params.set('labels', opts.labels);
+  if (opts.since !== undefined && opts.since.length > 0) params.set('since', opts.since);
+  if (opts.sort !== undefined) params.set('sort', opts.sort);
+  if (opts.direction !== undefined) params.set('direction', opts.direction);
+  return params.toString();
+}
+
+/** Predicate implementing the `type` filter over the mixed `/issues` feed. */
+function issueTypeFilter(type: GitHubIssueType): (issue: GitHubIssue) => boolean {
+  if (type === 'all') return () => true;
+  if (type === 'pr') return isPullRequest;
+  return (issue) => !isPullRequest(issue);
+}
+
 /**
- * List GitHub issues for a repo on behalf of ownerDid.
+ * List GitHub issues for a repo on behalf of ownerDid (#1528).
  *
- * Gates: active `github:read` channel_links row + sealed PAT.
+ * Follows `Link: rel="next"` up to `limit` rows and reports `hasMore` so a
+ * caller is never handed a silently truncated page — the old behaviour (hard 50,
+ * no signal, PRs mixed in) made "12 open issues" and "the first 50 of 400 rows,
+ * some of which are PRs" indistinguishable.
+ *
+ * Gates: active `github:read` channel_links row + sealed credential.
  */
 export async function listIssues(
   ownerDid: string,
   repo: string,
-  state: 'open' | 'closed' | 'all' = 'open',
-): Promise<GitHubIssue[]> {
+  options: Readonly<ListIssuesOptions> = {},
+): Promise<GitHubListResult<GitHubIssue>> {
   const token = await requireGrantAndToken(ownerDid, 'github:read');
 
-  return callGitHubApi({
-    method: 'GET',
-    path: `/repos/${repo}/issues?state=${state}&per_page=50`,
+  const limit = normalizeLimit(options.limit);
+  const { items, hasMore } = await collectPaginated<GitHubIssue>(
+    `/repos/${repo}/issues?${issuesQuery(options)}`,
     token,
-  }) as Promise<GitHubIssue[]>;
+    limit,
+    issueTypeFilter(options.type ?? 'issue'),
+  );
+
+  return { items, hasMore, limit };
 }
 
 /**
@@ -917,11 +1058,205 @@ export async function getIssue(
 ): Promise<GitHubIssue> {
   const token = await requireGrantAndToken(ownerDid, 'github:read');
 
-  return callGitHubApi({
+  const { data } = await callGitHubApi<GitHubIssue>({
     method: 'GET',
     path: `/repos/${repo}/issues/${issueNumber}`,
     token,
-  }) as Promise<GitHubIssue>;
+  });
+  return data;
+}
+
+// ── Pull requests (#1528 — read-tier) ─────────────────────────────────────────
+
+/** Optional filters for `listPullRequests`. */
+export interface ListPullRequestsOptions {
+  state?: 'open' | 'closed' | 'all';
+  /** Filter by base branch name (e.g. `main`). */
+  base?: string;
+  /** Filter by head branch, `user:ref-name` form. */
+  head?: string;
+  limit?: number;
+  sort?: 'created' | 'updated' | 'popularity' | 'long-running';
+  direction?: 'asc' | 'desc';
+}
+
+/**
+ * List pull requests for a repo on behalf of ownerDid (#1528).
+ *
+ * Uses `/pulls` rather than filtering `/issues`, because only `/pulls` carries
+ * head/base/draft/merge state — the fields that make a PR listing actionable.
+ *
+ * Gates: active `github:read` channel_links row + sealed credential.
+ */
+export async function listPullRequests(
+  ownerDid: string,
+  repo: string,
+  options: Readonly<ListPullRequestsOptions> = {},
+): Promise<GitHubListResult<GitHubPullRequest>> {
+  const token = await requireGrantAndToken(ownerDid, 'github:read');
+
+  const params = new URLSearchParams({ state: options.state ?? 'open' });
+  if (options.base !== undefined && options.base.length > 0) params.set('base', options.base);
+  if (options.head !== undefined && options.head.length > 0) params.set('head', options.head);
+  if (options.sort !== undefined) params.set('sort', options.sort);
+  if (options.direction !== undefined) params.set('direction', options.direction);
+
+  const limit = normalizeLimit(options.limit);
+  const { items, hasMore } = await collectPaginated<GitHubPullRequest>(
+    `/repos/${repo}/pulls?${params.toString()}`,
+    token,
+    limit,
+  );
+
+  return { items, hasMore, limit };
+}
+
+/**
+ * Get a single pull request on behalf of ownerDid (#1528).
+ *
+ * The single-PR endpoint is the only one that populates `mergeable`,
+ * `mergeable_state`, and the diff counters, so "can this merge?" questions must
+ * come through here rather than through `listPullRequests`.
+ *
+ * Gates: active `github:read` channel_links row + sealed credential.
+ */
+export async function getPullRequest(
+  ownerDid: string,
+  repo: string,
+  pullNumber: number,
+): Promise<GitHubPullRequest> {
+  const token = await requireGrantAndToken(ownerDid, 'github:read');
+
+  const { data } = await callGitHubApi<GitHubPullRequest>({
+    method: 'GET',
+    path: `/repos/${repo}/pulls/${pullNumber}`,
+    token,
+  });
+  return data;
+}
+
+// ── Comment reads (#1528 — read-tier) ────────────────────────────────────────
+
+/** Optional filters for `listComments`. */
+export interface ListCommentsOptions {
+  limit?: number;
+  /** Only comments updated at or after this ISO-8601 timestamp. */
+  since?: string;
+  direction?: 'asc' | 'desc';
+}
+
+/**
+ * List the discussion comments on an issue or PR on behalf of ownerDid (#1528).
+ *
+ * PRs are issues as far as this endpoint is concerned, so one verb covers both
+ * conversations. Review comments (inline, on a diff) live on a different
+ * endpoint and are deliberately out of scope here.
+ *
+ * Gates: active `github:read` channel_links row + sealed credential.
+ */
+export async function listComments(
+  ownerDid: string,
+  repo: string,
+  issueNumber: number,
+  options: Readonly<ListCommentsOptions> = {},
+): Promise<GitHubListResult<GitHubComment>> {
+  const token = await requireGrantAndToken(ownerDid, 'github:read');
+
+  const params = new URLSearchParams();
+  if (options.since !== undefined && options.since.length > 0) params.set('since', options.since);
+  if (options.direction !== undefined) params.set('direction', options.direction);
+  const query = params.toString();
+
+  const limit = normalizeLimit(options.limit);
+  const { items, hasMore } = await collectPaginated<GitHubComment>(
+    `/repos/${repo}/issues/${issueNumber}/comments${query.length > 0 ? `?${query}` : ''}`,
+    token,
+    limit,
+  );
+
+  return { items, hasMore, limit };
+}
+
+// ── Search (#1528 — read-tier, disclosure-allowlist filtered) ───────────────────
+
+/** The `/search/issues` response envelope. */
+interface GitHubSearchEnvelope {
+  total_count?: number;
+  incomplete_results?: boolean;
+  items?: GitHubIssue[];
+}
+
+export interface GitHubSearchResult extends GitHubListResult<GitHubIssue> {
+  /** GitHub's count of ALL matches, independent of `limit`. */
+  totalCount: number;
+  /** GitHub's own "I timed out mid-search" flag — distinct from `hasMore`. */
+  incompleteResults: boolean;
+}
+
+export interface SearchIssuesOptions {
+  limit?: number;
+  sort?: 'comments' | 'created' | 'updated' | 'reactions';
+  order?: 'asc' | 'desc';
+}
+
+/** Derive `owner/name` from a search item's `repository_url`, or null. */
+function repoFullNameFromSearchItem(item: Readonly<GitHubIssue>): string | null {
+  const url = item.repository_url;
+  if (url === undefined) return null;
+  const match = /\/repos\/([^/]+\/[^/?#]+)/.exec(url);
+  return match?.[1] ?? null;
+}
+
+/**
+ * Search issues and PRs with GitHub's query syntax on behalf of ownerDid (#1528).
+ *
+ * This is the verb for `is:open label:bug`-style questions that no combination
+ * of `/issues` filters can express, and the escape hatch when a listing reports
+ * `hasMore`.
+ *
+ * Disclosure: search can reach across every repo the token can see, so results
+ * are filtered server-side against the `github:read` allowlist the same way
+ * `listRepos` is — a repo the owner chose not to disclose must not leak in via
+ * search. Items with an underivable repo are dropped (fail-closed), matching
+ * `isRepoAllowed`. Empty/absent allowlist ⇒ allow-all.
+ *
+ * Gates: active `github:read` channel_links row + sealed credential.
+ */
+export async function searchIssues(
+  ownerDid: string,
+  query: string,
+  options: Readonly<SearchIssuesOptions> = {},
+): Promise<GitHubSearchResult> {
+  const token = await requireGrantAndToken(ownerDid, 'github:read');
+  const allowlist = await readReadAllowlist(ownerDid);
+
+  const params = new URLSearchParams({ q: query });
+  if (options.sort !== undefined) params.set('sort', options.sort);
+  if (options.order !== undefined) params.set('order', options.order);
+
+  // total_count/incomplete_results live on the envelope, not the items, so they
+  // are captured as the pages stream past rather than re-fetched afterwards.
+  let totalCount = 0;
+  let incompleteResults = false;
+
+  const limit = normalizeLimit(options.limit);
+  const { items, hasMore } = await collectPaginated<GitHubIssue>(
+    `/search/issues?${params.toString()}`,
+    token,
+    limit,
+    (item) => {
+      const fullName = repoFullNameFromSearchItem(item);
+      return fullName !== null && isRepoAllowed(fullName, allowlist);
+    },
+    (data) => {
+      const envelope = (data ?? {}) as GitHubSearchEnvelope;
+      totalCount = envelope.total_count ?? totalCount;
+      incompleteResults = envelope.incomplete_results ?? incompleteResults;
+      return envelope.items ?? [];
+    },
+  );
+
+  return { items, hasMore, limit, totalCount, incompleteResults };
 }
 
 // ── Org / repo discovery (#1373 — read-tier, disclosure-allowlist filtered) ────
@@ -963,11 +1298,11 @@ export interface GitHubRepo {
 export async function listOrgs(ownerDid: string): Promise<GitHubOrg[]> {
   const token = await requireGrantAndToken(ownerDid, 'github:read');
 
-  const orgs = (await callGitHubApi({
+  const { data: orgs } = await callGitHubApi<GitHubOrg[]>({
     method: 'GET',
     path: '/user/orgs?per_page=100',
     token,
-  })) as GitHubOrg[];
+  });
 
   const allowlist = await readReadAllowlist(ownerDid);
   return filterOrgs(orgs, allowlist);
@@ -993,7 +1328,7 @@ export async function listRepos(ownerDid: string, org?: string): Promise<GitHubR
       ? `/orgs/${encodeURIComponent(org)}/repos?per_page=100`
       : '/user/repos?per_page=100';
 
-  const repos = (await callGitHubApi({ method: 'GET', path, token })) as GitHubRepo[];
+  const { data: repos } = await callGitHubApi<GitHubRepo[]>({ method: 'GET', path, token });
 
   const allowlist = await readReadAllowlist(ownerDid);
   return filterRepos(repos, allowlist);
@@ -1019,11 +1354,12 @@ export async function getRepo(ownerDid: string, repo: string): Promise<GitHubRep
     );
   }
 
-  return callGitHubApi({
+  const { data } = await callGitHubApi<GitHubRepo>({
     method: 'GET',
     path: `/repos/${repo}`,
     token,
-  }) as Promise<GitHubRepo>;
+  });
+  return data;
 }
 
 export interface GitHubUpdateIssueParams {
@@ -1091,12 +1427,12 @@ export async function updateIssue(
   if (updates.body !== undefined) patchBody.body = updates.body;
   if (updates.state !== undefined) patchBody.state = updates.state;
 
-  const data = await callGitHubApi({
+  const { data } = await callGitHubApi<GitHubIssue>({
     method: 'PATCH',
     path: `/repos/${repo}/issues/${issueNumber}`,
     token: gate.token,
     body: patchBody,
-  }) as GitHubIssue;
+  });
 
   // Step 4: close out the single-call approval and emit action.done.
   if (gate.singleProposalId !== null) {

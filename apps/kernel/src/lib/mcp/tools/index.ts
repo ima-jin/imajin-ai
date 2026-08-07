@@ -28,6 +28,11 @@ import { discoveryTools } from './discovery';
  * the scope vocabulary, and the caller's own connector status — gated by
  * 'discovery:read' so a dispatched agent can learn the system instead of
  * grepping source and guessing.
+ * GitHub read depth (#1528): the connector's read verbs paginate the GitHub
+ * Link header and report `has_more`, and cover pull requests, comments, and
+ * search. All of them ride the existing 'github:read' scope, so the surface
+ * grew without the scope vocabulary changing — `githubTools` is spread here
+ * exactly as before.
  */
 export const ALL_TOOLS: McpTool[] = [
   pingTool,
