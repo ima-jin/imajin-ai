@@ -31,7 +31,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'quickbooks', 'warp'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'gcp', 'quickbooks', 'warp'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -137,6 +137,14 @@ describe('pinned scope sets (change these deliberately)', () => {
 
   it('pins the Anthropic connector card toggles', () => {
     expect(connectorUiScopes('anthropic').map((s) => s.name)).toEqual(['anthropic:infer']);
+  });
+
+  it('pins the Google Cloud connector card toggles', () => {
+    expect(connectorUiScopes('gcp').map((s) => s.name)).toEqual([
+      'gcp:iam:read',
+      'gcp:vertex:invoke',
+      'gcp:project:read',
+    ]);
   });
 
   it('pins the QuickBooks connector card toggles', () => {
@@ -264,6 +272,7 @@ const GITHUB_DID = 'did:imajin:github-connector';
 const DISCORD_DID = 'did:imajin:discord-connector';
 const GEMINI_DID = 'did:imajin:gemini-connector';
 const ANTHROPIC_DID = 'did:imajin:anthropic-connector';
+const GCP_DID = 'did:imajin:gcp-connector';
 const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
 const WARP_DID = 'did:imajin:warp-connector';
 
@@ -306,6 +315,17 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('anthropic', () => {
     expect(connectorScopeDescriptors('anthropic')).toEqual({
       'anthropic:infer': { verb: 'infer', surface: 'anthropic-api', label: 'Use your Anthropic API key for inference', release: { discloses_others: false, sensitive: true, viewer: ANTHROPIC_DID } },
+    });
+  });
+
+  // #1317 — new descriptors. The verb carries the GCP surface (`vertex:invoke`)
+  // because one service-account key spans several products, and `surface` names
+  // the wire they are all reached over.
+  it('gcp', () => {
+    expect(connectorScopeDescriptors('gcp')).toEqual({
+      'gcp:iam:read': { verb: 'iam:read', surface: 'gcp-api', label: 'Read IAM policies and service accounts', release: { discloses_others: false, sensitive: true, viewer: GCP_DID } },
+      'gcp:vertex:invoke': { verb: 'vertex:invoke', surface: 'gcp-api', label: 'Invoke Vertex AI / Gemini models', release: { discloses_others: false, sensitive: true, viewer: GCP_DID } },
+      'gcp:project:read': { verb: 'project:read', surface: 'gcp-api', label: 'Read GCP project metadata', release: { discloses_others: false, sensitive: true, viewer: GCP_DID } },
     });
   });
 

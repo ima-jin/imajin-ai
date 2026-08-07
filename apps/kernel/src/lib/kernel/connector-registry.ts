@@ -278,6 +278,31 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
   },
   {
+    id: 'gcp',
+    name: 'Google Cloud',
+    description: 'Connect your GCP service account for Vertex AI inference and cloud operations.',
+    icon: '☁️',
+    ingestionPattern: 'token-paste',
+    channel: 'gcp',
+    connectorDid: 'did:imajin:gcp-connector',
+    scopes: connectorUiScopes('gcp'),
+    statusEndpoint: '/gcp/api/scope-manifest',
+    backendPending: false,
+    connectRoute: null,
+    configureRoute: null,
+    tokenRoute: '/gcp/api/token',
+    disconnectRoute: null,
+    // The credential is a whole service-account key JSON rather than an opaque
+    // key string, so the copy has to say so — a card labelled "API Key" would have
+    // people pasting the client_email and wondering why nothing worked.
+    credentialUi: {
+      label: 'Service Account Key',
+      placeholder: 'GCP service account key JSON',
+      hint: 'Paste the whole key JSON. It is sealed server-side and never returned. Create one in Google Cloud Console → IAM & Admin → Service Accounts → Keys.',
+    },
+    settings: null,
+  },
+  {
     id: 'quickbooks',
     name: 'QuickBooks',
     description: 'Read and write QuickBooks Online invoices via OAuth2.',
