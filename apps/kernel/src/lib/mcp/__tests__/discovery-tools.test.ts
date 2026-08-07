@@ -1,7 +1,7 @@
 /**
- * Tests for the discovery MCP tools (#1636).
+ * Tests for the discovery MCP tools (#1636, re-homed onto `mcp` by #1679).
  *
- * The spec reader, the connector-status query, and the Warp grant gate are mocked
+ * The spec reader, the connector-status query, and the MCP grant gate are mocked
  * — each has its own tests. What matters here is that every tool is gated on
  * `discovery:read` at BOTH gates, that the manifest gate runs before any data is
  * read, that reads are pinned to `ctx.did`, and that nothing credential-shaped
@@ -16,9 +16,9 @@ import type { McpContent, McpToolContext } from '../types';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
-vi.mock('@/src/lib/warp/connector', () => ({
+vi.mock('../mcp-grant', () => ({
   requireDiscoveryGrant: vi.fn(),
-  WARP_DISCOVERY_SCOPE: 'discovery:read',
+  MCP_DISCOVERY_SCOPE: 'discovery:read',
 }));
 
 vi.mock('@/src/lib/kernel/api-specs', () => ({
@@ -36,7 +36,7 @@ vi.mock('@/src/lib/kernel/connector-status', () => ({
 // DATABASE_URL. Registry membership is enforced by the typechecked import in
 // tools/index.ts; behaviour is what is worth testing here.
 import { discoveryTools } from '../tools/discovery';
-import { requireDiscoveryGrant } from '@/src/lib/warp/connector';
+import { requireDiscoveryGrant } from '../mcp-grant';
 import { listApiSpecs, readApiSpec } from '@/src/lib/kernel/api-specs';
 import { readConnectorConnectionStatus } from '@/src/lib/kernel/connector-status';
 import { MCP_SCOPES } from '../oauth-config';
@@ -84,8 +84,8 @@ beforeEach(() => {
     truncated: false,
   });
   vi.mocked(readConnectorConnectionStatus).mockResolvedValue([
-    { id: 'warp', connected: true, scopes: ['discovery:read'] },
-    { id: 'mcp', connected: false, scopes: [] },
+    { id: 'mcp', connected: true, scopes: ['discovery:read'] },
+    { id: 'warp', connected: false, scopes: [] },
   ]);
 });
 
@@ -160,9 +160,9 @@ describe('scope-manifest gate', () => {
     ['imajin_list_scopes', {}],
     ['imajin_get_scope_manifest', {}],
   ])('propagates a revoked grant out of %s rather than serving a partial read', async (name, args) => {
-    vi.mocked(requireDiscoveryGrant).mockRejectedValue(new Error('warp_no_grant: nope'));
+    vi.mocked(requireDiscoveryGrant).mockRejectedValue(new Error('mcp_no_grant: nope'));
 
-    await expect(tool(name).handler(args, ctx)).rejects.toThrow(/warp_no_grant/);
+    await expect(tool(name).handler(args, ctx)).rejects.toThrow(/mcp_no_grant/);
     expect(listApiSpecs).not.toHaveBeenCalled();
     expect(readApiSpec).not.toHaveBeenCalled();
     expect(readConnectorConnectionStatus).not.toHaveBeenCalled();
@@ -250,7 +250,7 @@ describe('imajin_list_scopes', () => {
         {
           scope: 'discovery:read',
           label: 'Read Imajin API specs, the scope vocabulary, and your connector status',
-          connector: 'warp',
+          connector: 'mcp',
           releaseClass: 'silent',
           mcpToken: true,
         },
@@ -277,8 +277,8 @@ describe('imajin_get_scope_manifest', () => {
     expect(out.did).toBe(ctx.did);
     expect(out.tokenScopes).toEqual(['discovery:read']);
     expect(out.status).toEqual([
-      { id: 'warp', connected: true, scopes: ['discovery:read'] },
-      { id: 'mcp', connected: false, scopes: [] },
+      { id: 'mcp', connected: true, scopes: ['discovery:read'] },
+      { id: 'warp', connected: false, scopes: [] },
     ]);
   });
 
@@ -293,10 +293,23 @@ describe('imajin_get_scope_manifest', () => {
       statusEndpoint: '/warp/api/scope-manifest',
       ingestionPattern: 'static-secret',
     });
-    expect(warp.grantableScopes.map((s: { name: string }) => s.name)).toEqual([
-      'warp:dispatch',
-      'discovery:read',
-    ]);
+    expect(warp.grantableScopes.map((s: { name: string }) => s.name)).toEqual(['warp:dispatch']);
+  });
+
+  /**
+   * #1679: the agent reading this payload is usually looking for where to get
+   * `discovery:read`. It must find the native connector — pointing it at the
+   * Warp card is what sent people off to seal a key they never needed.
+   */
+  it('points discovery:read at the credential-free MCP connector', async () => {
+    const out = parseResult(await call('imajin_get_scope_manifest'));
+    const mcp = out.connectors.find((c: { id: string }) => c.id === 'mcp');
+
+    expect(mcp).toMatchObject({
+      ingestionPattern: 'native',
+      statusEndpoint: '/mcp/api/scope-manifest',
+    });
+    expect(mcp.grantableScopes.map((s: { name: string }) => s.name)).toContain('discovery:read');
   });
 
   /**

@@ -83,3 +83,39 @@ export async function requireMcpGrant(ownerDid: string, scope: string): Promise<
     );
   }
 }
+
+// ── Discovery surface (#1636, re-homed by #1679) ───────────────────────────
+
+/**
+ * The read-only scope gating the node's self-description surface.
+ *
+ * Owned by the MCP connector rather than Warp (#1679): exercising it unseals
+ * nothing and spends nothing, so it has no business behind a card that first
+ * asks for a Warp Agent key. It reads the OpenAPI specs, the scope vocabulary,
+ * and the caller's OWN connector status — nothing else, and nothing for anyone
+ * else's DID.
+ *
+ * There is no write counterpart on purpose — writes go through git/PR.
+ */
+export const MCP_DISCOVERY_SCOPE = 'discovery:read';
+
+/**
+ * Fail-closed gate for the read-only discovery surface.
+ *
+ * The token-scope check in `handleMcpRpc` is the coarse OAuth gate; this is the
+ * sovereignty gate — an active `mcp` channel_links row carrying the scope,
+ * written when the owner publishes their MCP scope-manifest with the toggle on.
+ * Removing the toggle revokes the row and closes the surface on the next call.
+ *
+ * Unlike the credential gates this returns nothing: there is no key to unwrap.
+ */
+export async function requireDiscoveryGrant(ownerDid: string): Promise<void> {
+  const hasGrant = await resolveActiveMcpGrant(ownerDid, MCP_DISCOVERY_SCOPE);
+  if (!hasGrant) {
+    throw new Error(
+      `mcp_no_grant: DID ${ownerDid} has no active '${MCP_DISCOVERY_SCOPE}' grant — ` +
+      `enable it on the Imajin MCP connector card to read the node API specs, the ` +
+      `scope vocabulary, and your connector status. No credential is required.`,
+    );
+  }
+}

@@ -8,6 +8,8 @@
  *
  * Scope materialisation:
  *   media:read, connections:read → silent      (active immediately after POST)
+ *   discovery:read               → silent      (#1679 — and credential-free, so
+ *                                               this POST is the entire grant)
  *   media:write, media:share     → on-consent  (needs consent_grants row)
  *
  * Publishing also widens the owner's active DCR client registrations (#1647) so

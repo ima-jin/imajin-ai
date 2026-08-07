@@ -360,6 +360,85 @@ describe('scope grants', () => {
     expect((await screen.findByRole('checkbox')).hasAttribute('disabled')).toBe(true);
     expect(screen.getByText(/Seal your API Key \(step 1\)/)).toBeDefined();
   });
+
+  /**
+   * #1679 — the credential step gates the scopes that spend the credential, not
+   * the card. Before this, every toggle waited on the key, which is what made
+   * `discovery:read` — a read that unseals nothing — ungrantable without a Warp
+   * Agent key its holder would never use.
+   *
+   * The scope here is synthetic on purpose: the registry no longer parks a
+   * credential-free scope on a credential-ingesting connector, and this is the
+   * card behaviour that makes it safe to do so if one ever needs to again.
+   */
+  it('keeps a credential-free toggle usable before the credential is sealed', async () => {
+    const warp = entryFor('warp');
+    const entry: ConnectorEntry = {
+      ...warp,
+      scopes: [
+        ...warp.scopes,
+        {
+          name: 'demo:read',
+          label: 'A read that unseals nothing',
+          releaseClass: 'silent',
+          credentialFree: true,
+        },
+      ],
+    };
+
+    installFetch({
+      '/warp/api/scope-manifest': {
+        manifestAssetId: null,
+        activeScopes: [],
+        validScopes: ['warp:dispatch', 'demo:read'],
+        secretSealed: false,
+      },
+    });
+
+    render(<ConnectorDetail entry={entry} />);
+
+    const [dispatchToggle, freeToggle] = await screen.findAllByRole('checkbox');
+    // The credential-spending scope still waits for the key…
+    expect(dispatchToggle.hasAttribute('disabled')).toBe(true);
+    // …while the credential-free one is grantable right now.
+    expect(freeToggle.hasAttribute('disabled')).toBe(false);
+    // The hint still applies, because something on this card genuinely is blocked.
+    expect(screen.getByText(/Seal your Agent Key \(step 1\)/)).toBeDefined();
+  });
+
+  it('posts a credential-free grant without any credential sealed', async () => {
+    const warp = entryFor('warp');
+    const entry: ConnectorEntry = {
+      ...warp,
+      scopes: [
+        {
+          name: 'demo:read',
+          label: 'A read that unseals nothing',
+          releaseClass: 'silent',
+          credentialFree: true,
+        },
+      ],
+    };
+
+    const spy = installFetch({
+      '/warp/api/scope-manifest': {
+        manifestAssetId: null,
+        activeScopes: [],
+        validScopes: ['demo:read'],
+        secretSealed: false,
+      },
+    });
+
+    render(<ConnectorDetail entry={entry} />);
+    fireEvent.click(await screen.findByRole('checkbox'));
+
+    await waitFor(() => {
+      expect(requestBody(spy, '/warp/api/scope-manifest')).toEqual({ scopes: ['demo:read'] });
+    });
+    // Nothing on this card is credential-gated, so the "seal first" hint would be
+    // telling the owner to do work that buys them nothing.
+    expect(screen.queryByText(/Seal your Agent Key \(step 1\)/)).toBeNull();
+  });
 });
 
 describe('disconnect', () => {

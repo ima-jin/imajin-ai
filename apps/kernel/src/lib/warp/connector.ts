@@ -44,19 +44,11 @@ export const WARP_CHANNEL = CONNECTOR_CHANNELS.warp;
  */
 export const WARP_DISPATCH_SCOPE = 'warp:dispatch';
 
-/**
- * The read-only scope that gates the node's self-description surface (#1636).
- *
- * Deliberately separate from {@link WARP_DISPATCH_SCOPE}: dispatch consumes a
- * sealed credential and spawns billable work, whereas this grants nothing but
- * reads of the OpenAPI specs, the scope vocabulary, and the caller's own
- * connector status. An agent should be able to learn what the system exposes
- * without being handed the ability to spend money, and revoking one must not
- * revoke the other.
- *
- * There is no write counterpart on purpose — writes go through git/PR.
- */
-export const WARP_DISCOVERY_SCOPE = 'discovery:read';
+// The read-only `discovery:read` scope used to live here (#1636). It moved to
+// the MCP connector in #1679 — see `src/lib/mcp/mcp-grant.ts` — because it
+// consumes no sealed credential, and parking it on a static-secret connector
+// meant nobody could be granted it without first sealing a Warp Agent key they
+// had no use for. What is left on this connector is exactly what spends the key.
 
 /** Vault field prefix — the full field is `warp-agent-key:{principalDid}`. */
 export const WARP_SECRET_PREFIX = 'warp-agent-key';
@@ -92,29 +84,6 @@ export const sealWarpAgentKey = warpConnector.sealAndGrant;
  */
 export function requireAgentKey(principalDid: string): Promise<string> {
   return warpConnector.requireSecret(principalDid, WARP_DISPATCH_SCOPE);
-}
-
-/**
- * Fail-closed gate for the read-only discovery surface (#1636).
- *
- * The token-scope check in `handleMcpRpc` is the coarse OAuth gate; this is the
- * sovereignty gate, and it is the same one dispatch passes through — an active
- * `warp` channel_links row carrying the scope, written by the projection reactor
- * when the owner publishes their Warp scope-manifest. Removing the toggle revokes
- * the row and closes the surface on the next call.
- *
- * Unlike {@link requireAgentKey} there is no credential to unwrap, so this
- * returns nothing: it either passes or throws `warp_no_grant`.
- */
-export async function requireDiscoveryGrant(principalDid: string): Promise<void> {
-  const hasGrant = await warpConnector.resolveActiveGrant(principalDid, WARP_DISCOVERY_SCOPE);
-  if (!hasGrant) {
-    throw new Error(
-      `warp_no_grant: DID ${principalDid} has no active '${WARP_DISCOVERY_SCOPE}' grant — ` +
-      `enable it on the Warp connector card to read API specs, the scope vocabulary, ` +
-      `and your connector status`,
-    );
-  }
 }
 
 /** Revoke the delegation grant, killing dispatch for this DID immediately. */

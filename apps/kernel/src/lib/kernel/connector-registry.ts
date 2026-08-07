@@ -178,7 +178,10 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'mcp',
     name: 'Imajin MCP',
-    description: 'Grant any MCP client access to your media, connections, and other Imajin capabilities.',
+    // #1679: the card now also carries `discovery:read`, the credential-free read
+    // of the node's own API specs and your connector status. It lives here because
+    // this connector needs no credential at all — the toggle is the whole grant.
+    description: 'Grant any MCP client access to your media, connections, API specs, and other Imajin capabilities.',
     icon: '🤖',
     ingestionPattern: 'native',
     channel: 'mcp',
@@ -323,10 +326,10 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'warp',
     name: 'Warp Cloud Agents',
-    // #1636: the connector now carries a second, credential-free scope, so the
-    // copy names the read surface too — a card that only mentions dispatch makes
-    // `discovery:read` look like a mis-filed toggle.
-    description: 'Seal your own Warp Agent key per-DID so cloud agents you dispatch run under your credential, not a shared one — and let them read this node\'s API specs and your connector status.',
+    // #1679: `discovery:read` moved to the MCP connector, so this card is back to
+    // describing exactly one thing — what the sealed Agent key buys. Naming a read
+    // surface it no longer grants would send people here for a toggle that is not.
+    description: 'Seal your own Warp Agent key per-DID so cloud agents you dispatch run under your credential, not a shared one.',
     icon: '🛰️',
     ingestionPattern: 'static-secret',
     channel: 'warp',

@@ -28,6 +28,7 @@ import {
   SCOPE_VOCABULARY,
   deriveScopeReleaseTier,
   isConnectorScope,
+  isCredentialFreeScope,
   manifestLabelForScope,
   uiLabelForScope,
   scopesForConnector,
@@ -135,6 +136,11 @@ export interface ConnectorScope {
   label: string;
   /** Release tier — determines whether this scope needs consent to materialise. */
   releaseClass: ReleaseClass;
+  /**
+   * True when exercising the scope consumes no sealed credential (#1679), so the
+   * card may offer its toggle before — or without — the credential step.
+   */
+  credentialFree: boolean;
 }
 
 /**
@@ -149,6 +155,7 @@ export function connectorUiScopes(connector: ConnectorId): ConnectorScope[] {
       name: entry.scope,
       label: uiLabelForScope(entry),
       releaseClass: deriveScopeReleaseTier(entry),
+      credentialFree: isCredentialFreeScope(entry),
     }))
     .filter((scope) => scope.releaseClass !== 'never');
 }

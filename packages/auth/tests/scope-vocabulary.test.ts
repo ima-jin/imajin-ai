@@ -5,6 +5,7 @@ import {
   CONNECTOR_DIDS,
   CONNECTOR_CHANNELS,
   isConnectorScope,
+  isCredentialFreeScope,
   deriveScopeReleaseTier,
   viewerForScope,
   uiLabelForScope,
@@ -288,17 +289,20 @@ describe('SCOPES is a faithful projection', () => {
   /**
    * #1636: the read-only discovery surface. Classified SELF_ONLY — public API
    * specs plus the owner's own connector state, nothing credential-grade — so it
-   * must derive `silent` rather than inheriting `warp:dispatch`'s owner-only
-   * barrier. The sealed Agent key stays behind `warp:dispatch`.
+   * must derive `silent` rather than inheriting a consent barrier.
+   *
+   * #1679 re-homed it from `warp` onto `mcp`. Everything else about it is
+   * unchanged, deliberately: same scope string, same labels, same tier, same
+   * place on the MCP capability ceiling.
    */
-  it('includes discovery:read as a silent Warp-owned scope carried by MCP tokens', () => {
+  it('includes discovery:read as a silent MCP-owned scope carried by MCP tokens', () => {
     expect(SCOPES['discovery:read']).toBe(
       'Read Imajin API specs, the scope vocabulary, and your connector status',
     );
     expect(validateScopes(['discovery:read']).invalid).toEqual([]);
 
     const entry = scopeEntry('discovery:read') as ConnectorScopeEntry;
-    expect(entry.connector).toBe('warp');
+    expect(entry.connector).toBe('mcp');
     expect(entry.verb).toBe('read');
     expect(entry.surface).toBe('discovery');
     expect(deriveScopeReleaseTier(entry)).toBe('silent');
@@ -308,11 +312,40 @@ describe('SCOPES is a faithful projection', () => {
     expect(scopesForSurface('mcp')).toContain('discovery:read');
   });
 
-  it('gives the Warp connector a read scope distinct from its dispatch scope', () => {
-    expect(scopesForConnector('warp').map((e) => e.scope)).toEqual([
-      'warp:dispatch',
-      'discovery:read',
-    ]);
+  /**
+   * #1679: the whole point of the move. A scope that unseals nothing must not be
+   * owned by a connector whose card demands a credential first — that is what
+   * made a read-only grant unreachable without a Warp Agent key.
+   */
+  it('leaves the Warp connector owning only what spends the sealed key', () => {
+    expect(scopesForConnector('warp').map((e) => e.scope)).toEqual(['warp:dispatch']);
+  });
+
+  it('marks discovery:read credential-free, and nothing that spends a key', () => {
+    const credentialFree = connectorEntries
+      .filter(isCredentialFreeScope)
+      .map((e) => e.scope);
+    expect(credentialFree).toEqual(['discovery:read']);
+
+    // Fail-closed default: an entry that says nothing is assumed to spend the
+    // connector's credential.
+    expect(isCredentialFreeScope(scopeEntry('warp:dispatch') as ConnectorScopeEntry)).toBe(false);
+    expect(isCredentialFreeScope(scopeEntry('github:read') as ConnectorScopeEntry)).toBe(false);
+  });
+
+  /**
+   * A credential-free scope on a connector that ingests one is exactly the #1679
+   * bug: the card gates its toggles behind the credential step, so the grant is
+   * unreachable without a key its holder will never use. Native connectors have
+   * no credential step, so they are the only safe home.
+   */
+  it('keeps credential-free scopes off connectors that ingest a credential', () => {
+    const CREDENTIAL_FREE_CONNECTORS = new Set<ConnectorId>(['mcp']);
+    const stranded = connectorEntries
+      .filter(isCredentialFreeScope)
+      .filter((e) => !CREDENTIAL_FREE_CONNECTORS.has(e.connector))
+      .map((e) => `${e.scope} on ${e.connector}`);
+    expect(stranded).toEqual([]);
   });
 
   it('includes connectors:read-status as an app-registration scope, not a connector grant', () => {

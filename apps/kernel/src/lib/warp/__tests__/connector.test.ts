@@ -35,13 +35,12 @@ import {
   warpKeyField,
   sealWarpAgentKey,
   requireAgentKey,
-  requireDiscoveryGrant,
   revokeWarpAgentKeyGrant,
   WARP_CONNECTOR_DID,
   WARP_CHANNEL,
-  WARP_DISCOVERY_SCOPE,
   WARP_DISPATCH_SCOPE,
 } from '../connector';
+import * as warpConnectorModule from '../connector';
 
 const PRINCIPAL = 'did:imajin:veteze';
 const OTHER = 'did:imajin:chris';
@@ -67,7 +66,19 @@ describe('connector identity', () => {
     expect(WARP_CONNECTOR_DID).toBe('did:imajin:warp-connector');
     expect(WARP_CHANNEL).toBe('warp');
     expect(WARP_DISPATCH_SCOPE).toBe('warp:dispatch');
-    expect(WARP_DISCOVERY_SCOPE).toBe('discovery:read');
+  });
+
+  /**
+   * #1679: `discovery:read` and its gate moved to the MCP connector, because it
+   * unseals nothing and had no business behind a card that demands an Agent key
+   * first. This connector must now expose exactly one scope — the one that
+   * spends the credential.
+   */
+  it('no longer exports a discovery scope or its gate', () => {
+    const exported = Object.keys(warpConnectorModule);
+    expect(exported).not.toContain('WARP_DISCOVERY_SCOPE');
+    expect(exported).not.toContain('requireDiscoveryGrant');
+    expect(JSON.stringify(exported)).not.toContain('discovery');
   });
 });
 
@@ -126,33 +137,16 @@ describe('requireAgentKey is authority-gated', () => {
   });
 });
 
-// ── Discovery gate (#1636) ────────────────────────────────────────────────
+// ── Discovery no longer travels with dispatch (#1636, re-homed by #1679) ─────
 
-describe('requireDiscoveryGrant is authority-gated but credential-free', () => {
-  it('refuses when no active channel_links row carries discovery:read', async () => {
-    await expect(requireDiscoveryGrant(PRINCIPAL)).rejects.toThrow(/warp_no_grant/);
-  });
-
-  it('passes on an active discovery:read row without touching the vault', async () => {
-    withScopes([WARP_DISCOVERY_SCOPE]);
-
-    await expect(requireDiscoveryGrant(PRINCIPAL)).resolves.toBeUndefined();
-    // No sealed key is involved, so no unseal may be attempted — a read of the
-    // node's own specs must never reach for the caller's Warp Agent key.
-    expect(loadGranteeMock).not.toHaveBeenCalled();
-  });
-
+describe('the dispatch gate is unmoved by the discovery scope', () => {
   /**
-   * The two directions that make the split worth having: a DID that can dispatch
-   * cannot implicitly read, and a DID that can read cannot implicitly dispatch.
+   * The grant now lives on the `mcp` channel, so a row carrying it must not open
+   * the vault here — reading what the node exposes cannot imply the ability to
+   * spend money on a cloud agent.
    */
-  it('is not satisfied by warp:dispatch alone', async () => {
-    withScopes([WARP_DISPATCH_SCOPE]);
-    await expect(requireDiscoveryGrant(PRINCIPAL)).rejects.toThrow(/warp_no_grant/);
-  });
-
-  it('does not itself satisfy the dispatch gate', async () => {
-    withScopes([WARP_DISCOVERY_SCOPE]);
+  it('is not satisfied by a discovery:read row', async () => {
+    withScopes(['discovery:read']);
     await expect(requireAgentKey(PRINCIPAL)).rejects.toThrow(/warp_no_grant/);
     expect(loadGranteeMock).not.toHaveBeenCalled();
   });

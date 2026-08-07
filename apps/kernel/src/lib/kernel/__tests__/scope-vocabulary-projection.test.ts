@@ -116,6 +116,9 @@ describe('pinned scope sets (change these deliberately)', () => {
       'connections:read',
       'messages:read',
       'messages:write',
+      // #1679 — re-homed from the Warp card, which could not grant it without a
+      // sealed Agent key.
+      'discovery:read',
       'inference:read',
       'inference:write',
     ]);
@@ -157,7 +160,19 @@ describe('pinned scope sets (change these deliberately)', () => {
   });
 
   it('pins the Warp connector card toggles', () => {
-    expect(connectorUiScopes('warp').map((s) => s.name)).toEqual(['warp:dispatch', 'discovery:read']);
+    expect(connectorUiScopes('warp').map((s) => s.name)).toEqual(['warp:dispatch']);
+  });
+
+  /**
+   * #1679: the flag the card reads to decide whether a toggle may be offered
+   * before the credential step. Pinned as a set because a wrong `true` here
+   * hands out a toggle for a scope that cannot work without a sealed key.
+   */
+  it('pins which card toggles are credential-free', () => {
+    const credentialFree = CONNECTOR_REGISTRY.flatMap((entry) =>
+      entry.scopes.filter((scope) => scope.credentialFree).map((scope) => scope.name),
+    );
+    expect(credentialFree).toEqual(['discovery:read']);
   });
 
   /**
@@ -289,6 +304,10 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
       'connections:read': { verb: 'read', surface: 'connections', label: 'Read your trust-graph connections', release: { discloses_others: false, sensitive: false } },
       'messages:read': { verb: 'read', surface: 'messages', label: 'List your conversations and read their messages', release: { discloses_others: false, sensitive: false } },
       'messages:write': { verb: 'write', surface: 'messages', label: 'Send messages in your conversations on your behalf', release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_DID } },
+      // #1636/#1679 — the descriptor is byte-identical to the one the Warp
+      // manifest carried; only the connector that publishes it changed. Owners
+      // who had it on their Warp manifest re-toggle it here once.
+      'discovery:read': { verb: 'read', surface: 'discovery', label: 'Read the node API specs, scope vocabulary, and your connector status', release: { discloses_others: false, sensitive: false } },
       // #1298 — new descriptors, not migrated literals.
       'inference:read': { verb: 'read', surface: 'inference', label: 'Read inference session status and attestations', release: { discloses_others: false, sensitive: false } },
       'inference:write': { verb: 'write', surface: 'inference', label: 'Trigger the inference pipeline and sign attestations on your behalf', release: { discloses_others: false, sensitive: true, viewer: MCP_DID } },
@@ -371,7 +390,7 @@ describe('#1428 — warp:dispatch projects as an owner-only connector scope', ()
   });
 });
 
-// ── #1636 ─ the read-only discovery scope ──────────────────────────────────────
+// ── #1636 / #1679 ─ the read-only discovery scope, now owned by MCP ──────────
 
 describe('#1636 — discovery:read is grantable end-to-end', () => {
   /**
@@ -383,9 +402,9 @@ describe('#1636 — discovery:read is grantable end-to-end', () => {
     expect(isKnownScope('discovery:read')).toBe(true);
     expect(MCP_SCOPE_SET.has('discovery:read')).toBe(true);
     expect(filterGrantedScopes('discovery:read')).toEqual(['discovery:read']);
-    expect(Object.keys(connectorScopeDescriptors('warp'))).toContain('discovery:read');
-    expect(validScopesForConnector('warp')).toContain('discovery:read');
-    expect(getConnector('warp')?.scopes.map((s) => s.name)).toContain('discovery:read');
+    expect(Object.keys(connectorScopeDescriptors('mcp'))).toContain('discovery:read');
+    expect(validScopesForConnector('mcp')).toContain('discovery:read');
+    expect(getConnector('mcp')?.scopes.map((s) => s.name)).toContain('discovery:read');
   });
 
   /**
@@ -394,12 +413,12 @@ describe('#1636 — discovery:read is grantable end-to-end', () => {
    * read the scope exists to provide impossible.
    */
   it('derives silent from the 2×2, so it needs no consent row', () => {
-    expect(scopeReleaseClass('warp', 'discovery:read')).toBe('silent');
-    expect(requiresConsentRow('warp', 'discovery:read')).toBe(false);
+    expect(scopeReleaseClass('mcp', 'discovery:read')).toBe('silent');
+    expect(requiresConsentRow('mcp', 'discovery:read')).toBe(false);
   });
 
   it('names no viewer, because a silent scope is released to nobody in particular', () => {
-    expect(connectorScopeDescriptors('warp')['discovery:read']).toEqual({
+    expect(connectorScopeDescriptors('mcp')['discovery:read']).toEqual({
       verb: 'read',
       surface: 'discovery',
       label: 'Read the node API specs, scope vocabulary, and your connector status',
@@ -415,7 +434,44 @@ describe('#1636 — discovery:read is grantable end-to-end', () => {
   it('is independent of warp:dispatch', () => {
     expect(filterGrantedScopes('discovery:read')).not.toContain('warp:dispatch');
     expect(scopeReleaseClass('warp', 'warp:dispatch')).toBe('owner-only');
-    expect(scopeReleaseClass('warp', 'discovery:read')).toBe('silent');
+    expect(scopeReleaseClass('mcp', 'discovery:read')).toBe('silent');
+  });
+});
+
+describe('#1679 — discovery:read is not gated behind a credential', () => {
+  /**
+   * The bug: `silent` means "materialises on manifest publish", but the Warp card
+   * only publishes once an Agent key is sealed, so the tier promised something
+   * the connector could not deliver. The native MCP connector has no credential
+   * step at all, which is what makes the promise true again.
+   */
+  it('is owned by the native connector, not the static-secret one', () => {
+    expect(validScopesForConnector('warp')).not.toContain('discovery:read');
+    expect(getConnector('warp')?.scopes.map((s) => s.name)).not.toContain('discovery:read');
+    expect(getConnector('mcp')?.ingestionPattern).toBe('native');
+    expect(getConnector('mcp')?.tokenRoute).toBeNull();
+  });
+
+  it('carries the credential-free flag the card reads', () => {
+    const scope = getConnector('mcp')?.scopes.find((s) => s.name === 'discovery:read');
+    expect(scope?.credentialFree).toBe(true);
+    expect(scope?.releaseClass).toBe('silent');
+  });
+
+  /**
+   * Everything that unseals or spends a credential stays flagged false, so the
+   * card keeps gating those behind the credential step.
+   */
+  it('leaves credential-spending scopes flagged false', () => {
+    for (const [connector, scope] of [
+      ['warp', 'warp:dispatch'],
+      ['github', 'github:read'],
+      ['gemini', 'gemini:infer'],
+      ['mcp', 'media:read'],
+    ] as const) {
+      const entry = getConnector(connector)?.scopes.find((s) => s.name === scope);
+      expect(entry?.credentialFree, scope).toBe(false);
+    }
   });
 });
 

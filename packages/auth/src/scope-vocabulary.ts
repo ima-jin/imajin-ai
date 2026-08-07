@@ -138,6 +138,23 @@ export interface ConnectorScopeEntry extends BaseScopeEntry {
    * 2×2 says `silent`) but we still demand explicit consent.
    */
   releaseOverride?: ScopeReleaseOverride;
+  /**
+   * True when exercising this scope consumes NO sealed credential (#1679).
+   *
+   * Independent of the 2×2, which says what releasing the scope discloses, not
+   * what exercising it spends. `github:read` is `silent` and still needs the
+   * owner's GitHub token; `discovery:read` is `silent` and needs nothing at all.
+   *
+   * The distinction is load-bearing on a connector that ingests a credential:
+   * its card gates every toggle behind the credential step, so a credential-free
+   * scope parked there is ungrantable until the owner seals a key they will
+   * never use. That is exactly how #1679 stranded `discovery:read` on the Warp
+   * card. Marking a scope here lets the card grant it on its own terms.
+   *
+   * Omit it (the default) for anything that reads or writes through a sealed
+   * credential — fail-closed, so a forgotten flag costs a toggle, not a leak.
+   */
+  credentialFree?: boolean;
 }
 
 export type ScopeVocabularyEntry = PlatformScopeEntry | ConnectorScopeEntry;
@@ -271,21 +288,28 @@ export const SCOPE_VOCABULARY = [
   // the whole point: the credential individuates the dispatch.
   { scope: 'warp:dispatch', connector: 'warp', verb: 'dispatch', surface: 'cloud-agents', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
     label: 'Dispatch Warp cloud agents using your sealed Warp Agent key', manifestLabel: 'Dispatch Warp cloud agents under your own credential' },
-  // Read-only self-description of the node (#1636): the OpenAPI specs it serves,
-  // the scope vocabulary itself, and the caller's OWN connector grant state. A
-  // dispatched cloud agent that can read these starts from what the system
-  // actually exposes instead of grepping source and guessing, which is where the
-  // stale assumptions — and the failed PRs — come from.
+
+  // ── Discovery (#1636, re-homed onto `mcp` by #1679)
   //
-  // Owned by the Warp connector because that is who needs it and who it is
-  // granted to; carried by MCP tokens because the dev kernel's MCP endpoint is
-  // the wire the agent reads over.
+  // Read-only self-description of the node: the OpenAPI specs it serves, the
+  // scope vocabulary itself, and the caller's OWN connector grant state. An
+  // agent that can read these starts from what the system actually exposes
+  // instead of grepping source and guessing, which is where the stale
+  // assumptions — and the failed PRs — come from.
   //
   // SELF_ONLY → `silent`: every byte is either already public (the specs) or the
-  // owner's own connector state, and nothing here is credential-grade — the
-  // sealed keys themselves stay behind `warp:dispatch`. Reads only; there is no
-  // write counterpart, by design (writes go through git/PR).
-  { scope: 'discovery:read', connector: 'warp', verb: 'read', surface: 'discovery', classification: SELF_ONLY, surfaces: MCP_TOKENS,
+  // owner's own connector state, and nothing here is credential-grade. Reads
+  // only; there is no write counterpart, by design (writes go through git/PR).
+  //
+  // #1636 put it on the Warp connector because a dispatched cloud agent was the
+  // caller that needed it. That coupled a credential-free scope to a
+  // credential-ingesting card: the Warp card only publishes a manifest once the
+  // owner seals an Agent key, so a `silent` scope that needs no key at all could
+  // not materialise without one. #1679 moves it to the native `mcp` connector —
+  // which has no credential step — and marks it `credentialFree` so the coupling
+  // cannot silently come back. Ownership moved; the read surface did not: it is
+  // still reached over MCP, by the same MCP tools, under the same scope string.
+  { scope: 'discovery:read', connector: 'mcp', verb: 'read', surface: 'discovery', classification: SELF_ONLY, surfaces: MCP_TOKENS, credentialFree: true,
     label: 'Read Imajin API specs, the scope vocabulary, and your connector status',
     manifestLabel: 'Read the node API specs, scope vocabulary, and your connector status',
     uiLabel: 'Read API specs, scope vocabulary, and your connector status' },
@@ -358,6 +382,16 @@ export function uiLabelForScope(entry: ConnectorScopeEntry): string {
 /** Label written into the signed scope-manifest asset. */
 export function manifestLabelForScope(entry: ConnectorScopeEntry): string {
   return entry.manifestLabel ?? entry.label;
+}
+
+/**
+ * True when exercising this scope consumes no sealed credential (#1679).
+ *
+ * Defaults to false, which is the fail-closed reading: a scope nobody has
+ * thought about is assumed to spend the connector's credential.
+ */
+export function isCredentialFreeScope(entry: ConnectorScopeEntry): boolean {
+  return entry.credentialFree === true;
 }
 
 // ── Lookups ───────────────────────────────────────────────────────────────────
