@@ -62,6 +62,7 @@ import {
 } from '../kernel/connector-oauth';
 import { readReadAllowlist, filterOrgs, filterRepos, isRepoAllowed } from './allowlist';
 import { GITHUB_CONNECTOR_DID } from './constants';
+import { pendingApprovalMessage } from './pending-message';
 import {
   isPullRequest,
   normalizeLimit,
@@ -876,9 +877,7 @@ export async function createIssue(
     return {
       status: 'pending',
       proposalId: gate.proposalId,
-      message:
-        `Action proposed (proposalId: ${gate.proposalId}). ` +
-        `Approve at /github/api/confirm/${gate.proposalId} then retry this tool call.`,
+      message: pendingApprovalMessage(gate.proposalId),
     };
   }
 
@@ -967,9 +966,7 @@ export async function createComment(
     return {
       status: 'pending',
       proposalId: gate.proposalId,
-      message:
-        `Action proposed (proposalId: ${gate.proposalId}). ` +
-        `Approve at /github/api/confirm/${gate.proposalId} then retry this tool call.`,
+      message: pendingApprovalMessage(gate.proposalId),
     };
   }
 
@@ -1460,9 +1457,7 @@ export async function updateIssue(
     return {
       status: 'pending',
       proposalId: gate.proposalId,
-      message:
-        `Action proposed (proposalId: ${gate.proposalId}). ` +
-        `Approve at /github/api/confirm/${gate.proposalId} then retry this tool call.`,
+      message: pendingApprovalMessage(gate.proposalId),
     };
   }
 

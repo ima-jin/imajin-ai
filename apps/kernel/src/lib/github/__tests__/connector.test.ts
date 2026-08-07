@@ -1924,3 +1924,49 @@ describe('per-tool sub-limits (#1371)', () => {
     expect(insertedRow.argsSummary).not.toContain('[TOOL_RATE_LIMIT]');
   });
 });
+
+// ── Pending-approval copy (#1582) ──────────────────────────────────────────────────
+
+/**
+ * The wording itself is covered by `pending-message.test.ts`. What matters here
+ * is that EVERY gated write verb actually routes through it: the old copy was
+ * duplicated inline at three sites, so a fourth write verb (or a revert of one
+ * site) could quietly go on sending humans to the POST-only confirm endpoint.
+ */
+describe('pending-approval copy (#1582)', () => {
+  beforeEach(() => {
+    vi.stubEnv('APP_URL', 'https://jin.imajin.ai');
+    grant(['github:write']);
+    // Default proposalLimitMock ([]) means no live window → every verb proposes.
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const pendingWrites: [string, () => Promise<{ status: string; message?: string }>][] = [
+    ['createIssue', () => createIssue(OWNER, REPO, 'Title', 'Body')],
+    ['createComment', () => createComment(OWNER, REPO, 42, 'A comment')],
+    ['updateIssue', () => updateIssue(OWNER, REPO, 42, { state: 'closed' })],
+  ];
+
+  it.each(pendingWrites)('%s sends the human to the /jin dashboard', async (_name, run) => {
+    const result = await run();
+
+    expect(result.status).toBe('pending');
+    expect(result.message).toContain('https://jin.imajin.ai/jin');
+  });
+
+  it.each(pendingWrites)('%s never tells the human to approve at the confirm API', async (_name, run) => {
+    const result = await run();
+
+    expect(result.message).not.toMatch(/approv\w*\s+at\s+\S*\/github\/api\/confirm/i);
+  });
+
+  it.each(pendingWrites)('%s still reports the proposalId it inserted', async (_name, run) => {
+    const result = await run();
+
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(result.message).toContain(insertedRow.id);
+  });
+});
