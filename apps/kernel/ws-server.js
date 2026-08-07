@@ -1,8 +1,14 @@
 const { WebSocketServer } = require('ws');
+const { createAlsoRegistry } = require('./src/lib/ws/also-registry');
 
 /** @type {Map<import('ws').WebSocket, { did: string, alsoDids: Set<string>, subscriptions: Set<string> }>} */
 const socketMeta = new Map();
-/** @type {Map<string, Set<import('ws').WebSocket>>} */
+/**
+ * Sockets a DID owns. Presence is derived from these set sizes (1 => online,
+ * 0 => offline), so delegated `register_also` sockets deliberately live in the
+ * separate registry below rather than here.
+ * @type {Map<string, Set<import('ws').WebSocket>>}
+ */
 const didSockets = new Map();
 /** @type {Map<string, Map<string, { did: string, name: string, timeout: NodeJS.Timeout }>>} */
 const typingStatus = new Map(); // conversationId -> Map<did, {did, name, timeout}>
@@ -217,6 +223,15 @@ async function verifyAgentDelegation(agentDid, principalDid) {
   }
 }
 
+/**
+ * Delegated `register_also` fan-out (#1653). Held apart from `didSockets` so a
+ * delegate socket never masquerades as the principal for presence purposes.
+ */
+const alsoRegistry = createAlsoRegistry({
+  verifyDelegation: verifyAgentDelegation,
+  log: (message) => console.log('[WS]', message),
+});
+
 function setupWebSocket(server) {
   wss = new WebSocketServer({ noServer: true });
 
@@ -280,30 +295,11 @@ function setupWebSocket(server) {
 
           if (msg.type === 'ping') {
             ws.send(JSON.stringify({ type: 'pong' }));
-          } else if (msg.type === 'register_also' && msg.did) {
+          } else if (msg.type === 'register_also' || msg.type === 'unregister_also') {
             // Agent delegation: also receive notifications for this DID (#1545/#1653).
-            // MUST verify the authenticated DID has an active agent delegation
-            // (identity_members role='agent', not revoked) for the target DID.
-            const alsoDid = msg.did;
-            if (alsoDid === meta.did) {
-              // Self-registration is a no-op — already registered under own DID.
-              ws.send(JSON.stringify({ type: 'registered_also', did: alsoDid }));
-            } else if (meta.alsoDids.size >= 5) {
-              // Cap: max 5 also-registrations per socket to prevent abuse.
-              ws.send(JSON.stringify({ type: 'error', message: 'Too many register_also registrations' }));
-            } else if (!meta.alsoDids.has(alsoDid)) {
-              const allowed = await verifyAgentDelegation(meta.did, alsoDid);
-              if (allowed) {
-                meta.alsoDids.add(alsoDid);
-                if (!didSockets.has(alsoDid)) didSockets.set(alsoDid, new Set());
-                didSockets.get(alsoDid).add(ws);
-                console.log(`[WS] ${meta.did} registered also for: ${alsoDid} (delegation verified)`);
-                ws.send(JSON.stringify({ type: 'registered_also', did: alsoDid }));
-              } else {
-                console.log(`[WS] ${meta.did} denied register_also for: ${alsoDid} (no delegation)`);
-                ws.send(JSON.stringify({ type: 'error', message: 'Not authorized to register for this DID' }));
-              }
-            }
+            // The registry verifies the delegation before it registers anything.
+            const frame = await alsoRegistry.handle(ws, meta, msg);
+            if (frame && ws.readyState === 1) ws.send(JSON.stringify(frame));
           } else if (msg.type === 'subscribe') {
             if (msg.conversationId) meta.subscriptions.add(msg.conversationId);
             if (msg.did) meta.subscriptions.add(msg.did);
@@ -321,14 +317,7 @@ function setupWebSocket(server) {
 
       ws.on('close', async () => {
         const closeDid = meta.did;
-        // Clean up alsoDids registrations
-        for (const alsoDid of meta.alsoDids) {
-          const sockets = didSockets.get(alsoDid);
-          if (sockets) {
-            sockets.delete(ws);
-            if (sockets.size === 0) didSockets.delete(alsoDid);
-          }
-        }
+        alsoRegistry.cleanup(ws, meta);
         socketMeta.delete(ws);
         if (closeDid) {
           const sockets = didSockets.get(closeDid);
@@ -356,7 +345,8 @@ function setupWebSocket(server) {
  * Returns true if at least one socket received the message.
  */
 function sendToDid(did, payload) {
-  const sockets = didSockets.get(did);
+  // Own sockets plus any delegate registered for this DID (#1653).
+  const sockets = alsoRegistry.recipientsFor(did, didSockets.get(did));
   if (!sockets) return false;
   const msg = JSON.stringify(payload);
   let sent = false;

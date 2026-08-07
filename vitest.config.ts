@@ -29,6 +29,10 @@ export default defineConfig({
       include: [
         'apps/*/src/**/*.ts',
         'apps/*/src/**/*.tsx',
+        // CJS helpers that `node server.js` loads outside the Next build (#1653).
+        // SonarCloud parses them as source either way, so leaving them out of the
+        // report measures them as 0% covered rather than skipping them.
+        'apps/*/src/**/*.js',
         'apps/*/app/**/*.ts',
         'apps/*/app/**/*.tsx',
         'packages/*/src/**/*.ts',
