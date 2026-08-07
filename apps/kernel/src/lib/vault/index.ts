@@ -890,17 +890,19 @@ export async function revokeStaticSecretGrant(
 // ── Renewal (#1535) ──────────────────────────────────────────────────────
 
 /**
- * Default lifetime applied to a grant when the caller does not specify one.
+ * The node's configured grant lifetime in days, or null when grants do not expire.
  *
- * Read from `VAULT_GRANT_TTL_DAYS`; **unset means grants do not expire**, which is
- * the current default on purpose.
+ * The single parse of `VAULT_GRANT_TTL_DAYS`. {@link defaultGrantExpiry} turns it
+ * into a concrete date at seal time; `GET /api/vault/grants/renewable` advertises
+ * the raw number to the owner agent (#1558) so a renewed grant carries the same
+ * lifetime the node would have applied itself. Policy the owner agent has to
+ * configure separately drifts from the node's — one parse behind both readers is
+ * what keeps them honest.
  *
- * Expiry now destroys key material, so an expired grant locks the node out of the
- * field until someone re-issues. Until the owner agent renews automatically
- * (#1536), switching this on would mean every v2 secret becomes unreadable one TTL
- * after it is written, with nothing to recover it. Turn it on once renewal runs.
+ * An unusable value is ignored rather than fatal, for the same reason it is at
+ * seal time: failing open (no expiry) beats turning a typo into a lockout.
  */
-export function defaultGrantExpiry(now: Date = new Date()): Date | null {
+export function defaultGrantTtlDays(): number | null {
   const raw = process.env.VAULT_GRANT_TTL_DAYS;
   if (!raw) {
     return null;
@@ -912,6 +914,26 @@ export function defaultGrantExpiry(now: Date = new Date()): Date | null {
       { value: raw },
       'Vault: ignoring invalid VAULT_GRANT_TTL_DAYS — grants will not expire',
     );
+    return null;
+  }
+
+  return days;
+}
+
+/**
+ * Default lifetime applied to a grant when the caller does not specify one.
+ *
+ * Read from `VAULT_GRANT_TTL_DAYS`; **unset means grants do not expire**, which is
+ * the current default on purpose.
+ *
+ * Expiry now destroys key material, so an expired grant locks the node out of the
+ * field until someone re-issues. Until the owner agent renews automatically
+ * (#1536), switching this on would mean every v2 secret becomes unreadable one TTL
+ * after it is written, with nothing to recover it. Turn it on once renewal runs.
+ */
+export function defaultGrantExpiry(now: Date = new Date()): Date | null {
+  const days = defaultGrantTtlDays();
+  if (days === null) {
     return null;
   }
 

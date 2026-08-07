@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { listRenewableGrants } from '@/src/lib/vault';
+import { defaultGrantTtlDays, listRenewableGrants } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 
@@ -29,6 +29,13 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * `?withinDays=N` widens or narrows the lookahead for grants that have not
  * expired yet (default 7). Grants with no active row at all are always listed,
  * since the node is already locked out of those.
+ *
+ * `recommendedTtlDays` (#1558) carries the node's own TTL policy —
+ * `VAULT_GRANT_TTL_DAYS`, the same value `defaultGrantExpiry()` applies at seal
+ * time — so the owner agent can stamp a renewed grant with the lifetime this node
+ * would have chosen rather than a separately configured copy of it. `null` means
+ * the node does not expire grants; the owner agent should then renew without an
+ * expiry (or fall back to its own flag).
  */
 export async function GET(request: Request) {
   if (!(await requireAdmin())) {
@@ -54,6 +61,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       nodeDid: identity.senderDid,
       withinDays: parsed,
+      recommendedTtlDays: defaultGrantTtlDays(),
       grants,
     });
   } catch (error) {
