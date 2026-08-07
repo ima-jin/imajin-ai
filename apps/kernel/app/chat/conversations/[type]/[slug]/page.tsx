@@ -7,6 +7,8 @@ import { useIdentity, LoginPrompt } from '@/src/contexts/IdentityContext';
 import { Chat, ChatProvider, useDidNames } from '@imajin/chat';
 import { useToast } from '@imajin/ui';
 import { buildPublicUrl } from '@imajin/config';
+import { DeleteConversationButton } from '@/app/chat/components/DeleteConversationButton';
+import { canDeleteConversation } from '@/src/lib/chat/conversation-permissions';
 
 // Inline DID parser (avoids importing Node.js crypto in client bundle)
 function parseConvDid(did: string): { type: string; slug?: string } {
@@ -136,10 +138,14 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
   const [addingDid, setAddingDid] = useState<string | null>(null);
   const [dmPartnerName, setDmPartnerName] = useState<string | null>(null);
   const [nameDisplayPolicy, setNameDisplayPolicy] = useState<string | null>(null);
+  const [createdBy, setCreatedBy] = useState<string | null>(null);
   const parsed = parseConvDid(did);
 
   const callerRole = members.find((m) => m.did === identity?.did)?.role ?? null;
   const isOwnerOrAdmin = callerRole === 'owner' || callerRole === 'admin';
+  // Creator-only, mirroring the DELETE route's 403 (#1651). Non-creators keep
+  // the non-destructive "Leave" path above.
+  const canDelete = canDeleteConversation({ createdBy }, identity?.did);
 
   const handleNameSave = async () => {
     const trimmed = nameInput.trim();
@@ -167,6 +173,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         const conv = data?.conversation;
+        if (conv?.createdBy) setCreatedBy(conv.createdBy as string);
         if (conv?.name &&
           !conv.name.startsWith('dm:') &&
           !conv.name.startsWith('group:') &&
@@ -425,6 +432,20 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
               Leave
             </button>
           )
+        )}
+        {/* Delete conversation — creator only (#1651) */}
+        {canDelete && (
+          <div className="shrink-0">
+            <DeleteConversationButton
+              did={did}
+              name={convName ?? nameParam ?? undefined}
+              onDeleted={() => {
+                toast.success('Conversation deleted');
+                router.push('/chat/conversations');
+              }}
+              onError={(message) => toast.error(message)}
+            />
+          </div>
         )}
       </div>
 
