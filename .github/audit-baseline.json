@@ -9,6 +9,22 @@
       "severity": "high",
       "title": "bigint-buffer Vulnerable to Buffer Overflow via toBigIntLE() Function",
       "fix": null
+    },
+    {
+      "id": "GHSA-28wg-ghj8-5hjv",
+      "module": "nanoid",
+      "severity": "high",
+      "title": "nanoid: non-secure generators can loop indefinitely with negative size",
+      "fix": ">=5.1.16",
+      "reason": "Pre-existing on main; baselined during Next 14→15 migration (#1565)"
+    },
+    {
+      "id": "GHSA-2v37-7h3g-55p8",
+      "module": "nanoid",
+      "severity": "high",
+      "title": "nanoid: custom generators can loop indefinitely when size is zero",
+      "fix": ">=3.3.17",
+      "reason": "Pre-existing on main; baselined during Next 14→15 migration (#1565)"
     }
   ]
 }
