@@ -44,7 +44,15 @@ interface GitHubStatus {
   tokenSealed: boolean;
   /** Sealed but awaiting owner grant approval (Tier 1, #1521) — not the same as "not configured". */
   credentialPending?: boolean;
+  /**
+   * Which BYO auth path the sealed config is for (#1391), or null when nothing
+   * is sealed yet. Non-secret — the discriminator only.
+   */
+  flow?: GitHubAuthFlow | null;
 }
+
+/** The two BYO GitHub auth paths (#1391). Both use the owner's own OAuth App. */
+type GitHubAuthFlow = 'device' | 'authorization_code';
 
 /**
  * Status shape for paste-a-credential connectors (Discord, Gemini, Warp).
@@ -517,6 +525,293 @@ function DisconnectSection({ label, disconnecting, disconnectError, onDisconnect
   );
 }
 
+// ── GitHub device flow (#1391) ──────────────────────────────────────────
+
+/** Server response from POST /github/api/device/start. */
+interface DeviceGrant {
+  /** Opaque, DID-bound handle for the pending authorization. Not the device code. */
+  ticket: string;
+  /** Short code the human types at `verificationUri`. */
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete?: string;
+  interval: number;
+}
+
+/** Poll states mirrored from the server route (RFC 8628). */
+type DevicePollStatus = 'authorized' | 'pending' | 'slow_down' | 'expired' | 'denied';
+
+/** Where the card is in the device round-trip. */
+type DeviceStage = 'idle' | 'starting' | 'awaiting' | 'connected' | 'error';
+
+/** Extra pacing added on a `slow_down`, matching the server-side loop. */
+const DEVICE_SLOW_DOWN_INCREMENT_MS = 5_000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+/** POST JSON and throw the server's `error` string on a non-2xx. */
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({})) as T & { error?: string };
+  if (!r.ok) throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+  return data;
+}
+
+/**
+ * Drive a GitHub device flow from the browser (#1391).
+ *
+ * The poll loop lives here rather than on the server because a device code can
+ * take fifteen minutes to be authorized, and a route handler that blocks that
+ * long is not a request. The server exposes one quick tick
+ * (`/github/api/device/poll`) and this hook paces the ticks, honouring the
+ * provider-supplied `interval` and backing off on `slow_down`.
+ *
+ * The access token never reaches this code: an `authorized` tick means the
+ * server already sealed the bundle, so all the UI does is refresh status.
+ */
+function useGitHubDeviceConnect(onConnected: () => void) {
+  const [stage, setStage] = useState<DeviceStage>('idle');
+  const [grant, setGrant] = useState<DeviceGrant | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Flipped on unmount so a loop already in flight stops setting state on a
+  // card that is no longer mounted.
+  const abandoned = useRef(false);
+  useEffect(() => () => { abandoned.current = true; }, []);
+
+  const pollUntilSettled = useCallback(async (ticket: string, intervalSeconds: number) => {
+    let waitMs = Math.max(intervalSeconds, 1) * 1000;
+    for (;;) {
+      await delay(waitMs);
+      if (abandoned.current) return;
+      const { status } = await postJson<{ status: DevicePollStatus }>(
+        '/github/api/device/poll', { ticket },
+      );
+      if (abandoned.current) return;
+      if (status === 'authorized') {
+        setGrant(null);
+        setStage('connected');
+        onConnected();
+        return;
+      }
+      if (status === 'expired') {
+        throw new Error('That code expired before it was authorized. Start again.');
+      }
+      if (status === 'denied') {
+        throw new Error('Authorization was declined on GitHub.');
+      }
+      if (status === 'slow_down') waitMs += DEVICE_SLOW_DOWN_INCREMENT_MS;
+    }
+  }, [onConnected]);
+
+  const start = useCallback(async () => {
+    setStage('starting');
+    setError(null);
+    setGrant(null);
+    try {
+      const next = await postJson<DeviceGrant>('/github/api/device/start', {});
+      if (abandoned.current) return;
+      setGrant(next);
+      setStage('awaiting');
+      await pollUntilSettled(next.ticket, next.interval);
+    } catch (err: unknown) {
+      if (abandoned.current) return;
+      setError(err instanceof Error ? err.message : String(err));
+      setStage('error');
+    }
+  }, [pollUntilSettled]);
+
+  return { stage, grant, error, start };
+}
+
+/**
+ * Step 2 for device mode: the button that starts the flow, then the user code
+ * the human types at github.com/login/device while the card polls.
+ */
+function GitHubDeviceConnect({ configSealed, onConnected }: Readonly<{
+  configSealed: boolean;
+  onConnected: () => void;
+}>) {
+  const { stage, grant, error, start } = useGitHubDeviceConnect(onConnected);
+  const busy = stage === 'starting' || stage === 'awaiting';
+
+  return (
+    <div className="space-y-3">
+      <button
+        type="button"
+        onClick={() => { void start(); }}
+        disabled={!configSealed || busy}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition bg-amber-500 hover:bg-amber-600 text-black disabled:bg-white/5 disabled:text-gray-600 disabled:cursor-not-allowed"
+      >
+        {stage === 'starting' && 'Requesting code…'}
+        {stage === 'awaiting' && 'Waiting for authorization…'}
+        {stage !== 'starting' && stage !== 'awaiting' && 'Connect with device flow →'}
+      </button>
+
+      {!configSealed && <p className="text-xs text-gray-600">Complete step 1 first.</p>}
+
+      {grant && (
+        <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+          <p className="text-xs text-gray-400">Enter this code at GitHub:</p>
+          <p className="text-2xl font-mono tracking-[0.3em] text-white" data-testid="device-user-code">
+            {grant.userCode}
+          </p>
+          <a
+            href={grant.verificationUriComplete ?? grant.verificationUri}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-amber-400 hover:text-amber-300 underline break-all"
+          >
+            {grant.verificationUri}
+          </a>
+          <p className="text-xs text-gray-600">
+            Leave this page open — it finishes on its own once you approve.
+          </p>
+        </div>
+      )}
+
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Step-1 mode picker: which BYO auth path to configure (#1391).
+ *
+ * Both options are bring-your-own OAuth App — the choice is only about how the
+ * owner's app authorizes, never about whose credential is used. Device is
+ * marked recommended because it drops the client secret and the byte-exact
+ * callback URL, the two things that make the manual path fail on first try.
+ */
+function GitHubFlowSelector({ value, onChange }: Readonly<{
+  value: GitHubAuthFlow;
+  onChange: (next: GitHubAuthFlow) => void;
+}>) {
+  const options: ReadonlyArray<{ flow: GitHubAuthFlow; title: string; hint: string }> = [
+    {
+      flow: 'device',
+      title: 'Device flow (recommended)',
+      hint: 'Client ID only — no client secret, no callback URL. Requires “Enable Device Flow” in your OAuth App.',
+    },
+    {
+      flow: 'authorization_code',
+      title: 'Manual (client ID + secret + callback)',
+      hint: 'Browser redirect to your registered callback URL.',
+    },
+  ];
+
+  return (
+    <fieldset className="space-y-2 pb-1">
+      <legend className="text-xs text-gray-500 mb-1">Auth mode</legend>
+      {options.map((option) => (
+        <label
+          key={option.flow}
+          className={`flex gap-3 items-start px-3 py-2 rounded-lg border cursor-pointer transition ${
+            value === option.flow
+              ? 'border-amber-500/50 bg-amber-500/5'
+              : 'border-white/10 hover:border-white/20'
+          }`}
+        >
+          <input
+            type="radio"
+            name="github-auth-flow"
+            value={option.flow}
+            checked={value === option.flow}
+            onChange={() => onChange(option.flow)}
+            className="mt-1 accent-amber-500"
+          />
+          <span className="min-w-0">
+            <span className="text-sm text-white block">{option.title}</span>
+            <span className="text-xs text-gray-600 block">{option.hint}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+/**
+ * Step 2 of the GitHub card: whichever connect affordance the configured flow
+ * calls for. Device mode polls in place; authorization-code mode leaves for the
+ * provider and comes back through /github/api/callback.
+ */
+function GitHubConnectStep({ entry, flowMode, configSealed, tokenSealed, onConnected }: Readonly<{
+  entry: ConnectorEntry;
+  flowMode: GitHubAuthFlow;
+  configSealed: boolean;
+  tokenSealed: boolean;
+  onConnected: () => void;
+}>) {
+  if (tokenSealed) {
+    return (
+      <div className="flex items-center justify-between text-sm">
+        <StatusDot ok={true} label="Account connected" />
+        {flowMode === 'device' ? (
+          <GitHubDeviceReconnect onConnected={onConnected} />
+        ) : (
+          <a
+            href={connectHref(entry)}
+            className="text-xs text-gray-600 hover:text-gray-400 transition"
+          >
+            Reconnect
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  if (flowMode === 'device') {
+    return <GitHubDeviceConnect configSealed={configSealed} onConnected={onConnected} />;
+  }
+
+  return (
+    <div className="space-y-2">
+      <a
+        href={connectHref(entry)}
+        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+          configSealed
+            ? 'bg-amber-500 hover:bg-amber-600 text-black'
+            : 'bg-white/5 text-gray-600 cursor-not-allowed pointer-events-none'
+        }`}
+        aria-disabled={!configSealed}
+      >
+        Connect GitHub Account →
+      </a>
+      {!configSealed && <p className="text-xs text-gray-600">Complete step 1 first.</p>}
+    </div>
+  );
+}
+
+/**
+ * Reconnect affordance for an already-connected device-flow account. Same hook
+ * as the first connect — re-authorizing simply re-seals the bundle.
+ */
+function GitHubDeviceReconnect({ onConnected }: Readonly<{ onConnected: () => void }>) {
+  const { stage, grant, error, start } = useGitHubDeviceConnect(onConnected);
+  const busy = stage === 'starting' || stage === 'awaiting';
+
+  return (
+    <span className="flex items-center gap-2 text-xs">
+      {grant && <span className="font-mono text-amber-400">{grant.userCode}</span>}
+      {error && <span className="text-red-400">{error}</span>}
+      <button
+        type="button"
+        onClick={() => { void start(); }}
+        disabled={busy}
+        className="text-xs text-gray-600 hover:text-gray-400 transition disabled:opacity-50"
+      >
+        {busy ? 'Waiting…' : 'Reconnect'}
+      </button>
+    </span>
+  );
+}
+
 // ── GitHub card (interactive: configure → connect → grant) — #1352 ─────────
 
 function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
@@ -526,6 +821,10 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
 
   // Configure form state
   const [showConfigure, setShowConfigure] = useState(false);
+  // Device flow is the default (#1391): it is the BYO path that needs neither a
+  // client secret nor a byte-exact callback URL, which are the two steps that
+  // actually trip people up.
+  const [flowMode, setFlowMode] = useState<GitHubAuthFlow>('device');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [redirectUri, setRedirectUri] = useState('');
@@ -541,6 +840,13 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   useEffect(() => {
     setRedirectUri(`${window.location.origin}/github/api/callback`);
   }, []);
+
+  // Adopt the flow the owner already sealed, so a returning auth-code user is
+  // not shown the device selector as though they had chosen it.
+  const sealedFlow = status?.flow ?? null;
+  useEffect(() => {
+    if (sealedFlow) setFlowMode(sealedFlow);
+  }, [sealedFlow]);
 
   // Focus first field when form opens
   useEffect(() => {
@@ -583,7 +889,31 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const readyForRead =
     status !== null && status.configSealed && status.tokenSealed && activeSet.has('github:read');
 
-  // ── Step 1: Configure OAuth App ────────────────────────────────────────────
+  // ── Step 1: Configure OAuth App ───────────────────────────────────────
+
+  /**
+   * Device mode posts `clientId` and nothing else — the route rejects a secret
+   * or redirect URI in that mode rather than sealing credentials the flow will
+   * never use (#1391).
+   */
+  function configureBody(): Record<string, string> {
+    if (flowMode === 'device') {
+      return { flow: 'device', clientId: clientId.trim() };
+    }
+    return {
+      flow: 'authorization_code',
+      clientId: clientId.trim(),
+      clientSecret: clientSecret.trim(),
+      redirectUri: redirectUri.trim(),
+    };
+  }
+
+  /** Whether the step-1 form has everything the selected mode requires. */
+  function configureReady(): boolean {
+    if (!clientId.trim()) return false;
+    return flowMode === 'device' || Boolean(clientSecret.trim() && redirectUri.trim());
+  }
+
   async function handleConfigure(e: React.FormEvent) {
     e.preventDefault();
     setConfiguring(true);
@@ -592,7 +922,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       const r = await fetch('/github/api/configure', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId: clientId.trim(), clientSecret: clientSecret.trim(), redirectUri: redirectUri.trim() }),
+        body: JSON.stringify(configureBody()),
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({})) as { error?: string };
@@ -677,6 +1007,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
 
             {!status.configSealed || showConfigure ? (
               <form onSubmit={(e) => { void handleConfigure(e); }} className="space-y-2">
+                <GitHubFlowSelector value={flowMode} onChange={setFlowMode} />
                 <input
                   ref={clientIdRef}
                   type="text"
@@ -686,27 +1017,31 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                   required
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
                 />
-                <input
-                  type="password"
-                  value={clientSecret}
-                  onChange={(e) => setClientSecret(e.target.value)}
-                  placeholder="Client Secret"
-                  required
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
-                />
-                <input
-                  type="url"
-                  value={redirectUri}
-                  onChange={(e) => setRedirectUri(e.target.value)}
-                  placeholder="Redirect URI"
-                  required
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
-                />
+                {flowMode === 'authorization_code' && (
+                  <>
+                    <input
+                      type="password"
+                      value={clientSecret}
+                      onChange={(e) => setClientSecret(e.target.value)}
+                      placeholder="Client Secret"
+                      required
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
+                    />
+                    <input
+                      type="url"
+                      value={redirectUri}
+                      onChange={(e) => setRedirectUri(e.target.value)}
+                      placeholder="Redirect URI"
+                      required
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50"
+                    />
+                  </>
+                )}
                 {configError && <p className="text-red-400 text-xs">{configError}</p>}
                 <div className="flex gap-2 pt-1">
                   <button
                     type="submit"
-                    disabled={configuring || !clientId.trim() || !clientSecret.trim() || !redirectUri.trim()}
+                    disabled={configuring || !configureReady()}
                     className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition"
                   >
                     {configuring ? 'Saving…' : (status.configSealed ? 'Update config' : 'Save config')}
@@ -724,7 +1059,14 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
               </form>
             ) : (
               <div className="flex items-center gap-2 text-sm">
-                <StatusDot ok={true} label="OAuth App config sealed" />
+                <StatusDot
+                  ok={true}
+                  label={
+                    flowMode === 'device'
+                      ? 'OAuth App config sealed (device flow)'
+                      : 'OAuth App config sealed'
+                  }
+                />
               </div>
             )}
           </div>
@@ -740,34 +1082,13 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
               {' '}GitHub Account
             </h3>
 
-            {status.tokenSealed ? (
-              <div className="flex items-center justify-between text-sm">
-                <StatusDot ok={true} label="Account connected" />
-                <a
-                  href={connectHref(entry)}
-                  className="text-xs text-gray-600 hover:text-gray-400 transition"
-                >
-                  Reconnect
-                </a>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <a
-                  href={connectHref(entry)}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
-                    status.configSealed
-                      ? 'bg-amber-500 hover:bg-amber-600 text-black'
-                      : 'bg-white/5 text-gray-600 cursor-not-allowed pointer-events-none'
-                  }`}
-                  aria-disabled={!status.configSealed}
-                >
-                  Connect GitHub Account →
-                </a>
-                {!status.configSealed && (
-                  <p className="text-xs text-gray-600">Complete step 1 first.</p>
-                )}
-              </div>
-            )}
+            <GitHubConnectStep
+              entry={entry}
+              flowMode={flowMode}
+              configSealed={status.configSealed}
+              tokenSealed={status.tokenSealed}
+              onConnected={refreshStatus}
+            />
           </div>
 
           {/* ── Step 3: Grant scopes ── */}

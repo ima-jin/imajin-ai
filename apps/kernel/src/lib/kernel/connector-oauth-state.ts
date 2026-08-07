@@ -9,14 +9,12 @@
  * Usage:
  *   const { signState, verifyState } = createOAuthStateHelpers('github_state');
  */
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createSignedPayloadCodec } from './connector-signed-payload';
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 
 interface StatePayload {
   did: string;
-  nonce: string;
-  iat: number;
   /**
    * Same-origin app path to send the browser back to after the callback
    * completes (#1529). Lives *inside* the signed payload so it inherits the
@@ -53,43 +51,16 @@ export interface OAuthStateHelpers {
  * use `AUTH_PRIVATE_KEY` from the environment as the HMAC secret.
  */
 export function createOAuthStateHelpers(errorPrefix: string): OAuthStateHelpers {
-  function stateSecret(): string {
-    const secret = process.env.AUTH_PRIVATE_KEY;
-    if (!secret) {
-      throw new Error(`${errorPrefix}: AUTH_PRIVATE_KEY is not set`);
-    }
-    return secret;
-  }
-
-  function sign(payloadB64: string): string {
-    return createHmac('sha256', stateSecret()).update(payloadB64).digest('base64url');
-  }
+  const codec = createSignedPayloadCodec<StatePayload>(errorPrefix, STATE_TTL_MS);
 
   function signState(ownerDid: string, returnTo?: string): string {
-    const payload: StatePayload = { did: ownerDid, nonce: randomBytes(8).toString('hex'), iat: Date.now() };
     // Only set the key when present so tokens minted without a returnTo keep
     // their original shape (and their original length).
-    if (returnTo) payload.returnTo = returnTo;
-    const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    return `${payloadB64}.${sign(payloadB64)}`;
+    return codec.sign(returnTo ? { did: ownerDid, returnTo } : { did: ownerDid });
   }
 
   function verifyState(state: string): VerifiedState {
-    const [payloadB64, sig] = state.split('.');
-    if (!payloadB64 || !sig) {
-      throw new Error(`${errorPrefix}: malformed state`);
-    }
-
-    const expected = Buffer.from(sign(payloadB64));
-    const actual = Buffer.from(sig);
-    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-      throw new Error(`${errorPrefix}: signature mismatch`);
-    }
-
-    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as StatePayload;
-    if (Date.now() - payload.iat > STATE_TTL_MS) {
-      throw new Error(`${errorPrefix}: expired`);
-    }
+    const payload = codec.verify(state);
     return { did: payload.did, returnTo: payload.returnTo };
   }
 

@@ -52,7 +52,14 @@ import * as bus from '@imajin/bus';
 import { db, githubActionProposals } from '@/src/db';
 import { sealAndStoreV2, loadAndUnseal } from '@/src/lib/vault';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
-import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../kernel/connector-oauth';
+import {
+  createConnectorOAuth,
+  resolveOAuthFlow,
+  ConnectorCredentialPendingError,
+  type BaseOAuthConfig,
+  type OAuthFlow,
+  type OAuthTokenResponse,
+} from '../kernel/connector-oauth';
 import { readReadAllowlist, filterOrgs, filterRepos, isRepoAllowed } from './allowlist';
 import { GITHUB_CONNECTOR_DID } from './constants';
 import {
@@ -111,9 +118,18 @@ const GITHUB_API_VERSION = '2022-11-28';
  */
 export const GITHUB_OAUTH_SCOPE = 'repo';
 
-// ── GitHub-specific types ─────────────────────────────────────────────────────────
+/** RFC 8628 device-authorization endpoint (#1391). */
+const GITHUB_DEVICE_CODE_URL = 'https://github.com/login/device/code';
 
-/** GitHub OAuth app config (no `environment` field — GitHub has one API). */
+// ── GitHub-specific types ───────────────────────────────────────────────────
+
+/**
+ * GitHub OAuth app config (no `environment` field — GitHub has one API).
+ *
+ * Carries either shape from #1391: `clientId` alone for device flow, or the
+ * full clientId + clientSecret + redirectUri triple for authorization code.
+ * Always the owner's own OAuth App — there is no shared imajin app.
+ */
 export type GitHubConfig = BaseOAuthConfig;
 
 export interface GitHubTokens {
@@ -136,6 +152,9 @@ const gh = createConnectorOAuth<GitHubConfig, GitHubTokens>({
   channel: 'github',
   authorizeUrl: 'https://github.com/login/oauth/authorize',
   tokenUrl: 'https://github.com/login/oauth/access_token',
+  // Device flow is the preferred BYO path (#1391); GitHub serves both grants
+  // from the same token endpoint, so only the device-code URL is extra.
+  deviceCodeUrl: GITHUB_DEVICE_CODE_URL,
   oauthScope: GITHUB_OAUTH_SCOPE,
   // GitHub uses client credentials in the POST body (not HTTP Basic).
   tokenAuth: 'body',
@@ -168,6 +187,32 @@ export const storeConfig = gh.storeConfig;
 export const buildAuthorizeUrl = gh.buildAuthorizeUrl;
 export const exchangeCodeAndStore = gh.exchangeCodeAndStore;
 export const resolveActiveGrant = gh.resolveActiveGrant;
+
+// ── Device flow (#1391) ──────────────────────────────────────────────────
+
+export const requestDeviceCode = gh.requestDeviceCode;
+export const pollDeviceTokenOnce = gh.pollDeviceTokenOnce;
+export const pollDeviceTokenAndStore = gh.pollDeviceTokenAndStore;
+
+/**
+ * Which auth path this DID's sealed config is for, or null when nothing is
+ * sealed yet (or the config is sealed behind a pending delegation grant).
+ *
+ * Read by the connectors UI so a returning owner sees the step they actually
+ * configured instead of the default. Non-secret by construction — it reports
+ * the flow discriminator only, never any field of the config.
+ */
+export async function readConfigFlow(ownerDid: string): Promise<OAuthFlow | null> {
+  try {
+    return resolveOAuthFlow(await gh.loadConfig(ownerDid));
+  } catch (err) {
+    // "Not configured" and "sealed but not yet granted" are both "no answer
+    // yet" for this purpose; the status route reports those states separately.
+    if (err instanceof ConnectorCredentialPendingError) return null;
+    if (err instanceof Error && err.message.startsWith('github_no_config')) return null;
+    throw err;
+  }
+}
 
 /**
  * Seal and store a GitHub PAT for the given DID. The PAT is never logged or

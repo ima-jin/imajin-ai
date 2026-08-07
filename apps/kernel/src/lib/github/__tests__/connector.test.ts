@@ -152,6 +152,9 @@ import {
   storeConfig,
   buildAuthorizeUrl,
   exchangeCodeAndStore,
+  readConfigFlow,
+  requestDeviceCode,
+  pollDeviceTokenOnce,
   DEFAULT_LIST_LIMIT,
   MAX_LIST_LIMIT,
   GITHUB_CONNECTOR_DID,
@@ -162,6 +165,8 @@ const OWNER = 'did:imajin:eric';
 const REPO = 'a-r-t-i-f-a-c-t/artifactagent';
 const PAT = 'ghp_REDACTED';
 const CONFIG = { clientId: 'cid', clientSecret: 'csecret', redirectUri: 'https://imajin.test/github/api/callback' };
+/** Device-mode BYO config (#1391): client id, nothing else. */
+const DEVICE_CONFIG = { clientId: 'cid-device', flow: 'device' as const };
 
 const MOCK_ISSUE = {
   number: 42,
@@ -212,6 +217,11 @@ let configResponse: string | undefined;
 
 function setConfig(present = true) {
   configResponse = present ? JSON.stringify(CONFIG) : undefined;
+}
+
+/** Seal a device-mode config (#1391) for this DID. */
+function setDeviceConfig() {
+  configResponse = JSON.stringify(DEVICE_CONFIG);
 }
 
 function sealedOAuth(overrides: Record<string, unknown> = {}) {
@@ -1160,6 +1170,93 @@ describe('exchangeCodeAndStore (#1333)', () => {
       json: async () => ({ error: 'bad_verification_code', error_description: 'expired' }),
     });
     await expect(exchangeCodeAndStore(OWNER, 'code123')).rejects.toThrow(/bad_verification_code/);
+  });
+});
+
+// ── Device flow (#1391) ──────────────────────────────────────────────────
+
+describe('GitHub device flow (#1391)', () => {
+  it('requests the device code from GitHub with the client id only', async () => {
+    setDeviceConfig();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        device_code: 'dev-code-xyz',
+        user_code: 'ABCD-1234',
+        verification_uri: 'https://github.com/login/device',
+        expires_in: 899,
+        interval: 5,
+      }),
+    });
+
+    const grantResult = await requestDeviceCode(OWNER);
+
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('https://github.com/login/device/code');
+    const body = new URLSearchParams(init.body as string);
+    expect(body.get('client_id')).toBe('cid-device');
+    expect(body.get('scope')).toBe(GITHUB_OAUTH_SCOPE);
+    expect(body.get('client_secret')).toBeNull();
+    expect(grantResult).toMatchObject({
+      userCode: 'ABCD-1234',
+      verificationUri: 'https://github.com/login/device',
+    });
+  });
+
+  it('seals the token at github-oauth:${did} — same custody as the auth-code path', async () => {
+    setDeviceConfig();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'gho_device', scope: 'repo', token_type: 'bearer' }),
+    });
+
+    await expect(pollDeviceTokenOnce(OWNER, 'dev-code-xyz')).resolves.toBe('authorized');
+
+    const oauthCall = sealMock.mock.calls.find(([field]) => field === oauthVaultField(OWNER));
+    expect(oauthCall).toBeDefined();
+    expect(JSON.parse(oauthCall![1] as string)).toMatchObject({ accessToken: 'gho_device', scope: 'repo' });
+  });
+
+  it('reports pending without sealing while the human has not authorized yet', async () => {
+    setDeviceConfig();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ error: 'authorization_pending' }),
+    });
+
+    await expect(pollDeviceTokenOnce(OWNER, 'dev-code-xyz')).resolves.toBe('pending');
+    expect(sealMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects the authorization-code path on a device-mode config', async () => {
+    setDeviceConfig();
+
+    await expect(buildAuthorizeUrl(OWNER, 'state123')).rejects.toThrow(/github_flow_mismatch/);
+  });
+});
+
+describe('readConfigFlow (#1391)', () => {
+  it('reports device for a clientId-only config', async () => {
+    setDeviceConfig();
+    expect(await readConfigFlow(OWNER)).toBe('device');
+  });
+
+  it('reports authorization_code for a pre-#1391 three-field config', async () => {
+    setConfig();
+    expect(await readConfigFlow(OWNER)).toBe('authorization_code');
+  });
+
+  it('reports null when nothing is configured (not an error)', async () => {
+    setConfig(false);
+    expect(await readConfigFlow(OWNER)).toBeNull();
+  });
+
+  it('reports null when the config is sealed but awaiting owner grant approval', async () => {
+    loadMock.mockImplementation((field: string) =>
+      Promise.reject(new VaultDelegationError('no active grant', { field, nodeDid: 'did:imajin:node' })),
+    );
+
+    expect(await readConfigFlow(OWNER)).toBeNull();
   });
 });
 
