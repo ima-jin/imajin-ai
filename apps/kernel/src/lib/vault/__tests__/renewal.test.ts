@@ -144,6 +144,7 @@ vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) })
 import {
   canonicalizeGrantPayload,
   defaultGrantExpiry,
+  defaultGrantTtlDays,
   expectedGrantVerifier,
   getOwnerEnvelope,
   listRenewableGrants,
@@ -416,6 +417,57 @@ describe('defaultGrantExpiry', () => {
 
     process.env.VAULT_GRANT_TTL_DAYS = '-5';
     expect(defaultGrantExpiry()).toBeNull();
+  });
+});
+
+describe('defaultGrantTtlDays (#1558)', () => {
+  it('is null when the node does not expire grants', () => {
+    // What the endpoint advertises when no TTL is configured: "renew with no
+    // expiry", not "renew with zero days", which would lapse on arrival.
+    expect(defaultGrantTtlDays()).toBeNull();
+  });
+
+  it('reports VAULT_GRANT_TTL_DAYS as a number the owner agent can reuse', () => {
+    process.env.VAULT_GRANT_TTL_DAYS = '30';
+
+    expect(defaultGrantTtlDays()).toBe(30);
+  });
+
+  it('accepts a fractional TTL', () => {
+    process.env.VAULT_GRANT_TTL_DAYS = '0.5';
+
+    expect(defaultGrantTtlDays()).toBe(0.5);
+  });
+
+  it('ignores an unusable value, exactly as the expiry path does', () => {
+    for (const value of ['soon', '0', '-5']) {
+      process.env.VAULT_GRANT_TTL_DAYS = value;
+      expect(defaultGrantTtlDays()).toBeNull();
+    }
+  });
+
+  it('describes the same policy the node applies at seal time', () => {
+    // The whole point of #1558 is that the advertised TTL and the TTL the node
+    // stamps on its own grants cannot drift apart. Pin them to one parse.
+    process.env.VAULT_GRANT_TTL_DAYS = '14';
+    const now = new Date('2026-01-01T00:00:00.000Z');
+
+    const advertised = defaultGrantTtlDays()!;
+    expect(defaultGrantExpiry(now)!.getTime()).toBe(now.getTime() + advertised * DAY_MS);
+  });
+
+  it('agrees with the expiry the grant is actually sealed with', async () => {
+    process.env.VAULT_GRANT_TTL_DAYS = '30';
+
+    const before = Date.now();
+    await sealAndStoreV2(FIELD, SECRET);
+    const sealedExpiry = (activeGrant()!.expiresAt as Date).getTime();
+
+    // A renewal stamped with the advertised TTL lands on the same lifetime the
+    // node just used, give or take the time the seal took.
+    const advertised = defaultGrantTtlDays()!;
+    expect(sealedExpiry - before).toBeGreaterThanOrEqual(advertised * DAY_MS - 1000);
+    expect(sealedExpiry - before).toBeLessThanOrEqual(advertised * DAY_MS + 5000);
   });
 });
 

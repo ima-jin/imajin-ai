@@ -8,14 +8,18 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockListRenewableGrants, mockRequireAdmin } = vi.hoisted(() => ({
+const { mockListRenewableGrants, mockRequireAdmin, mockDefaultGrantTtlDays } = vi.hoisted(() => ({
   mockListRenewableGrants: vi.fn<() => Promise<Array<Record<string, unknown>>>>(),
   mockRequireAdmin: vi.fn(async () => true),
+  mockDefaultGrantTtlDays: vi.fn<() => number | null>(),
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAdmin: mockRequireAdmin }));
 
-vi.mock('@/src/lib/vault', () => ({ listRenewableGrants: mockListRenewableGrants }));
+vi.mock('@/src/lib/vault', () => ({
+  listRenewableGrants: mockListRenewableGrants,
+  defaultGrantTtlDays: mockDefaultGrantTtlDays,
+}));
 
 vi.mock('@/src/lib/vault/sealing', () => ({
   getNodeSigningIdentity: () => ({
@@ -60,6 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockRequireAdmin.mockResolvedValue(true);
   mockListRenewableGrants.mockResolvedValue([renewableRow()]);
+  mockDefaultGrantTtlDays.mockReturnValue(null);
 });
 
 describe('GET /api/vault/grants/renewable', () => {
@@ -134,6 +139,71 @@ describe('GET /api/vault/grants/renewable', () => {
   it('surfaces a lookup failure as a 500 rather than an unhandled rejection', async () => {
     mockListRenewableGrants.mockRejectedValue(new Error('db down'));
 
+    const response = await GET(makeRequest() as never);
+    expect(response.status).toBe(500);
+  });
+});
+
+/**
+ * #1558: the worklist says what to renew but said nothing about for how long, so
+ * the owner agent had to carry its own copy of the node's TTL setting. Two copies
+ * of one policy drift; advertising the node's own value removes the second copy.
+ */
+describe('GET /api/vault/grants/renewable — recommendedTtlDays', () => {
+  it("advertises the node's configured grant TTL", async () => {
+    mockDefaultGrantTtlDays.mockReturnValue(30);
+
+    const response = await GET(makeRequest() as never);
+    const body = await response.json() as { recommendedTtlDays: number | null };
+
+    expect(body.recommendedTtlDays).toBe(30);
+  });
+
+  it('reads the same policy the node applies at seal time', async () => {
+    await GET(makeRequest() as never);
+
+    // Not a second parse of VAULT_GRANT_TTL_DAYS living in the route: the value
+    // comes from the helper defaultGrantExpiry() is built on.
+    expect(mockDefaultGrantTtlDays).toHaveBeenCalled();
+  });
+
+  it('advertises null when the node does not expire grants', async () => {
+    const response = await GET(makeRequest() as never);
+    const body = await response.json() as Record<string, unknown>;
+
+    // Explicitly present and null rather than absent — an owner agent can tell
+    // "this node has no TTL policy" apart from "this node predates #1558" and
+    // only falls back to its own flag in the latter case.
+    expect(body).toHaveProperty('recommendedTtlDays', null);
+  });
+
+  it('is reported alongside the worklist, not instead of it', async () => {
+    mockDefaultGrantTtlDays.mockReturnValue(14);
+
+    const response = await GET(makeRequest('?withinDays=30') as never);
+    const body = await response.json() as {
+      nodeDid: string;
+      withinDays: number;
+      recommendedTtlDays: number | null;
+      grants: Array<Record<string, unknown>>;
+    };
+
+    // The lookahead and the TTL are different numbers with different jobs; a
+    // renewal driven by the wrong one either never fires or lapses immediately.
+    expect(body).toMatchObject({
+      nodeDid: NODE_DID,
+      withinDays: 30,
+      recommendedTtlDays: 14,
+    });
+    expect(body.grants).toHaveLength(1);
+  });
+
+  it('fails the request rather than guessing when the TTL lookup throws', async () => {
+    mockDefaultGrantTtlDays.mockImplementation(() => {
+      throw new Error('env exploded');
+    });
+
+    // Guessing a TTL here would install grants with a lifetime nobody chose.
     const response = await GET(makeRequest() as never);
     expect(response.status).toBe(500);
   });
