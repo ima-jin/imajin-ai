@@ -120,3 +120,44 @@ describe('sendConversationMessage — DM guard (#1649, #855)', () => {
     expect(messageInsert).toMatchObject({ conversationDid: CANONICAL, fromDid: ALICE });
   });
 });
+
+describe('sendConversationMessage — composedBy attribution (#1673)', () => {
+  const JIN = 'did:imajin:jin';
+
+  async function send(extra: Record<string, unknown> = {}) {
+    h.resolveDmConversationTarget.mockResolvedValue({ ok: true, conversationDid: CANONICAL, exists: true });
+    h.conversations.push({ did: CANONICAL });
+    return sendConversationMessage({
+      senderDid: ALICE,
+      senderTier: 'established',
+      conversationDid: CANONICAL,
+      content: { type: 'text', text: 'hi' },
+      ...extra,
+    });
+  }
+
+  it('persists the composing agent without touching fromDid', async () => {
+    const result = await send({ composedBy: JIN });
+
+    expect(result.ok).toBe(true);
+    expect(h.inserted.find((r) => r.table === 'messages_v2')).toMatchObject({
+      fromDid: ALICE,
+      composedBy: JIN,
+    });
+  });
+
+  it('writes null when the caller passes no composer', async () => {
+    await send();
+
+    expect(h.inserted.find((r) => r.table === 'messages_v2')).toMatchObject({
+      fromDid: ALICE,
+      composedBy: null,
+    });
+  });
+
+  it('collapses a self-composed message to null rather than echoing the sender', async () => {
+    await send({ composedBy: ALICE });
+
+    expect(h.inserted.find((r) => r.table === 'messages_v2')).toMatchObject({ composedBy: null });
+  });
+});

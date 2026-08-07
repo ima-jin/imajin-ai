@@ -48,7 +48,11 @@ components:
       properties:
         id: { type: string }
         conversationDid: { type: string }
-        fromDid: { type: string }
+        fromDid: { type: string, description: "Intent-owner DID — the identity the message is attributed to" }
+        composedBy:
+          type: string
+          nullable: true
+          description: "DID of the agent that composed the message under X-Acting-For delegation. Null when the sender composed it directly."
         content:
           type: object
           description: "Structured content object. For text messages: {type: 'text', text: string}. For media: {type: 'media'}. For voice: {type: 'voice'}. For location: {type: 'location'}."

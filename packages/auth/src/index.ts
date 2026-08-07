@@ -97,4 +97,4 @@ export { requireAppAuth } from "./require-app-auth";
 export type { AppAuthContext, AppAuthResult } from "./require-app-auth";
 export { resolveEffectiveDid } from "./resolve-effective-did";
 export type { EffectiveDidResult } from "./resolve-effective-did";
-export { resolveActingDid } from "./acting-did";
+export { resolveActingDid, resolveComposedBy } from "./acting-did";
