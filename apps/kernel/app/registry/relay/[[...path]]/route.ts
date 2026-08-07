@@ -4,6 +4,12 @@ import type { PeerConfig } from '@metalabel/dfos-web-relay';
 import { eq } from 'drizzle-orm';
 import { PostgresRelayStore } from '@/src/lib/registry/relay/postgres-store';
 import { createCustomRelay } from '@/src/lib/registry/relay/create-relay';
+import {
+  RELAY_WRITER_DID_HEADER,
+  authorizeRelayWrite,
+  isRelayWrite,
+  isRelayWriteDenied,
+} from '@/src/lib/registry/relay/auth';
 import { db } from '@/src/db';
 import { relayConfig, relayPeers } from '@/src/db/schemas/relay';
 import { createLogger } from '@imajin/logger';
@@ -138,16 +144,42 @@ async function getRelay(): Promise<Hono> {
 }
 
 async function handler(request: Request) {
-  const relay = await getRelay();
-
   const url = new URL(request.url);
   const relayPath = url.pathname.replace(/^\/registry\/relay/, '') || '/';
+
+  // AuthZ (#454): writes require a verified Imajin DID; reads stay open.
+  // Checked before the relay is initialised so rejected writes never touch it.
+  let writerDid: string | null = null;
+  if (isRelayWrite(request.method)) {
+    const auth = await authorizeRelayWrite(request);
+    if (isRelayWriteDenied(auth)) {
+      log.warn(
+        { method: request.method, path: relayPath, reason: auth.error },
+        '[relay] write rejected — no verified DID',
+      );
+      return Response.json({ error: auth.error }, { status: auth.status });
+    }
+    writerDid = auth.did;
+    log.info(
+      { method: request.method, path: relayPath, did: auth.did, callerDid: auth.callerDid },
+      '[relay] authorized write',
+    );
+  }
+
+  const relay = await getRelay();
+
   const relayUrl = new URL(relayPath, url.origin);
   relayUrl.search = url.search;
 
+  // Strip any client-supplied writer header so the audit value can only ever
+  // come from the DID we just verified.
+  const headers = new Headers(request.headers);
+  headers.delete(RELAY_WRITER_DID_HEADER);
+  if (writerDid) headers.set(RELAY_WRITER_DID_HEADER, writerDid);
+
   const relayRequest = new Request(relayUrl.toString(), {
     method: request.method,
-    headers: request.headers,
+    headers,
     body: request.body,
     // @ts-expect-error duplex needed for streaming body
     duplex: 'half',
@@ -161,3 +193,7 @@ export const dynamic = 'force-dynamic';
 export const GET = handler;
 export const POST = handler;
 export const PUT = handler;
+// No relay route answers these today, but exporting them keeps the authZ gate
+// in front of any mutating verb a future relay version adds.
+export const PATCH = handler;
+export const DELETE = handler;

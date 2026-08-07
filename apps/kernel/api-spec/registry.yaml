@@ -472,6 +472,9 @@ paths:
       tags: [registry]
       operationId: relayGet
       summary: DFOS web relay — catch-all GET handler
+      description: |
+        Reads are open — no authentication required, so the proof log stays
+        publicly verifiable.
       parameters:
         - name: path
           in: path
@@ -485,6 +488,13 @@ paths:
       tags: [registry]
       operationId: relayPost
       summary: DFOS web relay — catch-all POST handler
+      description: |
+        Writes require a verified Imajin DID (#454). The effective DID is
+        forwarded to the relay as `x-imajin-relay-writer` for audit; any
+        client-supplied value for that header is discarded.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: path
           in: path
@@ -499,10 +509,32 @@ paths:
       responses:
         "200":
           description: Relay response
+        "401":
+          description: Not authenticated — relay writes require a verified DID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized to act as the delegated identity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Auth service unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     put:
       tags: [registry]
       operationId: relayPut
       summary: DFOS web relay — catch-all PUT handler
+      description: |
+        Writes require a verified Imajin DID (#454). The effective DID is
+        forwarded to the relay as `x-imajin-relay-writer` for audit; any
+        client-supplied value for that header is discarded.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: path
           in: path
@@ -517,6 +549,21 @@ paths:
       responses:
         "200":
           description: Relay response
+        "401":
+          description: Not authenticated — relay writes require a verified DID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not authorized to act as the delegated identity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Auth service unavailable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/audience/{scope}:
     get:
