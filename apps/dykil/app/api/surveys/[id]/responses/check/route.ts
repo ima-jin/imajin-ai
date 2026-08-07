@@ -6,7 +6,7 @@ import { getSession } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -26,7 +26,8 @@ export async function OPTIONS(request: NextRequest) {
  * 
  * Add ?include=answers to also return the submitted answers.
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { id } = params;
   const didParam = request.nextUrl.searchParams.get('did');

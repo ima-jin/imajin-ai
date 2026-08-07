@@ -13,10 +13,8 @@ import { eq } from 'drizzle-orm';
 /**
  * GET /api/listings/:id — Single listing detail
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const [listing] = await db.select().from(listings).where(eq(listings.id, params.id));
 
@@ -55,10 +53,8 @@ export async function GET(
 /**
  * PATCH /api/listings/:id — Update listing (seller only)
  */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);
@@ -200,10 +196,8 @@ export async function PATCH(
 /**
  * DELETE /api/listings/:id — Soft delete (seller only)
  */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return errorResponse(authResult.error, authResult.status);

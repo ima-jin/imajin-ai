@@ -20,7 +20,8 @@ const log = createLogger('kernel');
  *                  until consent grants (#1049) + reach-ring resolution (#1189) land
  *  - private / sealed → never disclosed to non-owner; never touch broker
  */
-export async function GET(request: Request, { params }: { params: { did: string } }) {
+export async function GET(request: Request, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const auth = await requireAuth(request);
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 

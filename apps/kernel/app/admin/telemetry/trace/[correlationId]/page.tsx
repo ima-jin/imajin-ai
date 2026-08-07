@@ -30,11 +30,12 @@ async function fetchTrace(correlationId: string): Promise<{ steps: TraceStep[] }
   }
 }
 
-export default async function TracePage({
-  params,
-}: Readonly<{
-  params: { correlationId: string };
-}>) {
+export default async function TracePage(
+  props: Readonly<{
+    params: Promise<{ correlationId: string }>;
+  }>
+) {
+  const params = await props.params;
   const session = await getSession();
   if (!session?.actingAs) redirect('/');
 

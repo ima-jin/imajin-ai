@@ -16,10 +16,8 @@ export async function OPTIONS(request: NextRequest) {
  * Returns graph membership status for a DID.
  * A user is "in graph" if they have at least one accepted connection.
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { did: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { did } = params;
 

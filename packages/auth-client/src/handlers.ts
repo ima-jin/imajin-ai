@@ -81,7 +81,7 @@ export function createCallbackHandler(config: ImajinAuthConfig) {
 export function createSessionHandler(config: ImajinAuthConfig) {
   return async function GET() {
     const { cookies: getCookies } = await import('next/headers');
-    const cookieStore = getCookies();
+    const cookieStore = await getCookies();
     const token = cookieStore.get(config.cookieName ?? 'imajin_session')?.value;
     if (!token) {
       return NextResponse.json(null);

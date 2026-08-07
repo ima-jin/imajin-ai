@@ -4,10 +4,8 @@ import { generateQRCode } from '@/src/lib/email';
 
 const log = createLogger('events');
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const qrCodeDataUri = await generateQRCode(params.id);
     if (!qrCodeDataUri) {

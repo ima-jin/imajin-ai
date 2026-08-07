@@ -6,7 +6,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 
 interface RouteParams {
-  params: { id: string; ticketId: string };
+  params: Promise<{ id: string; ticketId: string }>;
 }
 
 /**
@@ -22,7 +22,8 @@ export async function OPTIONS(request: NextRequest) {
  * Returns the survey response for a specific ticket, if one exists.
  * Auth: survey owner only.
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { id: surveyId, ticketId } = params;
 

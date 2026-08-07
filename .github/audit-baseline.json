@@ -4,67 +4,11 @@
   "issue": "https://github.com/ima-jin/imajin-ai/issues/1559",
   "advisories": [
     {
-      "id": "GHSA-36qx-fr4f-26g5",
-      "module": "next",
-      "severity": "high",
-      "title": "Next.js has a Middleware / Proxy bypass in Pages Router applications using i18n",
-      "fix": ">=15.5.16"
-    },
-    {
       "id": "GHSA-3gc7-fjrx-p6mg",
       "module": "bigint-buffer",
       "severity": "high",
       "title": "bigint-buffer Vulnerable to Buffer Overflow via toBigIntLE() Function",
       "fix": null
-    },
-    {
-      "id": "GHSA-89xv-2m56-2m9x",
-      "module": "next",
-      "severity": "high",
-      "title": "Next.js: Server-Side Request Forgery in Server Actions on custom servers",
-      "fix": ">=15.5.21"
-    },
-    {
-      "id": "GHSA-8h8q-6873-q5fj",
-      "module": "next",
-      "severity": "high",
-      "title": "Next.js Vulnerable to Denial of Service with Server Components",
-      "fix": ">=15.5.16"
-    },
-    {
-      "id": "GHSA-c4j6-fc7j-m34r",
-      "module": "next",
-      "severity": "high",
-      "title": "Next.js vulnerable to server-side request forgery in applications using WebSocket upgrades",
-      "fix": ">=15.5.16"
-    },
-    {
-      "id": "GHSA-h25m-26qc-wcjf",
-      "module": "next",
-      "severity": "high",
-      "title": "Next.js HTTP request deserialization can lead to DoS when using insecure React Server Components",
-      "fix": ">=15.0.8"
-    },
-    {
-      "id": "GHSA-m99w-x7hq-7vfj",
-      "module": "next",
-      "severity": "high",
-      "title": "Next.js: Denial of Service in App Router using Server Actions",
-      "fix": ">=15.5.21"
-    },
-    {
-      "id": "GHSA-p9j2-gv94-2wf4",
-      "module": "next",
-      "severity": "high",
-      "title": "Next.js: Server-Side Request Forgery in rewrites via attacker-controlled destination hostname",
-      "fix": ">=15.5.21"
-    },
-    {
-      "id": "GHSA-q4gf-8mx6-v5v3",
-      "module": "next",
-      "severity": "high",
-      "title": "Next.js has a Denial of Service with Server Components",
-      "fix": ">=15.5.15"
     }
   ]
 }

@@ -7,7 +7,7 @@ import { jsonResponse, errorResponse, generateId, corsHeaders, corsOptions } fro
 import { eq } from 'drizzle-orm';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -20,7 +20,8 @@ export async function OPTIONS(request: NextRequest) {
 /**
  * POST /api/surveys/:id/respond - Submit a response to a survey
  */
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { id } = params;
 

@@ -14,10 +14,8 @@ export async function OPTIONS(request: NextRequest) {
  * GET /api/presence/:did
  * Get online status and last seen for a user
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { did: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const cors = corsHeaders(request);
 
   try {

@@ -11,10 +11,8 @@ const GITHUB_REPO = process.env.GITHUB_REPO || 'ima-jin/imajin-ai';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 // POST /api/bugs/[id]/import — create a GitHub issue from a bug report (admin only)
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

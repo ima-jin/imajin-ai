@@ -7,13 +7,14 @@ import { jsonResponse, errorResponse, isValidUrl } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
  * PUT /api/links/:id - Update a single link (owner only)
  */
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const { id } = params;
 
   // Require authentication
@@ -84,7 +85,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 /**
  * DELETE /api/links/:id - Delete a link (owner only)
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const { id } = params;
 
   // Require authentication

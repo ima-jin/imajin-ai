@@ -7,7 +7,7 @@ import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/uti
 import { eq } from 'drizzle-orm';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -20,7 +20,8 @@ export async function OPTIONS(request: NextRequest) {
 /**
  * GET /api/surveys/:id - Get survey with fields
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { id } = params;
 
@@ -51,7 +52,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 /**
  * PUT /api/surveys/:id - Update survey (owner only)
  */
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { id } = params;
 
@@ -105,7 +107,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 /**
  * DELETE /api/surveys/:id - Delete survey (owner only)
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { id } = params;
 

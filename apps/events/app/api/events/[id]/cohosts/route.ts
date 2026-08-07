@@ -32,10 +32,8 @@ async function resolveProfile(did: string): Promise<{ did: string; name: string 
 /**
  * GET /api/events/[id]/cohosts — list cohosts for an event
  */
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const { id } = params;
 
   try {
@@ -77,10 +75,8 @@ export async function GET(
  * POST /api/events/[id]/cohosts — add a cohost (owner only)
  * Body: { handle: string }
  */
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });

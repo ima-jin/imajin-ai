@@ -6,7 +6,7 @@ import { jsonResponse, errorResponse, extractDomain, generateId } from '@/lib/ut
 import { eq, sql } from 'drizzle-orm';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -14,7 +14,8 @@ interface RouteParams {
  * 
  * Privacy-preserving: only stores referrer domain and optional country
  */
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const { id } = params;
 
   try {

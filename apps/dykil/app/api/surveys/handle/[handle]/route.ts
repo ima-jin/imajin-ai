@@ -5,13 +5,14 @@ import { db } from '@/db';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 
 interface RouteParams {
-  params: { handle: string };
+  params: Promise<{ handle: string }>;
 }
 
 /**
  * GET /api/surveys/handle/:handle - Get published surveys by user handle
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const { handle } = params;
 
   try {

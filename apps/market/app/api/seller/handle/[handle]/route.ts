@@ -12,10 +12,8 @@ const PROFILE_SERVICE_URL =
  * GET /api/seller/handle/:handle — Resolve handle → DID → listings
  * Server-side profile lookup so the client doesn't need cross-service calls.
  */
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: { handle: string } }
-) {
+export async function GET(_request: NextRequest, props: { params: Promise<{ handle: string }> }) {
+  const params = await props.params;
   const { handle } = params;
 
   if (!handle) {

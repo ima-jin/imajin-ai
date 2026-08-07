@@ -26,11 +26,12 @@ interface SearchParams {
   page?: string;
 }
 
-export default async function HistoryPage({
-  searchParams,
-}: Readonly<{
-  searchParams: SearchParams;
-}>) {
+export default async function HistoryPage(
+  props: Readonly<{
+    searchParams: Promise<SearchParams>;
+  }>
+) {
+  const searchParams = await props.searchParams;
   const session = await getSession();
 
   if (!session) {

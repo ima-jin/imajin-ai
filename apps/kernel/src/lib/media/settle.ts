@@ -193,7 +193,8 @@ export async function handleSettlement(
       action,
       settlementId: settlement.id,
       buyerDid: settlement.buyerDid ?? undefined,
-      ip: request.headers.get("x-forwarded-for") || request.ip || undefined,
+      // `NextRequest.ip` was removed in Next 15 — derive from proxy headers instead.
+      ip: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || undefined,
       userAgent: request.headers.get("user-agent") || undefined,
     });
   } catch (err) {

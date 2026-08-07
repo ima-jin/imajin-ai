@@ -57,13 +57,14 @@ function maskUid(uid: string): string {
   return uid.slice(0, 3) + '•'.repeat(Math.max(4, uid.length - 6)) + uid.slice(-3);
 }
 
-export default async function ChannelLinkApprovalPage({
-  params,
-  searchParams,
-}: {
-  params: { token: string };
-  searchParams: { approved?: string; error?: string };
-}) {
+export default async function ChannelLinkApprovalPage(
+  props: {
+    params: Promise<{ token: string }>;
+    searchParams: Promise<{ approved?: string; error?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const { effectiveDid } = await getEffectiveDid();
 
   // Not signed in — redirect to login, come back after.

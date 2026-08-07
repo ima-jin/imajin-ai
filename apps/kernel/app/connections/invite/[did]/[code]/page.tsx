@@ -15,11 +15,12 @@ async function getInvite(code: string) {
   }
 }
 
-export default async function InvitePage({
-  params,
-}: Readonly<{
-  params: { did: string; code: string };
-}>) {
+export default async function InvitePage(
+  props: Readonly<{
+    params: Promise<{ did: string; code: string }>;
+  }>
+) {
+  const params = await props.params;
   const invite = await getInvite(params.code);
 
   if (!invite) {

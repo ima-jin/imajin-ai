@@ -17,10 +17,8 @@ import { eq } from 'drizzle-orm';
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     // 1. Fetch listing
     const [listing] = await db

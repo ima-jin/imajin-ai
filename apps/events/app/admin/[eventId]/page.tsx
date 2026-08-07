@@ -13,10 +13,11 @@ import { AdminTabs } from './admin-tabs';
 const sql = getClient();
 
 interface Props {
-  params: { eventId: string };
+  params: Promise<{ eventId: string }>;
 }
 
-export default async function AdminPage({ params }: Readonly<Props>) {
+export default async function AdminPage(props: Readonly<Props>) {
+  const params = await props.params;
   const { eventId } = params as unknown as { eventId: string };
 
   // Fetch event

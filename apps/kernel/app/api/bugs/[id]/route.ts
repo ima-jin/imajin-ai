@@ -5,10 +5,8 @@ import { requireAuth } from '@imajin/auth';
 import { isAdmin } from '@/src/lib/www/session-auth';
 
 // PATCH /api/bugs/[id] — update a bug report (admin only)
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

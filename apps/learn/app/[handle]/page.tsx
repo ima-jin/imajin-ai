@@ -6,7 +6,7 @@ import { buildPublicUrlAbsolute } from '@imajin/config';
 const log = createLogger('learn');
 
 interface PageProps {
-  params: { handle: string };
+  params: Promise<{ handle: string }>;
 }
 
 async function getCreatorCourses(handle: string) {
@@ -37,7 +37,8 @@ async function getCreatorCourses(handle: string) {
   }
 }
 
-export default async function CreatorCoursesPage({ params }: Readonly<PageProps>) {
+export default async function CreatorCoursesPage(props: Readonly<PageProps>) {
+  const params = await props.params;
   if (params.handle.includes('.') || params.handle === 'favicon') {
     notFound();
   }

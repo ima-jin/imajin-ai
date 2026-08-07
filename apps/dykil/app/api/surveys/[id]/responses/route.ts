@@ -6,7 +6,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 
 interface RouteParams {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -19,7 +19,8 @@ export async function OPTIONS(request: NextRequest) {
 /**
  * GET /api/surveys/:id/responses - Get all responses for a survey (owner only)
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { id } = params;
 

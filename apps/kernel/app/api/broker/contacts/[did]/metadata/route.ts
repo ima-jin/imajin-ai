@@ -18,10 +18,8 @@ const VALID_RELATIONSHIP_TYPES = new Set(['business', 'group', 'person', 'collec
  *
  * Passing null for either field clears it.
  */
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { did: string } },
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

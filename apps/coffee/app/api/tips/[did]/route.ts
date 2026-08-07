@@ -7,13 +7,14 @@ import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, sql } from 'drizzle-orm';
 
 interface RouteParams {
-  params: { did: string };
+  params: Promise<{ did: string }>;
 }
 
 /**
  * GET /api/tips/:did - Get tips received by a DID (owner only)
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const { did } = params;
 
   // Require authentication

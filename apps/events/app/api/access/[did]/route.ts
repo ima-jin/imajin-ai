@@ -10,10 +10,8 @@ const AUTH_SERVICE_URL = process.env.AUTH_URL || process.env.AUTH_SERVICE_URL ||
  * GET /api/access/[did] - Proxy access check to auth service (server-to-server).
  * Same-origin proxy so the browser doesn't need to send cookies cross-origin.
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { did: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
 
   if (!sessionCookie) {

@@ -3,10 +3,8 @@ import { db, nicknames } from '@/src/db';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { eq, and } from 'drizzle-orm';
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { did: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
@@ -24,10 +22,8 @@ export async function GET(
   return NextResponse.json({ nickname: row?.nickname ?? null });
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { did: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
@@ -49,10 +45,8 @@ export async function PATCH(
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { did: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });

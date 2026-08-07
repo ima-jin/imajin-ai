@@ -12,10 +12,8 @@ const log = createLogger('kernel');
  * Cross-origin cookie forwarding is unreliable, so we proxy through the chat app's
  * own origin and forward the session cookie server-to-server.
  */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { did: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ did: string }> }) {
+  const params = await props.params;
   const session = await getSessionFromCookies(request.headers.get('cookie'));
 
   if (!session) {

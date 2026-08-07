@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useIdentity } from '../../context/IdentityContext';
 import { ConnectionPicker, useToast } from '@imajin/ui';
 
@@ -32,7 +32,8 @@ interface Pod {
 }
 
 
-export default function PodDetailPage({ params }: Readonly<{ params: { id: string } }>) {
+export default function PodDetailPage(props: Readonly<{ params: Promise<{ id: string }> }>) {
+  const params = use(props.params);
   const { id } = params;
   const { did, isLoggedIn, loading } = useIdentity();
   const { toast } = useToast();

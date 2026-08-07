@@ -25,7 +25,8 @@ export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
-export async function POST(request: NextRequest, { params }: { params: { runId: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ runId: string }> }) {
+  const params = await props.params;
   const cors = corsHeaders(request);
 
   const acting = await warpActingDid(request, cors);

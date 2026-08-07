@@ -7,13 +7,14 @@ import { jsonResponse, errorResponse, isValidUrl, generateId } from '@/lib/utils
 import { eq, max } from 'drizzle-orm';
 
 interface RouteParams {
-  params: { handle: string };
+  params: Promise<{ handle: string }>;
 }
 
 /**
  * POST /api/pages/:handle/links - Add links to page (owner only)
  */
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const { handle } = params;
 
   // Require authentication

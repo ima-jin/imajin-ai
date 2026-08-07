@@ -7,13 +7,14 @@ import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, sql, desc } from 'drizzle-orm';
 
 interface RouteParams {
-  params: { handle: string };
+  params: Promise<{ handle: string }>;
 }
 
 /**
  * GET /api/pages/:handle/stats - Get page stats (owner only)
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, props: RouteParams) {
+  const params = await props.params;
   const { handle } = params;
 
   // Require authentication

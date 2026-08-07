@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import AppDetailClient from './components/AppDetailClient';
 
-export default async function AppDetailPage({
-  params,
-}: Readonly<{
-  params: { appId: string };
-}>) {
+export default async function AppDetailPage(
+  props: Readonly<{
+    params: Promise<{ appId: string }>;
+  }>
+) {
+  const params = await props.params;
   const { sessionDid, effectiveDid } = await getEffectiveDid();
 
   if (!sessionDid) {

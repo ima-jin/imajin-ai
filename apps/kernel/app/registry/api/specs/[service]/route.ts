@@ -15,10 +15,8 @@ export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { service: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ service: string }> }) {
+  const params = await props.params;
   const cors = corsHeaders(request);
   const { service } = params;
 

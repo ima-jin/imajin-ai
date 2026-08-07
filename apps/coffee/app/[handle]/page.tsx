@@ -5,10 +5,11 @@ import { buildPublicUrl } from '@imajin/config';
 import TipForm from './tip-form';
 
 interface PageProps {
-  params: { handle: string };
+  params: Promise<{ handle: string }>;
 }
 
-export async function generateMetadata({ params }: Readonly<PageProps>): Promise<Metadata> {
+export async function generateMetadata(props: Readonly<PageProps>): Promise<Metadata> {
+  const params = await props.params;
   const page = await db.query.coffeePages.findFirst({
     where: (pages, { eq }) => eq(pages.handle, params.handle),
   });
@@ -49,7 +50,8 @@ export async function generateMetadata({ params }: Readonly<PageProps>): Promise
   };
 }
 
-export default async function CoffeePage({ params }: Readonly<PageProps>) {
+export default async function CoffeePage(props: Readonly<PageProps>) {
+  const params = await props.params;
   // Skip static file requests that leak through
   if (params.handle.includes('.') || params.handle === 'favicon') {
     notFound();
