@@ -53,13 +53,6 @@
       "fix": ">=15.5.21"
     },
     {
-      "id": "GHSA-p6gq-j5cr-w38f",
-      "module": "nodemailer",
-      "severity": "high",
-      "title": "Nodemailer: Message-level raw option bypasses disableFileAccess/disableUrlAccess, enabling arbitrary file read and full-response SSRF in the delivered message",
-      "fix": ">=9.0.1"
-    },
-    {
       "id": "GHSA-p9j2-gv94-2wf4",
       "module": "next",
       "severity": "high",
@@ -72,13 +65,6 @@
       "severity": "high",
       "title": "Next.js has a Denial of Service with Server Components",
       "fix": ">=15.5.15"
-    },
-    {
-      "id": "GHSA-rcmh-qjqh-p98v",
-      "module": "nodemailer",
-      "severity": "high",
-      "title": "NodemailerΓÇÖs addressparser is vulnerable to DoS caused by recursive calls",
-      "fix": ">=7.0.11"
     }
   ]
 }

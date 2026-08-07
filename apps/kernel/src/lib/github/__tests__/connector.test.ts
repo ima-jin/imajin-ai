@@ -138,6 +138,14 @@ import {
   listOrgs,
   listRepos,
   getRepo,
+  listPullRequests,
+  getPullRequest,
+  listComments,
+  searchIssues,
+  isPullRequest,
+  labelNames,
+  normalizeLimit,
+  parseNextLink,
   vaultField,
   oauthVaultField,
   configField,
@@ -147,6 +155,8 @@ import {
   readConfigFlow,
   requestDeviceCode,
   pollDeviceTokenOnce,
+  DEFAULT_LIST_LIMIT,
+  MAX_LIST_LIMIT,
   GITHUB_CONNECTOR_DID,
   GITHUB_OAUTH_SCOPE,
 } from '../connector';
@@ -257,6 +267,38 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
 });
+
+// ── #1528 fetch helpers ────────────────────────────────────────────────────
+
+/** A response stub carrying real Headers, so Link parsing is genuinely exercised. */
+function ghResponse(value: unknown, headers: Record<string, string> = {}) {
+  return { ok: true, headers: new Headers(headers), json: async () => value };
+}
+
+/** Queue one response per fetch call, in order. */
+function mockFetchSequence(...responses: ReturnType<typeof ghResponse>[]) {
+  const f = fetch as unknown as ReturnType<typeof vi.fn>;
+  f.mockReset();
+  for (const res of responses) f.mockResolvedValueOnce(res);
+}
+
+/** A `Link` header advertising a next page at `url`. */
+function nextLink(url: string): Record<string, string> {
+  return { link: `<${url}>; rel="next", <${url}&last=1>; rel="last"` };
+}
+
+/** n synthetic issues numbered from `start`. */
+function issuePage(start: number, count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    ...MOCK_ISSUE,
+    number: start + i,
+    title: `Issue ${start + i}`,
+  }));
+}
+
+function fetchUrls(): string[] {
+  return (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.map(([url]) => url as string);
+}
 
 // ΓöÇΓöÇ vaultField ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
@@ -475,32 +517,444 @@ describe('listIssues (#1228)', () => {
 
   it('fetches from the correct endpoint with the default open state', async () => {
     grant(['github:read']);
-    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => [MOCK_ISSUE],
-    });
+    mockFetchSequence(ghResponse([MOCK_ISSUE]));
 
-    const issues = await listIssues(OWNER, REPO);
+    const result = await listIssues(OWNER, REPO);
 
-    expect(issues).toHaveLength(1);
-    expect(issues[0]).toMatchObject({ number: 42, title: 'Test Issue' });
-    const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ number: 42, title: 'Test Issue' });
+    expect(result.hasMore).toBe(false);
+    expect(result.limit).toBe(DEFAULT_LIST_LIMIT);
+    const [url] = fetchUrls();
     expect(url).toContain(`/repos/${REPO}/issues`);
     expect(url).toContain('state=open');
-    expect(url).toContain('per_page=50');
+    expect(url).toContain('per_page=100');
   });
 
   it('passes the requested state filter through to the API', async () => {
     grant(['github:read']);
-    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => [],
+    mockFetchSequence(ghResponse([]));
+
+    await listIssues(OWNER, REPO, { state: 'closed' });
+
+    expect(fetchUrls()[0]).toContain('state=closed');
+  });
+
+  it('passes labels / since / sort / direction through to the API (#1528)', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse([]));
+
+    await listIssues(OWNER, REPO, {
+      labels: 'bug,p1',
+      since: '2026-01-01T00:00:00Z',
+      sort: 'updated',
+      direction: 'asc',
     });
 
-    await listIssues(OWNER, REPO, 'closed');
+    const url = fetchUrls()[0];
+    expect(url).toContain('labels=bug%2Cp1');
+    expect(url).toContain('since=2026-01-01T00%3A00%3A00Z');
+    expect(url).toContain('sort=updated');
+    expect(url).toContain('direction=asc');
+  });
 
-    const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(url).toContain('state=closed');
+  // ── #1528: pagination ─────────────────────────────────────────────────────
+
+  it('follows Link rel="next" and concatenates pages', async () => {
+    grant(['github:read']);
+    const page2 = 'https://api.github.com/repos/o/r/issues?page=2';
+    mockFetchSequence(
+      ghResponse(issuePage(1, 100), nextLink(page2)),
+      ghResponse(issuePage(101, 20)),
+    );
+
+    const result = await listIssues(OWNER, REPO, { limit: 200 });
+
+    expect(result.items).toHaveLength(120);
+    expect(result.hasMore).toBe(false);
+    // The rel="next" URL is replayed verbatim, cursor params intact.
+    expect(fetchUrls()[1]).toBe(page2);
+  });
+
+  it('stops at the limit and reports hasMore when pages remain', async () => {
+    grant(['github:read']);
+    mockFetchSequence(
+      ghResponse(issuePage(1, 100), nextLink('https://api.github.com/x?page=2')),
+    );
+
+    const result = await listIssues(OWNER, REPO, { limit: 100 });
+
+    expect(result.items).toHaveLength(100);
+    expect(result.hasMore).toBe(true);
+    // Exactly one page: the limit was met, so the next page is never fetched.
+    expect(fetchUrls()).toHaveLength(1);
+  });
+
+  it('reports hasMore when a single page overflows the limit', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse(issuePage(1, 10)));
+
+    const result = await listIssues(OWNER, REPO, { limit: 3 });
+
+    expect(result.items).toHaveLength(3);
+    expect(result.hasMore).toBe(true);
+  });
+
+  it('does not report hasMore when the last page exactly fills the limit', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse(issuePage(1, 5)));
+
+    const result = await listIssues(OWNER, REPO, { limit: 5 });
+
+    expect(result.items).toHaveLength(5);
+    expect(result.hasMore).toBe(false);
+  });
+
+  it('clamps limit to the ceiling and floors it at 1', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse([]));
+    expect((await listIssues(OWNER, REPO, { limit: 10_000 })).limit).toBe(MAX_LIST_LIMIT);
+
+    mockFetchSequence(ghResponse([]));
+    expect((await listIssues(OWNER, REPO, { limit: 0 })).limit).toBe(1);
+  });
+
+  // ── #1528: PR filtering ───────────────────────────────────────────────────
+
+  const PR_ROW = { ...MOCK_ISSUE, number: 7, pull_request: { html_url: 'https://x/pull/7' } };
+
+  it('excludes pull requests from the issues feed by default', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse([MOCK_ISSUE, PR_ROW]));
+
+    const result = await listIssues(OWNER, REPO);
+
+    expect(result.items.map((i) => i.number)).toEqual([42]);
+  });
+
+  it('returns only pull requests for type="pr"', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse([MOCK_ISSUE, PR_ROW]));
+
+    const result = await listIssues(OWNER, REPO, { type: 'pr' });
+
+    expect(result.items.map((i) => i.number)).toEqual([7]);
+  });
+
+  it('returns both for type="all"', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse([MOCK_ISSUE, PR_ROW]));
+
+    const result = await listIssues(OWNER, REPO, { type: 'all' });
+
+    expect(result.items).toHaveLength(2);
+  });
+
+  /**
+   * The filter runs before the limit is counted, so a page that is mostly PRs
+   * must not come back short — that would look like "only 1 open issue".
+   */
+  it('keeps paging when the type filter drops most of a page', async () => {
+    grant(['github:read']);
+    const prs = Array.from({ length: 99 }, (_, i) => ({
+      ...MOCK_ISSUE, number: 1000 + i, pull_request: { html_url: 'https://x' },
+    }));
+    mockFetchSequence(
+      ghResponse([MOCK_ISSUE, ...prs], nextLink('https://api.github.com/x?page=2')),
+      ghResponse(issuePage(200, 4)),
+    );
+
+    const result = await listIssues(OWNER, REPO, { limit: 5 });
+
+    expect(result.items).toHaveLength(5);
+    expect(result.items.every((i) => i.pull_request === undefined)).toBe(true);
+    expect(result.hasMore).toBe(false);
+  });
+
+  it('preserves the expanded fields the tool layer projects', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse([{
+      ...MOCK_ISSUE,
+      labels: [{ name: 'bug' }, 'p1'],
+      assignees: [{ login: 'eric' }],
+      milestone: { number: 3, title: 'M3', state: 'open' },
+      comments: 12,
+    }]));
+
+    const [issue] = (await listIssues(OWNER, REPO)).items;
+
+    expect(labelNames(issue.labels)).toEqual(['bug', 'p1']);
+    expect(issue.assignees).toEqual([{ login: 'eric' }]);
+    expect(issue.milestone).toMatchObject({ number: 3, title: 'M3' });
+    expect(issue.comments).toBe(12);
+  });
+});
+
+// ── Pagination primitives (#1528) ──────────────────────────────────────────
+
+describe('parseNextLink (#1528)', () => {
+  it('extracts the rel="next" URL', () => {
+    const header = new Headers({
+      link: '<https://api.github.com/x?page=2>; rel="next", <https://api.github.com/x?page=9>; rel="last"',
+    });
+    expect(parseNextLink(header)).toBe('https://api.github.com/x?page=2');
+  });
+
+  it('returns null on the last page (prev/first only)', () => {
+    const header = new Headers({
+      link: '<https://api.github.com/x?page=1>; rel="prev", <https://api.github.com/x?page=1>; rel="first"',
+    });
+    expect(parseNextLink(header)).toBeNull();
+  });
+
+  it('returns null when the header or the headers object is absent', () => {
+    expect(parseNextLink(new Headers())).toBeNull();
+    expect(parseNextLink(undefined)).toBeNull();
+  });
+});
+
+describe('normalizeLimit (#1528)', () => {
+  it('defaults, clamps, and floors', () => {
+    expect(normalizeLimit(undefined)).toBe(DEFAULT_LIST_LIMIT);
+    expect(normalizeLimit(Number.NaN)).toBe(DEFAULT_LIST_LIMIT);
+    expect(normalizeLimit(50)).toBe(50);
+    expect(normalizeLimit(9999)).toBe(MAX_LIST_LIMIT);
+    expect(normalizeLimit(-5)).toBe(1);
+  });
+});
+
+describe('isPullRequest (#1528)', () => {
+  it('discriminates on the pull_request field', () => {
+    expect(isPullRequest(MOCK_ISSUE)).toBe(false);
+    expect(isPullRequest({ ...MOCK_ISSUE, pull_request: { html_url: 'u' } })).toBe(true);
+  });
+});
+
+// ── Pull requests (#1528) ────────────────────────────────────────────────
+
+const MOCK_PR = {
+  number: 5,
+  html_url: `https://github.com/${REPO}/pull/5`,
+  title: 'Test PR',
+  state: 'open',
+  body: 'PR body',
+  user: { login: 'eric' },
+  created_at: '2026-07-13T00:00:00.000Z',
+  updated_at: '2026-07-13T00:00:00.000Z',
+  draft: true,
+  head: { ref: 'feat/x', sha: 'abc', repo: { full_name: REPO } },
+  base: { ref: 'main', sha: 'def', repo: { full_name: REPO } },
+  requested_reviewers: [{ login: 'reviewer' }],
+};
+
+describe('listPullRequests (#1528)', () => {
+  it('fails closed when there is no grant — never calls the API', async () => {
+    noGrant();
+    await expect(listPullRequests(OWNER, REPO)).rejects.toThrow(/github_no_grant/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when no credential is sealed', async () => {
+    grant(['github:read']);
+    loadMock.mockResolvedValue(undefined);
+    await expect(listPullRequests(OWNER, REPO)).rejects.toThrow(/github_no_credential/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('hits /pulls (not /issues) and returns PR-shaped rows', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse([MOCK_PR]));
+
+    const result = await listPullRequests(OWNER, REPO);
+
+    const [url] = fetchUrls();
+    expect(url).toContain(`/repos/${REPO}/pulls`);
+    expect(url).toContain('state=open');
+    expect(result.items[0]).toMatchObject({ number: 5, draft: true });
+    expect(result.items[0].head?.ref).toBe('feat/x');
+    expect(result.items[0].base?.ref).toBe('main');
+    expect(result.hasMore).toBe(false);
+  });
+
+  it('passes state / base / head filters through', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse([]));
+
+    await listPullRequests(OWNER, REPO, { state: 'all', base: 'main', head: 'eric:feat' });
+
+    const url = fetchUrls()[0];
+    expect(url).toContain('state=all');
+    expect(url).toContain('base=main');
+    expect(url).toContain('head=eric%3Afeat');
+  });
+
+  it('paginates and reports hasMore', async () => {
+    grant(['github:read']);
+    mockFetchSequence(
+      ghResponse([MOCK_PR, MOCK_PR], nextLink('https://api.github.com/x?page=2')),
+    );
+
+    const result = await listPullRequests(OWNER, REPO, { limit: 2 });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.hasMore).toBe(true);
+  });
+});
+
+describe('getPullRequest (#1528)', () => {
+  it('fails closed when there is no grant — never calls the API', async () => {
+    noGrant();
+    await expect(getPullRequest(OWNER, REPO, 5)).rejects.toThrow(/github_no_grant/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('fetches the single-PR endpoint and surfaces merge detail', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse({
+      ...MOCK_PR, mergeable: true, mergeable_state: 'clean', changed_files: 3,
+    }));
+
+    const pr = await getPullRequest(OWNER, REPO, 5);
+
+    expect(fetchUrls()[0]).toBe(`https://api.github.com/repos/${REPO}/pulls/5`);
+    expect(pr).toMatchObject({ number: 5, mergeable: true, mergeable_state: 'clean', changed_files: 3 });
+  });
+});
+
+// ── Comment reads (#1528) ────────────────────────────────────────────────
+
+describe('listComments (#1528)', () => {
+  it('fails closed when there is no grant — never calls the API', async () => {
+    noGrant();
+    await expect(listComments(OWNER, REPO, 42)).rejects.toThrow(/github_no_grant/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('reads the issue-comments endpoint and returns comment rows', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse([MOCK_COMMENT]));
+
+    const result = await listComments(OWNER, REPO, 42);
+
+    expect(fetchUrls()[0]).toContain(`/repos/${REPO}/issues/42/comments`);
+    expect(result.items[0]).toMatchObject({ id: 999, body: 'Test comment' });
+    expect(result.hasMore).toBe(false);
+  });
+
+  it('paginates across Link pages', async () => {
+    grant(['github:read']);
+    mockFetchSequence(
+      ghResponse([MOCK_COMMENT], nextLink('https://api.github.com/c?page=2')),
+      ghResponse([{ ...MOCK_COMMENT, id: 1000 }]),
+    );
+
+    const result = await listComments(OWNER, REPO, 42, { limit: 50 });
+
+    expect(result.items.map((c) => c.id)).toEqual([999, 1000]);
+    expect(result.hasMore).toBe(false);
+  });
+
+  it('passes since / direction through', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse([]));
+
+    await listComments(OWNER, REPO, 42, { since: '2026-01-01T00:00:00Z', direction: 'desc' });
+
+    const url = fetchUrls()[0];
+    expect(url).toContain('since=2026-01-01T00%3A00%3A00Z');
+    expect(url).toContain('direction=desc');
+  });
+});
+
+// ── Search (#1528) ──────────────────────────────────────────────────────
+
+function searchItem(number: number, fullName = 'ima-jin/imajin-ai') {
+  return {
+    ...MOCK_ISSUE,
+    number,
+    repository_url: `https://api.github.com/repos/${fullName}`,
+  };
+}
+
+describe('searchIssues (#1528)', () => {
+  it('fails closed when there is no grant — never calls the API', async () => {
+    noGrant();
+    await expect(searchIssues(OWNER, 'is:open')).rejects.toThrow(/github_no_grant/);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('URL-encodes the query and returns GitHub\u2019s total_count', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse({
+      total_count: 137,
+      incomplete_results: false,
+      items: [searchItem(1), searchItem(2)],
+    }));
+
+    const result = await searchIssues(OWNER, 'repo:ima-jin/imajin-ai is:open label:bug');
+
+    const url = fetchUrls()[0];
+    expect(url).toContain('/search/issues?');
+    expect(url).toContain('q=repo%3Aima-jin%2Fimajin-ai+is%3Aopen+label%3Abug');
+    expect(result.items).toHaveLength(2);
+    // total_count is GitHub's full match count, independent of what we returned.
+    expect(result.totalCount).toBe(137);
+    expect(result.incompleteResults).toBe(false);
+  });
+
+  it('surfaces GitHub\u2019s incomplete_results flag separately from hasMore', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse({ total_count: 1, incomplete_results: true, items: [searchItem(1)] }));
+
+    const result = await searchIssues(OWNER, 'is:open');
+
+    expect(result.incompleteResults).toBe(true);
+    expect(result.hasMore).toBe(false);
+  });
+
+  it('paginates the search envelope and reports hasMore at the limit', async () => {
+    grant(['github:read']);
+    mockFetchSequence(
+      ghResponse(
+        { total_count: 500, items: [searchItem(1), searchItem(2)] },
+        nextLink('https://api.github.com/search/issues?q=x&page=2'),
+      ),
+    );
+
+    const result = await searchIssues(OWNER, 'is:open', { limit: 2 });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.hasMore).toBe(true);
+  });
+
+  /**
+   * Search reaches across every repo the token can see, so it must respect the
+   * same disclosure allowlist as listRepos — otherwise search is a bypass.
+   */
+  it('drops results from repos outside the disclosure allowlist', async () => {
+    grant(['github:read']);
+    readAllowlistMock.mockResolvedValue(new Set(['ima-jin']));
+    isRepoAllowedMock.mockImplementation((fullName: string) => fullName.startsWith('ima-jin/'));
+    mockFetchSequence(ghResponse({
+      total_count: 2,
+      items: [searchItem(1, 'ima-jin/imajin-ai'), searchItem(2, 'stranger/secret')],
+    }));
+
+    const result = await searchIssues(OWNER, 'is:open');
+
+    expect(result.items.map((i) => i.number)).toEqual([1]);
+  });
+
+  it('drops results whose repository_url cannot be parsed (fail-closed)', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse({
+      total_count: 1,
+      items: [{ ...MOCK_ISSUE, number: 9, repository_url: undefined }],
+    }));
+
+    const result = await searchIssues(OWNER, 'is:open');
+
+    expect(result.items).toEqual([]);
   });
 });
 

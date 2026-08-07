@@ -10,11 +10,11 @@
   "dependencies": {
     "@imajin/logger": "workspace:*",
     "marked": "^18.0.4",
-    "nodemailer": "^6.9.15",
+    "nodemailer": "^9.0.1",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
-    "@types/nodemailer": "^6.4.16",
+    "@types/nodemailer": "^8.0.1",
     "@types/qrcode": "^1.5.5",
     "typescript": "^5.3.0",
     "@types/node": "^22.0.0"
