@@ -42,8 +42,10 @@
  */
 import { eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
+import { VaultIntegrityError } from '@imajin/vault-core';
 import { db, vaultGrantRequests } from '@/src/db';
 import { isVaultTier1 } from './sealing';
+import { VaultDelegationError } from './errors';
 import { loadAndUnseal, sealAndStoreV2, vaultService } from './index';
 
 const log = createLogger('kernel');
@@ -156,13 +158,31 @@ async function findStalePendingRequest(
   return stalest;
 }
 
+/** Outcome of a verification poll, carrying the diagnostic that explains a failure. */
+interface PollOutcome {
+  readable: boolean;
+  /**
+   * The last error thrown by `loadAndUnseal` before the deadline expired.
+   * Undefined when the field never threw — it simply never unsealed to the
+   * expected plaintext (or does not exist).
+   */
+  lastError?: unknown;
+}
+
 /**
  * Poll `field` until it unseals to `expectedPlaintext` or `timeoutMs` elapses.
  *
  * A thrown error while polling is the expected shape of "not ready yet" under
  * Tier 1 — a `VaultDelegationError` because the grant is still pending
- * fulfilment — so it is swallowed here and retried, not treated as failure in
+ * fulfilment — so it does not stop the loop and is not treated as failure in
  * itself. Only running out of time counts as failure.
+ *
+ * It is, however, *retained* rather than discarded (#1556). "Grant still
+ * pending" and "the upgrade produced a genuinely broken entry" both present as
+ * a timeout, and without the underlying error an operator cannot tell the
+ * transient case from the actionable one without reproducing the failure by
+ * hand. Retaining only the LAST error is deliberate: the loop is a retry of
+ * the same operation, so earlier attempts add noise, not information.
  */
 async function pollUntilReadable(
   field: string,
@@ -170,31 +190,73 @@ async function pollUntilReadable(
   timeoutMs: number,
   pollIntervalMs: number,
   sleep: (ms: number) => Promise<void>,
-): Promise<boolean> {
+): Promise<PollOutcome> {
   const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
   for (;;) {
     try {
       const plaintext = await loadAndUnseal(field);
       if (plaintext === expectedPlaintext) {
-        return true;
+        return { readable: true };
       }
-    } catch {
+      // Unsealed, but not to what was just sealed. No error was raised, so
+      // clear any stale one rather than blame a superseded attempt.
+      lastError = undefined;
+    } catch (err) {
       // Not yet readable — e.g. a Tier 1 grant is still pending fulfilment.
-      // Keep polling until the deadline.
+      // Keep polling until the deadline, but remember why.
+      lastError = err;
     }
 
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
-      return false;
+      return { readable: false, lastError };
     }
     await sleep(Math.min(pollIntervalMs, remaining));
   }
+}
+
+/**
+ * Turn the last polling error into an operator-facing clause.
+ *
+ * The two failure modes must stay visually distinct at a glance, because they
+ * call for opposite responses:
+ *   - `VaultDelegationError` — "still pending": the grant exists and is
+ *     waiting on a Tier 1 owner agent. Wait, or start the agent.
+ *   - `VaultIntegrityError` — "verification failed": the entry itself is
+ *     broken (signature/cid/key-id mismatch). Waiting will never fix it; this
+ *     needs investigating now. This is the case #1522 lost time to.
+ * Anything else is surfaced raw rather than guessed at.
+ */
+function describePollFailure(lastError: unknown): string {
+  if (lastError === undefined) {
+    return 'no error was raised — the field never unsealed to the value just written';
+  }
+  if (lastError instanceof VaultDelegationError) {
+    return `still pending: ${lastError.message}`;
+  }
+  if (lastError instanceof VaultIntegrityError) {
+    return `verification failed (${lastError.code}): ${lastError.message}`;
+  }
+  return `verification failed: ${lastError instanceof Error ? lastError.message : String(lastError)}`;
 }
 
 interface UpgradeVerifyOptions {
   timeoutMs: number;
   pollIntervalMs: number;
   sleep: (ms: number) => Promise<void>;
+}
+
+interface UpgradeVerifyOutcome {
+  status: 'upgraded' | 'upgrade-failed' | 'verify-failed';
+  grantId: string | null;
+  error?: string;
+  /**
+   * Short diagnostic clause for a non-`upgraded` outcome, so the caller can
+   * fold the *reason* into its abort message instead of repeating the whole
+   * per-field error string. Never set when the field upgraded cleanly.
+   */
+  failureDetail?: string;
 }
 
 /**
@@ -208,21 +270,35 @@ async function upgradeAndVerify(
   field: string,
   plaintext: string,
   opts: UpgradeVerifyOptions,
-): Promise<{ status: 'upgraded' | 'upgrade-failed' | 'verify-failed'; grantId: string | null; error?: string }> {
+): Promise<UpgradeVerifyOutcome> {
   let grantId: string | null;
   try {
     ({ grantId } = await sealAndStoreV2(field, plaintext));
   } catch (err) {
     log.error({ err: String(err), field }, 'Vault migrate-custody: upgrade failed');
-    return { status: 'upgrade-failed', grantId: null, error: String(err) };
+    return {
+      status: 'upgrade-failed',
+      grantId: null,
+      error: String(err),
+      failureDetail: `upgrade failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 
-  const readable = await pollUntilReadable(field, plaintext, opts.timeoutMs, opts.pollIntervalMs, opts.sleep);
+  const { readable, lastError } = await pollUntilReadable(
+    field,
+    plaintext,
+    opts.timeoutMs,
+    opts.pollIntervalMs,
+    opts.sleep,
+  );
   if (!readable) {
+    const detail = describePollFailure(lastError);
+    log.error({ field, detail }, 'Vault migrate-custody: field did not verify after upgrade');
     return {
       status: 'verify-failed',
       grantId,
-      error: `field '${field}' did not unseal within ${opts.timeoutMs}ms after upgrade`,
+      error: `field '${field}' did not unseal within ${opts.timeoutMs}ms after upgrade — ${detail}`,
+      failureDetail: detail,
     };
   }
   return { status: 'upgraded', grantId };
@@ -313,19 +389,27 @@ export async function migrateCustody(options: MigrateCustodyOptions): Promise<Mi
     return { ...base, results, aborted: true, abortReason: `canary field '${canaryField}' vanished before migration` };
   }
 
-  const canaryResult = await upgradeAndVerify(canaryField, canaryPlaintext, { timeoutMs, pollIntervalMs, sleep });
+  // `failureDetail` is diagnostic context for the abort message, not part of
+  // the per-field report — destructure it out before pushing the result.
+  const { failureDetail: canaryDetail, ...canaryResult } = await upgradeAndVerify(canaryField, canaryPlaintext, {
+    timeoutMs,
+    pollIntervalMs,
+    sleep,
+  });
   results.push({ field: canaryField, ...canaryResult });
 
   if (canaryResult.status !== 'upgraded') {
     log.error(
-      { field: canaryField, canaryStatus: canaryResult.status },
+      { field: canaryField, canaryStatus: canaryResult.status, detail: canaryDetail },
       'Vault migrate-custody: canary failed — aborting batch',
     );
     return {
       ...base,
       results,
       aborted: true,
-      abortReason: `canary field '${canaryField}' did not come back readable — refusing to migrate the remaining ${rest.length} field(s)`,
+      abortReason:
+        `canary field '${canaryField}' did not come back readable (${canaryDetail ?? 'no diagnostic available'}) — ` +
+        `refusing to migrate the remaining ${rest.length} field(s)`,
     };
   }
 
@@ -349,7 +433,11 @@ export async function migrateCustody(options: MigrateCustodyOptions): Promise<Mi
       return { ...base, results, aborted: true, abortReason: `field '${field}' vanished mid-migration — aborting` };
     }
 
-    const fieldResult = await upgradeAndVerify(field, plaintext, { timeoutMs, pollIntervalMs, sleep });
+    const { failureDetail, ...fieldResult } = await upgradeAndVerify(field, plaintext, {
+      timeoutMs,
+      pollIntervalMs,
+      sleep,
+    });
     results.push({ field, ...fieldResult });
 
     if (fieldResult.status !== 'upgraded') {
@@ -357,7 +445,9 @@ export async function migrateCustody(options: MigrateCustodyOptions): Promise<Mi
         ...base,
         results,
         aborted: true,
-        abortReason: `field '${field}' failed to verify after upgrade — aborting with ${results.length} of ${candidates.length} field(s) processed`,
+        abortReason:
+          `field '${field}' failed to verify after upgrade (${failureDetail ?? 'no diagnostic available'}) — ` +
+          `aborting with ${results.length} of ${candidates.length} field(s) processed`,
       };
     }
   }
