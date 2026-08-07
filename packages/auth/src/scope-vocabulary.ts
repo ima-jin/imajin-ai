@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'quickbooks' | 'warp';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'gcp' | 'quickbooks' | 'warp';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -46,6 +46,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   discord: 'did:imajin:discord-connector',
   gemini: 'did:imajin:gemini-connector',
   anthropic: 'did:imajin:anthropic-connector',
+  gcp: 'did:imajin:gcp-connector',
   quickbooks: 'did:imajin:quickbooks-connector',
   warp: 'did:imajin:warp-connector',
 };
@@ -57,6 +58,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   discord: 'discord',
   gemini: 'gemini',
   anthropic: 'anthropic',
+  gcp: 'gcp',
   quickbooks: 'quickbooks',
   warp: 'warp',
 };
@@ -245,6 +247,22 @@ export const SCOPE_VOCABULARY = [
   // and never released to a third party → SELF_SENSITIVE → owner-only.
   { scope: 'anthropic:infer', connector: 'anthropic', verb: 'infer', surface: 'anthropic-api', classification: SELF_SENSITIVE,
     label: 'Use your Anthropic API key for inference' },
+
+  // ── Google Cloud connector (#1317) — a sealed service-account key, not an
+  // inference-only brain. The key is the owner's own credential and is consumed
+  // server-side on every call, never handed to a third party → SELF_SENSITIVE →
+  // owner-only, same quadrant as gemini:infer.
+  //
+  // These are the only three scopes Stage 1 opens, deliberately: a service
+  // account key is broad, so the grant that unseals it must not be. Each names
+  // one GCP surface (`iam`, `vertex`, `project`) in the verb, which is why these
+  // scope strings carry a third segment where every other connector's carry two.
+  { scope: 'gcp:iam:read', connector: 'gcp', verb: 'iam:read', surface: 'gcp-api', classification: SELF_SENSITIVE,
+    label: 'Read IAM policies and service accounts' },
+  { scope: 'gcp:vertex:invoke', connector: 'gcp', verb: 'vertex:invoke', surface: 'gcp-api', classification: SELF_SENSITIVE,
+    label: 'Invoke Vertex AI / Gemini models' },
+  { scope: 'gcp:project:read', connector: 'gcp', verb: 'project:read', surface: 'gcp-api', classification: SELF_SENSITIVE,
+    label: 'Read GCP project metadata' },
 
   // ── Warp connector (#1428) — per-DID Warp Cloud Agent key.
   // Consumes the owner's own sealed Agent key to spawn cloud agents under their

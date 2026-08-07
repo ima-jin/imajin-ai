@@ -19,7 +19,7 @@ import {
 } from '../src/scope-vocabulary';
 import { SCOPES, validateScopes } from '../src/scopes';
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'quickbooks', 'warp'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'gcp', 'quickbooks', 'warp'];
 
 const connectorEntries = SCOPE_VOCABULARY.filter(isConnectorScope);
 
@@ -41,8 +41,16 @@ describe('SCOPE_VOCABULARY structure', () => {
     expect(unlabelled).toEqual([]);
   });
 
-  it('uses `surface:verb`-shaped scope strings', () => {
-    const malformed = SCOPE_VOCABULARY.map((e) => e.scope).filter((s) => !/^[a-z]+:[a-z-]+$/.test(s));
+  /**
+   * Two segments is the norm. The optional third exists for connectors whose
+   * provider is itself a family of surfaces rather than one API: `gcp:*` (#1317)
+   * names the GCP surface in the middle (`gcp:vertex:invoke`), because a single
+   * `gcp:invoke` would say nothing about what the sealed service-account key is
+   * being unsealed for. The guard stays closed on casing and separators either
+   * way — this widens the shape, not the character set.
+   */
+  it('uses `surface:verb`-shaped scope strings, with an optional third segment', () => {
+    const malformed = SCOPE_VOCABULARY.map((e) => e.scope).filter((s) => !/^[a-z]+:[a-z-]+(:[a-z-]+)?$/.test(s));
     expect(malformed).toEqual([]);
   });
 
@@ -237,6 +245,44 @@ describe('SCOPES is a faithful projection', () => {
     expect(entry.connector).toBe('anthropic');
     expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
     expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.anthropic);
+  });
+
+  /**
+   * #1317: Stage 1 of the Google Cloud connector. A service-account key is broad,
+   * so the vocabulary opens exactly three narrow scopes against it rather than a
+   * single `gcp:*`. All three sit in the same 2×2 quadrant as `gemini:infer` —
+   * the owner's own credential, consumed per call, released to nobody.
+   */
+  it('includes the three Stage 1 GCP scopes as owner-only connector scopes', () => {
+    const expected = {
+      'gcp:iam:read': 'Read IAM policies and service accounts',
+      'gcp:vertex:invoke': 'Invoke Vertex AI / Gemini models',
+      'gcp:project:read': 'Read GCP project metadata',
+    } as const;
+
+    expect(scopesForConnector('gcp').map((e) => e.scope)).toEqual(Object.keys(expected));
+
+    for (const [scope, label] of Object.entries(expected)) {
+      expect(SCOPES[scope]).toBe(label);
+      expect(validateScopes([scope]).invalid).toEqual([]);
+
+      const entry = scopeEntry(scope) as ConnectorScopeEntry;
+      expect(entry.connector).toBe('gcp');
+      expect(entry.surface).toBe('gcp-api');
+      expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
+      expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.gcp);
+    }
+  });
+
+  /**
+   * Stage 2 builds MCP tools on top of these, but Stage 1 deliberately does not
+   * put them on the MCP capability ceiling: an MCP token cannot carry a scope
+   * whose tools do not exist yet.
+   */
+  it('keeps the GCP scopes off the MCP capability ceiling in Stage 1', () => {
+    for (const scope of ['gcp:iam:read', 'gcp:vertex:invoke', 'gcp:project:read']) {
+      expect(scopesForSurface('mcp')).not.toContain(scope);
+    }
   });
 
   /**
