@@ -5,7 +5,7 @@ import { eq, and, desc, lt, isNull, inArray } from 'drizzle-orm';
 
 const log = createLogger('kernel');
 import { db, conversationsV2, messagesV2, messageReactionsV2, identities } from '@/src/db';
-import { requireAuth, isVerifiedTier, canonicalize, crypto as authCrypto, resolveActingDid } from '@imajin/auth';
+import { requireAuth, isVerifiedTier, canonicalize, crypto as authCrypto, resolveActingDid, resolveComposedBy } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import {
@@ -175,6 +175,9 @@ export async function POST(
 
   const { identity } = authResult;
   const effectiveDid = resolveActingDid(identity);
+  // Dual attribution (#1673): the human keeps `fromDid`, but if an agent typed
+  // this under X-Acting-For delegation, its DID goes on the record too.
+  const composedBy = resolveComposedBy(identity);
   const { did: requestedDid } = await params;
 
   // Soft DIDs cannot send messages — they must verify their account first
@@ -251,6 +254,7 @@ export async function POST(
       id: messageId,
       conversationDid: did,
       fromDid: effectiveDid,
+      composedBy,
       content,
       contentType,
       replyToDid,

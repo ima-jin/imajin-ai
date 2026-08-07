@@ -236,6 +236,12 @@ export interface SendMessageParams {
   senderDid: string;
   senderTier?: string | null;
   senderHandle?: string | null;
+  /**
+   * DID of the agent that composed the message under `X-Acting-For`
+   * delegation, when that is not `senderDid` itself (#1673). Null/omitted means
+   * the sender composed it directly — never "unknown".
+   */
+  composedBy?: string | null;
   conversationDid: string;
   content: unknown;
   contentType?: string;
@@ -254,6 +260,15 @@ export type SendMessageResult =
   | { ok: false; status: number; error: string; code?: string; required?: Capability };
 
 /**
+ * Reduce a caller-supplied composer to what belongs on the record (#1673):
+ * a DID only when it is genuinely someone other than the sender. An agent
+ * "delegated" to itself is not a transcription and must not read like one.
+ */
+function normalizeComposedBy(composedBy: string | null | undefined, senderDid: string): string | null {
+  return composedBy && composedBy !== senderDid ? composedBy : null;
+}
+
+/**
  * Send a message in `conversationDid` authored as `senderDid` (onBehalfOf).
  * Enforces verified-tier, capability, access, and content validation, then
  * emits `message.send`, broadcasts over the chat WebSocket, and processes
@@ -268,6 +283,7 @@ export async function sendConversationMessage(params: SendMessageParams): Promis
     senderDid,
     senderTier,
     senderHandle,
+    composedBy,
     content,
     replyToMessageId,
     mediaType,
@@ -353,6 +369,7 @@ export async function sendConversationMessage(params: SendMessageParams): Promis
     id: messageId,
     conversationDid,
     fromDid: senderDid,
+    composedBy: normalizeComposedBy(composedBy, senderDid),
     content,
     contentType,
     replyToMessageId: replyToMessageId || null,

@@ -36,6 +36,7 @@ import { POST } from '../route';
 
 const ALICE = 'did:imajin:alice';
 const BOB = 'did:imajin:bob';
+const JIN = 'did:imajin:jin';
 
 function post(body: unknown, id = encodeURIComponent(BOB)) {
   return POST({ json: () => Promise.resolve(body) } as unknown as NextRequest, {
@@ -49,7 +50,7 @@ beforeEach(() => {
   h.lookupIdentity.mockReset();
   h.sendConversationMessage.mockReset();
 
-  h.resolveEffectiveDid.mockResolvedValue({ ok: true, effectiveDid: ALICE, via: 'session' });
+  h.resolveEffectiveDid.mockResolvedValue({ ok: true, effectiveDid: ALICE, via: 'session', composedBy: null });
   h.requireAuth.mockResolvedValue({ identity: { id: ALICE, tier: 'established', handle: 'alice' } });
   h.sendConversationMessage.mockResolvedValue({ ok: true, message: { id: 'msg_1' } });
 });
@@ -110,8 +111,31 @@ describe('POST /chat/api/conversations/:id/messages', () => {
     });
   });
 
+  it('forwards the composing agent so the write can record it (#1673)', async () => {
+    h.resolveEffectiveDid.mockResolvedValue({
+      ok: true,
+      effectiveDid: ALICE,
+      via: 'session',
+      composedBy: JIN,
+    });
+
+    await post({ content: { type: 'text', text: 'hi' } });
+
+    expect(h.sendConversationMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ senderDid: ALICE, composedBy: JIN }),
+    );
+  });
+
+  it('forwards a null composer for a direct message (#1673)', async () => {
+    await post({ content: { type: 'text', text: 'hi' } });
+
+    expect(h.sendConversationMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ composedBy: null }),
+    );
+  });
+
   it('hydrates the sender from the identity lookup on the app path', async () => {
-    h.resolveEffectiveDid.mockResolvedValue({ ok: true, effectiveDid: ALICE, via: 'app' });
+    h.resolveEffectiveDid.mockResolvedValue({ ok: true, effectiveDid: ALICE, via: 'app', composedBy: null });
     h.lookupIdentity.mockResolvedValue({ tier: 'verified', handle: 'alice' });
 
     await post({ content: { type: 'text', text: 'hi' } });

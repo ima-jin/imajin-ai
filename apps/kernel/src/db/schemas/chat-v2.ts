@@ -34,6 +34,13 @@ export const messagesV2 = chatSchema.table('messages_v2', {
   conversationDid: text('conversation_did').references(() => conversationsV2.did, { onDelete: 'cascade' }).notNull(),
   fromDid: text('from_did').notNull(),
 
+  // Dual attribution (#1673). `fromDid` stays the intent-owner — the human the
+  // message belongs to. `composedBy` records the agent DID that actually
+  // composed it when the write arrived via `X-Acting-For` delegation. Null for
+  // direct (non-delegated) messages, so a null value means "the sender typed
+  // this" and is never a lossy default.
+  composedBy: text('composed_by'),
+
   // Threading
   replyToDid: text('reply_to_did'),                             // DID of conversation being replied to (for cross-conv replies)
   replyToMessageId: text('reply_to_message_id'),                // Message ID being replied to
@@ -62,6 +69,7 @@ export const messagesV2 = chatSchema.table('messages_v2', {
 }, (table) => ({
   conversationDidIdx: index('idx_chat_msg_v2_conversation').on(table.conversationDid),
   fromDidIdx: index('idx_chat_msg_v2_from').on(table.fromDid),
+  composedByIdx: index('idx_chat_msg_v2_composed_by').on(table.composedBy),
   createdAtIdx: index('idx_chat_msg_v2_created').on(table.createdAt),
 }));
 

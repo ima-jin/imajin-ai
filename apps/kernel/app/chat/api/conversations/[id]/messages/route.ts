@@ -107,6 +107,9 @@ export async function POST(
       senderDid: effectiveDid,
       senderTier: identity.tier,
       senderHandle: identity.handle,
+      // Dual attribution (#1673): non-null only when an agent composed this
+      // under X-Acting-For delegation.
+      composedBy: auth.composedBy,
       conversationDid,
       content,
       contentType,

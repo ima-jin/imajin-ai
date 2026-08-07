@@ -1,9 +1,21 @@
+import { resolveComposedBy } from "./acting-did";
 import { requireAppAuth } from "./require-app-auth";
 import { requireAuth } from "./require-auth";
 import type { Scope } from "./scopes";
 
 export type EffectiveDidResult =
-  | { ok: true; effectiveDid: string; via: "app" | "session" }
+  | {
+      ok: true;
+      effectiveDid: string;
+      via: "app" | "session";
+      /**
+       * The agent DID that composed the request under `X-Acting-For`
+       * delegation, or null when the effective DID composed it directly
+       * (#1673). App-token callers are not transcribers — the human still
+       * types into the app — so the app path is always null.
+       */
+      composedBy: string | null;
+    }
   | { ok: false; status: number; error: string };
 
 /**
@@ -19,7 +31,7 @@ export async function resolveEffectiveDid(
     if ("error" in appResult) {
       return { ok: false, status: appResult.status, error: appResult.error };
     }
-    return { ok: true, effectiveDid: appResult.appAuth.userDid, via: "app" };
+    return { ok: true, effectiveDid: appResult.appAuth.userDid, via: "app", composedBy: null };
   }
 
   const authResult = await requireAuth(request);
@@ -30,5 +42,6 @@ export async function resolveEffectiveDid(
     ok: true,
     effectiveDid: authResult.identity.actingFor ?? authResult.identity.actingAs ?? authResult.identity.id,
     via: "session",
+    composedBy: resolveComposedBy(authResult.identity),
   };
 }
