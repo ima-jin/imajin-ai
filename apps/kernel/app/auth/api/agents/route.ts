@@ -152,6 +152,7 @@ export async function POST(request: NextRequest) {
       memberDid: caller.id,
       role: 'owner',
       addedBy: caller.id,
+      addedVia: 'direct',
     });
 
     // Reverse membership: agent is delegated to human
@@ -160,6 +161,7 @@ export async function POST(request: NextRequest) {
       memberDid: agentDid,
       role: 'agent',
       addedBy: caller.id,
+      addedVia: 'agent',
     });
 
     return NextResponse.json(

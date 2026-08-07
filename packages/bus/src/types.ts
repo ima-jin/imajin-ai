@@ -164,6 +164,8 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
     role: string;
+    /** How the member arrived: 'direct' | 'invite' | 'agent' | 'claim' (#1680). */
+    added_via?: string;
   };
   'group.controller.removed': {
     context_id: string;

@@ -181,11 +181,12 @@ export async function addScopeMembership(
         memberDid,
         role: 'member',
         addedBy: scopeDid,
+        addedVia: 'invite',
       });
     } else if (existing.removedAt) {
       await db
         .update(identityMembers)
-        .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedAt: new Date() })
+        .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedVia: 'invite', addedAt: new Date() })
         .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, memberDid)));
     }
     // If existing and not removed: already a member, nothing to do.

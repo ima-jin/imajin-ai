@@ -59,6 +59,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       memberDid: caller.id,
       role: 'maintainer',
       addedBy: caller.id,
+      addedVia: 'claim',
     });
 
     return NextResponse.json({ ok: true });

@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
       memberDid: caller.id,
       role: 'owner',
       addedBy: caller.id,
+      addedVia: 'direct',
     });
 
     // Create profile (fire-and-forget)

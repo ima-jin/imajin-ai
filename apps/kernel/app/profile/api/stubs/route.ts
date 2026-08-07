@@ -166,6 +166,7 @@ export async function POST(request: NextRequest) {
       memberDid: caller.id,
       role: 'maintainer',
       addedBy: caller.id,
+      addedVia: 'direct',
     });
 
     // Emit attestation (fire-and-forget)

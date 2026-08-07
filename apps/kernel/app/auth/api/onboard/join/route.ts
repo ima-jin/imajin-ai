@@ -89,7 +89,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     if (existing) {
       // Re-add previously removed member
       await db.update(identityMembers)
-        .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedAt: new Date() })
+        .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedVia: 'invite', addedAt: new Date() })
         .where(and(
           eq(identityMembers.identityDid, scopeDid),
           eq(identityMembers.memberDid, session.did)
@@ -100,6 +100,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         memberDid: session.did,
         role: 'member',
         addedBy: scopeDid,
+        addedVia: 'invite',
       });
     }
 

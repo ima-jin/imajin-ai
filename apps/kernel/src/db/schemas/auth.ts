@@ -238,6 +238,7 @@ export const identityMembers = authSchema.table('identity_members', {
   role: text('role').notNull().default('member'),         // 'owner' | 'admin' | 'maintainer' | 'member' | 'agent' | ...
   allowedServices: text('allowed_services').array(),      // null = full access, ['events','pay'] = restricted
   addedBy: text('added_by'),
+  addedVia: text('added_via'),                            // 'direct' | 'invite' | 'agent' | 'claim' | null = unknown (#1680)
   addedAt: timestamp('added_at', { withTimezone: true }).defaultNow(),
   removedAt: timestamp('removed_at', { withTimezone: true }),
   optInRef: text('opt_in_ref'),                                     // opaque opt-in ref that authorized this agent delegation (#1442)
