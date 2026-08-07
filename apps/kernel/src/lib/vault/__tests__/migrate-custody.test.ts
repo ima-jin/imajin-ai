@@ -293,11 +293,16 @@ describe('migrateCustody — canary failure', () => {
     expect(report.tier1).toBe(true);
     expect(report.aborted).toBe(true);
     expect(report.abortReason).toMatch(/canary field 'field-a' did not come back readable/i);
+    // #1556: the abort says WHY. This is the transient case — a real grant
+    // waiting on an owner agent — and must not read like a broken entry.
+    expect(report.abortReason).toMatch(/still pending/i);
+    expect(report.abortReason).not.toMatch(/verification failed/i);
 
     // Only the canary was touched; the rest of the batch was never attempted.
     expect(report.results).toEqual([
       { field: 'field-a', status: 'verify-failed', grantId: null, error: expect.any(String) },
     ]);
+    expect(report.results[0].error).toMatch(/still pending/i);
     expect((await vaultService.peek('field-b'))!.custodyScheme).not.toBe('delegation-grant');
 
     // The pending grant request is real — this is a Tier 1 field waiting on
