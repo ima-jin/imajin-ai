@@ -1,11 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, identityMembers, profiles } from '@/src/db';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
+import { isMemberAddedVia } from '@/src/lib/auth/membership';
 
 const log = createLogger('kernel');
 const VALID_SCOPES = ['business', 'community', 'family'];
+
+interface ResolvedIdentity {
+  did: string;
+  name: string | null;
+  handle: string | null;
+  avatarUrl: string | null;
+  scope: string | null;
+  subtype: string | null;
+}
+
+/**
+ * Resolve a set of DIDs to their display identity in one query.
+ *
+ * Members are stored as bare DIDs, which tells a human nothing. Rather than
+ * making the client fan out to `/auth/api/lookup/:did` once per row, resolve
+ * them here and return names alongside the membership rows.
+ */
+async function resolveIdentities(dids: string[]): Promise<Map<string, ResolvedIdentity>> {
+  const unique = [...new Set(dids.filter(Boolean))];
+  if (unique.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      did: identities.id,
+      name: identities.name,
+      handle: identities.handle,
+      avatarUrl: identities.avatarUrl,
+      scope: identities.scope,
+      subtype: identities.subtype,
+    })
+    .from(identities)
+    .where(inArray(identities.id, unique));
+
+  return new Map(rows.map((r) => [r.did, r]));
+}
 
 /**
  * GET /api/groups/[groupDid]
@@ -62,11 +98,12 @@ export async function GET(
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
-    const controllers = await db
+    const memberRows = await db
       .select({
         controllerDid: identityMembers.memberDid,
         role: identityMembers.role,
         addedBy: identityMembers.addedBy,
+        addedVia: identityMembers.addedVia,
         addedAt: identityMembers.addedAt,
         allowedServices: identityMembers.allowedServices,
       })
@@ -77,6 +114,28 @@ export async function GET(
           isNull(identityMembers.removedAt)
         )
       );
+
+    const resolved = await resolveIdentities(
+      memberRows.flatMap((m) => [m.controllerDid, m.addedBy ?? '']),
+    );
+
+    const controllers = memberRows.map((m) => {
+      const member = resolved.get(m.controllerDid) ?? null;
+      const addedByIdentity = m.addedBy ? (resolved.get(m.addedBy) ?? null) : null;
+      return {
+        ...m,
+        // `added_via` is free-form TEXT in the DB; only surface known values so
+        // the client never renders a chip for something it cannot explain.
+        addedVia: isMemberAddedVia(m.addedVia) ? m.addedVia : null,
+        name: member?.name ?? null,
+        handle: member?.handle ?? null,
+        avatarUrl: member?.avatarUrl ?? null,
+        subtype: member?.subtype ?? null,
+        scope: member?.scope ?? null,
+        addedByName: addedByIdentity?.name ?? null,
+        addedByHandle: addedByIdentity?.handle ?? null,
+      };
+    });
 
     return NextResponse.json({ ...group, createdBy: ownerRow?.controllerDid ?? null, controllers });
   } catch (error) {

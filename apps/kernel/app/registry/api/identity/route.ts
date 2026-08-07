@@ -245,6 +245,7 @@ async function upsertAgentGrant({
       memberDid: appDid,
       role: 'agent',
       addedBy: appDid,
+      addedVia: 'agent',
       optInRef,
     });
     return;
@@ -256,7 +257,7 @@ async function upsertAgentGrant({
   // Reactivate a previously revoked grant.
   await db
     .update(identityMembers)
-    .set({ removedAt: null, role: 'agent', optInRef, addedBy: appDid, addedAt: new Date() })
+    .set({ removedAt: null, role: 'agent', optInRef, addedBy: appDid, addedVia: 'agent', addedAt: new Date() })
     .where(
       and(
         eq(identityMembers.identityDid, travelerDid),

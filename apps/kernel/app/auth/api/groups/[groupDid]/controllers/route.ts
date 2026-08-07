@@ -4,10 +4,57 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
+import { MEMBER_ROLES } from '@/src/lib/auth/membership';
 
 const log = createLogger('kernel');
 
-const VALID_ROLES = ['owner', 'admin', 'maintainer', 'member'];
+const VALID_ROLES: readonly string[] = MEMBER_ROLES;
+
+interface AddControllerRequest {
+  did: string;
+  role: string;
+  /** null = full access. Only ever non-null for the agent role. */
+  allowedServices: string[] | null;
+}
+
+/**
+ * Validate an add-controller payload against the caller's own role.
+ *
+ * Returns the normalized request, or a NextResponse to return verbatim.
+ */
+function parseAddControllerBody(
+  body: Record<string, unknown>,
+  callerRole: string
+): AddControllerRequest | NextResponse {
+  const { did, role = 'member', allowedServices = null } = body as {
+    did?: string;
+    role?: string;
+    allowedServices?: string[] | null;
+  };
+
+  if (!did || typeof did !== 'string') {
+    return NextResponse.json({ error: 'did required' }, { status: 400 });
+  }
+  if (!VALID_ROLES.includes(role)) {
+    return NextResponse.json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` }, { status: 400 });
+  }
+  if (role === 'owner') {
+    return NextResponse.json({ error: 'Ownership cannot be granted from here' }, { status: 400 });
+  }
+  if (role === 'admin' && callerRole !== 'owner') {
+    return NextResponse.json({ error: 'Only owner can add admins' }, { status: 403 });
+  }
+
+  // Service scoping is only enforced for delegated agents (the X-Acting-For
+  // path checks allowed_services); ignore it elsewhere rather than storing a
+  // restriction nothing honours.
+  const scoped =
+    role === 'agent' && Array.isArray(allowedServices) && allowedServices.length > 0
+      ? allowedServices.map(String)
+      : null;
+
+  return { did, role, allowedServices: scoped };
+}
 
 /**
  * POST /api/groups/[groupDid]/controllers
@@ -48,21 +95,13 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { did, role = 'member', allowedServices = null } = body as {
-    did?: string;
-    role?: string;
-    allowedServices?: string[] | null;
-  };
+  const parsed = parseAddControllerBody(body, callerMembership.role);
+  if (parsed instanceof NextResponse) return parsed;
+  const { did, role, allowedServices: normalizedServices } = parsed;
 
-  if (!did || typeof did !== 'string') {
-    return NextResponse.json({ error: 'did required' }, { status: 400 });
-  }
-  if (!VALID_ROLES.includes(role)) {
-    return NextResponse.json({ error: `role must be one of: ${VALID_ROLES.join(', ')}` }, { status: 400 });
-  }
-  if (role === 'admin' && callerMembership.role !== 'owner') {
-    return NextResponse.json({ error: 'Only owner can add admins' }, { status: 403 });
-  }
+  // An agent adding members under X-Acting-For is programmatic provenance;
+  // anything else came from a controller clicking Add in the UI.
+  const addedVia = caller.actingFor === groupDid ? 'agent' : 'direct';
 
   try {
     // Check if controller was previously removed (soft delete)
@@ -85,7 +124,14 @@ export async function POST(
       // Reactivate
       await db
         .update(identityMembers)
-        .set({ removedAt: null, role, allowedServices, addedBy: caller.id, addedAt: new Date() })
+        .set({
+          removedAt: null,
+          role,
+          allowedServices: normalizedServices,
+          addedBy: caller.id,
+          addedVia,
+          addedAt: new Date(),
+        })
         .where(
           and(
             eq(identityMembers.identityDid, groupDid),
@@ -97,8 +143,9 @@ export async function POST(
         identityDid: groupDid,
         memberDid: did,
         role,
-        allowedServices,
+        allowedServices: normalizedServices,
         addedBy: caller.id,
+        addedVia,
       });
     }
 
@@ -106,10 +153,13 @@ export async function POST(
       issuer: caller.id,
       subject: did,
       scope: 'auth',
-      payload: { context_id: groupDid, context_type: 'group', role },
+      payload: { context_id: groupDid, context_type: 'group', role, added_via: addedVia },
     }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
 
-    return NextResponse.json({ ok: true, identityDid: groupDid, memberDid: did, role }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, identityDid: groupDid, memberDid: did, role, addedVia, allowedServices: normalizedServices },
+      { status: 201 }
+    );
   } catch (error) {
     log.error({ err: String(error) }, '[groups] Add controller error');
     return NextResponse.json({ error: 'Failed to add controller' }, { status: 500 });
