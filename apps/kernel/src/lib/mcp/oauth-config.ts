@@ -1,5 +1,5 @@
 /**
- * MCP OAuth 2.1 configuration + pure helpers (RFC 8414 / 9728 / 7636 / 8707).
+ * MCP OAuth 2.1 configuration + pure helpers (RFC 8414 / 9728 / 9207 / 7636 / 8707).
  *
  * Single source of truth for the issuer, endpoint URLs, the protected-resource
  * identifier (== access-token `aud`), and the supported scopes that the
@@ -9,6 +9,40 @@
  *
  * Part of #1166 (MCP connector for Claude Desktop). Route sketch — see the
  * handlers under app/.well-known, app/oauth, and app/mcp.
+ *
+ * ─── 2026-07-28 authorization diff (#1474) ─────────────────────────────────
+ *
+ * Diffed this module and the discovery docs against
+ * https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization
+ * and its changelog. Result, item by item:
+ *
+ *   - RFC 9728 (protected resource metadata) — "MCP servers MUST implement".
+ *     Satisfied: app/.well-known/oauth-protected-resource + the `resource_metadata`
+ *     pointer in the /mcp 401 challenge. No new REQUIRED members; `resource` is
+ *     the only one RFC 9728 mandates and we publish it plus
+ *     `authorization_servers`, `scopes_supported`, `bearer_methods_supported`.
+ *   - RFC 8414 / OIDC discovery — "MUST provide at least one". Satisfied by
+ *     app/.well-known/oauth-authorization-server; no OIDC doc is required as a
+ *     result. No newly-required members in this revision.
+ *   - RFC 8707 (resource indicators / audience binding) — unchanged. Satisfied:
+ *     getMcpResource() is both the advertised `resource` and the token `aud`,
+ *     and /mcp rejects any token whose `aud` differs.
+ *   - RFC 7591 (DCR) — reclassified as DEPRECATED, "retained for backwards
+ *     compatibility". We keep it because Claude Desktop still requires a
+ *     `registration_endpoint`. No change; Client ID Metadata Documents
+ *     (draft-ietf-oauth-client-id-metadata-document) is a SHOULD and is the
+ *     forward path, tracked separately.
+ *   - RFC 9207 (issuer identification) — NEW to the standards list in this
+ *     revision, and the one real gap we found. Addressed below: see
+ *     ISSUER_IDENTIFICATION_SUPPORTED / withIssuerIdentification().
+ *
+ * Two further items are SHOULDs deliberately left alone, recorded so the next
+ * diff does not re-litigate them:
+ *   - `scope` in the WWW-Authenticate challenge. Our `scopes_supported` is the
+ *     whole MCP ceiling, so echoing it into the challenge would tell clients to
+ *     request everything — the opposite of the least-privilege intent. Wiring a
+ *     per-request required-scope challenge belongs with the step-up flow.
+ *   - `application_type` at DCR is a requirement on CLIENTS, not on us.
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { CONNECTOR_DIDS, CONNECTOR_CHANNELS, scopesForSurface } from '@imajin/auth/scope-vocabulary';
@@ -69,6 +103,40 @@ export const OAUTH_TOKEN_ENDPOINT = getTokenEndpoint();
 export const OAUTH_REGISTRATION_ENDPOINT = getRegistrationEndpoint();
 /** @deprecated Use getProtectedResourceMetadataUrl() to avoid stale env capture. */
 export const PROTECTED_RESOURCE_METADATA_URL = getProtectedResourceMetadataUrl();
+
+/**
+ * RFC 9207 — OAuth 2.0 Authorization Server Issuer Identification (#1474).
+ *
+ * MCP `2026-07-28` added RFC 9207 to the authorization standards list: an AS
+ * SHOULD return `iss` on every authorization response, and an MCP client MUST
+ * validate a present `iss` against the issuer it recorded before redeeming the
+ * code. Without it, a client talking to several authorization servers cannot
+ * tell WHICH one produced a given `code`/`state`, which is the whole mechanic
+ * of an OAuth mix-up attack: a malicious (or compromised) AS induces the client
+ * to redeem its code at an honest AS, or vice versa.
+ *
+ * We are the AS here (/oauth/authorize), so this is ours to emit. It also has
+ * to be advertised: RFC 9207 §3 defines
+ * `authorization_response_iss_parameter_supported` in the RFC 8414 metadata,
+ * and a client cannot start REQUIRING `iss` from us until we say we send it.
+ *
+ * Adding `iss` is backwards compatible — a client that does not understand the
+ * parameter ignores an extra query member.
+ */
+export const ISSUER_IDENTIFICATION_SUPPORTED = true;
+
+/**
+ * Attach the RFC 9207 `iss` parameter to an authorization response URL.
+ *
+ * Applies to BOTH success (`?code=…`) and error (`?error=…`) redirects: RFC
+ * 9207 §2 covers "authorization responses", and an attacker who could strip
+ * `iss` from error responses only would still get a channel the client cannot
+ * attribute. Mutates and returns the URL so callers can keep chaining.
+ */
+export function withIssuerIdentification(url: URL): URL {
+  url.searchParams.set('iss', getMcpIssuer());
+  return url;
+}
 
 /**
  * Redirect-URI allowlist for Dynamic Client Registration (RFC 7591, #1185).

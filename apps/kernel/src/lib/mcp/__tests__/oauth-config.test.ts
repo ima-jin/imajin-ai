@@ -15,6 +15,8 @@ import {
   getTokenEndpoint,
   getRegistrationEndpoint,
   getProtectedResourceMetadataUrl,
+  withIssuerIdentification,
+  ISSUER_IDENTIFICATION_SUPPORTED,
 } from '../oauth-config.js';
 
 const CLAUDE_URI = 'https://claude.ai/api/mcp/auth_callback';
@@ -252,5 +254,53 @@ describe('lazy env getters (#1336)', () => {
     expect(getTokenEndpoint()).toBe('https://ep.example.com/oauth/token');
     expect(getRegistrationEndpoint()).toBe('https://ep.example.com/oauth/register');
     expect(getProtectedResourceMetadataUrl()).toBe('https://ep.example.com/.well-known/oauth-protected-resource');
+  });
+});
+
+/**
+ * RFC 9207 issuer identification (#1474) — added to the MCP authorization
+ * standards list by the 2026-07-28 revision. Without `iss`, a client talking to
+ * more than one authorization server cannot attribute a `code`/`state` pair to
+ * the AS that produced it, which is the mechanic behind an OAuth mix-up attack.
+ */
+describe('RFC 9207 issuer identification', () => {
+  const originalUrl = process.env.MCP_PUBLIC_URL;
+
+  afterEach(() => {
+    if (originalUrl === undefined) delete process.env.MCP_PUBLIC_URL;
+    else process.env.MCP_PUBLIC_URL = originalUrl;
+  });
+
+  it('advertises support so clients may require `iss` from us', () => {
+    expect(ISSUER_IDENTIFICATION_SUPPORTED).toBe(true);
+  });
+
+  it('stamps the issuer onto an authorization response URL', () => {
+    delete process.env.MCP_PUBLIC_URL;
+    const url = withIssuerIdentification(new URL('https://claude.ai/api/mcp/auth_callback'));
+    expect(url.searchParams.get('iss')).toBe('https://mcp.imajin.ai');
+  });
+
+  it('reads the issuer at call time, not module-eval time', () => {
+    process.env.MCP_PUBLIC_URL = 'https://iss.example.com';
+    const url = withIssuerIdentification(new URL('http://localhost:6274/oauth/callback'));
+    expect(url.searchParams.get('iss')).toBe('https://iss.example.com');
+  });
+
+  it('leaves the rest of the redirect untouched', () => {
+    const url = withIssuerIdentification(
+      new URL('http://localhost:6274/oauth/callback?state=abc&error=invalid_scope'),
+    );
+    expect(url.searchParams.get('state')).toBe('abc');
+    expect(url.searchParams.get('error')).toBe('invalid_scope');
+    expect(url.origin).toBe('http://localhost:6274');
+    expect(url.pathname).toBe('/oauth/callback');
+  });
+
+  it('is idempotent — a second pass does not duplicate the parameter', () => {
+    const url = withIssuerIdentification(
+      withIssuerIdentification(new URL('https://claude.ai/api/mcp/auth_callback')),
+    );
+    expect(url.searchParams.getAll('iss')).toHaveLength(1);
   });
 });

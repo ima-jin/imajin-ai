@@ -4,6 +4,7 @@ import {
   getAuthorizationEndpoint,
   getTokenEndpoint,
   getRegistrationEndpoint,
+  ISSUER_IDENTIFICATION_SUPPORTED,
   MCP_SCOPES,
 } from '@/src/lib/mcp/oauth-config';
 
@@ -19,6 +20,10 @@ import {
  *   abuse-mitigated: redirect-URI allowlist + scope cap + rate limit, and a
  *   registered client grants nothing until a real DID consents.
  * - Public client + PKCE S256 → token_endpoint_auth_methods_supported: ['none'].
+ * - RFC 9207 issuer identification IS supported (#1474, required by the MCP
+ *   2026-07-28 authorization spec). Advertising it is what lets a client start
+ *   REQUIRING `iss` on our authorization responses — without the metadata flag
+ *   a conforming client can only treat a present `iss` as optional.
  */
 export function GET() {
   return NextResponse.json(
@@ -33,6 +38,7 @@ export function GET() {
       token_endpoint_auth_methods_supported: ['none'],
       scopes_supported: MCP_SCOPES,
       registration_endpoint: getRegistrationEndpoint(), // RFC 7591 DCR (#1185)
+      authorization_response_iss_parameter_supported: ISSUER_IDENTIFICATION_SUPPORTED, // RFC 9207 §3
       // revocation_endpoint: omitted for now — revocation is handled out-of-band
       //   via the existing session-based /api/auth/revoke + /auth/apps UI (the
       //   app.authorized attestation is the grant). Add an RFC 7009 endpoint here
