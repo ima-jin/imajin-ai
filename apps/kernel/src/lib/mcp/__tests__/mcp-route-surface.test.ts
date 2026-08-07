@@ -63,10 +63,16 @@ const { POST } = await import('../../../../app/mcp/route');
 import { verifyAppToken } from '@/src/lib/auth/jwt';
 import { handleMcpRpc } from '@/src/lib/mcp/server';
 
-function makeRequest(opts: { auth?: string; body?: unknown; protocolVersion?: string }) {
+function makeRequest(opts: {
+  auth?: string;
+  body?: unknown;
+  protocolVersion?: string;
+  headers?: Record<string, string>;
+}) {
   const headers = new Headers();
   if (opts.auth) headers.set('authorization', opts.auth);
   if (opts.protocolVersion) headers.set('mcp-protocol-version', opts.protocolVersion);
+  for (const [k, v] of Object.entries(opts.headers ?? {})) headers.set(k, v);
 
   return {
     headers: {
@@ -201,5 +207,160 @@ describe('POST /mcp surface scope gate (#1337)', () => {
     expect((ctx as Record<string, unknown>).appDid).toBe('did:imajin:app');
     const scopes = (ctx as Record<string, unknown>).scopes as Set<string>;
     expect(scopes.has('github:read')).toBe(true);
+  });
+});
+
+/**
+ * 2026-07-28 transport rules (#1474).
+ *
+ * These are the parts of the revision the ROUTE owns rather than the
+ * dispatcher: mirrored-header validation and the 4xx mapping a dual-era client
+ * relies on to tell a modern server from a legacy one. Dispatch itself is
+ * mocked here — see protocol-2026-07-28.test.ts for that half.
+ */
+describe('POST /mcp modern transport (2026-07-28)', () => {
+  const MODERN = '2026-07-28';
+  const META_VERSION = 'io.modelcontextprotocol/protocolVersion';
+
+  function modernBody(method: string, params: Record<string, unknown> = {}, version = MODERN) {
+    return {
+      jsonrpc: '2.0',
+      id: 1,
+      method,
+      params: {
+        ...params,
+        _meta: {
+          [META_VERSION]: version,
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
+    };
+  }
+
+  beforeEach(() => {
+    h.tokenPayload = validPayload({ scope: 'media:read' });
+    vi.mocked(handleMcpRpc).mockClear();
+  });
+
+  it('accepts a well-formed modern request and echoes the version header', async () => {
+    const res = await POST(
+      makeRequest({
+        auth: 'Bearer token',
+        protocolVersion: MODERN,
+        headers: { 'mcp-method': 'tools/list' },
+        body: modernBody('tools/list'),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('MCP-Protocol-Version')).toBe(MODERN);
+    expect(handleMcpRpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a modern request with no Mcp-Method header (HeaderMismatch)', async () => {
+    const res = await POST(
+      makeRequest({
+        auth: 'Bearer token',
+        protocolVersion: MODERN,
+        body: modernBody('tools/list'),
+      }),
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error.code).toBe(-32020);
+    expect(json.error.message).toContain('Mcp-Method');
+    // Rejected at the transport seam — dispatch must not see it.
+    expect(handleMcpRpc).not.toHaveBeenCalled();
+  });
+
+  it('rejects a header/body protocol-version disagreement', async () => {
+    const res = await POST(
+      makeRequest({
+        auth: 'Bearer token',
+        protocolVersion: MODERN,
+        headers: { 'mcp-method': 'tools/list' },
+        body: modernBody('tools/list', {}, '2025-06-18'),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe(-32020);
+  });
+
+  it('rejects an Mcp-Name that disagrees with params.name', async () => {
+    const res = await POST(
+      makeRequest({
+        auth: 'Bearer token',
+        protocolVersion: MODERN,
+        headers: { 'mcp-method': 'tools/call', 'mcp-name': 'other_tool' },
+        body: modernBody('tools/call', { name: 'media_list', arguments: {} }),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toContain('Mcp-Name');
+  });
+
+  it('returns 400 for an UnsupportedProtocolVersionError', async () => {
+    vi.mocked(handleMcpRpc).mockResolvedValueOnce({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32022, message: 'Unsupported protocol version' },
+    });
+    const res = await POST(
+      makeRequest({
+        auth: 'Bearer token',
+        protocolVersion: MODERN,
+        headers: { 'mcp-method': 'tools/list' },
+        body: modernBody('tools/list'),
+      }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 for an unknown method under the modern transport', async () => {
+    vi.mocked(handleMcpRpc).mockResolvedValueOnce({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32601, message: 'Method not found: ping' },
+    });
+    const res = await POST(
+      makeRequest({
+        auth: 'Bearer token',
+        protocolVersion: MODERN,
+        headers: { 'mcp-method': 'ping' },
+        body: modernBody('ping'),
+      }),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * The compatibility guarantee: none of the above may leak onto clients that
+   * never asked for 2026-07-28. A legacy request carries none of the mirrored
+   * headers and still gets an unconditional 200, JSON-RPC error or not.
+   */
+  it('leaves legacy requests unvalidated and at HTTP 200', async () => {
+    vi.mocked(handleMcpRpc).mockResolvedValueOnce({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32601, message: 'Method not found: nope' },
+    });
+    const res = await POST(
+      makeRequest({
+        auth: 'Bearer token',
+        protocolVersion: '2025-06-18',
+        body: { jsonrpc: '2.0', id: 1, method: 'nope' },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(handleMcpRpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a legacy request with no version header at HTTP 200', async () => {
+    const res = await POST(
+      makeRequest({
+        auth: 'Bearer token',
+        body: { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
+      }),
+    );
+    expect(res.status).toBe(200);
   });
 });

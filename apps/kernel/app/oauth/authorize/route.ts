@@ -14,6 +14,7 @@ import {
   generateOpaqueToken,
   hashToken,
   redirectUriMatches,
+  withIssuerIdentification,
 } from '@/src/lib/mcp/oauth-config';
 import { anchorToOrigin } from '@/src/lib/mcp/oauth-redirect';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
@@ -40,13 +41,19 @@ function publicOrigin(request: NextRequest): string {
   return new URL(request.url).origin;
 }
 
-/** Redirect back to the client with OAuth error params (RFC 6749 §4.1.2.1). */
+/**
+ * Redirect back to the client with OAuth error params (RFC 6749 §4.1.2.1).
+ *
+ * Carries `iss` like the success redirect does — RFC 9207 covers authorization
+ * responses of both kinds, and a client that can attribute successes but not
+ * failures still cannot tell which AS rejected it (#1474).
+ */
 function errorRedirect(redirectUri: string, state: string | null, error: string, description?: string) {
   const url = new URL(redirectUri);
   url.searchParams.set('error', error);
   if (description) url.searchParams.set('error_description', description);
   if (state) url.searchParams.set('state', state);
-  return NextResponse.redirect(url);
+  return NextResponse.redirect(withIssuerIdentification(url));
 }
 
 /**
@@ -354,7 +361,9 @@ export async function POST(request: NextRequest) {
 
   log.info({ clientId: client.id, userDid: sessionDid, scope }, 'oauth: consent committed, issued authorization code');
 
-  const redirect = new URL(redirectUri);
+  // RFC 9207 `iss` (#1474): tells the client WHICH authorization server minted
+  // this code, so it can refuse to redeem it at a different one (mix-up attack).
+  const redirect = withIssuerIdentification(new URL(redirectUri));
   redirect.searchParams.set('code', code);
   if (state) redirect.searchParams.set('state', state);
   return NextResponse.json({ redirect: redirect.toString() });
