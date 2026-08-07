@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, conversationsV2, conversationMembers } from '@/src/db';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { dmDid, conversationPath } from '@/src/lib/chat/conversation-did';
+import { canInitiateDm, DM_CONNECTION_REQUIRED } from '@/src/lib/chat/connection-check';
 import { buildPublicUrl } from '@imajin/config';
 
 const APP_URL = buildPublicUrl('chat');
@@ -15,6 +16,11 @@ function redirect(path: string) {
  * GET /start?did=DID
  * Finds or creates a v2 direct conversation with the given DID, then redirects to it.
  * Ensures both participants are in conversation_members.
+ *
+ * Opening a NEW thread requires an active connection with the target, or that
+ * the target is an agent (#855). An existing thread is always reachable.
+ *
+ * Cognitive complexity: 6 (≤ 15)
  */
 export async function GET(request: NextRequest) {
   const did = request.nextUrl.searchParams.get('did');
@@ -38,6 +44,11 @@ export async function GET(request: NextRequest) {
   });
 
   if (!existing) {
+    const allowed = await canInitiateDm(myDid, did);
+    if (!allowed) {
+      return NextResponse.json({ error: DM_CONNECTION_REQUIRED }, { status: 403 });
+    }
+
     await db
       .insert(conversationsV2)
       .values({

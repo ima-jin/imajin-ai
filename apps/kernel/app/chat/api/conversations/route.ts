@@ -7,6 +7,7 @@ import { requireAuth, resolveEffectiveDid, resolveActingDid } from '@imajin/auth
 import { requireGraphMember } from '@/src/lib/kernel/require-graph-member';
 import { jsonResponse, errorResponse, isValidDid } from '@/src/lib/kernel/utils';
 import { dmDid } from '@/src/lib/chat/conversation-did';
+import { canInitiateDm, DM_CONNECTION_REQUIRED } from '@/src/lib/chat/connection-check';
 import { listConversations } from '@/src/lib/chat/queries';
 
 const rawSql = getClient();
@@ -32,7 +33,58 @@ export const GET = withLogger('kernel', async (request, { log }) => {
 });
 
 /**
+ * Find or create the canonical DM conversation between `effectiveDid` and
+ * `otherDid`. Opening a NEW thread requires an active connection, or that the
+ * other party is an agent (#855).
+ *
+ * Cognitive complexity: 3 (≤ 15)
+ */
+async function createDirectConversation(
+  effectiveDid: string,
+  otherDid: string,
+  correlationId?: string,
+) {
+  const convDid = dmDid(effectiveDid, otherDid);
+
+  const existing = await db.query.conversationsV2.findFirst({
+    where: eq(conversationsV2.did, convDid),
+  });
+
+  if (existing) {
+    return jsonResponse({ conversation: existing, existing: true });
+  }
+
+  const allowed = await canInitiateDm(effectiveDid, otherDid);
+  if (!allowed) {
+    return errorResponse(DM_CONNECTION_REQUIRED, 403);
+  }
+
+  await db.insert(conversationsV2).values({
+    did: convDid,
+    type: 'dm',
+    createdBy: effectiveDid,
+  }).onConflictDoNothing();
+
+  // Track both parties so we can resolve names without reversing the hash
+  await rawSql`
+    INSERT INTO chat.conversation_members (conversation_did, member_did, role)
+    VALUES (${convDid}, ${effectiveDid}, 'member'), (${convDid}, ${otherDid}, 'member')
+    ON CONFLICT (conversation_did, member_did) DO NOTHING
+  `;
+
+  const conv = await db.query.conversationsV2.findFirst({
+    where: eq(conversationsV2.did, convDid),
+  });
+
+  publish('conversation.create', { issuer: effectiveDid, subject: effectiveDid, scope: 'chat', payload: { conversationDid: convDid, type: 'direct' }, correlationId }).catch(() => {});
+
+  return jsonResponse({ conversation: conv }, 201);
+}
+
+/**
  * POST /api/conversations - Create a new v2 conversation
+ *
+ * Cognitive complexity: 12 (≤ 15)
  */
 export const POST = withLogger('kernel', async (request, { log, correlationId }) => {
   try {
@@ -72,37 +124,7 @@ export const POST = withLogger('kernel', async (request, { log, correlationId })
         return errorResponse('Direct conversations must have exactly one other participant');
       }
 
-      const otherDid = participantDids[0];
-      const convDid = dmDid(effectiveDid, otherDid);
-
-      const existing = await db.query.conversationsV2.findFirst({
-        where: eq(conversationsV2.did, convDid),
-      });
-
-      if (existing) {
-        return jsonResponse({ conversation: existing, existing: true });
-      }
-
-      await db.insert(conversationsV2).values({
-        did: convDid,
-        type: 'dm',
-        createdBy: effectiveDid,
-      }).onConflictDoNothing();
-
-      // Track both parties so we can resolve names without reversing the hash
-      await rawSql`
-        INSERT INTO chat.conversation_members (conversation_did, member_did, role)
-        VALUES (${convDid}, ${effectiveDid}, 'member'), (${convDid}, ${otherDid}, 'member')
-        ON CONFLICT (conversation_did, member_did) DO NOTHING
-      `;
-
-      const conv = await db.query.conversationsV2.findFirst({
-        where: eq(conversationsV2.did, convDid),
-      });
-
-      publish('conversation.create', { issuer: effectiveDid, subject: effectiveDid, scope: 'chat', payload: { conversationDid: convDid, type: 'direct' }, correlationId }).catch(() => {});
-
-      return jsonResponse({ conversation: conv }, 201);
+      return createDirectConversation(effectiveDid, participantDids[0], correlationId);
     }
 
     // Group conversation

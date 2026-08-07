@@ -14,6 +14,7 @@ import {
   resolvePreviewText,
   triggerLinkUnfurl,
 } from '@/src/lib/chat/message-helpers';
+import { resolveDmConversationTarget } from '@/src/lib/chat/dm-guard';
 
 import { checkAccess } from '@/src/lib/kernel/access';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
@@ -159,6 +160,8 @@ export async function GET(
 
 /**
  * POST /api/d/:did/messages - Send a message to a DID-keyed conversation
+ *
+ * Cognitive complexity: 14 (≤ 15)
  */
 export async function POST(
   request: NextRequest,
@@ -172,22 +175,34 @@ export async function POST(
 
   const { identity } = authResult;
   const effectiveDid = resolveActingDid(identity);
-  const { did } = await params;
+  const { did: requestedDid } = await params;
 
   // Soft DIDs cannot send messages — they must verify their account first
   if (!isVerifiedTier(identity.tier)) {
     return errorResponse('Please verify your account to send messages', 403, cors);
   }
 
-  // Verify access
-  const hasAccess = await verifyDidAccess(effectiveDid, did);
-  if (!hasAccess) {
-    return errorResponse('Access denied', 403, cors);
-  }
-
   try {
     const body = await request.json();
     const { content, replyToMessageId, mediaType, mediaPath, mediaAssetId, mediaMeta, conversationName, recipientDid } = body;
+
+    // Canonical DM key + connection gate (#1649, #855). Everything downstream
+    // uses the resolved DID, never the raw URL param.
+    const target = await resolveDmConversationTarget({
+      conversationDid: requestedDid,
+      senderDid: effectiveDid,
+      recipientDid: recipientDid ?? null,
+    });
+    if (!target.ok) {
+      return errorResponse(target.error, target.status, cors);
+    }
+    const did = target.conversationDid;
+
+    // Verify access
+    const hasAccess = await verifyDidAccess(effectiveDid, did);
+    if (!hasAccess) {
+      return errorResponse('Access denied', 403, cors);
+    }
 
     if (!content || typeof content !== 'object') {
       return errorResponse('content is required and must be an object', 400, cors);
@@ -200,7 +215,7 @@ export async function POST(
     }
 
     // Auto-create conversation (if needed) and track sender as member
-    await ensureConversation(did, effectiveDid, conversationName ?? null);
+    await ensureConversation(did, effectiveDid, conversationName ?? null, recipientDid ?? null);
 
     // For DMs: ensure the other participant is also tracked
     await ensureDmMembers(did, effectiveDid, recipientDid ?? null);

@@ -101,7 +101,7 @@ export async function POST(
 
   try {
     const body = await request.json();
-    const { content, contentType, replyToMessageId, mediaType, mediaPath, mediaAssetId, mediaMeta, conversationName } = body;
+    const { content, contentType, replyToMessageId, mediaType, mediaPath, mediaAssetId, mediaMeta, conversationName, recipientDid } = body;
 
     const result = await sendConversationMessage({
       senderDid: effectiveDid,
@@ -116,6 +116,7 @@ export async function POST(
       mediaAssetId,
       mediaMeta,
       conversationName,
+      recipientDid,
     });
 
     if (!result.ok) {

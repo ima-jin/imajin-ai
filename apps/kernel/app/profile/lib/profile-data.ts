@@ -6,6 +6,10 @@ import { eq, count, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import type { ProfileData, ProfileCounts, LinkItem, IdentityInfo } from './types';
 
+// Connection lookup is shared with the chat routes (#855) — single source of
+// truth lives in src/lib/chat/connection-check.ts.
+export { isConnected } from '@/src/lib/chat/connection-check';
+
 export interface MemberEntry {
   role: string;
   did: string;
@@ -22,20 +26,6 @@ export async function getViewerDid(): Promise<string | null> {
     const kernelSession = await getSessionFromCookies(`${SESSION_COOKIE_NAME}=${session.value}`);
     return kernelSession?.did ?? null;
   } catch { return null; }
-}
-
-export async function isConnected(viewerDid: string, targetDid: string): Promise<boolean> {
-  try {
-    const [connDidA, connDidB] = [viewerDid, targetDid].sort((a, b) => a.localeCompare(b));
-    const row = await db.query.connections.findFirst({
-      where: (c, { eq, and, isNull }) => and(
-        eq(c.didA, connDidA),
-        eq(c.didB, connDidB),
-        isNull(c.disconnectedAt)
-      ),
-    });
-    return !!row;
-  } catch { return false; }
 }
 
 export async function getProfile(handle: string): Promise<ProfileData | null> {
