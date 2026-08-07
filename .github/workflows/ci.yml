@@ -207,9 +207,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Producer checks (every required context has a job that emits it) are a
+      # real gate and run offline against .github/required-checks.json.
+      #
+      # The drift check against the LIVE ruleset is advisory: reading rulesets
+      # needs an admin-scoped token, which secrets.GITHUB_TOKEN is not, so it
+      # emits a ::warning:: and continues. Until RULESET_READ_TOKEN is
+      # provisioned, this workflow does NOT verify that GitHub's actual branch
+      # protection matches what the repo declares. Set CI_GUARD_REQUIRE_RULESET=1
+      # to promote that half to blocking once the token exists.
       - name: Required-context producer guard
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RULESET_READ_TOKEN: ${{ secrets.RULESET_READ_TOKEN }}
         run: node scripts/ci-guard-required-contexts.mjs
 
       - name: Swallowed-assertion guard
@@ -252,10 +262,22 @@ jobs:
           }
           echo "lcov.info: $(grep -c '^SF:' coverage/lcov.info) source files"
 
+      # A missing token must not be a silent pass. On a fork the secret is
+      # genuinely unavailable and skipping is correct. On a same-repo run it
+      # means the token was never set, was rotated, or expired — and the job
+      # would go green having analysed nothing. That is #1539's failure mode
+      # with a different cause, and it is the last silent no-op #1559 found in
+      # this file, so it fails loudly instead.
+      - name: Require SONAR_TOKEN on same-repo runs
+        if: ${{ env.SONAR_TOKEN == '' && github.event.pull_request.head.repo.fork != true }}
+        run: |
+          echo "::error::SONAR_TOKEN is not set on a same-repo run — the quality gate would pass having scanned nothing."
+          exit 1
+
       - name: SonarCloud Scan
         if: ${{ env.SONAR_TOKEN != '' }}
         uses: SonarSource/sonarqube-scan-action@v6
 
-      - name: Skip note (no SONAR_TOKEN)
+      - name: Skip note (fork without SONAR_TOKEN)
         if: ${{ env.SONAR_TOKEN == '' }}
         run: echo "::notice::SONAR_TOKEN not set — skipping SonarCloud scan (expected on forks)."

@@ -9,30 +9,46 @@
  * context has no job that emits it, the check sits at "Expected — waiting for
  * status" forever. That blocks merge through the front door, while the bypass
  * silently lets PRs through, so nobody experiences the block and nobody fixes
- * it.
+ * it. This happened in #1561: the ruleset required `Lint & Typecheck`, but the
+ * job had been renamed to `Lint`.
  *
- * This happened in #1561: the ruleset required `Lint & Typecheck`, but the job
- * had been renamed to `Lint`. The old context waited forever; the new context
- * was not required, so lint became advisory without anyone deciding that.
+ * ## Why it was rewritten
  *
- * Renaming a CI job is a breaking change to branch protection, and GitHub
- * gives no warning. This guard automates the check so the breakage is caught
- * in CI, not discovered by accident months later.
+ * The first version read the live ruleset through `gh api` and exited 0 when
+ * that call failed. In the upstream repo's own CI it printed
+ *
+ *   ci-guard-required-contexts: SKIP — cannot reach GitHub API
+ *
+ * on every single run: the runner container has no `gh`, and reading rulesets
+ * needs an admin-scoped token that `secrets.GITHUB_TOKEN` is not. So a guard
+ * written to catch checks that cannot fail was itself a check that could not
+ * fail — inside a REQUIRED context. That is the #1559 pattern exactly.
+ *
+ * The fix is to stop depending on privileged access for the part that matters.
+ * `.github/required-checks.json` declares intent in-repo, so the producer check
+ * runs offline and can genuinely fail. The live ruleset is then only used to
+ * detect drift between declared intent and actual GitHub config.
  *
  * ## What it does
  *
- * 1. Fetches the active "Branch Protection" ruleset for this repo via the
- *    GitHub API, resolving the ruleset id dynamically.
- * 2. Extracts every `required_status_checks[].context` from that ruleset.
- * 3. Parses every `.github/workflows/*.yml` and collects the `name:` of every
- *    job (falling back to the job-id when `name:` is absent).
- * 4. Fails if any required context is not present in the set of job names.
+ * Always (no network, hard-fails):
+ *   1. Every context in `required` is emitted by some job `name:`.
+ *   2. `required` and `advisory` do not overlap, and neither has duplicates.
+ *
+ * Additionally, when an admin-scoped token is available (hard-fails on drift):
+ *   3. The live ruleset's required contexts match `required` exactly.
+ *
+ * Step 3 degrades to a loud warning when the API is unreachable or the token
+ * lacks permission. That half is advisory BY DESIGN and says so on every run —
+ * it is not allowed to be silent again.
+ *
+ * Set `CI_GUARD_REQUIRE_RULESET=1` to make an unavailable ruleset a hard error
+ * (use once an admin-scoped token is provisioned in CI).
  *
  * ## Sonar-clean notes
  *
- * - No PATH-spawn (S4036). All data comes from files or an HTTPS API call.
- * - The API call uses the `gh` CLI, which is already authenticated in CI and
- *   in local dev; if unavailable we fail-soft with a clear message.
+ * - No PATH-spawn (S4036): the ruleset is fetched with global `fetch`, not the
+ *   `gh` CLI, which also removes the dependency that made this a no-op.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -44,81 +60,62 @@ const ROOT = process.env.CI_GUARD_WORKDIR
   ? resolve(process.env.CI_GUARD_WORKDIR)
   : join(fileURLToPath(import.meta.url), '..', '..');
 const WORKFLOWS_DIR = join(ROOT, '.github', 'workflows');
-const REPO = 'ima-jin/imajin-ai';
+const MANIFEST_PATH = join(ROOT, '.github', 'required-checks.json');
+const REPO = process.env.CI_GUARD_REPO ?? 'ima-jin/imajin-ai';
+const RULESET_NAME = 'Branch Protection';
 
-/**
- * Compare strings deterministically.
- */
+/** Compare strings deterministically. */
 const byString = (a, b) => {
   if (a < b) return -1;
   return a > b ? 1 : 0;
 };
 
-/**
- * Fetch the active Branch Protection ruleset id and its required contexts.
- *
- * Uses `gh api` because it handles auth (GITHUB_TOKEN in CI, local creds
- * elsewhere). If `gh` is unavailable or unauthenticated, we print a clear
- * skip message and exit 0 — the guard cannot make a decision without data,
- * but we do not want to block CI on a missing token in a fork.
- */
-async function fetchRequiredContexts() {
-  let rulesetsJson;
-  try {
-    const { execSync } = await import('node:child_process');
-    rulesetsJson = execSync(
-      `gh api repos/${REPO}/rulesets --jq '.[] | select(.name == "Branch Protection" and .enforcement == "active") | .id'`,
-      { encoding: 'utf8', timeout: 15000 },
-    ).trim();
-  } catch {
-    console.log(
-      'ci-guard-required-contexts: SKIP — cannot reach GitHub API (gh CLI unavailable or unauthenticated)',
-    );
-    console.log(
-      '  This is expected in forks without GITHUB_TOKEN. The guard will run in the upstream repo.',
-    );
-    process.exit(0);
-  }
-
-  if (!rulesetsJson) {
-    console.error('ci-guard-required-contexts: no active Branch Protection ruleset found');
-    process.exit(1);
-  }
-
-  const rulesetId = rulesetsJson;
-
-  let rulesetJson;
-  try {
-    const { execSync } = await import('node:child_process');
-    rulesetJson = execSync(`gh api repos/${REPO}/rulesets/${rulesetId}`, {
-      encoding: 'utf8',
-      timeout: 15000,
-    }).trim();
-  } catch {
-    console.error(`ci-guard-required-contexts: failed to fetch ruleset ${rulesetId}`);
-    process.exit(1);
-  }
-
-  let ruleset;
-  try {
-    ruleset = JSON.parse(rulesetJson);
-  } catch {
-    console.error('ci-guard-required-contexts: ruleset response was not valid JSON');
-    process.exit(1);
-  }
-
-  const requiredStatusChecksRule = (ruleset.rules ?? []).find(
-    (r) => r.type === 'required_status_checks',
-  );
-  const contexts =
-    requiredStatusChecksRule?.parameters?.required_status_checks?.map((c) => c.context) ?? [];
-
-  return contexts;
+function fail(message, details = []) {
+  console.error(`\nFAIL: ${message}\n`);
+  for (const d of details) console.error(`  ${d}`);
+  process.exit(1);
 }
 
-/**
- * Collect every job name (or job-id fallback) from all workflow files.
- */
+/** Load and validate the in-repo declaration of intent. */
+function loadManifest() {
+  let raw;
+  try {
+    raw = readFileSync(MANIFEST_PATH, 'utf8');
+  } catch {
+    fail(`cannot read ${MANIFEST_PATH}`, [
+      'This file declares which checks are meant to block merge.',
+      'Without it the guard cannot tell intent from accident.',
+    ]);
+  }
+
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch {
+    fail(`${MANIFEST_PATH} is not valid JSON`);
+  }
+
+  const required = manifest.required ?? [];
+  const advisory = (manifest.advisory ?? []).map((a) => a.context);
+
+  if (!Array.isArray(manifest.required) || required.length === 0) {
+    fail('required-checks.json must list at least one required context');
+  }
+
+  const dupes = required.filter((c, i) => required.indexOf(c) !== i);
+  if (dupes.length > 0) {
+    fail('duplicate entries in `required`', [...new Set(dupes)].sort(byString));
+  }
+
+  const overlap = required.filter((c) => advisory.includes(c));
+  if (overlap.length > 0) {
+    fail('context listed as BOTH required and advisory', overlap.sort(byString));
+  }
+
+  return { required, advisory };
+}
+
+/** Collect every job name (or job-id fallback) from all workflow files. */
 function collectJobNames() {
   const names = new Set();
 
@@ -126,8 +123,7 @@ function collectJobNames() {
   try {
     files = readdirSync(WORKFLOWS_DIR).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
   } catch {
-    console.error(`ci-guard-required-contexts: cannot read ${WORKFLOWS_DIR}`);
-    process.exit(1);
+    fail(`cannot read ${WORKFLOWS_DIR}`);
   }
 
   for (const file of files) {
@@ -136,43 +132,129 @@ function collectJobNames() {
     try {
       doc = YAML.parse(readFileSync(path, 'utf8'));
     } catch {
-      console.error(`ci-guard-required-contexts: cannot parse ${path}`);
-      process.exit(1);
+      fail(`cannot parse ${path}`);
     }
 
     const jobs = doc?.jobs;
     if (!jobs || typeof jobs !== 'object') continue;
 
     for (const [jobId, jobDef] of Object.entries(jobs)) {
-      const name = typeof jobDef?.name === 'string' ? jobDef.name : jobId;
-      names.add(name);
+      names.add(typeof jobDef?.name === 'string' ? jobDef.name : jobId);
     }
   }
 
   return names;
 }
 
-// ── Main ─────────────────────────────────────────────────────────────────────
-
-const requiredContexts = await fetchRequiredContexts();
-const jobNames = collectJobNames();
-
-console.log(`ci-guard-required-contexts: ${requiredContexts.length} required context(s)`);
-console.log(`ci-guard-required-contexts: ${jobNames.size} job name(s) found in workflows`);
-
-const orphaned = requiredContexts.filter((ctx) => !jobNames.has(ctx)).sort(byString);
-
-if (orphaned.length > 0) {
-  console.error('\nFAIL: required context(s) with no producing job:\n');
-  for (const ctx of orphaned) {
-    console.error(`  - "${ctx}"`);
+/**
+ * Read the live ruleset's required contexts.
+ *
+ * Returns `{ ok: true, contexts }`, or `{ ok: false, reason }` when the caller
+ * should degrade. Never throws and never silently returns success.
+ */
+async function fetchLiveContexts() {
+  const token = process.env.RULESET_READ_TOKEN || process.env.GITHUB_TOKEN;
+  if (!token) {
+    return { ok: false, reason: 'no RULESET_READ_TOKEN / GITHUB_TOKEN in the environment' };
   }
-  console.error(
-    '\nEach required context must match a job `name:` (or job-id if unnamed) in .github/workflows/*.yml.',
-  );
-  console.error('Renaming a job is a breaking change to branch protection.');
-  process.exit(1);
+
+  const headers = {
+    accept: 'application/vnd.github+json',
+    authorization: `Bearer ${token}`,
+    'user-agent': 'ci-guard-required-contexts',
+  };
+
+  let listRes;
+  try {
+    listRes = await fetch(`https://api.github.com/repos/${REPO}/rulesets`, { headers });
+  } catch (err) {
+    return { ok: false, reason: `network error: ${String(err)}` };
+  }
+  if (!listRes.ok) {
+    return {
+      ok: false,
+      reason: `GET /rulesets returned ${listRes.status} (reading rulesets needs an admin-scoped token)`,
+    };
+  }
+
+  const rulesets = await listRes.json();
+  const match = rulesets.find((r) => r.name === RULESET_NAME && r.enforcement === 'active');
+  if (!match) return { ok: false, reason: `no active ruleset named "${RULESET_NAME}"` };
+
+  const detailRes = await fetch(`https://api.github.com/repos/${REPO}/rulesets/${match.id}`, {
+    headers,
+  });
+  if (!detailRes.ok) {
+    return { ok: false, reason: `GET /rulesets/${match.id} returned ${detailRes.status}` };
+  }
+
+  const ruleset = await detailRes.json();
+  const rule = (ruleset.rules ?? []).find((r) => r.type === 'required_status_checks');
+  const contexts = rule?.parameters?.required_status_checks?.map((c) => c.context) ?? [];
+  return { ok: true, contexts };
 }
 
-console.log('\nPASS: every required context is emitted by a job.');
+// ── Main ─────────────────────────────────────────────────────────────────────
+
+const { required, advisory } = loadManifest();
+const jobNames = collectJobNames();
+
+console.log(`ci-guard-required-contexts: ${required.length} declared required context(s)`);
+console.log(`ci-guard-required-contexts: ${jobNames.size} job name(s) found in workflows`);
+
+// 1. Producer check — the part that must work without any API access.
+const orphaned = required.filter((ctx) => !jobNames.has(ctx)).sort(byString);
+if (orphaned.length > 0) {
+  fail('required context(s) with no producing job:', [
+    ...orphaned.map((c) => `- "${c}"`),
+    '',
+    'Each required context must match a job `name:` (or job-id if unnamed)',
+    'in .github/workflows/*.yml. Renaming a job is a breaking change to',
+    'branch protection — update .github/required-checks.json and the ruleset.',
+  ]);
+}
+
+// Advisory entries are documentation, so a stale one is still misleading.
+const staleAdvisory = advisory.filter((ctx) => !jobNames.has(ctx)).sort(byString);
+if (staleAdvisory.length > 0) {
+  fail('advisory context(s) with no producing job:', [
+    ...staleAdvisory.map((c) => `- "${c}"`),
+    '',
+    'Remove them from .github/required-checks.json, or fix the job name.',
+  ]);
+}
+
+// 2. Drift check — best-effort, but never silent.
+const live = await fetchLiveContexts();
+
+if (!live.ok) {
+  const message = `ruleset drift check skipped — ${live.reason}`;
+  if (process.env.CI_GUARD_REQUIRE_RULESET === '1') {
+    fail(message, ['CI_GUARD_REQUIRE_RULESET=1 makes this a hard error.']);
+  }
+  console.log(`::warning::ci-guard-required-contexts: ${message}`);
+  console.log(
+    'Producer checks PASSED. Drift against the live ruleset was NOT verified — ' +
+      'set RULESET_READ_TOKEN to an admin-scoped token to enable it.',
+  );
+  process.exit(0);
+}
+
+const declared = [...required].sort(byString);
+const actual = [...live.contexts].sort(byString);
+const missingFromRuleset = declared.filter((c) => !actual.includes(c));
+const missingFromManifest = actual.filter((c) => !declared.includes(c));
+
+if (missingFromRuleset.length > 0 || missingFromManifest.length > 0) {
+  fail('declared required checks do not match the live ruleset:', [
+    ...missingFromRuleset.map((c) => `- declared but NOT required on ${RULESET_NAME}: "${c}"`),
+    ...missingFromManifest.map((c) => `- required on ${RULESET_NAME} but not declared: "${c}"`),
+    '',
+    'Update .github/required-checks.json or the ruleset so the two agree.',
+  ]);
+}
+
+console.log(
+  `\nPASS: ${declared.length} required context(s) produced and matching the live ruleset.`,
+);
 process.exit(0);

@@ -1,0 +1,42 @@
+{
+  "$comment": [
+    "Which status checks are INTENDED to block a merge to main (#1559).",
+    "",
+    "This file is the in-repo source of truth. It exists because the guard that",
+    "validates branch protection could only read the live ruleset through an",
+    "admin-scoped GitHub API call, which the CI token cannot make — so it skipped",
+    "on every run and validated nothing. Declaring intent here lets the guard do",
+    "its most important job (every required context has a producing job) with no",
+    "API access at all, and treat the live ruleset as drift detection on top.",
+    "",
+    "`required` must match the contexts in the active 'Branch Protection' ruleset.",
+    "Each entry must equal a job `name:` in .github/workflows/*.yml exactly —",
+    "renaming a job is a breaking change to branch protection (#1561).",
+    "",
+    "`advisory` records checks that deliberately run without blocking merge, so a",
+    "reader is not misled into thinking they gate anything."
+  ],
+  "branch": "main",
+  "required": [
+    "Build",
+    "CI Guards",
+    "Check Migrations",
+    "Lint & Typecheck",
+    "SonarCloud",
+    "Test"
+  ],
+  "advisory": [
+    {
+      "context": "Security Audit",
+      "reason": "Runs the ratcheting audit gate and can fail, but is not in the ruleset, so a new advisory does not block merge. Promoting it is tracked separately — see #1559."
+    },
+    {
+      "context": "DFOS Conformance Suite",
+      "reason": "workflow_dispatch + weekly schedule only; never runs on a pull request, so it cannot be a required context."
+    },
+    {
+      "context": "schema-migration-sync",
+      "reason": "Separate check-migrations.yml workflow. Overlaps the required 'Check Migrations' job in ci.yml."
+    }
+  ]
+}
