@@ -1,7 +1,7 @@
 /**
- * `warp.run.completed` → notify reactor (#1644).
+ * `warp.run.*` → notify reactor (#1644; #1682).
  *
- * This is the bus-chain test the issue asks for: publishing a completed Warp run
+ * This is the bus-chain test the issue asks for: publishing a Warp run event
  * must invoke the notify reactor for the event subject. The notify route then
  * writes the DB row and pushes the WebSocket frame; that lower layer is covered
  * in the kernel tests.
@@ -47,6 +47,34 @@ const COMPLETED_PAYLOAD: BusEventMap['warp.run.completed'] = {
   sessionLink: 'https://app.warp.dev/session/abc',
   principalDid: PRINCIPAL,
   completedAt: '2026-08-06T03:18:11.000Z',
+  context_id: RUN_ID,
+  context_type: 'warp.agent',
+};
+
+const PROGRESS_PAYLOAD: BusEventMap['warp.run.progress'] = {
+  runId: RUN_ID,
+  principalDid: PRINCIPAL,
+  state: 'INPROGRESS',
+  previousState: 'QUEUED',
+  changed: ['state', 'messages'],
+  summary: 'QUEUED → INPROGRESS; 1 new message',
+  newMessages: [
+    {
+      index: 0,
+      stepId: 'step-1',
+      role: 'assistant',
+      blockTypes: ['text'],
+      actions: [],
+      text: 'working',
+    },
+  ],
+  newMessageCount: 1,
+  totalMessageCount: 1,
+  requestUsage: { inferenceCost: 0.12, computeCost: null, platformCost: null },
+  statusMessage: null,
+  artifacts: [],
+  pollCount: 2,
+  observedAt: '2026-08-06T03:18:11.000Z',
   context_id: RUN_ID,
   context_type: 'warp.agent',
 };
@@ -107,6 +135,34 @@ describe('publishing warp.run.completed', () => {
     expect(mockNotify.mock.calls[0][1]).toMatchObject({
       title: 'Warp run timed out',
       body: 'Run {{runId}} last seen {{lastKnownState}}',
+    });
+  });
+});
+
+describe('publishing warp.run.progress (#1682)', () => {
+  it('carries a mid-run delta down the same chain as the terminal events', async () => {
+    await publish('warp.run.progress', {
+      issuer: PRINCIPAL,
+      subject: PRINCIPAL,
+      scope: 'warp',
+      payload: PROGRESS_PAYLOAD,
+    });
+    await Promise.resolve();
+
+    expect(mockEmit).toHaveBeenCalledTimes(1);
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+
+    const [event, config] = mockNotify.mock.calls[0];
+    expect(event).toMatchObject({
+      type: 'warp.run.progress',
+      // The subject is the dispatching DID, which is what makes the WebSocket
+      // push land on the agent that is waiting on the run.
+      subject: PRINCIPAL,
+      payload: PROGRESS_PAYLOAD,
+    });
+    expect(config).toMatchObject({
+      title: 'Warp run progress',
+      body: 'Run {{runId}}: {{summary}}',
     });
   });
 });

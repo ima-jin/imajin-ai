@@ -1,10 +1,10 @@
 /**
- * `warp.run.*` completion events (#1639, Stage 3; #1644).
+ * `warp.run.*` lifecycle events (#1639, Stage 3; #1644; #1682).
  *
- * The completion event IS the notification mechanism, so what matters here is
- * that it reaches both the live event stream and the notify reactor by default
- * rather than falling through to an empty chain — a run finishing with nothing
- * configured would otherwise be a silent no-op.
+ * The event IS the notification mechanism, so what matters here is that it
+ * reaches both the live event stream and the notify reactor by default rather
+ * than falling through to an empty chain — a run finishing, or moving, with
+ * nothing configured would otherwise be a silent no-op.
  */
 import { describe, it, expect, vi } from 'vitest';
 
@@ -20,14 +20,14 @@ import type { BusEventMap } from '../src/types';
 const WARP_SCOPE = 'warp';
 
 describe('warp.run.* default chains', () => {
-  it.each(['warp.run.completed', 'warp.run.timeout'] as const)(
+  it.each(['warp.run.completed', 'warp.run.timeout', 'warp.run.progress'] as const)(
     'emits %s to the live stream and notifies by default',
     async (eventType) => {
       const cfg = await getChainConfig(eventType, WARP_SCOPE);
 
-      // Mirrors migration 0084. `notify` is what turns the event into a durable
-      // notification row and, through it, a WebSocket push to the dispatching DID
-      // (#1644); `emit` keeps the live stream #1639 added.
+      // Mirrors migrations 0084 and 0086. `notify` is what turns the event into a
+      // durable notification row and, through it, a WebSocket push to the
+      // dispatching DID (#1644); `emit` keeps the live stream #1639 added.
       expect(cfg.reactors.map((r) => r.type)).toEqual(['emit', 'notify']);
       expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
     },
@@ -36,6 +36,9 @@ describe('warp.run.* default chains', () => {
   it.each([
     ['warp.run.completed', 'Run {{state}}: {{title}}'],
     ['warp.run.timeout', 'Run {{runId}} last seen {{lastKnownState}}'],
+    // `summary` is a scalar precisely because the reactor substitutes flat keys
+    // only — a body cannot walk `newMessages` (#1682).
+    ['warp.run.progress', 'Run {{runId}}: {{summary}}'],
   ] as const)('configures the %s notification body from payload fields', async (eventType, body) => {
     const cfg = await getChainConfig(eventType, WARP_SCOPE);
     const notify = cfg.reactors.find((r) => r.type === 'notify');
@@ -110,5 +113,74 @@ describe('warp.run.completed payload', () => {
     } satisfies BusEventMap['warp.run.timeout'];
 
     expect(timedOut.lastKnownState).toBe('INPROGRESS');
+  });
+});
+
+describe('warp.run.progress payload (#1682)', () => {
+  it('type-checks a mid-run delta carrying a state change and a new tool call', () => {
+    const progress = {
+      runId: '019f9990-2a46-7552-b177-3a23b17eef2e',
+      principalDid: 'did:imajin:veteze',
+      state: 'INPROGRESS',
+      previousState: 'QUEUED',
+      changed: ['state', 'messages'],
+      summary: 'QUEUED → INPROGRESS; 1 new message',
+      newMessages: [
+        {
+          index: 3,
+          stepId: 'step-1',
+          role: 'tool',
+          blockTypes: ['action'],
+          actions: ['run_command'],
+          text: null,
+        },
+      ],
+      newMessageCount: 1,
+      totalMessageCount: 4,
+      requestUsage: { inferenceCost: 0.12, computeCost: null, platformCost: null },
+      statusMessage: null,
+      artifacts: [],
+      pollCount: 2,
+      observedAt: '2026-08-06T03:18:11.000Z',
+      context_id: '019f9990-2a46-7552-b177-3a23b17eef2e',
+      context_type: 'warp.agent',
+    } satisfies BusEventMap['warp.run.progress'];
+
+    // Same context_id as the dispatch and the eventual completion, so a run's
+    // whole life is one thread rather than a scatter of unrelated rows.
+    expect(progress.context_id).toBe(progress.runId);
+    expect(progress.newMessages[0].actions).toEqual(['run_command']);
+  });
+
+  it('type-checks an early error surfaced before any terminal state', () => {
+    const progress = {
+      runId: '019f9990-2a46-7552-b177-3a23b17eef2e',
+      principalDid: 'did:imajin:veteze',
+      state: 'INPROGRESS',
+      previousState: 'INPROGRESS',
+      changed: ['statusMessage'],
+      summary: 'sandbox_restart',
+      newMessages: [],
+      newMessageCount: 0,
+      totalMessageCount: 12,
+      requestUsage: null,
+      statusMessage: { message: 'Sandbox restarted', errorCode: 'sandbox_restart', retryable: true },
+      artifacts: [
+        {
+          type: 'PULL_REQUEST',
+          url: 'https://github.com/ima-jin/imajin-ai/pull/1683',
+          branch: 'feat/1682',
+        },
+      ],
+      pollCount: 7,
+      observedAt: '2026-08-06T03:18:11.000Z',
+      context_id: '019f9990-2a46-7552-b177-3a23b17eef2e',
+      context_type: 'warp.agent',
+    } satisfies BusEventMap['warp.run.progress'];
+
+    expect(progress.statusMessage?.retryable).toBe(true);
+    // A PR can land long before the run ends, which is the point of carrying
+    // artifacts on a progress event at all.
+    expect(progress.artifacts[0].branch).toBe('feat/1682');
   });
 });

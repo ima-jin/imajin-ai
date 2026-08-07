@@ -286,6 +286,22 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
       enabled: true,
     },
   ],
+  // #1682 — mid-run deltas, down the same pipe as the terminal events so a
+  // progress tick reaches the dispatching DID's socket the same way a completion
+  // does. Kept in sync with migration 0086.
+  //
+  // `notify` is deliberate despite the volume worry: watchRun only publishes when
+  // something actually changed, so the row count tracks real activity rather than
+  // the poll schedule. `summary` is a scalar precisely so the body renders as one
+  // readable line without the reactor having to walk `newMessages`.
+  'warp.run.progress': [
+    { type: 'emit', config: {}, enabled: true },
+    {
+      type: 'notify',
+      config: { title: 'Warp run progress', body: 'Run {{runId}}: {{summary}}' },
+      enabled: true,
+    },
+  ],
   'broker.release': [
     { type: 'emit', config: {}, enabled: true },
   ],

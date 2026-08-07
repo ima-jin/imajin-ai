@@ -1,9 +1,10 @@
 /**
- * Tests for the Warp run completion watch (#1639, Stage 3).
+ * Tests for the Warp run watch (#1639, Stage 3; #1682).
  *
- * The watch is driven through the real `getAgentRun` read path with `fetch`
- * mocked, so these pin the poll schedule, the terminal-state detection, and the
- * shape of the bus event a listener will actually receive.
+ * The watch is driven through the real `getAgentRun` / `getAgentRunConversation`
+ * read paths with `fetch` mocked, so these pin the poll schedule, the
+ * terminal-state detection, the mid-run progress deltas, and the shape of the
+ * bus events a listener will actually receive.
  *
  * Two things are injected rather than faked globally:
  *   - `sleep`, which records the gap it was asked for and advances a stubbed
@@ -12,6 +13,10 @@
  *   - nothing else. `WATCH_POLL_INTERVALS_MS` and `WATCH_TIMEOUT_MS` are the real
  *     production values here, so a change to either breaks these tests rather
  *     than sliding past them.
+ *
+ * `fetch` is answered by URL rather than by call order: the watch makes two
+ * different reads per cycle now, and an order-based queue would let a
+ * conversation read silently eat a run response.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -76,28 +81,88 @@ function sleep(ms: number): Promise<void> {
   return Promise.resolve();
 }
 
-/** Queue one `GET /agent/runs/{id}` answer. */
-function respondRun(body: unknown, status = 200): void {
-  vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-    ok: status >= 200 && status < 300,
-    status,
-    statusText: 'Test',
-    json: async () => body,
-  } as Response);
+interface StubbedResponse {
+  body: unknown;
+  status: number;
 }
 
-/** Answer every remaining read the same way. */
-function respondRunAlways(body: unknown, status = 200): void {
-  vi.mocked(globalThis.fetch).mockResolvedValue({
+/** Answers pulled in order, then held at the fallback once the queue is empty. */
+interface ResponseLane {
+  queue: StubbedResponse[];
+  fallback: StubbedResponse | null;
+  reads: number;
+}
+
+let runLane: ResponseLane;
+let conversationLane: ResponseLane;
+
+function takeFrom(lane: ResponseLane): StubbedResponse {
+  lane.reads += 1;
+  const next = lane.queue.shift() ?? lane.fallback;
+  if (next === null || next === undefined) {
+    throw new Error('the watch made more reads than the test queued answers for');
+  }
+  return next;
+}
+
+function asResponse({ body, status }: StubbedResponse): Response {
+  return {
     ok: status >= 200 && status < 300,
     status,
     statusText: 'Test',
     json: async () => body,
-  } as Response);
+  } as Response;
+}
+
+/**
+ * Route a read to its lane.
+ *
+ * The run read and the conversation read differ only by the path suffix, which
+ * is all the discrimination the watch's two calls per cycle need.
+ */
+function installFetch(): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) =>
+      asResponse(takeFrom(String(url).endsWith('/conversation') ? conversationLane : runLane)),
+    ),
+  );
+}
+
+/** Queue one `GET /agent/runs/{id}` answer. */
+function respondRun(body: unknown, status = 200): void {
+  runLane.queue.push({ body, status });
+}
+
+/** Answer every remaining run read the same way. */
+function respondRunAlways(body: unknown, status = 200): void {
+  runLane.fallback = { body, status };
+}
+
+/** Queue one `GET /agent/runs/{id}/conversation` answer. */
+function respondConversation(steps: unknown[], status = 200): void {
+  conversationLane.queue.push({ body: { conversation_id: 'c1', steps }, status });
+}
+
+/** Answer every remaining conversation read the same way. */
+function respondConversationAlways(steps: unknown[], status = 200): void {
+  conversationLane.fallback = { body: { conversation_id: 'c1', steps }, status };
 }
 
 function runBody(state: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return { run_id: RUN_ID, state, ...extra };
+}
+
+function step(id: string, messages: unknown[], nested: unknown[] = []): Record<string, unknown> {
+  return { id, messages, steps: nested };
+}
+
+function textMessage(role: string, text: string): Record<string, unknown> {
+  return { role, content: [{ type: 'text', text }] };
+}
+
+function actionMessage(name: string): Record<string, unknown> {
+  return { role: 'tool', content: [{ type: 'action', category: 'COMMAND', name, input: {} }] };
 }
 
 interface PublishedEvent {
@@ -108,19 +173,40 @@ interface PublishedEvent {
   payload: Record<string, unknown>;
 }
 
-/** The single event the watch published, or a failure if it published none. */
-function publishedEvent(index = 0): PublishedEvent {
-  const call = publishMock.mock.calls[index] as
-    | [string, { issuer: string; subject: string; scope: string; payload: Record<string, unknown> }]
-    | undefined;
-  if (call === undefined) {
-    throw new Error(`no event published at index ${index}`);
-  }
-  return { type: call[0], ...call[1] };
+function publishedEvents(): PublishedEvent[] {
+  return publishMock.mock.calls.map(
+    ([type, event]: [
+      string,
+      { issuer: string; subject: string; scope: string; payload: Record<string, unknown> },
+    ]) => ({ type, ...event }),
+  );
 }
 
+function eventsOfType(type: string): PublishedEvent[] {
+  return publishedEvents().filter((event) => event.type === type);
+}
+
+/** The first event of `type` the watch published, or a failure if it published none. */
+function eventOfType(type: string): PublishedEvent {
+  const [event] = eventsOfType(type);
+  if (event === undefined) {
+    const seen = publishedEvents().map((e) => e.type).join(', ');
+    throw new Error(`no ${type} published; saw [${seen}]`);
+  }
+  return event;
+}
+
+function progressEvents(): PublishedEvent[] {
+  return eventsOfType('warp.run.progress');
+}
+
+/** Run reads only — the conversation lane is counted separately. */
 function readCount(): number {
-  return vi.mocked(globalThis.fetch).mock.calls.length;
+  return runLane.reads;
+}
+
+function conversationReadCount(): number {
+  return conversationLane.reads;
 }
 
 beforeEach(() => {
@@ -129,6 +215,15 @@ beforeEach(() => {
   slept = [];
   clockMs = 1_760_000_000_000;
   vi.spyOn(Date, 'now').mockImplementation(() => clockMs);
+
+  runLane = { queue: [], fallback: null, reads: 0 };
+  // A run whose conversation is not explicitly stubbed simply has nothing in it
+  // yet, which is the common case for the terminal-state tests.
+  conversationLane = {
+    queue: [],
+    fallback: { body: { conversation_id: 'c1', steps: [] }, status: 200 },
+    reads: 0,
+  };
 
   requireAgentKeyMock.mockReset().mockResolvedValue(AGENT_KEY);
   lookupIdentityMock.mockReset().mockResolvedValue({ did: PRINCIPAL, handle: 'veteze' });
@@ -140,7 +235,7 @@ beforeEach(() => {
   readEnvironmentIdMock.mockReset();
   getNodeDidMock.mockReset();
 
-  vi.stubGlobal('fetch', vi.fn());
+  installFetch();
 });
 
 afterEach(() => {
@@ -209,8 +304,7 @@ describe('terminal states', () => {
 
     await watchRun(PRINCIPAL, RUN_ID, { sleep });
 
-    const event = publishedEvent();
-    expect(event.type).toBe('warp.run.completed');
+    const event = eventOfType('warp.run.completed');
     expect(event.issuer).toBe(PRINCIPAL);
     expect(event.subject).toBe(PRINCIPAL);
     expect(event.scope).toBe('warp');
@@ -246,8 +340,12 @@ describe('terminal states', () => {
 
     await watchRun(PRINCIPAL, RUN_ID, { sleep });
 
-    expect(publishedEvent().payload.artifacts).toEqual([
-      { type: 'PULL_REQUEST', url: 'https://github.com/ima-jin/imajin-ai/pull/1638', branch: 'fix/1630' },
+    expect(eventOfType('warp.run.completed').payload.artifacts).toEqual([
+      {
+        type: 'PULL_REQUEST',
+        url: 'https://github.com/ima-jin/imajin-ai/pull/1638',
+        branch: 'fix/1630',
+      },
       { type: 'PLAN', url: null, branch: null },
       { type: 'UNKNOWN', url: 'https://example.test/thing', branch: null },
     ]);
@@ -266,7 +364,7 @@ describe('terminal states', () => {
 
     await watchRun(PRINCIPAL, RUN_ID, { sleep });
 
-    expect(publishedEvent().payload).toMatchObject({
+    expect(eventOfType('warp.run.completed').payload).toMatchObject({
       state: 'FAILED',
       statusMessage: {
         message: 'Team has no remaining add-on credits',
@@ -281,7 +379,7 @@ describe('terminal states', () => {
 
     await watchRun(PRINCIPAL, RUN_ID, { sleep });
 
-    expect(publishedEvent().payload).toMatchObject({ state: 'CANCELLED' });
+    expect(eventOfType('warp.run.completed').payload).toMatchObject({ state: 'CANCELLED' });
     expect(readCount()).toBe(1);
   });
 
@@ -293,7 +391,7 @@ describe('terminal states', () => {
     await watchRun(PRINCIPAL, RUN_ID, { sleep });
 
     expect(readCount()).toBe(3);
-    expect(publishedEvent().payload).toMatchObject({ state: 'SUCCEEDED' });
+    expect(eventOfType('warp.run.completed').payload).toMatchObject({ state: 'SUCCEEDED' });
   });
 
   it('publishes exactly one event and stops reading once terminal', async () => {
@@ -314,8 +412,7 @@ describe('timeout', () => {
 
     await watchRun(PRINCIPAL, RUN_ID, { sleep });
 
-    const event = publishedEvent();
-    expect(event.type).toBe('warp.run.timeout');
+    const event = eventOfType('warp.run.timeout');
     expect(event.payload).toMatchObject({
       runId: RUN_ID,
       lastKnownState: 'INPROGRESS',
@@ -334,7 +431,10 @@ describe('timeout', () => {
     expect(WATCH_TIMEOUT_MS).toBe(30 * 60 * 1_000);
     expect(slept.reduce((total, ms) => total + ms, 0)).toBe(WATCH_TIMEOUT_MS);
     expect(Math.max(...slept)).toBeLessThanOrEqual(60_000);
-    expect(publishMock).toHaveBeenCalledTimes(1);
+    expect(eventsOfType('warp.run.timeout')).toHaveLength(1);
+    // A run that never moves reports its first sighting and then stays quiet for
+    // the rest of the budget, so the timeout is not competing with poll noise.
+    expect(progressEvents()).toHaveLength(1);
   });
 
   it('reports UNKNOWN when the budget is gone before the first read', async () => {
@@ -342,10 +442,309 @@ describe('timeout', () => {
 
     await watchRun(PRINCIPAL, RUN_ID, { sleep, timeoutMs: 0 });
 
-    const event = publishedEvent();
-    expect(event.type).toBe('warp.run.timeout');
-    expect(event.payload).toMatchObject({ lastKnownState: 'UNKNOWN' });
+    expect(eventOfType('warp.run.timeout').payload).toMatchObject({ lastKnownState: 'UNKNOWN' });
     expect(readCount()).toBe(0);
+  });
+});
+
+// ── Progress: state transitions (#1682) ───────────────────────────────────────
+
+describe('state transitions', () => {
+  it('publishes the first sighting and then the transition into INPROGRESS', async () => {
+    respondRun(runBody('QUEUED'));
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    const [first, second] = progressEvents();
+    expect(first.issuer).toBe(PRINCIPAL);
+    expect(first.subject).toBe(PRINCIPAL);
+    expect(first.scope).toBe('warp');
+    expect(first.payload).toMatchObject({
+      runId: RUN_ID,
+      principalDid: PRINCIPAL,
+      state: 'QUEUED',
+      // The first sighting has nothing to transition from.
+      previousState: null,
+      changed: ['state'],
+      summary: 'QUEUED',
+      pollCount: 1,
+      context_id: RUN_ID,
+      context_type: 'warp.agent',
+    });
+    expect(typeof first.payload.observedAt).toBe('string');
+
+    expect(second.payload).toMatchObject({
+      state: 'INPROGRESS',
+      previousState: 'QUEUED',
+      changed: ['state'],
+      summary: 'QUEUED → INPROGRESS',
+      pollCount: 2,
+    });
+  });
+
+  it('does not publish progress for the terminal read, which the completion covers', async () => {
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    expect(progressEvents().map((event) => event.payload.state)).toEqual(['INPROGRESS']);
+    expect(eventsOfType('warp.run.completed')).toHaveLength(1);
+  });
+
+  it('stays silent on a poll where nothing moved', async () => {
+    respondRun(runBody('QUEUED'));
+    respondRun(runBody('QUEUED'));
+    respondRun(runBody('QUEUED'));
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    expect(progressEvents()).toHaveLength(1);
+  });
+
+  it('can be turned off entirely, leaving the terminal event alone', async () => {
+    respondRun(runBody('QUEUED'));
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep, progress: false });
+
+    expect(progressEvents()).toHaveLength(0);
+    expect(conversationReadCount()).toBe(0);
+    expect(eventsOfType('warp.run.completed')).toHaveLength(1);
+  });
+});
+
+// ── Progress: conversation deltas (#1682) ─────────────────────────────────────
+
+describe('conversation deltas', () => {
+  it('skips the conversation read while the run is still queued', async () => {
+    respondRun(runBody('QUEUED'));
+    respondRun(runBody('QUEUED'));
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    // One read, for the single INPROGRESS poll — the two QUEUED polls made none.
+    expect(conversationReadCount()).toBe(1);
+  });
+
+  it('publishes only the messages that appeared since the last poll', async () => {
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+    respondConversation([step('step-1', [textMessage('assistant', 'working')])]);
+    respondConversation([
+      step('step-1', [textMessage('assistant', 'working'), actionMessage('run_command')]),
+    ]);
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    const [first, second] = progressEvents();
+    expect(first.payload).toMatchObject({
+      changed: ['state', 'messages'],
+      newMessageCount: 1,
+      totalMessageCount: 1,
+    });
+    expect(first.payload.newMessages).toEqual([
+      {
+        index: 0,
+        stepId: 'step-1',
+        role: 'assistant',
+        blockTypes: ['text'],
+        actions: [],
+        text: 'working',
+      },
+    ]);
+
+    // The message already reported is not reported again.
+    expect(second.payload).toMatchObject({
+      changed: ['messages'],
+      summary: '1 new message',
+      newMessageCount: 1,
+      totalMessageCount: 2,
+    });
+    expect(second.payload.newMessages).toEqual([
+      {
+        index: 1,
+        stepId: 'step-1',
+        role: 'tool',
+        blockTypes: ['action'],
+        actions: ['run_command'],
+        text: null,
+      },
+    ]);
+  });
+
+  it('walks nested steps depth-first, so a delegated step keeps its place', async () => {
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+    respondConversation([
+      step(
+        'step-1',
+        [textMessage('assistant', 'delegating')],
+        [step('step-1a', [textMessage('assistant', 'child work')])],
+      ),
+      step('step-2', [textMessage('assistant', 'back on top')]),
+    ]);
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    const carried = progressEvents()[0].payload.newMessages as Array<Record<string, unknown>>;
+    expect(carried.map((message) => [message.index, message.stepId, message.text])).toEqual([
+      [0, 'step-1', 'delegating'],
+      [1, 'step-1a', 'child work'],
+      [2, 'step-2', 'back on top'],
+    ]);
+  });
+
+  it('keeps the most recent messages when a burst exceeds the cap, but counts them all', async () => {
+    const messages = Array.from({ length: 25 }, (_unused, index) =>
+      textMessage('assistant', `message ${index}`),
+    );
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+    respondConversation([step('step-1', messages)]);
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    const payload = progressEvents()[0].payload;
+    const carried = payload.newMessages as Array<Record<string, unknown>>;
+    expect(payload).toMatchObject({ newMessageCount: 25, totalMessageCount: 25 });
+    expect(carried).toHaveLength(20);
+    expect(carried[0].index).toBe(5);
+    expect(carried.at(-1)).toMatchObject({ index: 24, text: 'message 24' });
+  });
+
+  it('truncates a long message rather than putting an unbounded body on the bus', async () => {
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+    respondConversation([step('step-1', [textMessage('assistant', 'x'.repeat(2_000))])]);
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    const [message] = progressEvents()[0].payload.newMessages as Array<{ text: string }>;
+    expect(message.text).toHaveLength(501);
+    expect(message.text.endsWith('…')).toBe(true);
+  });
+
+  it('reports a message Warp sent without a role or block type rather than dropping it', async () => {
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+    respondConversation([{ messages: [{ content: [{ text: 'orphan' }] }] }]);
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    expect(progressEvents()[0].payload.newMessages).toEqual([
+      {
+        index: 0,
+        stepId: null,
+        role: 'unknown',
+        blockTypes: ['unknown'],
+        actions: [],
+        text: 'orphan',
+      },
+    ]);
+  });
+
+  it('keeps watching, and still reports the state, when the conversation read fails', async () => {
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+    respondConversationAlways([], 502);
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    expect(progressEvents()[0].payload).toMatchObject({
+      changed: ['state'],
+      newMessages: [],
+      newMessageCount: 0,
+    });
+    expect(eventsOfType('warp.run.completed')).toHaveLength(1);
+    expect(logMock.warn).toHaveBeenCalled();
+  });
+});
+
+// ── Progress: cost and early errors (#1682) ───────────────────────────────────
+
+describe('cost accumulation', () => {
+  it('publishes when the running spend moves, and not when it holds', async () => {
+    respondRun(runBody('INPROGRESS', { request_usage: { inference_cost: 0.1 } }));
+    respondRun(runBody('INPROGRESS', { request_usage: { inference_cost: 0.3 } }));
+    respondRun(runBody('INPROGRESS', { request_usage: { inference_cost: 0.3 } }));
+    respondRun(runBody('SUCCEEDED', { request_usage: { inference_cost: 0.4 } }));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    const events = progressEvents();
+    expect(events[0].payload).toMatchObject({
+      changed: ['state', 'usage'],
+      requestUsage: { inferenceCost: 0.1, computeCost: null, platformCost: null },
+    });
+    expect(events[1].payload).toMatchObject({
+      changed: ['usage'],
+      summary: 'cost updated',
+      requestUsage: { inferenceCost: 0.3, computeCost: null, platformCost: null },
+    });
+    // The third poll reported the same cost, so it is not an event.
+    expect(events).toHaveLength(2);
+  });
+});
+
+describe('early signals', () => {
+  it('surfaces a status message the moment it populates, not at the timeout', async () => {
+    respondRun(
+      runBody('INPROGRESS', {
+        status_message: {
+          message: 'Sandbox restarted',
+          error_code: 'sandbox_restart',
+          retryable: true,
+        },
+      }),
+    );
+    respondRunAlways(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    const event = progressEvents()[0];
+    expect(event.payload.changed).toEqual(['state', 'statusMessage']);
+    expect(event.payload.statusMessage).toEqual({
+      message: 'Sandbox restarted',
+      errorCode: 'sandbox_restart',
+      retryable: true,
+    });
+    // The error code is what the notification body leads with.
+    expect(event.payload.summary).toBe('INPROGRESS; sandbox_restart');
+    expect(readCount()).toBe(2);
+  });
+
+  it('reports an artifact that appears before the run ends', async () => {
+    respondRun(
+      runBody('INPROGRESS', {
+        artifacts: [
+          {
+            artifact_type: 'PULL_REQUEST',
+            data: { url: 'https://github.com/ima-jin/imajin-ai/pull/1683', branch: 'feat/1682' },
+          },
+        ],
+      }),
+    );
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    const event = progressEvents()[0];
+    expect(event.payload.changed).toEqual(['state', 'artifacts']);
+    expect(event.payload.artifacts).toEqual([
+      {
+        type: 'PULL_REQUEST',
+        url: 'https://github.com/ima-jin/imajin-ai/pull/1683',
+        branch: 'feat/1682',
+      },
+    ]);
   });
 });
 
@@ -358,7 +757,7 @@ describe('read failures', () => {
 
     await watchRun(PRINCIPAL, RUN_ID, { sleep });
 
-    expect(publishedEvent().type).toBe('warp.run.completed');
+    expect(eventOfType('warp.run.completed')).toBeDefined();
     expect(logMock.warn).toHaveBeenCalled();
   });
 
@@ -401,6 +800,20 @@ describe('the watch never throws', () => {
     expect(logMock.error).toHaveBeenCalled();
   });
 
+  it('does not let a failed progress publish cost the completion event', async () => {
+    publishMock.mockImplementation((type: string) =>
+      type === 'warp.run.progress' ? Promise.reject(new Error('bus down')) : Promise.resolve(),
+    );
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+
+    await expect(watchRun(PRINCIPAL, RUN_ID, { sleep })).resolves.toBeUndefined();
+
+    expect(eventsOfType('warp.run.completed')).toHaveLength(1);
+    expect(logMock.warn).toHaveBeenCalled();
+    expect(logMock.error).not.toHaveBeenCalled();
+  });
+
   it('swallows an invalid run id rather than rejecting into the void', async () => {
     await expect(watchRun(PRINCIPAL, '   ', { sleep })).resolves.toBeUndefined();
 
@@ -427,5 +840,16 @@ describe('the sealed key never reaches the bus', () => {
 
     expect(JSON.stringify(publishMock.mock.calls)).not.toContain(AGENT_KEY);
     expect(JSON.stringify(logMock.info.mock.calls)).not.toContain(AGENT_KEY);
+  });
+
+  it('is absent from the progress events a live run publishes', async () => {
+    respondRun(runBody('INPROGRESS'));
+    respondRun(runBody('SUCCEEDED'));
+    respondConversation([step('step-1', [textMessage('assistant', 'working')])]);
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    expect(progressEvents().length).toBeGreaterThan(0);
+    expect(JSON.stringify(publishMock.mock.calls)).not.toContain(AGENT_KEY);
   });
 });
