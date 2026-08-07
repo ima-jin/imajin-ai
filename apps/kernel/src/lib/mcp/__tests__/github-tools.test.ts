@@ -214,6 +214,49 @@ describe('registration (#1528)', () => {
   });
 });
 
+// ─── Pending-approval guidance (#1582) ──────────────────────────────────────
+
+/**
+ * These descriptions are what the model reads before it explains the pending
+ * state to a human. When they said "After approving at
+ * /github/api/confirm/{proposalId}", the model dutifully sent the first
+ * external user to a POST-only endpoint and he hit a 405. The approval surface
+ * a human can actually use is the /jin dashboard.
+ */
+const GATED_WRITE_TOOLS = ['github_create_issue', 'github_create_comment', 'github_update_issue'];
+
+describe('pending-approval guidance (#1582)', () => {
+  it.each(GATED_WRITE_TOOLS)('%s points at the /jin dashboard', (name) => {
+    expect(tool(name).description).toContain('/jin dashboard');
+  });
+
+  it.each(GATED_WRITE_TOOLS)('%s does not frame the confirm path as somewhere to approve', (name) => {
+    expect(tool(name).description).not.toMatch(/approv\w*\s+at\s+\S*\/github\/api\/confirm/i);
+  });
+
+  it.each(GATED_WRITE_TOOLS)('%s keeps the confirm path, labelled as the programmatic route', (name) => {
+    const description = tool(name).description;
+    expect(description).toContain('/github/api/confirm/{proposalId}');
+    expect(description).toMatch(/programmatic/i);
+  });
+
+  /** Eleven queued writes should cost one approval, not eleven. */
+  it.each(GATED_WRITE_TOOLS)('%s mentions the batching windows', (name) => {
+    const description = tool(name).description;
+    expect(description).toContain('5m');
+    expect(description).toContain('24h');
+  });
+
+  /**
+   * Only the connector knows the node's origin, so the description must send
+   * the model to the pending response for the URL instead of inviting it to
+   * invent a host (which is how the first-user report started).
+   */
+  it.each(GATED_WRITE_TOOLS)('%s defers to the pending response for the host', (name) => {
+    expect(tool(name).description).toMatch(/fully-qualified URL/i);
+  });
+});
+
 // ─── github_list_issues ─────────────────────────────────────────────────────
 
 describe('github_list_issues (#1528)', () => {
