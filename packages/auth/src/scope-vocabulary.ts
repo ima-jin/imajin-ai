@@ -289,6 +289,25 @@ export const SCOPE_VOCABULARY = [
     label: 'Read Imajin API specs, the scope vocabulary, and your connector status',
     manifestLabel: 'Read the node API specs, scope vocabulary, and your connector status',
     uiLabel: 'Read API specs, scope vocabulary, and your connector status' },
+
+  // ── MCP inference surface (#1298) — decoupled from media:*
+  //
+  // The inference MCP tools used to gate on `media:write` / `media:read`, so any
+  // agent that could upload a file could also run the intention-inference
+  // pipeline and have a supply attestation signed on the owner's behalf. These
+  // are MCP-surface scopes, not provider scopes: `gemini:infer` /
+  // `anthropic:infer` stay where they are, since those name whose API key gets
+  // spent, not who may drive the pipeline.
+  //
+  // Appended rather than slotted into the MCP block above so the externally
+  // visible `scopes_supported` ordering only grows at the tail.
+  { scope: 'inference:read', connector: 'mcp', verb: 'read', surface: 'inference', classification: SELF_ONLY, surfaces: MCP_TOKENS,
+    label: 'Read inference session results', manifestLabel: 'Read inference session status and attestations' },
+  // Signs attestations on the owner's behalf — same quadrant as `gemini:infer`
+  // (SELF_SENSITIVE), so the 2×2 derives `owner-only` and publishing it writes a
+  // consent row. Deliberately stricter than `media:write`'s on-consent override.
+  { scope: 'inference:write', connector: 'mcp', verb: 'write', surface: 'inference', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Trigger inference and sign attestations', manifestLabel: 'Trigger the inference pipeline and sign attestations on your behalf' },
 ] as const satisfies readonly ScopeVocabularyEntry[];
 
 /** Every scope string in the vocabulary, as a literal union. */

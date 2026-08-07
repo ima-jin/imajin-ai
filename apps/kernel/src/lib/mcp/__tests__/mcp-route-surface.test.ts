@@ -37,6 +37,8 @@ vi.mock('@/src/lib/mcp/oauth-config', () => ({
     'github:actions',
     'warp:dispatch',
     'discovery:read',
+    'inference:read',
+    'inference:write',
   ]),
 }));
 
@@ -161,6 +163,17 @@ describe('POST /mcp surface scope gate (#1337)', () => {
    */
   it('allows a discovery:read-only token through the surface gate', async () => {
     h.tokenPayload = validPayload({ scope: 'discovery:read' });
+    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
+    expect(res.status).toBe(200);
+  });
+
+  /**
+   * #1298: an agent granted only the inference surface holds no media scope, so
+   * `inference:*` has to clear the surface gate on its own — otherwise the split
+   * from `media:*` makes the tools unreachable.
+   */
+  it.each(['inference:read', 'inference:write'])('allows a %s-only token through the surface gate', async (scope) => {
+    h.tokenPayload = validPayload({ scope });
     const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
     expect(res.status).toBe(200);
   });
