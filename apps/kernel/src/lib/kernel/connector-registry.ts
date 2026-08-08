@@ -153,10 +153,14 @@ export interface ConnectorEntry {
   /**
    * POST route that disconnects the connector — purges sealed credentials,
    * revokes the channel_links grant, and publishes a bus event.
-   * `null` for connectors that do not yet implement disconnect (e.g. native, pending).
+   * `null` for connectors that do not yet implement disconnect (e.g. pending).
    *
    * Static-secret connectors serve seal and revoke from one route, so theirs
    * equals `tokenRoute` and is called with DELETE (see `disconnectMethod`).
+   *
+   * Native connectors have no credential to purge, so theirs is a revoke-all
+   * (#1592): it republishes the scope-manifest empty, which withdraws every
+   * grant through the same rail a toggle uses.
    */
   disconnectRoute: string | null;
   /**
@@ -192,7 +196,11 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: null,
     configureRoute: null,
     tokenRoute: null,
-    disconnectRoute: null,
+    // #1592: native revoke-all. No credential exists to purge, so this route
+    // republishes the scope-manifest with an empty scope set — every mcp
+    // channel_links row for the caller's DID flips to `revoked`. Without it the
+    // only way off MCP was untoggling scopes one at a time.
+    disconnectRoute: '/mcp/api/disconnect',
     credentialUi: null,
     settings: null,
   },

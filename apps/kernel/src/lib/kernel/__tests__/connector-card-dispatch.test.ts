@@ -108,6 +108,39 @@ describe('credential-paste entries carry everything their card needs', () => {
   });
 });
 
+// ─── #1592 native revoke-all guard ───────────────────────────────────
+//
+// A native connector's scope toggles are the whole connection, which for a long
+// time also made them the only way out of it. The card renders its disconnect
+// button straight off `disconnectRoute`, so a native entry that leaves the field
+// null silently ships a connector you can only leave one scope at a time.
+
+const NATIVE_ENTRIES = CONNECTOR_REGISTRY.filter((e) => connectorCardKind(e) === 'native');
+
+describe('native connectors can be withdrawn in one action', () => {
+  it('has at least one native entry to check', () => {
+    expect(NATIVE_ENTRIES.length).toBeGreaterThan(0);
+  });
+
+  it.each(NATIVE_ENTRIES.map((e) => e.id))('gives %s a revoke-all route', (id) => {
+    expect((getConnector(id) as ConnectorEntry).disconnectRoute).toBeTruthy();
+  });
+
+  it.each(NATIVE_ENTRIES.map((e) => e.id))('keeps %s revoke-all off the scope-manifest route', (id) => {
+    // Both are POSTs about scopes. Serving them from one path would make the
+    // verb ambiguous between "publish this set" and "withdraw everything".
+    const entry = getConnector(id) as ConnectorEntry;
+    expect(entry.disconnectRoute).not.toBe(entry.statusEndpoint);
+  });
+
+  it('revokes MCP with POST, since it has no credential route to overload', () => {
+    const mcp = getConnector('mcp') as ConnectorEntry;
+    expect(mcp.disconnectRoute).toBe('/mcp/api/disconnect');
+    expect(mcp.tokenRoute).toBeNull();
+    expect(disconnectMethod(mcp)).toBe('POST');
+  });
+});
+
 // ─── #1632 settings guard ──────────────────────────────────────────────────
 //
 // Non-secret settings are a registry declaration for the same reason card routing
