@@ -53,7 +53,10 @@ vi.mock('@/src/lib/media/write-access', () => ({
   canWriteAssetContent: vi.fn(() => ({ allowed: true })),
 }));
 
-vi.mock('../article-core', () => ({
+// Keep the real projection helpers (article-guard consumes
+// projectArticleFromFrontmatter) and stub only the DB-writing derive step.
+vi.mock('../article-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../article-core')>()),
   deriveArticleProjection: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -69,6 +72,7 @@ vi.mock('node:fs/promises', () => ({
 }));
 
 import { publish } from '@imajin/bus';
+import { writeFile } from 'node:fs/promises';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -161,5 +165,105 @@ describe('updateAssetContent — document.changed trigger (#1205)', () => {
       .mocked(publish)
       .mock.calls.filter(([type]) => type === 'document.changed');
     expect(changedCalls).toHaveLength(0);
+  });
+});
+
+// ─── #1542 — article frontmatter guard ─────────────────────────────────────
+
+const LIVE_ARTICLE = { article: { slug: 'hello', title: 'Hello', status: 'POSTED', date: '2026-08-01' } };
+const HEADERLESS = '# Newsletter\n\nNo YAML header here.\n';
+const WITH_HEADER =
+  '---\nslug: "hello"\ntitle: "Hello"\nstatus: "POSTED"\ndate: "2026-08-01"\n---\n\n# Hello\n';
+
+describe('updateAssetContent — article frontmatter guard (#1542)', () => {
+  it('warns that a headerless write DEMOTES a live article', async () => {
+    setupAsset({ metadata: LIVE_ARTICLE });
+
+    const result = await updateAssetContent({
+      assetId: 'asset_test',
+      requesterDid: 'did:imajin:owner',
+      content: HEADERLESS,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.articleWarning?.demotes).toBe(true);
+    expect(result.articleWarning?.reason).toBe('missing_frontmatter');
+    expect(result.articleWarning?.warning).toContain('DEMOTION');
+    // Default is warn-only: the content is still written.
+    expect(writeFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns for an article-context asset that never had a projection', async () => {
+    setupAsset({ metadata: { context: { app: 'article' } } });
+
+    const result = await updateAssetContent({
+      assetId: 'asset_test',
+      requesterDid: 'did:imajin:owner',
+      content: HEADERLESS,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.articleWarning?.demotes).toBe(false);
+    expect(result.articleWarning?.warning).toContain('will NOT render as an article');
+  });
+
+  it('does NOT warn for a plain note (no article intent)', async () => {
+    setupAsset({ metadata: {} });
+
+    const result = await updateAssetContent({
+      assetId: 'asset_test',
+      requesterDid: 'did:imajin:owner',
+      content: HEADERLESS,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.articleWarning).toBeNull();
+  });
+
+  it('does NOT warn when the new content keeps valid frontmatter', async () => {
+    setupAsset({ metadata: LIVE_ARTICLE });
+
+    const result = await updateAssetContent({
+      assetId: 'asset_test',
+      requesterDid: 'did:imajin:owner',
+      content: WITH_HEADER,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.articleWarning).toBeNull();
+  });
+
+  it('hard-rejects under strict, without writing anything', async () => {
+    setupAsset({ metadata: LIVE_ARTICLE });
+
+    const result = await updateAssetContent({
+      assetId: 'asset_test',
+      requesterDid: 'did:imajin:owner',
+      content: HEADERLESS,
+      strict: true,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('article_frontmatter_required');
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('strict does not block a plain-note write', async () => {
+    setupAsset({ metadata: {} });
+
+    const result = await updateAssetContent({
+      assetId: 'asset_test',
+      requesterDid: 'did:imajin:owner',
+      content: HEADERLESS,
+      strict: true,
+    });
+
+    expect(result.ok).toBe(true);
   });
 });

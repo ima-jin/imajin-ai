@@ -9,6 +9,7 @@ import { createLogger } from "@imajin/logger";
 import type { FairManifest } from "@imajin/fair";
 import { getAccessType } from "@/src/lib/media/read-access";
 import { authorizeAssetRead } from "@/src/lib/media/authorize-read";
+import { articleWarningFields } from "@/src/lib/media/article-guard";
 
 const log = createLogger("kernel");
 
@@ -104,7 +105,7 @@ export async function PUT(
   }
   const requesterDid = resolveActingDid(authResult.identity);
 
-  let body: { content?: unknown };
+  let body: { content?: unknown; strict?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -115,12 +116,14 @@ export async function PUT(
   if (typeof content !== "string") {
     return NextResponse.json({ error: "content must be a string" }, { status: 400 });
   }
+  // Opt-in hard gate for the article-frontmatter guard (#1542); default is warn.
+  const strict = body.strict === true;
 
   // Owner-only content overwrite + versioning, shared with the media_update MCP
   // tool (#1170). The route keeps HTTP concerns (auth, body parse, content type);
   // updateAssetContent owns authorization + the write/CID/Lore/.fair/versionCount
   // pipeline.
-  const result = await updateAssetContent({ assetId: id, requesterDid, content });
+  const result = await updateAssetContent({ assetId: id, requesterDid, content, strict });
   if (!result.ok) {
     switch (result.code) {
       case "not_found":
@@ -131,6 +134,12 @@ export async function PUT(
         return NextResponse.json({ error: result.message }, { status: 403 });
       case "unsupported_media":
         return NextResponse.json({ error: result.message }, { status: 415 });
+      case "article_frontmatter_required":
+        // strict: true — refuse to write content that would null the projection.
+        return NextResponse.json(
+          { error: result.message, articleProjection: null },
+          { status: 400 },
+        );
       case "storage_failed":
         return NextResponse.json({ error: "File write failed" }, { status: 500 });
       case "db_failed":
@@ -138,5 +147,7 @@ export async function PUT(
     }
   }
 
-  return NextResponse.json({ ok: true });
+  // Warn (default) when the write left metadata.article null despite article
+  // intent — including the dangerous case where it demoted a live article.
+  return NextResponse.json({ ok: true, ...articleWarningFields(result.articleWarning ?? null) });
 }

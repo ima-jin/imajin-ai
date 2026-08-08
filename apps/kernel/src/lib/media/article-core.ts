@@ -96,6 +96,34 @@ export interface DeriveArticleProjectionResult {
 }
 
 /**
+ * What a markdown file's frontmatter projects to, WITHOUT touching the DB:
+ *
+ * - `null`            → no frontmatter header at all (a plain note)
+ * - `{ error }`       → a header exists but is not a valid article (e.g. no title)
+ * - `{ block }`       → a valid article block
+ *
+ * Pure counterpart of deriveArticleProjection's decision, extracted (#1542) so
+ * the write paths can tell a caller *why* `metadata.article` will end up null
+ * instead of silently demoting an article to a plain note.
+ */
+export function projectArticleFromFrontmatter(
+  fileContent: string,
+): { block: ArticleBlock } | { error: string } | null {
+  const { data } = parseFrontmatter(fileContent);
+  if (Object.keys(data).length === 0) return null;
+
+  return buildArticleBlock({
+    slug: data.slug,
+    title: data.title,
+    subtitle: data.subtitle,
+    description: data.description,
+    status: data.status,
+    date: data.date instanceof Date ? data.date.toISOString().split("T")[0] : data.date,
+    order: data.order,
+  });
+}
+
+/**
  * Re-derive `metadata.article` from a markdown file's frontmatter and persist
  * it. This is the single direction of truth: on create AND on every content
  * write, the file is parsed and the projection rebuilt — nobody updates the DB
@@ -110,20 +138,9 @@ export async function deriveArticleProjection(
   fileContent: string,
   existingMetadata: unknown,
 ): Promise<DeriveArticleProjectionResult> {
-  const { data } = parseFrontmatter(fileContent);
-  if (Object.keys(data).length === 0) return { article: null };
-
-  const built = buildArticleBlock({
-    slug: data.slug,
-    title: data.title,
-    subtitle: data.subtitle,
-    description: data.description,
-    status: data.status,
-    date: data.date instanceof Date ? data.date.toISOString().split("T")[0] : data.date,
-    order: data.order,
-  });
-  // No slug/title in the header → treat as a plain note, not an article.
-  if ("error" in built) return { article: null };
+  const built = projectArticleFromFrontmatter(fileContent);
+  // No header, or no slug/title in it → treat as a plain note, not an article.
+  if (built === null || "error" in built) return { article: null };
 
   const metadata = mergeArticleMetadata(existingMetadata, built.block);
   await db.update(assets).set({ metadata, updatedAt: new Date() }).where(eq(assets.id, assetId));

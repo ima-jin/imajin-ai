@@ -33,6 +33,7 @@ vi.mock('@imajin/logger', () => ({
 
 import { mediaWriteTools } from '../tools/media-write';
 import { createAsset } from '@/src/lib/media/create-asset';
+import { updateAssetContent } from '@/src/lib/media/update-asset';
 import { publish } from '@imajin/bus';
 import { db } from '@/src/db';
 
@@ -156,5 +157,62 @@ describe('media_create_article', () => {
       tool('media_create_article').handler({ title: 'T', slug: 'Bad Slug', content: 'b' }, ctx),
     ).rejects.toThrow(/slug/);
     expect(createAsset).not.toHaveBeenCalled();
+  });
+});
+
+// ─── media_update — article frontmatter guard (#1542) ───────────────────────
+
+describe('media_update', () => {
+  const updatedAsset = {
+    id: 'asset_x',
+    filename: 'x.md',
+    mimeType: 'text/markdown',
+    size: 10,
+    versionCount: 2,
+    cid: 'cid_2',
+    updatedAt: new Date('2026-08-01T00:00:00Z'),
+  };
+
+  it('surfaces the demotion warning and the articleProjection: null flag', async () => {
+    vi.mocked(updateAssetContent).mockResolvedValueOnce({
+      ok: true,
+      asset: updatedAsset,
+      articleWarning: {
+        warning: 'DEMOTION: … will STOP rendering as an article',
+        reason: 'missing_frontmatter',
+        demotes: true,
+      },
+    } as never);
+
+    const res = await tool('media_update').handler({ id: 'asset_x', content: '# no header' }, ctx);
+    const out = parseResult(res as McpContent[]);
+
+    expect(out.articleProjection).toBeNull();
+    expect(out.articleWarningReason).toBe('missing_frontmatter');
+    expect(out.warning).toContain('DEMOTION');
+  });
+
+  it('omits the warning fields on a clean write', async () => {
+    vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: true, asset: updatedAsset } as never);
+
+    const res = await tool('media_update').handler({ id: 'asset_x', content: 'body' }, ctx);
+    const out = parseResult(res as McpContent[]);
+
+    expect(out.warning).toBeUndefined();
+    expect('articleProjection' in out).toBe(false);
+  });
+
+  it('forwards strict to the shared write path and throws on rejection', async () => {
+    vi.mocked(updateAssetContent).mockResolvedValueOnce({
+      ok: false,
+      code: 'article_frontmatter_required',
+      message: 'article-context markdown has no frontmatter title',
+    } as never);
+
+    await expect(
+      tool('media_update').handler({ id: 'asset_x', content: '# no header', strict: true }, ctx),
+    ).rejects.toThrow(/no frontmatter title/);
+
+    expect(vi.mocked(updateAssetContent).mock.calls[0][0].strict).toBe(true);
   });
 });

@@ -7,6 +7,7 @@ import { createAsset, inferMime, isAllowedMime } from '@/src/lib/media/create-as
 import { buildArticleBlock, deriveArticleProjection } from '../../media/article-core';
 import { composeArticleFile } from '../../media/frontmatter';
 import { updateAssetContent } from '@/src/lib/media/update-asset';
+import { articleWarningFields } from '../../media/article-guard';
 
 /**
  * Media WRITE tools for the MCP connector (#1170). All require the 'media:write'
@@ -223,12 +224,17 @@ const updateTool: McpTool = {
   name: 'media_update',
   requiredScope: 'media:write',
   description:
-    'Overwrite the text content of an existing text asset you own, creating a new version (the asset id stays the same). Owner-only.',
+    'Overwrite the text content of an existing text asset you own, creating a new version (the asset id stays the same). Owner-only. Markdown that is (or was created as) an article MUST keep its --- YAML frontmatter: without it metadata.article becomes null and the asset stops rendering as an article. That case returns a `warning` plus `articleProjection: null`; pass strict=true to have it rejected instead.',
   inputSchema: {
     type: 'object',
     properties: {
       id: { type: 'string', description: 'Asset id (asset_...) to update' },
       content: { type: 'string', description: 'New UTF-8 text content (replaces the current content)' },
+      strict: {
+        type: 'boolean',
+        description:
+          'Reject the write (instead of warning) when it would null out the article projection of an article-context markdown asset. Defaults to false.',
+      },
     },
     required: ['id', 'content'],
     additionalProperties: false,
@@ -246,6 +252,7 @@ const updateTool: McpTool = {
       requesterDid: ctx.did,
       content,
       requireTextMime: true,
+      strict: args.strict === true,
     });
     if (!result.ok) throw new Error(result.message);
 
@@ -258,6 +265,7 @@ const updateTool: McpTool = {
       versionCount: a.versionCount,
       cid: a.cid,
       updatedAt: a.updatedAt,
+      ...articleWarningFields(result.articleWarning ?? null),
     });
   },
 };
