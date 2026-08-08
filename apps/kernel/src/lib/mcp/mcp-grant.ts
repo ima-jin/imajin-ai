@@ -31,22 +31,41 @@
  *       #1207 projection reactor · #1203 GitHub connector (first live proof) ·
  *       src/lib/github/connector.ts (the pattern being mirrored).
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
 import { MCP_CONNECTOR_DID, MCP_CHANNEL } from './oauth-config';
 
 /**
  * Return `true` iff an active `auth.channel_links` row exists for this DID +
- * scope via the MCP connector.
+ * scope, scoped to the calling client when `appDid` is given (#1695).
  *
  * An active row is created by the scope-manifest projection surface (#1209)
  * when the owner grants the scope by editing their MCP scope-manifest asset.
  * The row is flipped to `revoked` when the scope is removed from the manifest
  * or the manifest asset is deleted (#1208).
  *
+ * `appDid` is the calling client's app DID (`ctx.appDid`, the access token's
+ * `azp`). Per #1695, a grant used to be checked against the constant
+ * `MCP_CONNECTOR_DID` for every client, so one client's consent silently
+ * covered every other MCP client that ever connected. Now:
+ *   - When `appDid` is given, a row written for THAT client (per-client grant)
+ *     satisfies the check, and so does a legacy connector-wide row (written
+ *     before this fix, `appDid = MCP_CONNECTOR_DID`) — additive, no backfill,
+ *     so pre-existing grants keep working until explicitly republished.
+ *   - When `appDid` is omitted, behavior is unchanged: only the connector-wide
+ *     row is checked.
+ *
  * Fail-closed: any DB error propagates as a thrown exception.
  */
-export async function resolveActiveMcpGrant(ownerDid: string, scope: string): Promise<boolean> {
+export async function resolveActiveMcpGrant(
+  ownerDid: string,
+  scope: string,
+  appDid?: string,
+): Promise<boolean> {
+  const identities = appDid && appDid !== MCP_CONNECTOR_DID
+    ? [appDid, MCP_CONNECTOR_DID]
+    : [MCP_CONNECTOR_DID];
+
   const rows = await db
     .select({ scopes: channelLinks.scopes })
     .from(channelLinks)
@@ -54,7 +73,7 @@ export async function resolveActiveMcpGrant(ownerDid: string, scope: string): Pr
       and(
         eq(channelLinks.channel, MCP_CHANNEL),
         eq(channelLinks.did, ownerDid),
-        eq(channelLinks.appDid, MCP_CONNECTOR_DID),
+        inArray(channelLinks.appDid, identities),
         eq(channelLinks.status, 'active'),
       ),
     );
@@ -71,10 +90,11 @@ export async function resolveActiveMcpGrant(ownerDid: string, scope: string): Pr
  * so the MCP dispatcher returns an `isError` response the model can read.
  *
  * Call this at the top of every MCP-native tool handler that requires a
- * scope-manifest grant (all `media:*` and `connections:read` tools).
+ * scope-manifest grant (all `media:*` and `connections:read` tools). Pass
+ * `ctx.appDid` so the grant is checked per calling client (#1695).
  */
-export async function requireMcpGrant(ownerDid: string, scope: string): Promise<void> {
-  const hasGrant = await resolveActiveMcpGrant(ownerDid, scope);
+export async function requireMcpGrant(ownerDid: string, scope: string, appDid?: string): Promise<void> {
+  const hasGrant = await resolveActiveMcpGrant(ownerDid, scope, appDid);
   if (!hasGrant) {
     throw new Error(
       `mcp_no_grant: DID ${ownerDid} has no active '${scope}' grant — ` +

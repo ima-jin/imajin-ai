@@ -48,7 +48,7 @@ const createNoteTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    await requireMcpGrant(ctx.did, 'media:write');
+    await requireMcpGrant(ctx.did, 'media:write', ctx.appDid);
     const content = str(args, 'content');
     if (content === undefined) throw new Error('content is required');
 
@@ -100,7 +100,7 @@ const createArticleTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    await requireMcpGrant(ctx.did, 'media:write');
+    await requireMcpGrant(ctx.did, 'media:write', ctx.appDid);
     const content = str(args, 'content');
     if (content === undefined) throw new Error('content is required');
 
@@ -183,7 +183,7 @@ const uploadTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    await requireMcpGrant(ctx.did, 'media:write');
+    await requireMcpGrant(ctx.did, 'media:write', ctx.appDid);
     const filename = str(args, 'filename');
     if (!filename) throw new Error('filename is required');
     const dataB64 = str(args, 'data_base64');
@@ -234,7 +234,7 @@ const updateTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    await requireMcpGrant(ctx.did, 'media:write');
+    await requireMcpGrant(ctx.did, 'media:write', ctx.appDid);
     const id = str(args, 'id');
     if (!id) throw new Error('id is required');
     // content may be an empty string (clears the file), so this can't use str().

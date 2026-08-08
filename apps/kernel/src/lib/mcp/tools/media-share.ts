@@ -42,7 +42,7 @@ const grantAccessTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    await requireMcpGrant(ctx.did, 'media:share');
+    await requireMcpGrant(ctx.did, 'media:share', ctx.appDid);
     const assetId = str(args, 'id');
     if (!assetId) throw new Error('id is required');
     const targetDid = str(args, 'did');
