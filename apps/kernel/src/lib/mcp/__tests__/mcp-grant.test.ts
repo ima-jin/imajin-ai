@@ -15,9 +15,10 @@ const h = vi.hoisted(() => {
   type Pred = { op: string; col?: string; val?: unknown; preds?: Pred[] };
   const match = (row: Row, pred: Pred): boolean => {
     switch (pred.op) {
-      case 'eq':  return (row as Record<string, unknown>)[pred.col as string] === pred.val;
-      case 'and': return (pred.preds ?? []).every((p) => match(row, p));
-      default:    return true;
+      case 'eq':      return (row as Record<string, unknown>)[pred.col as string] === pred.val;
+      case 'and':     return (pred.preds ?? []).every((p) => match(row, p));
+      case 'inArray': return (pred.val as unknown[]).includes((row as Record<string, unknown>)[pred.col as string]);
+      default:        return true;
     }
   };
 
@@ -35,22 +36,25 @@ const h = vi.hoisted(() => {
 
 vi.mock('@/src/db', () => ({ db: h.db, channelLinks: h.F.channelLinks }));
 vi.mock('drizzle-orm', () => ({
-  eq:  (col: unknown, val: unknown) => ({ op: 'eq',  col, val }),
-  and: (...preds: unknown[])        => ({ op: 'and', preds }),
+  eq:      (col: unknown, val: unknown)  => ({ op: 'eq',      col, val }),
+  and:     (...preds: unknown[])         => ({ op: 'and',     preds }),
+  inArray: (col: unknown, val: unknown)  => ({ op: 'inArray', col, val }),
 }));
 
 import { resolveActiveMcpGrant, requireMcpGrant } from '../mcp-grant';
 
 const OWNER = 'did:imajin:owner';
 const MCP_DID = 'did:imajin:mcp-connector';
+const CLIENT_A = 'did:imajin:client-a';
+const CLIENT_B = 'did:imajin:client-b';
 const CHANNEL = 'mcp';
 
-function activeRow(scopes: string[]): Row {
-  return { channel: CHANNEL, did: OWNER, appDid: MCP_DID, status: 'active', scopes };
+function activeRow(scopes: string[], appDid: string = MCP_DID): Row {
+  return { channel: CHANNEL, did: OWNER, appDid, status: 'active', scopes };
 }
 
-function revokedRow(scopes: string[]): Row {
-  return { channel: CHANNEL, did: OWNER, appDid: MCP_DID, status: 'revoked', scopes };
+function revokedRow(scopes: string[], appDid: string = MCP_DID): Row {
+  return { channel: CHANNEL, did: OWNER, appDid, status: 'revoked', scopes };
 }
 
 describe('resolveActiveMcpGrant', () => {
@@ -78,6 +82,62 @@ describe('resolveActiveMcpGrant', () => {
   it('is isolated by DID — a different DID gets no grant', async () => {
     h.rows.splice(0, h.rows.length, activeRow(['media:read']));
     expect(await resolveActiveMcpGrant('did:imajin:other', 'media:read')).toBe(false);
+  });
+});
+
+// ── Per-client grants (#1695) ────────────────────────────────────────────────
+
+describe('resolveActiveMcpGrant — per-client (#1695)', () => {
+  it('matches a row written for the calling client appDid', async () => {
+    h.rows.splice(0, h.rows.length, activeRow(['media:read'], CLIENT_A));
+    expect(await resolveActiveMcpGrant(OWNER, 'media:read', CLIENT_A)).toBe(true);
+  });
+
+  it('does not match a row written for a different client', async () => {
+    h.rows.splice(0, h.rows.length, activeRow(['media:read'], CLIENT_A));
+    expect(await resolveActiveMcpGrant(OWNER, 'media:read', CLIENT_B)).toBe(false);
+  });
+
+  it('falls back to the connector-wide row when no per-client row exists', async () => {
+    h.rows.splice(0, h.rows.length, activeRow(['media:read'])); // appDid = MCP_CONNECTOR_DID
+    expect(await resolveActiveMcpGrant(OWNER, 'media:read', CLIENT_A)).toBe(true);
+  });
+
+  it('prefers a per-client row over a revoked connector-wide row', async () => {
+    h.rows.splice(
+      0, h.rows.length,
+      revokedRow(['media:read']),
+      activeRow(['media:read'], CLIENT_A),
+    );
+    expect(await resolveActiveMcpGrant(OWNER, 'media:read', CLIENT_A)).toBe(true);
+  });
+
+  it('returns false when neither the per-client nor connector-wide row is active', async () => {
+    h.rows.splice(0, h.rows.length, revokedRow(['media:read'], CLIENT_A), revokedRow(['media:read']));
+    expect(await resolveActiveMcpGrant(OWNER, 'media:read', CLIENT_A)).toBe(false);
+  });
+
+  it('a second client does not inherit consent granted only to a first client', async () => {
+    // The #1695 regression: client A's per-client grant must not cover client B.
+    h.rows.splice(0, h.rows.length, activeRow(['media:write'], CLIENT_A));
+    expect(await resolveActiveMcpGrant(OWNER, 'media:write', CLIENT_B)).toBe(false);
+  });
+});
+
+describe('requireMcpGrant — per-client (#1695)', () => {
+  it('resolves when a per-client grant exists for the calling appDid', async () => {
+    h.rows.splice(0, h.rows.length, activeRow(['media:write'], CLIENT_A));
+    await expect(requireMcpGrant(OWNER, 'media:write', CLIENT_A)).resolves.toBeUndefined();
+  });
+
+  it('rejects when only a different client holds the grant', async () => {
+    h.rows.splice(0, h.rows.length, activeRow(['media:write'], CLIENT_A));
+    await expect(requireMcpGrant(OWNER, 'media:write', CLIENT_B)).rejects.toThrow('mcp_no_grant');
+  });
+
+  it('resolves via the connector-wide fallback when appDid has no dedicated row', async () => {
+    h.rows.splice(0, h.rows.length, activeRow(['media:write']));
+    await expect(requireMcpGrant(OWNER, 'media:write', CLIENT_A)).resolves.toBeUndefined();
   });
 });
 

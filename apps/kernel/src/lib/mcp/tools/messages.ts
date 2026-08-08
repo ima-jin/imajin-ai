@@ -55,7 +55,7 @@ const listConversationsTool: McpTool = {
     additionalProperties: false,
   },
   async handler(_args, ctx) {
-    await requireMcpGrant(ctx.did, 'messages:read');
+    await requireMcpGrant(ctx.did, 'messages:read', ctx.appDid);
     const conversations = await listConversations(ctx.did);
     return json({
       count: conversations.length,
@@ -96,7 +96,7 @@ const readMessagesTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    await requireMcpGrant(ctx.did, 'messages:read');
+    await requireMcpGrant(ctx.did, 'messages:read', ctx.appDid);
     const conversationId = str(args, 'conversation_id');
     if (conversationId === undefined) throw new Error('conversation_id is required');
     const limit = num(args, 'limit') ?? 50;
@@ -147,7 +147,7 @@ const sendMessageTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    await requireMcpGrant(ctx.did, 'messages:write');
+    await requireMcpGrant(ctx.did, 'messages:write', ctx.appDid);
     const conversationId = str(args, 'conversation_id');
     if (conversationId === undefined) throw new Error('conversation_id is required');
     const content = str(args, 'content');
@@ -192,7 +192,7 @@ const sendDmTool: McpTool = {
     additionalProperties: false,
   },
   async handler(args, ctx) {
-    await requireMcpGrant(ctx.did, 'messages:write');
+    await requireMcpGrant(ctx.did, 'messages:write', ctx.appDid);
     const toDid = str(args, 'to');
     if (toDid === undefined) throw new Error('to is required');
     const content = str(args, 'content');

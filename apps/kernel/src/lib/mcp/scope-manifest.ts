@@ -68,18 +68,31 @@ export function syncConsentGrants(
   ownerDid: string,
   manifestAssetId: string,
   requestedScopes: readonly string[],
+  appDid?: string,
 ): Promise<void> {
   return syncConnectorConsentGrants(
     ownerDid, MCP_CONNECTOR_DID, manifestAssetId, requestedScopes,
-    (s) => requiresConsentRow(CONNECTOR, s),
+    (s) => requiresConsentRow(CONNECTOR, s), appDid,
   );
 }
 
-export function publishMcpScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+/**
+ * Publish the MCP scope-manifest for `ownerDid`.
+ *
+ * `appDid`, when given, writes the resulting `channel_links` (and, for
+ * on-consent scopes, `consent_grants`) rows scoped to that specific MCP
+ * client instead of the connector as a whole (#1695) — additive only; the
+ * pre-existing connector-wide row (if any) is left untouched.
+ */
+export function publishMcpScopeManifest(
+  ownerDid: string,
+  scopes: readonly string[],
+  appDid?: string,
+): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: MCP_CONNECTOR_DID, channel: MCP_CHANNEL,
     filename: 'mcp-scope-manifest.md', scopeDescriptors: MCP_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), appDid,
   });
 }
 

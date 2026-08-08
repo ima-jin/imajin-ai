@@ -70,7 +70,7 @@ describe('imajin_list_conversations', () => {
 
     const res = await tool('imajin_list_conversations').handler({}, ctx);
 
-    expect(requireMcpGrant).toHaveBeenCalledWith(ctx.did, 'messages:read');
+    expect(requireMcpGrant).toHaveBeenCalledWith(ctx.did, 'messages:read', ctx.appDid);
     expect(listConversations).toHaveBeenCalledWith(ctx.did);
 
     const out = parseResult(res as McpContent[]);
@@ -108,7 +108,7 @@ describe('imajin_read_messages', () => {
       ctx,
     );
 
-    expect(requireMcpGrant).toHaveBeenCalledWith(ctx.did, 'messages:read');
+    expect(requireMcpGrant).toHaveBeenCalledWith(ctx.did, 'messages:read', ctx.appDid);
     expect(readConversationMessages).toHaveBeenCalledWith(ctx.did, 'did:imajin:dm:abc', 10);
 
     const out = parseResult(res as McpContent[]);
@@ -157,7 +157,7 @@ describe('imajin_send_message', () => {
       ctx,
     );
 
-    expect(requireMcpGrant).toHaveBeenCalledWith(ctx.did, 'messages:write');
+    expect(requireMcpGrant).toHaveBeenCalledWith(ctx.did, 'messages:write', ctx.appDid);
     expect(sendTextMessageAsDid).toHaveBeenCalledWith(ctx.did, 'did:imajin:dm:abc', 'yo');
 
     const out = parseResult(res as McpContent[]);
@@ -205,7 +205,7 @@ describe('imajin_send_dm', () => {
     const res = await tool('imajin_send_dm').handler({ to: recipient, content: 'yo' }, ctx);
 
     const expectedDid = dmDid(ctx.did, recipient);
-    expect(requireMcpGrant).toHaveBeenCalledWith(ctx.did, 'messages:write');
+    expect(requireMcpGrant).toHaveBeenCalledWith(ctx.did, 'messages:write', ctx.appDid);
     expect(sendTextMessageAsDid).toHaveBeenCalledWith(ctx.did, expectedDid, 'yo');
 
     const out = parseResult(res as McpContent[]);

@@ -62,8 +62,9 @@ async function denyForMissingScope(
   toolName: string,
   requiredScope: string,
   ownerDid: string,
+  appDid: string,
 ) {
-  const text = (await resolveActiveMcpGrant(ownerDid, requiredScope))
+  const text = (await resolveActiveMcpGrant(ownerDid, requiredScope, appDid))
     ? `Error: scope_token_stale — '${toolName}' requires '${requiredScope}'; the grant is active in your scope-manifest but your access token is stale — refresh your token to pick it up`
     : `Error: insufficient_scope — '${toolName}' requires the '${requiredScope}' grant — enable it in your MCP scope-manifest`;
 
@@ -80,7 +81,7 @@ async function callTool(msg: JsonRpcMessage, ctx: McpToolContext) {
   // read-only token cannot reach a write tool, and vice versa. Returned
   // in-band (isError) per MCP convention so the model sees why it was denied.
   if (tool.requiredScope && !ctx.scopes.has(tool.requiredScope)) {
-    return denyForMissingScope(msg.id, tool.name, tool.requiredScope, ctx.did);
+    return denyForMissingScope(msg.id, tool.name, tool.requiredScope, ctx.did, ctx.appDid);
   }
   try {
     const args = (msg.params?.arguments as Record<string, unknown>) ?? {};

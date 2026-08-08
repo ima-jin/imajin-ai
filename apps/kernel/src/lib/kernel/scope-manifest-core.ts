@@ -127,10 +127,31 @@ export async function readActiveConnectorScopes(
 
 const PROJECTION_PURPOSE = 'document.projection' as const;
 const CONSENT_REF_SEP = ':' as const;
+const CONSENT_REF_APPDID_SEP = '#' as const;
 
-/** Build a stable consentRef for one scope of a manifest asset. */
-export function connectorConsentRef(manifestAssetId: string, scopeName: string): string {
-  return `${manifestAssetId}${CONSENT_REF_SEP}${scopeName}`;
+/**
+ * Prefix shared by every consentRef for one manifest asset (+ optional
+ * per-client `appDid`, #1695). Kept as a helper so the grant/revoke paths
+ * below always slice/match with the exact same prefix they wrote.
+ *
+ * Omitting `appDid` reproduces the pre-#1695 prefix byte-for-byte, so
+ * existing connector-wide refs (GitHub, Discord, …, and MCP grants written
+ * before this fix) are untouched.
+ */
+function consentRefPrefix(manifestAssetId: string, appDid?: string): string {
+  const base = appDid ? `${manifestAssetId}${CONSENT_REF_APPDID_SEP}${appDid}` : manifestAssetId;
+  return `${base}${CONSENT_REF_SEP}`;
+}
+
+/**
+ * Build a stable consentRef for one scope of a manifest asset.
+ *
+ * `appDid`, when given, scopes the ref to one MCP client (#1695) instead of
+ * the connector as a whole — additive: omitting it reproduces the original
+ * `${manifestAssetId}:${scopeName}` shape exactly.
+ */
+export function connectorConsentRef(manifestAssetId: string, scopeName: string, appDid?: string): string {
+  return `${consentRefPrefix(manifestAssetId, appDid)}${scopeName}`;
 }
 
 /**
@@ -142,6 +163,12 @@ export function connectorConsentRef(manifestAssetId: string, scopeName: string):
  * Revoke path: flip active rows whose scope is no longer in `requestedScopes`
  * to `revoked`. Must be called BEFORE `updateAssetContent` fires
  * `document.changed` so the broker consent reactor finds the rows.
+ *
+ * `appDid` (#1695): when given, grants are written with `grantedTo = appDid`
+ * (per-client) instead of `grantedTo = connectorDid` (connector-wide), and
+ * the revoke sweep only touches rows granted to that same identity. Omitting
+ * it preserves the original connector-wide behavior exactly — no existing
+ * caller passes it, so nothing changes for GitHub/Discord/QuickBooks/etc.
  */
 export async function syncConnectorConsentGrants(
   ownerDid: string,
@@ -149,13 +176,16 @@ export async function syncConnectorConsentGrants(
   manifestAssetId: string,
   requestedScopes: readonly string[],
   isOnConsent: (scopeName: string) => boolean,
+  appDid?: string,
 ): Promise<void> {
   const requestedSet = new Set(requestedScopes);
+  const grantedTo = appDid ?? connectorDid;
+  const refPrefix = consentRefPrefix(manifestAssetId, appDid);
 
   for (const scopeName of requestedScopes) {
     if (!isOnConsent(scopeName)) continue;
 
-    const ref = connectorConsentRef(manifestAssetId, scopeName);
+    const ref = connectorConsentRef(manifestAssetId, scopeName, appDid);
     const [existing] = await db
       .select({ id: consentGrants.id })
       .from(consentGrants)
@@ -171,7 +201,7 @@ export async function syncConnectorConsentGrants(
       await db.insert(consentGrants).values({
         id: generateId('cgrant'),
         subject: ownerDid,
-        grantedTo: connectorDid,
+        grantedTo,
         purpose: PROJECTION_PURPOSE,
         allowedFields: [scopeName],
         mode: 'attestation',
@@ -187,15 +217,15 @@ export async function syncConnectorConsentGrants(
     .where(
       and(
         eq(consentGrants.subject, ownerDid),
-        eq(consentGrants.grantedTo, connectorDid),
+        eq(consentGrants.grantedTo, grantedTo),
         eq(consentGrants.purpose, PROJECTION_PURPOSE),
         eq(consentGrants.status, 'active'),
-        like(consentGrants.consentRef, `${manifestAssetId}${CONSENT_REF_SEP}%`),
+        like(consentGrants.consentRef, `${refPrefix}%`),
       ),
     );
 
   for (const row of existingRows) {
-    const scopeName = row.consentRef.slice(manifestAssetId.length + CONSENT_REF_SEP.length);
+    const scopeName = row.consentRef.slice(refPrefix.length);
     if (!requestedSet.has(scopeName)) {
       await db
         .update(consentGrants)
@@ -208,6 +238,17 @@ export async function syncConnectorConsentGrants(
 // ── Publish orchestration ─────────────────────────────────────────────────────
 
 /**
+ * Collapse a DID (or any string) into a safe suffix for a `text` primary key.
+ * Used only to disambiguate a per-client `channel_links.id` from the
+ * connector-wide id when `appDid` is given (#1695) — not parsed back, so any
+ * deterministic collapse is fine as long as it can't collide across distinct
+ * inputs in practice.
+ */
+function sanitizeIdSuffix(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+/**
  * Create or update a connector scope-manifest asset and fire `document.changed`
  * to project scopes into `auth.channel_links`.
  *
@@ -215,6 +256,14 @@ export async function syncConnectorConsentGrants(
  *   1. Find or create the manifest asset (stamps metadata.kind on create).
  *   2. `syncConnectorConsentGrants` — writes consent_grants rows.
  *   3. `updateAssetContent` — fires document.changed → projection reactor.
+ *
+ * `appDid` (#1695): when given, the `channel_links` row(s) written for this
+ * publish are attributed to that specific client (`appDid`) instead of the
+ * connector as a whole (`connectorDid`), so a grant made for one MCP client
+ * no longer silently covers every other client of the same connector.
+ * Omitting it reproduces the original connector-wide write exactly — additive
+ * only, no backfill: pre-existing connector-wide rows are left alone and stay
+ * valid until explicitly republished.
  */
 export async function publishConnectorScopeManifest(opts: {
   ownerDid: string;
@@ -224,8 +273,10 @@ export async function publishConnectorScopeManifest(opts: {
   scopeDescriptors: Readonly<Record<string, ConnectorScopeDescriptor>>;
   scopes: readonly string[];
   isOnConsent: (scopeName: string) => boolean;
+  appDid?: string;
 }): Promise<string> {
-  const { ownerDid, connectorDid, channel, filename, scopeDescriptors, scopes, isOnConsent } = opts;
+  const { ownerDid, connectorDid, channel, filename, scopeDescriptors, scopes, isOnConsent, appDid } = opts;
+  const grantee = appDid ?? connectorDid;
 
   const content = buildConnectorManifestContent(connectorDid, channel, scopeDescriptors, scopes);
   let assetId: string;
@@ -258,7 +309,7 @@ export async function publishConnectorScopeManifest(opts: {
     await addAssetToGrantsFolder(ownerDid, assetId);
   }
 
-  await syncConnectorConsentGrants(ownerDid, connectorDid, assetId, scopes, isOnConsent);
+  await syncConnectorConsentGrants(ownerDid, connectorDid, assetId, scopes, isOnConsent, appDid);
 
   const result = await updateAssetContent({ assetId, requesterDid: ownerDid, content });
   if (!result.ok) {
@@ -280,10 +331,16 @@ export async function publishConnectorScopeManifest(opts: {
   const requestedSet = new Set(scopes);
   const now = new Date();
 
-  // Upsert an active row for each scope in this manifest.
+  // Upsert an active row for each scope in this manifest. `linkId` embeds the
+  // grantee only when `appDid` is given, so a per-client row's primary key
+  // never collides with the connector-wide row's — both can share the same
+  // manifest asset + channelUid, distinguished by the (channel, channelUid,
+  // appDid) unique index the upsert targets below.
   for (const scopeName of scopes) {
     const channelUid = `${assetId}${SCOPE_UID_SEP}${scopeName}`;
-    const linkId = `clink_${assetId}_${scopeName.replaceAll(':', '_')}`;
+    const linkId = appDid
+      ? `clink_${assetId}_${scopeName.replaceAll(':', '_')}_${sanitizeIdSuffix(appDid)}`
+      : `clink_${assetId}_${scopeName.replaceAll(':', '_')}`;
     await db
       .insert(channelLinks)
       .values({
@@ -291,7 +348,7 @@ export async function publishConnectorScopeManifest(opts: {
         channel,
         channelUid,
         did: ownerDid,
-        appDid: connectorDid,
+        appDid: grantee,
         scopes: [scopeName],
         status: 'active',
         createdAt: now,
@@ -303,14 +360,16 @@ export async function publishConnectorScopeManifest(opts: {
       });
   }
 
-  // Revoke active rows for scopes tied to this manifest that are no longer requested.
+  // Revoke active rows for scopes tied to this manifest that are no longer
+  // requested — scoped to this same grantee, so publishing for one client
+  // never revokes another client's (or the connector-wide) rows.
   const existingLinks = await db
     .select({ id: channelLinks.id, channelUid: channelLinks.channelUid })
     .from(channelLinks)
     .where(
       and(
         eq(channelLinks.did, ownerDid),
-        eq(channelLinks.appDid, connectorDid),
+        eq(channelLinks.appDid, grantee),
         eq(channelLinks.status, 'active'),
         like(channelLinks.channelUid, `${assetId}${SCOPE_UID_SEP}%`),
       ),

@@ -24,9 +24,9 @@ vi.mock('../tools', () => {
 // Mock the Gate 2 (channel_links) lookup so the stale-token cross-check can be
 // exercised without a database. Defaults to "no grant" in beforeEach, which is
 // the pre-#1647 behaviour every other test in this file asserts.
-const mockResolveGrant = vi.hoisted(() => vi.fn<(did: string, scope: string) => Promise<boolean>>());
+const mockResolveGrant = vi.hoisted(() => vi.fn<(did: string, scope: string, appDid?: string) => Promise<boolean>>());
 vi.mock('../mcp-grant', () => ({
-  resolveActiveMcpGrant: (...args: [string, string]) => mockResolveGrant(...args),
+  resolveActiveMcpGrant: (...args: [string, string, string?]) => mockResolveGrant(...args),
 }));
 
 import { handleMcpRpc } from '../server';
@@ -196,7 +196,7 @@ describe('stale-token detection (#1647)', () => {
     expect(res.result.isError).toBe(true);
     expect(res.result.content[0].text).toContain('scope_token_stale');
     expect(res.result.content[0].text).toContain('refresh your token');
-    expect(mockResolveGrant).toHaveBeenCalledWith('did:imajin:user', 'media:write');
+    expect(mockResolveGrant).toHaveBeenCalledWith('did:imajin:user', 'media:write', 'did:imajin:app');
   });
 
   it('returns insufficient_scope when token lacks scope and no channel_links grant exists', async () => {
@@ -224,7 +224,7 @@ describe('stale-token detection (#1647)', () => {
     const res = await call('t_msg_read', ['media:read']);
     expect(res.result.isError).toBe(true);
     expect(res.result.content[0].text).toContain('scope_token_stale');
-    expect(mockResolveGrant).toHaveBeenCalledWith('did:imajin:user', 'messages:read');
+    expect(mockResolveGrant).toHaveBeenCalledWith('did:imajin:user', 'messages:read', 'did:imajin:app');
   });
 });
 

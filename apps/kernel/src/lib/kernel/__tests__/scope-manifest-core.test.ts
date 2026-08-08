@@ -19,7 +19,7 @@ const h = vi.hoisted(() => {
 
   const F = {
     assets: { id: 'id', ownerDid: 'ownerDid', status: 'status', metadata: 'metadata' },
-    channelLinks: { channel: 'channel', channelUid: 'channelUid', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes', revokedAt: 'revokedAt', createdAt: 'createdAt' },
+    channelLinks: { id: 'id', channel: 'channel', channelUid: 'channelUid', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes', revokedAt: 'revokedAt', createdAt: 'createdAt' },
     consentGrants: {
       id: 'id', subject: 'subject', grantedTo: 'grantedTo', purpose: 'purpose',
       allowedFields: 'allowedFields', mode: 'mode', status: 'status',
@@ -241,6 +241,17 @@ describe('connectorConsentRef', () => {
   it('builds a stable ref', () => {
     expect(connectorConsentRef('asset_xyz', 'test:read')).toBe('asset_xyz:test:read');
   });
+
+  it('embeds appDid into the ref when given (#1695)', () => {
+    expect(connectorConsentRef('asset_xyz', 'test:read', 'did:imajin:client-a'))
+      .toBe('asset_xyz#did:imajin:client-a:test:read');
+  });
+
+  it('produces a different ref per appDid for the same asset + scope', () => {
+    const a = connectorConsentRef('asset_xyz', 'test:read', 'did:imajin:client-a');
+    const b = connectorConsentRef('asset_xyz', 'test:read', 'did:imajin:client-b');
+    expect(a).not.toBe(b);
+  });
 });
 
 // ── syncConnectorConsentGrants ────────────────────────────────────────────────
@@ -288,6 +299,39 @@ describe('syncConnectorConsentGrants — revoke', () => {
   it('is a no-op when there are no existing active rows', async () => {
     await syncConnectorConsentGrants(OWNER, CONNECTOR_DID, ASSET_ID, [], isOnConsent);
     expect(h.updateCalls.filter((c) => c.table === h.F.consentGrants)).toHaveLength(0);
+  });
+});
+
+// ── syncConnectorConsentGrants — per-client appDid (#1695) ────────────────────
+
+describe('syncConnectorConsentGrants — per-client appDid (#1695)', () => {
+  const isOnConsent = (s: string) => s === 'test:write';
+  const CLIENT_DID = 'did:imajin:client-a';
+
+  it('writes grantedTo = appDid instead of the connector DID', async () => {
+    await syncConnectorConsentGrants(OWNER, CONNECTOR_DID, ASSET_ID, ['test:write'], isOnConsent, CLIENT_DID);
+    const ins = h.insertCalls.find((c) => c.table === h.F.consentGrants);
+    expect(ins?.values).toMatchObject({ grantedTo: CLIENT_DID, consentRef: `${ASSET_ID}#${CLIENT_DID}:test:write` });
+  });
+
+  it('does not disturb an existing connector-wide row for the same scope', async () => {
+    h.state.consentRows = [consentRow('test:write')]; // grantedTo: CONNECTOR_DID
+    await syncConnectorConsentGrants(OWNER, CONNECTOR_DID, ASSET_ID, ['test:write'], isOnConsent, CLIENT_DID);
+
+    expect(h.state.consentRows).toHaveLength(2);
+    const connectorWide = h.state.consentRows.find((r) => r.grantedTo === CONNECTOR_DID);
+    expect(connectorWide).toMatchObject({ status: 'active' });
+  });
+
+  it('revoking the per-client scope leaves the connector-wide row active', async () => {
+    h.state.consentRows = [consentRow('test:write')]; // grantedTo: CONNECTOR_DID, still active
+    await syncConnectorConsentGrants(OWNER, CONNECTOR_DID, ASSET_ID, ['test:write'], isOnConsent, CLIENT_DID);
+    await syncConnectorConsentGrants(OWNER, CONNECTOR_DID, ASSET_ID, [], isOnConsent, CLIENT_DID);
+
+    const perClient = h.state.consentRows.find((r) => r.grantedTo === CLIENT_DID);
+    const connectorWide = h.state.consentRows.find((r) => r.grantedTo === CONNECTOR_DID);
+    expect(perClient).toMatchObject({ status: 'revoked' });
+    expect(connectorWide).toMatchObject({ status: 'active' });
   });
 });
 
@@ -344,5 +388,56 @@ describe('publishConnectorScopeManifest — existing asset', () => {
   it('still calls updateAssetContent', async () => {
     await publishConnectorScopeManifest(publishOpts());
     expect(mockUpdate).toHaveBeenCalledOnce();
+  });
+});
+
+// ── publishConnectorScopeManifest — per-client appDid (#1695) ─────────────────
+
+describe('publishConnectorScopeManifest — per-client appDid (#1695)', () => {
+  const CLIENT_DID = 'did:imajin:client-a';
+
+  beforeEach(() => { h.state.assetRows = [assetRow()]; });
+
+  it('writes the channel_links row with appDid = the client DID', async () => {
+    await publishConnectorScopeManifest(publishOpts({ appDid: CLIENT_DID }));
+    const row = h.state.channelRows.find((r) => r.appDid === CLIENT_DID);
+    expect(row).toMatchObject({ scopes: ['test:read'], status: 'active' });
+  });
+
+  it('leaves a pre-existing connector-wide channel_links row untouched (additive, no backfill)', async () => {
+    h.state.channelRows = [
+      {
+        id: 'clink_existing', channel: CHANNEL, channelUid: `${ASSET_ID}#test:read`,
+        did: OWNER, appDid: CONNECTOR_DID, scopes: ['test:read'], status: 'active',
+      },
+    ];
+    await publishConnectorScopeManifest(publishOpts({ appDid: CLIENT_DID }));
+
+    const connectorWide = h.state.channelRows.find((r) => r.appDid === CONNECTOR_DID);
+    const perClient = h.state.channelRows.find((r) => r.appDid === CLIENT_DID);
+    expect(connectorWide).toMatchObject({ status: 'active' });
+    expect(perClient).toMatchObject({ status: 'active' });
+    expect(h.state.channelRows).toHaveLength(2);
+  });
+
+  it('gives the per-client row a distinct primary key from the connector-wide row', async () => {
+    await publishConnectorScopeManifest(publishOpts()); // connector-wide (no appDid)
+    await publishConnectorScopeManifest(publishOpts({ appDid: CLIENT_DID }));
+
+    expect(h.state.channelRows).toHaveLength(2);
+    const ids = h.state.channelRows.map((r) => r.id);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it('revoking scopes for one client does not revoke another client\'s row', async () => {
+    await publishConnectorScopeManifest(publishOpts()); // connector-wide
+    await publishConnectorScopeManifest(publishOpts({ appDid: CLIENT_DID }));
+
+    await publishConnectorScopeManifest(publishOpts({ appDid: CLIENT_DID, scopes: [] }));
+
+    const connectorWide = h.state.channelRows.find((r) => r.appDid === CONNECTOR_DID);
+    const perClient = h.state.channelRows.find((r) => r.appDid === CLIENT_DID);
+    expect(connectorWide).toMatchObject({ status: 'active' });
+    expect(perClient).toMatchObject({ status: 'revoked' });
   });
 });

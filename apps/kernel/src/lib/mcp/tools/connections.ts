@@ -25,7 +25,7 @@ const connectionsListTool: McpTool = {
     additionalProperties: false,
   },
   async handler(_args, ctx) {
-    await requireMcpGrant(ctx.did, 'connections:read');
+    await requireMcpGrant(ctx.did, 'connections:read', ctx.appDid);
     const conns = await listConnections(ctx.did);
     return json({
       count: conns.length,
