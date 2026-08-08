@@ -29,7 +29,7 @@ function responseHeaders(request: NextRequest): Record<string, string> {
 export async function GET(request: NextRequest) {
   const headers = responseHeaders(request);
 
-  const appResult = await requireAppAuth(request, { scope: 'connectors:read-status' });
+  const appResult = await requireAppAuth(request);
   if ('error' in appResult) {
     return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers });
   }
