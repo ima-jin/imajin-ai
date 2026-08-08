@@ -75,7 +75,7 @@ describe('GET /connections/api/connectors/status (#1540)', () => {
 
     const res = await GET(makeReq());
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
     expect(readConnectorConnectionStatus).not.toHaveBeenCalled();
   });
 
