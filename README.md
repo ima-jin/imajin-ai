@@ -108,6 +108,7 @@ Separate repos. Consume the platform but aren't part of it. Own databases.
 | fixready | [imajin-fixready](https://github.com/ima-jin/imajin-fixready) | [fixready.imajin.ai](https://fixready.imajin.ai) | Home repair knowledge marketplace | Live |
 | karaoke | [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke) | [karaoke.imajin.ai](https://karaoke.imajin.ai) | Music & performance | Live |
 | scorecard | [imajin-scorecard](https://github.com/ima-jin/imajin-scorecard) | [scorecard.imajin.ai](https://scorecard.imajin.ai) | Scored assessments & lead generation | Alpha |
+| integrity | [xprize](https://github.com/catalyst-power/xprize) | [integrity.imajin.ai](https://integrity.imajin.ai) | Farm supply chain integrity (XPRIZE) | Alpha |
 
 ---
 
