@@ -51,12 +51,11 @@ beforeEach(() => {
 });
 
 describe('GET /connections/api/connectors/status (#1540)', () => {
-  it('requires the connectors:read-status app scope', async () => {
+  it('requires valid app-auth (no specific scope gate)', async () => {
     await GET(makeReq());
 
     expect(mockRequireAppAuth).toHaveBeenCalledWith(
       expect.anything(),
-      { scope: 'connectors:read-status' },
     );
   });
 
@@ -71,12 +70,12 @@ describe('GET /connections/api/connectors/status (#1540)', () => {
     ]);
   });
 
-  it('fails closed on missing or insufficient app consent', async () => {
-    mockRequireAppAuth.mockResolvedValueOnce({ error: "Scope 'connectors:read-status' was not granted", status: 403 });
+  it('fails closed on missing or invalid app-auth', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ error: 'Invalid app token', status: 401 });
 
     const res = await GET(makeReq());
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
     expect(readConnectorConnectionStatus).not.toHaveBeenCalled();
   });
 
