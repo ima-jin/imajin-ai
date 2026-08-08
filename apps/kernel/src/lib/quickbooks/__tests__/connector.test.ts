@@ -12,12 +12,15 @@ vi.mock('@/src/db', () => ({
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
 }));
 
-import { buildAuthorizeUrl, resolveActiveGrant, readInvoices, createInvoice, exchangeCodeAndStore, storeConfig, vaultField, configField } from '../connector';
+import { buildAuthorizeUrl, resolveActiveGrant, readInvoices, createInvoice, exchangeCodeAndStore, refreshTokens, storeConfig, vaultField, configField } from '../connector';
 
 const OWNER = 'did:imajin:scott';
+const APP = 'did:imajin:agrifortress';
 const CONFIG = { clientId: 'cid', clientSecret: 'csecret', redirectUri: 'https://imajin.test/quickbooks/callback', environment: 'sandbox' as const };
+const APP_CONFIG = { clientId: 'app-cid', clientSecret: 'app-csecret', redirectUri: 'https://imajin.test/quickbooks/callback', environment: 'sandbox' as const };
 
 let configResponse: string | undefined;
+let appConfigResponse: string | undefined;
 let tokensResponse: string | undefined;
 
 function grant(scopes: string[]) {
@@ -26,6 +29,10 @@ function grant(scopes: string[]) {
 
 function setConfig(present = true) {
   configResponse = present ? JSON.stringify(CONFIG) : undefined;
+}
+
+function setAppConfig(present = true) {
+  appConfigResponse = present ? JSON.stringify(APP_CONFIG) : undefined;
 }
 
 function sealedTokens(overrides: Record<string, unknown> = {}) {
@@ -39,11 +46,14 @@ beforeEach(() => {
   sealMock.mockResolvedValue(undefined);
   whereMock.mockReset();
   configResponse = undefined;
+  appConfigResponse = undefined;
   tokensResponse = undefined;
   loadMock.mockReset();
-  loadMock.mockImplementation((field: string) =>
-    Promise.resolve(field.startsWith('quickbooks-config:') ? configResponse : tokensResponse),
-  );
+  loadMock.mockImplementation((field: string) => {
+    if (field === `quickbooks-config:${APP}`) return Promise.resolve(appConfigResponse);
+    if (field.startsWith('quickbooks-config:')) return Promise.resolve(configResponse);
+    return Promise.resolve(tokensResponse);
+  });
   vi.stubGlobal('fetch', vi.fn());
 });
 
@@ -136,6 +146,58 @@ describe('exchangeCodeAndStore (#1210)', () => {
     expect(JSON.parse(blob as string)).toMatchObject({ accessToken: 'at', refreshToken: 'rt', realmId: 'realm9' });
     const tokenBody = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string;
     expect(tokenBody).toContain('grant_type=authorization_code');
+  });
+
+  it('loads client credentials from configDid while sealing tokens at ownerDid (#1704)', async () => {
+    setAppConfig();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 }),
+    });
+
+    await exchangeCodeAndStore(OWNER, 'code123', 'realm9', APP);
+
+    const [field] = sealMock.mock.calls[0];
+    expect(field).toBe(vaultField(OWNER));
+    const headers = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Basic ${Buffer.from('app-cid:app-csecret').toString('base64')}`);
+  });
+});
+
+describe('refreshTokens (#1704)', () => {
+  it('refreshes using the configDid client credentials and seals at ownerDid', async () => {
+    setAppConfig();
+    sealedTokens({ expiresAt: Date.now() - 1000 });
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at2', refresh_token: 'rt2', expires_in: 3600 }),
+    });
+
+    const tokens = await refreshTokens(OWNER, APP);
+
+    expect(tokens?.accessToken).toBe('at2');
+    const headers = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Basic ${Buffer.from('app-cid:app-csecret').toString('base64')}`);
+    expect(sealMock).toHaveBeenCalledWith(vaultField(OWNER), expect.any(String));
+  });
+
+  it('falls back to the owner-owned config when configDid is omitted (BYO-app, unchanged)', async () => {
+    setConfig();
+    sealedTokens({ expiresAt: Date.now() - 1000 });
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at2', refresh_token: 'rt2', expires_in: 3600 }),
+    });
+
+    await refreshTokens(OWNER);
+
+    const headers = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].headers as Record<string, string>;
+    expect(headers.Authorization).toBe(`Basic ${Buffer.from('cid:csecret').toString('base64')}`);
+  });
+
+  it('returns undefined when no tokens are sealed for the owner', async () => {
+    setConfig();
+    expect(await refreshTokens(OWNER)).toBeUndefined();
   });
 });
 

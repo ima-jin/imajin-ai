@@ -10,14 +10,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 //      must redirect back into the app rather than render JSON — and the
 //      `returnTo` that drives where it lands must never escape the origin.
 
-const { requireAuthMock, resolveActingDidMock } = vi.hoisted(() => ({
+const { requireAuthMock, resolveActingDidMock, requireAppAuthMock } = vi.hoisted(() => ({
   requireAuthMock: vi.fn(),
   resolveActingDidMock: vi.fn(() => 'did:imajin:owner'),
+  requireAppAuthMock: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: requireAuthMock,
   resolveActingDid: resolveActingDidMock,
+  requireAppAuth: requireAppAuthMock,
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -67,12 +69,18 @@ import {
   createConfigureHandler,
   createDeviceStartHandler,
   createDevicePollHandler,
+  resolveConfigDidFromAppAuth,
   MissingCallbackParamError,
 } from '../connector-oauth-routes';
 import type { BaseOAuthConfig } from '../connector-oauth';
 
 function makeRequest(url: string) {
   return { url } as unknown as import('next/server').NextRequest;
+}
+
+/** A request with headers, for exercising app-auth header detection. */
+function makeRequestWithHeaders(url: string, headers: Record<string, string> = {}) {
+  return { url, headers: new Headers(headers) } as unknown as import('next/server').NextRequest;
 }
 
 /** A request whose `json()` resolves to `body` (or throws when omitted). */
@@ -91,6 +99,7 @@ beforeEach(() => {
   requireAuthMock.mockResolvedValue({ identity: {} });
   resolveActingDidMock.mockReset();
   resolveActingDidMock.mockReturnValue('did:imajin:owner');
+  requireAppAuthMock.mockReset();
 });
 
 describe('createConnectHandler', () => {
@@ -157,6 +166,81 @@ describe('createConnectHandler', () => {
 
     await handler(makeRequest('https://kernel.test/connect'));
     expect(signState).toHaveBeenCalledWith('did:imajin:owner', undefined);
+  });
+
+  // ── resolveConfigDid threading (#1704) ──────────────────────────────────────
+
+  it('signs the resolved configDid into state and forwards it to buildAuthorizeUrl', async () => {
+    const signState = vi.fn(() => 'state123');
+    const buildAuthorizeUrl = vi.fn(async () => 'https://provider.test/authorize');
+    const resolveConfigDid = vi.fn(async () => 'did:imajin:agrifortress');
+    const handler = createConnectHandler(buildAuthorizeUrl, signState, resolveConfigDid);
+
+    await handler(makeRequest('https://kernel.test/connect'));
+
+    expect(resolveConfigDid).toHaveBeenCalledTimes(1);
+    expect(signState).toHaveBeenCalledWith('did:imajin:owner', undefined, 'did:imajin:agrifortress');
+    expect(buildAuthorizeUrl).toHaveBeenCalledWith('did:imajin:owner', 'state123', 'did:imajin:agrifortress');
+  });
+
+  it('signs no configDid when resolveConfigDid resolves undefined (BYO-app unaffected)', async () => {
+    const signState = vi.fn(() => 'state123');
+    const buildAuthorizeUrl = vi.fn(async () => 'https://provider.test/authorize');
+    const resolveConfigDid = vi.fn(async () => undefined);
+    const handler = createConnectHandler(buildAuthorizeUrl, signState, resolveConfigDid);
+
+    await handler(makeRequest('https://kernel.test/connect'));
+
+    expect(signState).toHaveBeenCalledWith('did:imajin:owner', undefined);
+    expect(buildAuthorizeUrl).toHaveBeenCalledWith('did:imajin:owner', 'state123', undefined);
+  });
+
+  it('never calls resolveConfigDid when it is not supplied', async () => {
+    const signState = vi.fn(() => 'state123');
+    const handler = createConnectHandler(async () => 'https://provider.test/authorize', signState);
+
+    await handler(makeRequest('https://kernel.test/connect'));
+
+    expect(signState).toHaveBeenCalledWith('did:imajin:owner', undefined);
+  });
+});
+
+describe('resolveConfigDidFromAppAuth (#1704)', () => {
+  it('returns undefined when no app-auth headers are present', async () => {
+    const result = await resolveConfigDidFromAppAuth(makeRequestWithHeaders('https://kernel.test/connect'));
+    expect(result).toBeUndefined();
+    expect(requireAppAuthMock).not.toHaveBeenCalled();
+  });
+
+  it('resolves the app DID from a bearer app token', async () => {
+    requireAppAuthMock.mockResolvedValue({
+      appAuth: { appDid: 'did:imajin:agrifortress', userDid: 'did:imajin:owner', scopes: [], attestationId: 'att' },
+    });
+    const request = makeRequestWithHeaders('https://kernel.test/connect', { authorization: 'Bearer app-token' });
+
+    const result = await resolveConfigDidFromAppAuth(request);
+
+    expect(result).toBe('did:imajin:agrifortress');
+    expect(requireAppAuthMock).toHaveBeenCalledWith(request);
+  });
+
+  it('resolves the app DID from legacy X-App-DID + X-App-Authorization headers', async () => {
+    requireAppAuthMock.mockResolvedValue({
+      appAuth: { appDid: 'did:imajin:agrifortress', userDid: 'did:imajin:owner', scopes: [], attestationId: 'att' },
+    });
+    const request = makeRequestWithHeaders('https://kernel.test/connect', {
+      'x-app-did': 'did:imajin:agrifortress',
+      'x-app-authorization': 'att_123',
+    });
+
+    expect(await resolveConfigDidFromAppAuth(request)).toBe('did:imajin:agrifortress');
+  });
+
+  it('returns undefined (does not throw) when app-auth verification fails', async () => {
+    requireAppAuthMock.mockResolvedValue({ error: 'Invalid app token', status: 401 });
+    const request = makeRequestWithHeaders('https://kernel.test/connect', { authorization: 'Bearer bad-token' });
+
+    expect(await resolveConfigDidFromAppAuth(request)).toBeUndefined();
   });
 });
 
@@ -271,6 +355,31 @@ describe('createCallbackHandler', () => {
     );
     const res = await call(handler);
     expect(res.headers.location).toBe('https://kernel.test/auth/settings?error=exchange_failed&connector=github');
+  });
+
+  // ── appDid threading (#1704) ─────────────────────────────────────────────
+
+  it('forwards the appDid signed into the state to exchange', async () => {
+    const exchange = vi.fn(async () => undefined);
+    const handler = createCallbackHandler({
+      verifyState: () => ({ did: 'did:imajin:owner', appDid: 'did:imajin:agrifortress' }),
+      exchange,
+      connectorName: 'QuickBooks',
+      connectorId: 'quickbooks',
+    });
+
+    await call(handler);
+
+    expect(exchange).toHaveBeenCalledWith('did:imajin:owner', 'abc', expect.any(URLSearchParams), 'did:imajin:agrifortress');
+  });
+
+  it('forwards undefined when no appDid was signed (BYO-app unaffected)', async () => {
+    const exchange = vi.fn(async () => undefined);
+    const handler = handlerWith(exchange);
+
+    await call(handler);
+
+    expect(exchange).toHaveBeenCalledWith('did:imajin:owner', 'abc', expect.any(URLSearchParams), undefined);
   });
 });
 

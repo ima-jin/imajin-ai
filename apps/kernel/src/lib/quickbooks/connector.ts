@@ -76,13 +76,31 @@ export const resolveActiveGrant = qb.resolveActiveGrant;
 /**
  * Exchange an authorization code for tokens and seal them under ownerDid.
  * `realmId` is supplied by Intuit as a callback query param (not in the token body).
+ *
+ * `configDid` (#1704), when supplied, is the app DID whose sealed
+ * `quickbooks-config:${configDid}` holds the Intuit client credentials used
+ * for the exchange — the split app-owned-config model. Omit it (the default)
+ * for the original BYO-app model, where `ownerDid` owns both its own config
+ * and its own tokens.
  */
 export async function exchangeCodeAndStore(
   ownerDid: string,
   code: string,
   realmId: string,
+  configDid?: string,
 ): Promise<void> {
-  await qb.exchangeCodeAndStore(ownerDid, code, { realmId });
+  await qb.exchangeCodeAndStore(ownerDid, code, { realmId }, configDid);
+}
+
+/**
+ * Load (refreshing first if needed) the owner's sealed token bundle.
+ *
+ * `configDid` (#1704), when supplied, is where the Intuit client credentials
+ * used for a refresh are loaded from, while the refreshed bundle is still
+ * sealed at `ownerDid`. Omit it for the BYO-app model.
+ */
+export async function refreshTokens(ownerDid: string, configDid?: string): Promise<QuickBooksTokens | undefined> {
+  return qb.loadAndRefreshTokens(ownerDid, configDid);
 }
 
 // ── QuickBooks-specific: grant gate ─────────────────────────────────────────────

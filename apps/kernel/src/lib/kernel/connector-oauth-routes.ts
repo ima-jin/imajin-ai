@@ -16,7 +16,7 @@
  *   createDevicePollHandler  — POST: auth → verify ticket → one poll tick
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { and, eq } from 'drizzle-orm';
@@ -47,10 +47,20 @@ const log = createLogger('kernel');
  * and signed into `state`, so the callback can put the browser back where the
  * user started the flow (#1529). An off-origin value is dropped rather than
  * rejected — the connect still succeeds, it just lands on the default page.
+ *
+ * `resolveConfigDid` (#1704) is an optional seam for the split app-owned-config
+ * model: when supplied, it runs against the raw request (before the session's
+ * `requireAuth` result is known to it) and may resolve the app DID whose
+ * sealed config owns the OAuth client credentials for this flow — e.g.
+ * {@link resolveConfigDidFromAppAuth}. The resolved DID (if any) is signed
+ * into `state` so the sessionless callback can recover it, and passed straight
+ * through to `buildAuthorizeUrl`. Omit it (the default) for unchanged BYO-app
+ * behaviour.
  */
 export function createConnectHandler(
-  buildAuthorizeUrl: (ownerDid: string, state: string) => Promise<string>,
-  signState: (ownerDid: string, returnTo?: string) => string,
+  buildAuthorizeUrl: (ownerDid: string, state: string, configDid?: string) => Promise<string>,
+  signState: (ownerDid: string, returnTo?: string, appDid?: string) => string,
+  resolveConfigDid?: (request: NextRequest) => Promise<string | undefined>,
 ) {
   return async function GET(request: NextRequest) {
     const auth = await requireAuth(request);
@@ -60,8 +70,12 @@ export function createConnectHandler(
     const ownerDid = resolveActingDid(auth.identity);
     const { searchParams } = new URL(request.url);
     const returnTo = sanitizeReturnTo(searchParams.get('returnTo'));
+    const configDid = resolveConfigDid ? await resolveConfigDid(request) : undefined;
+    const state = configDid
+      ? signState(ownerDid, returnTo ?? undefined, configDid)
+      : signState(ownerDid, returnTo ?? undefined);
     try {
-      return NextResponse.redirect(await buildAuthorizeUrl(ownerDid, signState(ownerDid, returnTo ?? undefined)));
+      return NextResponse.redirect(await buildAuthorizeUrl(ownerDid, state, configDid));
     } catch (err) {
       if (err instanceof ConnectorCredentialPendingError) {
         return NextResponse.json({ error: err.message }, { status: 409 });
@@ -69,6 +83,34 @@ export function createConnectHandler(
       throw err;
     }
   };
+}
+
+// ── App-auth config DID resolution (#1704) ───────────────────────────────────
+
+/** True when the request carries either app-auth header shape (see `requireAppAuth`). */
+function hasAppAuthHeaders(request: NextRequest): boolean {
+  const bearer = request.headers.get('authorization');
+  if (bearer?.startsWith('Bearer ')) return true;
+  return Boolean(request.headers.get('x-app-did')) && Boolean(request.headers.get('x-app-authorization'));
+}
+
+/**
+ * Default `resolveConfigDid` for {@link createConnectHandler} (#1704): when the
+ * request carries app-auth headers (a short-lived app bearer token, or the
+ * legacy `X-App-DID` + `X-App-Authorization` pair), resolve the app's own DID
+ * so the connect flow authorizes against the app's OAuth client credentials
+ * instead of the session owner's. Connectors that never see app-auth headers —
+ * the common BYO-app case — get `undefined` back, leaving that path untouched.
+ *
+ * App-auth verification failures are swallowed rather than surfaced: a
+ * session-authenticated human clicking "Connect" must never be blocked by a
+ * malformed or expired app token that happened to be present alongside their
+ * session cookie.
+ */
+export async function resolveConfigDidFromAppAuth(request: NextRequest): Promise<string | undefined> {
+  if (!hasAppAuthHeaders(request)) return undefined;
+  const result = await requireAppAuth(request);
+  return 'appAuth' in result ? result.appAuth.appDid : undefined;
 }
 
 // ── Callback ──────────────────────────────────────────────────────────────────
@@ -111,13 +153,16 @@ function defaultLandingPath(connectorId: string): string {
  * `returnTo` (or `/auth/connectors/<id>`) with `?connected=<id>`; failures land
  * on the same page with `?error=<code>&connector=<id>`.
  *
- * `exchange` receives the verified `ownerDid`, `code`, and the raw
+ * `exchange` receives the verified `ownerDid`, `code`, the raw
  * `URLSearchParams` so callers can extract provider-specific params (e.g.
- * Intuit's `realmId`). Throw `MissingCallbackParamError` for a bad callback.
+ * Intuit's `realmId`), and the `configDid` (#1704) signed into the state, when
+ * one was signed in — the app DID whose sealed config owns the OAuth client
+ * credentials for this exchange. Throw `MissingCallbackParamError` for a bad
+ * callback.
  */
 export function createCallbackHandler(opts: {
   verifyState(state: string): VerifiedState;
-  exchange(ownerDid: string, code: string, searchParams: URLSearchParams): Promise<void>;
+  exchange(ownerDid: string, code: string, searchParams: URLSearchParams, configDid?: string): Promise<void>;
   connectorName: string;
   /** Registry id (e.g. `'quickbooks'`) — drives the default landing page. */
   connectorId: string;
@@ -163,7 +208,7 @@ export function createCallbackHandler(opts: {
     const dest = sanitizeReturnTo(verified.returnTo) ?? fallback;
 
     try {
-      await opts.exchange(ownerDid, code, searchParams);
+      await opts.exchange(ownerDid, code, searchParams, verified.appDid);
     } catch (err) {
       if (err instanceof MissingCallbackParamError) {
         return fail(request, dest, 'missing_param');

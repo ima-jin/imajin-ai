@@ -37,6 +37,17 @@
  * flow is preferred only because it strips the two friction points (secret +
  * byte-exact callback), not because custody differs — the resulting token is
  * sealed per-DID identically either way.
+ *
+ * ── App-owned config vs. per-user tokens (#1704) ────────────────────────────
+ * The BYO-app model above assumes one DID owns both the OAuth App registration
+ * (config) and the resulting tokens. Some connectors (e.g. QuickBooks) instead
+ * have one app DID that owns a single provider app registration on behalf of
+ * many users, each of whom only owns their own tokens.
+ *
+ * Every entry point that reads config accepts an optional trailing `configDid`.
+ * When supplied, config is loaded from `configDid`'s vault while tokens are
+ * still sealed/read at `ownerDid`'s vault. When omitted, `ownerDid` is used for
+ * both — the original BYO-app behaviour, unchanged.
  */
 import { createLogger } from '@imajin/logger';
 import { and, eq } from 'drizzle-orm';
@@ -314,20 +325,34 @@ export interface ConnectorOAuth<
    * Load the token bundle, refreshing it first (via `shouldRefresh`) when
    * necessary. Returns undefined if no bundle is sealed. Re-seals the
    * refreshed bundle automatically.
+   *
+   * `configDid` (#1704), when supplied, is where the client credentials used
+   * for the refresh are loaded from — the refreshed bundle is still sealed at
+   * `ownerDid` either way.
    */
-  loadAndRefreshTokens(ownerDid: string): Promise<TTokens | undefined>;
+  loadAndRefreshTokens(ownerDid: string, configDid?: string): Promise<TTokens | undefined>;
   /**
    * Convenience wrapper: `loadAndRefreshTokens` → returns `.accessToken`, or
    * undefined when no bundle is sealed. Use this for the OAuth-first gate.
    */
-  loadAccessToken(ownerDid: string): Promise<string | undefined>;
-  /** Build the provider authorize redirect URL using the DID's sealed config. */
-  buildAuthorizeUrl(ownerDid: string, state: string): Promise<string>;
+  loadAccessToken(ownerDid: string, configDid?: string): Promise<string | undefined>;
   /**
-   * Exchange an authorization code for tokens, seal the bundle, and log.
-   * `extra` carries any callback-only params (e.g. `{ realmId }` for Intuit).
+   * Build the provider authorize redirect URL using the sealed config at
+   * `configDid` (#1704), or at `ownerDid` when `configDid` is omitted.
    */
-  exchangeCodeAndStore(ownerDid: string, code: string, extra?: Record<string, unknown>): Promise<void>;
+  buildAuthorizeUrl(ownerDid: string, state: string, configDid?: string): Promise<string>;
+  /**
+   * Exchange an authorization code for tokens, seal the bundle at `ownerDid`,
+   * and log. `extra` carries any callback-only params (e.g. `{ realmId }` for
+   * Intuit). `configDid` (#1704), when supplied, is where the client
+   * credentials used for the exchange are loaded from.
+   */
+  exchangeCodeAndStore(
+    ownerDid: string,
+    code: string,
+    extra?: Record<string, unknown>,
+    configDid?: string,
+  ): Promise<void>;
   /**
    * Resolve whether an ACTIVE channel_links row for ownerDid + scope exists.
    * Fail-closed: DB errors propagate.
@@ -479,23 +504,23 @@ export function createConnectorOAuth<
     return refreshed;
   }
 
-  async function loadAndRefreshTokens(ownerDid: string): Promise<TTokens | undefined> {
+  async function loadAndRefreshTokens(ownerDid: string, configDid?: string): Promise<TTokens | undefined> {
     const tokens = await loadTokens(ownerDid);
     if (tokens === undefined) return undefined;
     if (opts.shouldRefresh(tokens)) {
-      const config = await loadConfig(ownerDid);
+      const config = await loadConfig(configDid ?? ownerDid);
       return refreshBundle(ownerDid, config, tokens);
     }
     return tokens;
   }
 
-  async function loadAccessToken(ownerDid: string): Promise<string | undefined> {
-    const tokens = await loadAndRefreshTokens(ownerDid);
+  async function loadAccessToken(ownerDid: string, configDid?: string): Promise<string | undefined> {
+    const tokens = await loadAndRefreshTokens(ownerDid, configDid);
     return tokens?.accessToken;
   }
 
-  async function buildAuthorizeUrl(ownerDid: string, state: string): Promise<string> {
-    const config = requireAuthCodeConfig(opts.name, await loadConfig(ownerDid));
+  async function buildAuthorizeUrl(ownerDid: string, state: string, configDid?: string): Promise<string> {
+    const config = requireAuthCodeConfig(opts.name, await loadConfig(configDid ?? ownerDid));
     const params = new URLSearchParams({
       client_id: config.clientId,
       response_type: 'code',
@@ -510,15 +535,17 @@ export function createConnectorOAuth<
     ownerDid: string,
     code: string,
     extra: Record<string, unknown> = {},
+    configDid?: string,
   ): Promise<void> {
-    const config = requireAuthCodeConfig(opts.name, await loadConfig(ownerDid));
+    const config = requireAuthCodeConfig(opts.name, await loadConfig(configDid ?? ownerDid));
     const data = await postToken(config, new URLSearchParams({
       grant_type: 'authorization_code',
       code,
       redirect_uri: config.redirectUri,
     }));
     await storeTokens(ownerDid, opts.buildTokens(data, extra, undefined));
-    log.info({ ownerDid }, `${opts.name} account connected via OAuth`);
+    const logFields = configDid ? { ownerDid, configDid } : { ownerDid };
+    log.info(logFields, `${opts.name} account connected via OAuth`);
   }
 
   // ── Device authorization grant (RFC 8628 — #1391) ───────────────────────────
