@@ -89,4 +89,21 @@ describe('settlePaidInvoices (#1210)', () => {
     expect(result.settled).toEqual([]);
     expect(publishMock).not.toHaveBeenCalled();
   });
+
+  it('threads an optional appDid through to readInvoices as configDid (xprize #35)', async () => {
+    readInvoicesMock.mockResolvedValue([]);
+    const APP = 'did:imajin:agrifortress';
+
+    await settlePaidInvoices(SCOTT, APP);
+
+    expect(readInvoicesMock).toHaveBeenCalledWith(SCOTT, undefined, APP);
+  });
+
+  it('omits configDid when appDid is not supplied (BYO-app, unchanged)', async () => {
+    readInvoicesMock.mockResolvedValue([]);
+
+    await settlePaidInvoices(SCOTT);
+
+    expect(readInvoicesMock).toHaveBeenCalledWith(SCOTT, undefined, undefined);
+  });
 });

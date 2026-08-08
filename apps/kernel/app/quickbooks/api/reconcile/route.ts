@@ -17,10 +17,10 @@ export function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireQuickBooksUser(request, 'quickbooks:read');
   if ('response' in auth) return auth.response;
-  const { userDid, cors } = auth;
+  const { userDid, appDid, cors } = auth;
 
   try {
-    const result = await settlePaidInvoices(userDid);
+    const result = await settlePaidInvoices(userDid, appDid);
     return NextResponse.json(result, { headers: cors });
   } catch (err) {
     log.error({ err: String(err), userDid }, 'QuickBooks reconcile failed');

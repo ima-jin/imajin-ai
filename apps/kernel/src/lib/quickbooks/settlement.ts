@@ -72,9 +72,15 @@ export interface SettlementResult {
  * stamped with a lot correlationId whose lot carries a .fair manifest and is not
  * already settled, publish `order.completed` carrying that manifest so the settle
  * reactor executes it, then flip the lot to `settled`. Idempotent per lot.
+ *
+ * `appDid` (#1704 / xprize #35), when supplied, is the app DID whose sealed
+ * config owns the Intuit client credentials used to refresh `ownerDid`'s
+ * token, if needed — the `configDid` threaded through to `readInvoices`.
+ * Omit it for the BYO-app model. The webhook handler and cron reconcile
+ * fallback both resolve this from the realmId index before calling in.
  */
-export async function settlePaidInvoices(ownerDid: string): Promise<SettlementResult> {
-  const invoices = await readInvoices(ownerDid);
+export async function settlePaidInvoices(ownerDid: string, appDid?: string): Promise<SettlementResult> {
+  const invoices = await readInvoices(ownerDid, undefined, appDid);
   const settled: string[] = [];
   const skipped: string[] = [];
 
