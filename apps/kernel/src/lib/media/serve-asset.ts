@@ -16,6 +16,7 @@ import {
 } from "@/src/lib/media/transcode";
 import { type AssetAccessType } from "@/src/lib/media/read-access";
 import { authorizeAssetRead } from "@/src/lib/media/authorize-read";
+import { rewriteResponsiveImages } from "@/src/lib/media/responsive-images";
 import {
   respondUnauthorized,
   respondForbidden,
@@ -178,6 +179,12 @@ function buildArticleHtml(
     pre { background: #1a1a1a; padding: 1rem; border-radius: 6px; overflow-x: auto; margin-bottom: 1.2rem; }
     pre code { background: none; padding: 0; }
     hr { border: none; border-top: 1px solid #222; margin: 2rem 0; }
+    /* Images never overflow the 680px column, whatever their intrinsic size.
+       Responsive asset images also carry this inline (see responsive-images.ts);
+       the rule is here so external/hand-authored images behave too. */
+    img { max-width: 100%; height: auto; }
+    figure { margin: 1.5rem 0; }
+    figcaption { font-size: 0.85rem; color: #777; margin-top: 0.5rem; }
   </style>
 </head>
 <body>
@@ -233,7 +240,12 @@ export async function serveMarkdown(
     .use(remarkHtml, { sanitize: false })
     .process(stripLeadingH1(body));
 
-  const html = buildArticleHtml(fm as Record<string, unknown>, processed.toString());
+  // #1532: upgrade inline media-asset images to responsive <img srcset sizes>
+  // so phones pull a small variant and retina desktops a large one. Runs on the
+  // article body only — the surrounding template markup is left alone.
+  const articleHtml = rewriteResponsiveImages(processed.toString());
+
+  const html = buildArticleHtml(fm as Record<string, unknown>, articleHtml);
 
   const headers = new Headers();
   headers.set("Content-Type", "text/html; charset=utf-8");
