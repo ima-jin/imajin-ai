@@ -9,7 +9,7 @@
  *
  * Routing is a projection of `ingestionPattern` (#1604 — see
  * `connector-card-kind.ts`), not a per-id list:
- *   'native'                        → NativeConnectorCard (scope toggles only)
+ *   'native'                        → NativeConnectorCard (scope toggles + revoke-all)
  *   'oauth'                         → per-connector OAuth card
  *   'token-paste' | 'static-secret' → CredentialPasteConnectorCard
  * All on-consent scopes use grant-by-edit — toggling in the UI writes the
@@ -1593,7 +1593,7 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
   );
 }
 
-// ── Native connector card (scope toggles only — no credential step) — #1397 ────────────────────
+// ── Native connector card (scope toggles + revoke-all — no credential step) — #1397, #1592 ─────
 
 /**
  * Card for ingestionPattern === 'native' connectors (e.g. MCP / Claude Desktop).
@@ -1601,6 +1601,12 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
  * Native connectors need no credential — enabling one is purely toggling scopes.
  * There is no configure step and no connect step. Scope toggles are always
  * available (tokenSealed is effectively always true).
+ *
+ * Because the toggles are the whole connection, they were also the only way off
+ * it until #1592: withdrawing a native connector meant clicking every scope off
+ * one at a time. The disconnect button below is the single-action equivalent —
+ * it posts to a route that republishes the manifest empty, so it revokes through
+ * the same rail the toggles grant through.
  */
 function NativeConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const [status, setStatus] = useState<NativeStatus | null>(null);
@@ -1623,7 +1629,36 @@ function NativeConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
     }
   }, [entry.statusEndpoint]);
 
+  // Background refresh — does not blank the card, so the just-cleared toggles
+  // stay on screen while the manifest id catches up.
+  const refreshStatus = useCallback(async () => {
+    try {
+      const r = await fetch(entry.statusEndpoint!);
+      if (!r.ok) return;
+      setStatus(await r.json() as NativeStatus);
+      setStatusError(null);
+    } catch { /* non-fatal */ }
+  }, [entry.statusEndpoint]);
+
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
+
+  /**
+   * Clear the toggles from the disconnect response rather than re-fetching into
+   * a blanked card. The route verifies the revoke landed before it reports
+   * success — a 500 comes back instead if anything is still active — so an empty
+   * `activeScopes` here is server-confirmed, not optimistic.
+   */
+  const { disconnecting, disconnectError, handleDisconnect } = useDisconnect(
+    entry.disconnectRoute,
+    `Disconnect ${entry.name}? This revokes every scope you have granted it. `
+    + 'Any connected client loses access immediately; nothing is deleted, and you can grant scopes again at any time.',
+    () => {
+      setStatus((prev) => (prev ? { ...prev, activeScopes: [] } : prev));
+      setGrantError(null);
+      void refreshStatus();
+    },
+    disconnectMethod(entry),
+  );
 
   const activeSet = new Set(status?.activeScopes ?? []);
   // Ready = at least one scope is active (no credential threshold for native connectors).
@@ -1680,6 +1715,20 @@ function NativeConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
               manifest: {status.manifestAssetId}
             </div>
+          )}
+
+          {/*
+            Revoke-all (#1592) — shown only when there is something to revoke, and
+            only when the connector declares the route. Offering it with no active
+            grant would be a button whose whole effect is an error message.
+          */}
+          {hasAnyActive && entry.disconnectRoute && (
+            <DisconnectSection
+              label={`Disconnect ${entry.name}`}
+              disconnecting={disconnecting}
+              disconnectError={disconnectError}
+              onDisconnect={() => { void handleDisconnect(); }}
+            />
           )}
         </div>
       )}

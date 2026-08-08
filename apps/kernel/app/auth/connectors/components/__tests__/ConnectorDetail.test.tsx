@@ -519,6 +519,124 @@ describe('disconnect', () => {
   });
 });
 
+// ── Native revoke-all (#1592) ────────────────────────────────────────────────
+//
+// The native card had no disconnect at all: once MCP was granted, the only way
+// off it was unticking every scope by hand. These pin the affordance that
+// replaced that — including the two ways it must NOT behave, namely acting
+// without a confirm and reporting a clean card after a failed revoke.
+
+describe('native connector revoke-all', () => {
+  const STATUS = '/mcp/api/scope-manifest';
+
+  function installMcpFetch(activeScopes: string[]) {
+    return installFetch({
+      [STATUS]: {
+        manifestAssetId: 'asset_mcp',
+        activeScopes,
+        validScopes: ['media:read', 'discovery:read'],
+      },
+    });
+  }
+
+  /**
+   * The `media:read` checkbox, found by its label rather than by index so the
+   * assertion survives the registry gaining another MCP scope.
+   */
+  async function mediaReadToggle(): Promise<HTMLInputElement> {
+    return await screen.findByRole('checkbox', { name: /Read your media assets/ }) as HTMLInputElement;
+  }
+
+  it('posts to the registry disconnect route once confirmed', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const spy = installMcpFetch(['media:read']);
+
+    render(<ConnectorDetail entry={entryFor('mcp')} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Imajin MCP' }));
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith('/mcp/api/disconnect', { method: 'POST' });
+    });
+  });
+
+  it('is wired to a real route rather than the old null', () => {
+    // The registry field is what the card reads; a null here is the pre-#1592
+    // state in which no button renders at all.
+    expect(entryFor('mcp').disconnectRoute).toBe('/mcp/api/disconnect');
+  });
+
+  it('clears the scope toggles once the revoke lands', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let revoked = false;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === '/mcp/api/disconnect') {
+        revoked = true;
+        return jsonResponse({ connected: false, activeScopes: [], manifestAssetId: 'asset_mcp' });
+      }
+      return jsonResponse({
+        manifestAssetId: 'asset_mcp',
+        activeScopes: revoked ? [] : ['media:read'],
+        validScopes: ['media:read'],
+      });
+    }));
+
+    render(<ConnectorDetail entry={entryFor('mcp')} />);
+    expect((await mediaReadToggle()).checked).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect Imajin MCP' }));
+
+    await waitFor(async () => {
+      expect((await mediaReadToggle()).checked).toBe(false);
+    });
+    // With nothing left to revoke the affordance retires itself, so the card does
+    // not offer an action whose only possible outcome is an error.
+    expect(screen.queryByRole('button', { name: /^Disconnect/ })).toBeNull();
+  });
+
+  it('does nothing when the confirm dialog is declined', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const spy = installMcpFetch(['media:read']);
+
+    render(<ConnectorDetail entry={entryFor('mcp')} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Imajin MCP' }));
+
+    await waitFor(() => {
+      expect(spy.mock.calls.some(([input]) => String(input) === '/mcp/api/disconnect')).toBe(false);
+    });
+  });
+
+  it('keeps the grants on screen and shows the error when the revoke fails', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === '/mcp/api/disconnect') {
+        return jsonResponse({ error: 'Some mcp grants are still active after the revoke' }, false);
+      }
+      return jsonResponse({
+        manifestAssetId: 'asset_mcp',
+        activeScopes: ['media:read'],
+        validScopes: ['media:read'],
+      });
+    }));
+
+    render(<ConnectorDetail entry={entryFor('mcp')} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Imajin MCP' }));
+
+    expect(await screen.findByText(/still active after the revoke/)).toBeDefined();
+    // A card that blanked its toggles on a failed revoke would be claiming a
+    // withdrawal that never happened.
+    expect((await mediaReadToggle()).checked).toBe(true);
+  });
+
+  it('offers no button when nothing is granted yet', async () => {
+    installMcpFetch([]);
+
+    render(<ConnectorDetail entry={entryFor('mcp')} />);
+
+    expect(await screen.findByText('media:read')).toBeDefined();
+    expect(screen.queryByRole('button', { name: /^Disconnect/ })).toBeNull();
+  });
+});
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
 describe('dispatch by ingestion pattern', () => {
