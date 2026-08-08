@@ -10,6 +10,7 @@ import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { createLogger } from "@imajin/logger";
 import { canWriteAssetContent } from "@/src/lib/media/write-access";
 import { deriveArticleProjection } from "./article-core";
+import { checkArticleFrontmatter, type ArticleFrontmatterCheck } from "./article-guard";
 import { ensureProjectReactorRegistered } from "./projection-reactor";
 import { ensureChannelLinksSurfaceRegistered } from "./channel-links-surface";
 import { publish } from "@imajin/bus";
@@ -44,15 +45,84 @@ export interface UpdateAssetContentInput {
    * existing behavior; the MCP tool sets it.
    */
   requireTextMime?: boolean;
+  /**
+   * Hard-reject (instead of warn) when this write would null out the article
+   * projection of an article-context markdown asset (#1542). Opt-in: the
+   * default stays warn-only so existing callers are unaffected.
+   */
+  strict?: boolean;
 }
 
 export type UpdateAssetContentResult =
-  | { ok: true; asset: Asset }
+  | {
+      ok: true;
+      asset: Asset;
+      /**
+       * Non-null when the write left `metadata.article` null despite article
+       * intent (#1542). Callers surface `.warning` and the
+       * `articleProjection: null` flag via articleWarningFields().
+       */
+      articleWarning: ArticleFrontmatterCheck | null;
+    }
   | {
       ok: false;
-      code: "not_found" | "forbidden" | "immutable" | "unsupported_media" | "storage_failed" | "db_failed";
+      code:
+        | "not_found"
+        | "forbidden"
+        | "immutable"
+        | "unsupported_media"
+        | "storage_failed"
+        | "db_failed"
+        | "article_frontmatter_required";
       message: string;
     };
+
+/**
+ * Re-sign the asset's `.fair` manifest so the signature covers the new content
+ * state, mirroring it to disk when the asset has a `.fair` path. Non-fatal at
+ * every step: the content is already saved, so any failure degrades to keeping
+ * the previous manifest.
+ */
+async function resignFairManifest(asset: Asset, assetId: string): Promise<Record<string, unknown> | undefined> {
+  const current = asset.fairManifest as Record<string, unknown> | undefined;
+  const rawManifest = asset.fairManifest as FairManifest | null;
+  if (!rawManifest || !isFairManifestV1_1(rawManifest)) return current;
+
+  return contentSigner
+    .sign(rawManifest as FairManifestV1_1)
+    .then(async (signed) => {
+      if (asset.fairPath) {
+        await writeFile(asset.fairPath, JSON.stringify(signed, null, 2)).catch((err: unknown) =>
+          log.warn({ err: String(err), assetId }, "Could not write re-signed .fair to disk (non-fatal)"),
+        );
+      }
+      return signed as unknown as Record<string, unknown>;
+    })
+    .catch((err: unknown) => {
+      log.warn({ err: String(err), assetId }, "Could not re-sign .fair after content edit (non-fatal)");
+      return current;
+    });
+}
+
+/**
+ * Article frontmatter guard for the update path (#1542). Headerless markdown
+ * still projects to `{ article: null }` (unchanged) — this only makes that null
+ * visible, loudly when the write DEMOTES a live article.
+ */
+function guardArticleUpdate(asset: Asset, content: string, assetId: string): ArticleFrontmatterCheck | null {
+  const check = checkArticleFrontmatter({
+    mimeType: asset.mimeType,
+    content,
+    existingMetadata: asset.metadata,
+  });
+  if (check) {
+    log.warn(
+      { assetId, reason: check.reason, demotes: check.demotes },
+      "Article projection will be null for an article-context markdown write",
+    );
+  }
+  return check;
+}
 
 /**
  * Overwrite an asset's text content as a new version (#1170 Stage 2).
@@ -64,7 +134,7 @@ export type UpdateAssetContentResult =
  * manifest, and versionCount + 1. The asset id (alias) is stable.
  */
 export async function updateAssetContent(input: UpdateAssetContentInput): Promise<UpdateAssetContentResult> {
-  const { assetId, requesterDid, content, requireTextMime = false } = input;
+  const { assetId, requesterDid, content, requireTextMime = false, strict = false } = input;
 
   let loaded: Asset | undefined;
   try {
@@ -92,6 +162,12 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
     return { ok: false, code: "unsupported_media", message: `Cannot update non-text content (${asset.mimeType})` };
   }
 
+  // Evaluated before the file write so `strict` rejects without mutating anything.
+  const articleWarning = guardArticleUpdate(asset, content, assetId);
+  if (articleWarning && strict) {
+    return { ok: false, code: "article_frontmatter_required", message: articleWarning.warning };
+  }
+
   try {
     await writeFile(asset.storagePath, content, "utf-8");
   } catch (err) {
@@ -115,23 +191,7 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
 
   // Re-sign the .fair manifest so the signature covers the current content state
   // (non-fatal: content is saved regardless).
-  let updatedFairManifest = asset.fairManifest as Record<string, unknown> | undefined;
-  const rawManifest = asset.fairManifest as FairManifest | null;
-  if (rawManifest && isFairManifestV1_1(rawManifest)) {
-    await contentSigner
-      .sign(rawManifest as FairManifestV1_1)
-      .then(async (signed) => {
-        updatedFairManifest = signed as unknown as Record<string, unknown>;
-        if (asset.fairPath) {
-          await writeFile(asset.fairPath, JSON.stringify(signed, null, 2)).catch((err: unknown) =>
-            log.warn({ err: String(err), assetId }, "Could not write re-signed .fair to disk (non-fatal)"),
-          );
-        }
-      })
-      .catch((err: unknown) =>
-        log.warn({ err: String(err), assetId }, "Could not re-sign .fair after content edit (non-fatal)"),
-      );
-  }
+  const updatedFairManifest = await resignFairManifest(asset, assetId);
 
   try {
     await db
@@ -191,5 +251,5 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
   }
 
   const [updated] = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1);
-  return { ok: true, asset: updated };
+  return { ok: true, asset: updated, articleWarning };
 }

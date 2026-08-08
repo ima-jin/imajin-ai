@@ -6,7 +6,12 @@ import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and, sql, ilike, like } from "drizzle-orm";
 import { rateLimit, getClientIP } from "@imajin/config";
 import { createLogger } from "@imajin/logger";
-import { createAsset, inferMime, isAllowedMime } from "@/src/lib/media/create-asset";
+import { createAsset, inferMime, isAllowedMime, type AssetContext } from "@/src/lib/media/create-asset";
+import {
+  articleWarningFields,
+  checkArticleFrontmatter,
+  type ArticleFrontmatterCheck,
+} from "@/src/lib/media/article-guard";
 
 const log = createLogger("kernel");
 
@@ -41,6 +46,44 @@ function resolveUploadFilename(file: Blob, formData: FormData): string {
     return `Audio_${ts.getFullYear()}_${pad(ts.getMonth() + 1)}_${pad(ts.getDate())}_${pad(ts.getHours())}_${pad(ts.getMinutes())}_${pad(ts.getSeconds())}${ext}`;
   }
   return base;
+}
+
+/**
+ * Article frontmatter guard for the upload path (#1542).
+ *
+ * An article-context markdown upload with no usable `---` header projects to
+ * `metadata.article = null` and silently becomes a plain note. The projection is
+ * unchanged — this only stops it from being silent. Returns a 400 response when
+ * the caller opted into the hard gate with the `strict` multipart field, else
+ * the warning to attach to the success response (or null when all is well).
+ *
+ * Plain notes (no article context) never trip this.
+ */
+function guardArticleUpload(input: {
+  mimeType: string;
+  buffer: Buffer;
+  context: AssetContext | null;
+  formData: FormData;
+  filename: string;
+  cors: Record<string, string>;
+}): NextResponse | ArticleFrontmatterCheck | null {
+  const { mimeType, buffer, context, formData, filename, cors } = input;
+  // Markdown-gated up front so a large binary is never decoded to a string.
+  if (mimeType !== "text/markdown") return null;
+
+  const check = checkArticleFrontmatter({ mimeType, content: buffer.toString("utf8"), context });
+  if (!check) return null;
+
+  const strict = formData.get("strict");
+  if (strict === "true" || strict === "1") {
+    return NextResponse.json(
+      { error: check.warning, articleProjection: null },
+      { status: 400, headers: cors }
+    );
+  }
+
+  log.warn({ filename, reason: check.reason }, "Article-context markdown upload has no usable frontmatter");
+  return check;
 }
 
 /** Resolve ownerDid for GET /api/assets listing: internal key path or user auth path. */
@@ -156,6 +199,12 @@ export async function POST(request: NextRequest) {
   // createAsset owns hashing/CID, dedup, storage, .fair signing, DB insert,
   // DFOS anchor, auto-folder, and classification.
   const buffer = Buffer.from(await file.arrayBuffer());
+
+  // #1542 — run before createAsset so `strict` rejects without storing anything.
+  const guard = guardArticleUpload({ mimeType, buffer, context, formData, filename: originalName, cors });
+  if (guard instanceof NextResponse) return guard;
+  const articleWarning = guard;
+
   const baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
 
@@ -193,6 +242,7 @@ export async function POST(request: NextRequest) {
         hash: asset.hash,
         ...(asset.cid ? { cid: asset.cid } : {}),
         deduplicated: true,
+        ...articleWarningFields(articleWarning),
       },
       { status: 200, headers: cors }
     );
@@ -209,6 +259,7 @@ export async function POST(request: NextRequest) {
       storagePath: asset.storagePath,
       fairManifest: asset.fairManifest,
       createdAt: asset.createdAt,
+      ...articleWarningFields(articleWarning),
     },
     { status: 201, headers: cors }
   );
