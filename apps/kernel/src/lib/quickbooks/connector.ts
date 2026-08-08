@@ -12,7 +12,10 @@
  * the HTTP-Basic token auth method, the `realmId`-carrying token bundle, and
  * the invoice/settlement API.
  */
+import { and, eq } from 'drizzle-orm';
+import { db, channelLinks } from '@/src/db';
 import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../kernel/connector-oauth';
+import { upsertRealmIndex } from './realm-index';
 
 /** Connector app DID — the selectable "QuickBooks" connector identity. */
 export const QUICKBOOKS_CONNECTOR_DID = 'did:imajin:quickbooks-connector';
@@ -27,6 +30,14 @@ export const LOT_NOTE_PREFIX = 'imajin-lot:';
 
 export interface QuickBooksConfig extends BaseOAuthConfig {
   environment: 'sandbox' | 'production';
+  /**
+   * Intuit webhook verifier token (xprize #35), shown in the Intuit Developer
+   * dashboard alongside the app's client credentials. Used to verify the
+   * `intuit-signature` HMAC on inbound `POST /quickbooks/api/webhook`
+   * deliveries. Sealed at the app DID alongside clientId/clientSecret, same as
+   * the rest of the config. Optional — absent until an app opts into webhooks.
+   */
+  webhookVerifierToken?: string;
 }
 
 export interface QuickBooksTokens {
@@ -70,8 +81,34 @@ export const configField = qb.configField;
 /** Alias kept for backward compatibility — use `configField` for the config vault key. */
 export const vaultField = qb.tokenField;
 export const storeConfig = qb.storeConfig;
+export const loadConfig = qb.loadConfig;
 export const buildAuthorizeUrl = qb.buildAuthorizeUrl;
 export const resolveActiveGrant = qb.resolveActiveGrant;
+
+/**
+ * List every owner DID with an ACTIVE `channel_links` row for the QuickBooks
+ * connector that includes `requiredScope` (xprize #35 cron reconcile
+ * fallback). The reverse of `resolveActiveGrant`: that checks one DID, this
+ * enumerates all of them so the sweep has something to iterate.
+ */
+export async function listActiveGrantOwners(requiredScope: string): Promise<string[]> {
+  const rows = await db
+    .select({ did: channelLinks.did, scopes: channelLinks.scopes })
+    .from(channelLinks)
+    .where(
+      and(
+        eq(channelLinks.channel, 'quickbooks'),
+        eq(channelLinks.appDid, QUICKBOOKS_CONNECTOR_DID),
+        eq(channelLinks.status, 'active'),
+      ),
+    );
+  const owners = new Set<string>();
+  for (const row of rows) {
+    const scopes = Array.isArray(row.scopes) ? (row.scopes as string[]) : [];
+    if (scopes.includes(requiredScope)) owners.add(row.did);
+  }
+  return [...owners];
+}
 
 /**
  * Exchange an authorization code for tokens and seal them under ownerDid.
@@ -90,6 +127,12 @@ export async function exchangeCodeAndStore(
   configDid?: string,
 ): Promise<void> {
   await qb.exchangeCodeAndStore(ownerDid, code, { realmId }, configDid);
+  // realmId -> { ownerDid, appDid } reverse index (xprize #35): the webhook
+  // handler only ever learns realmId from Intuit, so this is the only place
+  // both halves of that mapping are in hand together. `configDid` mirrors the
+  // app whose config now owns this connection; falls back to `ownerDid` for
+  // the BYO-app model where the owner configures their own app.
+  await upsertRealmIndex(realmId, ownerDid, configDid ?? ownerDid);
 }
 
 /**
@@ -117,6 +160,10 @@ function apiBase(config: QuickBooksConfig): string {
  * QB actions need both the access token (for Authorization) and the full bundle
  * (for realmId + config for apiBase), so we return both.
  *
+ * `configDid` (#1704), when supplied, is where the Intuit client credentials
+ * used to load config / refresh tokens come from, while tokens stay sealed at
+ * `ownerDid`. Omit it for the BYO-app model.
+ *
  * Throws:
  *   - `quickbooks_no_grant`  — no active channel_links row for ownerDid + scope.
  *   - `quickbooks_no_tokens` — no sealed tokens for ownerDid.
@@ -124,6 +171,7 @@ function apiBase(config: QuickBooksConfig): string {
 async function requireGrantAndTokens(
   ownerDid: string,
   scope: string,
+  configDid?: string,
 ): Promise<{ tokens: QuickBooksTokens; config: QuickBooksConfig }> {
   const hasGrant = await qb.resolveActiveGrant(ownerDid, scope);
   if (!hasGrant) {
@@ -132,7 +180,10 @@ async function requireGrantAndTokens(
       `enable the connector scope in the scope-manifest`,
     );
   }
-  const [config, tokens] = await Promise.all([qb.loadConfig(ownerDid), qb.loadAndRefreshTokens(ownerDid)]);
+  const [config, tokens] = await Promise.all([
+    qb.loadConfig(configDid ?? ownerDid),
+    qb.loadAndRefreshTokens(ownerDid, configDid),
+  ]);
   if (tokens === undefined) {
     throw new Error(
       `quickbooks_no_tokens: no QuickBooks tokens sealed for DID ${ownerDid} — connect the account first`,
@@ -191,9 +242,16 @@ function normalizeInvoice(raw: Readonly<RawInvoice>): QuickBooksInvoice {
 /**
  * Read the owner's recent QuickBooks invoices (read-only). `sinceIsoDate`
  * (YYYY-MM-DD) optionally bounds the query. Gated by `quickbooks:read`.
+ *
+ * `configDid` (#1704), when supplied, is the app DID whose sealed config owns
+ * the Intuit client credentials used to refresh the owner's token, if needed.
  */
-export async function readInvoices(ownerDid: string, sinceIsoDate?: string): Promise<QuickBooksInvoice[]> {
-  const { tokens, config } = await requireGrantAndTokens(ownerDid, 'quickbooks:read');
+export async function readInvoices(
+  ownerDid: string,
+  sinceIsoDate?: string,
+  configDid?: string,
+): Promise<QuickBooksInvoice[]> {
+  const { tokens, config } = await requireGrantAndTokens(ownerDid, 'quickbooks:read', configDid);
 
   const where = sinceIsoDate ? ` WHERE TxnDate >= '${sinceIsoDate}'` : '';
   const query = `SELECT * FROM Invoice${where} ORDERBY TxnDate DESC MAXRESULTS 50`;
@@ -237,9 +295,16 @@ export interface CreateInvoiceParams {
  * Create a QuickBooks invoice on behalf of ownerDid, stamping the lot
  * `correlationId` into PrivateNote so the paid read-back matches deterministically
  * (AgriFortress authors the invoice, so no fuzzy matching). Gated by `quickbooks:write`.
+ *
+ * `configDid` (#1704), when supplied, is the app DID whose sealed config owns
+ * the Intuit client credentials used to refresh the owner's token, if needed.
  */
-export async function createInvoice(ownerDid: string, params: CreateInvoiceParams): Promise<QuickBooksInvoice> {
-  const { tokens, config } = await requireGrantAndTokens(ownerDid, 'quickbooks:write');
+export async function createInvoice(
+  ownerDid: string,
+  params: CreateInvoiceParams,
+  configDid?: string,
+): Promise<QuickBooksInvoice> {
+  const { tokens, config } = await requireGrantAndTokens(ownerDid, 'quickbooks:write', configDid);
 
   const body = {
     CustomerRef: { value: params.customerRef },

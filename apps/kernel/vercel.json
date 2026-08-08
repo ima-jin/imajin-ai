@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/vault-grant-expiry",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/quickbooks-reconcile",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

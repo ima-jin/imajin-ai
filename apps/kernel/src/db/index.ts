@@ -22,6 +22,7 @@ import * as inferenceSchema from './schemas/inference';
 import * as contactSchema from './schemas/contact';
 import * as contactMetadataSchema from './schemas/contact-metadata';
 import * as githubSchema from './schemas/github';
+import * as quickbooksSchema from './schemas/quickbooks';
 
 const schema = {
   ...authSchema,
@@ -46,6 +47,7 @@ const schema = {
   ...contactSchema,
   ...contactMetadataSchema,
   ...githubSchema,
+  ...quickbooksSchema,
 };
 
 export const db = createDb(schema);
@@ -73,6 +75,7 @@ export * from './schemas/inference';
 export * from './schemas/contact';
 export * from './schemas/contact-metadata';
 export * from './schemas/github';
+export * from './schemas/quickbooks';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";

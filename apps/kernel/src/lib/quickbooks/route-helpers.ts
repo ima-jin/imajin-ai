@@ -13,15 +13,17 @@ export function quickbooksPreflight(request: NextRequest): NextResponse {
 }
 
 /**
- * Resolve CORS headers + the delegating user DID for an app-auth-gated
- * QuickBooks route. On success returns `{ userDid, cors }`; on failure returns
- * `{ response }` — a ready-to-return error — so callers collapse the shared
- * auth boilerplate to `if ('response' in r) return r.response;`.
+ * Resolve CORS headers + the delegating user DID (and the calling app's own
+ * DID — the `configDid` for the split app-owned-config model, #1704) for an
+ * app-auth-gated QuickBooks route. On success returns `{ userDid, appDid,
+ * cors }`; on failure returns `{ response }` — a ready-to-return error — so
+ * callers collapse the shared auth boilerplate to `if ('response' in r)
+ * return r.response;`.
  */
 export async function requireQuickBooksUser(
   request: NextRequest,
   scope: QuickBooksScope,
-): Promise<{ userDid: string; cors: Cors } | { response: NextResponse }> {
+): Promise<{ userDid: string; appDid: string; cors: Cors } | { response: NextResponse }> {
   const cors = corsHeaders(request);
 
   const appResult = await requireAppAuth(request, { scope });
@@ -36,5 +38,5 @@ export async function requireQuickBooksUser(
     };
   }
 
-  return { userDid, cors };
+  return { userDid, appDid: appResult.appAuth.appDid, cors };
 }

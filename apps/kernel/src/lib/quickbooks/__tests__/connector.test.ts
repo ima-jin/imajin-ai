@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { sealMock, loadMock, whereMock } = vi.hoisted(() => ({
+const { sealMock, loadMock, whereMock, upsertRealmIndexMock } = vi.hoisted(() => ({
   sealMock: vi.fn(),
   loadMock: vi.fn(),
   whereMock: vi.fn(),
+  upsertRealmIndexMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
@@ -11,8 +12,12 @@ vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: whereMock }) }) },
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
 }));
+vi.mock('../realm-index', () => ({ upsertRealmIndex: upsertRealmIndexMock }));
 
-import { buildAuthorizeUrl, resolveActiveGrant, readInvoices, createInvoice, exchangeCodeAndStore, refreshTokens, storeConfig, vaultField, configField } from '../connector';
+import {
+  buildAuthorizeUrl, resolveActiveGrant, listActiveGrantOwners, readInvoices, createInvoice,
+  exchangeCodeAndStore, refreshTokens, storeConfig, vaultField, configField,
+} from '../connector';
 
 const OWNER = 'did:imajin:scott';
 const APP = 'did:imajin:agrifortress';
@@ -45,6 +50,8 @@ beforeEach(() => {
   sealMock.mockReset();
   sealMock.mockResolvedValue(undefined);
   whereMock.mockReset();
+  upsertRealmIndexMock.mockReset();
+  upsertRealmIndexMock.mockResolvedValue(undefined);
   configResponse = undefined;
   appConfigResponse = undefined;
   tokensResponse = undefined;
@@ -81,6 +88,23 @@ describe('resolveActiveGrant (#1210)', () => {
   it('is false when no active row includes the scope', async () => {
     grant(['other:scope']);
     expect(await resolveActiveGrant(OWNER, 'quickbooks:read')).toBe(false);
+  });
+});
+
+describe('listActiveGrantOwners (xprize #35 cron reconcile)', () => {
+  it('returns distinct owner DIDs whose active row includes the scope', async () => {
+    whereMock.mockResolvedValue([
+      { did: OWNER, scopes: ['quickbooks:read'] },
+      { did: 'did:imajin:other-supplier', scopes: ['quickbooks:write'] },
+      { did: OWNER, scopes: ['quickbooks:read'] },
+    ]);
+
+    expect(await listActiveGrantOwners('quickbooks:read')).toEqual([OWNER]);
+  });
+
+  it('returns an empty list when no active rows include the scope', async () => {
+    whereMock.mockResolvedValue([{ did: OWNER, scopes: ['quickbooks:write'] }]);
+    expect(await listActiveGrantOwners('quickbooks:read')).toEqual([]);
   });
 });
 
@@ -148,6 +172,18 @@ describe('exchangeCodeAndStore (#1210)', () => {
     expect(tokenBody).toContain('grant_type=authorization_code');
   });
 
+  it('upserts the realmId -> ownerDid reverse index, appDid falling back to ownerDid (xprize #35)', async () => {
+    setConfig();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 }),
+    });
+
+    await exchangeCodeAndStore(OWNER, 'code123', 'realm9');
+
+    expect(upsertRealmIndexMock).toHaveBeenCalledWith('realm9', OWNER, OWNER);
+  });
+
   it('loads client credentials from configDid while sealing tokens at ownerDid (#1704)', async () => {
     setAppConfig();
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -161,6 +197,18 @@ describe('exchangeCodeAndStore (#1210)', () => {
     expect(field).toBe(vaultField(OWNER));
     const headers = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].headers as Record<string, string>;
     expect(headers.Authorization).toBe(`Basic ${Buffer.from('app-cid:app-csecret').toString('base64')}`);
+  });
+
+  it('upserts the realmId index with the configDid as appDid (xprize #35, split-config)', async () => {
+    setAppConfig();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 }),
+    });
+
+    await exchangeCodeAndStore(OWNER, 'code123', 'realm9', APP);
+
+    expect(upsertRealmIndexMock).toHaveBeenCalledWith('realm9', OWNER, APP);
   });
 });
 
