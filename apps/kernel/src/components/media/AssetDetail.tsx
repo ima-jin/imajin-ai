@@ -18,6 +18,7 @@ async function resolveProfile(did: string): Promise<{ name: string; avatar?: str
   return { name: data.handle || data.name || did.slice(0, 16), avatar: data.avatar };
 }
 import { formatSize } from "./AssetCard";
+import { AssetFilename } from "./AssetFilename";
 import { FileEditor, isTextAsset } from "./FileEditor";
 
 interface Folder {
@@ -112,6 +113,8 @@ interface AssetDetailProps {
   onClose: () => void;
   onDeleted: () => void;
   onMoved: () => void;
+  /** Fired after a successful rename so the caller can refresh its list. */
+  onRenamed?: () => void;
 }
 
 function formatDate(d: Date | string | null): string {
@@ -123,7 +126,7 @@ function formatDate(d: Date | string | null): string {
   });
 }
 
-export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, onMoved }: Readonly<AssetDetailProps>) {
+export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, onMoved, onRenamed }: Readonly<AssetDetailProps>) {
   const isOwner = !!currentDid && currentDid === asset.ownerDid;
   const showFileEditor = isTextAsset(asset);
   const [editingFair, setEditingFair] = useState(false);
@@ -137,14 +140,20 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const [movingTo, setMovingTo] = useState(false);
   const [shareLabel, setShareLabel] = useState("Copy URL");
   const [savedFilename, setSavedFilename] = useState(asset.filename);
-  const [editingFilename, setEditingFilename] = useState(false);
-  const [filenameInput, setFilenameInput] = useState("");
   const [transcribing, setTranscribing] = useState(false);
   const [transcript, setTranscript] = useState<Record<string, unknown> | null>(
     () => (asset.metadata as Record<string, unknown> | null)?.transcript as Record<string, unknown> | null ?? null
   );
   const [upgradingFair, setUpgradingFair] = useState(false);
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
+
+  // The viewer swaps assets in place (no remount), so re-seed the locally
+  // tracked filename whenever the asset behind us changes.
+  const [seenAssetId, setSeenAssetId] = useState(asset.id);
+  if (seenAssetId !== asset.id) {
+    setSeenAssetId(asset.id);
+    setSavedFilename(asset.filename);
+  }
 
   const isImage = asset.mimeType.startsWith("image/");
   const isAudio = asset.mimeType.startsWith("audio/");
@@ -153,7 +162,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   const assetUrl = `/media/api/assets/${asset.id}`;
 
   const handleDelete = async () => {
-    if (!confirm(`Delete "${asset.filename}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete "${savedFilename}"? This cannot be undone.`)) return;
     await fetch(`/media/api/assets/${asset.id}`, {
       method: "DELETE",
       credentials: "include",
@@ -168,22 +177,9 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
     setTimeout(() => setShareLabel("Copy URL"), 2000);
   };
 
-  const handleRenameFile = async () => {
-    const trimmed = filenameInput.trim();
-    if (!trimmed || trimmed === savedFilename) {
-      setEditingFilename(false);
-      return;
-    }
-    const res = await fetch(`/media/api/assets/${asset.id}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename: trimmed }),
-    });
-    if (res.ok) {
-      setSavedFilename(trimmed);
-    }
-    setEditingFilename(false);
+  const handleRenamed = (filename: string) => {
+    setSavedFilename(filename);
+    onRenamed?.();
   };
 
   const handleTranscribe = async () => {
@@ -288,28 +284,13 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
             ← Back
           </button>
           <span className="text-gray-700">/</span>
-          {editingFilename ? (
-            <input
-              className="flex-1 min-w-0 text-sm bg-[#252525] border border-orange-500 rounded px-1 py-0.5 text-gray-100 outline-none"
-              value={filenameInput}
-              onChange={(e) => setFilenameInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleRenameFile();
-                if (e.key === "Escape") setEditingFilename(false);
-              }}
-              onBlur={handleRenameFile}
-              autoFocus
-            />
-          ) : (
-            <button
-              type="button"
-              className="text-sm text-gray-200 truncate flex-1 min-w-0 cursor-pointer hover:text-white"
-              onClick={() => { setFilenameInput(savedFilename); setEditingFilename(true); }}
-              title="Click to rename"
-            >
-              {savedFilename}
-            </button>
-          )}
+          <AssetFilename
+            assetId={asset.id}
+            filename={savedFilename}
+            isOwner={isOwner}
+            immutable={asset.immutable ?? false}
+            onRenamed={handleRenamed}
+          />
         </div>
 
         {/* Preview */}
@@ -318,14 +299,14 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
              
             <img
               src={assetUrl}
-              alt={asset.filename}
+              alt={savedFilename}
               className="max-w-full max-h-full object-contain"
             />
           )}
           {isAudio && (
             <div className="text-center space-y-4 p-8 w-full max-w-sm">
               <span className="text-8xl block">🎵</span>
-              <p className="text-gray-300 text-sm truncate">{asset.filename}</p>
+              <p className="text-gray-300 text-sm truncate">{savedFilename}</p>
               { }
               <audio controls className="w-full" style={{ colorScheme: "dark" }}>
                 <source src={assetUrl} type={asset.mimeType} />
@@ -348,7 +329,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
           {!isImage && !isAudio && !isVideo && !showFileEditor && (
             <div className="text-center space-y-4">
               <span className="text-8xl block">📄</span>
-              <p className="text-gray-300 text-sm">{asset.filename}</p>
+              <p className="text-gray-300 text-sm">{savedFilename}</p>
               <a
                 href={`${assetUrl}?download=true`}
                 className="inline-block px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition-colors"
@@ -367,6 +348,16 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
             <span>{asset.mimeType}</span>
             <span className="text-gray-700">·</span>
             <span>{formatDate(asset.createdAt)}</span>
+            {/* Version count — rename is version-preserving (#1543), so this
+                must not move when the filename changes. */}
+            <span className="text-gray-700">·</span>
+            <span title="Content versions — unaffected by renaming">v{asset.versionCount ?? 1}</span>
+            {asset.immutable && (
+              <>
+                <span className="text-gray-700">·</span>
+                <span className="text-gray-500">🔒 Immutable</span>
+              </>
+            )}
             {currentFolder && (
               <>
                 <span className="text-gray-700">·</span>
