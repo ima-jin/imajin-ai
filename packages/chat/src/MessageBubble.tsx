@@ -78,6 +78,12 @@ interface Message {
   conversationId: string;
   fromDid: string;
   senderSubtype?: string;
+  /**
+   * DID of the agent that composed this message under `X-Acting-For`
+   * delegation (#1673). `fromDid` stays the intent-owner. Null/absent means
+   * the sender composed it directly — never "unknown".
+   */
+  composedBy?: string | null;
   content: MessageContent | { type: string; text: string };
   contentType: string;
   replyTo: string | null;
@@ -98,6 +104,12 @@ export interface MessageBubbleProps {
   isOwn: boolean;
   senderLabel: string;
   showSenderLabel: boolean;
+  /**
+   * Display name for `message.composedBy`, resolved by the caller through the
+   * same pipeline as `senderLabel` (#1673). Falls back to a DID suffix when the
+   * name has not resolved yet — the attribution is never silently dropped.
+   */
+  composedByLabel?: string;
   onReply: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -258,6 +270,7 @@ export function MessageBubble({
   isOwn,
   senderLabel,
   showSenderLabel,
+  composedByLabel,
   onReply,
   onEdit,
   onDelete,
@@ -324,6 +337,17 @@ export function MessageBubble({
     setShowDeleteConfirm(false);
   };
 
+  // Dual attribution (#1673). `fromDid` is the intent-owner; `composedBy` is
+  // the agent that typed it under delegation. A delegated message always shows
+  // its header — even on own messages and inside a run of consecutive messages
+  // from the same sender, where the sender label is normally folded away —
+  // because "I did not type this" is exactly what the reader must not miss.
+  const composerLabel = message.composedBy
+    ? (composedByLabel ?? message.composedBy.slice(-8))
+    : null;
+  const attributionName = isOwn ? 'You' : senderLabel;
+  const showAttribution = composerLabel !== null || (!isOwn && showSenderLabel);
+
   // System messages render as centered timeline annotations, not bubbles
   const contentObj = message.content as any;
   if (contentObj?.type === 'system') {
@@ -359,13 +383,18 @@ export function MessageBubble({
                 : 'bg-gray-100 dark:bg-gray-800 rounded-bl-none'
               }`}
           >
-            {/* Sender handle */}
-            {!isOwn && showSenderLabel && (
-              <p className="text-xs text-amber-500 mb-1 font-medium flex items-center gap-1">
+            {/* Sender handle, plus the composing agent when delegated (#1673) */}
+            {showAttribution && (
+              <p className={`text-xs mb-1 font-medium flex items-center gap-1 flex-wrap ${isOwn ? 'text-white/90' : 'text-amber-500'}`}>
                 {message.senderSubtype === 'agent' && (
                   <span title="Agent" className="opacity-80">🤖</span>
                 )}
-                {senderLabel}
+                <span>{attributionName}</span>
+                {composerLabel && (
+                  <span title={`Composed by ${composerLabel} on behalf of ${attributionName}`}>
+                    · transcribed by {composerLabel}
+                  </span>
+                )}
               </p>
             )}
 

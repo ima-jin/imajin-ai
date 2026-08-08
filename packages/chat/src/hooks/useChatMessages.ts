@@ -8,6 +8,12 @@ export interface ChatMessage {
   did: string;
   senderDid: string;
   senderSubtype?: string;
+  /**
+   * DID of the agent that composed the message under `X-Acting-For`
+   * delegation (#1673). `senderDid` stays the intent-owner; this is who
+   * actually typed it. Null/absent means the sender composed it directly.
+   */
+  composedBy?: string | null;
   content: { type: string; text?: string; [key: string]: unknown };
   replyTo?: string;
   reactions?: { emoji: string; senderDid: string }[];
@@ -57,6 +63,7 @@ export function useChatMessages(did: string): UseChatMessagesResult {
           ...msg,
           senderDid: msg.senderDid ?? msg.fromDid,
           senderSubtype: msg.senderSubtype ?? msg.sender_subtype ?? msg.subtype,
+          composedBy: msg.composedBy ?? msg.composed_by ?? null,
           did: msg.did ?? msg.conversationDid,
           replyTo: msg.replyTo ?? msg.replyToMessageId,
           reactions: msg.reactions?.map((r: any) => ({
@@ -117,6 +124,7 @@ export function useChatMessages(did: string): UseChatMessagesResult {
       ...message,
       senderDid: message.senderDid ?? raw.fromDid,
       senderSubtype: message.senderSubtype ?? raw.senderSubtype ?? raw.sender_subtype ?? raw.subtype,
+      composedBy: message.composedBy ?? raw.composed_by ?? null,
       did: message.did ?? raw.conversationDid,
       replyTo: raw.replyTo ?? raw.replyToMessageId,
     };

@@ -66,6 +66,7 @@ export default defineConfig({
       // ordering requirement as @imajin/fair/react below).
       { find: '@imajin/auth/broker-consent-vocabulary', replacement: resolve(__dirname, 'packages/auth/src/broker-consent-vocabulary.ts') },
       { find: '@imajin/auth/scope-vocabulary', replacement: resolve(__dirname, 'packages/auth/src/scope-vocabulary.ts') },
+      { find: '@imajin/chat', replacement: resolve(__dirname, 'packages/chat/src/index.ts') },
       { find: '@imajin/cid', replacement: resolve(__dirname, 'packages/cid/src/index.ts') },
       { find: '@imajin/config', replacement: resolve(__dirname, 'packages/config/src/index.ts') },
       { find: '@imajin/logger', replacement: resolve(__dirname, 'packages/logger/src/index.ts') },

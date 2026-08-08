@@ -57,6 +57,7 @@ function toMsgShape(msg: ChatMessage) {
     conversationId: msg.did,
     fromDid: msg.senderDid,
     senderSubtype: msg.senderSubtype,
+    composedBy: msg.composedBy ?? null,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     content: msg.content as any,
     contentType: msg.content.type ?? 'text',
@@ -219,12 +220,28 @@ export function Chat({
 
   const messageById = new Map(messages.map(m => [m.id, m]));
 
-  // Resolve sender DIDs to display names
+  // Resolve sender DIDs to display names. Composing agents (#1673) go through
+  // the same lookup — including when the sender is the current user, since a
+  // delegated message of your own still names the agent that typed it.
   const senderDids = useMemo(
-    () => Array.from(new Set(messages.map(m => m.senderDid).filter(d => d !== currentUserDid))),
+    () => Array.from(new Set(
+      messages
+        .flatMap(m => [m.senderDid, m.composedBy ?? null])
+        .filter((d): d is string => !!d && d !== currentUserDid)
+    )),
     [messages, currentUserDid]
   );
   const didNames = useDidNames(senderDids);
+
+  // One name pipeline for every attributed DID, so a pseudonymity policy set
+  // through `resolveDisplayName` applies to composers as well as senders.
+  const displayNameFor = useCallback(
+    (did: string) =>
+      (resolveDisplayName?.(did, didNames, currentUserDid))
+      ?? didNames[did]
+      ?? did.slice(-8),
+    [resolveDisplayName, didNames, currentUserDid]
+  );
 
   const handleSend = useCallback(async () => {
     const text = composerText.trim();
@@ -424,10 +441,9 @@ export function Chat({
               <MessageBubble
                 message={toMsgShape(msg)}
                 isOwn={msg.senderDid === currentUserDid}
-                senderLabel={resolveDisplayName
-                  ? (resolveDisplayName(msg.senderDid, didNames, currentUserDid) ?? didNames[msg.senderDid] ?? msg.senderDid.slice(-8))
-                  : (didNames[msg.senderDid] ?? msg.senderDid.slice(-8))}
+                senderLabel={displayNameFor(msg.senderDid)}
                 showSenderLabel={showSenderLabel}
+                composedByLabel={msg.composedBy ? displayNameFor(msg.composedBy) : undefined}
                 onReply={() => handleReply(msg)}
                 onEdit={() => handleEdit(msg)}
                 onDelete={async () => {
