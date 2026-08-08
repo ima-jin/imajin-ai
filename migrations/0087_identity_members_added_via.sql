@@ -1,4 +1,4 @@
--- Migration: 0086_identity_members_added_via
+-- Migration: 0087_identity_members_added_via
 -- Adds provenance to auth.identity_members (#1680).
 --
 -- `added_by` records WHO added a member. It does not record HOW they arrived,
