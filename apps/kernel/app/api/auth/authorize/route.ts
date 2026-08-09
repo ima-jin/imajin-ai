@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { db, attestations, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { requireAuth, validateScopes, canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { requireAuth, validateScopes, canonicalize, crypto as authCrypto, resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 
@@ -22,6 +22,10 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const { identity } = authResult;
+  // #1735: the promoted actor must belong to the acting/business DID, not the
+  // caller's raw session DID, when consent is granted while acting on behalf
+  // of a business/app identity.
+  const ownerDid = resolveActingDid(identity);
 
   let body: Record<string, unknown>;
   try {
@@ -44,6 +48,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     .select({
       id: registryApps.id,
       appDid: registryApps.appDid,
+      publicKey: registryApps.publicKey,
       status: registryApps.status,
       requestedScopes: registryApps.requestedScopes,
       callbackUrl: registryApps.callbackUrl,
@@ -103,10 +108,14 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   });
 
   // Promote the authorized app into a first-class actor identity in the graph
-  // (#1170). Idempotent + non-fatal; the attestation above is the grant of record.
+  // (#1170), storing its real Ed25519 public key and linking it to the acting
+  // DID via identity_members (#1735). Idempotent + non-fatal; the attestation
+  // above is the grant of record.
   await promoteActorOnGrant({
     appId: app.id,
     appDid: app.appDid,
+    publicKey: app.publicKey,
+    ownerDid,
     name: app.name,
     avatarUrl: app.logoUrl,
     adapter: 'keypair',

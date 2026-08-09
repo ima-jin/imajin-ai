@@ -182,6 +182,7 @@ export async function GET(request: NextRequest) {
 type ConsentClient = {
   id: string;
   appDid: string;
+  publicKey: string;
   callbackUrl: string;
   requestedScopes: string[] | null;
   name: string;
@@ -233,6 +234,7 @@ async function validateConsentRequest(
     .select({
       id: registryApps.id,
       appDid: registryApps.appDid,
+      publicKey: registryApps.publicKey,
       callbackUrl: registryApps.callbackUrl,
       requestedScopes: registryApps.requestedScopes,
       name: registryApps.name,
@@ -333,11 +335,16 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Promote the client into a first-class actor identity (#1170). OAuth public
-  // clients are keyless → non-signing agent_ sentinel. Idempotent + non-fatal.
+  // Promote the client into a first-class actor identity (#1170), storing its
+  // real Ed25519 public key and linking it to the granting DID via
+  // identity_members (#1735). Uses the real session DID as owner — never the
+  // acting-as/acting-for effective DID — matching the resource-owner policy
+  // above. Idempotent + non-fatal.
   await promoteActorOnGrant({
     appId: client.id,
     appDid: client.appDid,
+    publicKey: client.publicKey,
+    ownerDid: sessionDid,
     name: client.name,
     avatarUrl: client.logoUrl,
     adapter: 'oauth',
