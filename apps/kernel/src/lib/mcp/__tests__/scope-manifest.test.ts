@@ -52,7 +52,7 @@ const MCP_DID = 'did:imajin:mcp-connector';
 // ── Descriptor / constant tests ───────────────────────────────────────────────
 
 describe('MCP_SCOPE_DESCRIPTORS', () => {
-  it('defines all nine MCP scopes', () => {
+  it('defines all eleven MCP scopes', () => {
     expect(new Set(VALID_MCP_SCOPES)).toEqual(
       new Set([
         'media:read', 'media:write', 'media:share', 'connections:read',
@@ -61,6 +61,8 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
         // without a sealed Agent key.
         'discovery:read',
         'inference:read', 'inference:write',
+        // #1730 — corpus proxy tools (kernel auth-gates, apps/corpus indexes/searches).
+        'corpus:read', 'corpus:write',
       ]),
     );
   });
@@ -134,6 +136,20 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
     expect(r.sensitive).toBe(true);
     // No explicit override — the 2×2 derives owner-only on its own.
     expect(r.release).toBeUndefined();
+    expect(r.viewer).toBe(MCP_DID);
+  });
+
+  // #1730 — corpus proxy tools.
+  it('corpus:read is silent (no release override, discloses_others: false)', () => {
+    const r = MCP_SCOPE_DESCRIPTORS['corpus:read'].release;
+    expect(r.discloses_others).toBe(false);
+    expect(r.sensitive).toBe(false);
+    expect(r.release).toBeUndefined();
+  });
+
+  it('corpus:write is on-consent (explicit release override, mirrors media:write)', () => {
+    const r = MCP_SCOPE_DESCRIPTORS['corpus:write'].release;
+    expect(r.release).toBe('on-consent');
     expect(r.viewer).toBe(MCP_DID);
   });
 });

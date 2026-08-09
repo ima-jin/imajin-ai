@@ -332,6 +332,17 @@ export const SCOPE_VOCABULARY = [
   // consent row. Deliberately stricter than `media:write`'s on-consent override.
   { scope: 'inference:write', connector: 'mcp', verb: 'write', surface: 'inference', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
     label: 'Trigger inference and sign attestations', manifestLabel: 'Trigger the inference pipeline and sign attestations on your behalf' },
+
+  // ── Corpus proxy tools (#1730)
+  //
+  // The kernel MCP surface auth-gates these scopes, then proxies to the
+  // out-of-process corpus engine. The corpus stores and searches only the
+  // owner's own indexed threads for the effective DID; it consumes no sealed
+  // external credential, so it is owned by the native MCP connector.
+  { scope: 'corpus:read', connector: 'mcp', verb: 'read', surface: 'corpus', classification: SELF_ONLY, surfaces: MCP_TOKENS, credentialFree: true,
+    label: 'Read and search the corpus', manifestLabel: 'Read and search your corpus' },
+  { scope: 'corpus:write', connector: 'mcp', verb: 'write', surface: 'corpus', classification: SELF_ONLY, surfaces: MCP_TOKENS, releaseOverride: 'on-consent', credentialFree: true,
+    label: 'Load and sync corpus sources', manifestLabel: 'Load and sync your corpus sources' },
 ] as const satisfies readonly ScopeVocabularyEntry[];
 
 /** Every scope string in the vocabulary, as a literal union. */
