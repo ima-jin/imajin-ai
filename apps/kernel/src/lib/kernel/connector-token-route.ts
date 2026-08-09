@@ -127,7 +127,10 @@ export function createConnectorTokenRoutes(
 export interface ConnectorTokenDisconnectRouteOpts {
   /** Display name used in log lines and the failure message, e.g. `'Gemini'`. */
   name: string;
-  /** Revoke the sealed API key's delegation grant for this DID. */
+  /**
+   * Revoke the sealed API key's delegation grant for this DID, and every
+   * active `channel_links` row for this connector + DID (#1733).
+   */
   revokeApiKey: (ownerDid: string) => Promise<boolean>;
 }
 
@@ -140,14 +143,17 @@ export interface ConnectorTokenDisconnectRouteHandlers {
  * Build the `POST` + `OPTIONS` handlers for a token-paste connector's
  * disconnect route (#1720).
  *
- * Unlike the OAuth/native disconnect handlers, this does not tombstone a vault
- * field or touch `channel_links` — it only revokes the sealed key's delegation
- * grant, mirroring the static-secret connector's DELETE semantics (see
- * `connector-static-secret-route.ts`). The dispatch verb differs
- * (`disconnectMethod` in `connector-card-kind.ts` routes token-paste
- * connectors to a dedicated POST route rather than overloading the seal
- * route's DELETE) but the underlying revoke is the same idea: kill access
- * without discarding the recoverable secret.
+ * Unlike the OAuth/native disconnect handlers, this does not tombstone the
+ * sealed vault field — `opts.revokeApiKey` (see `createConnectorTokenPaste`)
+ * revokes the sealed key's delegation grant AND every active `channel_links`
+ * row for the connector + DID (#1733), mirroring the static-secret
+ * connector's DELETE semantics for the vault grant (see
+ * `connector-static-secret-route.ts`) while still closing the same
+ * channel_links gap the native disconnect handler already closed. The
+ * dispatch verb differs (`disconnectMethod` in `connector-card-kind.ts`
+ * routes token-paste connectors to a dedicated POST route rather than
+ * overloading the seal route's DELETE) but the underlying revoke is the same
+ * idea: kill access without discarding the recoverable secret.
  *
  * Usage:
  *   export const { POST, OPTIONS } = createConnectorTokenDisconnectRoute({ … });

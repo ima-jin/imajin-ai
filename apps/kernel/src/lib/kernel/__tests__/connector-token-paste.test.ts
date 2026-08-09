@@ -23,7 +23,7 @@ import { unlink } from 'node:fs/promises';
 
 type Row = Record<string, unknown>;
 
-const { tmpVaultPath, grantStore, envelopeStore } = vi.hoisted(() => {
+const { tmpVaultPath, grantStore, envelopeStore, channelLinksStore } = vi.hoisted(() => {
   const { join } = require('node:path') as typeof import('node:path');
   const { tmpdir } = require('node:os') as typeof import('node:os');
 
@@ -34,6 +34,7 @@ const { tmpVaultPath, grantStore, envelopeStore } = vi.hoisted(() => {
     tmpVaultPath,
     grantStore: new Map<string, Row>(),
     envelopeStore: new Map<string, Row>(),
+    channelLinksStore: new Map<string, Row>(),
   };
 });
 
@@ -69,11 +70,12 @@ vi.mock('@/src/db', () => {
     'id', 'field', 'keyId', 'ownerXPub', 'senderXPub', 'wrappedKey', 'wrappedNonce', 'createdAt',
   ]);
   const vaultGrantRequests = columns(['id', 'field', 'requestId', 'status', 'subject', 'grantedTo']);
-  const channelLinks = columns(['channel', 'did', 'appDid', 'status', 'scopes']);
+  const channelLinks = columns(['id', 'channel', 'did', 'appDid', 'status', 'scopes', 'revokedAt']);
 
   function storeFor(table: unknown): Map<string, Row> | undefined {
     if (table === vaultDelegationGrants) return grantStore;
     if (table === vaultOwnerEnvelopes) return envelopeStore;
+    if (table === channelLinks) return channelLinksStore;
     return undefined;
   }
 
@@ -171,7 +173,7 @@ vi.mock('@/src/db', () => {
       update: (table: unknown) => ({
         set: (patch: Row) => ({
           where: (clause: Clause) => {
-            const store = storeFor(table) ?? grantStore;
+            const store = storeFor(table) ?? new Map<string, Row>();
             const touched: Row[] = [];
             for (const [id, row] of store) {
               if (!matches(row, clause)) continue;
@@ -226,6 +228,7 @@ const connector = createConnectorTokenPaste({
 beforeEach(() => {
   grantStore.clear();
   envelopeStore.clear();
+  channelLinksStore.clear();
   _resetSealingCache();
   process.env.AUTH_PRIVATE_KEY = randomBytes(32).toString('hex');
 });
@@ -301,5 +304,79 @@ describe('re-sealing after a revoke (#1724 item 4)', () => {
       await connector.revokeApiKey(OWNER_DID);
       expect(await connector.keySealed(OWNER_DID)).toBe(false);
     }
+  });
+});
+
+// ── channel_links cleanup on disconnect (#1733) ─────────────────────────────
+//
+// `revokeApiKey` used to revoke only the sealed key's vault delegation grant.
+// `auth.channel_links` rows — the source of `activeScopes` on the connector's
+// status endpoint — were never touched, so every scope granted before a
+// disconnect kept reporting active forever: the same class of bug #1724 fixed
+// for the vault-entry-existence check, but in the channel_links layer.
+
+describe('revokeApiKey channel_links cleanup (#1733)', () => {
+  const CONNECTOR_DID = 'did:imajin:testprov-connector';
+  const CHANNEL = 'testprov';
+
+  function seedActiveLink(id: string, did: string, appDid: string, channel = CHANNEL) {
+    channelLinksStore.set(id, {
+      id,
+      channel,
+      did,
+      appDid,
+      scopes: [`${channel}:infer`],
+      status: 'active',
+      revokedAt: null,
+    });
+  }
+
+  it('revokes every active channel_links row for this connector + DID', async () => {
+    seedActiveLink('clink_1', OWNER_DID, CONNECTOR_DID);
+    seedActiveLink('clink_2', OWNER_DID, CONNECTOR_DID);
+    await connector.sealApiKey(OWNER_DID, 'sk-test-key');
+
+    const revoked = await connector.revokeApiKey(OWNER_DID);
+
+    expect(revoked).toBe(true);
+    expect(channelLinksStore.get('clink_1')?.status).toBe('revoked');
+    expect(channelLinksStore.get('clink_2')?.status).toBe('revoked');
+    expect(channelLinksStore.get('clink_1')?.revokedAt).toBeInstanceOf(Date);
+  });
+
+  it('reports true from channel_links alone, even with no vault grant to revoke', async () => {
+    seedActiveLink('clink_1', OWNER_DID, CONNECTOR_DID);
+    // No sealApiKey call — nothing in vaultDelegationGrants for this DID.
+
+    expect(await connector.revokeApiKey(OWNER_DID)).toBe(true);
+    expect(channelLinksStore.get('clink_1')?.status).toBe('revoked');
+  });
+
+  it('leaves another DID\'s channel_links rows untouched', async () => {
+    const otherDid = 'did:imajin:connector-token-paste-other';
+    seedActiveLink('clink_owner', OWNER_DID, CONNECTOR_DID);
+    seedActiveLink('clink_other', otherDid, CONNECTOR_DID);
+
+    await connector.revokeApiKey(OWNER_DID);
+
+    expect(channelLinksStore.get('clink_owner')?.status).toBe('revoked');
+    expect(channelLinksStore.get('clink_other')?.status).toBe('active');
+  });
+
+  it('leaves a different connector\'s channel_links rows untouched', async () => {
+    seedActiveLink('clink_this', OWNER_DID, CONNECTOR_DID);
+    seedActiveLink('clink_other_connector', OWNER_DID, 'did:imajin:other-connector', 'other');
+
+    await connector.revokeApiKey(OWNER_DID);
+
+    expect(channelLinksStore.get('clink_this')?.status).toBe('revoked');
+    expect(channelLinksStore.get('clink_other_connector')?.status).toBe('active');
+  });
+
+  it('is idempotent — a second disconnect with nothing left active reports false', async () => {
+    seedActiveLink('clink_1', OWNER_DID, CONNECTOR_DID);
+
+    expect(await connector.revokeApiKey(OWNER_DID)).toBe(true);
+    expect(await connector.revokeApiKey(OWNER_DID)).toBe(false);
   });
 });

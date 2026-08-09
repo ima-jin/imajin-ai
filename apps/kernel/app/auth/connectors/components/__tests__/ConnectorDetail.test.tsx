@@ -554,6 +554,46 @@ describe('disconnect', () => {
     expect(screen.queryByText('API Key sealed')).toBeNull();
   });
 
+  // #1733: `revokeApiKey` used to revoke only the sealed key's vault
+  // delegation grant, leaving `auth.channel_links` rows — the source of
+  // `activeScopes` — untouched. A disconnected connector kept reporting every
+  // previously granted scope as still active forever, so the card never
+  // reflected the clean, disconnected state: the scope checkbox stayed
+  // checked and the badge stayed "● Connected" after "Disconnect". This pins
+  // the fixed behaviour: once the backend reports `activeScopes: []` after a
+  // disconnect, the checkbox clears and the badge falls back to "Not
+  // configured".
+  it('clears the scope checkbox and drops to "Not configured" once channel_links are revoked by disconnect (#1733)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let disconnected = false;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === '/gemini/api/disconnect') {
+        disconnected = true;
+        return jsonResponse({ connected: false, revoked: true });
+      }
+      return jsonResponse({
+        manifestAssetId: null,
+        // The bug: these used to stay non-empty forever because revokeApiKey
+        // never touched channel_links.
+        activeScopes: disconnected ? [] : ['gemini:infer'],
+        validScopes: ['gemini:infer'],
+        keySealed: true,
+      });
+    }));
+
+    render(<ConnectorDetail entry={entryFor('gemini')} />);
+    expect(await screen.findByText('● Connected')).toBeDefined();
+    expect((await screen.findByRole('checkbox')).hasAttribute('checked')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect Google Gemini' }));
+
+    await waitFor(async () => {
+      expect((await screen.findByRole('checkbox') as HTMLInputElement).checked).toBe(false);
+    });
+    expect(await screen.findByText('○ Not configured')).toBeDefined();
+    expect(screen.queryByText('● Connected')).toBeNull();
+  });
+
   it('hides the button entirely for a connector with no disconnect route', async () => {
     // Synthetic entry: every registered credential-paste connector now declares
     // a disconnect route (#1720), so this exercises the "no route" case directly
