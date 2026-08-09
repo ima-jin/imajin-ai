@@ -64,6 +64,7 @@ export const SERVICES: readonly ServiceDefinition[] = [
 
   // Daemon processes — not web apps, no HTTP port exposed
   { name: 'broker-agent', label: 'Broker Agent', icon: '🤖', description: 'Telegram broker agent — conversational surface for social coordination (#1101)', devPort: 0, prodPort: 0, schema: null, tier: 'core', visibility: 'internal', category: 'infrastructure' },
+  { name: 'corpus',       label: 'Corpus',       icon: '🔎', description: 'Per-DID corpus indexing and BM25 search service (#1737)',                    devPort: 0, prodPort: 0, schema: null, tier: 'core', visibility: 'internal', category: 'infrastructure' },
 
   // Connected apps (separate repos) will use the plugin architecture (#249).
   // Not included here — they authenticate via delegated sessions, not the monorepo manifest.
