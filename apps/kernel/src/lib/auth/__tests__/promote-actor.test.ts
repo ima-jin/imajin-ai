@@ -13,7 +13,7 @@ const {
   mockLogError,
 } = vi.hoisted(() => {
   const mockIdentityInsertOnConflict = vi.fn().mockResolvedValue(undefined);
-  const mockIdentityInsertValues = vi.fn(() => ({ onConflictDoNothing: mockIdentityInsertOnConflict }));
+  const mockIdentityInsertValues = vi.fn(() => ({ onConflictDoUpdate: mockIdentityInsertOnConflict }));
 
   const mockMembershipInsertValues = vi.fn().mockResolvedValue(undefined);
   const mockMembershipSelectLimit = vi.fn().mockResolvedValue([]);
@@ -52,6 +52,11 @@ vi.mock('@/src/db', () => ({
   identities: 'identities',
   identityMembers: 'identityMembers',
 }));
+
+// `identities` above is a bare string (matching the other mocked tables in
+// this suite), so `identities.id` used as the onConflictDoUpdate target
+// resolves to `undefined` here — irrelevant to these assertions, which only
+// care about the `set` clause the production code passes.
 
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
@@ -130,8 +135,22 @@ describe('promoteActorOnGrant (#1735)', () => {
     await promoteActorOnGrant(INPUT);
 
     expect(mockMembershipInsertValues).not.toHaveBeenCalled();
-    // Identity insert still runs (guarded by ON CONFLICT DO NOTHING at the DB level).
+    // Identity insert still runs (guarded by ON CONFLICT DO UPDATE at the DB level).
     expect(mockIdentityInsertValues).toHaveBeenCalledOnce();
+  });
+
+  it('self-heals a stale/orphaned row by upserting the real public_key on conflict (#1739)', async () => {
+    await promoteActorOnGrant(INPUT);
+
+    expect(mockIdentityInsertOnConflict).toHaveBeenCalledOnce();
+    const upsert = mockIdentityInsertOnConflict.mock.calls[0][0] as {
+      target: unknown;
+      set: Record<string, unknown>;
+    };
+    // Must actually correct the key on conflict — a plain onConflictDoNothing()
+    // would leave a pre-existing `agent_<appId>` sentinel row untouched forever.
+    expect(upsert.set.publicKey).toBe(INPUT.publicKey);
+    expect(upsert.set.publicKey).not.toMatch(/^agent_/);
   });
 
   it('is non-fatal: swallows and logs errors instead of throwing', async () => {

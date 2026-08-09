@@ -18,11 +18,16 @@ const log = createLogger('kernel');
  * authorized integration becomes a graph actor that listGrantedIntegrations
  * (#1179) can enrich with an agent badge.
  *
- * Atomic + idempotent: everything happens in one transaction, and every insert
- * is a no-op when the row already exists (`ON CONFLICT DO NOTHING` on the
- * identities PK; an existence check on identity_members, which has no unique
- * constraint on (identity_did, member_did) to target). Safe to call on every
- * authorize, including re-consent and apps already promoted by migration 0053.
+ * Atomic + self-healing: everything happens in one transaction. The identity
+ * insert upserts `public_key` on conflict (#1739) so a stale/orphaned row
+ * left over from before #1735 (or from any other path that ever wrote the
+ * non-signing `agent_<appId>` sentinel) is corrected in place on the next
+ * authorize rather than poisoning PoP verification forever. Membership rows
+ * use an existence check (identity_members has no unique constraint on
+ * (identity_did, member_did) to target for an upsert), so a previously
+ * orphaned identity also gets backfilled with its owner/agent links. Safe to
+ * call on every authorize, including re-consent and apps already promoted by
+ * migration 0053.
  *
  * Deliberately plain INSERTs: this MUST NOT emit `identity.created`, which
  * would trigger the MJN-emission / forest reactors (#1171 Correction 2). Agent
@@ -38,7 +43,15 @@ export async function promoteActorOnGrant(input: PromoteActorInput): Promise<voi
 
   try {
     await db.transaction(async (tx) => {
-      await tx.insert(identities).values(row).onConflictDoNothing();
+      // #1739: heal a stale/orphaned row in place instead of leaving its
+      // wrong public_key untouched (the old onConflictDoNothing behavior).
+      await tx
+        .insert(identities)
+        .values(row)
+        .onConflictDoUpdate({
+          target: identities.id,
+          set: { publicKey: row.publicKey },
+        });
 
       for (const membership of membershipRows) {
         const existing = await tx
