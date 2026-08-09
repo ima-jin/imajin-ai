@@ -22,16 +22,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, attestations, identities } from '@/src/db';
+import { db, attestations, registryApps } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
-import { createDbResolver } from '@imajin/auth';
 import { verifySignature } from '@/src/lib/auth/crypto';
 import { createAppToken } from '@/src/lib/auth/jwt';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-const resolveDid = createDbResolver(db, identities);
 
 const MAX_CLOCK_SKEW_MS = 60_000;
 
@@ -76,14 +74,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'timestamp outside allowed window' }, { status: 401, headers: cors });
   }
 
-  // Proof of possession: app must sign with its own key
-  const resolved = await resolveDid(appDid);
-  if (!resolved?.publicKey) {
+  // Proof of possession: app must sign with its own key. Resolve the public
+  // key from registry.apps — the source of truth for developer app keys
+  // (#1739) — rather than auth.identities. A promoted actor row for this
+  // appDid can be stale or orphaned (e.g. a pre-#1735 `agent_<appId>`
+  // sentinel, or a row `promoteActorOnGrant` skipped via onConflictDoNothing
+  // because one already existed), which would poison PoP verification even
+  // though the app's real key in registry.apps is fine.
+  const [app] = await db
+    .select({ publicKey: registryApps.publicKey, status: registryApps.status })
+    .from(registryApps)
+    .where(eq(registryApps.appDid, appDid))
+    .limit(1);
+  if (!app) {
     return NextResponse.json({ error: 'Unknown app DID' }, { status: 404, headers: cors });
+  }
+  if (app.status !== 'active') {
+    return NextResponse.json({ error: 'App is not active' }, { status: 403, headers: cors });
   }
 
   const challenge = `${appDid}:${attestationId}:${nonce}:${timestamp}`;
-  const pop = await verifySignature(challenge, signature, resolved.publicKey);
+  const pop = await verifySignature(challenge, signature, app.publicKey);
   if (!pop) {
     return NextResponse.json({ error: 'Invalid proof-of-possession signature' }, { status: 401, headers: cors });
   }
