@@ -10,308 +10,319 @@ app-authenticated callers (`packages/auth/src/require-app-auth.ts`,
 `apps/kernel/app/connections/api/connectors/status/route.ts`) rather than
 from reading the app's own source.
 
-## Issue 1 — Gemini shows "Status unavailable" despite a sealed key
+**Update (live debugging pass):** the original diagnosis below treated these
+as three unrelated bugs across vault custody, app scopes, and connector
+status semantics. Live debugging against dev-integrity found that framing was
+partially wrong. Two of the three original write-ups were red herrings or
+only half the story; all three symptoms actually trace back to **one
+architectural gap**, described first. Each issue section below is corrected
+in place, with the original diagnosis kept (struck through in spirit, not
+deleted) so the record of what was initially believed is preserved.
 
-### Root cause
+## The Architectural Gap
 
-`keySealed()` (`apps/kernel/src/lib/kernel/connector-token-paste.ts:349-351`)
-was correctly hardened by #1724 to require an **active delegation grant**, not
-just a vault entry:
-
-```ts
-async function keySealed(ownerDid: string): Promise<boolean> {
-  return (await vaultFieldStatus(keyField(ownerDid))) === 'ready';
-}
-```
-
-The grant is normally created inside the same call that seals the key —
-`sealAndStoreV2` (`apps/kernel/src/lib/vault/index.ts:293-454`) — but it forks
-on `isVaultTier1()` (`apps/kernel/src/lib/vault/sealing.ts:236-238`):
-
-- **Tier 0** (no `VAULT_OWNER_X_PUB` / `VAULT_OWNER_ED_PUB`): the node acts as
-  its own owner agent and inserts an **active** `vault_delegation_grants` row
-  synchronously, self-granted to the node's own DID
-  (`index.ts:399-453`).
-- **Tier 1** (both env vars set): the node cannot mint the grant itself. It
-  writes only a `vault_grant_requests` row with `status: 'pending'` and
-  publishes `vault.grant.requested` (`index.ts:337-397`), expecting an
-  **external owner agent** (`imajin-cli vault serve`, polling
-  `GET /api/vault/grants/pending`) to recover the wrapped field key, sign a
-  canonical grant, and `POST /api/vault/delegation/grant`
-  (`apps/kernel/app/api/vault/delegation/grant/route.ts`) to actually create
-  the `vault_delegation_grants` row.
-
-The observed dev-integrity state — `vault_owner_envelopes` populated,
-`vault_delegation_grants` empty — is exactly the signature of a Tier 1 seal
-whose handshake was never completed: the envelope is written in *both* tiers
-(`writeOwnerEnvelope` is called on both branches), but the grant only
-materializes once an owner agent answers. AgriFortress is an org identity with
-no personal device running `imajin-cli vault serve`, so if this kernel is
-configured for Tier 1, the request can never be fulfilled and sits in
-`vault_grant_requests` forever.
-
-### Confirm before fixing
-
-```sql
--- Look for a stuck handshake for this exact field.
-select requestId, status, createdAt, expiresAt
-from kernel.vault_grant_requests
-where field = 'gemini-api-key:did:imajin:ApSPznft92DsP85dUf7dPKUYESGUHXzi1tvw8KMcCbdo';
-```
-
-and check whether the dev-integrity kernel process has `VAULT_OWNER_X_PUB` /
-`VAULT_OWNER_ED_PUB` set. A pending row plus both env vars set confirms Tier 1
-is active with no fulfiller.
-
-### Proposed fix
-
-**Option A (most likely correct for this environment) — kernel is
-mis-configured for Tier 1; run it as Tier 0.** There is no evidence anywhere
-in the codebase of an automated Tier 1 fulfiller for headless org identities —
-`GET /api/vault/grants/pending` is documented as "polled by `imajin-cli vault
-serve`" and nothing else consumes it. If dev-integrity was never meant to run
-Tier 1 custody, unset both env vars for that deployment and re-seal the key
-(re-POST the same key to `/gemini/api/token`). No code change; `sealAndStoreV2`
-then takes the Tier 0 branch and inserts the active grant in the same request:
+Every connector status/config/seal route resolves whose credentials to act on
+via the same two-line idiom:
 
 ```ts
-// apps/kernel/src/lib/vault/index.ts:399-453 — Tier 0 branch, unchanged.
-// Re-running sealApiKey() under Tier 0 produces an ACTIVE grant synchronously:
-await writeOwnerEnvelope({ field, keyId, fieldKey, ownerXPub: getOwnerXPublicKey() });
+const auth = await requireAuth(request);
 // ...
-await db.insert(vaultDelegationGrants).values({ ..., status: 'active', ... });
+const ownerDid = resolveActingDid(auth.identity);
 ```
 
-**Option B (if Tier 1 is intentional platform-wide policy) — build a headless
-fulfiller for org/service DIDs.** Org identities like AgriFortress have no
-personal device to run `imajin-cli vault serve`. This needs a small
-server-side service that holds an owner keypair on AgriFortress's behalf,
-polls `GET /api/vault/grants/pending`, and auto-signs+posts grants for a
-trusted allow-list of service DIDs — effectively an automated Tier 1 owner
-agent for org accounts. This is a real feature gap, not a one-line fix, and
-should be scoped as its own follow-up if Tier 1 is required in production.
+`resolveActingDid` (`packages/auth/src/acting-did.ts:20-22`) returns the
+**logged-in user's DID** (or an explicit `actingFor` / `actingAs` delegation
+target) — never anything derived from which *app* is calling. That is the
+correct model for a person managing their own connector credentials.
+
+But the app-subsidizes-compute model (#1624) intentionally puts API keys and
+OAuth app config on the **app owner's DID** (AgriFortress,
+`did:imajin:ApSPznft92DsP85dUf7dPKUYESGUHXzi1tvw8KMcCbdo`), not on each
+delegated user's DID — that is the whole point of an app subsidizing compute
+for users who never bring their own key. `requireAppAuth` even has an
+established pattern for this split, used today by the inference capture
+route (`apps/kernel/app/api/inference/capture/route.ts:173-201`): resolve an
+"acting owner" DID that can differ from the caller's own DID, with a fallback
+chain (`appAuth.userDid || x-acting-for header`). None of the three
+connector-credential routes below use that pattern, or anything like it —
+they resolve exactly one DID, the session user's, unconditionally. So every
+one of them ends up asking **"does this logged-in user have keys?"** when the
+app-subsidized model requires asking **"does the app owner have keys?"**:
+
+| Route | File | Always resolves ownerDid via |
+|---|---|---|
+| Gemini scope-manifest GET/POST | `apps/kernel/src/lib/kernel/scope-manifest-route.ts:114-118, 165-169` | `requireAuth` → `resolveActingDid` |
+| Gemini/Anthropic token-seal GET/POST/disconnect | `apps/kernel/src/lib/kernel/connector-token-route.ts:71-75, 87-91, 172-176` | `requireAuth` → `resolveActingDid` |
+| QuickBooks configure POST | `apps/kernel/src/lib/kernel/connector-oauth-routes.ts:403-407` (via `createConfigureHandler`, wired from `apps/kernel/app/quickbooks/api/configure/route.ts`) | `requireAuth` → `resolveActingDid` |
+
+One gap, three symptoms: Gemini's status card, the QuickBooks configure step,
+and (indirectly, via a stale consent grant rather than this exact code path)
+the inference capture scope check all inherited assumptions from the
+per-user-key world that #1624 already broke.
+
+## Bug 1 — Gemini status "unavailable" (corrected diagnosis)
+
+### Original diagnosis (partially right, but not the live bug)
+
+The original spike below (kept for the record) attributed this to a Tier 1
+vault custody handshake that never completed — the key was sealed but no
+`vault_delegation_grants` row existed because no external owner agent was
+running for AgriFortress's org DID. **That was true initially and has since
+been fixed**: the key was re-sealed under Tier 0, and an active delegation
+grant now exists.
+
+### What's actually still wrong
+
+The status still shows "unavailable" after the grant fix, because:
+
+1. `GET /gemini/api/scope-manifest` is wired through
+   `createConnectorScopeManifestRoute`
+   (`apps/kernel/app/gemini/api/scope-manifest/route.ts`), whose `getExtraFields`
+   calls `geminiKeySealed(ownerDid)`
+   (`apps/kernel/src/lib/gemini/scope-manifest.ts:25-31`... wired from
+   `apps/kernel/src/lib/gemini/connector.ts`).
+2. `ownerDid` comes from `resolveActingDid(auth.identity)` inside the shared
+   factory (`apps/kernel/src/lib/kernel/scope-manifest-route.ts:114-118`) — the
+   **logged-in user**, Ryan (`did:imajin:6JSKE52y...`).
+3. The Gemini key is sealed under `gemini-api-key:did:imajin:ApSPznft92DsP85dUf7dPKUYESGUHXzi1tvw8KMcCbdo`
+   — AgriFortress's DID, per the app-subsidized model.
+4. `keySealed(ryanDid)` checks a vault field that was never written for Ryan's
+   DID → `false` → the card renders "unavailable", even though the key is
+   correctly and durably sealed for the app owner.
+
+The original Tier-1-handshake theory explained why the grant was briefly
+missing; it does not explain why the card is still broken today with an
+active grant in place. The DID mismatch does.
 
 ### Kernel vs. app
 
-Kernel-only (vault custody config / operational fix). No app-side change.
+Kernel change required: `scope-manifest-route.ts`'s `GET`/`POST` need an
+app-context resolution path (see **Proposed code fix** below). Not an app or
+data fix.
 
 ### Scope vocabulary
 
 Not implicated.
 
-### Verdict
+## Bug 2 — `infer:provide` 403 (corrected diagnosis)
 
-Root cause confirmed by code: `sealAndStoreV2`'s Tier 1 branch never
-completes without an external owner agent, and none exists for AgriFortress's
-org DID. **Recommend Option A** — verify Tier 1 env vars on dev-integrity and
-switch to Tier 0 for this deployment unless Tier 1 was deliberately enabled;
-re-seal the key afterward.
+### Original diagnosis (wrong on the scope registration)
 
-## Issue 2 — Voice Note 403: "Scope 'infer:provide' was not granted"
+The original write-up (kept for the record) assumed `infer:provide` was
+missing from `registry.apps.requested_scopes` entirely. **That premise was
+wrong** — `infer:provide` was already present in the AgriFortress app's
+requested scopes by the time this was re-checked live.
 
-### Root cause
+### What's actually wrong
 
-This is **not a scope-name bug in the kernel** — `infer:provide` is the
-correct, deliberately-designed scope for this exact flow, and it already
-exists in the vocabulary:
-
-```ts
-// packages/auth/src/scope-vocabulary.ts:232
-{ scope: 'infer:provide', connector: null,
-  label: 'Provide app-owned inference credentials for delegated inference' },
-```
-
-It's a **platform scope** (`connector: null`), granted through the OAuth
-consent screen to a *registered app*, not through any connector's
-scope-manifest. It is distinct from `inference:read` / `inference:write`,
-which are **MCP-surface scopes** (`connector: 'mcp'`,
-`scope-vocabulary.ts:328-334`) that gate a *user's own* MCP client reading
-session results / triggering inference — a completely different surface from
-"an app supplies its own credential to run inference for a delegated user."
-
-The capture route's check —
+The scope exists in the vocabulary
+(`packages/auth/src/scope-vocabulary.ts:232`) and in the app's
+`requested_scopes`. The capture route's check —
 `requireAppAuth(request, { scope: 'infer:provide' })`
-(`apps/kernel/app/api/inference/capture/route.ts:174`) — matches the #1624
-design and is covered by tests that predate this ticket:
+(`apps/kernel/app/api/inference/capture/route.ts:174`) — is correct and
+unchanged. The actual failure is that **the minted app token for Ryan's
+current session** carries the older scope set:
 
-```ts
-// apps/kernel/app/api/inference/capture/__tests__/route.test.ts:210-216
-it('requires the infer:provide app scope', async () => {
-  mockRequireAppAuth.mockResolvedValueOnce(appAuth());
-  await POST(makeReq());
-  expect(mockRequireAppAuth).toHaveBeenCalledWith(expect.anything(), { scope: 'infer:provide' });
-});
+```
+["supply:read","supply:write","media:read","media:write","quickbooks:read","quickbooks:write"]
 ```
 
-The 403 happens because `infer:provide` is checked against the **scopes the
-user actually approved for this app**, sourced from the app's
-`app.authorized` attestation payload
-(`apps/kernel/app/auth/api/apps/token/route.ts:121-127` and
-`apps/kernel/app/auth/api/apps/token/verify/route.ts:46-50`, both of which
-produce the exact error string `Scope '${scope}' was not granted`). A user can
-only approve scopes the app *requested* at registration
-(`registry.apps.requested_scopes`, `migrations/0007_registry_apps.sql:15`).
-The XPRIZE registration requests `inference:read, inference:write,
-supply:read/write, quickbooks:read/write, media:read/write,
-identity:read/write` — `infer:provide` is simply missing from that list, so it
-can never appear in any user's consent grant, and the app-token mint/verify
-step rejects it every time.
+`infer:provide` is not in it. Scopes are fixed into the `app.authorized`
+attestation at consent time (`apps/kernel/app/auth/api/apps/token/route.ts`,
+`.../apps/token/verify/route.ts`); Ryan's existing consent grant predates
+`infer:provide` being requested, and re-registering the app's
+`requested_scopes` does not retroactively widen attestations issued before
+that change. Every subsequent app-token mint for Ryan carries the stale set
+until he re-consents.
 
 ### Proposed fix
 
-Update the AgriFortress app registration (`app_zRV78KbMC2X09IRE`) to include
-`infer:provide` in `requested_scopes`, then have AgriFortress (the app owner)
-re-consent so a fresh `app.authorized` attestation includes it:
-
-```sql
--- registry.apps is the source of truth for what an app may ask a user to grant.
-update registry.apps
-set requested_scopes = requested_scopes || '["infer:provide"]'::jsonb
-where id = 'app_zRV78KbMC2X09IRE'
-  and not (requested_scopes @> '["infer:provide"]'::jsonb);
-```
-
-followed by the app re-driving the `/auth/authorize` consent flow so the
-owner/admin approves the new scope and a fresh attestation is issued
-(re-consent is required — the existing `app.authorized` attestation's
-`payload.scopes` is fixed at issuance time and does not retroactively pick up
-newly-requested scopes).
-
-`inference:read` / `inference:write` should stay in the registration if the
-app also drives MCP tools that read/trigger inference sessions directly — they
-serve a different surface and are not redundant with `infer:provide`.
+1. **Immediate:** Ryan (and any other user who consented before
+   `infer:provide` was added) needs to re-run the `/auth/authorize` consent
+   flow so a fresh attestation with the current `requested_scopes` is issued.
+2. **Durable — re-consent detection:** the integrity app should not have to
+   rely on someone noticing a 403 to discover a stale grant. When the app
+   mints or refreshes its token and the returned scopes don't cover what it
+   expects to need (e.g. `infer:provide` absent while the app's own manifest
+   declares it uses that flow), the app should detect the gap and redirect
+   the user through `/auth/authorize` again automatically rather than
+   surfacing a raw 403 from the capture route. This is an app-side
+   responsibility (the app knows what scopes it depends on); the kernel's
+   token verify response already carries enough information (`scopes` on the
+   `AppAuthContext`, `packages/auth/src/require-app-auth.ts:4-10`) to make
+   this detectable without a new kernel endpoint.
 
 ### Kernel vs. app
 
-App registration / consent data fix (`registry.apps.requested_scopes` +
-re-consent). No kernel code change — the capture route, `require-app-auth.ts`,
-and the scope vocabulary are all already correct.
+No kernel code change — `require-app-auth.ts`, the capture route, and the
+scope vocabulary are all correct. This is a stale user consent grant (data)
+plus a missing re-consent-detection affordance (app-side).
 
 ### Scope vocabulary
 
-No update needed. `infer:provide` already exists
-(`packages/auth/src/scope-vocabulary.ts:232`) and is exactly the right scope
-for this flow.
+No update needed. `infer:provide` already exists and is correctly scoped.
 
-### Verdict
+## Bug 3 — QuickBooks connect_error (corrected diagnosis)
 
-Kernel code is correct as-is. The bug is an incomplete app registration:
-`app_zRV78KbMC2X09IRE` needs `infer:provide` added to its requested scopes and
-a fresh user consent grant.
+### Original diagnosis (partially right, but incomplete)
 
-## Issue 3 — QuickBooks shows "connected" for a user who hasn't connected
+The original write-up (kept for the record) found Ryan's stale, unrelated
+QuickBooks `channel_links` rows made his status read "connected" when he
+hadn't connected through AgriFortress, and recommended a data cleanup. **That
+part was correct and has been done** — Ryan's stale `channel_links` rows were
+revoked.
 
-### Root cause
+### What's actually still wrong
 
-`GET /connections/api/connectors/status` is app-auth-gated and correctly
-scoped to the delegating **user** DID
-(`apps/kernel/app/connections/api/connectors/status/route.ts:29-47`), but it
-delegates to `readConnectorConnectionStatus(userDid)`
-(`apps/kernel/src/lib/kernel/connector-status.ts:66-82`), which reads **every
-active `channel_links` row for that user across the whole platform** and
-filters only by `row.appDid === connector.connectorDid` — the connector's
-fixed, global platform DID (e.g. `did:imajin:quickbooks-connector`,
-`apps/kernel/src/lib/kernel/connector-registry.ts:326`), never by the
-*invoking app's* DID:
+With the stale personal connection cleared, clicking "Connect QuickBooks" now
+fails differently: it crashes with
 
-```ts
-// apps/kernel/src/lib/kernel/connector-status.ts:38-41
-for (const row of rows) {
-  if (row.channel !== connector.channel || row.appDid !== connector.connectorDid) {
-    continue;
-  }
-  ...
+```
+duplicate key violates unique constraint "uniq_vault_delegation_active"
 ```
 
-This is **working as designed and as tested** — #1540's test suite
-(`apps/kernel/src/lib/kernel/__tests__/connector-status.test.ts:145-183`)
-pins exactly this "one connection per provider per user, shared by every
-consuming app" contract, and every OAuth-ingestion connector in the registry
-(GitHub, QuickBooks) writes `channel_links.appDid` as the fixed connector DID
-via the shared scope-manifest core
-(`apps/kernel/src/lib/quickbooks/scope-manifest.ts:65-71`,
-using `QUICKBOOKS_CONNECTOR_DID` unconditionally) — never the DID of whichever
-third-party app drove the OAuth flow. `resolveConfigDidFromAppAuth`
-(`apps/kernel/src/lib/kernel/connector-oauth-routes.ts:110-114`) only lets an
-app supply its *own OAuth client credentials* for the authorize step; it does
-not change who the resulting grant is scoped to.
+on field `quickbooks-config:did:imajin:ApSPznft92DsP85dUf7dPKUYESGUHXzi1tvw8KMcCbdo`
+— i.e. AgriFortress's own config field, not Ryan's. There is already an
+**active** `vault_delegation_grants` row for that exact
+`(subject, granted_to, field, key_id)` tuple from AgriFortress's prior setup,
+and the configure route's insert collides with it instead of superseding it.
 
-So Ryan's `channel_links` row from prior, unrelated QuickBooks testing is
-genuinely "connected" on the platform, and the kernel is honestly reporting
-that fact. The AgriFortress product requirement — "QuickBooks is per-supplier;
-someone who hasn't connected through AgriFortress should read as
-not-connected" — is a real mismatch with the platform's global,
-provider-per-DID connector model, not a defect in that model. Every other
-connector (Gemini, Anthropic, GCP, Discord, GitHub) shares the same
-"connect once, usable by every authorized app" design intentionally.
+Two things compound here, both downstream of the same architectural gap:
+
+1. `POST /quickbooks/api/configure` is wired through `createConfigureHandler`
+   (`apps/kernel/src/lib/kernel/connector-oauth-routes.ts:386-428`), which —
+   like the Gemini routes above — resolves `ownerDid` unconditionally via
+   `requireAuth` → `resolveActingDid` (line 403-407) and calls
+   `storeConfig(ownerDid, config)` → `sealAndStoreV2(configField(ownerDid), ...)`
+   (`apps/kernel/src/lib/kernel/connector-oauth.ts:412-414`). Unlike
+   `createConnectHandler` / `createCallbackHandler`, which already accept an
+   optional `configDid` for the split app-owned-config model (#1704, see
+   `resolveConfigDidFromAppAuth`,
+   `apps/kernel/src/lib/kernel/connector-oauth-routes.ts:110-114`),
+   `createConfigureHandler` has **no equivalent app-context parameter at
+   all**. So whether a given configure POST lands on Ryan's field or
+   AgriFortress's field depends entirely on incidental request headers
+   (e.g. whether an `X-Acting-For` happened to be attached), not on a
+   deliberate "seal this under the app owner" decision — exactly the kind of
+   inconsistency that produces an orphaned, un-superseded row for one DID
+   while another request path writes to a different DID.
+2. Independent of #1, `sealAndStoreV2`'s supersede step is a **check-then-act**
+   sequence, not atomic: it peeks the current vault entry
+   (`vaultService.peek(field)`) and only supersedes the prior
+   `vault_delegation_grants` row `if (existingEntry?.custodyScheme ===
+   'delegation-grant')` (`apps/kernel/src/lib/vault/index.ts:308,
+   430-439`) before inserting a fresh active row. If the vault entry and the
+   grants table ever diverge — e.g. a grant created outside this exact
+   code path, a partial failure between the two writes, or (per #1) a
+   different-but-colliding request that already wrote the "latest" entry —
+   the supersede check is skipped and the following `INSERT` hits
+   `uniq_vault_delegation_active`
+   (`apps/kernel/src/db/schemas/vault.ts:72-74`) instead of rotating
+   gracefully. This is exactly the failure mode observed.
 
 ### Proposed fix
 
-**Immediate (dev-data fix, unblocks XPRIZE testing today):** revoke Ryan's
-stale QuickBooks `channel_links` rows so his status correctly reads
-"not connected" until he does connect through AgriFortress:
-
-```sql
-update auth.channel_links
-set status = 'revoked', revoked_at = now()
-where channel = 'quickbooks'
-  and did = 'did:imajin:6JSKE52y...'   -- Ryan
-  and status = 'active';
-```
-
-This does not fix the underlying architecture mismatch — any other user with
-a pre-existing platform-wide QuickBooks connection will hit the same false
-"connected" state inside AgriFortress.
-
-**Structural options (need a product decision, out of scope to fully design
-here):**
-
-- **Kernel option — app-scoped connector custody for QuickBooks.** Extend the
-  OAuth connector framework so a connection initiated via an app-auth-driven
-  flow records `channel_links.appDid` as the *invoking app's* DID (available
-  as `appResult.appAuth.appDid` at connect time) instead of the fixed
-  `QUICKBOOKS_CONNECTOR_DID`, then have `readConnectorConnectionStatus` accept
-  an optional `callerAppDid` and match against it for connectors that opt into
-  per-app scoping. This is a schema/behavior change shared by every OAuth
-  connector's connect/callback/status path, not a one-file patch, and would
-  need to decide whether GitHub/Discord should also become app-scoped or stay
-  global.
-- **App option — the app owns its own per-supplier flag.** Keep the platform
-  connector model global (matching every other connector), and have the
-  AgriFortress/XPRIZE app track its own narrower fact — "has this supplier
-  completed *our* QuickBooks connect flow" — in the app's own data store,
-  keyed by `(appDid, supplierDid)`, set only when the supplier completes the
-  OAuth flow that the app itself initiated. This avoids conflating "has a
-  QuickBooks token sealed anywhere on the platform" with "has connected for
-  AgriFortress" without changing kernel-wide connector semantics.
+1. **Configure route needs app-context resolution**, same shape as the fix
+   for Bug 1 (see below) — the QuickBooks config for an app-subsidized
+   connection must be deliberately sealed under the app owner's DID, not
+   whatever `resolveActingDid` happens to return for a given request.
+2. **Make the seal path idempotent regardless of cause.** Replace the
+   peek-then-supersede-then-insert sequence in `sealAndStoreV2` (and audit
+   `sealAndGrantStaticSecret`, `apps/kernel/src/lib/vault/index.ts:667-799`,
+   for the same shape) with a real upsert against the partial unique index —
+   `INSERT ... ON CONFLICT (subject, granted_to, field, key_id) WHERE
+   status = 'active' DO UPDATE ...` (superseding the old row's fields in
+   place) — so a rotate can never race or silently miss an existing active
+   row, independent of how that row got there.
 
 ### Kernel vs. app
 
-Immediate fix is a data cleanup (no code). The durable fix is most likely an
-**app-side** concern (track per-supplier connection state in the app's own
-store) unless the platform decides app-scoped connector custody should become
-a first-class kernel feature, which is a larger cross-connector design change.
+Kernel change required on both fronts: configure route app-context support,
+and the vault seal/supersede path. Not an app or data-only fix this time —
+the earlier data cleanup was necessary but not sufficient.
 
 ### Scope vocabulary
 
-Not implicated — `quickbooks:read` / `quickbooks:write` are correctly defined
-and correctly gate what an authorized app may do with an existing connection;
-the issue is entirely about connector *connection* status, not scope
+Not implicated — `quickbooks:read` / `quickbooks:write` are correctly
+defined; this is entirely about connector *credential sealing*, not scope
 authorization.
 
-### Verdict
+## Proposed code fix (per route)
 
-Kernel behavior matches its documented and tested design (#1540); this is not
-a kernel bug. Recommend the immediate data cleanup for Ryan's stale test rows,
-and a product decision on whether QuickBooks needs app-scoped custody
-(kernel change) or whether AgriFortress should track per-supplier connection
-state itself (app change) — the latter is less invasive and consistent with
-how every other connector on the platform behaves.
+All three fixes below follow the same shape: resolve an **app-owner DID**
+when the request carries app-auth context, falling back to the session
+user's DID (`resolveActingDid`) when it does not — preserving today's
+behavior for connectors used outside the app-subsidized model.
 
-## Summary table
+### Scope-manifest route (`scope-manifest-route.ts`)
 
-| # | Symptom | Root cause | Fix location | Scope vocab change |
+When the request carries an `X-App-DID` (or bearer app token), resolve
+`ownerDid` as that app's `owner_did` from `registry.apps`
+(`apps/kernel/src/db/schemas/registry.ts:301-319`, column `ownerDid` at
+line 303) instead of the logged-in user. Concretely: call `requireAppAuth`
+first (mirroring the inference capture route's
+`resolveInferenceAuth`,
+`apps/kernel/app/api/inference/capture/route.ts:173-201`); on success, look
+up `appAuth.appDid` in `registry.apps` and use its `ownerDid`; on failure or
+absence of app-auth headers, fall through to today's `requireAuth` →
+`resolveActingDid` path unchanged. This touches both `GET`
+(`scope-manifest-route.ts:111-150`) and `POST` (`152-215`).
+
+### Token-seal route (`connector-token-route.ts`)
+
+Same pattern, applied to `GET`/`POST`/disconnect
+(`connector-token-route.ts:68-78, 84-120, 169-191`): when sealing within an
+app context, seal under the app owner's DID resolved the same way as above,
+not the caller's own DID. This is what makes Bug 1 actually resolve — Gemini
+GET checks would then look up `gemini-api-key:<AgriFortressDid>` for Ryan's
+session too, matching where the key was actually sealed.
+
+### QuickBooks configure route (`connector-oauth-routes.ts` / `connector.ts`)
+
+`createConfigureHandler` needs an optional `resolveConfigDid`-style parameter
+(the same shape already used by `createConnectHandler` /
+`createCallbackHandler`, see `resolveConfigDidFromAppAuth`) so `storeConfig`
+seals under the app owner's DID when app-auth is present. Separately (and
+regardless of the above), replace the peek-then-insert in `sealAndStoreV2`
+with an atomic upsert on `uniq_vault_delegation_active` so an existing active
+grant is always superseded rather than colliding.
+
+### Re-consent detection (app-side)
+
+The integrity app should compare the scopes on its current app token against
+the scopes it actually depends on, and transparently redirect the user
+through `/auth/authorize` when a dependency (e.g. `infer:provide`) is absent,
+rather than letting a stale grant surface as a raw 403 from the capture
+route. No kernel change needed — `AppAuthContext.scopes`
+(`packages/auth/src/require-app-auth.ts:4-10`) already carries what the app
+needs to detect the gap.
+
+## Quick vs. Proper (Aug 17 XPRIZE deadline)
+
+**Quick (ships for the deadline):** don't touch the shared route factories at
+all. Have the integrity app's connector pages resolve against a configured
+app-owner DID directly — an env var (`AGRIFORTRESS_OWNER_DID`) or a small API
+call the app makes to look up its own `registry.apps.ownerDid` — and send
+that DID explicitly (e.g. as `X-Acting-For`) on every Gemini/QuickBooks
+connector call it makes on AgriFortress's behalf. No kernel deploy required;
+the existing `X-Acting-For` delegation path in `requireAuth`
+(`packages/auth/src/require-auth.ts:215-230`) already grants this today via
+`validateActingAs`, provided AgriFortress has registered the app as an
+authorized `agent` controller. This is a targeted, low-risk workaround scoped
+to one app.
+
+**Proper (the real fix, follow-up after the deadline):** give
+`scope-manifest-route.ts`, `connector-token-route.ts`, and
+`connector-oauth-routes.ts`'s `createConfigureHandler` native app-context
+resolution, as described above, so every current and future connector gets
+app-owner-DID support automatically instead of every app having to route
+around it with acting-for headers. This is the change that actually closes
+the architectural gap platform-wide rather than papering over it for one app.
+
+## Summary table (corrected)
+
+| # | Symptom | Corrected root cause | Fix location | Scope vocab change |
 |---|---|---|---|---|
-| 1 | Gemini "Status unavailable" | Tier 1 vault custody seal never completed (no owner-agent fulfiller for AgriFortress's org DID) | Kernel config (vault tier) / ops | No |
-| 2 | Voice Note 403 on `infer:provide` | App registration missing `infer:provide` scope; `inference:read/write` is a different, unrelated surface | App registration data + re-consent | No — scope already correct |
-| 3 | QuickBooks shows connected incorrectly | Platform connector model is global-per-user by design; stale test data plus a per-app product requirement it wasn't built for | Data cleanup now; app-side (or kernel design decision) for the durable fix | No |
+| 1 | Gemini "Status unavailable" | Tier 1 grant gap was real but has been fixed; card still resolves `ownerDid` as the logged-in user instead of the app owner whose key is actually sealed | Kernel: `scope-manifest-route.ts` + `connector-token-route.ts` app-context resolution | No |
+| 2 | Voice Note 403 on `infer:provide` | Scope was already correctly requested/registered; the user's existing consent attestation predates it and needs re-issuing | Data: re-consent for affected users; App: detect stale scopes and auto-redirect to re-authorize | No — scope already correct |
+| 3 | QuickBooks `connect_error` (duplicate key) | Ryan's stale personal connection was a real but separate bug (fixed); the current blocker is the configure route sealing under an inconsistently-resolved DID and a non-atomic supersede-then-insert colliding with AgriFortress's existing active grant | Kernel: `createConfigureHandler` app-context resolution + atomic upsert in `sealAndStoreV2` | No |
