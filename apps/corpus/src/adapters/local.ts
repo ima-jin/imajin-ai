@@ -61,7 +61,7 @@ function parseFrontmatter(content: string): { frontmatter: Frontmatter; body: st
 
   const frontmatter: Frontmatter = {};
   for (const line of match[1].split(/\r?\n/)) {
-    const kv = /^(\w+):\s*(.*)$/.exec(line.trim());
+    const kv = /^(\w+):(.*)$/.exec(line.trim());
     if (!kv) continue;
     const [, key, rawValue] = kv;
     const value = rawValue.trim();
@@ -99,7 +99,7 @@ function parseInlineList(value: string): string[] {
 
 /** Extracts the first H1 heading (`# Title`) from a markdown body, if any. */
 function extractH1Title(body: string): string | undefined {
-  const match = /^#\s+(.+)$/m.exec(body);
+  const match = /^#[ \t]+(.+)$/m.exec(body);
   return match?.[1].trim();
 }
 
@@ -154,7 +154,7 @@ function* walkDirectory(root: string, dir: string = root, signal?: AbortSignal):
     const type = threadTypeForExtension(extname(entry.name));
     if (!type) continue;
 
-    yield { absolutePath, relativePath: relative(root, absolutePath).split('\\').join('/'), type };
+    yield { absolutePath, relativePath: relative(root, absolutePath).replaceAll('\\', '/'), type };
   }
 }
 
