@@ -99,7 +99,7 @@ function parseInlineList(value: string): string[] {
 
 /** Extracts the first H1 heading (`# Title`) from a markdown body, if any. */
 function extractH1Title(body: string): string | undefined {
-  const match = /^#[ \t]+(.+)$/m.exec(body);
+  const match = /^#\s(.+)$/m.exec(body);
   return match?.[1].trim();
 }
 
