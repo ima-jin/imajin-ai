@@ -1,18 +1,27 @@
 import express, { type Response, type Router } from 'express';
+import { LocalAdapter } from './adapters/local';
 import { CorpusEngine } from './engine';
 import type { CorpusSearchRequest, ThreadDocument } from './engine/types';
+import { isWorkspaceSource, resolveWorkspacePath, validateSourcePath, workspaceRootForDid, type WorkspaceOptions } from './lib/workspace';
 
-export function createCorpusRouter(engine: CorpusEngine): Router {
+export type CorpusRouterOptions = WorkspaceOptions;
+
+export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOptions = {}): Router {
   const router = express.Router();
 
   router.post('/corpus/:did/ingest', (request, response) => {
     handle(response, () => {
-      const documents = request.body as ThreadDocument[];
-      if (!Array.isArray(documents)) {
-        throw new Error('body must be a ThreadDocument[]');
+      const body: unknown = request.body;
+
+      if (isSourceRequest(body)) {
+        return crawlWorkspaceSource(engine, request.params.did, body.source, options);
       }
 
-      return engine.ingest(request.params.did, documents);
+      if (!Array.isArray(body)) {
+        throw new Error('body must be a ThreadDocument[] or { source }');
+      }
+
+      return engine.ingest(request.params.did, body as ThreadDocument[]);
     });
   });
 
@@ -20,8 +29,25 @@ export function createCorpusRouter(engine: CorpusEngine): Router {
     handle(response, () => engine.search(request.params.did, request.body as CorpusSearchRequest));
   });
 
-  router.post('/corpus/:did/sync', (_request, response) => {
-    response.status(501).json({ error: 'sync is not implemented in v1' });
+  router.post('/corpus/:did/sync', (request, response) => {
+    const body = request.body as { source?: string; cursor?: string | null };
+    if (!body?.source || !isWorkspaceSource(body.source)) {
+      response.status(501).json({ error: 'sync is not implemented in v1' });
+      return;
+    }
+
+    handle(response, () => syncWorkspaceSource(engine, request.params.did, body.source as string, body.cursor ?? null, options));
+  });
+
+  router.post('/corpus/:did/crawl', (request, response) => {
+    handle(response, () => {
+      const body = request.body as { source?: string };
+      if (!body?.source) {
+        throw new Error('source is required');
+      }
+
+      return crawlWorkspaceSource(engine, request.params.did, body.source, options);
+    });
   });
 
   router.get('/corpus/:did/status', (request, response) => {
@@ -42,16 +68,83 @@ export function createCorpusRouter(engine: CorpusEngine): Router {
   return router;
 }
 
-export function createCorpusApp(engine = new CorpusEngine()): express.Express {
+export function createCorpusApp(engine = new CorpusEngine(), options: CorpusRouterOptions = {}): express.Express {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
-  app.use(createCorpusRouter(engine));
+  app.use(createCorpusRouter(engine, options));
   return app;
 }
 
-function handle<T>(response: Response, fn: () => T): void {
+function isSourceRequest(body: unknown): body is { source: string } {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    !Array.isArray(body) &&
+    typeof (body as { source?: unknown }).source === 'string'
+  );
+}
+
+/**
+ * Resolves+validates a "local:workspace" source for `did`, returning the
+ * absolute filesystem path the `LocalAdapter` should read from. The
+ * resolved path is a runtime detail: callers must rewrite any
+ * `ThreadDocument.source` produced from it back to the original
+ * `local:workspace...` string before persisting or returning it.
+ */
+function resolveLocalWorkspaceSource(did: string, source: string, options: WorkspaceOptions): string {
+  if (!isWorkspaceSource(source)) {
+    throw new Error(`Unsupported source "${source}". Only "local:workspace" sources are supported.`);
+  }
+
+  const resolvedPath = resolveWorkspacePath(did, source, options);
+  validateSourcePath(resolvedPath, workspaceRootForDid(did, options));
+  return resolvedPath;
+}
+
+function rewriteSource(documents: ThreadDocument[], originalSource: string): ThreadDocument[] {
+  return documents.map(document => ({ ...document, source: originalSource }));
+}
+
+async function collectDocuments(iterable: AsyncIterable<ThreadDocument>): Promise<ThreadDocument[]> {
+  const documents: ThreadDocument[] = [];
+  for await (const document of iterable) {
+    documents.push(document);
+  }
+  return documents;
+}
+
+async function crawlWorkspaceSource(
+  engine: CorpusEngine,
+  did: string,
+  source: string,
+  options: WorkspaceOptions,
+): Promise<{ ingested: number }> {
+  const resolvedPath = resolveLocalWorkspaceSource(did, source, options);
+  const adapter = new LocalAdapter();
+  const documents = rewriteSource(await collectDocuments(adapter.fetch(`local:${resolvedPath}`)), source);
+
+  return engine.ingest(did, documents);
+}
+
+async function syncWorkspaceSource(
+  engine: CorpusEngine,
+  did: string,
+  source: string,
+  cursor: string | null,
+  options: WorkspaceOptions,
+): Promise<{ ingested: number; cursor: string | null; hasMore: boolean }> {
+  const resolvedPath = resolveLocalWorkspaceSource(did, source, options);
+  const adapter = new LocalAdapter();
+  const result = await adapter.sync(`local:${resolvedPath}`, cursor);
+  const documents = rewriteSource(result.documents, source);
+  engine.ingest(did, documents);
+
+  return { ingested: documents.length, cursor: result.cursor, hasMore: result.hasMore };
+}
+
+async function handle<T>(response: Response, fn: () => T | Promise<T>): Promise<void> {
   try {
-    response.json(fn());
+    response.json(await fn());
   } catch (error) {
     response.status(400).json({ error: error instanceof Error ? error.message : 'request failed' });
   }
