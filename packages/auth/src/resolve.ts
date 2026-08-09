@@ -27,11 +27,17 @@ export function createDbResolver(
     const { eq } = await import('drizzle-orm');
     const table = identitiesTable as any;
 
+    // `identities` has no `type` column — the closest analogue is `scope`
+    // ('actor' | 'family' | 'community' | 'business'), which is what the HTTP
+    // resolver (registry/api/identity/:did) maps into ResolvedIdentity.type.
+    // Selecting a column that doesn't exist on the table resolves to
+    // `undefined`, which crashes drizzle's `orderSelectedFields` during query
+    // preparation (`Object.entries(undefined)`) — see #1709.
     const rows = await (db as any)
       .select({
         id: table.id,
         publicKey: table.publicKey,
-        type: table.type,
+        type: table.scope,
         tier: table.tier,
       })
       .from(table)
