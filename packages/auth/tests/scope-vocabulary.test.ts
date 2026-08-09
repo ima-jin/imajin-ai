@@ -321,11 +321,13 @@ describe('SCOPES is a faithful projection', () => {
     expect(scopesForConnector('warp').map((e) => e.scope)).toEqual(['warp:dispatch']);
   });
 
-  it('marks discovery:read credential-free, and nothing that spends a key', () => {
+  it('marks discovery:read and the corpus scopes credential-free, and nothing that spends a key', () => {
     const credentialFree = connectorEntries
       .filter(isCredentialFreeScope)
       .map((e) => e.scope);
-    expect(credentialFree).toEqual(['discovery:read']);
+    // #1730 — corpus proxy tools spend no external credential either: the
+    // kernel proxies to the internal corpus service, not a sealed third-party key.
+    expect(credentialFree).toEqual(['discovery:read', 'corpus:read', 'corpus:write']);
 
     // Fail-closed default: an entry that says nothing is assumed to spend the
     // connector's credential.

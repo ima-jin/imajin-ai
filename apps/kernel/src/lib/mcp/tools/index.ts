@@ -11,6 +11,7 @@ import { buzzTools } from './buzz';
 import { messagesTools } from './messages';
 import { warpTools } from './warp';
 import { discoveryTools } from './discovery';
+import { corpusTools } from './corpus';
 
 /**
  * The MCP tool registry. To add a tool: create `./<tool>.ts` exporting an
@@ -47,6 +48,7 @@ export const ALL_TOOLS: McpTool[] = [
   ...messagesTools,
   ...warpTools,
   ...discoveryTools,
+  ...corpusTools,
 ];
 
 const TOOLS_BY_NAME = new Map<string, McpTool>(ALL_TOOLS.map((t) => [t.name, t]));
