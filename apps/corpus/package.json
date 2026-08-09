@@ -9,9 +9,10 @@
     "start": "tsx src/index.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run apps/corpus/__tests__"
+    "test": "vitest run apps/corpus"
   },
   "dependencies": {
+    "@octokit/graphql": "^9.0.1",
     "better-sqlite3": "^12.10.0",
     "express": "^5.1.0"
   },
