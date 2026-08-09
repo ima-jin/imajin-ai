@@ -3,6 +3,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import * as ed from '@noble/ed25519';
 import { buildPublicUrl, profilePath } from '@imajin/config';
 import { useIdentity } from '../context/IdentityContext';
@@ -607,6 +608,18 @@ function EditProfileContent() {
             </button>
           </div>
         </form>
+
+        {/* Keys & Security — only show for own profile */}
+        {did === sessionDid && (
+          <div className="mt-6 pt-4 border-t border-gray-800">
+            <Link
+              href="/profile/keys"
+              className="block text-center px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg text-sm text-gray-300 hover:text-white hover:border-gray-700 transition"
+            >
+              🔑 Manage Keys &amp; Security
+            </Link>
+          </div>
+        )}
 
         {/* Key Backup — only show for own profile */}
         {did === sessionDid && <div className="mt-6 pt-4 border-t border-gray-800">

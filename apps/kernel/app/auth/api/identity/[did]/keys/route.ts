@@ -59,6 +59,11 @@ export async function GET(
       assertKeys: result.keys?.assert ?? [],
       controllerKeys: result.keys?.controller ?? [],
       lastRotated: chain.updatedAt,
+      // Raw chain log + head CID — needed by the client to build and sign
+      // its own chain-update operations (rotate/add-device/revoke) without
+      // a round trip that would expose private key material to the server.
+      log: chain.log,
+      headCid: chain.headCid,
     }, { headers: cors });
   } catch (err) {
     log.error({ err: String(err) }, '[keys] Error');

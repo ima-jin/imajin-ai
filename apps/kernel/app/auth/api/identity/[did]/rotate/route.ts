@@ -3,6 +3,7 @@ import { corsHeaders } from '@imajin/config';
 import { db, identities, identityChains, tokens } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
+import { multibaseToHex } from '@imajin/auth';
 
 const log = createLogger('kernel');
 import { verifyChainLog } from '@/src/lib/auth/chain-providers';
@@ -136,10 +137,26 @@ export async function POST(
       })
       .where(eq(identityChains.did, decodedDid));
 
+    // When the rotated chain still uses a single unified key across all
+    // three roles (the common case — no role separation / other devices
+    // yet), keep `identities.publicKey` in sync with it. The legacy
+    // raw-signature login flow (`/auth/api/login/verify`) checks against
+    // that column directly and has no notion of `keyRoles`, so without this
+    // the user would be locked out after rotating. Role-separated / multi-
+    // device chains are left untouched — that login path needs its own fix
+    // (tracked as a role-separation follow-up).
+    const isUnifiedSingleKey =
+      totalKeyCount === 1 &&
+      result.keys.auth[0]?.publicKeyMultibase === result.keys.controller[0]?.publicKeyMultibase &&
+      result.keys.assert[0]?.publicKeyMultibase === result.keys.controller[0]?.publicKeyMultibase;
+
     // Update identity key_roles
     await db.update(identities)
       .set({
         keyRoles,
+        ...(isUnifiedSingleKey
+          ? { publicKey: multibaseToHex(result.keys.controller[0].publicKeyMultibase) }
+          : {}),
         updatedAt: new Date(),
       })
       .where(eq(identities.id, decodedDid));
