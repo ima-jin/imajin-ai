@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { sealMock, sealV1Mock, loadMock, existsMock, statusMock, whereMock } = vi.hoisted(() => ({
+const { sealMock, sealV1Mock, loadMock, existsMock, statusMock, whereMock, revokeVaultGrantsMock } = vi.hoisted(() => ({
   sealMock: vi.fn(),
   sealV1Mock: vi.fn(),
   loadMock: vi.fn(),
   existsMock: vi.fn(),
   statusMock: vi.fn(),
   whereMock: vi.fn(),
+  revokeVaultGrantsMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/vault', () => ({
@@ -15,6 +16,7 @@ vi.mock('@/src/lib/vault', () => ({
   loadAndUnseal: loadMock,
   vaultFieldExists: existsMock,
   vaultFieldStatus: statusMock,
+  revokeVaultDelegationGrantsForConnector: revokeVaultGrantsMock,
 }));
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: whereMock }) }) },
@@ -33,6 +35,7 @@ import {
   anthropicKeySealed,
   anthropicKeyPending,
   vaultField,
+  revokeApiKey,
   ANTHROPIC_CONNECTOR_DID,
 } from '../connector';
 
@@ -56,6 +59,7 @@ beforeEach(() => {
   loadMock.mockResolvedValue(undefined);
   existsMock.mockResolvedValue(false);
   statusMock.mockResolvedValue('absent');
+  revokeVaultGrantsMock.mockResolvedValue(0);
 });
 
 // ── Identity + isolation ──────────────────────────────────────────────────────
@@ -243,5 +247,25 @@ describe('status helpers', () => {
   it('is not pending when the field is simply absent', async () => {
     statusMock.mockResolvedValueOnce('absent');
     expect(await anthropicKeyPending(OWNER)).toBe(false);
+  });
+});
+
+// ── revokeApiKey (#1720) ──────────────────────────────────────────────────────
+
+describe('revokeApiKey', () => {
+  it('delegates to revokeVaultDelegationGrantsForConnector with the connector id and owner DID', async () => {
+    revokeVaultGrantsMock.mockResolvedValue(1);
+    await revokeApiKey(OWNER);
+    expect(revokeVaultGrantsMock).toHaveBeenCalledWith('anthropic', OWNER);
+  });
+
+  it('returns true when at least one grant was revoked', async () => {
+    revokeVaultGrantsMock.mockResolvedValue(1);
+    expect(await revokeApiKey(OWNER)).toBe(true);
+  });
+
+  it('returns false when no active grant existed', async () => {
+    revokeVaultGrantsMock.mockResolvedValue(0);
+    expect(await revokeApiKey(OWNER)).toBe(false);
   });
 });

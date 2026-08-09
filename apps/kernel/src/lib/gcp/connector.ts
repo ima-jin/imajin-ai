@@ -56,6 +56,12 @@ export const gcpKeySealed = gcp.keySealed;
 /** Whether a key is sealed but awaiting owner grant approval (Tier 1, #1603). */
 export const gcpKeyPending = gcp.keyPending;
 
+/**
+ * Revoke the sealed GCP key's delegation grant for this DID, cutting off
+ * access immediately without deleting the sealed key (#1720).
+ */
+export const revokeApiKey = gcp.revokeApiKey;
+
 export type GcpCredentials = TokenPasteCredentials;
 
 /**

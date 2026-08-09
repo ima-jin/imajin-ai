@@ -45,6 +45,12 @@ export const anthropicKeySealed = anthropic.keySealed;
 /** Whether a key is sealed but awaiting owner grant approval (#1603). */
 export const anthropicKeyPending = anthropic.keyPending;
 
+/**
+ * Revoke the sealed Anthropic API key's delegation grant for this DID, cutting
+ * off access immediately without deleting the sealed key (#1720).
+ */
+export const revokeApiKey = anthropic.revokeApiKey;
+
 export type AnthropicCredentials = TokenPasteCredentials;
 
 /**

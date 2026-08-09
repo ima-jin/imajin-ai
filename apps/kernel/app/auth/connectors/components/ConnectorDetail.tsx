@@ -1152,15 +1152,16 @@ function credentialCopy(entry: ConnectorEntry): CredentialUiCopy {
 /**
  * Confirm text for disconnecting a paste-style connector.
  *
- * Static-secret connectors revoke a delegation grant, which crypto-erases the
- * wrapped field key rather than deleting the ciphertext — so the two patterns
- * genuinely promise different things and the dialog should not lie about which.
+ * Every paste-style connector's disconnect revokes the sealed credential's
+ * delegation grant, which crypto-erases the wrapped field key and cuts off
+ * access immediately. Some (e.g. Discord) also tombstone the underlying vault
+ * entry as part of the same request; others (e.g. Gemini, Anthropic, GCP,
+ * Warp — #1720) deliberately leave the sealed ciphertext in place so the owner
+ * can restore access by re-granting without re-pasting the credential. The
+ * dialog only promises what is true for every one of them: access is revoked.
  */
 function disconnectConfirmMessage(entry: ConnectorEntry, credentialLabel: string): string {
-  if (entry.ingestionPattern === 'static-secret') {
-    return `Disconnect ${entry.name}? This revokes the delegation grant, which kills access immediately.`;
-  }
-  return `Disconnect ${entry.name}? This will revoke the grant and delete the sealed ${credentialLabel}.`;
+  return `Disconnect ${entry.name}? This revokes access to the sealed ${credentialLabel} immediately.`;
 }
 
 /**

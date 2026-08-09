@@ -25,7 +25,7 @@ import {
 } from '@imajin/vault-core';
 import { verifySync, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
-import { and, eq, isNull, gt, or, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, gt, or, like, type SQL } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants, vaultGrantRequests, vaultOwnerEnvelopes, type VaultDelegationGrant, type VaultOwnerEnvelope } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
@@ -885,6 +885,55 @@ export async function revokeStaticSecretGrant(
   await eraseGrantKeyMaterial(updated);
 
   return updated.length > 0;
+}
+
+/**
+ * Revoke every ACTIVE `vault_delegation_grants` row for one connector's sealed
+ * API-key field, for one owner DID, and erase their wrapped key material (#1720).
+ *
+ * Token-paste connectors (Gemini, Anthropic, GCP — see
+ * `createConnectorTokenPaste`) seal their credential as a v2 delegation-grant
+ * entry (`sealAndStoreV2`) under `${connectorId}-api-key:${ownerDid}`, self-granted
+ * to the node rather than to a connector app DID. `revokeStaticSecretGrant` cannot
+ * reach these: it matches on `(field, grantedTo)` and the connector app DID is
+ * never the grantee here. This instead matches purely on `field`, which is
+ * sufficient because the field name alone already encodes both the connector and
+ * the owner DID.
+ *
+ * The field is matched with a LIKE pattern — `${connectorId}-%-key:${ownerDid}` —
+ * rather than an exact name so a disconnect also catches sibling key-shaped
+ * fields for the same connector + owner (e.g. a future secondary key) without
+ * the caller having to enumerate every one.
+ *
+ * Does NOT tombstone the underlying vault entry — mirrors the static-secret
+ * revoke's semantics of killing access without deleting the recoverable secret.
+ *
+ * Returns the number of grants revoked.
+ */
+export async function revokeVaultDelegationGrantsForConnector(
+  connectorId: string,
+  ownerDid: string,
+): Promise<number> {
+  const fieldPattern = `${connectorId}-%-key:${ownerDid}`;
+
+  const updated = await db
+    .update(vaultDelegationGrants)
+    .set({ status: 'revoked', revokedAt: new Date() })
+    .where(
+      and(
+        like(vaultDelegationGrants.field, fieldPattern),
+        eq(vaultDelegationGrants.status, 'active'),
+      ),
+    )
+    .returning({
+      id: vaultDelegationGrants.id,
+      field: vaultDelegationGrants.field,
+      keyId: vaultDelegationGrants.keyId,
+    });
+
+  await eraseGrantKeyMaterial(updated);
+
+  return updated.length;
 }
 
 // ── Renewal (#1535) ──────────────────────────────────────────────────────

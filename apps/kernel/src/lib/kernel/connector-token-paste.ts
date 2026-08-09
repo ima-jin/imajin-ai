@@ -55,6 +55,7 @@ import {
   loadAndUnseal,
   vaultFieldExists,
   vaultFieldStatus,
+  revokeVaultDelegationGrantsForConnector,
 } from '@/src/lib/vault';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
 
@@ -129,6 +130,16 @@ export interface ConnectorTokenPaste {
    * "waiting for owner approval".
    */
   keyPending(ownerDid: string): Promise<boolean>;
+  /**
+   * Revoke the sealed API key's delegation grant for this DID, cutting off
+   * access immediately (#1720). Mirrors the static-secret connector's revoke
+   * semantics (`connector-static-secret.ts`): the underlying vault entry is
+   * NOT deleted, only the grant that makes it readable — the owner can still
+   * re-paste the same key to restore access without losing the sealed copy.
+   *
+   * Returns true when at least one active grant was revoked.
+   */
+  revokeApiKey(ownerDid: string): Promise<boolean>;
 }
 
 export function createConnectorTokenPaste(
@@ -273,6 +284,11 @@ export function createConnectorTokenPaste(
     return key;
   }
 
+  async function revokeApiKey(ownerDid: string): Promise<boolean> {
+    const revokedCount = await revokeVaultDelegationGrantsForConnector(opts.id, ownerDid);
+    return revokedCount > 0;
+  }
+
   return {
     vaultField: keyField,
     sealApiKey,
@@ -282,5 +298,6 @@ export function createConnectorTokenPaste(
     keySealed: (ownerDid: string) => vaultFieldExists(keyField(ownerDid)),
     keyPending: async (ownerDid: string) =>
       (await vaultFieldStatus(keyField(ownerDid))) === 'pending-grant',
+    revokeApiKey,
   };
 }

@@ -499,8 +499,12 @@ describe('disconnect', () => {
     });
   });
 
-  it('hides the button entirely for a connector with no disconnect route', async () => {
-    installFetch({
+  // #1720: Gemini, Anthropic, and GCP sealed connectors previously had no
+  // disconnect route at all, so a sealed key could never be revoked from the
+  // UI. They now share the same POST-to-a-dedicated-route shape as Discord.
+  it('revokes a sealed Gemini key with POST on its disconnect route (#1720)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const spy = installFetch({
       '/gemini/api/scope-manifest': {
         manifestAssetId: null,
         activeScopes: ['gemini:infer'],
@@ -510,11 +514,34 @@ describe('disconnect', () => {
     });
 
     render(<ConnectorDetail entry={entryFor('gemini')} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Google Gemini' }));
 
-    // Sealed, so the button would render if the card offered one — Gemini has no
-    // /gemini/api/disconnect route, so offering one would only produce an error.
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith('/gemini/api/disconnect', { method: 'POST' });
+    });
+  });
+
+  it('hides the button entirely for a connector with no disconnect route', async () => {
+    // Synthetic entry: every registered credential-paste connector now declares
+    // a disconnect route (#1720), so this exercises the "no route" case directly
+    // rather than relying on one happening to still be unset in the registry.
+    const gemini = entryFor('gemini');
+    const entry: ConnectorEntry = { ...gemini, disconnectRoute: null };
+
+    installFetch({
+      '/gemini/api/scope-manifest': {
+        manifestAssetId: null,
+        activeScopes: ['gemini:infer'],
+        validScopes: ['gemini:infer'],
+        keySealed: true,
+      },
+    });
+
+    render(<ConnectorDetail entry={entry} />);
+
+    // Sealed, so the button would render if the card offered one — this entry
+    // has no disconnect route, so offering one would only produce an error.
     expect(await screen.findByText('API Key sealed')).toBeDefined();
-    expect(entryFor('gemini').disconnectRoute).toBeNull();
     expect(screen.queryByRole('button', { name: /^Disconnect/ })).toBeNull();
   });
 });
