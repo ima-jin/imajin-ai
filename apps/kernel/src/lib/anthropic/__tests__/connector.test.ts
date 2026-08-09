@@ -232,11 +232,23 @@ describe('requireGrantAndKey', () => {
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
+// #1724: `anthropicKeySealed` used to delegate to `vaultFieldExists`, which
+// only checks that the vault entry exists — not whether an active grant
+// covers it. `revokeApiKey` (disconnect) leaves the entry in place and only
+// revokes the grant, so that reported a disconnected key as sealed forever.
+// It now delegates to `vaultFieldStatus`, which filters `WHERE status = 'active'`.
 describe('status helpers', () => {
   it('reports a sealed key via the per-DID field', async () => {
-    existsMock.mockResolvedValueOnce(true);
+    statusMock.mockResolvedValueOnce('ready');
     expect(await anthropicKeySealed(OWNER)).toBe(true);
-    expect(existsMock).toHaveBeenCalledWith(vaultField(OWNER));
+    expect(statusMock).toHaveBeenCalledWith(vaultField(OWNER));
+  });
+
+  it('reports unsealed once the grant is revoked, even though the vault entry still exists', async () => {
+    // A revoked grant reports 'pending-grant' — no active grant covers the
+    // entry — not 'ready'. This is the exact disconnect state from #1724.
+    statusMock.mockResolvedValueOnce('pending-grant');
+    expect(await anthropicKeySealed(OWNER)).toBe(false);
   });
 
   it('reports pending-grant separately from sealed', async () => {

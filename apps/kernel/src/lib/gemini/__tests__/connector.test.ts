@@ -270,15 +270,32 @@ describe('requireGrantAndKey (fail-closed gate)', () => {
 
 // ── geminiKeySealed ───────────────────────────────────────────────────────────
 
+// #1724: `geminiKeySealed` used to delegate to `vaultFieldExists`, which only
+// checks that the vault entry exists — not whether an active grant covers it.
+// `revokeApiKey` (disconnect) leaves the entry in place and only revokes the
+// grant, so that reported a disconnected key as sealed forever. It now
+// delegates to `vaultFieldStatus`, which filters `WHERE status = 'active'`.
 describe('geminiKeySealed', () => {
-  it('delegates to vaultFieldExists with the per-DID field', async () => {
-    existsMock.mockResolvedValue(true);
+  it('delegates to vaultFieldStatus with the per-DID field', async () => {
+    statusMock.mockResolvedValue('ready');
     expect(await geminiKeySealed(OWNER)).toBe(true);
-    expect(existsMock).toHaveBeenCalledWith(vaultField(OWNER));
+    expect(statusMock).toHaveBeenCalledWith(vaultField(OWNER));
   });
 
   it('returns false when no key is sealed', async () => {
-    existsMock.mockResolvedValue(false);
+    statusMock.mockResolvedValue('absent');
+    expect(await geminiKeySealed(OWNER)).toBe(false);
+  });
+
+  it('returns false once the grant is revoked, even though the vault entry still exists', async () => {
+    // A revoked grant reports 'pending-grant' (no active grant covers the
+    // entry), not 'ready' — this is the exact disconnect state from #1724.
+    statusMock.mockResolvedValue('pending-grant');
+    expect(await geminiKeySealed(OWNER)).toBe(false);
+  });
+
+  it('returns false for an unverifiable entry', async () => {
+    statusMock.mockResolvedValue('unverifiable');
     expect(await geminiKeySealed(OWNER)).toBe(false);
   });
 });

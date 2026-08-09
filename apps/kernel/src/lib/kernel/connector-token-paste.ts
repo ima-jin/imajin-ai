@@ -53,7 +53,6 @@ import {
   sealAndStore,
   sealAndStoreV2,
   loadAndUnseal,
-  vaultFieldExists,
   vaultFieldStatus,
   revokeVaultDelegationGrantsForConnector,
 } from '@/src/lib/vault';
@@ -120,7 +119,15 @@ export interface ConnectorTokenPaste {
    * (sealed but awaiting the owner agent's grant, #1603).
    */
   requireGrantAndKey(ownerDid: string, scope: string): Promise<string>;
-  /** Whether a key is sealed for this DID. No crypto, no value returned. */
+  /**
+   * Whether a key is sealed AND readable for this DID — an active delegation
+   * grant covers it, not merely a vault entry existing (#1724).
+   *
+   * `revokeApiKey` (disconnect) deliberately leaves the sealed vault entry in
+   * place and only revokes the grant, so checking entry existence alone would
+   * report a disconnected key as still sealed forever — the exact bug this
+   * fixes. No crypto, no value returned.
+   */
   keySealed(ownerDid: string): Promise<boolean>;
   /**
    * Whether a key is sealed but still awaiting owner grant approval.
@@ -289,13 +296,32 @@ export function createConnectorTokenPaste(
     return revokedCount > 0;
   }
 
+  /**
+   * `keySealed` used to be `vaultFieldExists(keyField(ownerDid))`, which only
+   * checks that a vault entry exists and verifies — it says nothing about
+   * whether a grant currently covers it. `revokeApiKey` revokes the grant but
+   * intentionally does NOT delete the entry, so a disconnected key kept
+   * reporting `keySealed: true` forever (#1724): the UI showed "API Key
+   * sealed" with no way to disconnect again (nothing left to revoke) or
+   * re-paste (the form was hidden behind the stale sealed state).
+   *
+   * `vaultFieldStatus` already answers the right question — 'ready' means a
+   * v1 entry, or a v2 entry with an ACTIVE, non-expired grant (it filters
+   * `WHERE status = 'active'`, see `field-status.ts`). Reusing it here keeps
+   * `keySealed` and `keyPending` mutually exclusive and consistent, and needs
+   * no vault-layer change.
+   */
+  async function keySealed(ownerDid: string): Promise<boolean> {
+    return (await vaultFieldStatus(keyField(ownerDid))) === 'ready';
+  }
+
   return {
     vaultField: keyField,
     sealApiKey,
     resolveActiveGrant,
     loadCredentials,
     requireGrantAndKey,
-    keySealed: (ownerDid: string) => vaultFieldExists(keyField(ownerDid)),
+    keySealed,
     keyPending: async (ownerDid: string) =>
       (await vaultFieldStatus(keyField(ownerDid))) === 'pending-grant',
     revokeApiKey,
