@@ -9,6 +9,7 @@ import { corsHeaders } from "@/src/lib/kernel/cors";
 import { buildArticleBlock, type ArticleInput } from "../article-core";
 import { composeArticleFile, parseFrontmatter } from "../frontmatter";
 import { updateAssetContent } from "@/src/lib/media/update-asset";
+import { buildAssetViewUrl } from "@/src/lib/media/view-url";
 
 const log = createLogger("kernel");
 
@@ -131,5 +132,10 @@ export async function patchArticle(
   }
 
   // 8. Return updated asset (metadata.article already re-derived on write).
-  return NextResponse.json(result.asset, { status: 200, headers: cors });
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || new URL(request.url).origin;
+  return NextResponse.json(
+    { ...result.asset, viewUrl: buildAssetViewUrl(baseUrl, id) },
+    { status: 200, headers: cors }
+  );
 }

@@ -4,6 +4,7 @@ import type { Asset } from '@/src/db';
 import { getAccessType } from '@/src/lib/media/read-access';
 import { authorizeAssetRead } from '@/src/lib/media/authorize-read';
 import { requireMcpGrant } from '../mcp-grant';
+import { buildAssetViewUrl } from '@/src/lib/media/view-url';
 import {
   listOwnedAssets,
   getActiveAsset,
@@ -14,6 +15,11 @@ import {
   assetAccess,
   type ListOptions,
 } from '@/src/lib/media/queries';
+
+/** Base URL for constructing share/view links (#1714) — see media-share.ts for the same convention. */
+function resolveMediaBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_BASE_URL ?? process.env.MEDIA_PUBLIC_URL ?? '';
+}
 
 /**
  * Media READ tools for the MCP connector (#1166).
@@ -31,6 +37,7 @@ import {
 function summarize(asset: Asset) {
   return {
     id: asset.id,
+    viewUrl: buildAssetViewUrl(resolveMediaBaseUrl(), asset.id),
     filename: asset.filename,
     mimeType: asset.mimeType,
     size: asset.size,
