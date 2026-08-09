@@ -289,6 +289,191 @@ powers `search()` — no join, no extra round-trip, no extra query.
   no new kernel-side secret is required since the kernel's existing node
   keypair is reused as the claim issuer.
 
+## Access Revocation + Claim-to-Control
+
+Addresses a design question raised as a comment on #1752: a public repo is
+ingested into the canonical corpus (via `resolveCorpusDid(source)` above),
+then the owner flips it to private. The content is already indexed. What
+happens to it?
+
+### 1. The ingestion attestation is the legal/ethical basis for retention
+
+The `IngestionAttestation` (schema above) already captures everything needed
+to answer "was this legitimately captured": `source`, `timestamp`,
+`contentHash`, and the corpus DID's signature over all of it. That signature
+is produced *at ingest time*, while the content was public. A repo going
+private afterward doesn't reach backward in time and invalidate a signature
+that already exists — the attestation is the receipt, not a live permission
+check. This is the same principle the Internet Archive's Wayback Machine
+operates on (a snapshot of what was publicly served, kept regardless of
+later takedown requests), except here the snapshot is cryptographically
+signed and independently verifiable via `createHttpResolver` against the
+corpus DID's public key, rather than resting on institutional trust alone.
+Consequence: **the copy is retained by default.** Access revocation is a
+serving-layer decision, not a retention-layer one.
+
+### 2. Sealing on access loss
+
+The adapter finds out the same way it finds out about anything else — the
+next scheduled `sync()` call. A 403 (or 404, for a deleted/renamed repo) from
+`GitHubAdapter.sync()` is not a transient fetch error to retry; it's a
+signal that the corpus's authorization to *serve* this source has changed.
+That's the trigger to **seal** the source rather than to keep it queryable.
+
+Sealing is a flag on the existing `corpus_sources` row
+(`apps/corpus/src/engine/store.ts`), not a new table — it's source-scoped
+state, exactly like `last_sync`/`thread_count` already are:
+
+```sql
+-- extends the existing corpus_sources table (store.ts migrate())
+ALTER TABLE corpus_sources ADD COLUMN sealed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE corpus_sources ADD COLUMN sealed_at TEXT;
+ALTER TABLE corpus_sources ADD COLUMN seal_reason TEXT;              -- '403' | '404' | 'owner_gate' | null
+ALTER TABLE corpus_sources ADD COLUMN last_public_snapshot_at TEXT;  -- = last_sync at the moment of sealing
+```
+
+```typescript
+/** Extends CorpusSourceFreshness (engine/types.ts) with revocation state. */
+interface SealedSourceState {
+  sealed: boolean;
+  sealedAt?: string;       // ISO 8601 — when access was lost
+  sealReason?: '403' | '404' | 'owner_gate' | null;
+  lastPublicSnapshotAt?: string; // ISO 8601 — last_sync value at seal time
+}
+
+// CorpusSourceFreshness gains these fields; CorpusStatus.sources surfaces them
+// via the existing status() call — no new endpoint needed.
+interface CorpusSourceFreshness extends SealedSourceState {
+  source: string;
+  lastSync: string;
+  threadCount: number;
+  warning?: string;
+}
+```
+
+Where it's checked — one place, at the query boundary:
+
+- `CorpusStore.search()` gains `AND t.source NOT IN (SELECT source FROM corpus_sources WHERE sealed = 1)`
+  (or an equivalent join) so sealed sources silently drop out of `corpus_search`
+  results. Rows are untouched; only the `SELECT` is filtered — same
+  zero-added-latency shape as the `attestationId` column.
+- `CorpusStore.status()` / `freshness()` continue to return sealed sources
+  (status is diagnostic, search is not), with `warning` populated as e.g.
+  `"access revoked, last public snapshot: 2026-03-01T00:00:00Z"` so a caller
+  running `corpus_status` can see *why* a source they expect has gone quiet
+  from `corpus_search`.
+- `sync()` itself becomes a no-op (skip the fetch entirely) once
+  `sealed = 1`, until an unseal event clears it — no point re-attempting a
+  403 on every scheduled sync.
+
+The data is never deleted by sealing. Sealing only stops *serving*; the
+attestation and the rows it covers stay intact in case access is restored or
+the owner claims the corpus (§3).
+
+### 3. The claim-as-consent-event (the "Trojan horse")
+
+Before anyone claims it, a corpus DID for `github:owner/repo` exists purely
+as a byproduct of `resolveCorpusDid(source)` being deterministic — nobody
+"created" it on the owner's behalf, and the ingestion attestation is what
+makes its existence legitimate rather than a stealth copy. The repo owner
+can then walk up to the corpus service and **claim** that pre-existing
+corpus DID via GitHub OAuth. This claim *is* the consent event the whole
+design has been quietly waiting for:
+
+```
+┌──────────────┐  1. "Sign in with GitHub" on the corpus claim page
+│ Repo owner    │─────────────────────────────────────────────────┐
+└──────────────┘                                                    ▼
+                                                     ┌───────────────────────────┐
+                                                     │ KERNEL — GitHub OAuth       │
+                                                     │ (new provider, modeled on  │
+                                                     │ existing onboard-token flow │
+                                                     │ in auth.onboard_tokens)     │
+                                                     └──────────┬─────────────────┘
+                                                                │ 2. GitHub identity verified:
+                                                                │    owner login + repo admin scope
+                                                                ▼
+                                              ┌────────────────────────────────────────┐
+                                              │ 3. resolveCorpusDid("github:owner/repo") │
+                                              │    — same pure fn corpus + kernel use    │
+                                              └──────────────────┬───────────────────────┘
+                                                                  ▼
+                                     ┌────────────────────────────────────────────────┐
+                                     │ 4. Ownership transfer, recorded as an           │
+                                     │    auth.identity_members row on the corpus DID: │
+                                     │    { identityDid: corpusDid,                    │
+                                     │      memberDid: ownerDid,                       │
+                                     │      role: 'owner',                             │
+                                     │      addedVia: 'claim' }   ← existing enum value│
+                                     └──────────────────┬───────────────────────────────┘
+                                                          ▼
+                                     ┌────────────────────────────────────────────────┐
+                                     │ 5. Owner now controls policy on the corpus DID: │
+                                     │    unseal | delete | gate | keep public          │
+                                     └────────────────────────────────────────────────┘
+```
+
+Notably, `identity_members.addedVia` already has a `'claim'` variant
+(`migrations/0087_identity_members_added_via.sql`, tracked under #1680) —
+this flow is additional *usage* of an existing primitive, not a new column.
+Once the `owner` row exists, four policy actions become available, all
+scoped by the existing `role: 'owner'` check on `identity_members`:
+
+- **Unseal** — clear `sealed` on `corpus_sources`; `corpus_search` resumes
+  returning results for that source immediately (it's a filter, not a
+  reindex).
+- **Delete** — `CorpusStore.deleteSource()` already exists and does exactly
+  this: purges `threads`, `thread_fts`, and the `corpus_sources` row. The
+  ingestion attestations remain in the kernel's `auth.attestations` as the
+  durable record that ingestion happened and was later deleted by the
+  owner's request — the attestation documents the lifecycle, it doesn't
+  pin the data forever.
+- **Gate** — leave the source unsealed but require `actingDid` to resolve to
+  a row in `identity_members` for this `corpusDid` before `corpus_search`
+  returns hits from it (team-only). This reuses the exact same table the
+  claim itself just wrote into — membership *is* the access list.
+- **Keep public** — an explicit no-op that flips a `confirmedPublicAt`
+  timestamp so the corpus can distinguish "never revisited" from "owner
+  affirmatively reviewed and kept this public," useful for any future policy
+  that wants to treat stale-but-unclaimed sources more cautiously than
+  owner-affirmed ones.
+
+The stub — the corpus DID minted implicitly at first ingest — was just
+holding the owner's place. Claiming it hands over the keys that were always
+shaped for them.
+
+### 4. It runs the other direction too: proactive claim on a private repo
+
+Nothing above requires the content to have been public first. A private
+repo owner can run the identical claim flow — GitHub OAuth, verify repo
+admin scope, resolve `corpusDid`, write the `identity_members` owner row —
+*before* any ingestion happens, then ingest their own private repo and gate
+it by membership from day one. Same primitive (`identity_members` + GitHub
+OAuth + `resolveCorpusDid`), different starting point: instead of
+"public → sealed → claimed → policy chosen," it's "claimed → ingested →
+gated," with no public window in between. Either path lands on the same
+end state — an owner-controlled corpus DID with a membership list gating
+`corpus_search` — which is a good sign the primitive is the right shape
+rather than something bolted on to patch the revocation case specifically.
+
+### 5. Policy defaults
+
+- **Default on access loss: seal.** Never delete on a bare 403/404 — a
+  temporarily-misconfigured token or a rename looks identical to a real
+  takedown from the adapter's point of view, and deletion is not reversible
+  once `deleteSource()` runs.
+- **Default on owner claim: unseal.** Claiming is an affirmative act by
+  someone who just proved GitHub admin control of the source; the more
+  useful default is to hand back a working corpus and let the owner narrow
+  it down (gate/delete) rather than hand back a still-sealed one they have
+  to explicitly reopen.
+- **The attestation is retention proof, not a serving permission.** It
+  survives sealing, survives gating, and even survives deletion (in the
+  kernel's durable `auth.attestations`) — it answers "was this legitimately
+  captured," which is a fact about the past that policy changes can't alter.
+  Whether to *serve* it is a separate, always-current decision driven by
+  `sealed`/`identity_members`, re-evaluated on every `corpus_search`.
+
 ## Verdicts
 
 1. **Service DID minting (#1751)** — **VALIDATED**. `bootstrap-node-identity.ts`
@@ -320,7 +505,17 @@ powers `search()` — no join, no extra round-trip, no extra query.
    design decision: storing `attestationId` as a plain column returned by
    the existing `search()` query is sound and adds no round-trip. The column
    itself doesn't exist yet, but it is a trivial addition once #4 lands.
-6. **Existing patterns mapped** (`emitAttestation`, `Ed25519`,
+6. **Access revocation + claim-to-control (comment on #1752)** —
+   **VALIDATED** as a design decision, **PARTIAL** on implementation. The
+   core principle — attestation proves legitimate retention, sealing is a
+   query-time filter, claiming is a consent event gated by GitHub OAuth +
+   the existing `identity_members.addedVia = 'claim'` primitive (#1680) — is
+   sound and needs no new cryptography or subsystem. What's missing:
+   `corpus_sources` needs the `sealed`/`seal_reason` columns and a
+   `search()` filter, the adapters need to translate 403/404 into a seal
+   call, and there is no GitHub OAuth provider in `packages/auth` yet — the
+   claim flow's identity-verification leg is entirely new code.
+7. **Existing patterns mapped** (`emitAttestation`, `Ed25519`,
    `X-Acting-For`, `requireAuth`, service keypairs, challenge-response) —
    **VALIDATED**. Full map produced above; the platform's identity/auth
    surface is mature enough that this architecture is composition of
