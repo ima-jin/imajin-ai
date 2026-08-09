@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { sealMock, sealV1Mock, loadMock, existsMock, statusMock, whereMock, revokeVaultGrantsMock } = vi.hoisted(() => ({
+const {
+  sealMock, sealV1Mock, loadMock, existsMock, statusMock, whereMock,
+  revokeVaultGrantsMock, channelLinksRevokeMock,
+} = vi.hoisted(() => ({
   sealMock: vi.fn(),
   sealV1Mock: vi.fn(),
   loadMock: vi.fn(),
@@ -8,6 +11,9 @@ const { sealMock, sealV1Mock, loadMock, existsMock, statusMock, whereMock, revok
   statusMock: vi.fn(),
   whereMock: vi.fn(),
   revokeVaultGrantsMock: vi.fn(),
+  // #1733: `revokeApiKey` also sweeps active channel_links rows — backs the
+  // `.returning(...)` call on `db.update(channelLinks)...`.
+  channelLinksRevokeMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/vault', () => ({
@@ -19,8 +25,11 @@ vi.mock('@/src/lib/vault', () => ({
   revokeVaultDelegationGrantsForConnector: revokeVaultGrantsMock,
 }));
 vi.mock('@/src/db', () => ({
-  db: { select: () => ({ from: () => ({ where: whereMock }) }) },
-  channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
+  db: {
+    select: () => ({ from: () => ({ where: whereMock }) }),
+    update: () => ({ set: () => ({ where: () => ({ returning: channelLinksRevokeMock }) }) }),
+  },
+  channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes', id: 'id' },
 }));
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -60,6 +69,7 @@ beforeEach(() => {
   existsMock.mockResolvedValue(false);
   statusMock.mockResolvedValue('absent');
   revokeVaultGrantsMock.mockResolvedValue(0);
+  channelLinksRevokeMock.mockResolvedValue([]);
 });
 
 // ── Identity + isolation ──────────────────────────────────────────────────────
@@ -278,6 +288,21 @@ describe('revokeApiKey', () => {
 
   it('returns false when no active grant existed', async () => {
     revokeVaultGrantsMock.mockResolvedValue(0);
+    expect(await revokeApiKey(OWNER)).toBe(false);
+  });
+
+  // #1733: revoking only the vault grant left every previously granted
+  // channel_links scope reporting active forever. `revokeApiKey` now also
+  // sweeps active channel_links rows for this connector + DID.
+  it('also revokes active channel_links rows, even with nothing left in the vault to revoke', async () => {
+    revokeVaultGrantsMock.mockResolvedValue(0);
+    channelLinksRevokeMock.mockResolvedValue([{ id: 'clink_1' }]);
+    expect(await revokeApiKey(OWNER)).toBe(true);
+  });
+
+  it('returns false when neither the vault grant nor any channel_links row was active', async () => {
+    revokeVaultGrantsMock.mockResolvedValue(0);
+    channelLinksRevokeMock.mockResolvedValue([]);
     expect(await revokeApiKey(OWNER)).toBe(false);
   });
 });

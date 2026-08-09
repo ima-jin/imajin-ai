@@ -139,12 +139,22 @@ export interface ConnectorTokenPaste {
   keyPending(ownerDid: string): Promise<boolean>;
   /**
    * Revoke the sealed API key's delegation grant for this DID, cutting off
-   * access immediately (#1720). Mirrors the static-secret connector's revoke
-   * semantics (`connector-static-secret.ts`): the underlying vault entry is
-   * NOT deleted, only the grant that makes it readable — the owner can still
-   * re-paste the same key to restore access without losing the sealed copy.
+   * access immediately (#1720), AND revoke every active `channel_links` row
+   * for this connector + DID (#1733). Mirrors the static-secret connector's
+   * revoke semantics (`connector-static-secret.ts`) for the vault grant: the
+   * underlying vault entry is NOT deleted, only the grant that makes it
+   * readable — the owner can still re-paste the same key to restore access
+   * without losing the sealed copy.
    *
-   * Returns true when at least one active grant was revoked.
+   * The `channel_links` sweep exists because scope grants and the sealed key
+   * are tracked in two separate tables (`kernel.vault_delegation_grants` and
+   * `auth.channel_links`); revoking only the grant left every previously
+   * granted scope reporting as still active forever — the same class of bug
+   * #1724 fixed for the vault side, but in the channel_links layer. Mirrors
+   * the residual sweep in `connector-native-disconnect.ts`.
+   *
+   * Returns true when at least one active grant or channel_links row was
+   * revoked.
    */
   revokeApiKey(ownerDid: string): Promise<boolean>;
 }
@@ -291,9 +301,34 @@ export function createConnectorTokenPaste(
     return key;
   }
 
+  /**
+   * Revoke every ACTIVE `channel_links` row for this connector + owner DID
+   * (#1733). Mirrors the residual sweep in `connector-native-disconnect.ts` —
+   * the projection reactor normally revokes these rows when the owner
+   * republishes an empty scope-manifest, but a token-paste disconnect never
+   * publishes one, so without this sweep every previously granted scope keeps
+   * reporting active forever after "Disconnect".
+   */
+  async function revokeActiveChannelLinks(ownerDid: string): Promise<number> {
+    const revoked = await db
+      .update(channelLinks)
+      .set({ status: 'revoked', revokedAt: new Date() })
+      .where(
+        and(
+          eq(channelLinks.channel, opts.channel),
+          eq(channelLinks.did, ownerDid),
+          eq(channelLinks.appDid, opts.connectorDid),
+          eq(channelLinks.status, 'active'),
+        ),
+      )
+      .returning({ id: channelLinks.id });
+    return revoked.length;
+  }
+
   async function revokeApiKey(ownerDid: string): Promise<boolean> {
-    const revokedCount = await revokeVaultDelegationGrantsForConnector(opts.id, ownerDid);
-    return revokedCount > 0;
+    const revokedGrants = await revokeVaultDelegationGrantsForConnector(opts.id, ownerDid);
+    const revokedLinks = await revokeActiveChannelLinks(ownerDid);
+    return revokedGrants > 0 || revokedLinks > 0;
   }
 
   /**
