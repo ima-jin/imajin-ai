@@ -2,10 +2,10 @@
  * Shared types for the Corpus Service (#1726).
  *
  * These types are the contract between corpus *adapters* (e.g. the GitHub
- * adapter in `../adapters/github.ts`) and the corpus *engine* (#1728, not yet
- * built). Adapters produce `ThreadDocument`s; the engine indexes and searches
- * them. Neither side depends on the other's implementation — only on this
- * file — so the two can be built and shipped independently.
+ * adapter in `../adapters/github.ts`) and the corpus *engine* (#1728). Adapters
+ * produce `ThreadDocument`s; the engine indexes and searches them. Neither
+ * side depends on the other's implementation — only on this file — so the two
+ * can be built and shipped independently.
  */
 
 /**
@@ -104,4 +104,48 @@ export interface CorpusAdapter {
   fetch(source: string, options?: AdapterFetchOptions): AsyncIterable<ThreadDocument>;
   /** Incremental fetch of documents updated since `cursor`. */
   sync(source: string, cursor: string | null, options?: AdapterFetchOptions): Promise<AdapterSyncResult>;
+}
+
+export interface CorpusSearchRequest {
+  query: string;
+  sourceType?: SourceType;
+  source?: string;
+  state?: ThreadState | ThreadState[];
+  type?: ThreadType | ThreadType[];
+  labels?: string[];
+  author?: string;
+  limit?: number;
+  budget?: number;
+}
+
+export interface CorpusSearchHit {
+  source: string;
+  id: string;
+  type: ThreadType;
+  title: string;
+  state: ThreadState;
+  resolution?: ThreadResolution;
+  score: number;
+  evidence: string[];
+  url?: string;
+  updated: string;
+}
+
+export interface CorpusSourceFreshness {
+  source: string;
+  lastSync: string;
+  threadCount: number;
+  warning?: string;
+}
+
+export interface CorpusSearchResult {
+  results: CorpusSearchHit[];
+  totalHits: number;
+  freshness: CorpusSourceFreshness[];
+  tokensUsed: number;
+}
+
+export interface CorpusStatus {
+  sources: CorpusSourceFreshness[];
+  threadCount: number;
 }
