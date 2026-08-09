@@ -121,3 +121,68 @@ export function createConnectorTokenRoutes(
 
   return { GET, POST, OPTIONS };
 }
+
+// ── Disconnect (#1720) ────────────────────────────────────────────────────────────
+
+export interface ConnectorTokenDisconnectRouteOpts {
+  /** Display name used in log lines and the failure message, e.g. `'Gemini'`. */
+  name: string;
+  /** Revoke the sealed API key's delegation grant for this DID. */
+  revokeApiKey: (ownerDid: string) => Promise<boolean>;
+}
+
+export interface ConnectorTokenDisconnectRouteHandlers {
+  POST: RouteHandler;
+  OPTIONS: RouteHandler;
+}
+
+/**
+ * Build the `POST` + `OPTIONS` handlers for a token-paste connector's
+ * disconnect route (#1720).
+ *
+ * Unlike the OAuth/native disconnect handlers, this does not tombstone a vault
+ * field or touch `channel_links` — it only revokes the sealed key's delegation
+ * grant, mirroring the static-secret connector's DELETE semantics (see
+ * `connector-static-secret-route.ts`). The dispatch verb differs
+ * (`disconnectMethod` in `connector-card-kind.ts` routes token-paste
+ * connectors to a dedicated POST route rather than overloading the seal
+ * route's DELETE) but the underlying revoke is the same idea: kill access
+ * without discarding the recoverable secret.
+ *
+ * Usage:
+ *   export const { POST, OPTIONS } = createConnectorTokenDisconnectRoute({ … });
+ */
+export function createConnectorTokenDisconnectRoute(
+  opts: ConnectorTokenDisconnectRouteOpts,
+): ConnectorTokenDisconnectRouteHandlers {
+
+  async function OPTIONS(request: NextRequest): Promise<NextResponse> {
+    return corsOptions(request) as NextResponse;
+  }
+
+  async function POST(request: NextRequest): Promise<NextResponse> {
+    const cors = corsHeaders(request);
+
+    const auth = await requireAuth(request);
+    if ('error' in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
+    }
+    const ownerDid = resolveActingDid(auth.identity);
+
+    let revoked: boolean;
+    try {
+      revoked = await opts.revokeApiKey(ownerDid);
+      log.info({ ownerDid, revoked }, `${opts.name} API key grant revocation attempted`);
+    } catch (err) {
+      log.error({ err: String(err), ownerDid }, `${opts.name} API key revocation failed`);
+      return NextResponse.json(
+        { error: `Failed to revoke ${opts.name} API key`, detail: String(err) },
+        { status: 500, headers: cors },
+      );
+    }
+
+    return NextResponse.json({ connected: false, revoked }, { headers: cors });
+  }
+
+  return { POST, OPTIONS };
+}

@@ -63,6 +63,12 @@ export const geminiKeySealed = gemini.keySealed;
  */
 export const geminiKeyPending = gemini.keyPending;
 
+/**
+ * Revoke the sealed Gemini API key's delegation grant for this DID, cutting
+ * off access immediately without deleting the sealed key (#1720).
+ */
+export const revokeApiKey = gemini.revokeApiKey;
+
 export type GeminiCredentials = TokenPasteCredentials;
 
 /**

@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { sealMock, sealV1Mock, loadMock, existsMock, statusMock, whereMock } = vi.hoisted(() => ({
+const { sealMock, sealV1Mock, loadMock, existsMock, statusMock, whereMock, revokeVaultGrantsMock } = vi.hoisted(() => ({
   sealMock: vi.fn(),
   sealV1Mock: vi.fn(),
   loadMock: vi.fn(),
   existsMock: vi.fn(),
   statusMock: vi.fn(),
   whereMock: vi.fn(),
+  revokeVaultGrantsMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/vault', () => ({
@@ -15,6 +16,7 @@ vi.mock('@/src/lib/vault', () => ({
   loadAndUnseal: loadMock,
   vaultFieldExists: existsMock,
   vaultFieldStatus: statusMock,
+  revokeVaultDelegationGrantsForConnector: revokeVaultGrantsMock,
 }));
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: whereMock }) }) },
@@ -33,6 +35,7 @@ import {
   geminiKeySealed,
   geminiKeyPending,
   vaultField,
+  revokeApiKey,
   GEMINI_CONNECTOR_DID,
 } from '../connector';
 
@@ -61,6 +64,8 @@ beforeEach(() => {
   statusMock.mockReset();
   statusMock.mockResolvedValue('absent');
   whereMock.mockReset();
+  revokeVaultGrantsMock.mockReset();
+  revokeVaultGrantsMock.mockResolvedValue(0);
 });
 
 afterEach(() => {
@@ -290,5 +295,25 @@ describe('geminiKeyPending (#1521)', () => {
       statusMock.mockResolvedValue(status);
       expect(await geminiKeyPending(OWNER)).toBe(false);
     }
+  });
+});
+
+// ── revokeApiKey (#1720) ──────────────────────────────────────────────────────
+
+describe('revokeApiKey', () => {
+  it('delegates to revokeVaultDelegationGrantsForConnector with the connector id and owner DID', async () => {
+    revokeVaultGrantsMock.mockResolvedValue(1);
+    await revokeApiKey(OWNER);
+    expect(revokeVaultGrantsMock).toHaveBeenCalledWith('gemini', OWNER);
+  });
+
+  it('returns true when at least one grant was revoked', async () => {
+    revokeVaultGrantsMock.mockResolvedValue(1);
+    expect(await revokeApiKey(OWNER)).toBe(true);
+  });
+
+  it('returns false when no active grant existed', async () => {
+    revokeVaultGrantsMock.mockResolvedValue(0);
+    expect(await revokeApiKey(OWNER)).toBe(false);
   });
 });

@@ -8,11 +8,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // must leave grants alone, and a revoke that only half-landed must not be
 // reported as success.
 
-const { requireAuthMock, resolveActingDidMock, publishBusMock, updateWhereMock } = vi.hoisted(() => ({
+const { requireAuthMock, resolveActingDidMock, publishBusMock, updateWhereMock, revokeVaultGrantsMock } = vi.hoisted(() => ({
   requireAuthMock: vi.fn(),
   resolveActingDidMock: vi.fn(() => 'did:imajin:owner'),
   publishBusMock: vi.fn().mockResolvedValue(undefined),
   updateWhereMock: vi.fn().mockResolvedValue([]),
+  revokeVaultGrantsMock: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -34,6 +35,10 @@ vi.mock('drizzle-orm', () => ({
 vi.mock('@/src/db', () => ({
   db: { update: () => ({ set: () => ({ where: updateWhereMock }) }) },
   channelLinks: {},
+}));
+
+vi.mock('@/src/lib/vault', () => ({
+  revokeVaultDelegationGrantsForConnector: revokeVaultGrantsMock,
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -84,6 +89,8 @@ beforeEach(() => {
   publishBusMock.mockClear();
   updateWhereMock.mockClear();
   updateWhereMock.mockResolvedValue([]);
+  revokeVaultGrantsMock.mockClear();
+  revokeVaultGrantsMock.mockResolvedValue(0);
 });
 
 describe('createNativeDisconnectHandler — the happy path', () => {
@@ -134,6 +141,14 @@ describe('createNativeDisconnectHandler — the happy path', () => {
     );
   });
 
+  it('sweeps dangling vault_delegation_grants rows for this connector + owner (#1720)', async () => {
+    const { POST } = handlerWith();
+
+    await POST(makeRequest());
+
+    expect(revokeVaultGrantsMock).toHaveBeenCalledWith('mcp', 'did:imajin:owner');
+  });
+
   it('still succeeds when the bus publish rejects (audit is not the revoke)', async () => {
     publishBusMock.mockRejectedValueOnce(new Error('bus down'));
     const { POST } = handlerWith();
@@ -174,6 +189,16 @@ describe('createNativeDisconnectHandler — fail-closed', () => {
 
   it('surfaces a failed residual sweep rather than claiming success', async () => {
     updateWhereMock.mockRejectedValueOnce(new Error('deadlock'));
+    const { POST } = handlerWith();
+
+    const res = (await POST(makeRequest())) as unknown as JsonResult;
+
+    expect(res.status).toBe(500);
+    expect(publishBusMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a failed vault delegation-grant sweep rather than claiming success (#1720)', async () => {
+    revokeVaultGrantsMock.mockRejectedValueOnce(new Error('db unavailable'));
     const { POST } = handlerWith();
 
     const res = (await POST(makeRequest())) as unknown as JsonResult;

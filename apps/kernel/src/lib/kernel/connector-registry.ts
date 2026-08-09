@@ -258,7 +258,8 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: null,
     configureRoute: null,
     tokenRoute: '/gemini/api/token',
-    disconnectRoute: null,
+    // #1720: revokes the sealed key's delegation grant (kernel.vault_delegation_grants).
+    disconnectRoute: '/gemini/api/disconnect',
     credentialUi: {
       label: 'API Key',
       placeholder: 'Gemini API Key',
@@ -280,7 +281,8 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: null,
     configureRoute: null,
     tokenRoute: '/anthropic/api/token',
-    disconnectRoute: null,
+    // #1720: revokes the sealed key's delegation grant (kernel.vault_delegation_grants).
+    disconnectRoute: '/anthropic/api/disconnect',
     credentialUi: {
       label: 'API Key',
       placeholder: 'Anthropic API Key',
@@ -302,7 +304,8 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     connectRoute: null,
     configureRoute: null,
     tokenRoute: '/gcp/api/token',
-    disconnectRoute: null,
+    // #1720: revokes the sealed key's delegation grant (kernel.vault_delegation_grants).
+    disconnectRoute: '/gcp/api/disconnect',
     // The credential is a whole service-account key JSON rather than an opaque
     // key string, so the copy has to say so — a card labelled "API Key" would have
     // people pasting the client_email and wondering why nothing worked.
