@@ -16,7 +16,11 @@ const { mockRequireAuth } = vi.hoisted(() => ({ mockRequireAuth: vi.fn() }));
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: mockRequireAuth,
-  resolveActingDid: (identity: { id: string }) => identity.id,
+  // Mirrors the real precedence in packages/auth/src/acting-did.ts so a route
+  // that regresses to reading `identity.id` directly (instead of threading
+  // the whole identity through `resolveActingDid`) fails these tests (#1717).
+  resolveActingDid: (identity: { id: string; actingFor?: string; actingAs?: string }) =>
+    identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -34,6 +38,7 @@ import type { ConnectorStaticSecret } from '../connector-static-secret';
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const OWNER_DID = 'did:imajin:veteze';
+const BUSINESS_DID = 'did:imajin:agrifortress';
 const SECRET = 'warp-agent-key-SUPER-SECRET-VALUE';
 
 /** A connector double; each test sets only what it cares about. */
@@ -145,6 +150,22 @@ describe('POST seal', () => {
     expect(response.status).toBe(201);
     expect(connector.sealAndGrant).toHaveBeenCalledWith(OWNER_DID, SECRET, { expiresAt: null });
     expect(JSON.stringify(await response.json())).not.toContain(SECRET);
+  });
+
+  /**
+   * #1717 regression: sealing a connector key while acting on behalf of a
+   * business/app DID (X-Acting-For) must mint the vault field AND the
+   * delegation grant's principal against that acting DID, not the caller's
+   * raw personal session DID.
+   */
+  it('seals under the acting-for DID, not the session DID', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER_DID, actingFor: BUSINESS_DID } });
+    const connector = makeConnector();
+
+    const response = await routes(connector).POST(makeReq({ secret: SECRET }));
+
+    expect(response.status).toBe(201);
+    expect(connector.sealAndGrant).toHaveBeenCalledWith(BUSINESS_DID, SECRET, { expiresAt: null });
   });
 
   it('succeeds when the grant is still pending (Tier 1)', async () => {

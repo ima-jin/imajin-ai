@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
-import { requireAuth, generateKeypair } from '@imajin/auth';
+import { requireAuth, generateKeypair, resolveActingDid } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { createLogger } from '@imajin/logger';
 
@@ -29,7 +29,10 @@ export async function GET(request: NextRequest) {
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const { identity: caller } = authResult;
+  // Resolve the acting DID (#1717): when the caller is operating on behalf of
+  // a business/app DID (X-Acting-For), agents they create/list belong to that
+  // acting DID, not to the caller's raw personal session DID.
+  const actingDid = resolveActingDid(authResult.identity);
 
   try {
     const rows = await db
@@ -45,7 +48,7 @@ export async function GET(request: NextRequest) {
       .innerJoin(identities, eq(identityMembers.identityDid, identities.id))
       .where(
         and(
-          eq(identityMembers.memberDid, caller.id),
+          eq(identityMembers.memberDid, actingDid),
           isNull(identityMembers.removedAt),
           eq(identities.subtype, 'agent'),
           eq(identities.scope, 'actor')
@@ -80,7 +83,10 @@ export async function POST(request: NextRequest) {
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
-  const { identity: caller } = authResult;
+  // Resolve the acting DID (#1717): an agent created while acting on behalf of
+  // a business/app DID must be owned by (and delegated to) that acting DID —
+  // not the caller's raw personal session DID.
+  const actingDid = resolveActingDid(authResult.identity);
 
   let body: Record<string, unknown>;
   try {
@@ -134,34 +140,39 @@ export async function POST(request: NextRequest) {
       metadata.bio = bio.trim().slice(0, 500);
     }
 
-    // Insert identity
-    await db.insert(identities).values({
-      id: agentDid,
-      scope: 'actor',
-      subtype: 'agent',
-      publicKey,
-      handle,
-      name: trimmedDisplayName,
-      tier: 'preliminary',
-      metadata: Object.keys(metadata).length > 0 ? metadata : {},
-    });
+    // Insert the identity row and both membership links atomically (#1717):
+    // if any step fails partway through, the whole creation rolls back rather
+    // than leaving an orphaned identity row with no owning membership link.
+    await db.transaction(async (tx) => {
+      // Insert identity
+      await tx.insert(identities).values({
+        id: agentDid,
+        scope: 'actor',
+        subtype: 'agent',
+        publicKey,
+        handle,
+        name: trimmedDisplayName,
+        tier: 'preliminary',
+        metadata: Object.keys(metadata).length > 0 ? metadata : {},
+      });
 
-    // Link agent to owner
-    await db.insert(identityMembers).values({
-      identityDid: agentDid,
-      memberDid: caller.id,
-      role: 'owner',
-      addedBy: caller.id,
-      addedVia: 'direct',
-    });
+      // Link agent to owner
+      await tx.insert(identityMembers).values({
+        identityDid: agentDid,
+        memberDid: actingDid,
+        role: 'owner',
+        addedBy: actingDid,
+        addedVia: 'direct',
+      });
 
-    // Reverse membership: agent is delegated to human
-    await db.insert(identityMembers).values({
-      identityDid: caller.id,
-      memberDid: agentDid,
-      role: 'agent',
-      addedBy: caller.id,
-      addedVia: 'agent',
+      // Reverse membership: agent is delegated to the acting DID
+      await tx.insert(identityMembers).values({
+        identityDid: actingDid,
+        memberDid: agentDid,
+        role: 'agent',
+        addedBy: actingDid,
+        addedVia: 'agent',
+      });
     });
 
     return NextResponse.json(

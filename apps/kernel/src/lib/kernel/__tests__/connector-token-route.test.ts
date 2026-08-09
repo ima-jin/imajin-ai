@@ -14,7 +14,11 @@ const { mockRequireAuth } = vi.hoisted(() => ({ mockRequireAuth: vi.fn() }));
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: mockRequireAuth,
-  resolveActingDid: (identity: { id: string }) => identity.id,
+  // Mirrors the real precedence in packages/auth/src/acting-did.ts so a route
+  // that regresses to reading `identity.id` directly (instead of threading
+  // the whole identity through `resolveActingDid`) fails these tests (#1717).
+  resolveActingDid: (identity: { id: string; actingFor?: string; actingAs?: string }) =>
+    identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -31,6 +35,7 @@ import { createConnectorTokenRoutes } from '../connector-token-route';
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const OWNER = 'did:imajin:veteze';
+const BUSINESS_DID = 'did:imajin:agrifortress';
 const API_KEY = 'sk-provider-SUPER-SECRET-VALUE';
 
 const sealApiKey = vi.fn();
@@ -96,6 +101,20 @@ describe('token route — POST', () => {
 
     expect(res.status).toBe(201);
     expect(sealApiKey).toHaveBeenCalledWith(OWNER, API_KEY, undefined, undefined);
+  });
+
+  /**
+   * #1717 regression: when the caller is acting on behalf of a business/app
+   * DID (X-Acting-For), the key must be sealed under that acting DID, not the
+   * caller's raw personal session DID.
+   */
+  it('seals the key under the acting-for DID, not the session DID', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER, actingFor: BUSINESS_DID } });
+
+    const res = await POST(makeReq({ token: API_KEY }));
+
+    expect(res.status).toBe(201);
+    expect(sealApiKey).toHaveBeenCalledWith(BUSINESS_DID, API_KEY, undefined, undefined);
   });
 
   it('forwards the optional baseUrl and modelId overrides', async () => {
