@@ -521,6 +521,39 @@ describe('disconnect', () => {
     });
   });
 
+  // #1724: after #1720/#1723 the disconnect route correctly revoked the sealed
+  // key's delegation grant, but the status check still reported `keySealed:
+  // true` from vault-entry existence alone — the ciphertext is deliberately
+  // left in place on disconnect (only the grant is revoked), so the UI got
+  // stuck showing "API Key sealed" forever with no way to disconnect again
+  // (nothing left to revoke) or re-paste (the form stayed hidden). This pins
+  // the fixed behaviour: once the backend reports `keySealed: false` after a
+  // disconnect, the card must show the empty paste-key state again.
+  it('shows the empty paste-key state once the backend reports unsealed after disconnect (#1724)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let disconnected = false;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === '/gemini/api/disconnect') {
+        disconnected = true;
+        return jsonResponse({ connected: false, revoked: true });
+      }
+      return jsonResponse({
+        manifestAssetId: null,
+        activeScopes: disconnected ? [] : ['gemini:infer'],
+        validScopes: ['gemini:infer'],
+        keySealed: !disconnected,
+      });
+    }));
+
+    render(<ConnectorDetail entry={entryFor('gemini')} />);
+    expect(await screen.findByText('API Key sealed')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect Google Gemini' }));
+
+    expect(await screen.findByPlaceholderText('Gemini API Key')).toBeDefined();
+    expect(screen.queryByText('API Key sealed')).toBeNull();
+  });
+
   it('hides the button entirely for a connector with no disconnect route', async () => {
     // Synthetic entry: every registered credential-paste connector now declares
     // a disconnect route (#1720), so this exercises the "no route" case directly

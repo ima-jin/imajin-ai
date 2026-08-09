@@ -193,4 +193,20 @@ describe('vaultFieldStatus', () => {
 
     expect(await vaultFieldStatus(field)).toBe('pending-grant');
   });
+
+  // #1724: a disconnect revokes the grant (status = 'revoked') rather than
+  // letting it lapse via expiry. The status query filters on `status = 'active'`
+  // (see field-status.ts), so a revoked row must stop counting as ready just
+  // like an expired one does — this is what the connector status check was
+  // missing before the fix (it checked vault-entry existence instead).
+  it('is not ready once the active grant is explicitly revoked, not merely expired', async () => {
+    const field = `v2-field:${OWNER_DID}`;
+    await sealAndStoreV2(field, 'plaintext');
+    expect(await vaultFieldStatus(field)).toBe('ready');
+
+    const grant = activeGrant()!;
+    grantStore.set(String(grant.id), { ...grant, status: 'revoked', wrappedKey: '', wrappedNonce: '' });
+
+    expect(await vaultFieldStatus(field)).not.toBe('ready');
+  });
 });

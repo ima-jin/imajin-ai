@@ -88,6 +88,40 @@ describe('token disconnect route — POST', () => {
     expect(res.status).toBe(500);
     expect(await res.json()).toMatchObject({ error: 'Failed to revoke TestProvider API key' });
   });
+
+  // #1724: the response shape is what ConnectorDetail's `useDisconnect` reads
+  // on a non-2xx (`data.error`), and what a caller re-fetching status right
+  // after disconnect must be able to parse cleanly. Pin the exact shape on
+  // both the success and failure paths so neither can silently regress into
+  // something with an undefined/missing field the UI chokes on.
+  it('always returns a plain, JSON-round-trippable body with only defined boolean fields', async () => {
+    revokeApiKey.mockResolvedValueOnce(true);
+    const res = await POST(makeReq());
+    const body = await res.json() as Record<string, unknown>;
+
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect(Object.keys(body).sort()).toEqual(['connected', 'revoked']);
+    expect(typeof body.connected).toBe('boolean');
+    expect(typeof body.revoked).toBe('boolean');
+    // Round-tripping through JSON must not throw and must not lose fields —
+    // guards against a caller ever receiving `undefined` for either key.
+    expect(JSON.parse(JSON.stringify(body))).toEqual(body);
+  });
+
+  it('reports a plain string error (not a raw thrown value) even when revokeApiKey rejects with a non-Error', async () => {
+    // Rejecting with a bare TypeError-shaped value mirrors "Cannot convert
+    // undefined or null to object" style failures reported alongside this bug —
+    // the route must still degrade to well-formed JSON, not propagate a raw
+    // exception the client can't parse.
+    revokeApiKey.mockRejectedValueOnce(new TypeError('Cannot convert undefined or null to object'));
+
+    const res = await POST(makeReq());
+    const body = await res.json() as Record<string, unknown>;
+
+    expect(res.status).toBe(500);
+    expect(typeof body.error).toBe('string');
+    expect(JSON.parse(JSON.stringify(body))).toEqual(body);
+  });
 });
 
 describe('token disconnect route — OPTIONS', () => {
