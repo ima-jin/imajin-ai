@@ -12,6 +12,7 @@ import {
   checkArticleFrontmatter,
   type ArticleFrontmatterCheck,
 } from "@/src/lib/media/article-guard";
+import { buildAssetViewUrl } from "@/src/lib/media/view-url";
 
 const log = createLogger("kernel");
 
@@ -228,7 +229,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { asset, deduplicated } = result;
-  const url = `${baseUrl}/media/api/assets/${asset.id}`;
+  const url = buildAssetViewUrl(baseUrl, asset.id);
 
   if (deduplicated) {
     // Existing asset returned on content match (CID-global or hash+owner).
@@ -236,6 +237,7 @@ export async function POST(request: NextRequest) {
       {
         id: asset.id,
         url,
+        viewUrl: url,
         filename: asset.filename,
         mimeType: asset.mimeType,
         size: asset.size,
@@ -252,6 +254,7 @@ export async function POST(request: NextRequest) {
     {
       id: asset.id,
       url,
+      viewUrl: url,
       filename: asset.filename,
       mimeType: asset.mimeType,
       size: asset.size,
