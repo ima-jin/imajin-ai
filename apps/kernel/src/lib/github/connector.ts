@@ -18,8 +18,17 @@
  *              A live append window does NOT satisfy a mutate write.
  *
  * requireWriteGate() returns:
- *   { status: 'approved', token, singleProposalId }  — proceed with the write
- *   { status: 'pending', proposalId }                — human must approve first
+ *   { status: 'approved', token, singleProposalId }             — proceed with the write
+ *   { status: 'pending', proposalId, reason, limitLabel }       — human must approve first
+ *
+ * `reason` distinguishes WHY a write is pending (#1716):
+ *   'no_grant'     — no live approval window at all; approving now unblocks it.
+ *   'rate_limited' — a live window IS active, but a ceiling tripped anyway; approving
+ *                    again opens ANOTHER window and does NOT lift the ceiling — the
+ *                    write only unblocks once the ceiling's rolling window clears.
+ * Callers must forward `reason`/`limitLabel` into `pendingApprovalMessage()` so the
+ * agent/human is told the difference — conflating the two reads as "approving did
+ * nothing", i.e. "the window only fires once" (#1716).
  *
  * The gate is fail-closed:
  *   1. requireGrantAndToken() still throws on no grant / no credential.
@@ -312,7 +321,14 @@ async function requireGrantAndToken(ownerDid: string, scope: string): Promise<st
  */
 export type WriteGateResult =
   | { status: 'approved'; token: string; singleProposalId: string | null }
-  | { status: 'pending'; proposalId: string };
+  | {
+      status: 'pending';
+      proposalId: string;
+      /** Why this write is pending — see `pendingReason()`/module docs (#1716). */
+      reason: 'no_grant' | 'rate_limited';
+      /** Set only when `reason === 'rate_limited'`; the ceiling label that tripped. */
+      limitLabel: string | null;
+    };
 
 /** Alias kept for backward compatibility with existing call sites. */
 export type MutateGateResult = WriteGateResult;
@@ -324,6 +340,9 @@ export type MutateGateResult = WriteGateResult;
 export type GitHubWriteResult<T> =
   | { status: 'done'; data: T }
   | { status: 'pending'; proposalId: string; message: string };
+
+/** Re-exported so callers outside this module can type-check the `reason` field. */
+export type WriteGatePendingReason = 'no_grant' | 'rate_limited';
 
 /**
  * Count done writes for ownerDid in the last `windowHours` hours.
@@ -661,7 +680,17 @@ async function requireWriteGate(
     pendingReason(limits, tool, risk),
   );
 
-  return { status: 'pending', proposalId };
+  // A live grant existed but a ceiling tripped anyway ⇒ 'rate_limited' (#1716);
+  // approving this new proposal opens another window without lifting the
+  // ceiling, so the caller must tell the agent/human that explicitly rather
+  // than repeat the generic "no window yet" copy.
+  const reason: 'no_grant' | 'rate_limited' =
+    liveGrant !== undefined && anyLimitExceeded(limits) ? 'rate_limited' : 'no_grant';
+  const limitLabel = limits.globalExceeded
+    ? `global ${GLOBAL_WRITE_CEILING_PER_HOUR}/hr`
+    : limits.toolLimitLabel;
+
+  return { status: 'pending', proposalId, reason, limitLabel };
 }
 
 /**
@@ -877,7 +906,7 @@ export async function createIssue(
     return {
       status: 'pending',
       proposalId: gate.proposalId,
-      message: pendingApprovalMessage(gate.proposalId),
+      message: pendingApprovalMessage(gate.proposalId, gate.reason, gate.limitLabel),
     };
   }
 
@@ -966,7 +995,7 @@ export async function createComment(
     return {
       status: 'pending',
       proposalId: gate.proposalId,
-      message: pendingApprovalMessage(gate.proposalId),
+      message: pendingApprovalMessage(gate.proposalId, gate.reason, gate.limitLabel),
     };
   }
 
@@ -1457,7 +1486,7 @@ export async function updateIssue(
     return {
       status: 'pending',
       proposalId: gate.proposalId,
-      message: pendingApprovalMessage(gate.proposalId),
+      message: pendingApprovalMessage(gate.proposalId, gate.reason, gate.limitLabel),
     };
   }
 
