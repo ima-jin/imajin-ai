@@ -21,9 +21,42 @@ import { nodeUrl } from '../http/node-url';
  *
  * This lives in its own leaf module (like `./entities` and `./constants`) so
  * the copy can be asserted on without dragging in the DB, vault, and bus.
+ *
+ * ── `reason` (#1716) ────────────────────────────────────────────────────────
+ * A write can land in 'pending' for two very different reasons:
+ *  - 'no_grant'     — no live approval window exists at all; approving now
+ *                      (optionally with a 5m/24h TTL) is exactly what unblocks it.
+ *  - 'rate_limited' — a live approval window IS already active, but a write
+ *                      ceiling (global or per-tool) tripped anyway (#1371 — this
+ *                      trips even inside a live window, by design). Approving
+ *                      this proposal opens ANOTHER window; it does not lift the
+ *                      ceiling. Without this distinction the agent/human cannot
+ *                      tell "no window" from "window ignored", and reads every
+ *                      re-propose as proof approving "did nothing" (#1716).
  */
-export function pendingApprovalMessage(proposalId: string): string {
+export type PendingReason = 'no_grant' | 'rate_limited';
+
+export function pendingApprovalMessage(
+  proposalId: string,
+  reason: PendingReason = 'no_grant',
+  limitLabel?: string | null,
+): string {
   const host = nodeUrl();
+
+  if (reason === 'rate_limited') {
+    const ceiling = limitLabel != null ? ` (${limitLabel})` : '';
+    return (
+      `Action proposed (proposalId: ${proposalId}). ` +
+      `NOTE: an approval window is already active for this write — this is NOT a missing-approval ` +
+      `case. It was re-proposed because a write-rate ceiling${ceiling} was hit; that ceiling applies ` +
+      `even inside a live window and is not lifted by approving again. ` +
+      `Approving this proposal in the Imajin dashboard (${host}/jin) opens ANOTHER window but will ` +
+      `NOT let the write through any sooner — the existing window already covers it. ` +
+      `Simply wait for the ceiling's rolling window to clear (up to 1 hour) and retry the same tool ` +
+      `call; no further approval should be needed once it does. ` +
+      `(Programmatic status check: GET/POST ${host}/github/api/confirm/${proposalId} with owner DID auth.)`
+    );
+  }
 
   return (
     `Action proposed (proposalId: ${proposalId}). This write is held pending your approval. ` +

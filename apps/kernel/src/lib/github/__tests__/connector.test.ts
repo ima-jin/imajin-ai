@@ -1477,6 +1477,20 @@ describe('updateIssue confirm rail (#1366)', () => {
     expect(proposedCall![1].payload.argsSummary).toContain('[RATE_LIMIT]');
   });
 
+  it('#1716 — rate-limited pending re-propose tells the caller a window is already active (not "approve to unblock")', async () => {
+    grant(['github:write']);
+    liveApprovalGrant({ approvedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) }); // live 24h window
+    proposalCountMock.mockResolvedValue([{ count: 30 }]); // global ceiling tripped anyway
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('pending');
+    if (result.status === 'pending') {
+      expect(result.message).toMatch(/approval window is already active/i);
+      expect(result.message).not.toContain('This write is held pending your approval');
+    }
+  });
+
   it('updateIssue requires at least one field to update', async () => {
     grant(['github:write']);
     // The MCP tool enforces this; the connector accepts an empty object but the

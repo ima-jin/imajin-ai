@@ -103,3 +103,42 @@ describe('pendingApprovalMessage — host resolution', () => {
     expect(message).not.toContain('.ai//');
   });
 });
+
+/**
+ * #1716 — a write that re-proposes because a rate ceiling tripped (even though
+ * a live approval window is already active) must NOT read like the generic
+ * "no window yet" copy. Conflating the two is exactly what made repeat
+ * approvals look like they "did nothing": the human kept re-approving a
+ * window that was never the problem.
+ */
+describe('pendingApprovalMessage — rate_limited reason (#1716)', () => {
+  it('defaults to the no_grant copy when reason is omitted', () => {
+    expect(pendingApprovalMessage(PROPOSAL_ID)).toContain('This write is held pending your approval');
+  });
+
+  it('states plainly that an approval window is already active', () => {
+    const message = pendingApprovalMessage(PROPOSAL_ID, 'rate_limited', '5/hr');
+    expect(message).toMatch(/approval window is already active/i);
+    expect(message).toMatch(/NOT a missing-approval/i);
+  });
+
+  it('tells the caller approving again will not help', () => {
+    const message = pendingApprovalMessage(PROPOSAL_ID, 'rate_limited', '5/hr');
+    expect(message).toMatch(/will\s+NOT let the write through any sooner/i);
+  });
+
+  it('includes the limit label that tripped when provided', () => {
+    const message = pendingApprovalMessage(PROPOSAL_ID, 'rate_limited', '5/hr');
+    expect(message).toContain('5/hr');
+  });
+
+  it('tolerates a null limit label', () => {
+    expect(() => pendingApprovalMessage(PROPOSAL_ID, 'rate_limited', null)).not.toThrow();
+  });
+
+  it('tells the caller to just wait and retry rather than re-approve', () => {
+    const message = pendingApprovalMessage(PROPOSAL_ID, 'rate_limited', '5/hr');
+    expect(message).toMatch(/wait/i);
+    expect(message).toMatch(/retry the same tool/i);
+  });
+});
