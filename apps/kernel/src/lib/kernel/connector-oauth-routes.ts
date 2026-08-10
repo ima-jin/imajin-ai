@@ -56,6 +56,14 @@ const log = createLogger('kernel');
  * into `state` so the sessionless callback can recover it, and passed straight
  * through to `buildAuthorizeUrl`. Omit it (the default) for unchanged BYO-app
  * behaviour.
+ *
+ * On success this always returns a redirect (a `Location` header the caller
+ * can read even under `fetch(..., { redirect: 'manual' })`). On failure it
+ * always returns a JSON error with a mapped status (409 credential-pending,
+ * 400 for user-fixable setup problems, 500 otherwise) — `buildAuthorizeUrl`
+ * errors are never left to propagate uncaught (#1765), since an unhandled
+ * exception here becomes an opaque response with no `Location` header and no
+ * diagnosable body, indistinguishable from the kernel not answering at all.
  */
 export function createConnectHandler(
   buildAuthorizeUrl: (ownerDid: string, state: string, configDid?: string) => Promise<string>,
@@ -74,7 +82,12 @@ export function createConnectHandler(
       // No session — try app-auth Bearer (the app's server-side wrapper).
       const appResult = await requireAppAuth(request);
       if ('error' in appResult) {
-        return NextResponse.json({ error: auth.error }, { status: auth.status });
+        // #1765: this must be the app-auth failure, not the session failure
+        // above — surfacing `auth.error`/`auth.status` here reported "no
+        // session cookie" even when the real problem was an invalid or
+        // expired app Bearer token, which sent app callers chasing the
+        // wrong half of the fallback.
+        return NextResponse.json({ error: appResult.error }, { status: appResult.status });
       }
       ownerDid = appResult.appAuth.userDid;
       if (!ownerDid) {
@@ -97,12 +110,36 @@ export function createConnectHandler(
     try {
       return NextResponse.redirect(await buildAuthorizeUrl(ownerDid, state, configDid));
     } catch (err) {
-      if (err instanceof ConnectorCredentialPendingError) {
-        return NextResponse.json({ error: err.message }, { status: 409 });
-      }
-      throw err;
+      return buildAuthorizeUrlFailure(err, ownerDid, configDid);
     }
   };
+}
+
+/**
+ * Turn a `buildAuthorizeUrl` failure into a structured, logged JSON response
+ * (#1765).
+ *
+ * `buildAuthorizeUrl` can throw a {@link ConnectorCredentialPendingError} or a
+ * plain error (e.g. `${name}_no_config` when nothing is sealed yet for the
+ * resolved owner/config DID). Letting either propagate uncaught turns into an
+ * opaque Next.js 500 with no `Location` header and no diagnosable body — from
+ * the caller's side that is indistinguishable from the kernel vanishing,
+ * which is exactly the symptom reported against the app-auth connect path
+ * (the app's fetch sees no redirect and no usable error detail). This always
+ * answers with a mapped status instead.
+ */
+function buildAuthorizeUrlFailure(err: unknown, ownerDid: string, configDid: string | undefined): NextResponse {
+  if (err instanceof ConnectorCredentialPendingError) {
+    return NextResponse.json({ error: err.message }, { status: 409 });
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  const status = connectorErrorStatus(message);
+  if (status >= 500) {
+    log.error({ err: message, ownerDid, configDid }, 'connect: buildAuthorizeUrl failed');
+  } else {
+    log.warn({ err: message, ownerDid, configDid }, 'connect: buildAuthorizeUrl failed (user-actionable)');
+  }
+  return NextResponse.json({ error: message }, { status });
 }
 
 // ── App-auth config DID resolution (#1704) ───────────────────────────────────
@@ -467,15 +504,18 @@ export interface DeviceStartResponse {
 }
 
 /**
- * Map a thrown connector error onto an HTTP status.
+ * Map a thrown connector error onto an HTTP status. Shared by the interactive
+ * connect handler (#1765) and both device-flow routes.
  *
- * `no_config` and `device_unsupported` are user-fixable setup problems, not
- * server faults, so they must not surface as 500s the user cannot act on.
+ * `no_config`, `device_unsupported`, and `flow_mismatch` are user-fixable
+ * setup problems, not server faults, so they must not surface as 500s the
+ * user cannot act on.
  */
-function deviceErrorStatus(message: string): number {
+function connectorErrorStatus(message: string): number {
   if (message.includes('_credential_pending')) return 409;
   if (message.includes('_no_config')) return 400;
   if (message.includes('_device_unsupported')) return 400;
+  if (message.includes('_flow_mismatch')) return 400;
   if (message.includes('_device_code')) return 502;
   return 500;
 }
@@ -483,7 +523,7 @@ function deviceErrorStatus(message: string): number {
 /** Shared error → JSON response mapping for both device routes. */
 function deviceFailure(connectorName: string, err: unknown, phase: string) {
   const message = err instanceof Error ? err.message : String(err);
-  const status = deviceErrorStatus(message);
+  const status = connectorErrorStatus(message);
   // 5xx means the provider or we misbehaved; log it. 4xx is the user's setup.
   if (status >= 500) {
     log.error({ err: message, connector: connectorName }, `${connectorName} device ${phase} failed`);
