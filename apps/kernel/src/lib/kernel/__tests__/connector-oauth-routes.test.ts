@@ -100,6 +100,7 @@ beforeEach(() => {
   resolveActingDidMock.mockReset();
   resolveActingDidMock.mockReturnValue('did:imajin:owner');
   requireAppAuthMock.mockReset();
+  requireAppAuthMock.mockResolvedValue({ error: 'unauthorized', status: 401 });
 });
 
 describe('createConnectHandler', () => {

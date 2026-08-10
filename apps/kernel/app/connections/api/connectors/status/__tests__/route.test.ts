@@ -79,7 +79,7 @@ describe('GET /connections/api/connectors/status (#1540)', () => {
     expect(readConnectorConnectionStatus).not.toHaveBeenCalled();
   });
 
-  it('rejects service tokens with no delegating user', async () => {
+  it('falls back to appDid for service tokens with no delegating user', async () => {
     mockRequireAppAuth.mockResolvedValueOnce({
       appAuth: {
         appDid: APP_DID,
@@ -92,8 +92,24 @@ describe('GET /connections/api/connectors/status (#1540)', () => {
 
     const res = await GET(makeReq());
 
+    expect(res.status).toBe(200);
+    expect(readConnectorConnectionStatus).toHaveBeenCalledWith(APP_DID);
+  });
+
+  it('rejects tokens with neither userDid nor appDid', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({
+      appAuth: {
+        appDid: '',
+        userDid: '',
+        scopes: [],
+        attestationId: '',
+      },
+    });
+
+    const res = await GET(makeReq());
+
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: 'App token has no delegating user' });
+    expect(await res.json()).toEqual({ error: 'App token has no delegating user or app identity' });
     expect(readConnectorConnectionStatus).not.toHaveBeenCalled();
   });
 
