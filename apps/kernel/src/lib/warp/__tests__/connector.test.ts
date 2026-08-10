@@ -8,11 +8,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { sealGrantMock, loadGranteeMock, revokeGrantMock, existsMock, whereMock } = vi.hoisted(() => ({
+const { sealGrantMock, loadGranteeMock, revokeGrantMock, statusMock, whereMock } = vi.hoisted(() => ({
   sealGrantMock: vi.fn(),
   loadGranteeMock: vi.fn(),
   revokeGrantMock: vi.fn(),
-  existsMock: vi.fn(),
+  statusMock: vi.fn(),
   whereMock: vi.fn(),
 }));
 
@@ -20,7 +20,7 @@ vi.mock('@/src/lib/vault', () => ({
   sealAndGrantStaticSecret: sealGrantMock,
   loadAndUnsealByGrantee: loadGranteeMock,
   revokeStaticSecretGrant: revokeGrantMock,
-  vaultFieldExists: existsMock,
+  vaultFieldStatusForGrantee: statusMock,
 }));
 
 vi.mock('@/src/db', () => ({
@@ -55,7 +55,7 @@ beforeEach(() => {
   sealGrantMock.mockReset().mockResolvedValue({ entry: {}, grantId: 'vdg_warp' });
   loadGranteeMock.mockReset().mockResolvedValue(undefined);
   revokeGrantMock.mockReset().mockResolvedValue(false);
-  existsMock.mockReset().mockResolvedValue(false);
+  statusMock.mockReset().mockResolvedValue('absent');
   whereMock.mockReset().mockResolvedValue([]);
 });
 
@@ -183,9 +183,17 @@ describe('revocation', () => {
 
 describe('secretSealed', () => {
   it('reports on the per-DID field without unsealing anything', async () => {
-    existsMock.mockResolvedValue(true);
+    statusMock.mockResolvedValue('ready');
     expect(await warpConnector.secretSealed(PRINCIPAL)).toBe(true);
-    expect(existsMock).toHaveBeenCalledWith(`warp-agent-key:${PRINCIPAL}`);
+    expect(statusMock).toHaveBeenCalledWith(`warp-agent-key:${PRINCIPAL}`, WARP_CONNECTOR_DID);
     expect(loadGranteeMock).not.toHaveBeenCalled();
+  });
+
+  // #1774: a revoked grant must not report the key as still sealed — this is
+  // exactly the disconnect-gets-stuck symptom, one layer down from the
+  // connector card.
+  it('is false once the grant is revoked, even though the sealed entry still exists', async () => {
+    statusMock.mockResolvedValue('absent');
+    expect(await warpConnector.secretSealed(PRINCIPAL)).toBe(false);
   });
 });

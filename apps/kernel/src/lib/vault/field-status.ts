@@ -24,7 +24,7 @@ import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import { verifyEntryIntegrity } from '@imajin/vault-core';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { vaultAdapters, vaultService } from './index';
-import { getNodeSigningIdentity } from './sealing';
+import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
 
 export type VaultFieldStatus = 'absent' | 'ready' | 'pending-grant' | 'unverifiable';
 
@@ -41,6 +41,10 @@ export type VaultFieldStatus = 'absent' | 'ready' | 'pending-grant' | 'unverifia
  *                       grant covers it yet. This is what a fresh Tier 1 seal
  *                       looks like before the owner agent responds, and what a
  *                       lapsed grant looks like before it is renewed (#1535).
+ *                       In Tier 0 this ONLY means "awaiting renewal" — a Tier 0
+ *                       field whose grant was explicitly revoked (disconnect)
+ *                       reports 'absent' instead (#1774), because Tier 0 has no
+ *                       external owner agent to wait on.
  *
  * Only answers for fields granted to THIS NODE. A static-secret field (#1439) is
  * granted to a connector app DID, so asking this function about one always yields
@@ -102,5 +106,42 @@ export async function vaultFieldStatusForGrantee(
     )
     .limit(1);
 
-  return rows.length > 0 ? 'ready' : 'pending-grant';
+  if (rows.length > 0) {
+    return 'ready';
+  }
+
+  // No active grant covers this field. In Tier 1 that genuinely means "awaiting
+  // the owner agent's approval" — a distinct external actor has to act, so
+  // 'pending-grant' is the honest answer.
+  //
+  // In Tier 0 the requesting node IS its own owner agent: sealAndStoreV2 and
+  // sealAndGrantStaticSecret both self-grant SYNCHRONOUSLY at seal time (see
+  // ./index.ts), so a Tier 0 delegation-grant field is never left "awaiting"
+  // anyone. The only way it ends up here with no active grant is that a grant
+  // once existed and was explicitly revoked — a disconnect (#1720/#1733) or the
+  // hourly expiry sweep (`/api/cron/vault-grant-expiry`), both of which set
+  // `status = 'revoked'`. Reporting that as 'pending-grant' is exactly what left
+  // a disconnected connector stuck showing "Waiting for owner approval" forever
+  // with no approve/reject/cancel action to resolve it (#1774): the requesting
+  // identity IS the owner identity in Tier 0, so there is no approval gate to
+  // short-circuit through it — the field is simply no longer connected.
+  if (!isVaultTier1()) {
+    const everRevoked = await db
+      .select({ id: vaultDelegationGrants.id })
+      .from(vaultDelegationGrants)
+      .where(
+        and(
+          eq(vaultDelegationGrants.grantedTo, granteeDid),
+          eq(vaultDelegationGrants.field, field),
+          eq(vaultDelegationGrants.status, 'revoked'),
+        ),
+      )
+      .limit(1);
+
+    if (everRevoked.length > 0) {
+      return 'absent';
+    }
+  }
+
+  return 'pending-grant';
 }

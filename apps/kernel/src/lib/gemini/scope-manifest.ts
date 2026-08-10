@@ -28,10 +28,15 @@ import {
   validScopesForConnector,
   requiresConsentRow,
 } from '@/src/lib/kernel/scope-projections';
-import { GEMINI_CONNECTOR_DID, vaultField, geminiKeyPending } from './connector';
-import { vaultFieldExists } from '@/src/lib/vault';
+import { GEMINI_CONNECTOR_DID, geminiKeySealed, geminiKeyPending } from './connector';
 
-export { geminiKeyPending };
+// Re-exported so a connector route needs only this module. `export … from`
+// keeps these pure re-exports rather than local bindings that could drift
+// from the corrected, grant-aware definitions in ./connector (#1774 — a local
+// `vaultFieldExists`-based redefinition here used to shadow the fix #1724
+// made in ./connector, so a disconnected key kept reporting `keySealed: true`
+// forever on this route specifically).
+export { geminiKeySealed, geminiKeyPending };
 
 // ── Scope registry (derived — #1253) ────────────────────────────────────────
 
@@ -76,9 +81,4 @@ export function publishGeminiScopeManifest(ownerDid: string, scopes: readonly st
     filename: 'gemini-scope-manifest.md', scopeDescriptors: GEMINI_SCOPE_DESCRIPTORS,
     scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
   });
-}
-
-/** Check whether a Gemini API key is sealed for ownerDid (no crypto, no value returned). */
-export function geminiKeySealed(ownerDid: string): Promise<boolean> {
-  return vaultFieldExists(vaultField(ownerDid));
 }
