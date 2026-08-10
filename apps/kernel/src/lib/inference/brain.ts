@@ -122,7 +122,12 @@ const BRAIN_CONNECTORS: readonly BrainConnector[] = [
     provider: 'openai',
     scope: 'gemini:infer',
     tokenRoute: '/gemini/api/token',
-    defaultModelId: 'gemini-2.0-flash',
+    // gemini-2.0-flash was shut down 2026-06-01 (Google's Gemini deprecation
+    // schedule). A decommissioned model can come back as a 429 rather than a
+    // clean 404/410, which is indistinguishable from a real rate limit unless
+    // you already know the model is dead — see #1764. gemini-3.6-flash is the
+    // current stable GA replacement.
+    defaultModelId: 'gemini-3.6-flash',
     defaultBaseUrl: GEMINI_OPENAI_BASE_URL,
     load: loadGeminiCredentials,
   },

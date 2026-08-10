@@ -78,9 +78,27 @@ vi.mock('@/src/lib/inference/vocabulary', () => ({
   listVocabularyNames: () => ['imajin', 'agrifortress'],
 }));
 
+// `brain.ts` pulls in `@/src/db` (a real drizzle client) and the Gemini/
+// Anthropic connectors purely to build `NoBrainSealedError`'s message. The
+// route only needs the error TYPE for `instanceof` matching, so the mock
+// re-implements just enough of the shape to avoid dragging in a live DB
+// client at test-import time.
+vi.mock('@/src/lib/inference/brain', () => {
+  class NoBrainSealedError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'NoBrainSealedError';
+    }
+  }
+  return { NoBrainSealedError };
+});
+
 // ─── Subject ──────────────────────────────────────────────────────────────────
 
 import { POST, OPTIONS } from '../route';
+import { NoBrainSealedError } from '@/src/lib/inference/brain';
+import { VaultDelegationError } from '@/src/lib/vault/errors';
+import { RetryError } from 'ai';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -310,37 +328,81 @@ describe('POST /api/inference/capture — pipeline outcomes', () => {
     );
   });
 
-  it('returns 500 when the pipeline throws', async () => {
+  it('returns 500 with a pipeline_failed code for an unrecognized crash', async () => {
     mockCaptureGesture.mockRejectedValueOnce(new Error('storage offline'));
 
     const res = await POST(makeReq());
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual(
-      expect.objectContaining({ error: 'Inference pipeline failed' }),
+      expect.objectContaining({ error: 'pipeline_failed', message: 'Inference pipeline failed' }),
     );
   });
 
   /**
    * #1621 removed the env-key fallback, so "nobody sealed a brain" is now a real
-   * runtime outcome rather than an impossible one. It surfaces as a pipeline
-   * failure, and the response must not carry credential material — the resolver
-   * names DIDs and connectors, never keys.
+   * runtime outcome rather than an impossible one. #1764 gives it its own
+   * status/code instead of folding it into the generic 500, and the response
+   * must not carry credential material — the resolver names DIDs and
+   * connectors, never keys.
    */
-  it('surfaces a pipeline failure when no DID has sealed a brain', async () => {
+  it('returns 422 with a no_brain code when no DID has sealed a brain', async () => {
     mockInfer.mockRejectedValueOnce(
-      new Error(
-        'Inference policy failed: inference_no_brain: no model credential sealed for ' +
-        `${OWNER_DID} — connect Google Gemini (grant 'gemini:infer', seal a key at /gemini/api/token)`,
+      new NoBrainSealedError(
+        `inference_no_brain: no model credential sealed for ${OWNER_DID} — ` +
+        "connect Google Gemini (grant 'gemini:infer', seal a key at /gemini/api/token)",
       ),
     );
 
     const res = await POST(makeReq());
 
-    expect(res.status).toBe(500);
-    const body = JSON.stringify(await res.json());
-    expect(body).toContain('Inference pipeline failed');
-    expect(body).not.toMatch(/sk-|AIzaSy/);
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body).toEqual(
+      expect.objectContaining({ error: 'no_brain', message: expect.stringContaining('connect') }),
+    );
+    expect(JSON.stringify(body)).not.toMatch(/sk-|AIzaSy/);
+  });
+
+  /**
+   * #1764: a single request can amplify into multiple upstream 429s via the AI
+   * SDK's own retry loop. The route must surface that distinctly from a
+   * generic crash so the app can tell the caller to back off and retry later.
+   */
+  it('returns 429 with a rate_limited code when the upstream model is rate limited', async () => {
+    const retryError = new RetryError({
+      message: 'Failed after 3 attempts. Last error: Too Many Requests',
+      reason: 'maxRetriesExceeded',
+      errors: [new Error('Too Many Requests')],
+    });
+    mockInfer.mockRejectedValueOnce(retryError);
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({ error: 'rate_limited', message: expect.stringContaining('rate limit') }),
+    );
+  });
+
+  /**
+   * #1764: a sealed key still awaiting the owner's Tier 1 delegation approval
+   * is a temporary, actionable state — not a crash.
+   */
+  it('returns 503 with a credential_pending code when the credential grant is pending', async () => {
+    mockInfer.mockRejectedValueOnce(
+      new VaultDelegationError('No active delegation grant', {
+        field: 'gemini-api-key:did:imajin:supplier',
+        nodeDid: OWNER_DID,
+      }),
+    );
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({ error: 'credential_pending' }),
+    );
   });
 });
 

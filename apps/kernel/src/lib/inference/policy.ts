@@ -87,15 +87,31 @@ export async function infer(
       'running inference policy',
     );
 
-    const result = await generateText({ model, system: systemPrompt, prompt: userMessage });
+    // maxRetries caps the AI SDK's OWN retry loop on top of this single call.
+    // The default is 2 (3 attempts total) — on a genuine upstream 429 that
+    // means one user request silently fans out into 3 rate-limited calls,
+    // which is how a single request produced "Failed after 3 attempts" (#1764).
+    // 1 retry is enough to absorb a transient blip; anything more just makes a
+    // rate limit worse, and the caller (this pipeline, or its own caller) is
+    // better positioned to decide whether/when to retry.
+    const result = await generateText({
+      model,
+      system: systemPrompt,
+      prompt: userMessage,
+      maxRetries: 1,
+    });
     rawText = result.text;
   } catch (err) {
+    // Rethrow the original error rather than wrapping it: the capture route
+    // matches on error identity (NoBrainSealedError, RetryError, etc.) to
+    // return typed HTTP responses (#1764). Wrapping in a generic Error here
+    // erased that identity before it ever reached the route.
     log.error({ err: String(err), sessionId: ctx.sessionId }, 'LLM inference failed');
     await db
       .update(inferenceSessions)
       .set({ status: 'failed', updatedAt: new Date() })
       .where(eq(inferenceSessions.id, ctx.sessionId));
-    throw new Error(`Inference policy failed: ${String(err)}`);
+    throw err;
   }
 
   // Parse the JSON array from the model response.
