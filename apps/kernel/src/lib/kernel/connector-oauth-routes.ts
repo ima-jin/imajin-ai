@@ -63,14 +63,34 @@ export function createConnectHandler(
   resolveConfigDid?: (request: NextRequest) => Promise<string | undefined>,
 ) {
   return async function GET(request: NextRequest) {
+    // Try session auth first (direct browser navigation with kernel cookie).
+    // Fall back to app-auth Bearer (#1705: server-to-server from the app's
+    // own connect wrapper, which can't carry the kernel session cookie).
+    let ownerDid: string;
+    let configDid: string | undefined;
+
     const auth = await requireAuth(request);
     if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
+      // No session — try app-auth Bearer (the app's server-side wrapper).
+      const appResult = await requireAppAuth(request);
+      if ('error' in appResult) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
+      }
+      ownerDid = appResult.appAuth.userDid;
+      if (!ownerDid) {
+        return NextResponse.json(
+          { error: 'App-authenticated connect requires a delegating user DID' },
+          { status: 400 },
+        );
+      }
+      configDid = appResult.appAuth.appDid;
+    } else {
+      ownerDid = resolveActingDid(auth.identity);
+      configDid = resolveConfigDid ? await resolveConfigDid(request) : undefined;
     }
-    const ownerDid = resolveActingDid(auth.identity);
+
     const { searchParams } = new URL(request.url);
     const returnTo = sanitizeReturnTo(searchParams.get('returnTo'));
-    const configDid = resolveConfigDid ? await resolveConfigDid(request) : undefined;
     const state = configDid
       ? signState(ownerDid, returnTo ?? undefined, configDid)
       : signState(ownerDid, returnTo ?? undefined);

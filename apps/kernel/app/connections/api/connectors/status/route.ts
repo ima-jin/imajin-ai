@@ -34,20 +34,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers });
   }
 
-  const userDid = appResult.appAuth.userDid;
-  if (!userDid) {
+  // Service tokens (app-as-itself, no consent attestation) have an empty
+  // userDid. For org-level connector queries — e.g. AgriFortress checking
+  // whether Gemini is configured on its own profile — fall back to the app
+  // DID so the query resolves against the app's own connector grants.
+  const queryDid = appResult.appAuth.userDid || appResult.appAuth.appDid;
+  if (!queryDid) {
     return NextResponse.json(
-      { error: 'App token has no delegating user' },
+      { error: 'App token has no delegating user or app identity' },
       { status: 403, headers },
     );
   }
 
   try {
-    const statuses = await readConnectorConnectionStatus(userDid);
+    const statuses = await readConnectorConnectionStatus(queryDid);
     return NextResponse.json(statuses, { headers });
   } catch (err) {
     log.error(
-      { err: String(err), appDid: appResult.appAuth.appDid, userDid },
+      { err: String(err), appDid: appResult.appAuth.appDid, queryDid },
       'Connector status query failed',
     );
     return NextResponse.json(
