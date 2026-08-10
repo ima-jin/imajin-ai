@@ -214,6 +214,17 @@ async function lookupAppRegistrantDid(appDid: string): Promise<string | undefine
       .from(registryApps)
       .where(eq(registryApps.appDid, appDid))
       .limit(1);
+    // Diagnostic for #1762: an app whose registry row's `ownerDid` is the
+    // developer who registered it, rather than the org DID that subsidizes
+    // compute, will silently miss the org's sealed connector card here — this
+    // is the exact signal to look for when a brain fails to resolve for an
+    // app-subsidized call. `found: false` means no registry.apps row at all;
+    // `found: true` with a `registrantDid` that is neither the expected org
+    // DID nor null means the row exists but points somewhere unexpected.
+    log.info(
+      { appDid, registrantDid: row?.ownerDid ?? null, found: row !== undefined },
+      'app registrant lookup result',
+    );
     return row?.ownerDid;
   } catch (err) {
     log.warn({ appDid, err: String(err) }, 'app registrant lookup failed — skipping');
@@ -276,6 +287,12 @@ export async function resolveBrain(
     }
   }
 
+  // Diagnostic for #1762: the full candidate list, in walk order, before any
+  // connector is probed, plus whether an appDid was supplied at all — a
+  // missing appDid means the registrant org-DID walk above never ran, which
+  // is otherwise indistinguishable from "no brain" once resolution fails.
+  log.info({ appDid: ctx.appDid ?? null, dids }, 'resolveBrain: walking candidate DIDs');
+
   const failures: BrainConnectorFailure[] = [];
 
   for (const did of dids) {
@@ -294,6 +311,14 @@ export async function resolveBrain(
         continue;
       }
       if (!creds) {
+        // Not an error — this DID simply has no usable connection for this
+        // connector (unsealed, or sealed with no active grant). Logged at
+        // debug-adjacent info level because "which DID/connector combos were
+        // empty" is exactly what #1762 needed and could not see before.
+        log.info(
+          { credentialDid: did, connector: connector.id },
+          'brain connector probe: nothing sealed/granted for this DID',
+        );
         continue;
       }
 
