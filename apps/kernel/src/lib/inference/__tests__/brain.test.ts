@@ -76,7 +76,7 @@ describe('resolveBrain — connection-first resolution (#1621)', () => {
       connector: 'gemini',
       credentialDid: OWNER,
       provider: 'openai',
-      modelId: 'gemini-2.0-flash',
+      modelId: 'gemini-3.6-flash',
       apiKey: GEMINI_KEY,
       baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
     });
@@ -151,7 +151,7 @@ describe('resolveBrain — owner then app/org DID', () => {
       connector: 'gemini',
       credentialDid: APP,
       provider: 'openai',
-      modelId: 'gemini-2.0-flash',
+      modelId: 'gemini-3.6-flash',
       apiKey: APP_KEY,
       baseURL: 'https://app.example/openai',
     });

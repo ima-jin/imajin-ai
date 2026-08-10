@@ -150,9 +150,13 @@ describe('infer — inference policy layer', () => {
   });
 
   it('marks the session failed when no DID has sealed a brain', async () => {
-    mockResolveBrain.mockRejectedValueOnce(new Error('inference_no_brain: nothing sealed'));
+    const noBrain = new Error('inference_no_brain: nothing sealed');
+    mockResolveBrain.mockRejectedValueOnce(noBrain);
 
-    await expect(infer(CTX, VOCAB, OWNER)).rejects.toThrow('Inference policy failed');
+    // #1764: the original error propagates unwrapped, so the capture route
+    // can match on its identity (e.g. instanceof NoBrainSealedError) instead
+    // of parsing a generic wrapped message.
+    await expect(infer(CTX, VOCAB, OWNER)).rejects.toBe(noBrain);
 
     expect(mockGenerateText).not.toHaveBeenCalled();
     const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
@@ -224,13 +228,32 @@ describe('infer — inference policy layer', () => {
   });
 
   it('returns empty array and marks session failed when LLM throws', async () => {
-    mockGenerateText.mockRejectedValueOnce(new Error('LLM quota exceeded'));
+    const llmError = new Error('LLM quota exceeded');
+    mockGenerateText.mockRejectedValueOnce(llmError);
 
-    await expect(infer(CTX, VOCAB, OWNER)).rejects.toThrow('Inference policy failed');
+    await expect(infer(CTX, VOCAB, OWNER)).rejects.toBe(llmError);
 
     expect(mockUpdateSet).toHaveBeenCalledOnce();
     const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
     expect(setArg['status']).toBe('failed');
+  });
+
+  /**
+   * #1764: the default AI SDK retry count (2, i.e. 3 attempts) amplifies a
+   * single user request into three upstream calls, which is how one request
+   * produced "Failed after 3 attempts" against a rate-limited/decommissioned
+   * model. Capping it here means one policy call is at most two upstream
+   * attempts.
+   */
+  it('caps generateText retries so one call cannot fan out into three upstream attempts', async () => {
+    mockGenerateText.mockResolvedValueOnce({
+      text: JSON.stringify([{ intentType: 'supply.received', confidence: 0.9, metadata: {} }]),
+    });
+
+    await infer(CTX, VOCAB, OWNER);
+
+    const args = mockGenerateText.mock.calls[0][0] as { maxRetries?: number };
+    expect(args.maxRetries).toBe(1);
   });
 
   it('returns empty array (no throw) when model response is not valid JSON', async () => {
