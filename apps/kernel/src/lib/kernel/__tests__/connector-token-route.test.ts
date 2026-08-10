@@ -8,11 +8,19 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
+// ─── Mocks ───────────────────────────────────────────────────────────
 
-const { mockRequireAuth } = vi.hoisted(() => ({ mockRequireAuth: vi.fn() }));
+const { mockRequireAuth, mockRequireAppAuth, registryState } = vi.hoisted(() => ({
+  mockRequireAuth: vi.fn(),
+  mockRequireAppAuth: vi.fn(),
+  // Absent by default — existing tests all exercise the per-user session path.
+  registryState: {
+    appOwnerRows: [] as Array<{ ownerDid: string }>,
+  },
+}));
 
 vi.mock('@imajin/auth', () => ({
+  requireAppAuth: mockRequireAppAuth,
   requireAuth: mockRequireAuth,
   // Mirrors the real precedence in packages/auth/src/acting-did.ts so a route
   // that regresses to reading `identity.id` directly (instead of threading
@@ -28,6 +36,23 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+}));
+
+vi.mock('@/src/db', () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve(registryState.appOwnerRows),
+        }),
+      }),
+    }),
+  },
+  registryApps: { ownerDid: 'ownerDid', appDid: 'appDid' },
+}));
+
+vi.mock('drizzle-orm', () => ({
+  eq: (column: unknown, value: unknown) => ({ column, value }),
 }));
 
 import { createConnectorTokenRoutes } from '../connector-token-route';
@@ -62,6 +87,8 @@ function makeReq(body?: unknown, opts: { invalidJson?: boolean } = {}): RouteReq
 beforeEach(() => {
   vi.clearAllMocks();
   mockRequireAuth.mockResolvedValue({ identity: { id: OWNER } });
+  mockRequireAppAuth.mockResolvedValue({ error: 'no app auth', status: 401 });
+  registryState.appOwnerRows = [];
   sealApiKey.mockResolvedValue(undefined);
   keySealed.mockResolvedValue(false);
 });
@@ -90,6 +117,33 @@ describe('token route — GET', () => {
   it('carries CORS headers', async () => {
     const res = await GET(makeReq());
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://app.imajin.ai');
+  });
+
+  /**
+   * #1756: the app-subsidizes-compute model (#1624) seals keys on the app
+   * owner's DID, not the logged-in user's. When app-auth succeeds, the GET
+   * must check `keySealed` for `registry.apps.ownerDid`, not the session DID.
+   */
+  it('checks keySealed for the app owner DID when app-auth succeeds', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ appAuth: { appDid: 'did:imajin:agrifortress-app' } });
+    registryState.appOwnerRows = [{ ownerDid: BUSINESS_DID }];
+    keySealed.mockResolvedValueOnce(true);
+
+    const res = await GET(makeReq());
+
+    expect(await res.json()).toEqual({ keySealed: true });
+    expect(keySealed).toHaveBeenCalledWith(BUSINESS_DID);
+    expect(keySealed).not.toHaveBeenCalledWith(OWNER);
+  });
+
+  it('returns 404 when the app-auth app is not registered in registry.apps', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ appAuth: { appDid: 'did:imajin:unregistered-app' } });
+    registryState.appOwnerRows = [];
+
+    const res = await GET(makeReq());
+
+    expect(res.status).toBe(404);
+    expect(keySealed).not.toHaveBeenCalled();
   });
 });
 
@@ -200,6 +254,17 @@ describe('token route — POST', () => {
     const res = await POST(makeReq({ token: API_KEY }));
 
     expect(await res.json()).toEqual({ error: 'Failed to seal TestProvider API key' });
+  });
+
+  /** #1756: sealing must land under the app owner's DID inside an app context. */
+  it('seals the key under the app owner DID when app-auth succeeds', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ appAuth: { appDid: 'did:imajin:agrifortress-app' } });
+    registryState.appOwnerRows = [{ ownerDid: BUSINESS_DID }];
+
+    const res = await POST(makeReq({ token: API_KEY }));
+
+    expect(res.status).toBe(201);
+    expect(sealApiKey).toHaveBeenCalledWith(BUSINESS_DID, API_KEY, undefined, undefined);
   });
 });
 

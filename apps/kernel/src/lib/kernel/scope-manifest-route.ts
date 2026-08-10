@@ -12,13 +12,15 @@
  * ~15-line wiring module that supplies connector-specific functions and is otherwise
  * indistinguishable from any future connector route.
  *
- * IMPORTANT: this file must remain client-safe (no node: imports, no DB, no vault)
- * so Next.js can tree-shake it correctly. All DB/vault work is in the passed-in fns.
+ * ownerDid resolution (#1756) goes through `resolveConnectorOwnerDid`, which
+ * reads `registry.apps` when the request carries app-auth context so an
+ * app-subsidized connection (#1624) resolves to the app owner's DID instead
+ * of the logged-in user's. All other DB/vault work stays in the passed-in fns.
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
 
 const log = createLogger('kernel');
 
@@ -111,11 +113,11 @@ export function createConnectorScopeManifestRoute(
   async function GET(request: NextRequest): Promise<NextResponse> {
     const cors = corsHeaders(request);
 
-    const auth = await requireAuth(request);
-    if ('error' in auth) {
+    const auth = await resolveConnectorOwnerDid(request);
+    if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
     }
-    const ownerDid = resolveActingDid(auth.identity);
+    const { ownerDid } = auth;
 
     async function readExtraFields(): Promise<Record<string, unknown>> {
       if (!opts.getExtraFields) {
@@ -162,11 +164,11 @@ export function createConnectorScopeManifestRoute(
   async function POST(request: NextRequest): Promise<NextResponse> {
     const cors = corsHeaders(request);
 
-    const auth = await requireAuth(request);
-    if ('error' in auth) {
+    const auth = await resolveConnectorOwnerDid(request);
+    if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
     }
-    const ownerDid = resolveActingDid(auth.identity);
+    const { ownerDid } = auth;
 
     let body: { scopes?: unknown };
     try {

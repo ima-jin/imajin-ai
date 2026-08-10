@@ -18,9 +18,9 @@
  *   - Per-DID isolation comes from the connector's vault field naming.
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
 
 const log = createLogger('kernel');
 
@@ -68,11 +68,11 @@ export function createConnectorTokenRoutes(
   async function GET(request: NextRequest): Promise<NextResponse> {
     const cors = corsHeaders(request);
 
-    const auth = await requireAuth(request);
-    if ('error' in auth) {
+    const auth = await resolveConnectorOwnerDid(request);
+    if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
     }
-    const ownerDid = resolveActingDid(auth.identity);
+    const { ownerDid } = auth;
 
     return NextResponse.json({ keySealed: await opts.keySealed(ownerDid) }, { headers: cors });
   }
@@ -84,11 +84,11 @@ export function createConnectorTokenRoutes(
   async function POST(request: NextRequest): Promise<NextResponse> {
     const cors = corsHeaders(request);
 
-    const auth = await requireAuth(request);
-    if ('error' in auth) {
+    const auth = await resolveConnectorOwnerDid(request);
+    if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
     }
-    const ownerDid = resolveActingDid(auth.identity);
+    const { ownerDid } = auth;
 
     let body: { token?: unknown; baseUrl?: unknown; modelId?: unknown };
     try {
@@ -169,11 +169,11 @@ export function createConnectorTokenDisconnectRoute(
   async function POST(request: NextRequest): Promise<NextResponse> {
     const cors = corsHeaders(request);
 
-    const auth = await requireAuth(request);
-    if ('error' in auth) {
+    const auth = await resolveConnectorOwnerDid(request);
+    if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
     }
-    const ownerDid = resolveActingDid(auth.identity);
+    const { ownerDid } = auth;
 
     let revoked: boolean;
     try {

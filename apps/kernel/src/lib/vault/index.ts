@@ -27,7 +27,15 @@ import { verifySync, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { and, eq, isNull, gt, or, like, type SQL } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { db, vaultDelegationGrants, vaultGrantRequests, vaultOwnerEnvelopes, type VaultDelegationGrant, type VaultOwnerEnvelope } from '@/src/db';
+import {
+  db,
+  vaultDelegationGrants,
+  vaultGrantRequests,
+  vaultOwnerEnvelopes,
+  type VaultDelegationGrant,
+  type NewVaultDelegationGrant,
+  type VaultOwnerEnvelope,
+} from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getSealKey, getNodeSigningIdentity, getNodeXPrivateKey, getNodeXPublicKey, getOwnerXPrivateKey, getOwnerXPublicKey, isVaultTier1, getExternalOwnerXPublicKey, getExternalOwnerEdPublicKey } from './sealing';
 import { VaultDelegationError } from './errors';
@@ -230,6 +238,67 @@ export async function eraseInactiveGrantKeyMaterial(
   return eraseGrantKeyMaterial(grants);
 }
 
+// ── Self-healing active-grant insert (#1756) ────────────────────────────────
+
+/** Postgres SQLSTATE for a unique-constraint violation. */
+const UNIQUE_VIOLATION = '23505';
+
+/**
+ * True when `err` is a Postgres unique-violation raised by `constraintName`.
+ *
+ * An absent `constraint_name` (some drivers/mocks surface only the SQLSTATE)
+ * is treated as a match rather than letting a genuine conflict on this insert
+ * escape as an unhandled 500 — the caller only ever inserts into one table
+ * here, so there is nothing else a 23505 on this statement could be.
+ */
+function isUniqueViolationOn(err: unknown, constraintName: string): boolean {
+  const pgErr = err as { code?: unknown; constraint_name?: unknown; constraint?: unknown } | null;
+  if (!pgErr || pgErr.code !== UNIQUE_VIOLATION) {
+    return false;
+  }
+  const name = pgErr.constraint_name ?? pgErr.constraint;
+  return name === undefined || name === constraintName;
+}
+
+/**
+ * Insert a new active delegation grant row, self-healing when one already
+ * occupies the same (subject, grantedTo, field, keyId) tuple that
+ * `uniq_vault_delegation_active` enforces uniqueness over (#1756).
+ *
+ * Callers already supersede that tuple's current active row before calling
+ * this (see `sealAndStoreV2` / `sealAndGrantStaticSecret`), so the common case
+ * is a plain INSERT. This is the safety net for when that proactive supersede
+ * and the table's actual state have diverged — a grant written through a
+ * different code path, a partial failure between two writes, or a second seal
+ * for the same tuple racing this one. Rather than letting
+ * `uniq_vault_delegation_active` reject the insert outright (the QuickBooks
+ * `connect_error` crash), supersede whatever currently occupies the tuple and
+ * retry once.
+ */
+async function insertActiveGrant(row: NewVaultDelegationGrant): Promise<void> {
+  try {
+    await db.insert(vaultDelegationGrants).values(row);
+  } catch (err) {
+    if (!isUniqueViolationOn(err, 'uniq_vault_delegation_active')) {
+      throw err;
+    }
+    log.warn(
+      { field: row.field, subject: row.subject, grantedTo: row.grantedTo },
+      'Vault: active grant insert collided with an existing row — superseding and retrying',
+    );
+    await supersedeGrants(
+      and(
+        eq(vaultDelegationGrants.subject, row.subject),
+        eq(vaultDelegationGrants.grantedTo, row.grantedTo),
+        eq(vaultDelegationGrants.field, row.field),
+        eq(vaultDelegationGrants.keyId, row.keyId),
+        eq(vaultDelegationGrants.status, 'active'),
+      ),
+    );
+    await db.insert(vaultDelegationGrants).values(row);
+  }
+}
+
 /**
  * Seal a plaintext secret and store it as a signed vault entry.
  *
@@ -427,19 +496,27 @@ export async function sealAndStoreV2(
 
   // Supersede any existing active delegation grant for this (field, node) pair.
   // This handles re-sealing: the old ciphertext+grant become orphaned together.
-  if (existingEntry?.custodyScheme === 'delegation-grant') {
-    await supersedeGrants(
-      and(
-        eq(vaultDelegationGrants.subject, identity.senderDid),
-        eq(vaultDelegationGrants.grantedTo, identity.senderDid),
-        eq(vaultDelegationGrants.field, field),
-        eq(vaultDelegationGrants.status, 'active'),
-      ),
-    );
-  }
+  //
+  // Unconditional — NOT gated on `existingEntry?.custodyScheme` (#1756). The
+  // vault entry just peeked and `vault_delegation_grants` can diverge: a grant
+  // written by a different call path, a partial failure between the two
+  // writes, or an app-context seal that landed on a different DID's field than
+  // a previous per-user seal. Gating this on the vault entry's own custody
+  // flag skipped the supersede exactly when that divergence existed, and the
+  // INSERT below then collided with `uniq_vault_delegation_active` instead of
+  // rotating. Superseding unconditionally is a correct no-op (0 rows touched)
+  // when nothing is active yet.
+  await supersedeGrants(
+    and(
+      eq(vaultDelegationGrants.subject, identity.senderDid),
+      eq(vaultDelegationGrants.grantedTo, identity.senderDid),
+      eq(vaultDelegationGrants.field, field),
+      eq(vaultDelegationGrants.status, 'active'),
+    ),
+  );
 
   const grantId = generateId('vdg');
-  await db.insert(vaultDelegationGrants).values({
+  await insertActiveGrant({
     id: grantId,
     ...grantRaw,
     ownerSignature,
@@ -804,7 +881,7 @@ export async function sealAndGrantStaticSecret(
   );
 
   const grantId = generateId('vdg');
-  await db.insert(vaultDelegationGrants).values({
+  await insertActiveGrant({
     id: grantId,
     ...grantRaw,
     ownerSignature,
