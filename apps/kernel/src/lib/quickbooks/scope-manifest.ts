@@ -24,6 +24,7 @@ import {
 } from '@/src/lib/kernel/scope-projections';
 import { QUICKBOOKS_CONNECTOR_DID, configField, vaultField } from './connector';
 import { vaultFieldExists, vaultFieldStatus } from '@/src/lib/vault';
+import { getPlatformDid } from '@/src/lib/kernel/connector-platform-did';
 
 // ── Scope registry (derived — #1253) ───────────────────────────────────────
 
@@ -70,9 +71,24 @@ export function publishQuickBooksScopeManifest(ownerDid: string, scopes: readonl
   });
 }
 
-/** Check whether the QuickBooks OAuth App config is sealed for ownerDid. */
-export function quickbooksConfigSealed(ownerDid: string): Promise<boolean> {
-  return vaultFieldExists(configField(ownerDid));
+/**
+ * Check whether a QuickBooks OAuth App config is USABLE for ownerDid — either
+ * their own BYO-app config, or (#1775) the shared platform config that
+ * `resolveConfigDidWithPlatformFallback` falls back to at connect-time. This
+ * has to mirror that same fallback, or the "Connect QuickBooks Account" step
+ * stays gated off (`Complete step 1 first`) for every user except whoever
+ * configured the shared Intuit app, even though connect itself would succeed
+ * for them via the platform DID.
+ */
+export async function quickbooksConfigSealed(ownerDid: string): Promise<boolean> {
+  if (await vaultFieldExists(configField(ownerDid))) {
+    return true;
+  }
+  const platformDid = getPlatformDid();
+  if (!platformDid) {
+    return false;
+  }
+  return vaultFieldExists(configField(platformDid));
 }
 
 /** Check whether a QuickBooks OAuth token bundle is sealed for ownerDid. */

@@ -79,6 +79,34 @@ describe('buildAuthorizeUrl (#1210)', () => {
   });
 });
 
+describe('buildAuthorizeUrl — actionable no-config error (#1775)', () => {
+  afterEach(() => {
+    delete process.env.PLATFORM_DID;
+  });
+
+  it('rewrites quickbooks_no_config into actionable copy naming the platform DID', async () => {
+    process.env.PLATFORM_DID = 'did:imajin:platform';
+
+    await expect(buildAuthorizeUrl(OWNER, 'state123')).rejects.toThrow(
+      /administrator needs to seal it to the platform DID \(did:imajin:platform\)/,
+    );
+  });
+
+  it('falls back to generic setup guidance when PLATFORM_DID is unset', async () => {
+    delete process.env.PLATFORM_DID;
+
+    await expect(buildAuthorizeUrl(OWNER, 'state123')).rejects.toThrow(
+      /set PLATFORM_DID and seal the Intuit Client ID\/Secret/,
+    );
+  });
+
+  it('passes through unrelated connector errors unchanged', async () => {
+    configResponse = JSON.stringify({ clientId: 'cid', flow: 'device' });
+
+    await expect(buildAuthorizeUrl(OWNER, 'state123')).rejects.toThrow(/quickbooks_flow_mismatch/);
+  });
+});
+
 describe('resolveActiveGrant (#1210)', () => {
   it('is true when an active row includes the scope', async () => {
     grant(['quickbooks:read']);
