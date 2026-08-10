@@ -27,10 +27,15 @@ import {
   validScopesForConnector,
   requiresConsentRow,
 } from '@/src/lib/kernel/scope-projections';
-import { ANTHROPIC_CONNECTOR_DID, vaultField, anthropicKeyPending } from './connector';
-import { vaultFieldExists } from '@/src/lib/vault';
+import { ANTHROPIC_CONNECTOR_DID, anthropicKeySealed, anthropicKeyPending } from './connector';
 
-export { anthropicKeyPending };
+// Re-exported so a connector route needs only this module. `export … from`
+// keeps these pure re-exports rather than local bindings that could drift
+// from the corrected, grant-aware definitions in ./connector (#1774 — a local
+// `vaultFieldExists`-based redefinition here used to shadow the fix #1724
+// made in ./connector, so a disconnected key kept reporting `keySealed: true`
+// forever on this route specifically).
+export { anthropicKeySealed, anthropicKeyPending };
 
 // ── Scope registry (derived — #1253) ────────────────────────────────────────
 
@@ -75,9 +80,4 @@ export function publishAnthropicScopeManifest(ownerDid: string, scopes: readonly
     filename: 'anthropic-scope-manifest.md', scopeDescriptors: ANTHROPIC_SCOPE_DESCRIPTORS,
     scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
   });
-}
-
-/** Check whether an Anthropic API key is sealed for ownerDid (no crypto, no value returned). */
-export function anthropicKeySealed(ownerDid: string): Promise<boolean> {
-  return vaultFieldExists(vaultField(ownerDid));
 }

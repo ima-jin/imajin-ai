@@ -30,10 +30,15 @@ import {
   validScopesForConnector,
   requiresConsentRow,
 } from '@/src/lib/kernel/scope-projections';
-import { GCP_CONNECTOR_DID, vaultField, gcpKeyPending } from './connector';
-import { vaultFieldExists } from '@/src/lib/vault';
+import { GCP_CONNECTOR_DID, gcpKeySealed, gcpKeyPending } from './connector';
 
-export { gcpKeyPending };
+// Re-exported so a connector route needs only this module. `export … from`
+// keeps these pure re-exports rather than local bindings that could drift
+// from the corrected, grant-aware definitions in ./connector (#1774 — a local
+// `vaultFieldExists`-based redefinition here used to shadow the fix #1724
+// made in ./connector, so a disconnected key kept reporting `keySealed: true`
+// forever on this route specifically).
+export { gcpKeySealed, gcpKeyPending };
 
 // ── Scope registry (derived — #1253) ────────────────────────────────────────
 
@@ -78,9 +83,4 @@ export function publishGcpScopeManifest(ownerDid: string, scopes: readonly strin
     filename: 'gcp-scope-manifest.md', scopeDescriptors: GCP_SCOPE_DESCRIPTORS,
     scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
   });
-}
-
-/** Check whether a GCP key is sealed for ownerDid (no crypto, no value returned). */
-export function gcpKeySealed(ownerDid: string): Promise<boolean> {
-  return vaultFieldExists(vaultField(ownerDid));
 }

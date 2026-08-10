@@ -26,7 +26,6 @@ import {
   sealAndGrantStaticSecret,
   loadAndUnsealByGrantee,
   revokeStaticSecretGrant,
-  vaultFieldExists,
   vaultFieldStatusForGrantee,
 } from '@/src/lib/vault';
 
@@ -90,7 +89,15 @@ export interface ConnectorStaticSecret {
    * Returns `true` when a grant was deactivated, `false` if none existed.
    */
   revokeGrant(principalDid: string): Promise<boolean>;
-  /** Check whether a secret is sealed for principalDid (no crypto). */
+  /**
+   * Whether a secret is sealed AND readable for principalDid — an active
+   * delegation grant covers it, not merely a vault entry existing (#1774,
+   * mirrors the token-paste factory's #1724 fix).
+   *
+   * `revokeGrant` (disconnect) deliberately leaves the sealed vault entry in
+   * place and only revokes the grant, so checking entry existence alone would
+   * report a disconnected secret as still sealed forever.
+   */
   secretSealed(principalDid: string): Promise<boolean>;
   /**
    * Whether a secret is sealed but still awaiting the owner agent's grant
@@ -163,8 +170,12 @@ export function createConnectorStaticSecret(
     return revokeStaticSecretGrant(secretField(principalDid), opts.connectorDid);
   }
 
-  function secretSealed(principalDid: string): Promise<boolean> {
-    return vaultFieldExists(secretField(principalDid));
+  async function secretSealed(principalDid: string): Promise<boolean> {
+    const status = await vaultFieldStatusForGrantee(
+      secretField(principalDid),
+      opts.connectorDid,
+    );
+    return status === 'ready';
   }
 
   async function secretPending(principalDid: string): Promise<boolean> {

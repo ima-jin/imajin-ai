@@ -23,18 +23,17 @@ vi.mock('@/src/lib/kernel/scope-manifest-core', () => ({
   publishConnectorScopeManifest: mockPublish,
 }));
 
-const { existsMock, statusMock } = vi.hoisted(() => ({
-  existsMock: vi.fn().mockResolvedValue(false),
+const { sealedMock, statusMock } = vi.hoisted(() => ({
+  sealedMock: vi.fn().mockResolvedValue(false),
   statusMock: vi.fn().mockResolvedValue('absent'),
 }));
 
 vi.mock('../connector', () => ({
   ANTHROPIC_CONNECTOR_DID: 'did:imajin:anthropic-connector',
-  vaultField: (did: string) => `anthropic-api-key:${did}`,
+  anthropicKeySealed: sealedMock,
   anthropicKeyPending: (did: string) =>
     statusMock(`anthropic-api-key:${did}`).then((s: string) => s === 'pending-grant'),
 }));
-vi.mock('@/src/lib/vault', () => ({ vaultFieldExists: existsMock, vaultFieldStatus: statusMock }));
 
 import {
   buildManifestContent,
@@ -51,7 +50,7 @@ import { ANTHROPIC_CONNECTOR_DID } from '../connector';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  existsMock.mockResolvedValue(false);
+  sealedMock.mockResolvedValue(false);
   statusMock.mockResolvedValue('absent');
 });
 
@@ -112,10 +111,14 @@ describe('publishAnthropicScopeManifest', () => {
 });
 
 describe('credential status', () => {
-  it('delegates anthropicKeySealed to vaultFieldExists with the per-DID field', async () => {
-    existsMock.mockResolvedValueOnce(true);
+  // A local vaultFieldExists-based redefinition here (as before #1774) would
+  // shadow the grant-aware fix ./connector already made for #1724, leaving a
+  // disconnected key reporting `keySealed: true` forever on this route
+  // specifically.
+  it('re-exports anthropicKeySealed from ./connector', async () => {
+    sealedMock.mockResolvedValueOnce(true);
     expect(await anthropicKeySealed('did:owner')).toBe(true);
-    expect(existsMock).toHaveBeenCalledWith('anthropic-api-key:did:owner');
+    expect(sealedMock).toHaveBeenCalledWith('did:owner');
   });
 
   it('re-exports anthropicKeyPending so the route imports from one place', async () => {

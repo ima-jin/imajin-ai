@@ -23,16 +23,15 @@ vi.mock('@/src/lib/kernel/scope-manifest-core', () => ({
   publishConnectorScopeManifest: mockPublish,
 }));
 
-const { existsMock, statusMock } = vi.hoisted(() => ({
-  existsMock: vi.fn().mockResolvedValue(false),
+const { sealedMock, statusMock } = vi.hoisted(() => ({
+  sealedMock: vi.fn().mockResolvedValue(false),
   statusMock: vi.fn().mockResolvedValue('absent'),
 }));
 vi.mock('../connector', () => ({
   GCP_CONNECTOR_DID: 'did:imajin:gcp-connector',
-  vaultField: (did: string) => `gcp-api-key:${did}`,
+  gcpKeySealed: sealedMock,
   gcpKeyPending: (did: string) => statusMock(`gcp-api-key:${did}`).then((s: string) => s === 'pending-grant'),
 }));
-vi.mock('@/src/lib/vault', () => ({ vaultFieldExists: existsMock, vaultFieldStatus: statusMock }));
 
 import {
   buildManifestContent,
@@ -129,11 +128,15 @@ describe('publishGcpScopeManifest', () => {
   });
 });
 
-describe('gcpKeySealed', () => {
-  it('delegates to vaultFieldExists with the per-DID field', async () => {
-    existsMock.mockResolvedValueOnce(true);
+describe('gcpKeySealed re-export (#1774)', () => {
+  // A local vaultFieldExists-based redefinition here (as before #1774) would
+  // shadow the grant-aware fix ./connector already made for #1724, leaving a
+  // disconnected key reporting `keySealed: true` forever on this route
+  // specifically.
+  it('is re-exported from ./connector rather than a local vaultFieldExists redefinition', async () => {
+    sealedMock.mockResolvedValueOnce(true);
     expect(await gcpKeySealed('did:owner')).toBe(true);
-    expect(existsMock).toHaveBeenCalledWith('gcp-api-key:did:owner');
+    expect(sealedMock).toHaveBeenCalledWith('did:owner');
   });
 });
 

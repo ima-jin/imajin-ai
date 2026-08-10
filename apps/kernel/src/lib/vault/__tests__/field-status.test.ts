@@ -15,6 +15,13 @@ import type { VaultEntry } from '@imajin/vault-core';
 
 type Row = Record<string, unknown>;
 
+type Clause =
+  | { kind: 'and'; parts: Clause[] }
+  | { kind: 'or'; parts: Clause[] }
+  | { kind: 'eq'; col: string; value: unknown }
+  | { kind: 'gt'; col: string; value: unknown }
+  | { kind: 'isNull'; col: string };
+
 const { tmpVaultPath, grantStore } = vi.hoisted(() => {
   const { join } = require('node:path') as typeof import('node:path');
   const { tmpdir } = require('node:os') as typeof import('node:os');
@@ -25,11 +32,24 @@ const { tmpVaultPath, grantStore } = vi.hoisted(() => {
   return { tmpVaultPath, grantStore: new Map<string, Row>() };
 });
 
-// A deliberately simple grants-table double: always respects expiry. Unlike
-// renewal.test.ts's mock, vaultFieldStatus never needs the "ignore expiry"
-// projection used by listRenewableGrants, so there is no ambiguity to encode.
+// drizzle-orm's clause builders are mocked into plain, inspectable objects so
+// the DB double below can actually evaluate a WHERE clause instead of hardcoding
+// one query shape — field-status.ts issues two distinct grants queries (active,
+// and — #1774 — ever-revoked), and each must see only the rows its own clause
+// matches.
+vi.mock('drizzle-orm', () => ({
+  and: (...parts: Clause[]) => ({ kind: 'and', parts: parts.filter(Boolean) }),
+  or: (...parts: Clause[]) => ({ kind: 'or', parts: parts.filter(Boolean) }),
+  eq: (col: string, value: unknown) => ({ kind: 'eq', col, value }),
+  gt: (col: string, value: unknown) => ({ kind: 'gt', col, value }),
+  isNull: (col: string) => ({ kind: 'isNull', col }),
+}));
+
 vi.mock('@/src/db', () => {
-  const vaultDelegationGrants = { __table: 'grants' };
+  const columns = (names: string[]) => Object.fromEntries(names.map((n) => [n, n]));
+  const vaultDelegationGrants = { __table: 'grants', ...columns([
+    'id', 'subject', 'grantedTo', 'field', 'status', 'expiresAt', 'createdAt', 'revokedAt',
+  ]) };
   const vaultOwnerEnvelopes = { __table: 'envelopes' };
   const vaultGrantRequests = { __table: 'requests' };
 
@@ -38,13 +58,42 @@ vi.mock('@/src/db', () => {
     return { then: p.then.bind(p), catch: p.catch.bind(p), finally: p.finally.bind(p), ...extra };
   }
 
-  function activeGrants(): Row[] {
-    const now = Date.now();
-    return [...grantStore.values()].filter((row) => {
-      if (row.status !== 'active') return false;
-      const expiresAt = row.expiresAt as Date | null | undefined;
-      return !expiresAt || expiresAt.getTime() > now;
-    });
+  function matches(row: Row, clause: Clause | undefined): boolean {
+    if (!clause) return true;
+    switch (clause.kind) {
+      case 'and':
+        return clause.parts.every((p) => matches(row, p));
+      case 'or':
+        return clause.parts.some((p) => matches(row, p));
+      case 'eq':
+        return row[clause.col] === clause.value;
+      case 'gt': {
+        const left = row[clause.col];
+        if (left instanceof Date && clause.value instanceof Date) {
+          return left.getTime() > clause.value.getTime();
+        }
+        return false;
+      }
+      case 'isNull':
+        return row[clause.col] === null || row[clause.col] === undefined;
+      default:
+        return true;
+    }
+  }
+
+  /** `WHERE clause LIMIT n` over the grants table — named to keep the select
+   * chain shallow rather than nesting another arrow inside `selectFromTable`. */
+  function whereGrants(all: () => Row[], clause: Clause) {
+    const filtered = () => all().filter((row) => matches(row, clause));
+    return thenable(filtered, { limit: (n: number) => Promise.resolve(filtered().slice(0, n)) });
+  }
+
+  function selectFromTable(table: { __table?: string }) {
+    if (table.__table !== 'grants') {
+      return thenable(() => [], { where: () => ({ limit: () => Promise.resolve([]) }) });
+    }
+    const all = () => [...grantStore.values()];
+    return thenable(all, { where: (clause: Clause) => whereGrants(all, clause) });
   }
 
   return {
@@ -72,16 +121,7 @@ vi.mock('@/src/db', () => {
           },
         }),
       }),
-      select: () => ({
-        from: (table: { __table?: string }) => {
-          if (table.__table === 'grants') {
-            return thenable(() => [...grantStore.values()], {
-              where: () => ({ limit: () => Promise.resolve(activeGrants().slice(0, 1)) }),
-            });
-          }
-          return thenable(() => [], { where: () => ({ limit: () => Promise.resolve([]) }) });
-        },
-      }),
+      select: () => ({ from: selectFromTable }),
     },
     vaultDelegationGrants,
     vaultOwnerEnvelopes,
@@ -98,7 +138,7 @@ vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) })
 
 import { sealAndStore, sealAndStoreV2, deleteFromVault } from '../index.js';
 import { vaultFieldStatus } from '../field-status.js';
-import { _resetSealingCache } from '../sealing.js';
+import { _resetSealingCache, getNodeSigningIdentity } from '../sealing.js';
 
 const OWNER_DID = 'did:imajin:field-status-owner';
 
@@ -208,5 +248,49 @@ describe('vaultFieldStatus', () => {
     grantStore.set(String(grant.id), { ...grant, status: 'revoked', wrappedKey: '', wrappedNonce: '' });
 
     expect(await vaultFieldStatus(field)).not.toBe('ready');
+  });
+
+  // #1774: in Tier 0 the requesting node is its own owner agent — self-grant is
+  // synchronous at seal time, so there is no external approval to wait on. A
+  // Tier 0 field whose grant was explicitly revoked (disconnect) is simply no
+  // longer connected, not "pending" one. Before this fix, disconnecting a sealed
+  // connector key left the connector card permanently stuck showing "Waiting
+  // for owner approval" with no approve/reject/cancel action to resolve it.
+  it('is absent, not pending-grant, once a Tier 0 grant is explicitly revoked (disconnect)', async () => {
+    const field = `v2-field:${OWNER_DID}`;
+    await sealAndStoreV2(field, 'plaintext');
+    expect(await vaultFieldStatus(field)).toBe('ready');
+
+    const grant = activeGrant()!;
+    grantStore.set(String(grant.id), { ...grant, status: 'revoked', wrappedKey: '', wrappedNonce: '' });
+
+    expect(await vaultFieldStatus(field)).toBe('absent');
+  });
+
+  // Tier 1 has a real external owner agent, so a revoked grant there still
+  // means "ask the owner agent again" rather than "not connected" — the Tier 0
+  // short-circuit above must not apply.
+  it('remains pending-grant for a Tier 1 field even after its grant is revoked', async () => {
+    process.env.VAULT_OWNER_X_PUB = 'a'.repeat(64);
+    process.env.VAULT_OWNER_ED_PUB = 'b'.repeat(64);
+    const field = `v2-field:${OWNER_DID}`;
+
+    // Writes the entry; under Tier 1 this queues a request rather than
+    // self-granting.
+    await sealAndStoreV2(field, 'plaintext');
+
+    // Simulate the owner agent having granted it at some point, then that
+    // grant being revoked — `vaultFieldStatus` checks the grant against the
+    // NODE's own signing DID, not an arbitrary owner label.
+    grantStore.set('vdg_tier1', {
+      id: 'vdg_tier1',
+      grantedTo: getNodeSigningIdentity().senderDid,
+      field,
+      status: 'active',
+      expiresAt: null,
+    });
+    grantStore.set('vdg_tier1', { ...grantStore.get('vdg_tier1')!, status: 'revoked' });
+
+    expect(await vaultFieldStatus(field)).toBe('pending-grant');
   });
 });

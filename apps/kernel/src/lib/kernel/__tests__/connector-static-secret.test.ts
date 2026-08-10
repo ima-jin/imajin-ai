@@ -7,11 +7,10 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { sealGrantMock, loadGranteeMock, revokeGrantMock, existsMock, statusMock, whereMock } = vi.hoisted(() => ({
+const { sealGrantMock, loadGranteeMock, revokeGrantMock, statusMock, whereMock } = vi.hoisted(() => ({
   sealGrantMock: vi.fn(),
   loadGranteeMock: vi.fn(),
   revokeGrantMock: vi.fn(),
-  existsMock: vi.fn(),
   statusMock: vi.fn(),
   whereMock: vi.fn(),
 }));
@@ -20,7 +19,6 @@ vi.mock('@/src/lib/vault', () => ({
   sealAndGrantStaticSecret: sealGrantMock,
   loadAndUnsealByGrantee: loadGranteeMock,
   revokeStaticSecretGrant: revokeGrantMock,
-  vaultFieldExists: existsMock,
   vaultFieldStatusForGrantee: statusMock,
 }));
 
@@ -61,7 +59,6 @@ beforeEach(() => {
   sealGrantMock.mockReset().mockResolvedValue({ entry: {}, grantId: 'vdg_mock', requestId: null });
   loadGranteeMock.mockReset().mockResolvedValue(undefined);
   revokeGrantMock.mockReset().mockResolvedValue(false);
-  existsMock.mockReset().mockResolvedValue(false);
   statusMock.mockReset().mockResolvedValue('absent');
   whereMock.mockReset().mockResolvedValue([]);
 });
@@ -216,16 +213,28 @@ describe('revokeGrant', () => {
 
 // ── secretSealed ──────────────────────────────────────────────────────────────
 
-describe('secretSealed', () => {
-  it('delegates to vaultFieldExists with the per-DID field', async () => {
-    existsMock.mockResolvedValue(true);
+describe('secretSealed (#1774)', () => {
+  // secretSealed used to be vaultFieldExists(field), which only checks that the
+  // vault entry exists and verifies — it says nothing about whether an ACTIVE
+  // grant currently covers it. revokeGrant deliberately never deletes that
+  // entry, so a disconnected secret kept reporting `secretSealed: true` forever
+  // (the same class of bug #1724 fixed for the token-paste factory).
+  it('delegates to vaultFieldStatusForGrantee, asking about the CONNECTOR DID', async () => {
+    statusMock.mockResolvedValue('ready');
     const c = makeConnector();
     expect(await c.secretSealed(PRINCIPAL)).toBe(true);
-    expect(existsMock).toHaveBeenCalledWith(c.secretField(PRINCIPAL));
+    expect(statusMock).toHaveBeenCalledWith(c.secretField(PRINCIPAL), CONNECTOR_DID);
   });
 
   it('returns false when no secret is sealed', async () => {
-    existsMock.mockResolvedValue(false);
+    statusMock.mockResolvedValue('absent');
+    expect(await makeConnector().secretSealed(PRINCIPAL)).toBe(false);
+  });
+
+  it('returns false once the grant is revoked, even though the sealed entry still exists', async () => {
+    // A revoked grant resolves to vaultFieldStatus 'absent' (Tier 0, #1774) or
+    // otherwise not 'ready' — either way secretSealed must not report true.
+    statusMock.mockResolvedValue('absent');
     expect(await makeConnector().secretSealed(PRINCIPAL)).toBe(false);
   });
 });

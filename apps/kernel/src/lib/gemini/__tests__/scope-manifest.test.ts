@@ -23,16 +23,15 @@ vi.mock('@/src/lib/kernel/scope-manifest-core', () => ({
   publishConnectorScopeManifest: mockPublish,
 }));
 
-const { existsMock, statusMock } = vi.hoisted(() => ({
-  existsMock: vi.fn().mockResolvedValue(false),
+const { sealedMock, statusMock } = vi.hoisted(() => ({
+  sealedMock: vi.fn().mockResolvedValue(false),
   statusMock: vi.fn().mockResolvedValue('absent'),
 }));
 vi.mock('../connector', () => ({
   GEMINI_CONNECTOR_DID: 'did:imajin:gemini-connector',
-  vaultField: (did: string) => `gemini-api-key:${did}`,
+  geminiKeySealed: sealedMock,
   geminiKeyPending: (did: string) => statusMock(`gemini-api-key:${did}`).then((s: string) => s === 'pending-grant'),
 }));
-vi.mock('@/src/lib/vault', () => ({ vaultFieldExists: existsMock, vaultFieldStatus: statusMock }));
 
 import {
   buildManifestContent,
@@ -105,11 +104,14 @@ describe('publishGeminiScopeManifest', () => {
   });
 });
 
-describe('geminiKeySealed', () => {
-  it('delegates to vaultFieldExists with the per-DID field', async () => {
-    existsMock.mockResolvedValueOnce(true);
+describe('geminiKeySealed re-export (#1774)', () => {
+  it('is re-exported from ./connector rather than a local vaultFieldExists redefinition', async () => {
+    // A local redefinition here (as before #1774) would shadow the grant-aware
+    // fix ./connector already made for #1724, leaving a disconnected key
+    // reporting `keySealed: true` forever on this route specifically.
+    sealedMock.mockResolvedValueOnce(true);
     expect(await geminiKeySealed('did:owner')).toBe(true);
-    expect(existsMock).toHaveBeenCalledWith('gemini-api-key:did:owner');
+    expect(sealedMock).toHaveBeenCalledWith('did:owner');
   });
 });
 

@@ -244,6 +244,21 @@ describe('keySealed', () => {
     expect(await connector.keySealed(OWNER_DID)).toBe(false);
   });
 
+  // #1774: keySealed is grant-aware, but keyPending is what a connector card
+  // reads to render "Waiting for owner approval". Disconnecting in Tier 0 (the
+  // default — no external owner agent) must resolve to a terminal, actionable
+  // state, not one that renders a permanent approval-pending badge with no
+  // approve/reject/cancel action.
+  it('keyPending is false after disconnecting — the connector card must not get stuck "waiting for owner approval"', async () => {
+    await connector.sealApiKey(OWNER_DID, 'sk-test-key');
+    expect(await connector.keyPending(OWNER_DID)).toBe(false);
+
+    await connector.revokeApiKey(OWNER_DID);
+
+    expect(await connector.keySealed(OWNER_DID)).toBe(false);
+    expect(await connector.keyPending(OWNER_DID)).toBe(false);
+  });
+
   it('is true immediately after sealing (Tier 0 self-grant is active at seal time)', async () => {
     await connector.sealApiKey(OWNER_DID, 'sk-test-key');
     expect(await connector.keySealed(OWNER_DID)).toBe(true);
