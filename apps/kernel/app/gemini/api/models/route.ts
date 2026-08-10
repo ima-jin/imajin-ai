@@ -21,7 +21,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
-import { loadGeminiCredentials, setModelId } from '@/src/lib/gemini/connector';
+import { loadGeminiSealedCredentials, geminiKeyPending, setModelId } from '@/src/lib/gemini/connector';
 
 const log = createLogger('kernel');
 
@@ -65,10 +65,17 @@ export async function OPTIONS(request: NextRequest) {
 /**
  * List models available to the caller's sealed Gemini key.
  *
+ * This reads the key via `loadGeminiSealedCredentials`, which does NOT
+ * require an active `gemini:infer` grant (#1773) — the owner is asking what
+ * their own key can do, typically before they have reached the "grant
+ * scopes" step, not spending the credential on inference.
+ *
  * `gemini_no_key` (400) when nothing is sealed yet — the owner must seal a
  * key on the connector card (step 1) before there is anything to list models
- * for. Upstream failures map to 502: they are Google's fault, not the
- * caller's.
+ * for. `gemini_credential_pending` (409) when a key IS sealed but still
+ * awaiting the owner agent's Tier 1 grant approval — a different, temporary
+ * state that a flat "no key sealed" would misreport. Upstream failures map
+ * to 502: they are Google's fault, not the caller's.
  */
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -79,8 +86,17 @@ export async function GET(request: NextRequest) {
   }
   const { ownerDid } = auth;
 
-  const creds = await loadGeminiCredentials(ownerDid);
+  const creds = await loadGeminiSealedCredentials(ownerDid);
   if (!creds) {
+    if (await geminiKeyPending(ownerDid)) {
+      return NextResponse.json(
+        {
+          error:
+            'gemini_credential_pending: Gemini API key is sealed but awaiting owner grant approval',
+        },
+        { status: 409, headers: cors },
+      );
+    }
     return NextResponse.json(
       {
         error:

@@ -16,6 +16,19 @@
  * Mirrors `resolveInferenceAuth` in `app/api/inference/capture/route.ts`: try
  * app-auth first, and fall back to the session's acting DID — today's
  * unchanged per-user behavior — when no app-auth context is present.
+ *
+ * #1773: the app-auth branch used to resolve straight to the app owner's DID,
+ * full stop — even when the app-auth context named a delegating human
+ * (`appAuth.userDid`, or the legacy `X-Acting-For` header). That is backwards
+ * from `resolveInferenceAuth` / `resolveBrain`'s "owner-first" precedence (a
+ * human's own card outranks the app's), and it is exactly what made the
+ * Gemini model picker 404 with `gemini_no_key` (#1773): the owner sealed their
+ * key under their own DID while acting through an app, but this resolver kept
+ * looking it up under the app owner's DID instead — a different row that had
+ * nothing sealed. A delegating user's DID now wins when one is present; only a
+ * pure service token (no delegating user at all) falls through to the app
+ * owner's DID, which is the correct home for org-level config like the
+ * QuickBooks OAuth App client id/secret.
  */
 import type { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
@@ -43,10 +56,12 @@ async function lookupAppOwnerDid(appDid: string): Promise<string | undefined> {
  * Resolve the DID whose vault fields a connector status/config/seal route
  * should act on for this request.
  *
- * Tries `requireAppAuth` first. On success, resolves the calling app's
- * `owner_did` from `registry.apps` — this is what makes a Gemini/QuickBooks
- * connection sealed under an app owner's DID visible and writable from inside
- * that app, instead of silently checking the wrong DID's vault fields.
+ * Tries `requireAppAuth` first. On success, prefers the app-auth context's
+ * delegating user DID (`appAuth.userDid` / `X-Acting-For`) when one is named,
+ * and otherwise resolves the calling app's `owner_did` from `registry.apps`
+ * — this is what makes a Gemini/QuickBooks connection sealed under either DID
+ * visible and writable from inside that app, instead of silently checking the
+ * wrong DID's vault fields.
  *
  * Falls through to `requireAuth` → `resolveActingDid` (unchanged per-user
  * behavior) when no app-auth context is present. When app-auth headers ARE
@@ -57,6 +72,20 @@ async function lookupAppOwnerDid(appDid: string): Promise<string | undefined> {
 export async function resolveConnectorOwnerDid(request: NextRequest): Promise<ConnectorOwnerResult> {
   const appResult = await requireAppAuth(request);
   if ('appAuth' in appResult) {
+    // Owner-first (#1773): a delegating human's own DID outranks the app's,
+    // mirroring `resolveInferenceAuth`'s precedence — an app can subsidize
+    // compute, but it must never quietly displace whose sealed card a
+    // connector route reads or writes. The legacy X-Acting-For header is the
+    // same delegating-user signal `resolveInferenceAuth` falls back to.
+    const delegatingUserDid =
+      appResult.appAuth.userDid || request.headers.get('x-acting-for') || '';
+    if (delegatingUserDid) {
+      return { ok: true, ownerDid: delegatingUserDid };
+    }
+
+    // No delegating user — a service token acting purely on the app's own
+    // behalf. Org-level config (e.g. the QuickBooks OAuth App client id/secret)
+    // legitimately lives on the app owner's DID, so that is the fallback here.
     const ownerDid = await lookupAppOwnerDid(appResult.appAuth.appDid);
     if (!ownerDid) {
       log.warn(

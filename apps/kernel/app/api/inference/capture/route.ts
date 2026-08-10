@@ -8,7 +8,7 @@ import { inferMime, isAllowedMime } from '@/src/lib/media/create-asset';
 import { captureGesture } from '@/src/lib/inference/capture';
 import { gatherContext } from '@/src/lib/inference/context';
 import { infer } from '@/src/lib/inference/policy';
-import { NoBrainSealedError } from '@/src/lib/inference/brain';
+import { NoBrainSealedError, NoModelSelectedError } from '@/src/lib/inference/brain';
 import { resolveConsentGate } from '@/src/lib/inference/consent';
 import { resolveIntent } from '@/src/lib/inference/resolve';
 import { getVocabulary, listVocabularyNames } from '@/src/lib/inference/vocabulary';
@@ -191,6 +191,23 @@ function handlePipelineError(
       {
         error: 'no_brain',
         message: 'No AI model connected — connect Gemini or Anthropic',
+        detail: err.message,
+      },
+      { status: 422, headers: cors },
+    );
+  }
+
+  // #1773: a connector can be fully connected (grant + key both resolved) with
+  // no model chosen yet — distinct from `NoBrainSealedError` (nothing
+  // connected at all). This used to fall through to the generic 500 below,
+  // which reported it as an unrecognized crash (`pipeline_failed`) instead of
+  // the fixable "pick a model" state it actually is.
+  if (err instanceof NoModelSelectedError) {
+    log.warn({ err: err.message, ownerDid }, 'Inference capture: connected brain has no model selected');
+    return NextResponse.json(
+      {
+        error: 'no_model_selected',
+        message: 'Connected, but no model is selected — choose one on the connector card',
         detail: err.message,
       },
       { status: 422, headers: cors },
