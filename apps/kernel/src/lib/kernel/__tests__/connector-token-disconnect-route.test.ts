@@ -7,9 +7,14 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockRequireAuth } = vi.hoisted(() => ({ mockRequireAuth: vi.fn() }));
+const { mockRequireAuth, mockRequireAppAuth, registryState } = vi.hoisted(() => ({
+  mockRequireAuth: vi.fn(),
+  mockRequireAppAuth: vi.fn(),
+  registryState: { appOwnerRows: [] as Array<{ ownerDid: string }> },
+}));
 
 vi.mock('@imajin/auth', () => ({
+  requireAppAuth: mockRequireAppAuth,
   requireAuth: mockRequireAuth,
   resolveActingDid: (identity: { id: string }) => identity.id,
 }));
@@ -21,6 +26,23 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+}));
+
+vi.mock('@/src/db', () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve(registryState.appOwnerRows),
+        }),
+      }),
+    }),
+  },
+  registryApps: { ownerDid: 'ownerDid', appDid: 'appDid' },
+}));
+
+vi.mock('drizzle-orm', () => ({
+  eq: (column: unknown, value: unknown) => ({ column, value }),
 }));
 
 import { createConnectorTokenDisconnectRoute } from '../connector-token-route';
@@ -43,6 +65,8 @@ function makeReq(): RouteRequest {
 beforeEach(() => {
   vi.clearAllMocks();
   mockRequireAuth.mockResolvedValue({ identity: { id: OWNER } });
+  mockRequireAppAuth.mockResolvedValue({ error: 'no app auth', status: 401 });
+  registryState.appOwnerRows = [];
   revokeApiKey.mockResolvedValue(true);
 });
 
@@ -121,6 +145,18 @@ describe('token disconnect route — POST', () => {
     expect(res.status).toBe(500);
     expect(typeof body.error).toBe('string');
     expect(JSON.parse(JSON.stringify(body))).toEqual(body);
+  });
+
+  /** #1756: revocation must target the app owner's DID inside an app context. */
+  it('revokes the sealed key for the app owner DID when app-auth succeeds', async () => {
+    const APP_OWNER_DID = 'did:imajin:agrifortress-owner';
+    mockRequireAppAuth.mockResolvedValueOnce({ appAuth: { appDid: 'did:imajin:agrifortress-app' } });
+    registryState.appOwnerRows = [{ ownerDid: APP_OWNER_DID }];
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(200);
+    expect(revokeApiKey).toHaveBeenCalledWith(APP_OWNER_DID);
   });
 });
 

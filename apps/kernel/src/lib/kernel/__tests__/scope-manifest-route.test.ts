@@ -23,17 +23,44 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 }));
 
 // ── Mock logger ───────────────────────────────────────────────────────────────
-vi.mock('@imajin/logger', () => ({ createLogger: vi.fn(() => ({ error: vi.fn() })) }));
+vi.mock('@imajin/logger', () => ({ createLogger: vi.fn(() => ({ error: vi.fn(), warn: vi.fn() })) }));
 
 // ── Mock auth ─────────────────────────────────────────────────────────────────
+type AppAuthResult =
+  | { appAuth: { appDid: string } }
+  | { error: string; status: number };
+
 const h = vi.hoisted(() => ({
   authResult: null as { identity: Record<string, unknown> } | { error: string; status: number } | null,
   actingDid: 'did:imajin:owner',
+  // Absent by default — every existing test exercises the per-user session path.
+  appAuthResult: { error: 'no app auth', status: 401 } as AppAuthResult,
+  // Row(s) `registry.apps` would return for the app-auth's appDid.
+  registryAppRows: [] as Array<{ ownerDid: string }>,
 }));
 
 vi.mock('@imajin/auth', () => ({
+  requireAppAuth: vi.fn(async () => h.appAuthResult),
   requireAuth: vi.fn(async () => h.authResult),
   resolveActingDid: vi.fn(() => h.actingDid),
+}));
+
+// ── Mock DB (registry.apps lookup for app-context ownerDid resolution) ────────
+vi.mock('@/src/db', () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve(h.registryAppRows),
+        }),
+      }),
+    }),
+  },
+  registryApps: { ownerDid: 'ownerDid', appDid: 'appDid' },
+}));
+
+vi.mock('drizzle-orm', () => ({
+  eq: (column: unknown, value: unknown) => ({ column, value }),
 }));
 
 // Import factory after mocks
@@ -286,5 +313,98 @@ describe('POST', () => {
     await POST(makeRequest({ body: { scopes: ['test:read', 'test:write'] } }));
     // readActiveScopes called once at publish time (for GET on POST response)
     expect(stubs.readActiveScopes).toHaveBeenCalledOnce();
+  });
+});
+
+// ── App-context ownerDid resolution (#1756) ──────────────────────────────────
+//
+// The app-subsidizes-compute model (#1624) puts keys on the app owner's DID,
+// not the logged-in user's. When the request carries app-auth context, GET/POST
+// must resolve ownerDid from `registry.apps.ownerDid` instead of the session.
+
+const APP_DID = 'did:imajin:agrifortress-app';
+const APP_OWNER_DID = 'did:imajin:agrifortress-owner';
+
+describe('GET — app-context ownerDid resolution', () => {
+  beforeEach(() => {
+    h.authResult = { identity: {} };
+    h.appAuthResult = { error: 'no app auth', status: 401 };
+    h.registryAppRows = [];
+  });
+
+  it('resolves ownerDid from registry.apps when app-auth succeeds, not the session identity', async () => {
+    h.appAuthResult = { appAuth: { appDid: APP_DID } };
+    h.registryAppRows = [{ ownerDid: APP_OWNER_DID }];
+
+    const stubs = makeStubs({ manifestId: 'asset_app', activeScopes: ['test:read'] });
+    const { GET } = createConnectorScopeManifestRoute({
+      name: 'Test', validScopes: VALID_SCOPES, ...stubs,
+    });
+    const res = await GET(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(stubs.findManifestAsset).toHaveBeenCalledWith(APP_OWNER_DID);
+    expect(stubs.readActiveScopes).toHaveBeenCalledWith(APP_OWNER_DID);
+    expect(stubs.findManifestAsset).not.toHaveBeenCalledWith(h.actingDid);
+  });
+
+  it('passes the app owner DID to getExtraFields (e.g. Gemini keySealed check)', async () => {
+    h.appAuthResult = { appAuth: { appDid: APP_DID } };
+    h.registryAppRows = [{ ownerDid: APP_OWNER_DID }];
+
+    const stubs = makeStubs({ extraFields: { keySealed: true } });
+    const { GET } = createConnectorScopeManifestRoute({
+      name: 'Test', validScopes: VALID_SCOPES, ...stubs,
+    });
+    await GET(makeRequest());
+
+    expect(stubs.getExtraFields).toHaveBeenCalledWith(APP_OWNER_DID);
+  });
+
+  it('returns 404 when the app-auth app is not registered in registry.apps', async () => {
+    h.appAuthResult = { appAuth: { appDid: APP_DID } };
+    h.registryAppRows = [];
+
+    const { GET } = createConnectorScopeManifestRoute({
+      name: 'Test', validScopes: VALID_SCOPES, ...makeStubs(),
+    });
+    const res = await GET(makeRequest());
+
+    expect(res.status).toBe(404);
+  });
+
+  it('falls back to the session identity when no app-auth context is present (unchanged per-user flow)', async () => {
+    h.appAuthResult = { error: 'Authorization Bearer <app-token>, or X-App-DID + X-App-Authorization headers required', status: 401 };
+
+    const stubs = makeStubs();
+    const { GET } = createConnectorScopeManifestRoute({
+      name: 'Test', validScopes: VALID_SCOPES, ...stubs,
+    });
+    const res = await GET(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(stubs.findManifestAsset).toHaveBeenCalledWith(h.actingDid);
+  });
+});
+
+describe('POST — app-context ownerDid resolution', () => {
+  beforeEach(() => {
+    h.authResult = { identity: {} };
+    h.appAuthResult = { error: 'no app auth', status: 401 };
+    h.registryAppRows = [];
+  });
+
+  it('publishes under the app owner DID when app-auth succeeds', async () => {
+    h.appAuthResult = { appAuth: { appDid: APP_DID } };
+    h.registryAppRows = [{ ownerDid: APP_OWNER_DID }];
+
+    const stubs = makeStubs({ activeScopes: ['test:read'] });
+    const { POST } = createConnectorScopeManifestRoute({
+      name: 'Test', validScopes: VALID_SCOPES, ...stubs,
+    });
+    const res = await POST(makeRequest({ body: { scopes: ['test:read'] } }));
+
+    expect(res.status).toBe(200);
+    expect(stubs.publish).toHaveBeenCalledWith(APP_OWNER_DID, ['test:read']);
   });
 });
