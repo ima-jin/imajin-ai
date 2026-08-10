@@ -135,12 +135,78 @@ describe('createConnectHandler', () => {
     expect((await res.json()).error).toMatch(/github_credential_pending/);
   });
 
-  it('lets any other error propagate (not silently swallowed)', async () => {
+  it('returns a logged 500 JSON error instead of letting an unrecognised error propagate uncaught (#1765)', async () => {
     const handler = createConnectHandler(
       async () => { throw new Error('boom'); },
       () => 'state123',
     );
-    await expect(handler(makeRequest('https://kernel.test/connect'))).rejects.toThrow('boom');
+    const res = (await handler(makeRequest('https://kernel.test/connect'))) as {
+      status: number;
+      json(): Promise<{ error: string }>;
+    };
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe('boom');
+  });
+
+  it('maps a missing-config error to 400 rather than an opaque 500 (#1765)', async () => {
+    const handler = createConnectHandler(
+      async () => { throw new Error('quickbooks_no_config: DID did:imajin:owner has not configured a quickbooks connection'); },
+      () => 'state123',
+    );
+    const res = (await handler(makeRequest('https://kernel.test/connect'))) as {
+      status: number;
+      json(): Promise<{ error: string }>;
+    };
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/quickbooks_no_config/);
+  });
+
+  // ── app-auth fallback (#1705, #1765) ────────────────────────────────────────
+
+  it('falls back to app-auth and redirects on success when there is no session', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'unauthorized', status: 401 });
+    requireAppAuthMock.mockResolvedValue({
+      appAuth: { appDid: 'did:imajin:agrifortress', userDid: 'did:imajin:ryan', scopes: [], attestationId: 'att' },
+    });
+    const buildAuthorizeUrl = vi.fn(async () => 'https://provider.test/authorize?x=1');
+    const handler = createConnectHandler(buildAuthorizeUrl, () => 'state123');
+
+    const res = (await handler(makeRequestWithHeaders('https://kernel.test/connect', { authorization: 'Bearer app-token' }))) as {
+      status: number;
+      headers: { location: string };
+    };
+
+    expect(res.status).toBe(307);
+    expect(res.headers.location).toBe('https://provider.test/authorize?x=1');
+    expect(buildAuthorizeUrl).toHaveBeenCalledWith('did:imajin:ryan', 'state123', 'did:imajin:agrifortress');
+  });
+
+  it('surfaces the app-auth error/status (not the session error) when both fail', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'unauthorized', status: 401 });
+    requireAppAuthMock.mockResolvedValue({ error: 'Invalid app token', status: 403 });
+    const handler = createConnectHandler(async () => 'https://provider.test/authorize', () => 'state123');
+
+    const res = (await handler(makeRequestWithHeaders('https://kernel.test/connect', { authorization: 'Bearer bad-token' }))) as {
+      status: number;
+      json(): Promise<{ error: string }>;
+    };
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe('Invalid app token');
+  });
+
+  it('requires a delegating user DID from app-auth', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'unauthorized', status: 401 });
+    requireAppAuthMock.mockResolvedValue({
+      appAuth: { appDid: 'did:imajin:agrifortress', userDid: '', scopes: [], attestationId: '' },
+    });
+    const buildAuthorizeUrl = vi.fn();
+    const handler = createConnectHandler(buildAuthorizeUrl, () => 'state123');
+
+    const res = (await handler(makeRequestWithHeaders('https://kernel.test/connect', { authorization: 'Bearer service-token' }))) as { status: number };
+
+    expect(res.status).toBe(400);
+    expect(buildAuthorizeUrl).not.toHaveBeenCalled();
   });
 
   // ── returnTo threading (#1529) ──────────────────────────────────────────────
