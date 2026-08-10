@@ -25,6 +25,7 @@ import { deleteFromVault, vaultFieldExists } from '@/src/lib/vault';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { sanitizeReturnTo } from '@/src/lib/kernel/oauth-return-to';
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
+import { getPlatformDid } from '@/src/lib/kernel/connector-platform-did';
 import {
   ConnectorCredentialPendingError,
   type BaseOAuthConfig,
@@ -50,13 +51,14 @@ const log = createLogger('kernel');
  * rejected — the connect still succeeds, it just lands on the default page.
  *
  * `resolveConfigDid` (#1704) is an optional seam for the split app-owned-config
- * model: when supplied, it runs against the raw request (before the session's
- * `requireAuth` result is known to it) and may resolve the app DID whose
- * sealed config owns the OAuth client credentials for this flow — e.g.
- * {@link resolveConfigDidFromAppAuth}. The resolved DID (if any) is signed
- * into `state` so the sessionless callback can recover it, and passed straight
- * through to `buildAuthorizeUrl`. Omit it (the default) for unchanged BYO-app
- * behaviour.
+ * model: when supplied, it runs against the raw request AND the resolved
+ * `ownerDid` (the session owner, or the app-auth delegating user) and may
+ * resolve the DID whose sealed config owns the OAuth client credentials for
+ * this flow — e.g. {@link resolveConfigDidFromAppAuth} (app-auth only) or
+ * {@link resolveConfigDidWithPlatformFallback} (app-auth, then a shared
+ * platform DID — #1775). The resolved DID (if any) is signed into `state` so
+ * the sessionless callback can recover it, and passed straight through to
+ * `buildAuthorizeUrl`. Omit it (the default) for unchanged BYO-app behaviour.
  *
  * On success this always returns a redirect (a `Location` header the caller
  * can read even under `fetch(..., { redirect: 'manual' })`). On failure it
@@ -69,7 +71,7 @@ const log = createLogger('kernel');
 export function createConnectHandler(
   buildAuthorizeUrl: (ownerDid: string, state: string, configDid?: string) => Promise<string>,
   signState: (ownerDid: string, returnTo?: string, appDid?: string) => string,
-  resolveConfigDid?: (request: NextRequest) => Promise<string | undefined>,
+  resolveConfigDid?: (request: NextRequest, ownerDid: string) => Promise<string | undefined>,
 ) {
   return async function GET(request: NextRequest) {
     // Try session auth first (direct browser navigation with kernel cookie).
@@ -100,7 +102,7 @@ export function createConnectHandler(
       configDid = appResult.appAuth.appDid;
     } else {
       ownerDid = resolveActingDid(auth.identity);
-      configDid = resolveConfigDid ? await resolveConfigDid(request) : undefined;
+      configDid = resolveConfigDid ? await resolveConfigDid(request, ownerDid) : undefined;
     }
 
     const { searchParams } = new URL(request.url);
@@ -207,6 +209,61 @@ export async function resolveConfigDidFromAppAuth(
   // downstream `${name}_no_config` error still names the app, not a DID the
   // caller never heard of.
   return appDid;
+}
+
+// ── Platform-DID config fallback (#1775) ─────────────────────────────────────
+
+/**
+ * `resolveConfigDid` for connectors that use a two-tier credential model
+ * (#1775): an administrator registers the provider's OAuth app ONCE — sealed
+ * to a shared platform identity — and every connecting user only ever ends up
+ * owning their own resulting tokens, never their own app registration.
+ *
+ * {@link resolveConfigDidFromAppAuth} only resolves a `configDid` when the
+ * request carries app-auth headers — a delegating third-party app's
+ * server-to-server call. A human clicking "Connect" directly in the kernel's
+ * own UI is a plain session request with no app-auth headers at all, so that
+ * resolver always returned `undefined` for it, leaving `buildAuthorizeUrl` to
+ * fall back to the session owner's own DID — which fails with
+ * `${name}_no_config` for every user except whoever happens to have sealed
+ * their own app config (e.g. `did:imajin:agrifortress` in QuickBooks' case).
+ *
+ * Precedence, most specific first:
+ *   1. App-auth-resolved configDid — unchanged #1704/#1770 behaviour.
+ *   2. The session owner's own sealed config — BYO-app, unchanged: a DID that
+ *      configured its own app keeps using it instead of the shared one.
+ *   3. `PLATFORM_DID` (env, {@link getPlatformDid}), when a config is sealed
+ *      there — the shared, administrator-configured app every other user
+ *      rides on.
+ *
+ * Returns `undefined` when none of the above resolves, which is exactly
+ * `resolveConfigDidFromAppAuth`'s "nothing to add" signal — `buildAuthorizeUrl`
+ * falls through to its own `${name}_no_config` on `ownerDid`, unchanged from
+ * before this existed.
+ */
+export async function resolveConfigDidWithPlatformFallback(
+  request: NextRequest,
+  ownerDid: string,
+  configPrefix: string,
+): Promise<string | undefined> {
+  const appAuthConfigDid = await resolveConfigDidFromAppAuth(request, configPrefix);
+  if (appAuthConfigDid !== undefined) return appAuthConfigDid;
+
+  if (await vaultFieldExists(`${configPrefix}:${ownerDid}`)) {
+    // BYO-app: the session owner already has their own config sealed.
+    return undefined;
+  }
+
+  const platformDid = getPlatformDid();
+  if (!platformDid || !(await vaultFieldExists(`${configPrefix}:${platformDid}`))) {
+    return undefined;
+  }
+
+  log.info(
+    { ownerDid, platformDid, configPrefix },
+    'connect: no config sealed at owner DID — using shared platform DID instead',
+  );
+  return platformDid;
 }
 
 // ── Callback ──────────────────────────────────────────────────────────────────

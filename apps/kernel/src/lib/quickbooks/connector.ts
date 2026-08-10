@@ -15,6 +15,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
 import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../kernel/connector-oauth';
+import { getPlatformDid } from '../kernel/connector-platform-did';
 import { upsertRealmIndex } from './realm-index';
 
 /** Connector app DID — the selectable "QuickBooks" connector identity. */
@@ -82,8 +83,46 @@ export const configField = qb.configField;
 export const vaultField = qb.tokenField;
 export const storeConfig = qb.storeConfig;
 export const loadConfig = qb.loadConfig;
-export const buildAuthorizeUrl = qb.buildAuthorizeUrl;
 export const resolveActiveGrant = qb.resolveActiveGrant;
+
+/**
+ * Build the Intuit authorize URL, translating a bare `quickbooks_no_config`
+ * into copy that matches the two-tier credential model (#1775).
+ *
+ * By the time this runs, the caller (`resolveConfigDidWithPlatformFallback`)
+ * has already tried the session owner's own config AND the shared
+ * `PLATFORM_DID` config, so a `quickbooks_no_config` reaching here means
+ * NEITHER exists. "DID <ownerDid> has not configured a quickbooks connection"
+ * is actively misleading in that case — an ordinary user was never supposed
+ * to configure anything, only an administrator was — and surfaced verbatim it
+ * reads as an unresolvable dead end ("Connection failed... contact your
+ * administrator" with no indication of what the administrator would even do).
+ */
+export async function buildAuthorizeUrl(
+  ownerDid: string,
+  state: string,
+  configDid?: string,
+): Promise<string> {
+  try {
+    return await qb.buildAuthorizeUrl(ownerDid, state, configDid);
+  } catch (err) {
+    throw translateNoConfigError(err);
+  }
+}
+
+function translateNoConfigError(err: unknown): Error {
+  if (err instanceof Error && err.message.startsWith('quickbooks_no_config')) {
+    const platformDid = getPlatformDid();
+    const adminAction = platformDid
+      ? `seal it to the platform DID (${platformDid}) via /quickbooks/api/configure`
+      : 'set PLATFORM_DID and seal the Intuit Client ID/Secret to it via /quickbooks/api/configure';
+    return new Error(
+      `quickbooks_no_config: QuickBooks is not connected yet. No QuickBooks app is configured — ` +
+      `an administrator needs to ${adminAction} before anyone can connect their account.`,
+    );
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
 
 /**
  * List every owner DID with an ACTIVE `channel_links` row for the QuickBooks

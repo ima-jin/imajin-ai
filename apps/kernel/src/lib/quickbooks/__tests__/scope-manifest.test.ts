@@ -28,11 +28,13 @@ vi.mock('../connector', () => ({
   vaultField: (did: string) => `quickbooks-oauth:${did}`,
 }));
 
-const { mockVaultExists, mockVaultStatus } = vi.hoisted(() => ({
+const { mockVaultExists, mockVaultStatus, mockGetPlatformDid } = vi.hoisted(() => ({
   mockVaultExists: vi.fn().mockResolvedValue(false),
   mockVaultStatus: vi.fn().mockResolvedValue('absent'),
+  mockGetPlatformDid: vi.fn().mockReturnValue(undefined),
 }));
 vi.mock('@/src/lib/vault', () => ({ vaultFieldExists: mockVaultExists, vaultFieldStatus: mockVaultStatus }));
+vi.mock('@/src/lib/kernel/connector-platform-did', () => ({ getPlatformDid: mockGetPlatformDid }));
 
 import {
   buildManifestContent,
@@ -121,14 +123,31 @@ describe('publishQuickBooksScopeManifest', () => {
 // -- Credential status --------------------------------------------------------
 
 describe('quickbooksConfigSealed', () => {
-  it('returns false when config not sealed', async () => {
+  it('returns false when config not sealed and no platform DID is configured', async () => {
+    mockGetPlatformDid.mockReturnValue(undefined);
     mockVaultExists.mockResolvedValueOnce(false);
     expect(await quickbooksConfigSealed('did:owner')).toBe(false);
   });
 
-  it('returns true when config is sealed', async () => {
+  it('returns true when the owner\'s own config is sealed', async () => {
     mockVaultExists.mockResolvedValueOnce(true);
     expect(await quickbooksConfigSealed('did:owner')).toBe(true);
+  });
+
+  // ── Platform fallback (#1775) ──────────────────────────────────────────────
+
+  it('returns true when the owner has no config but the shared platform DID does', async () => {
+    mockGetPlatformDid.mockReturnValue('did:imajin:platform');
+    mockVaultExists.mockImplementation(async (field: string) => field === 'quickbooks-config:did:imajin:platform');
+
+    expect(await quickbooksConfigSealed('did:owner')).toBe(true);
+  });
+
+  it('returns false when neither the owner nor the platform DID has config sealed', async () => {
+    mockGetPlatformDid.mockReturnValue('did:imajin:platform');
+    mockVaultExists.mockResolvedValue(false);
+
+    expect(await quickbooksConfigSealed('did:owner')).toBe(false);
   });
 });
 
