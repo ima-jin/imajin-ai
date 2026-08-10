@@ -19,6 +19,29 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
+// Mock the DB lookup for app registrant DID
+const { mockDbSelect } = vi.hoisted(() => {
+  const mockDbSelect = vi.fn();
+  return { mockDbSelect };
+});
+
+vi.mock('drizzle-orm', () => ({
+  eq: (col: unknown, val: unknown) => ({ col, val }),
+}));
+
+vi.mock('@/src/db', () => ({
+  db: {
+    select: (...args: unknown[]) => ({
+      from: () => ({
+        where: () => ({
+          limit: () => mockDbSelect(),
+        }),
+      }),
+    }),
+  },
+  registryApps: { appDid: 'app_did', ownerDid: 'owner_did' },
+}));
+
 // ─── Subject ────────────────────────────────────────────────────────────────
 
 import { resolveBrain, listBrainConnectors, NoBrainSealedError } from '../brain';
@@ -37,6 +60,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   mockLoadGemini.mockResolvedValue(undefined);
   mockLoadAnthropic.mockResolvedValue(undefined);
+  // Default: no app registrant found (no parent org DID)
+  mockDbSelect.mockResolvedValue([]);
 });
 
 // ─── Resolution order ───────────────────────────────────────────────────────
@@ -173,6 +198,52 @@ describe('resolveBrain — owner then app/org DID', () => {
 });
 
 // ─── The owner's sealed model choice ────────────────────────────────────────
+
+describe('resolveBrain — app registrant org DID walk', () => {
+  const ORG = 'did:imajin:agrifortress-org';
+
+  it('walks up to the app registrant org DID when owner and app have no key', async () => {
+    // Gemini key sealed on the org DID (3rd hop), not user or app
+    mockLoadGemini.mockImplementation(async (did: string) =>
+      did === ORG ? { apiKey: 'AIzaSy-ORG-KEY' } : undefined,
+    );
+    mockDbSelect.mockResolvedValueOnce([{ ownerDid: ORG }]);
+
+    const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP });
+
+    expect(brain.credentialDid).toBe(ORG);
+    expect(brain.apiKey).toBe('AIzaSy-ORG-KEY');
+    expect(brain.connector).toBe('gemini');
+  });
+
+  it('owner key still wins over org key', async () => {
+    mockLoadGemini.mockImplementation(async (did: string) =>
+      did === OWNER ? { apiKey: GEMINI_KEY } : did === ORG ? { apiKey: 'AIzaSy-ORG-KEY' } : undefined,
+    );
+    mockDbSelect.mockResolvedValueOnce([{ ownerDid: ORG }]);
+
+    const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP });
+
+    expect(brain.credentialDid).toBe(OWNER);
+    expect(brain.apiKey).toBe(GEMINI_KEY);
+  });
+
+  it('dedupes the registrant DID when it equals the owner', async () => {
+    mockLoadGemini.mockResolvedValue(undefined);
+    mockDbSelect.mockResolvedValueOnce([{ ownerDid: OWNER }]);
+
+    await resolveBrain({ ownerDid: OWNER, appDid: APP }).catch(() => undefined);
+
+    // Gemini should only be probed twice (owner + app), not three times
+    expect(mockLoadGemini).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips the registrant hop gracefully when the app is not in the registry', async () => {
+    mockDbSelect.mockResolvedValueOnce([]);
+
+    await expect(resolveBrain({ ownerDid: OWNER, appDid: APP })).rejects.toThrow(NoBrainSealedError);
+  });
+});
 
 describe('resolveBrain — sealing a key is choosing a model', () => {
   it('uses the sealed modelId over the connector default', async () => {

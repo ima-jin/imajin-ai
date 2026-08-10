@@ -15,8 +15,9 @@
  * actionable error instead.
  *
  * Resolution walks two axes, DID-major:
- *   1. WHOSE card — the acting owner DID, then an invoking app/org DID that may
- *      subsidise the compute (#1624). Owner-first is deliberate: a human's own
+ *   1. WHOSE card — the acting owner DID, then the invoking app DID, then the
+ *      app's registrant org DID (the identity that registered the app and where
+ *      org-level keys are sealed). Owner-first is deliberate: a human's own
  *      brain outranks the app's, and an app can never quietly displace it.
  *   2. WHICH provider — that DID's sealed connectors, in BRAIN_CONNECTORS order.
  *
@@ -29,6 +30,8 @@
  */
 import { createLogger } from '@imajin/logger';
 import type { ProviderName } from '@imajin/llm';
+import { eq } from 'drizzle-orm';
+import { db, registryApps } from '@/src/db';
 import { loadGeminiCredentials } from '@/src/lib/gemini/connector';
 import { loadAnthropicCredentials } from '@/src/lib/anthropic/connector';
 
@@ -198,6 +201,27 @@ export function listBrainConnectors(): readonly BrainConnectorId[] {
 }
 
 /**
+ * Look up the DID that registered an app — the org/business/person whose
+ * profile owns the app and where org-level connector keys are sealed.
+ *
+ * Returns undefined when the app is not found (graceful — the walk just skips
+ * this hop rather than failing the entire resolution).
+ */
+async function lookupAppRegistrantDid(appDid: string): Promise<string | undefined> {
+  try {
+    const [row] = await db
+      .select({ ownerDid: registryApps.ownerDid })
+      .from(registryApps)
+      .where(eq(registryApps.appDid, appDid))
+      .limit(1);
+    return row?.ownerDid;
+  } catch (err) {
+    log.warn({ appDid, err: String(err) }, 'app registrant lookup failed — skipping');
+    return undefined;
+  }
+}
+
+/**
  * Candidate DIDs in resolution order: owner first, then the app/org.
  *
  * Deduped, because an app invoking on its own behalf would otherwise have its
@@ -240,6 +264,18 @@ export async function resolveBrain(
   context: string | BrainCredentialContext,
 ): Promise<ResolvedBrain> {
   const dids = credentialDids(context);
+
+  // Walk up to the app's registrant org DID — the identity where org-level
+  // keys (e.g. Gemini) are sealed. The UI seals keys to org/business/person
+  // identities, not to app DIDs directly; this hop bridges the gap.
+  const ctx = typeof context === 'string' ? { ownerDid: context } : context;
+  if (ctx.appDid) {
+    const registrantDid = await lookupAppRegistrantDid(ctx.appDid);
+    if (registrantDid && !dids.includes(registrantDid)) {
+      dids.push(registrantDid);
+    }
+  }
+
   const failures: BrainConnectorFailure[] = [];
 
   for (const did of dids) {
