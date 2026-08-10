@@ -157,6 +157,17 @@ export interface ConnectorTokenPaste {
    * revoked.
    */
   revokeApiKey(ownerDid: string): Promise<boolean>;
+  /**
+   * Update just the sealed model id for this DID, leaving the API key and
+   * base URL untouched (#1769).
+   *
+   * The model-picker route needs this: re-sealing through `sealApiKey` would
+   * require re-pasting the key just to change which model runs, which is
+   * exactly the friction a dynamic model picker exists to remove. `modelId`
+   * is a v1 node-sealed field — see the class-note above — so this is a plain
+   * write, no delegation-grant custody involved.
+   */
+  setModelId(ownerDid: string, modelId: string): Promise<void>;
 }
 
 export function createConnectorTokenPaste(
@@ -350,6 +361,10 @@ export function createConnectorTokenPaste(
     return (await vaultFieldStatus(keyField(ownerDid))) === 'ready';
   }
 
+  async function setModelId(ownerDid: string, modelId: string): Promise<void> {
+    await sealAndStore(modelIdField(ownerDid), modelId);
+  }
+
   return {
     vaultField: keyField,
     sealApiKey,
@@ -360,5 +375,6 @@ export function createConnectorTokenPaste(
     keyPending: async (ownerDid: string) =>
       (await vaultFieldStatus(keyField(ownerDid))) === 'pending-grant',
     revokeApiKey,
+    setModelId,
   };
 }

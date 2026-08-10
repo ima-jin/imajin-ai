@@ -21,9 +21,10 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { and, eq } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
-import { deleteFromVault } from '@/src/lib/vault';
+import { deleteFromVault, vaultFieldExists } from '@/src/lib/vault';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { sanitizeReturnTo } from '@/src/lib/kernel/oauth-return-to';
+import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 import {
   ConnectorCredentialPendingError,
   type BaseOAuthConfig,
@@ -163,11 +164,49 @@ function hasAppAuthHeaders(request: NextRequest): boolean {
  * session-authenticated human clicking "Connect" must never be blocked by a
  * malformed or expired app token that happened to be present alongside their
  * session cookie.
+ *
+ * `configPrefix` (#1770), when supplied, is the connector's vault config-field
+ * prefix (e.g. `'quickbooks-config'`). With it, this walks to the app's
+ * registrant DID — `registry_apps.ownerDid`, the org/person who registered the
+ * app — when nothing is sealed at the app DID directly. This mirrors the hop
+ * `resolveBrain` (#1621) already walks for inference credentials: the app DID
+ * is a delegate, not necessarily where the OAuth client config was actually
+ * sealed. Omitting `configPrefix` (the default) skips the walk entirely and
+ * returns the app DID as before — callers with no config-existence check to
+ * make (e.g. none yet besides QuickBooks) are unaffected.
+ *
+ * The walk only needs to run here, at connect-time: the resolved DID is signed
+ * into `state` by the caller (via `signState`), so the sessionless callback
+ * recovers it directly instead of re-walking.
  */
-export async function resolveConfigDidFromAppAuth(request: NextRequest): Promise<string | undefined> {
+export async function resolveConfigDidFromAppAuth(
+  request: NextRequest,
+  configPrefix?: string,
+): Promise<string | undefined> {
   if (!hasAppAuthHeaders(request)) return undefined;
   const result = await requireAppAuth(request);
-  return 'appAuth' in result ? result.appAuth.appDid : undefined;
+  if (!('appAuth' in result)) return undefined;
+  const appDid = result.appAuth.appDid;
+  if (!appDid) return undefined;
+  if (!configPrefix) return appDid;
+
+  if (await vaultFieldExists(`${configPrefix}:${appDid}`)) {
+    return appDid;
+  }
+
+  const registrantDid = await lookupAppRegistrantDid(appDid);
+  if (registrantDid && (await vaultFieldExists(`${configPrefix}:${registrantDid}`))) {
+    log.info(
+      { appDid, registrantDid, configPrefix },
+      'connect: no config sealed at app DID — using registrant DID instead',
+    );
+    return registrantDid;
+  }
+
+  // Nothing sealed at either candidate. Fall back to the app DID so the
+  // downstream `${name}_no_config` error still names the app, not a DID the
+  // caller never heard of.
+  return appDid;
 }
 
 // ── Callback ──────────────────────────────────────────────────────────────────

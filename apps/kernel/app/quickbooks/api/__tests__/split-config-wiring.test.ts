@@ -35,8 +35,12 @@ vi.mock('drizzle-orm', () => ({
   eq: (col: unknown, val: unknown) => ({ col, val }),
 }));
 
-vi.mock('@/src/db', () => ({ db: {}, channelLinks: {} }));
-vi.mock('@/src/lib/vault', () => ({ deleteFromVault: vi.fn() }));
+vi.mock('@/src/db', () => ({ db: {}, channelLinks: {}, registryApps: {} }));
+// #1770: the connect route now checks `vaultFieldExists` before it walks to a
+// registrant DID. Defaulting to `true` here pins these tests to the
+// "config already sealed at the app DID" case — the registrant walk itself is
+// covered separately in `connector-oauth-registrant-walk.test.ts`.
+vi.mock('@/src/lib/vault', () => ({ deleteFromVault: vi.fn(), vaultFieldExists: vi.fn(async () => true) }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
 
 vi.mock('@/src/lib/quickbooks/connector', () => ({

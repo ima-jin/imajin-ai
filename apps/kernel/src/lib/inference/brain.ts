@@ -30,10 +30,9 @@
  */
 import { createLogger } from '@imajin/logger';
 import type { ProviderName } from '@imajin/llm';
-import { eq } from 'drizzle-orm';
-import { db, registryApps } from '@/src/db';
 import { loadGeminiCredentials } from '@/src/lib/gemini/connector';
 import { loadAnthropicCredentials } from '@/src/lib/anthropic/connector';
+import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 
 const log = createLogger('kernel:inference:brain');
 
@@ -95,8 +94,12 @@ interface BrainConnector {
   scope: string;
   /** Route the owner pastes their key into. */
   tokenRoute: string;
-  /** Model used when the owner sealed no explicit `modelId`. */
-  defaultModelId: string;
+  /**
+   * Model used when the owner sealed no explicit `modelId`. Omitted (#1769)
+   * when the provider retires/renames models often enough that a hardcoded
+   * fallback goes stale silently — see {@link NoModelSelectedError}.
+   */
+  defaultModelId?: string;
   /** Endpoint used when the owner sealed no explicit `baseUrl`. */
   defaultBaseUrl?: string;
   load: (ownerDid: string) => Promise<SealedCredentials | undefined>;
@@ -118,16 +121,18 @@ const GEMINI_OPENAI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta
 const BRAIN_CONNECTORS: readonly BrainConnector[] = [
   {
     id: 'gemini',
-    name: 'Google Gemini',
+    name: 'Gemini',
     provider: 'openai',
     scope: 'gemini:infer',
     tokenRoute: '/gemini/api/token',
-    // gemini-2.0-flash was shut down 2026-06-01 (Google's Gemini deprecation
-    // schedule). A decommissioned model can come back as a 429 rather than a
-    // clean 404/410, which is indistinguishable from a real rate limit unless
-    // you already know the model is dead — see #1764. gemini-3.6-flash is the
-    // current stable GA replacement.
-    defaultModelId: 'gemini-3.6-flash',
+    // #1769: no hardcoded default. gemini-2.0-flash was shut down 2026-06-01
+    // (Google's Gemini deprecation schedule) while still hardcoded here, and a
+    // decommissioned model can come back as a 429 rather than a clean 404/410
+    // — indistinguishable from a real rate limit unless you already know the
+    // model is dead (#1764). Rather than swap in the next string that will go
+    // stale the same way, the owner picks a live model from GET
+    // /gemini/api/models and it is sealed as `modelId` — see
+    // `NoModelSelectedError` for the fail-closed path when none is chosen yet.
     defaultBaseUrl: GEMINI_OPENAI_BASE_URL,
     load: loadGeminiCredentials,
   },
@@ -206,34 +211,21 @@ export function listBrainConnectors(): readonly BrainConnectorId[] {
 }
 
 /**
- * Look up the DID that registered an app — the org/business/person whose
- * profile owns the app and where org-level connector keys are sealed.
+ * Thrown when a connector's credential resolves (grant + key both present)
+ * but no model is selected — neither a sealed `modelId` nor a connector
+ * `defaultModelId` (#1769).
  *
- * Returns undefined when the app is not found (graceful — the walk just skips
- * this hop rather than failing the entire resolution).
+ * Distinct from `NoBrainSealedError`: the DID in question IS connected, so
+ * falling through to the next connector/DID would be wrong — the fix is to
+ * pick a model on this connector's card, not to try a different credential.
  */
-async function lookupAppRegistrantDid(appDid: string): Promise<string | undefined> {
-  try {
-    const [row] = await db
-      .select({ ownerDid: registryApps.ownerDid })
-      .from(registryApps)
-      .where(eq(registryApps.appDid, appDid))
-      .limit(1);
-    // Diagnostic for #1762: an app whose registry row's `ownerDid` is the
-    // developer who registered it, rather than the org DID that subsidizes
-    // compute, will silently miss the org's sealed connector card here — this
-    // is the exact signal to look for when a brain fails to resolve for an
-    // app-subsidized call. `found: false` means no registry.apps row at all;
-    // `found: true` with a `registrantDid` that is neither the expected org
-    // DID nor null means the row exists but points somewhere unexpected.
-    log.info(
-      { appDid, registrantDid: row?.ownerDid ?? null, found: row !== undefined },
-      'app registrant lookup result',
+export class NoModelSelectedError extends Error {
+  constructor(connectorName: string, tokenRoute: string) {
+    super(
+      `${connectorName} is connected but no model is selected — choose a model on the ` +
+      `${connectorName} connector card (${tokenRoute}).`,
     );
-    return row?.ownerDid;
-  } catch (err) {
-    log.warn({ appDid, err: String(err) }, 'app registrant lookup failed — skipping');
-    return undefined;
+    this.name = 'NoModelSelectedError';
   }
 }
 
@@ -255,6 +247,35 @@ function credentialDids(context: string | BrainCredentialContext): string[] {
     dids.push(did);
   }
   return dids;
+}
+
+/**
+ * Build the {@link ResolvedBrain} for a connector that just resolved usable
+ * credentials — the sealed endpoint/model win over the connector's defaults.
+ *
+ * Throws `NoModelSelectedError` (#1769) when neither a sealed `modelId` nor a
+ * connector `defaultModelId` is available: this DID IS connected (grant + key
+ * both resolved), so a resolver must not silently fall through to the next
+ * DID/connector over a fixable "pick a model" problem.
+ */
+function buildResolvedBrain(
+  connector: BrainConnector,
+  did: string,
+  creds: SealedCredentials,
+): ResolvedBrain {
+  const baseURL = creds.baseUrl ?? connector.defaultBaseUrl;
+  const modelId = creds.modelId ?? connector.defaultModelId;
+  if (!modelId) {
+    throw new NoModelSelectedError(connector.name, connector.tokenRoute);
+  }
+  return {
+    connector: connector.id,
+    credentialDid: did,
+    provider: connector.provider,
+    modelId,
+    apiKey: creds.apiKey,
+    ...(baseURL === undefined ? {} : { baseURL }),
+  };
 }
 
 /**
@@ -327,19 +348,10 @@ export async function resolveBrain(
         continue;
       }
 
-      // The sealed endpoint wins; the connector default covers the common case
-      // (Gemini's OpenAI-compatible URL). Anthropic has no default, so it stays
-      // absent and the SDK uses its own.
-      const baseURL = creds.baseUrl ?? connector.defaultBaseUrl;
-
-      const brain: ResolvedBrain = {
-        connector: connector.id,
-        credentialDid: did,
-        provider: connector.provider,
-        modelId: creds.modelId ?? connector.defaultModelId,
-        apiKey: creds.apiKey,
-        ...(baseURL === undefined ? {} : { baseURL }),
-      };
+      // The sealed endpoint/model win over the connector defaults; a missing
+      // model with no default throws NoModelSelectedError (#1769) rather than
+      // continuing the walk — see buildResolvedBrain.
+      const brain = buildResolvedBrain(connector, did, creds);
 
       log.info(
         {
