@@ -90,13 +90,19 @@ vi.mock('@/src/lib/inference/brain', () => {
       this.name = 'NoBrainSealedError';
     }
   }
-  return { NoBrainSealedError };
+  class NoModelSelectedError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'NoModelSelectedError';
+    }
+  }
+  return { NoBrainSealedError, NoModelSelectedError };
 });
 
-// ─── Subject ──────────────────────────────────────────────────────────────────
+// ─── Subject ─────────────────────────────────────────────────────
 
 import { POST, OPTIONS } from '../route';
-import { NoBrainSealedError } from '@/src/lib/inference/brain';
+import { NoBrainSealedError, NoModelSelectedError } from '@/src/lib/inference/brain';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { RetryError } from 'ai';
 
@@ -382,6 +388,28 @@ describe('POST /api/inference/capture — pipeline outcomes', () => {
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual(
       expect.objectContaining({ error: 'rate_limited', message: expect.stringContaining('rate limit') }),
+    );
+  });
+
+  /**
+   * #1773: a connector can be fully connected (grant + key both resolved)
+   * with no model chosen yet — distinct from `NoBrainSealedError` (nothing
+   * connected at all). This used to fall through to the generic 500
+   * `pipeline_failed` branch instead of naming the fixable "pick a model"
+   * state.
+   */
+  it('returns 422 with a no_model_selected code when a connected brain has no model selected', async () => {
+    mockInfer.mockRejectedValueOnce(
+      new NoModelSelectedError(
+        'Gemini is connected but no model is selected — choose a model on the Gemini connector card (/gemini/api/token).',
+      ),
+    );
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({ error: 'no_model_selected', message: expect.stringContaining('no model is selected') }),
     );
   });
 

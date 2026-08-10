@@ -113,6 +113,26 @@ export interface ConnectorTokenPaste {
    */
   loadCredentials(ownerDid: string, scope: string): Promise<TokenPasteCredentials | undefined>;
   /**
+   * Resolve the sealed key (+ optional baseUrl/modelId) for this DID WITHOUT
+   * requiring an active `channel_links` grant for any scope (#1773).
+   *
+   * `loadCredentials`'s active-grant gate answers "has the owner consented to
+   * spend this key on inference?" — the right question when the credential is
+   * about to be used to call the provider on someone's behalf. A model picker
+   * asks a different question: "what can the owner's own key do?", asked by
+   * the owner themself while still configuring the card, before that consent
+   * step even exists yet. Gating it behind the same grant created a
+   * chicken-and-egg lock: the picker rendered immediately after the key was
+   * sealed, before the owner had reached the "grant scopes" step, so every
+   * model-list call failed as `${id}_no_key` even though the key WAS sealed.
+   *
+   * Still fails closed on vault custody: a v2 key still pending the owner
+   * agent's Tier 1 grant (`VaultDelegationError`) is reported as `undefined`,
+   * same as `loadCredentials` — this only skips the channel_links scope check,
+   * never the vault's own delegation-grant custody.
+   */
+  loadSealedCredentials(ownerDid: string): Promise<TokenPasteCredentials | undefined>;
+  /**
    * Fail-closed gate returning the key.
    *
    * Throws `${id}_no_grant`, `${id}_no_key`, or `${id}_credential_pending`
@@ -238,15 +258,16 @@ export function createConnectorTokenPaste(
     });
   }
 
-  async function loadCredentials(
-    ownerDid: string,
-    scope: string,
-  ): Promise<TokenPasteCredentials | undefined> {
-    const hasGrant = await resolveActiveGrant(ownerDid, scope);
-    if (!hasGrant) {
-      return undefined;
-    }
-
+  /**
+   * Read the sealed key + optional baseUrl/modelId for this DID, with no
+   * `channel_links` grant check at all — only the vault-level custody gate
+   * (a v2 key pending Tier 1 approval reads as `undefined`, never throws).
+   *
+   * Shared by `loadCredentials` (which checks the grant itself, first) and
+   * `loadSealedCredentials` (which deliberately skips it, #1773) so the two
+   * do not carry two copies of the same key/baseUrl/modelId assembly.
+   */
+  async function readSealedKeyAndConfig(ownerDid: string): Promise<TokenPasteCredentials | undefined> {
     // A v2 key with no active grant throws VaultDelegationError. That is a
     // legitimate, expected state under Tier 1 — sealed, awaiting owner approval
     // — and this function is documented to answer `undefined` for "no usable
@@ -280,6 +301,22 @@ export function createConnectorTokenPaste(
       ...(baseUrl !== undefined && { baseUrl }),
       ...(modelId !== undefined && { modelId }),
     };
+  }
+
+  async function loadCredentials(
+    ownerDid: string,
+    scope: string,
+  ): Promise<TokenPasteCredentials | undefined> {
+    const hasGrant = await resolveActiveGrant(ownerDid, scope);
+    if (!hasGrant) {
+      return undefined;
+    }
+
+    return readSealedKeyAndConfig(ownerDid);
+  }
+
+  async function loadSealedCredentials(ownerDid: string): Promise<TokenPasteCredentials | undefined> {
+    return readSealedKeyAndConfig(ownerDid);
   }
 
   async function requireGrantAndKey(ownerDid: string, scope: string): Promise<string> {
@@ -370,6 +407,7 @@ export function createConnectorTokenPaste(
     sealApiKey,
     resolveActiveGrant,
     loadCredentials,
+    loadSealedCredentials,
     requireGrantAndKey,
     keySealed,
     keyPending: async (ownerDid: string) =>

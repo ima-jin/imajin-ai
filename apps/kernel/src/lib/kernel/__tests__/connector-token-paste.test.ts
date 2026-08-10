@@ -307,6 +307,57 @@ describe('re-sealing after a revoke (#1724 item 4)', () => {
   });
 });
 
+// ── loadSealedCredentials (#1773) ───────────────────────────────────────────
+//
+// The Gemini model picker's GET /gemini/api/models used to read the key
+// through `loadCredentials`, which gates on an active `${connector}:infer`
+// channel_links grant — a consent step the owner reaches AFTER sealing the
+// key, in the UI flow. That made the picker report "no key sealed" right
+// after the owner sealed one, purely because the grant did not exist yet.
+// `loadSealedCredentials` reads the same vault fields with no grant check.
+
+describe('loadSealedCredentials', () => {
+  it('is undefined before anything is sealed', async () => {
+    expect(await connector.loadSealedCredentials(OWNER_DID)).toBeUndefined();
+  });
+
+  it('resolves the sealed key with no active channel_links grant at all (#1773)', async () => {
+    await connector.sealApiKey(OWNER_DID, 'sk-test-key');
+
+    // No channel_links row seeded for this DID/connector — loadCredentials
+    // would report undefined here; loadSealedCredentials must not.
+    const creds = await connector.loadSealedCredentials(OWNER_DID);
+
+    expect(creds?.apiKey).toBe('sk-test-key');
+  });
+
+  it('carries a sealed baseUrl/modelId alongside the key', async () => {
+    await connector.sealApiKey(OWNER_DID, 'sk-test-key', 'https://example.test', 'gemini-3.6-flash');
+
+    const creds = await connector.loadSealedCredentials(OWNER_DID);
+
+    expect(creds).toEqual({
+      apiKey: 'sk-test-key',
+      baseUrl: 'https://example.test',
+      modelId: 'gemini-3.6-flash',
+    });
+  });
+
+  it('does not leak an unrelated DID\'s sealed key', async () => {
+    const otherDid = 'did:imajin:connector-token-paste-other';
+    await connector.sealApiKey(otherDid, 'sk-other-key');
+
+    expect(await connector.loadSealedCredentials(OWNER_DID)).toBeUndefined();
+  });
+
+  it('is undefined once the key\'s delegation grant is revoked, same as loadCredentials', async () => {
+    await connector.sealApiKey(OWNER_DID, 'sk-test-key');
+    await connector.revokeApiKey(OWNER_DID);
+
+    expect(await connector.loadSealedCredentials(OWNER_DID)).toBeUndefined();
+  });
+});
+
 // ── setModelId (#1769) ───────────────────────────────────────────────
 //
 // The Gemini model picker (GET/PUT /gemini/api/models) needs to update just

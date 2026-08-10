@@ -89,3 +89,18 @@ export type GeminiCredentials = TokenPasteCredentials;
 export function loadGeminiCredentials(ownerDid: string): Promise<GeminiCredentials | undefined> {
   return gemini.loadCredentials(ownerDid, GEMINI_INFER_SCOPE);
 }
+
+/**
+ * Resolve the sealed Gemini key (+ optional baseUrl/modelId) for a DID WITHOUT
+ * requiring an active `gemini:infer` grant (#1773).
+ *
+ * For the model picker (`GET`/`PUT` `/gemini/api/models`) only: listing which
+ * models the owner's own key can reach, and choosing one, is the owner
+ * configuring their own card, not spending the credential on inference on
+ * anyone's behalf — that still goes through `loadGeminiCredentials`, which
+ * keeps the `gemini:infer` grant check. Using this for anything that actually
+ * calls the model to generate content would bypass that consent gate.
+ */
+export function loadGeminiSealedCredentials(ownerDid: string): Promise<GeminiCredentials | undefined> {
+  return gemini.loadSealedCredentials(ownerDid);
+}
