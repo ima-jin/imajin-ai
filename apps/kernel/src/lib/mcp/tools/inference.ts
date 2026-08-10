@@ -99,7 +99,13 @@ const inferenceCaptureTool: McpTool = {
       inferCtx.transcript = text;
     }
 
-    const candidates = await infer(inferCtx, vocab, ctx.did);
+    // Whose sealed card may supply the model (#1624): the owner's own first,
+    // then the invoking app/org DID (and, transitively inside resolveBrain,
+    // the app's registrant org DID, #1762). Passing a bare `ctx.did` here
+    // silently dropped `ctx.appDid` and made the app/org-DID walk unreachable
+    // for every MCP-driven capture, even though McpToolContext always carries
+    // the authenticated app DID.
+    const candidates = await infer(inferCtx, vocab, { ownerDid: ctx.did, appDid: ctx.appDid });
     const topIntent = candidates[0];
     if (!topIntent) {
       return json({ sessionId, assetId: resolvedAssetId, status: 'failed', error: 'No candidates inferred' });
