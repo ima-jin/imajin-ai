@@ -44,7 +44,7 @@ vi.mock('@/src/db', () => ({
 
 // ─── Subject ────────────────────────────────────────────────────────────────
 
-import { resolveBrain, listBrainConnectors, NoBrainSealedError } from '../brain';
+import { resolveBrain, listBrainConnectors, NoBrainSealedError, NoModelSelectedError } from '../brain';
 
 const OWNER = 'did:imajin:farmer';
 const APP = 'did:imajin:agrifortress';
@@ -68,7 +68,7 @@ beforeEach(() => {
 
 describe('resolveBrain — connection-first resolution (#1621)', () => {
   it('resolves the sealed Gemini connection as an OpenAI-compatible brain', async () => {
-    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY, modelId: 'gemini-3.6-flash' });
 
     const brain = await resolveBrain(OWNER);
 
@@ -100,7 +100,7 @@ describe('resolveBrain — connection-first resolution (#1621)', () => {
   });
 
   it('prefers the first sealed connector and does not consult later ones', async () => {
-    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY, modelId: 'gemini-3.6-flash' });
     mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
 
     const brain = await resolveBrain(OWNER);
@@ -110,10 +110,10 @@ describe('resolveBrain — connection-first resolution (#1621)', () => {
   });
 
   it('resolves per-DID for the acting identity, not a shared credential', async () => {
-    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY, modelId: 'gemini-3.6-flash' });
     await resolveBrain('did:imajin:alice');
 
-    mockLoadGemini.mockResolvedValueOnce({ apiKey: 'other-key' });
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: 'other-key', modelId: 'gemini-3.6-flash' });
     await resolveBrain('did:imajin:bob');
 
     expect(mockLoadGemini).toHaveBeenNthCalledWith(1, 'did:imajin:alice');
@@ -130,7 +130,7 @@ describe('resolveBrain — owner then app/org DID', () => {
    * a user chose. Only if the owner has sealed nothing does the app subsidise.
    */
   it('prefers the owner\'s own card over the app\'s', async () => {
-    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY, modelId: 'gemini-3.6-flash' });
 
     const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP });
 
@@ -143,7 +143,7 @@ describe('resolveBrain — owner then app/org DID', () => {
   it('falls back to the app/org card when the owner has sealed nothing', async () => {
     mockLoadGemini
       .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce({ apiKey: APP_KEY, baseUrl: 'https://app.example/openai' });
+      .mockResolvedValueOnce({ apiKey: APP_KEY, baseUrl: 'https://app.example/openai', modelId: 'gemini-3.6-flash' });
 
     const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP });
 
@@ -179,7 +179,7 @@ describe('resolveBrain — owner then app/org DID', () => {
   });
 
   it('treats a bare string as the owner DID, with no app subsidy', async () => {
-    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY, modelId: 'gemini-3.6-flash' });
 
     const brain = await resolveBrain(OWNER);
 
@@ -188,7 +188,7 @@ describe('resolveBrain — owner then app/org DID', () => {
   });
 
   it('resolves from the app alone when no owner DID is supplied', async () => {
-    mockLoadGemini.mockResolvedValueOnce({ apiKey: APP_KEY });
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: APP_KEY, modelId: 'gemini-3.6-flash' });
 
     const brain = await resolveBrain({ appDid: APP });
 
@@ -197,7 +197,57 @@ describe('resolveBrain — owner then app/org DID', () => {
   });
 });
 
-// ─── The owner's sealed model choice ────────────────────────────────────────
+// ─── Gemini has no hardcoded default model (#1769) ────────────────────
+
+describe('resolveBrain — fails closed when a connected connector has no model selected (#1769)', () => {
+  /**
+   * Gemini deliberately carries no `defaultModelId` (unlike Anthropic): Google
+   * retires/renames model ids often enough that a hardcoded fallback goes stale
+   * silently — gemini-2.0-flash was shut down while still hardcoded (#1764).
+   * The owner must pick a live model from GET /gemini/api/models.
+   */
+  it('throws NoModelSelectedError when the sealed Gemini key has no modelId', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+
+    await expect(resolveBrain(OWNER)).rejects.toBeInstanceOf(NoModelSelectedError);
+  });
+
+  it('names the connector and its token route in the error, without the key', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoModelSelectedError);
+
+    expect(err.message).toContain('Gemini');
+    expect(err.message).toContain('/gemini/api/token');
+    expect(err.message).not.toContain(GEMINI_KEY);
+  });
+
+  it('does not fall through to a healthy Anthropic key — the Gemini DID IS connected', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+
+    await expect(resolveBrain(OWNER)).rejects.toBeInstanceOf(NoModelSelectedError);
+    expect(mockLoadAnthropic).not.toHaveBeenCalled();
+  });
+
+  it('resolves fine once a modelId is sealed alongside the key', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY, modelId: 'gemini-3.6-flash' });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain.modelId).toBe('gemini-3.6-flash');
+  });
+
+  it('never blocks Anthropic, which still carries a defaultModelId', async () => {
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain.modelId).toBe('claude-sonnet-4-20250514');
+  });
+});
+
+// ─── The owner's sealed model choice ───────────────────────────────
 
 describe('resolveBrain — app registrant org DID walk', () => {
   const ORG = 'did:imajin:agrifortress-org';
@@ -205,7 +255,7 @@ describe('resolveBrain — app registrant org DID walk', () => {
   it('walks up to the app registrant org DID when owner and app have no key', async () => {
     // Gemini key sealed on the org DID (3rd hop), not user or app
     mockLoadGemini.mockImplementation(async (did: string) =>
-      did === ORG ? { apiKey: 'AIzaSy-ORG-KEY' } : undefined,
+      did === ORG ? { apiKey: 'AIzaSy-ORG-KEY', modelId: 'gemini-3.6-flash' } : undefined,
     );
     mockDbSelect.mockResolvedValueOnce([{ ownerDid: ORG }]);
 
@@ -218,7 +268,9 @@ describe('resolveBrain — app registrant org DID walk', () => {
 
   it('owner key still wins over org key', async () => {
     mockLoadGemini.mockImplementation(async (did: string) =>
-      did === OWNER ? { apiKey: GEMINI_KEY } : did === ORG ? { apiKey: 'AIzaSy-ORG-KEY' } : undefined,
+      did === OWNER
+        ? { apiKey: GEMINI_KEY, modelId: 'gemini-3.6-flash' }
+        : did === ORG ? { apiKey: 'AIzaSy-ORG-KEY', modelId: 'gemini-3.6-flash' } : undefined,
     );
     mockDbSelect.mockResolvedValueOnce([{ ownerDid: ORG }]);
 
@@ -256,6 +308,7 @@ describe('resolveBrain — sealing a key is choosing a model', () => {
     mockLoadGemini.mockResolvedValueOnce({
       apiKey: GEMINI_KEY,
       baseUrl: 'https://my-gateway.example/openai',
+      modelId: 'gemini-3.6-flash',
     });
 
     expect((await resolveBrain(OWNER)).baseURL).toBe('https://my-gateway.example/openai');
@@ -373,7 +426,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
   it('keeps walking to the app/org DID when the owner\'s card throws', async () => {
     mockLoadGemini
       .mockRejectedValueOnce(new Error('vault unavailable'))
-      .mockResolvedValueOnce({ apiKey: APP_KEY });
+      .mockResolvedValueOnce({ apiKey: APP_KEY, modelId: 'gemini-3.6-flash' });
 
     const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP });
 

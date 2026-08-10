@@ -459,6 +459,107 @@ function ConnectorSettingsSection({ settings, stepNumber }: Readonly<{
   );
 }
 
+// ── Dynamic model picker (#1769) ─────────────────────────────────────────────
+
+/** One selectable model, as returned by a connector's `modelsRoute` GET. */
+interface ModelOption {
+  id: string;
+  name: string;
+}
+
+/**
+ * Dropdown model picker for connectors that declare `entry.modelsRoute`
+ * (#1769) — currently Gemini, whose model ids Google retires/renames often
+ * enough that a hardcoded default silently went stale (#1764).
+ *
+ * Distinct from `ConnectorSettingsSection`: the choices come from a live
+ * provider call using the owner's own sealed key (`GET modelsRoute`), not a
+ * static field the card already knows how to render as a text input.
+ */
+function ModelPickerSection({ route, stepNumber }: Readonly<{
+  route: string;
+  stepNumber: string | number;
+}>) {
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [selected, setSelected] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch(route);
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+      const data = await r.json() as { models?: ModelOption[]; currentModelId?: string | null };
+      setModels(Array.isArray(data.models) ? data.models : []);
+      setSelected(data.currentModelId ?? '');
+    } catch (err: unknown) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [route]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function handleSelect(modelId: string) {
+    setSelected(modelId);
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await fetch(route, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelId }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({})) as { error?: string };
+        throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+      }
+    } catch (err: unknown) {
+      setError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+          selected ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'
+        }`}>
+          {selected ? '✓' : stepNumber}
+        </span>
+        {' '}Model
+      </h3>
+      {loading && <p className="text-gray-500 text-xs">Loading models…</p>}
+      {error && <p className="text-red-400 text-xs mb-2">{error}</p>}
+      {!loading && !error && (
+        <select
+          value={selected}
+          onChange={(e) => { void handleSelect(e.target.value); }}
+          disabled={saving || models.length === 0}
+          className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50"
+        >
+          <option value="" disabled>Choose a model…</option>
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      )}
+      {!loading && !error && models.length === 0 && (
+        <p className="text-xs text-gray-600 mt-2">No models available for this key yet.</p>
+      )}
+    </div>
+  );
+}
+
 // ── Shared disconnect hook + component ──────────────────────────────────────────────
 
 /**
@@ -1361,11 +1462,23 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
             <ConnectorSettingsSection settings={entry.settings} stepNumber={2} />
           )}
 
+          {/*
+            ── Step (optional): model picker (#1769) ──
+            Only once the credential is sealed — the route needs the owner's
+            own key to ask the provider which models it can use.
+          */}
+          {entry.modelsRoute && sealed && (
+            <ModelPickerSection
+              route={entry.modelsRoute}
+              stepNumber={entry.settings ? 3 : 2}
+            />
+          )}
+
           {/* ── Scope grants ── */}
           <ScopeGrantSection
             entry={entry}
             activeSet={activeSet}
-            stepNumber={entry.settings ? 3 : 2}
+            stepNumber={(entry.settings ? 1 : 0) + (entry.modelsRoute && sealed ? 1 : 0) + 2}
             grantingScope={grantingScope}
             grantError={grantError}
             tokenSealed={sealed}

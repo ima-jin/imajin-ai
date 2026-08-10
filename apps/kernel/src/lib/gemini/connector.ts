@@ -69,6 +69,13 @@ export const geminiKeyPending = gemini.keyPending;
  */
 export const revokeApiKey = gemini.revokeApiKey;
 
+/**
+ * Update just the sealed model id for this DID, without touching the API key
+ * (#1769) — how the model-picker card commits a selection from GET
+ * /gemini/api/models.
+ */
+export const setModelId = gemini.setModelId;
+
 export type GeminiCredentials = TokenPasteCredentials;
 
 /**

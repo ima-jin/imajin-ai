@@ -307,6 +307,49 @@ describe('re-sealing after a revoke (#1724 item 4)', () => {
   });
 });
 
+// ── setModelId (#1769) ───────────────────────────────────────────────
+//
+// The Gemini model picker (GET/PUT /gemini/api/models) needs to update just
+// the sealed modelId without re-sealing the key — re-pasting a perfectly good
+// key just to switch models would defeat the point of a dynamic picker.
+
+describe('setModelId', () => {
+  const CONNECTOR_DID = 'did:imajin:testprov-connector';
+
+  /** `loadCredentials` gates on an active grant — seed one so it actually reads the key. */
+  function seedActiveGrant() {
+    channelLinksStore.set('clink_model', {
+      id: 'clink_model',
+      channel: 'testprov',
+      did: OWNER_DID,
+      appDid: CONNECTOR_DID,
+      scopes: ['testprov:infer'],
+      status: 'active',
+      revokedAt: null,
+    });
+  }
+
+  it('seals a modelId that loadCredentials then returns', async () => {
+    seedActiveGrant();
+    await connector.sealApiKey(OWNER_DID, 'sk-test-key');
+    await connector.setModelId(OWNER_DID, 'gemini-3.6-flash');
+
+    const creds = await connector.loadCredentials(OWNER_DID, 'testprov:infer');
+    expect(creds?.modelId).toBe('gemini-3.6-flash');
+    expect(creds?.apiKey).toBe('sk-test-key');
+  });
+
+  it('overwrites a previously sealed modelId without touching the key', async () => {
+    seedActiveGrant();
+    await connector.sealApiKey(OWNER_DID, 'sk-test-key', undefined, 'gemini-2.5-pro');
+    await connector.setModelId(OWNER_DID, 'gemini-3.6-flash');
+
+    const creds = await connector.loadCredentials(OWNER_DID, 'testprov:infer');
+    expect(creds?.modelId).toBe('gemini-3.6-flash');
+    expect(creds?.apiKey).toBe('sk-test-key');
+  });
+});
+
 // ── channel_links cleanup on disconnect (#1733) ─────────────────────────────
 //
 // `revokeApiKey` used to revoke only the sealed key's vault delegation grant.

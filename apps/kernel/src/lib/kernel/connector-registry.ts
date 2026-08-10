@@ -174,6 +174,17 @@ export interface ConnectorEntry {
    * connector has nothing to configure beyond its credential and scopes.
    */
   settings: ConnectorSettingsUi | null;
+  /**
+   * Route backing a dynamic model picker (#1769): `GET` returns
+   * `{ models: [{ id, name }], currentModelId }`; `PUT` seals `{ modelId }`.
+   * `null` for connectors with no model choice (most of them).
+   *
+   * Distinct from `settings`, whose fields are plain text inputs the card
+   * already knows the shape of — a model list is fetched live from the
+   * provider using the owner's own sealed credential, so it needs its own
+   * route rather than a `ConnectorSettingField`.
+   */
+  modelsRoute: string | null;
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -203,6 +214,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     disconnectRoute: '/mcp/api/disconnect',
     credentialUi: null,
     settings: null,
+    modelsRoute: null,
   },
   {
     id: 'github',
@@ -221,6 +233,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     disconnectRoute: '/github/api/disconnect',
     credentialUi: null,
     settings: null,
+    modelsRoute: null,
   },
   {
     id: 'discord',
@@ -243,6 +256,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       hint: 'Token is sealed server-side and never returned. Found in Discord Developer Portal → Bot → Token.',
     },
     settings: null,
+    modelsRoute: null,
   },
   {
     id: 'gemini',
@@ -266,6 +280,10 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       hint: 'Key is sealed server-side and never returned. Create one in Google AI Studio → Get API key.',
     },
     settings: null,
+    // #1769: dynamic model picker — GET lists live models for the sealed key,
+    // PUT seals the choice. Replaces the hardcoded `defaultModelId` that went
+    // stale when Google retired gemini-2.0-flash (#1764).
+    modelsRoute: '/gemini/api/models',
   },
   {
     id: 'anthropic',
@@ -289,6 +307,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       hint: 'Key is sealed server-side and never returned. Create one in the Anthropic Console → API keys.',
     },
     settings: null,
+    modelsRoute: null,
   },
   {
     id: 'gcp',
@@ -315,6 +334,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       hint: 'Paste the whole key JSON. It is sealed server-side and never returned. Create one in Google Cloud Console → IAM & Admin → Service Accounts → Keys.',
     },
     settings: null,
+    modelsRoute: null,
   },
   {
     id: 'quickbooks',
@@ -333,6 +353,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     disconnectRoute: '/quickbooks/api/disconnect',
     credentialUi: null,
     settings: null,
+    modelsRoute: null,
   },
   {
     id: 'warp',
@@ -372,6 +393,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
         },
       ],
     },
+    modelsRoute: null,
   },
 ] as const;
 
