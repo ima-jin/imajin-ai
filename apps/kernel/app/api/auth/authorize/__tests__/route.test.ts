@@ -24,6 +24,7 @@ const {
   mockRequireAuth,
   mockPromoteActorOnGrant,
   mockRevokeAttestationOnce,
+  mockProjectAppAuthorizationGrant,
   ATTESTATIONS_TABLE,
   REGISTRY_APPS_TABLE,
 } = vi.hoisted(() => {
@@ -65,6 +66,7 @@ const {
   const mockRequireAuth = vi.fn();
   const mockPromoteActorOnGrant = vi.fn().mockResolvedValue(undefined);
   const mockRevokeAttestationOnce = vi.fn().mockResolvedValue({ revoked: true });
+  const mockProjectAppAuthorizationGrant = vi.fn().mockResolvedValue(undefined);
 
   return {
     mockAppSelectWhere,
@@ -75,6 +77,7 @@ const {
     mockRequireAuth,
     mockPromoteActorOnGrant,
     mockRevokeAttestationOnce,
+    mockProjectAppAuthorizationGrant,
     ATTESTATIONS_TABLE,
     REGISTRY_APPS_TABLE,
   };
@@ -119,6 +122,10 @@ vi.mock('@/src/lib/auth/promote-actor', () => ({
   promoteActorOnGrant: mockPromoteActorOnGrant,
 }));
 
+vi.mock('@/src/lib/auth/app-authorization-grant', () => ({
+  projectAppAuthorizationGrant: mockProjectAppAuthorizationGrant,
+}));
+
 // ─── Subject under test ──────────────────────────────────────────────────────
 
 import { POST } from '../route';
@@ -157,6 +164,7 @@ beforeEach(() => {
   mockAttestationInsertValues.mockResolvedValue(undefined);
   mockPromoteActorOnGrant.mockResolvedValue(undefined);
   mockRevokeAttestationOnce.mockResolvedValue({ revoked: true });
+  mockProjectAppAuthorizationGrant.mockResolvedValue(undefined);
 });
 
 describe('POST /api/auth/authorize (#1735)', () => {
@@ -209,6 +217,51 @@ describe('POST /api/auth/authorize (#1735)', () => {
     const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: [] }) as never);
     expect(res.status).toBe(403);
     expect(mockPromoteActorOnGrant).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/auth/authorize — channel_links projection on consent (#1803)', () => {
+  it('projects the granted scopes into channel_links, attributed to the raw session DID', async () => {
+    const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
+
+    expect(res.status).toBe(201);
+    expect(mockProjectAppAuthorizationGrant).toHaveBeenCalledOnce();
+    expect(mockProjectAppAuthorizationGrant).toHaveBeenCalledWith({
+      ownerDid: PERSONAL_DID,
+      appDid: APP_ROW.appDid,
+      scopes: ['profile:read'],
+    });
+  });
+
+  it('projects under the raw session DID even when acting for a business identity (matches the attestation issuerDid)', async () => {
+    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingFor: BUSINESS_DID } });
+
+    await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
+
+    expect(mockProjectAppAuthorizationGrant).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerDid: PERSONAL_DID }),
+    );
+  });
+
+  it('re-affirms the projection on a no-op re-submit (same scope set reused)', async () => {
+    mockAttestationSelectWhere.mockResolvedValue([
+      { id: 'att_existing0000', payload: { scopes: ['profile:read'] } },
+    ]);
+
+    const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
+
+    expect(res.status).toBe(201);
+    expect(mockProjectAppAuthorizationGrant).toHaveBeenCalledWith({
+      ownerDid: PERSONAL_DID,
+      appDid: APP_ROW.appDid,
+      scopes: ['profile:read'],
+    });
+  });
+
+  it('does not project anything when the app lookup fails', async () => {
+    mockAppSelectWhere.mockResolvedValue([]);
+    await POST(makeRequest({ appId: 'app_missing', scopes: [] }) as never);
+    expect(mockProjectAppAuthorizationGrant).not.toHaveBeenCalled();
   });
 });
 

@@ -1,14 +1,55 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAppAuth } from '@imajin/auth';
 import { publish, getLotChain, recentLotsBySupplier, type BusEventMap } from '@imajin/bus';
+import { getClient } from '@imajin/db';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { generateId } from '@/src/lib/kernel/id';
+import { hasAppAuthorizationGrant } from '@/src/lib/auth/app-authorization-grant';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
 const SUPPLY_SCOPE = 'supply' as const;
 const SUPPLY_PREFIX = 'supply.' as const;
+const SUPPLY_READ_SCOPE = 'supply:read' as const;
+
+/**
+ * DID-attributed audit record for a lot read (#1803 item 3): who read it
+ * (`azp`/`sub`/`isServiceToken` off the app-auth context), which lot, and
+ * with what outcome. Best-effort — a failed audit write never fails the read
+ * itself, mirroring `writeRequestLog`'s fire-and-forget convention in
+ * `@imajin/logger`.
+ */
+async function auditSupplyLotRead(entry: {
+  correlationId: string;
+  azp: string;
+  sub: string;
+  isServiceToken: boolean;
+  status: number;
+}): Promise<void> {
+  try {
+    const sql = getClient();
+    const level = entry.status >= 400 ? 'warn' : 'info';
+    await sql`
+      INSERT INTO registry.logs (id, source, service, level, message, did, metadata, created_at)
+      VALUES (
+        ${generateId('log')}, 'app', 'kernel', ${level}, 'supply lot read',
+        ${entry.sub || entry.azp},
+        ${JSON.stringify({
+          azp: entry.azp,
+          sub: entry.sub,
+          isServiceToken: entry.isServiceToken,
+          correlationId: entry.correlationId,
+          scope: SUPPLY_READ_SCOPE,
+          status: entry.status,
+        })}::jsonb,
+        now()
+      )
+    `;
+  } catch (err) {
+    log.error({ err: String(err), correlationId: entry.correlationId }, 'supply lot audit write failed');
+  }
+}
 
 /**
  * #1135 — the four pre-sale supply stages this API can publish. Explicit
@@ -220,20 +261,57 @@ export async function publishReceiptStage(request: NextRequest): Promise<NextRes
  * Shared handler for `GET /supply/api/lot/[correlationId]`. App-auth-gated
  * (`supply:read`); returns the lot + its ordered stage history via #1136's
  * `getLotChain`.
+ *
+ * #1803 item 3/5: the token scope check above is the coarse gate (does this
+ * app carry `supply:read` at all); it is no longer sufficient on its own — a
+ * valid `supply:read` token, of any kind (service or user-delegated), used to
+ * be able to read ANY lot. The fine gate below additionally requires an
+ * active `channel_links` grant of `supply:read` from THIS lot's originating
+ * supplier (`chain.lot.originatingDid`) to the calling app, projected when
+ * that supplier consented to the app via `POST /api/auth/authorize`
+ * (`app-authorization-grant.ts`). A caller with a legitimate user-delegated
+ * grant (the dashboard path) already holds this row because the same consent
+ * event that minted their app token also projected it; a session-less
+ * service-token webhook read now needs the same supplier-side grant to reach
+ * any given lot, closing the session-less-read gap the #1803 rescope closed.
  */
 export async function handleLotGet(request: NextRequest, correlationId: string): Promise<NextResponse> {
   const cors = corsHeaders(request);
 
-  const appResult = await requireAppAuth(request, { scope: 'supply:read' });
+  const appResult = await requireAppAuth(request, { scope: SUPPLY_READ_SCOPE });
   if ('error' in appResult) {
     return NextResponse.json({ error: appResult.error }, { status: appResult.status, headers: cors });
   }
+  const { appDid, userDid, isServiceToken } = appResult.appAuth;
 
   try {
     const chain = await getLotChain(correlationId);
     if (!chain.lot) {
       return NextResponse.json({ error: 'Lot not found' }, { status: 404, headers: cors });
     }
+
+    const hasGrant = await hasAppAuthorizationGrant(appDid, chain.lot.originatingDid, SUPPLY_READ_SCOPE);
+    if (!hasGrant) {
+      await auditSupplyLotRead({
+        correlationId,
+        azp: appDid,
+        sub: userDid,
+        isServiceToken: Boolean(isServiceToken),
+        status: 403,
+      });
+      return NextResponse.json(
+        { error: `App lacks a supply:read grant from this lot's supplier (${chain.lot.originatingDid})` },
+        { status: 403, headers: cors },
+      );
+    }
+
+    await auditSupplyLotRead({
+      correlationId,
+      azp: appDid,
+      sub: userDid,
+      isServiceToken: Boolean(isServiceToken),
+      status: 200,
+    });
     return NextResponse.json(chain, { headers: cors });
   } catch (err) {
     log.error({ err: String(err), correlationId }, 'supply lot chain read failed');

@@ -1,17 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { requireAppAuthMock, publishMock, getLotChainMock, recentLotsBySupplierMock } = vi.hoisted(() => ({
+const { requireAppAuthMock, publishMock, getLotChainMock, recentLotsBySupplierMock, hasAppAuthorizationGrantMock, sqlTagMock } = vi.hoisted(() => ({
   requireAppAuthMock: vi.fn(),
   publishMock: vi.fn(),
   getLotChainMock: vi.fn(),
   recentLotsBySupplierMock: vi.fn(),
+  hasAppAuthorizationGrantMock: vi.fn(),
+  sqlTagMock: vi.fn(async () => []),
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAppAuth: requireAppAuthMock }));
 vi.mock('@imajin/bus', () => ({ publish: publishMock, getLotChain: getLotChainMock, recentLotsBySupplier: recentLotsBySupplierMock }));
+vi.mock('@imajin/db', () => ({ getClient: () => sqlTagMock }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
-vi.mock('@/src/lib/kernel/id', () => ({ generateId: () => 'lot_test' }));
+vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
+vi.mock('@/src/lib/auth/app-authorization-grant', () => ({ hasAppAuthorizationGrant: hasAppAuthorizationGrantMock }));
 
 import { publishSupplyStage, publishReceiptStage, handleLotGet, handleLotsBySupplierGet } from '../supply';
 
@@ -34,6 +38,9 @@ beforeEach(() => {
   publishMock.mockResolvedValue(undefined);
   getLotChainMock.mockReset();
   recentLotsBySupplierMock.mockReset();
+  hasAppAuthorizationGrantMock.mockReset();
+  hasAppAuthorizationGrantMock.mockResolvedValue(true);
+  sqlTagMock.mockClear();
 });
 
 describe('publishSupplyStage (#1135)', () => {
@@ -160,15 +167,18 @@ describe('publishReceiptStage (#1384)', () => {
 });
 
 describe('handleLotGet (#1135)', () => {
-  it('returns the lot chain for a supply:read caller', async () => {
+  it('returns the lot chain for a supply:read caller with an active channel_links grant from the lot supplier', async () => {
     requireAppAuthMock.mockResolvedValue({ appAuth: { appDid: 'did:app', userDid: SCOTT, scopes: ['supply:read'] } });
-    getLotChainMock.mockResolvedValue({ lot: { correlationId: 'lot_1', status: 'listed' }, stages: [{ stage: 'declared' }] });
+    getLotChainMock.mockResolvedValue({ lot: { correlationId: 'lot_1', originatingDid: SCOTT, status: 'listed' }, stages: [{ stage: 'declared' }] });
 
     const res = await handleLotGet(req({}), 'lot_1');
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.lot.correlationId).toBe('lot_1');
     expect(json.stages).toHaveLength(1);
+    expect(hasAppAuthorizationGrantMock).toHaveBeenCalledWith('did:app', SCOTT, 'supply:read');
+    // Audit row written on a successful read (#1803 item 3).
+    expect(sqlTagMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns 404 when the lot is unknown', async () => {
@@ -177,6 +187,7 @@ describe('handleLotGet (#1135)', () => {
 
     const res = await handleLotGet(req({}), 'missing');
     expect(res.status).toBe(404);
+    expect(hasAppAuthorizationGrantMock).not.toHaveBeenCalled();
   });
 
   it('returns 401 when app-auth fails and never reads', async () => {
@@ -184,6 +195,44 @@ describe('handleLotGet (#1135)', () => {
     const res = await handleLotGet(req({}), 'lot_1');
     expect(res.status).toBe(401);
     expect(getLotChainMock).not.toHaveBeenCalled();
+  });
+
+  // #1803 items 3/5 — closing the row-level gap: a valid supply:read token,
+  // of any kind, must no longer be able to read any lot.
+  it('returns 403 when the calling app has no channel_links grant from the lot supplier at all', async () => {
+    requireAppAuthMock.mockResolvedValue({ appAuth: { appDid: 'did:app', userDid: '', scopes: ['supply:read'], isServiceToken: true } });
+    getLotChainMock.mockResolvedValue({ lot: { correlationId: 'lot_1', originatingDid: SCOTT, status: 'listed' }, stages: [] });
+    hasAppAuthorizationGrantMock.mockResolvedValue(false);
+
+    const res = await handleLotGet(req({}), 'lot_1');
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toMatch(/supply:read grant/i);
+    expect(sqlTagMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 403 when the app only has a grant from a DIFFERENT supplier than the lot originating DID', async () => {
+    const OTHER_SUPPLIER = 'did:imajin:other-supplier';
+    requireAppAuthMock.mockResolvedValue({ appAuth: { appDid: 'did:app', userDid: '', scopes: ['supply:read'], isServiceToken: true } });
+    getLotChainMock.mockResolvedValue({ lot: { correlationId: 'lot_1', originatingDid: SCOTT, status: 'listed' }, stages: [] });
+    // The mock is queried with (appDid, originatingDid, scope); simulate a grant
+    // that only matches a different supplier's DID.
+    hasAppAuthorizationGrantMock.mockImplementation(
+      async (_appDid: string, ownerDid: string) => ownerDid === OTHER_SUPPLIER,
+    );
+
+    const res = await handleLotGet(req({}), 'lot_1');
+    expect(res.status).toBe(403);
+    expect(hasAppAuthorizationGrantMock).toHaveBeenCalledWith('did:app', SCOTT, 'supply:read');
+  });
+
+  it('succeeds for a session-less service token that DOES hold a channel_links grant from the lot supplier', async () => {
+    requireAppAuthMock.mockResolvedValue({ appAuth: { appDid: 'did:app', userDid: '', scopes: ['supply:read'], isServiceToken: true } });
+    getLotChainMock.mockResolvedValue({ lot: { correlationId: 'lot_1', originatingDid: SCOTT, status: 'listed' }, stages: [] });
+    hasAppAuthorizationGrantMock.mockResolvedValue(true);
+
+    const res = await handleLotGet(req({}), 'lot_1');
+    expect(res.status).toBe(200);
   });
 });
 

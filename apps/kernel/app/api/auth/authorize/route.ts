@@ -23,6 +23,7 @@ import { requireAuth, validateScopes, canonicalize, crypto as authCrypto, resolv
 import { withLogger } from '@imajin/logger';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 import { revokeAttestationOnce } from '@/src/lib/auth/revoke-attestation';
+import { projectAppAuthorizationGrant } from '@/src/lib/auth/app-authorization-grant';
 
 function sameScopeSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -122,6 +123,10 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
         avatarUrl: app.logoUrl,
         adapter: 'keypair',
       });
+      // Re-affirm the channel_links projection (#1803) even on a no-op
+      // re-submit, so a grant that was manually revoked out-of-band gets
+      // re-materialised alongside the attestation it is derived from.
+      await projectAppAuthorizationGrant({ ownerDid: identity.id, appDid: app.appDid, scopes: validScopes });
       return NextResponse.json({ attestationId: existing.id, userDid: identity.id }, { status: 201 });
     }
 
@@ -176,6 +181,14 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     avatarUrl: app.logoUrl,
     adapter: 'keypair',
   });
+
+  // Project the just-granted scopes into auth.channel_links (#1803): the
+  // OAuth authorize/consent screen the user just completed IS the consent
+  // event for the selective-disclosure pipeline — no separate consent
+  // surface is needed. Attributed to the signing identity (identity.id),
+  // matching the attestation's issuerDid and what ends up as `sub` on every
+  // app token minted against this grant.
+  await projectAppAuthorizationGrant({ ownerDid: identity.id, appDid: app.appDid, scopes: validScopes });
 
   return NextResponse.json({ attestationId, userDid: identity.id }, { status: 201 });
 });

@@ -82,14 +82,17 @@ beforeEach(() => {
 });
 
 describe('POST /auth/api/apps/token/service — issuance (#1800)', () => {
-  it('mints a token attributed to the app DID, scoped to its registered scopes', async () => {
+  it('mints a token attributed to the app DID, with an empty scope set (#1803 fence)', async () => {
+    // #1803 rescoped #1800: the fence ships with NO scope marked
+    // serviceEligible, so a session-less service token now carries no scopes
+    // even though the app registered a real, known vocabulary scope.
     nextSelect([activeApp(['supply:read'])]);
 
     const res = await POST(makeRequest(signedBody()) as never);
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body.scopes).toEqual(['supply:read']);
+    expect(body.scopes).toEqual([]);
 
     const payload = await verifyAppToken(body.token);
     expect(payload).not.toBeNull();
@@ -97,6 +100,7 @@ describe('POST /auth/api/apps/token/service — issuance (#1800)', () => {
     expect(payload!.azp).toBe(APP_DID);
     expect(payload!.isServiceToken).toBe(true);
     expect(payload!.attestationId).toBe('');
+    expect(payload!.scope).toBe('');
   });
 
   it('clamps unknown/stale scopes out of the vocabulary rather than minting them', async () => {
@@ -106,16 +110,20 @@ describe('POST /auth/api/apps/token/service — issuance (#1800)', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.scopes).toEqual(['supply:read']);
+    // Neither survives: 'not-a-real-scope' fails validateScopes, 'supply:read'
+    // fails the serviceEligible fence.
+    expect(body.scopes).toEqual([]);
   });
 
-  it('grants only supply:write when that is the only registered scope (out-of-scope stays out)', async () => {
+  it('fences supply:write out too — registering it is not enough to mint it on a service token', async () => {
     nextSelect([activeApp(['supply:write'])]);
 
     const res = await POST(makeRequest(signedBody()) as never);
     const body = await res.json();
 
-    expect(body.scopes).toEqual(['supply:write']);
+    expect(res.status).toBe(200);
+    expect(body.scopes).toEqual([]);
+    expect(body.scopes).not.toContain('supply:write');
     expect(body.scopes).not.toContain('supply:read');
   });
 });

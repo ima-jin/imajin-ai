@@ -31,7 +31,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
-import { validateScopes } from '@imajin/auth';
+import { validateScopes, serviceEligibleScopes } from '@imajin/auth';
 import { verifySignature } from '@/src/lib/auth/crypto';
 import { createAppServiceToken } from '@/src/lib/auth/jwt';
 import { createLogger } from '@imajin/logger';
@@ -94,8 +94,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid proof-of-possession signature' }, { status: 401, headers: cors });
   }
 
-  // Clamp app's registered scopes to the SCOPES vocabulary (ignore any stale/unknown scopes)
-  const { valid: scopes } = validateScopes(app.requestedScopes ?? []);
+  // Clamp app's registered scopes to the SCOPES vocabulary (ignore any stale/unknown
+  // scopes), THEN clamp again to the service-eligible fence (#1803): a session-less
+  // service token may only ever carry scopes explicitly marked `serviceEligible` in
+  // the vocabulary, regardless of what the app self-declared in `requestedScopes`.
+  // Fail-closed — the fence ships empty, so no scope materialises here today.
+  const { valid: requestedScopes } = validateScopes(app.requestedScopes ?? []);
+  const eligible = new Set(serviceEligibleScopes());
+  const scopes = requestedScopes.filter((scope) => eligible.has(scope));
 
   const token = await createAppServiceToken({
     azp: appDid,

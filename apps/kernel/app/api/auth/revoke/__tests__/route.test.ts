@@ -23,7 +23,8 @@ const mocks = vi.hoisted(() => {
   const selectMock = vi.fn(() => ({ from: fromMock }));
   const requireAuthMock = vi.fn();
   const revokeAttestationOnceMock = vi.fn();
-  return { whereMock, selectMock, requireAuthMock, revokeAttestationOnceMock };
+  const revokeAppAuthorizationGrantMock = vi.fn();
+  return { whereMock, selectMock, requireAuthMock, revokeAttestationOnceMock, revokeAppAuthorizationGrantMock };
 });
 
 vi.mock('@/src/db', () => ({
@@ -57,6 +58,10 @@ vi.mock('@/src/lib/auth/revoke-attestation', () => ({
   revokeAttestationOnce: mocks.revokeAttestationOnceMock,
 }));
 
+vi.mock('@/src/lib/auth/app-authorization-grant', () => ({
+  revokeAppAuthorizationGrant: mocks.revokeAppAuthorizationGrantMock,
+}));
+
 import { POST } from '../route';
 
 const USER_DID = 'did:imajin:user';
@@ -85,6 +90,7 @@ beforeEach(() => {
   mocks.requireAuthMock.mockResolvedValue({ identity: { id: USER_DID } });
   mocks.whereMock.mockResolvedValue([ORIGINAL_ATTESTATION_ROW]);
   mocks.revokeAttestationOnceMock.mockResolvedValue({ revoked: true, subjectDid: APP_DID });
+  mocks.revokeAppAuthorizationGrantMock.mockResolvedValue(undefined);
 });
 
 describe('POST /api/auth/revoke (#1795)', () => {
@@ -97,6 +103,22 @@ describe('POST /api/auth/revoke (#1795)', () => {
       revokedByDid: USER_DID,
       privateKey: 'test-private-key',
     });
+  });
+
+  it('closes the projected channel_links grant alongside the attestation (#1803)', async () => {
+    const res = await POST(makeRequest({ attestationId: ATTESTATION_ID }) as never);
+
+    expect(res.status).toBe(200);
+    expect(mocks.revokeAppAuthorizationGrantMock).toHaveBeenCalledWith({ ownerDid: USER_DID, appDid: APP_DID });
+  });
+
+  it('does not touch the channel_links grant when the revoke race is lost', async () => {
+    mocks.revokeAttestationOnceMock.mockResolvedValue({ revoked: false });
+
+    const res = await POST(makeRequest({ attestationId: ATTESTATION_ID }) as never);
+
+    expect(res.status).toBe(409);
+    expect(mocks.revokeAppAuthorizationGrantMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 when the attestation does not belong to the caller or does not exist', async () => {

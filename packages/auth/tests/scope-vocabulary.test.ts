@@ -6,6 +6,8 @@ import {
   CONNECTOR_CHANNELS,
   isConnectorScope,
   isCredentialFreeScope,
+  isServiceEligibleScope,
+  serviceEligibleScopes,
   deriveScopeReleaseTier,
   viewerForScope,
   uiLabelForScope,
@@ -359,5 +361,31 @@ describe('SCOPES is a faithful projection', () => {
     });
     expect(entry && isConnectorScope(entry)).toBe(false);
     expect(validateScopes(['connectors:read-status']).invalid).toEqual([]);
+  });
+});
+
+// ── serviceEligible fence (#1803) ──────────────────────────────────────────────
+
+describe('serviceEligible fence', () => {
+  it('defaults every entry to service-ineligible (fail-closed, ships empty)', () => {
+    // #1803: the fence lands with no scope flipped on. A scope nobody has
+    // explicitly signed off on as service-eligible must stay out of a
+    // session-less service token even if a future entry forgets to set the
+    // flag at all.
+    expect(serviceEligibleScopes()).toEqual([]);
+    for (const entry of SCOPE_VOCABULARY) {
+      expect(isServiceEligibleScope(entry)).toBe(false);
+    }
+  });
+
+  it('keeps supply:read and supply:write ineligible for a session-less service token', () => {
+    // The #1803 rescope: a session-less app read of supply data is not an
+    // intended capability, so these consent-tier platform scopes must never
+    // be marked serviceEligible, even though they are exactly what motivated
+    // adding the flag (catalyst-power/xprize#68).
+    expect(isServiceEligibleScope(scopeEntry('supply:read')!)).toBe(false);
+    expect(isServiceEligibleScope(scopeEntry('supply:write')!)).toBe(false);
+    expect(serviceEligibleScopes()).not.toContain('supply:read');
+    expect(serviceEligibleScopes()).not.toContain('supply:write');
   });
 });
