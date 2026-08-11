@@ -14,6 +14,7 @@ import { use } from 'react';
 import Link from 'next/link';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
 import { ConnectorDetail } from '../components/ConnectorDetail';
+import { ConnectorUsage } from '../components/ConnectorUsage';
 
 export default function ConnectorDetailPage(props: Readonly<{ params: Promise<{ id: string }> }>) {
   const params = use(props.params);
@@ -51,6 +52,12 @@ export default function ConnectorDetailPage(props: Readonly<{ params: Promise<{ 
       </div>
 
       <ConnectorDetail entry={entry} />
+
+      {/* Usage rollup (#1799) — attestations + signed connector actions, scoped
+          to this connector's registered scope(s). Renders nothing until the
+          fetch resolves, and nothing at all on error, so it never blocks or
+          clutters the connect/scope/disconnect flow above. */}
+      <ConnectorUsage entry={entry} />
 
       {/* Consent note — grant-by-edit applies to on-consent scopes below. */}
       <p className="text-center text-xs text-gray-700 mt-8">
