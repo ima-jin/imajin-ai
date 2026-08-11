@@ -13,7 +13,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { signSync } from '@imajin/auth';
+import { crypto } from '@imajin/auth';
 
 const TOKEN_TTL_SECONDS = 600;        // server-side TTL
 const REFRESH_RATIO    = 0.8;         // refresh at 80% of TTL
@@ -40,7 +40,11 @@ export async function mintAppToken(
   const nonce     = randomBytes(16).toString('hex'); // 32 hex chars ≥ 16 required
   const timestamp = new Date().toISOString();
   const challenge = `${appDid}:${nonce}:${timestamp}`;
-  const signature = signSync(challenge, privateKey, { id: appDid, type: 'agent' });
+  // Raw Ed25519 signature over the challenge string — this is what the kernel's
+  // verifySignature() checks proof-of-possession against (#1800). The wrapper
+  // `signSync` re-exported from @imajin/auth's top level returns a SignedMessage
+  // envelope, not a bare hex signature, and does not verify here.
+  const signature = crypto.signSync(challenge, privateKey);
 
   const res = await fetch(`${kernelUrl}/auth/api/apps/token/service`, {
     method: 'POST',
