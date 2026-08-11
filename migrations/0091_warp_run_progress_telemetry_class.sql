@@ -1,4 +1,4 @@
--- 0090_warp_run_progress_telemetry_class.sql
+-- 0091_warp_run_progress_telemetry_class.sql
 -- Reclassify warp.run.progress as telemetry-class: notifications only fire on
 -- state transitions, not on every mid-run tick (#1805).
 --
