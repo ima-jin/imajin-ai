@@ -9,7 +9,23 @@ export interface AppAuthContext {
   isServiceToken?: boolean; // true when minted via /auth/api/apps/token/service
 }
 
-export type AppAuthResult = { appAuth: AppAuthContext } | { error: string; status: number };
+export type AppAuthResult =
+  | { appAuth: AppAuthContext }
+  | {
+      error: string;
+      status: number;
+      /**
+       * True when a supplied `Authorization: Bearer` value was rejected
+       * specifically because it doesn't verify as an app token at all (bad
+       * signature/shape or expired) — as opposed to verifying as an app
+       * token but failing some other check (e.g. missing scope). Session
+       * JWTs are also sent as Authorization bearers (#1069), so callers
+       * that want to fall back to session auth on a non-app-token bearer
+       * must key off this flag rather than "a bearer was present" or
+       * "requireAppAuth returned an error" (#1812).
+       */
+      notAppToken?: boolean;
+    };
 
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
 
@@ -35,7 +51,11 @@ async function verifyBearerAppToken(token: string, scope?: string): Promise<AppA
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      return { error: data.error ?? 'Invalid app token', status: res.status };
+      // The verify endpoint returns 401 only when the token doesn't verify as
+      // an app token at all (invalid signature/shape or expired); a 403 means
+      // it verified fine but lacks the required scope. Only the former is a
+      // "not an app token" signal for the caller's fallback decision.
+      return { error: data.error ?? 'Invalid app token', status: res.status, notAppToken: res.status === 401 };
     }
     return { appAuth: (await res.json()) as AppAuthContext };
   } catch (err) {
