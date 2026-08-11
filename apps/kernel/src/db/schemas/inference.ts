@@ -32,6 +32,14 @@ export const inferenceSessions = inferenceSchema.table(
     // Signed owner authorization (deliberate tier) — stored at confirmIntent() time (#1293)
     ownerAuthorization: jsonb('owner_authorization'),
     /**
+     * Human-edited/confirmed metadata for the chosen intent, set at confirm
+     * time when the caller POSTs an edited payload (#1789). `candidateIntents`
+     * above always keeps the ORIGINAL inferred metadata untouched — this column
+     * is the correction, so the guess-vs-approval delta stays auditable. Null
+     * when confirm was called with no body (current/default behavior).
+     */
+    confirmedMetadata: jsonb('confirmed_metadata'),
+    /**
      * State machine:
      *   capturing → (context) → inferring → (policy) →
      *   pending_confirm | resolving → resolved | failed
@@ -79,6 +87,11 @@ export const inferenceAttestations = inferenceSchema.table(
     senderPubkey: text('sender_pubkey'),                  // hex-encoded Ed25519 public key of the signing node
     // Owner authorization reference — #1293 (copied from session at resolution time)
     ownerAuthorization: jsonb('owner_authorization'),
+    // Inferred vs confirmed metadata delta (#1789) — signed into the attestation
+    // payload below so "the engine guessed X, the human corrected to Y" is
+    // itself part of the auditable, signed record. Equal when nothing was edited.
+    inferredMetadata: jsonb('inferred_metadata'),
+    confirmedMetadata: jsonb('confirmed_metadata'),
     signedAt: timestamp('signed_at', { withTimezone: true }).defaultNow(),
   },
   (table) => ({

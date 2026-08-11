@@ -183,4 +183,31 @@ describe('confirmIntent', () => {
     expect(payload['chosenIntentType']).toBe('supply.received');
     expect(payload['candidateDigest']).toBe('candidatedigest');
   });
+
+  it('#1789: does not persist confirmedMetadata and signs a null digest when no edited payload is given', async () => {
+    mockSelectWhereLimit.mockResolvedValueOnce([MOCK_PENDING_SESSION]);
+
+    await confirmIntent('session_x', 'did:imajin:owner');
+
+    const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
+    expect('confirmedMetadata' in setArg).toBe(false);
+    const auth = setArg['ownerAuthorization'] as Record<string, unknown>;
+    const payload = auth['payload'] as Record<string, unknown>;
+    expect(payload['confirmedMetadataDigest']).toBeNull();
+  });
+
+  it('#1789: persists the confirmed/edited metadata on the session and folds its digest into the signed authorization', async () => {
+    mockSelectWhereLimit.mockResolvedValueOnce([MOCK_PENDING_SESSION]);
+    const editedMetadata = { recipient: 'did:imajin:corrected', lot: 'LOT-9' };
+
+    await confirmIntent('session_x', 'did:imajin:owner', editedMetadata);
+
+    const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
+    expect(setArg['confirmedMetadata']).toEqual(editedMetadata);
+    expect(setArg['status']).toBe('resolving');
+
+    const auth = setArg['ownerAuthorization'] as Record<string, unknown>;
+    const payload = auth['payload'] as Record<string, unknown>;
+    expect(payload['confirmedMetadataDigest']).toBe('candidatedigest');
+  });
 });

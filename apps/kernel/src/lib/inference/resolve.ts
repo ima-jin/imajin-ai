@@ -62,11 +62,22 @@ export async function resolveIntent(
   const intentType = session.chosenIntentType;
   const intent = candidates.find((c) => c.intentType === intentType) ?? buildStubIntent(session);
 
+  // 2b. Substitute the human-confirmed metadata when the confirm call carried
+  // an edited payload (#1789) — the canvas approval IS the signing event, so
+  // what gets executed AND signed must be what the human confirmed, not what
+  // was originally inferred. `inferredMetadata` is preserved unmodified below
+  // so the guess-vs-correction delta stays auditable on the attestation.
+  const inferredMetadata = intent.metadata;
+  const confirmedMetadata = (session.confirmedMetadata ?? null) as Record<string, unknown> | null;
+  const resolvedIntent: CandidateIntent = confirmedMetadata
+    ? { ...intent, metadata: confirmedMetadata }
+    : intent;
+
   // 3. Execute the domain action via the mounted vocabulary.
-  log.info({ sessionId, intentType: intent.intentType, vocab: vocab.name }, 'resolving intent');
+  log.info({ sessionId, intentType: resolvedIntent.intentType, vocab: vocab.name }, 'resolving intent');
   let receipt;
   try {
-    receipt = await vocab.resolve(intent, ownerDid);
+    receipt = await vocab.resolve(resolvedIntent, ownerDid);
   } catch (err) {
     await db
       .update(inferenceSessions)
@@ -91,9 +102,14 @@ export async function resolveIntent(
     sessionId,
     ownerDid,
     vocabularyName: vocab.name,
-    intentType: intent.intentType,
-    consentTier: intent.consentTier,
+    intentType: resolvedIntent.intentType,
+    consentTier: resolvedIntent.consentTier,
     sourceCid: sourceAsset?.cid ?? null,
+    // Inferred vs confirmed metadata delta (#1789) — signed so the record of
+    // what the engine guessed vs. what the human approved is itself provable.
+    // Equal when the confirm call carried no edited payload.
+    inferredMetadata,
+    confirmedMetadata: confirmedMetadata ?? inferredMetadata,
     signedAt,
   };
   const signature = authCrypto.signSync(canonicalize(attestationPayload), signingIdentity.privateKeyHex);
@@ -105,9 +121,9 @@ export async function resolveIntent(
       sessionId,
       ownerDid,
       vocabularyName: vocab.name,
-      intentType: intent.intentType,
-      consentTier: intent.consentTier,
-      confidence: intent.confidence,
+      intentType: resolvedIntent.intentType,
+      consentTier: resolvedIntent.consentTier,
+      confidence: resolvedIntent.confidence,
       resolutionReceipt: receipt,
       sourceAssetId: session.assetId,
       sourceCid: sourceAsset?.cid ?? null,
@@ -115,6 +131,9 @@ export async function resolveIntent(
       senderPubkey: signingIdentity.senderPubkey,
       // Reference the owner's signed authorization (deliberate tier) — #1293
       ownerAuthorization: session.ownerAuthorization ?? null,
+      // Inferred vs confirmed metadata delta (#1789)
+      inferredMetadata,
+      confirmedMetadata: confirmedMetadata ?? inferredMetadata,
     })
     .returning();
 
@@ -128,8 +147,8 @@ export async function resolveIntent(
       sessionId,
       ownerDid,
       vocabularyName: vocab.name,
-      intentType: intent.intentType,
-      consentTier: intent.consentTier,
+      intentType: resolvedIntent.intentType,
+      consentTier: resolvedIntent.consentTier,
       primitiveType: receipt.primitiveType,
       digest: receipt.digest,
       resolvedAt: receipt.resolvedAt,
@@ -154,13 +173,13 @@ export async function resolveIntent(
     .where(eq(inferenceSessions.id, sessionId));
 
   log.info(
-    { sessionId, attestationId, intentType: intent.intentType, primitiveType: receipt.primitiveType },
+    { sessionId, attestationId, intentType: resolvedIntent.intentType, primitiveType: receipt.primitiveType },
     'intent resolved and attested',
   );
 
   return {
     attestationId,
-    intentType: intent.intentType,
+    intentType: resolvedIntent.intentType,
     primitiveType: receipt.primitiveType,
     externalId: receipt.externalId,
     resolvedAt: receipt.resolvedAt,

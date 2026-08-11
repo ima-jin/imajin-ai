@@ -85,6 +85,20 @@ export interface CandidateIntent {
 }
 
 // ---------------------------------------------------------------------------
+// Human-edited metadata validation (#1789)
+// ---------------------------------------------------------------------------
+
+/**
+ * Result of validating a human-edited/confirmed metadata payload against an
+ * intent's expected shape. Fail closed: `ok: false` (or a thrown error from
+ * `IntentVocabulary.validateMetadata`) rejects the confirm with 400 and
+ * leaves the session untouched.
+ */
+export type MetadataValidationResult =
+  | { ok: true; metadata: Record<string, unknown> }
+  | { ok: false; error: string };
+
+// ---------------------------------------------------------------------------
 // Primitive resolution + signing (#1215)
 // ---------------------------------------------------------------------------
 
@@ -141,4 +155,21 @@ export interface IntentVocabulary {
    * MUST NOT import Imajin kernel internals.
    */
   resolve(intent: CandidateIntent, ownerDid: string): Promise<ResolutionReceipt>;
+  /**
+   * Optional (#1789): validate a human-edited/confirmed metadata payload for
+   * `intentType` before it replaces the inferred metadata and is resolved +
+   * signed. This is how a tenant enforces its own intent metadata shape —
+   * the confirm route calls this generically, never a hardcoded vocabulary.
+   *
+   * Fail closed: return `{ ok: false, error }` (or throw) to reject the edit;
+   * the confirm route responds 400 and leaves the session untouched.
+   *
+   * Vocabularies that don't implement this fall back to a generic structural
+   * check (metadata must be a plain JSON object, matching the
+   * `Record<string, unknown>` contract of `CandidateIntent.metadata`).
+   * Implementations should tolerate unrecognised extra fields so
+   * forward-compatible clients aren't rejected — only reject known fields
+   * with the wrong shape/type.
+   */
+  validateMetadata?(intentType: string, metadata: unknown): MetadataValidationResult;
 }

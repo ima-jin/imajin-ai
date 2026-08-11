@@ -15,4 +15,5 @@ export type {
   CandidateIntent,
   ConsentTier,
   ResolutionReceipt,
+  MetadataValidationResult,
 } from '../types';
