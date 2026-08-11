@@ -19,7 +19,10 @@ const log = createLogger('kernel');
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return NextResponse.redirect(new URL('/auth?redirect=/auth/settings', request.url));
+    // /auth/login only reads `next=`, and `/auth` (the Identity Hub) never
+    // consumed `redirect=` — this stranded the user on the homepage instead
+    // of returning them to the approval flow (#1797).
+    return NextResponse.redirect(new URL('/auth/login?next=/auth/settings', request.url));
   }
   const did = authResult.identity.id;
 

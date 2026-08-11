@@ -54,9 +54,13 @@ function AuthorizeForm() {
       .then(res => res.json())
       .then(session => {
         if (!session?.did) {
-          // Not logged in — redirect to login, then back here
+          // Not logged in — redirect to login, then back here. /auth/login only
+          // reads `next=` (see src/lib/auth/safe-next.ts) — sending `redirect=`
+          // silently dropped this return path and stranded the user on the
+          // kernel homepage after signing in instead of completing the app's
+          // consent flow (#1797).
           const returnUrl = encodeURIComponent(globalThis.location.href);
-          globalThis.location.href = `/auth/login?redirect=${returnUrl}`;
+          globalThis.location.href = `/auth/login?next=${returnUrl}`;
           return;
         }
         return fetch(`/api/registry/apps/${appId}`);

@@ -18,6 +18,7 @@ import {
 } from '@/src/lib/mcp/oauth-config';
 import { anchorToOrigin } from '@/src/lib/mcp/oauth-redirect';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
+import { toOrigin } from '@/src/lib/http/public-origin';
 
 const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
@@ -27,12 +28,25 @@ export const dynamic = 'force-dynamic';
  *
  * The kernel sits behind Caddy, so `request.url` reports the internal proxy
  * target (http://localhost:3000) — redirecting off that dead-ends the user's
- * browser (the #1185 "redirect to localhost:3000" bug). The OAuth ceremony is
- * advertised on the configured issuer origin (getMcpIssuer() === MCP_PUBLIC_URL),
- * and Claude arrived on exactly that origin, so we anchor all browser redirects
- * to it. Fall back to the forwarded host, then request.url, if unset.
+ * browser (the #1185 "redirect to localhost:3000" bug).
+ *
+ * This endpoint is the generic OAuth 2.1 authorization server for EVERY
+ * registered third-party app (registry.apps, #244) — not only the Claude/MCP
+ * connector. It used to anchor unconditionally to getMcpIssuer()
+ * (MCP_PUBLIC_URL, defaulting to https://mcp.imajin.ai) on the assumption
+ * that every caller arrives on that exact origin the way Claude does. A
+ * generic app authorizing through the node's OWN public origin (APP_URL /
+ * NEXT_PUBLIC_BASE_URL, #1608) got bounced to a DIFFERENT host that most
+ * self-hosted nodes never configure or control — mcp.imajin.ai does not serve
+ * that node's /auth/login or /auth/authorize, so the login/consent redirect
+ * 404'd (#1797). Prefer the node's own trusted public origin first; fall back
+ * to the configured MCP issuer (still correct for the actual MCP connector
+ * flow, and for deployments that only set MCP_PUBLIC_URL), then the forwarded
+ * host, then request.url as a last resort for local dev.
  */
 function publicOrigin(request: NextRequest): string {
+  const nodeOrigin = toOrigin(process.env.APP_URL) ?? toOrigin(process.env.NEXT_PUBLIC_BASE_URL);
+  if (nodeOrigin) return nodeOrigin;
   const issuer = getMcpIssuer();
   if (issuer) return issuer;
   const fwHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
