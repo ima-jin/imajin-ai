@@ -19,6 +19,7 @@ import {
 import { anchorToOrigin } from '@/src/lib/mcp/oauth-redirect';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 import { toOrigin } from '@/src/lib/http/public-origin';
+import { projectConsentedScopes } from '@/src/lib/kernel/consent-scope-projection';
 
 const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
@@ -363,6 +364,22 @@ export async function POST(request: NextRequest) {
     avatarUrl: client.logoUrl,
     adapter: 'oauth',
   });
+
+  // Auto-publish the granted scopes' scope-manifest(s) (#1804): the consent
+  // event itself now projects `auth.channel_links` immediately, so a brand-new
+  // user's very first tool call is not gated behind a separate manual visit to
+  // the connector card. The card remains the management surface (edit / narrow
+  // / revoke afterward) — this only ever adds a row for `requireMcpGrant` to
+  // find. Non-fatal: a failure here degrades to the pre-#1804 behavior (manual
+  // publish still available on the connector card), never blocks consent.
+  try {
+    await projectConsentedScopes({ ownerDid: sessionDid, appDid: client.appDid, scopes: granted });
+  } catch (err) {
+    log.error(
+      { err: String(err), clientId: client.id, userDid: sessionDid },
+      'oauth: auto-publish scope-manifest on consent failed (non-fatal)',
+    );
+  }
 
   // Mint a single-use, PKCE-bound authorization code (store only its hash).
   const code = generateOpaqueToken();
