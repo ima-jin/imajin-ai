@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { NavBar } from './components/NavBar';
 import { Providers } from './providers';
-import { buildPublicUrl } from '@imajin/config';
+import { buildPublicUrl, APP_DISPLAY_NAME } from '@imajin/config';
 import { themeInitScript } from '@imajin/ui/server';
 
 const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX || 'https://';
@@ -17,23 +17,23 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: `Imajin Events${envLabel}`,
-    template: `%s | Imajin Events${envLabel}`,
+    default: `${APP_DISPLAY_NAME} Events${envLabel}`,
+    template: `%s | ${APP_DISPLAY_NAME} Events${envLabel}`,
   },
   description: 'Create and discover events on the sovereign network. No platform lock-in. You own your identity.',
   keywords: ['events', 'tickets', 'sovereign', 'decentralized', 'imajin'],
-  authors: [{ name: 'Imajin', url: buildPublicUrl('www', prefix, domain) }],
+  authors: [{ name: APP_DISPLAY_NAME, url: buildPublicUrl('www', prefix, domain) }],
   openGraph: {
     type: 'website',
     locale: 'en_US',
     url: buildPublicUrl('events', prefix, domain),
-    siteName: `Imajin Events${envLabel}`,
-    title: `Imajin Events${envLabel}`,
+    siteName: `${APP_DISPLAY_NAME} Events${envLabel}`,
+    title: `${APP_DISPLAY_NAME} Events${envLabel}`,
     description: 'Create and discover events on the sovereign network',
   },
   twitter: {
     card: 'summary_large_image',
-    title: `Imajin Events${envLabel}`,
+    title: `${APP_DISPLAY_NAME} Events${envLabel}`,
     description: 'Create and discover events on the sovereign network',
   },
   robots: {

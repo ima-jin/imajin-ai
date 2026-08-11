@@ -1,3 +1,5 @@
+import { APP_DISPLAY_NAME } from '@imajin/config';
+
 /**
  * Dark theme email wrapper with IMAJIN footer.
  * Pass inner HTML content (the body rows) to wrap in the outer shell.
@@ -20,10 +22,10 @@ export function emailWrapper(content: string): string {
           <!-- Brand -->
           <tr>
             <td style="padding:24px 32px;text-align:center;">
-              <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:2px;">IMAJIN</p>
+              <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:2px;">${APP_DISPLAY_NAME}</p>
               <p style="margin:0 0 16px;font-size:12px;color:#52525b;">The internet that pays you back</p>
               <p style="margin:0;font-size:12px;color:#3f3f46;">
-                Part of the <a href="https://imajin.ai" style="color:#52525b;text-decoration:underline;">Imajin</a> sovereign network
+                Part of the <a href="https://imajin.ai" style="color:#52525b;text-decoration:underline;">${APP_DISPLAY_NAME}</a> sovereign network
                 &nbsp;·&nbsp;
                 <a href="https://app.dfos.com/j/c3rff6e96e4ca9hncc43en" style="color:#3f3f46;text-decoration:underline;">DFOS Community</a>
                 &nbsp;·&nbsp;

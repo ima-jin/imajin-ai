@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from 'next';
 import { NavBar } from '@imajin/ui';
 import { buildServiceMetadata, defaultViewport, getServiceRuntimeEnv } from '@imajin/ui/server';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 import './globals.css';
 import { Providers } from './providers';
 export const viewport: Viewport = defaultViewport;
-export const metadata: Metadata = buildServiceMetadata('Coffee', 'Support creators with sovereign tip pages on the Imajin network');
+export const metadata: Metadata = buildServiceMetadata('Coffee', `Support creators with sovereign tip pages on the ${APP_DISPLAY_NAME} network`);
 
 export default function RootLayout({
   children,

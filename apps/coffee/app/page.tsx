@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { buildPublicUrl } from '@imajin/config';
+import { buildPublicUrl, APP_DISPLAY_NAME } from '@imajin/config';
 import Link from 'next/link';
 import { ImajinFooter } from '@imajin/ui';
 
@@ -75,7 +75,7 @@ export default function CoffeePage() {
               <div className="flex items-start gap-4">
                 <div className="text-2xl">🔗</div>
                 <div>
-                  <h3 className="font-semibold">Integrates with Imajin</h3>
+                  <h3 className="font-semibold">Integrates with {APP_DISPLAY_NAME}</h3>
                   <p className="text-gray-500 text-sm">Connect your profile, links page, and events. One identity across the sovereign network.</p>
                 </div>
               </div>

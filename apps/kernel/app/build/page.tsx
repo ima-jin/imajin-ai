@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 import { getBuildEntries } from '@/src/lib/www/build-log';
 
 export const metadata: Metadata = {
-  title: 'Build Log — Imajin',
+  title: `Build Log — ${APP_DISPLAY_NAME}`,
   description: 'What we shipped, when we shipped it. Building sovereign technology in public.',
 };
 

@@ -1,7 +1,9 @@
-// Set NEXT_PUBLIC_VERSION and NEXT_PUBLIC_BUILD_HASH at build time
-// e.g. NEXT_PUBLIC_VERSION=$(git describe --tags --always) NEXT_PUBLIC_BUILD_HASH=$(git rev-parse HEAD)
+// Set NEXT_PUBLIC_VERSION, NEXT_PUBLIC_BUILD_HASH, and NEXT_PUBLIC_COMMIT_COUNT at build time.
+// scripts/build.sh sets these from the root package.json `version` field and
+// `git rev-parse`/`git rev-list --count` — NOT from a git tag, so bumping the
+// root package.json version is what actually changes what renders here.
 
-import { buildPublicUrl } from "@imajin/config";
+import { buildPublicUrl, APP_DISPLAY_NAME } from "@imajin/config";
 
 export function BuildInfo() {
   const version = process.env.NEXT_PUBLIC_VERSION || "dev";
@@ -14,7 +16,7 @@ export function BuildInfo() {
       href={`${buildPublicUrl("kernel")}/build`}
       className={`text-xs hover:underline ${isDev ? "text-yellow-600" : "text-gray-500"}`}
     >
-      imajin {display} · build {hash.slice(0, 7)}
+      {APP_DISPLAY_NAME} {display} · build {hash.slice(0, 7)}
     </a>
   );
 }

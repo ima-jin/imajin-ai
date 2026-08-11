@@ -1,4 +1,5 @@
 import { ImajinFooter } from '@imajin/ui';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 import { getClient } from '@imajin/db';
 import { LandingGrid, EmailCapture } from '@/src/components/www/LandingGrid';
 import { PromoVideo } from '@/src/components/www/PromoVideo';
@@ -56,9 +57,9 @@ export default async function Home() {
         <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-4">
           <span className="text-3xl font-bold text-amber-500">人</span>
         </div>
-        <p className="text-xs uppercase tracking-widest text-gray-500 mb-3">Imajin — programmable trust.</p>
+        <p className="text-xs uppercase tracking-widest text-gray-500 mb-3">{APP_DISPLAY_NAME} — programmable trust.</p>
         <h1 className="text-2xl md:text-4xl font-bold text-gray-100 leading-tight">
-          You compose. Imajin orchestrates. Signed. Legible.
+          You compose. {APP_DISPLAY_NAME} orchestrates. Signed. Legible.
         </h1>
         <p className="text-base text-gray-500 italic mt-3">the speed of thought, signed.</p>
       </section>

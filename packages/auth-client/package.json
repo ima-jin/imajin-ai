@@ -1,6 +1,6 @@
 {
   "name": "@imajin/auth-client",
-  "version": "0.6.1",
+  "version": "0.8.0",
   "private": true,
   "description": "\"Sign in with Imajin\" SDK for federated apps — JWT session management and ready-made Next.js route handlers",
   "license": "MIT",

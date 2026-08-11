@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from 'next';
 import { NavBar } from '@imajin/ui';
 import { buildServiceMetadata, defaultViewport, getServiceRuntimeEnv } from '@imajin/ui/server';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 import { LayoutWrapper } from '@/components/LayoutWrapper';
 import './globals.css';
 import { Providers } from './providers';
 export const viewport: Viewport = defaultViewport;
-export const metadata: Metadata = buildServiceMetadata('Links', 'Sovereign link-in-bio pages on the Imajin network');
+export const metadata: Metadata = buildServiceMetadata('Links', `Sovereign link-in-bio pages on the ${APP_DISPLAY_NAME} network`);
 
 export default function RootLayout({
   children,

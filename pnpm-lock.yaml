@@ -1017,6 +1017,9 @@ importers:
 
   packages/email:
     dependencies:
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../config
       '@imajin/logger':
         specifier: workspace:*
         version: link:../logger

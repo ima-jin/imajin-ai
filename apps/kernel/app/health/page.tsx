@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ImajinFooter } from '@imajin/ui';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 
 interface ServiceCheck {
   name: string;
@@ -180,7 +181,7 @@ export default function HealthPage() {
         {/* Footer */}
         <div className="mt-16 pt-8 border-t border-gray-800 text-center text-gray-500 text-sm">
           <p>
-            Imajin services status page. Auto-refreshes every 30 seconds.
+            {APP_DISPLAY_NAME} services status page. Auto-refreshes every 30 seconds.
           </p>
         </div>
         <div className="mt-8">

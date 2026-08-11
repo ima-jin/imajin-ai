@@ -5,8 +5,10 @@
  * Import from @imajin/ui in any app.
  */
 
+import { APP_DISPLAY_NAME } from '@imajin/config';
+
 export const BRAND = {
-  name: 'Imajin',
+  name: APP_DISPLAY_NAME,
   nameJp: '今人',
   pronunciation: 'eema-gin',
   

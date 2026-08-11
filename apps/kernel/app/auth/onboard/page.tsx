@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { buildPublicUrl } from '@imajin/config';
+import { buildPublicUrl, APP_DISPLAY_NAME } from '@imajin/config';
 import * as ed from '@noble/ed25519';
 
 // Bytes → hex
@@ -430,7 +430,7 @@ function OnboardContent() {
         )}
 
         {/* Footer */}
-        <p className="text-center text-xs text-gray-600">Powered by Imajin</p>
+        <p className="text-center text-xs text-gray-600">Powered by {APP_DISPLAY_NAME}</p>
       </div>
     </div>
   );

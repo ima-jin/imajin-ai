@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 import {
   themeInitScript,
   getActingAs,
@@ -30,11 +31,11 @@ describe('@imajin/ui/server entry', () => {
   it('exports the service-layout helpers', () => {
     expect(defaultViewport).toStrictEqual({ width: 'device-width', initialScale: 1 });
     const metadata = buildServiceMetadata('Test', 'A test service');
-    expect(metadata.title).toBe('Test | Imajin');
+    expect(metadata.title).toBe(`Test | ${APP_DISPLAY_NAME}`);
     expect(getServiceRuntimeEnv()).toHaveProperty('domain');
   });
 
   it('exports the BRAND constant', () => {
-    expect(BRAND.name).toBe('Imajin');
+    expect(BRAND.name).toBe(APP_DISPLAY_NAME);
   });
 });

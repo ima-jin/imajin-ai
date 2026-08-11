@@ -1,3 +1,4 @@
+import { APP_DISPLAY_NAME } from '@imajin/config';
 import { emailWrapper } from './base';
 
 interface TrustGraphInviteData {
@@ -34,8 +35,8 @@ export function trustGraphInviteEmail(data: TrustGraphInviteData): string {
           <!-- Header -->
           <tr>
             <td style="background-color:#111111;padding:32px 32px 24px;border-radius:8px 8px 0 0;">
-              <h1 style="margin:0 0 8px;font-size:28px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">You're invited to Imajin</h1>
-              <p style="margin:0;font-size:16px;color:#a1a1aa;line-height:1.5;"><strong style="color:#ffffff;">${inviterDisplay}</strong> invited you to join the Imajin network.</p>
+              <h1 style="margin:0 0 8px;font-size:28px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">You're invited to ${APP_DISPLAY_NAME}</h1>
+              <p style="margin:0;font-size:16px;color:#a1a1aa;line-height:1.5;"><strong style="color:#ffffff;">${inviterDisplay}</strong> invited you to join the ${APP_DISPLAY_NAME} network.</p>
             </td>
           </tr>
           ${noteSection}

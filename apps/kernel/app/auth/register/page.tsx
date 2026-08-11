@@ -3,7 +3,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { normalizeHandleInput, buildPublicUrl } from '@imajin/config';
+import { normalizeHandleInput, buildPublicUrl, APP_DISPLAY_NAME } from '@imajin/config';
 import Link from 'next/link';
 
 
@@ -204,7 +204,7 @@ function RegisterPage() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
           <div className="text-6xl mb-6">🟠</div>
-          <h1 className="text-2xl font-bold mb-3">Imajin is invite-only</h1>
+          <h1 className="text-2xl font-bold mb-3">{APP_DISPLAY_NAME} is invite-only</h1>
           <p className="text-gray-500 dark:text-gray-400 mb-6">
             You need an invite from an existing member to join the network.
             Each connection is intentional.
@@ -225,7 +225,7 @@ function RegisterPage() {
               href={buildPublicUrl('www')}
               className="block w-full py-3 bg-white/10 hover:bg-white/20 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition text-center"
             >
-              Learn about Imajin
+              Learn about {APP_DISPLAY_NAME}
             </a>
           </div>
         </div>

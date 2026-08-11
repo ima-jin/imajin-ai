@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import KeyAuthTab from './components/KeyAuthTab';
 import PasswordAuthTab from './components/PasswordAuthTab';
 import MfaGate from './components/MfaGate';
-import { buildPublicUrl } from '@imajin/config';
+import { buildPublicUrl, APP_DISPLAY_NAME } from '@imajin/config';
 import { isSafeNext as safeNext } from '@/src/lib/auth/safe-next';
 
 const WWW_URL = buildPublicUrl('kernel');
@@ -188,7 +188,7 @@ function LoginForm() {
             <strong className="text-white">New here?</strong>
             <br />
             <span className="mt-1 inline-block">
-              Imajin identities are created through communities, events, and businesses. Ask your organizer or host for an invitation.
+              {APP_DISPLAY_NAME} identities are created through communities, events, and businesses. Ask your organizer or host for an invitation.
             </span>
           </p>
           <NewsletterSignup />
