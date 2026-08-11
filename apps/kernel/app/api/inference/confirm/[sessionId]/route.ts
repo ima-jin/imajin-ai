@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { db, inferenceSessions } from '@/src/db';
@@ -7,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { confirmIntent } from '@/src/lib/inference/consent';
 import { resolveIntent } from '@/src/lib/inference/resolve';
 import { getVocabulary } from '@/src/lib/inference/vocabulary';
+import { resolveInferenceAuth } from '@/src/lib/inference/auth';
 
 const log = createLogger('kernel:inference:confirm-route');
 
@@ -25,17 +25,23 @@ export async function OPTIONS(request: NextRequest) {
  * The human's explicit tap on this endpoint IS the consent gate for all
  * 'deliberate' intents (e.g. AgriFortress supply.received). Nothing is
  * sent / spent / disclosed without this call succeeding.
+ *
+ * Auth must accept the exact same authenticated callers that
+ * `/api/inference/capture` accepted for this session (#1782) — the human (or
+ * delegating app) who captured the gesture is the one who confirms it, so
+ * this resolves auth via the shared `resolveInferenceAuth` helper rather than
+ * a plain `requireAuth` call.
  */
 export async function POST(request: NextRequest, props: { params: Promise<{ sessionId: string }> }) {
   const params = await props.params;
   const cors = corsHeaders(request);
   const { sessionId } = params;
 
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+  const auth = await resolveInferenceAuth(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
-  const ownerDid = resolveActingDid(authResult.identity);
+  const { ownerDid } = auth.context;
 
   try {
     // Validate ownership + status, advance to 'resolving'.

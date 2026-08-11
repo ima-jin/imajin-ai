@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RetryError } from 'ai';
-import { requireAppAuth, requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
@@ -13,19 +12,11 @@ import { resolveConsentGate } from '@/src/lib/inference/consent';
 import { resolveIntent } from '@/src/lib/inference/resolve';
 import { getVocabulary, listVocabularyNames } from '@/src/lib/inference/vocabulary';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
+import { resolveInferenceAuth } from '@/src/lib/inference/auth';
 
 const log = createLogger('kernel:inference:capture-route');
 
 export const dynamic = 'force-dynamic';
-
-interface InferenceAuthContext {
-  ownerDid: string;
-  appDid?: string;
-}
-
-type InferenceAuthResult =
-  | { ok: true; context: InferenceAuthContext }
-  | { ok: false; error: string; status: number };
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -251,34 +242,4 @@ function handlePipelineError(
     },
     { status: 500, headers: cors },
   );
-}
-
-async function resolveInferenceAuth(request: NextRequest): Promise<InferenceAuthResult> {
-  const appResult = await requireAppAuth(request, { scope: 'infer:provide' });
-  if ('appAuth' in appResult) {
-    const ownerDid = appResult.appAuth.userDid || request.headers.get('x-acting-for') || '';
-    if (!ownerDid) {
-      return {
-        ok: false,
-        error: 'App-authenticated inference requires a delegating user DID or X-Acting-For header',
-        status: 400,
-      };
-    }
-    return { ok: true, context: { ownerDid, appDid: appResult.appAuth.appDid } };
-  }
-
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    const hasAppAuthHint = Boolean(
-      request.headers.get('x-app-did') ||
-      request.headers.get('x-app-authorization') ||
-      request.headers.get('x-acting-for'),
-    );
-    if (hasAppAuthHint || appResult.status === 403) {
-      return { ok: false, error: appResult.error, status: appResult.status };
-    }
-    return { ok: false, error: authResult.error, status: authResult.status };
-  }
-
-  return { ok: true, context: { ownerDid: resolveActingDid(authResult.identity) } };
 }
