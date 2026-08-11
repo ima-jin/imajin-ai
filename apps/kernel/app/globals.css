@@ -5,6 +5,25 @@
 /* Note: dark mode colors handled by Tailwind classes on <body> in layout.tsx
    Do not hardcode body background/color here — it conflicts with dark: variants */
 
+/* === Dark mode support for native form controls (#1781) ===
+   Without `color-scheme`, browsers render native popups (e.g. the <select>
+   options list) using the OS light palette regardless of our own dark:
+   classes, making option text invisible except the hovered row. Setting
+   color-scheme on the root element (toggled to `dark` by theme-init.ts,
+   see packages/ui/src/theme-init.ts) tells the browser to paint ALL native
+   form-control chrome — not just <select> — with its dark palette. */
+html.dark {
+  color-scheme: dark;
+}
+
+/* Fallback for browsers that don't fully honor color-scheme when painting
+   the options popup — explicit colors keep options legible either way. */
+html.dark select,
+html.dark option {
+  background-color: #0a0a0a;
+  color: #fff;
+}
+
 /* === Chat component styles (from apps/chat globals.css) === */
 
 /* Custom scrollbar */
