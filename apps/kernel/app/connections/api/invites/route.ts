@@ -4,12 +4,12 @@ import { eq, desc, and, sql, isNull, count } from 'drizzle-orm';
 import { db, invites, profiles, podMembers } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
-import { isVerifiedTier } from '@imajin/auth';
+import { isVerifiedTier, requireAppAuth } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { buildPublicUrl } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 
-import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { getSessionFromCookies, getSessionForDid, type KernelSession } from '@/src/lib/kernel/session';
 
 const log = createLogger('kernel');
 
@@ -42,11 +42,60 @@ async function isInTrustGraph(did: string): Promise<boolean> {
   return !!membership;
 }
 
-export async function POST(request: NextRequest) {
-  const session = await getSessionFromCookies(request.headers.get('cookie'));
-  if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+type InviteAuthResult = { session: KernelSession } | { error: string; status: number };
+
+/**
+ * Dual guard (#1793): accept either an external app authenticated with the
+ * `connections:write` scope, or a direct user session cookie. Both paths
+ * resolve to the same `KernelSession` shape (tier, handle, role) so the rest
+ * of the handler — tier limits, cooldowns, trust-graph checks — stays
+ * identical regardless of which guard let the caller through.
+ *
+ * `requireAppAuth` is cheap to call unconditionally: with neither a Bearer
+ * app token nor X-App-DID/X-App-Authorization headers present, it returns an
+ * error immediately with no network round trip (mirrors the pattern in
+ * `src/lib/inference/auth.ts`, #1782).
+ */
+async function resolveInviteAuth(request: NextRequest): Promise<InviteAuthResult> {
+  const appResult = await requireAppAuth(request, { scope: 'connections:write' });
+  if ('appAuth' in appResult) {
+    const did = appResult.appAuth.userDid;
+    if (!did) {
+      return {
+        error: 'App-authenticated invite creation requires a delegating user DID',
+        status: 400,
+      };
+    }
+    const session = await getSessionForDid(did);
+    if (!session) {
+      return { error: 'Not authenticated', status: 401 };
+    }
+    return { session };
   }
+
+  const session = await getSessionFromCookies(request.headers.get('cookie'));
+  if (session?.did) {
+    return { session };
+  }
+
+  // Only surface the app-auth failure when app credentials were actually
+  // supplied — a plain unauthenticated browser request never sent any, and
+  // should see the generic session error rather than an app-token hint.
+  const hasAppAuthHint = Boolean(
+    request.headers.get('authorization') || request.headers.get('x-app-did'),
+  );
+  if (hasAppAuthHint) {
+    return { error: appResult.error, status: appResult.status };
+  }
+  return { error: 'Not authenticated', status: 401 };
+}
+
+export async function POST(request: NextRequest) {
+  const authResult = await resolveInviteAuth(request);
+  if ('error' in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+  }
+  const { session } = authResult;
 
   const body = await request.json().catch(() => ({}));
   const delivery: 'link' | 'email' = body.delivery === 'email' ? 'email' : 'link';

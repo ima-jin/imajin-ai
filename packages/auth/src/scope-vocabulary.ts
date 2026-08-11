@@ -213,6 +213,10 @@ export const SCOPE_VOCABULARY = [
 
   { scope: 'connections:read', connector: 'mcp', verb: 'read', surface: 'connections', classification: SELF_ONLY, surfaces: MCP_TOKENS,
     label: 'View your connections', manifestLabel: 'Read your trust-graph connections' },
+  // Platform scope (#1793): consumed directly via requireAppAuth() on
+  // POST /connections/api/invites, the same way wallet:write gates
+  // POST /pay/api/checkout — not an MCP tool surface, so no owning connector.
+  { scope: 'connections:write', connector: null, label: 'Create invites on your behalf' },
 
   { scope: 'events:read', connector: null, label: 'View events you attend or have created' },
   { scope: 'events:write', connector: null, label: 'Create and manage events on your behalf' },

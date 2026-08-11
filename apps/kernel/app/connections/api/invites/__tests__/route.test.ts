@@ -1,0 +1,238 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// ─── Mocks ───────────────────────────────────────────────────────────────────
+
+const {
+  mockRequireAppAuth,
+  mockGetSessionFromCookies,
+  mockGetSessionForDid,
+  mockDbSelect,
+  mockDbInsert,
+  mockPublish,
+  mockIsVerifiedTier,
+} = vi.hoisted(() => ({
+  mockRequireAppAuth: vi.fn(),
+  mockGetSessionFromCookies: vi.fn(),
+  mockGetSessionForDid: vi.fn(),
+  mockDbSelect: vi.fn(),
+  mockDbInsert: vi.fn(),
+  mockPublish: vi.fn(async () => undefined),
+  mockIsVerifiedTier: vi.fn(() => true),
+}));
+
+vi.mock('@imajin/auth', () => ({
+  requireAppAuth: mockRequireAppAuth,
+  isVerifiedTier: mockIsVerifiedTier,
+}));
+
+vi.mock('@/src/lib/kernel/session', () => ({
+  getSessionFromCookies: mockGetSessionFromCookies,
+  getSessionForDid: mockGetSessionForDid,
+}));
+
+vi.mock('@imajin/logger', () => ({
+  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
+}));
+
+vi.mock('@imajin/bus', () => ({
+  publish: mockPublish,
+}));
+
+vi.mock('@imajin/config', () => ({
+  buildPublicUrl: (service: string) => `https://${service}.example`,
+}));
+
+vi.mock('@imajin/email', () => ({
+  sendEmail: vi.fn(async () => undefined),
+  trustGraphInviteEmail: vi.fn(() => '<html></html>'),
+}));
+
+vi.mock('@/src/lib/kernel/id', () => ({
+  generateId: (prefix: string) => `${prefix}test123`,
+}));
+
+// Chainable drizzle-style query builder mock. Each test configures the
+// resolved value for the queries it cares about via mockDbSelect/mockDbInsert.
+function makeSelectChain(result: unknown) {
+  const chain: Record<string, unknown> = {};
+  const self = () => chain;
+  chain.from = vi.fn(self);
+  chain.where = vi.fn(self);
+  chain.limit = vi.fn(async () => result);
+  chain.orderBy = vi.fn(async () => result);
+  chain.leftJoin = vi.fn(self);
+  // `where` resolves directly for the pending-count query (no `.limit()` call).
+  chain.then = (resolve: (v: unknown) => void) => resolve(result);
+  return chain;
+}
+
+vi.mock('@/src/db', () => ({
+  db: {
+    select: (...args: unknown[]) => mockDbSelect(...args),
+    insert: (...args: unknown[]) => mockDbInsert(...args),
+  },
+  invites: {},
+  profiles: {},
+  podMembers: {},
+}));
+
+// ─── Subject ─────────────────────────────────────────────────────────────────
+
+import { POST } from '../route';
+
+// ─── Fixtures ────────────────────────────────────────────────────────────────
+
+const OWNER_DID = 'did:imajin:owner';
+const APP_DID = 'did:imajin:some-app';
+
+const SESSION = {
+  did: OWNER_DID,
+  handle: 'owner-handle',
+  scope: 'actor',
+  role: 'member',
+  tier: 'established',
+  chainVerified: true,
+};
+
+type RouteRequest = Parameters<typeof POST>[0];
+
+function makeReq(
+  body: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+): RouteRequest {
+  return {
+    headers: new Headers(headers),
+    json: async () => body,
+  } as unknown as RouteRequest;
+}
+
+/** App-auth denial shape returned when no app credentials are present at all. */
+const NO_APP_CREDENTIALS = {
+  error: 'Authorization Bearer <app-token>, or X-App-DID + X-App-Authorization headers required',
+  status: 401,
+};
+
+function appAuth(overrides: Record<string, unknown> = {}) {
+  return {
+    appAuth: {
+      appDid: APP_DID,
+      userDid: OWNER_DID,
+      scopes: ['connections:write'],
+      attestationId: 'att_app',
+      ...overrides,
+    },
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockRequireAppAuth.mockResolvedValue(NO_APP_CREDENTIALS);
+  mockGetSessionFromCookies.mockResolvedValue(SESSION);
+  mockGetSessionForDid.mockResolvedValue(SESSION);
+
+  // Default select chain: no pending invites, count = 0.
+  mockDbSelect.mockImplementation(() => makeSelectChain([{ count: 0 }]));
+  mockDbInsert.mockReturnValue({
+    values: vi.fn().mockReturnValue({
+      returning: vi.fn(async () => [
+        { id: 'inv_test123', code: 'abc123', fromDid: OWNER_DID, delivery: 'link' },
+      ]),
+    }),
+  });
+});
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+describe('POST /connections/api/invites — session auth (existing behaviour)', () => {
+  it('creates a link invite for a cookie-authenticated user', async () => {
+    const res = await POST(makeReq({}));
+
+    expect(res.status).toBe(201);
+    expect(mockGetSessionFromCookies).toHaveBeenCalled();
+    expect(mockDbInsert).toHaveBeenCalled();
+  });
+
+  it('returns 401 when there is no session and no app credentials', async () => {
+    mockGetSessionFromCookies.mockResolvedValueOnce(null);
+
+    const res = await POST(makeReq({}));
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'Not authenticated' });
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /connections/api/invites — app-auth dual guard (#1793)', () => {
+  it('requires the connections:write app scope', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce(appAuth());
+
+    await POST(makeReq({}));
+
+    expect(mockRequireAppAuth).toHaveBeenCalledWith(expect.anything(), { scope: 'connections:write' });
+  });
+
+  it('creates the invite issued from appAuth.userDid, never calling session auth', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce(appAuth());
+
+    const res = await POST(makeReq({}));
+
+    expect(res.status).toBe(201);
+    expect(mockGetSessionForDid).toHaveBeenCalledWith(OWNER_DID);
+    expect(mockGetSessionFromCookies).not.toHaveBeenCalled();
+
+    const insertValues = mockDbInsert.mock.results[0].value.values as ReturnType<typeof vi.fn>;
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ fromDid: OWNER_DID }),
+    );
+  });
+
+  it('resolves the same issuer DID via app-auth and session-cookie paths', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce(appAuth());
+    const appRes = await POST(makeReq({}));
+    const appBody = await appRes.json();
+
+    mockRequireAppAuth.mockResolvedValueOnce(NO_APP_CREDENTIALS);
+    const sessionRes = await POST(makeReq({}));
+    const sessionBody = await sessionRes.json();
+
+    expect(appBody.invite.fromDid).toBe(OWNER_DID);
+    expect(sessionBody.invite.fromDid).toBe(OWNER_DID);
+  });
+
+  it('rejects service tokens that name no delegating user DID', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce(appAuth({ userDid: '', isServiceToken: true }));
+
+    const res = await POST(makeReq({}));
+
+    expect(res.status).toBe(400);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 when the app-authenticated DID has no known identity', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce(appAuth());
+    mockGetSessionForDid.mockResolvedValueOnce(null);
+
+    const res = await POST(makeReq({}));
+
+    expect(res.status).toBe(401);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the app-auth error instead of falling back when app headers were supplied but invalid', async () => {
+    mockRequireAppAuth.mockResolvedValueOnce({ error: 'Invalid app token', status: 401 });
+    mockGetSessionFromCookies.mockResolvedValueOnce(null);
+
+    const res = await POST(makeReq({}, { 'x-app-did': APP_DID }));
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'Invalid app token' });
+  });
+
+  it('falls back to the session cookie when no app credentials are supplied at all', async () => {
+    const res = await POST(makeReq({}));
+
+    expect(res.status).toBe(201);
+    expect(mockGetSessionFromCookies).toHaveBeenCalled();
+  });
+});
