@@ -111,12 +111,13 @@ interface BaseScopeEntry {
    * assumed to require a human consent event, and must never reach a service
    * token even when the app's own `requestedScopes` lists it.
    *
-   * This ships with the fence empty: no scope in the vocabulary is currently
-   * `serviceEligible`. In particular `supply:read` / `supply:write` stay
-   * ineligible — the #1803 rescope decided session-less app reads are not an
-   * intended capability; the webhook use case that motivated this field falls
-   * through the selective-disclosure pipeline (`auth.channel_links`) instead
-   * of through this fence.
+   * This shipped with the fence empty (#1803): no scope was marked
+   * `serviceEligible` while the per-lot `channel_links` gate did not exist yet.
+   * catalyst-power/xprize#70 flips `supply:read` on now that it does — a
+   * service token may carry the scope, but `handleLotGet` still requires an
+   * active `channel_links` grant of `supply:read` from the lot's originating
+   * supplier before it will return a lot, and every read writes an audit row.
+   * `supply:write` stays ineligible.
    */
   serviceEligible?: boolean;
 }
@@ -242,7 +243,12 @@ export const SCOPE_VOCABULARY = [
 
   { scope: 'events:read', connector: null, label: 'View events you attend or have created' },
   { scope: 'events:write', connector: null, label: 'Create and manage events on your behalf' },
-  { scope: 'supply:read', connector: null, label: 'View your supply-chain lots and their stage history' },
+  // #1803 shipped this ineligible; catalyst-power/xprize#70 flips it on now that
+  // the per-lot gate is live: even service-eligible, every app-token lot read
+  // still requires an active channel_links grant of supply:read from the lot's
+  // originating supplier (`handleLotGet` in apps/kernel/src/lib/supply.ts), and
+  // every read writes a DID-attributed audit row. supply:write stays ineligible.
+  { scope: 'supply:read', connector: null, label: 'View your supply-chain lots and their stage history', serviceEligible: true },
   { scope: 'supply:write', connector: null, label: 'Record supply-chain stages (declare, collect, process, list) on your behalf' },
 
   { scope: 'messages:read', connector: 'mcp', verb: 'read', surface: 'messages', classification: SELF_ONLY, surfaces: MCP_TOKENS,
@@ -447,8 +453,9 @@ export function isServiceEligibleScope(entry: ScopeVocabularyEntry): boolean {
  * `POST /auth/api/apps/token/service` clamps against — the intersection of
  * this set and an app's own `requestedScopes` is what actually gets minted.
  *
- * Ships empty today: no scope has been explicitly signed off on as
- * service-eligible yet.
+ * `supply:read` is the first (and, as of catalyst-power/xprize#70, only)
+ * scope signed off on as service-eligible; every other scope stays fenced
+ * out until explicitly flipped.
  */
 export function serviceEligibleScopes(): readonly string[] {
   return ENTRIES.filter(isServiceEligibleScope).map((e) => e.scope);
