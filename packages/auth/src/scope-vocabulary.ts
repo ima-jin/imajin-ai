@@ -101,6 +101,24 @@ interface BaseScopeEntry {
   label: string;
   /** Capability surfaces whose tokens may carry this scope. */
   surfaces?: readonly CapabilitySurface[];
+  /**
+   * True when a session-less service token (`app-service+jwt`, minted via
+   * `POST /auth/api/apps/token/service` — no user, no attestation, no
+   * consent event behind it) may carry this scope (#1803).
+   *
+   * Defaults to `false` — fail-closed, the same pattern as `credentialFree`
+   * below. A scope nobody has explicitly signed off on as service-eligible is
+   * assumed to require a human consent event, and must never reach a service
+   * token even when the app's own `requestedScopes` lists it.
+   *
+   * This ships with the fence empty: no scope in the vocabulary is currently
+   * `serviceEligible`. In particular `supply:read` / `supply:write` stay
+   * ineligible — the #1803 rescope decided session-less app reads are not an
+   * intended capability; the webhook use case that motivated this field falls
+   * through the selective-disclosure pipeline (`auth.channel_links`) instead
+   * of through this fence.
+   */
+  serviceEligible?: boolean;
 }
 
 /**
@@ -411,6 +429,29 @@ export function manifestLabelForScope(entry: ConnectorScopeEntry): string {
  */
 export function isCredentialFreeScope(entry: ConnectorScopeEntry): boolean {
   return entry.credentialFree === true;
+}
+
+/**
+ * True when a session-less service token may carry this scope (#1803).
+ *
+ * Defaults to false — fail-closed. See `BaseScopeEntry.serviceEligible` for
+ * the full rationale.
+ */
+export function isServiceEligibleScope(entry: ScopeVocabularyEntry): boolean {
+  return entry.serviceEligible === true;
+}
+
+/**
+ * Every scope string a session-less service token (`app-service+jwt`) may
+ * carry, in vocabulary order (#1803). This is the fence
+ * `POST /auth/api/apps/token/service` clamps against — the intersection of
+ * this set and an app's own `requestedScopes` is what actually gets minted.
+ *
+ * Ships empty today: no scope has been explicitly signed off on as
+ * service-eligible yet.
+ */
+export function serviceEligibleScopes(): readonly string[] {
+  return ENTRIES.filter(isServiceEligibleScope).map((e) => e.scope);
 }
 
 // ── Lookups ───────────────────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ import { eq, and } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 import { revokeAttestationOnce } from '@/src/lib/auth/revoke-attestation';
+import { revokeAppAuthorizationGrant } from '@/src/lib/auth/app-authorization-grant';
 
 export const POST = withLogger('kernel', async (request: NextRequest) => {
   const authResult = await requireAuth(request);
@@ -75,6 +76,13 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     // record (#1795).
     return NextResponse.json({ error: 'Already revoked' }, { status: 409 });
   }
+
+  // Close the channel_links grant this app.authorized attestation projected
+  // (#1803): revoking the OAuth authorization must also close the
+  // selective-disclosure grant it materialised, or the app would keep
+  // reading consent-tier data (e.g. supply:read) after the user disconnected
+  // it.
+  await revokeAppAuthorizationGrant({ ownerDid: identity.id, appDid: original.subjectDid });
 
   return NextResponse.json({ ok: true });
 });

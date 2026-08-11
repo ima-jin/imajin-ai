@@ -1,25 +1,29 @@
 /**
- * End-to-end auth-boundary test for #1800 (session-less service credential
- * for registered apps).
+ * End-to-end auth-boundary test for #1800 / #1803.
  *
- * Wires the *real* mint route, the *real* verify route, and the *real*
+ * #1800 introduced a session-less service credential (`app-service+jwt`) and
+ * wired the *real* mint route, the *real* verify route, and the *real*
  * `requireAppAuth` together (only `fetch` is stubbed, to route
  * `requireAppAuth`'s round-trip to the in-process verify handler instead of
- * the network) and drives them through the *real* `handleLotGet` — the
- * handler behind `GET /supply/api/lot/{correlationId}`, the exact route
- * catalyst-power/xprize#68's settlement webhook needs.
+ * the network) through the *real* `handleLotGet` — the handler behind
+ * `GET /supply/api/lot/{correlationId}`.
  *
- * This closes the uncertainty the issue opened with ("it's unclear whether
- * the kernel's scope-gated routes accept a self-token with no
- * attestation/subject"): they do, and this test pins it so it can't regress
- * silently.
+ * #1803 rescoped that decision: Ryan (owner) decided session-less app reads
+ * of consent-tier data are NOT an intended capability, so `supply:read` (and
+ * scopes like it) never became `serviceEligible` — the fence
+ * (`packages/auth/src/scope-vocabulary.ts`) ships empty. The webhook use case
+ * that motivated #1800 instead falls through the selective-disclosure
+ * pipeline (`auth.channel_links`, see `app-authorization-grant.ts` and the
+ * per-lot enforcement in `handleLotGet`).
  *
- * Covers the auth-boundary requirements from #1800:
- *   - correct scope succeeds
- *   - out-of-scope scope fails
+ * This file now pins the CURRENT boundary:
+ *   - a service token can never carry `supply:read` at all, no matter what
+ *     the app registered — it never reaches the lot route with that scope
+ *   - out-of-scope (no supply:read at all) still fails the same way
  *   - a revoked app can no longer mint a credential
- *   - attribution in the verified record identifies the app principal, never
- *     a borrowed human DID
+ *   - attribution in the verified record still identifies the app principal,
+ *     never a borrowed human DID, for whatever scopes a service token *can*
+ *     carry
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { generateKeypair, crypto, requireAppAuth } from '@imajin/auth';
@@ -121,22 +125,17 @@ beforeEach(() => {
   }) as unknown as typeof fetch;
 });
 
-describe('#1800 — session-less service credential auth boundary', () => {
-  it('correct scope succeeds: a freshly minted supply:read credential reads the lot with no attestation', async () => {
+describe('#1803 — supply:read is fenced out of the session-less service credential', () => {
+  it('a service token minted for an app that registered supply:read carries no scopes, and the lot route rejects it', async () => {
     nextSelect([registryRow({ requestedScopes: ['supply:read'] })]);
     const mintRes = await mintToken();
     expect(mintRes.status).toBe(200);
-    const { token } = await mintRes.json();
-
-    mocks.getLotChainMock.mockResolvedValue({
-      lot: { correlationId: 'lot_1', status: 'listed' },
-      stages: [{ stage: 'declared' }],
-    });
+    const { token, scopes } = await mintRes.json();
+    expect(scopes).toEqual([]);
 
     const res = await handleLotGet(lotGetRequest(token) as never, 'lot_1');
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.lot.correlationId).toBe('lot_1');
+    expect(res.status).toBe(403);
+    expect(mocks.getLotChainMock).not.toHaveBeenCalled();
   });
 
   it('out-of-scope fails: a credential minted without supply:read is rejected by the route', async () => {
@@ -158,7 +157,7 @@ describe('#1800 — session-less service credential auth boundary', () => {
     expect(body.token).toBeUndefined();
   });
 
-  it('attribution: the verified record identifies the app principal, never a borrowed human DID', async () => {
+  it('attribution: the verified record identifies the app principal, never a borrowed human DID, even though scope is empty', async () => {
     nextSelect([registryRow({ requestedScopes: ['supply:read'] })]);
     const mintRes = await mintToken();
     const { token } = await mintRes.json();
@@ -167,7 +166,6 @@ describe('#1800 — session-less service credential auth boundary', () => {
       new Request('https://kernel.test/supply/api/lot/lot_1', {
         headers: { Authorization: `Bearer ${token}` },
       }) as never,
-      { scope: 'supply:read' },
     );
 
     expect('appAuth' in authResult).toBe(true);
@@ -176,5 +174,6 @@ describe('#1800 — session-less service credential auth boundary', () => {
     expect(authResult.appAuth.userDid).toBe('');
     expect(authResult.appAuth.userDid).not.toBe(HUMAN_DID);
     expect(authResult.appAuth.isServiceToken).toBe(true);
+    expect(authResult.appAuth.scopes).toEqual([]);
   });
 });
