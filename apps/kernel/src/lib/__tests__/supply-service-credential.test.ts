@@ -1,5 +1,5 @@
 /**
- * End-to-end auth-boundary test for #1800 / #1803.
+ * End-to-end auth-boundary test for #1800 / #1803 / catalyst-power/xprize#70.
  *
  * #1800 introduced a session-less service credential (`app-service+jwt`) and
  * wired the *real* mint route, the *real* verify route, and the *real*
@@ -9,21 +9,28 @@
  * `GET /supply/api/lot/{correlationId}`.
  *
  * #1803 rescoped that decision: Ryan (owner) decided session-less app reads
- * of consent-tier data are NOT an intended capability, so `supply:read` (and
- * scopes like it) never became `serviceEligible` — the fence
- * (`packages/auth/src/scope-vocabulary.ts`) ships empty. The webhook use case
- * that motivated #1800 instead falls through the selective-disclosure
- * pipeline (`auth.channel_links`, see `app-authorization-grant.ts` and the
- * per-lot enforcement in `handleLotGet`).
+ * of consent-tier data needed a per-lot gate first, so `supply:read` shipped
+ * `serviceEligible: false` and a service token could never carry it — the
+ * webhook use case fell through the selective-disclosure pipeline
+ * (`auth.channel_links`, see `app-authorization-grant.ts`) instead, with the
+ * per-lot enforcement landing in `handleLotGet` and a backfill migration
+ * (#1806, migration 0090).
  *
- * This file now pins the CURRENT boundary:
- *   - a service token can never carry `supply:read` at all, no matter what
- *     the app registered — it never reaches the lot route with that scope
- *   - out-of-scope (no supply:read at all) still fails the same way
+ * xprize#70 is the owner-signed-off flip step now that #1806 has merged:
+ * `supply:read` is `serviceEligible: true` in `packages/auth/src/scope-vocabulary.ts`.
+ * This file now pins the CURRENT boundary, which is deliberately still
+ * consent-backed even though the token-shape fence opened up:
+ *   - a service token minted for an app that registered `supply:read` now
+ *     carries the scope
+ *   - reaching a given lot with that token STILL requires an active
+ *     `channel_links` grant of `supply:read` from the lot's own
+ *     `originatingDid` — the per-lot gate, not the token shape, is what
+ *     authorizes the read
+ *   - no grant from that supplier → 403, even with a service-eligible scope
+ *   - out-of-scope (no supply:read at all) still fails before the grant check
  *   - a revoked app can no longer mint a credential
  *   - attribution in the verified record still identifies the app principal,
- *     never a borrowed human DID, for whatever scopes a service token *can*
- *     carry
+ *     never a borrowed human DID
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { generateKeypair, crypto, requireAppAuth } from '@imajin/auth';
@@ -43,7 +50,9 @@ const mocks = vi.hoisted(() => {
   const fromMock = vi.fn(() => ({ where: whereMock }));
   const selectMock = vi.fn(() => ({ from: fromMock }));
   const getLotChainMock = vi.fn();
-  return { whereMock, fromMock, selectMock, getLotChainMock };
+  const hasAppAuthorizationGrantMock = vi.fn();
+  const sqlTagMock = vi.fn(async () => []);
+  return { whereMock, fromMock, selectMock, getLotChainMock, hasAppAuthorizationGrantMock, sqlTagMock };
 });
 
 vi.mock('@/src/db', () => ({
@@ -62,6 +71,17 @@ vi.mock('@imajin/bus', () => ({
   getLotChain: mocks.getLotChainMock,
   recentLotsBySupplier: vi.fn(),
 }));
+// #1803 item 3's DID-attributed audit write (handleLotGet -> auditSupplyLotRead)
+// now runs on every reachable lot read in this suite (the grant check is no
+// longer short-circuited by an empty scope set) — keep it inert here.
+vi.mock('@imajin/db', () => ({ getClient: () => mocks.sqlTagMock }));
+// The per-lot gate (#1806) is exercised by its own unit tests
+// (app-authorization-grant.test.ts, supply-api.test.ts); here it is mocked so
+// this suite stays focused on the mint → verify → route chain's real code
+// while still proving the gate is consulted and its answer decides the outcome.
+vi.mock('@/src/lib/auth/app-authorization-grant', () => ({
+  hasAppAuthorizationGrant: mocks.hasAppAuthorizationGrantMock,
+}));
 
 import { POST as mintServiceToken } from '@/app/auth/api/apps/token/service/route';
 import { POST as verifyServiceToken } from '@/app/auth/api/apps/token/verify/route';
@@ -70,6 +90,7 @@ import { handleLotGet } from '../supply';
 const AUTH_SERVICE_URL = 'https://auth.kernel.test/auth';
 const APP_DID = 'did:imajin:agrifortress-webhook';
 const HUMAN_DID = 'did:imajin:borrowed-human';
+const SUPPLIER_DID = 'did:imajin:agrifortress-supplier';
 const keypair = generateKeypair();
 
 function nextSelect(rows: unknown[]): void {
@@ -107,6 +128,7 @@ function lotGetRequest(token: string): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.whereMock.mockReset();
+  mocks.hasAppAuthorizationGrantMock.mockReset();
   process.env.AUTH_SERVICE_URL = AUTH_SERVICE_URL;
 
   // requireAppAuth's bearer path round-trips through HTTP in production; here
@@ -125,20 +147,49 @@ beforeEach(() => {
   }) as unknown as typeof fetch;
 });
 
-describe('#1803 — supply:read is fenced out of the session-less service credential', () => {
-  it('a service token minted for an app that registered supply:read carries no scopes, and the lot route rejects it', async () => {
+function lotOf(originatingDid: string) {
+  mocks.getLotChainMock.mockResolvedValue({
+    lot: { correlationId: 'lot_1', originatingDid, status: 'listed' },
+    stages: [{ stage: 'declared' }],
+  });
+}
+
+describe('xprize#70 — supply:read is service-eligible, but the per-lot channel_links grant still authorizes the read', () => {
+  it('mints a service token WITH supply:read, and a channel_links grant from the lot\'s originatingDid lets it read the lot (200)', async () => {
     nextSelect([registryRow({ requestedScopes: ['supply:read'] })]);
     const mintRes = await mintToken();
     expect(mintRes.status).toBe(200);
     const { token, scopes } = await mintRes.json();
-    expect(scopes).toEqual([]);
+    expect(scopes).toEqual(['supply:read']);
+
+    lotOf(SUPPLIER_DID);
+    mocks.hasAppAuthorizationGrantMock.mockResolvedValue(true);
+
+    const res = await handleLotGet(lotGetRequest(token) as never, 'lot_1');
+    expect(res.status).toBe(200);
+    expect(mocks.hasAppAuthorizationGrantMock).toHaveBeenCalledWith(APP_DID, SUPPLIER_DID, 'supply:read');
+  });
+
+  it('mints a service token WITH supply:read, but with NO channel_links grant from the lot supplier the read is still rejected (403)', async () => {
+    // The flip does not reopen ungoverned session-less reads: the per-lot gate
+    // (#1806), not the token's scope shape, is what authorizes a given read.
+    nextSelect([registryRow({ requestedScopes: ['supply:read'] })]);
+    const mintRes = await mintToken();
+    const { token, scopes } = await mintRes.json();
+    expect(scopes).toEqual(['supply:read']);
+
+    lotOf(SUPPLIER_DID);
+    mocks.hasAppAuthorizationGrantMock.mockResolvedValue(false);
 
     const res = await handleLotGet(lotGetRequest(token) as never, 'lot_1');
     expect(res.status).toBe(403);
-    expect(mocks.getLotChainMock).not.toHaveBeenCalled();
+    const body = await res.json();
+    expect(body.error).toMatch(/supply:read grant/i);
+    expect(mocks.getLotChainMock).toHaveBeenCalled();
+    expect(mocks.hasAppAuthorizationGrantMock).toHaveBeenCalledWith(APP_DID, SUPPLIER_DID, 'supply:read');
   });
 
-  it('out-of-scope fails: a credential minted without supply:read is rejected by the route', async () => {
+  it('out-of-scope fails: a credential minted without supply:read is rejected before the grant check even runs', async () => {
     nextSelect([registryRow({ requestedScopes: ['supply:write'] })]); // no supply:read
     const mintRes = await mintToken();
     const { token } = await mintRes.json();
@@ -146,6 +197,7 @@ describe('#1803 — supply:read is fenced out of the session-less service creden
     const res = await handleLotGet(lotGetRequest(token) as never, 'lot_1');
     expect(res.status).toBe(403);
     expect(mocks.getLotChainMock).not.toHaveBeenCalled();
+    expect(mocks.hasAppAuthorizationGrantMock).not.toHaveBeenCalled();
   });
 
   it('revoked credential fails: a revoked app can no longer mint a new credential to read with', async () => {
@@ -157,7 +209,7 @@ describe('#1803 — supply:read is fenced out of the session-less service creden
     expect(body.token).toBeUndefined();
   });
 
-  it('attribution: the verified record identifies the app principal, never a borrowed human DID, even though scope is empty', async () => {
+  it('attribution: the verified record identifies the app principal, never a borrowed human DID, and now carries supply:read', async () => {
     nextSelect([registryRow({ requestedScopes: ['supply:read'] })]);
     const mintRes = await mintToken();
     const { token } = await mintRes.json();
@@ -174,6 +226,6 @@ describe('#1803 — supply:read is fenced out of the session-less service creden
     expect(authResult.appAuth.userDid).toBe('');
     expect(authResult.appAuth.userDid).not.toBe(HUMAN_DID);
     expect(authResult.appAuth.isServiceToken).toBe(true);
-    expect(authResult.appAuth.scopes).toEqual([]);
+    expect(authResult.appAuth.scopes).toEqual(['supply:read']);
   });
 });

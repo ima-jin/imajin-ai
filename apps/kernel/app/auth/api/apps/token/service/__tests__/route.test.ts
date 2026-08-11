@@ -81,18 +81,19 @@ beforeEach(() => {
   mocks.whereMock.mockReset();
 });
 
-describe('POST /auth/api/apps/token/service — issuance (#1800)', () => {
-  it('mints a token attributed to the app DID, with an empty scope set (#1803 fence)', async () => {
-    // #1803 rescoped #1800: the fence ships with NO scope marked
-    // serviceEligible, so a session-less service token now carries no scopes
-    // even though the app registered a real, known vocabulary scope.
+describe('POST /auth/api/apps/token/service — issuance (#1800, supply:read flipped by xprize#70)', () => {
+  it('mints a token attributed to the app DID, carrying supply:read now that it is service-eligible (xprize#70)', async () => {
+    // catalyst-power/xprize#70 flips supply:read to serviceEligible: a
+    // session-less service token for an app that registered it now mints WITH
+    // the scope. The per-lot channel_links gate (#1806) is what still governs
+    // whether any given read succeeds — see supply-service-credential.test.ts.
     nextSelect([activeApp(['supply:read'])]);
 
     const res = await POST(makeRequest(signedBody()) as never);
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body.scopes).toEqual([]);
+    expect(body.scopes).toEqual(['supply:read']);
 
     const payload = await verifyAppToken(body.token);
     expect(payload).not.toBeNull();
@@ -100,7 +101,7 @@ describe('POST /auth/api/apps/token/service — issuance (#1800)', () => {
     expect(payload!.azp).toBe(APP_DID);
     expect(payload!.isServiceToken).toBe(true);
     expect(payload!.attestationId).toBe('');
-    expect(payload!.scope).toBe('');
+    expect(payload!.scope).toBe('supply:read');
   });
 
   it('clamps unknown/stale scopes out of the vocabulary rather than minting them', async () => {
@@ -110,12 +111,12 @@ describe('POST /auth/api/apps/token/service — issuance (#1800)', () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    // Neither survives: 'not-a-real-scope' fails validateScopes, 'supply:read'
-    // fails the serviceEligible fence.
-    expect(body.scopes).toEqual([]);
+    // 'not-a-real-scope' fails validateScopes; 'supply:read' now clears both
+    // validateScopes and the serviceEligible fence.
+    expect(body.scopes).toEqual(['supply:read']);
   });
 
-  it('fences supply:write out too — registering it is not enough to mint it on a service token', async () => {
+  it('fences supply:write out — registering it is not enough to mint it on a service token', async () => {
     nextSelect([activeApp(['supply:write'])]);
 
     const res = await POST(makeRequest(signedBody()) as never);
@@ -124,7 +125,17 @@ describe('POST /auth/api/apps/token/service — issuance (#1800)', () => {
     expect(res.status).toBe(200);
     expect(body.scopes).toEqual([]);
     expect(body.scopes).not.toContain('supply:write');
-    expect(body.scopes).not.toContain('supply:read');
+  });
+
+  it('mints supply:read but continues to clamp supply:write out when an app requests both (one-scope flip, not the pair)', async () => {
+    nextSelect([activeApp(['supply:read', 'supply:write'])]);
+
+    const res = await POST(makeRequest(signedBody()) as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.scopes).toEqual(['supply:read']);
+    expect(body.scopes).not.toContain('supply:write');
   });
 });
 

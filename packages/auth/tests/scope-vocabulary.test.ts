@@ -364,28 +364,28 @@ describe('SCOPES is a faithful projection', () => {
   });
 });
 
-// ── serviceEligible fence (#1803) ──────────────────────────────────────────────
+// ── serviceEligible fence (#1803, flipped for supply:read by xprize#70) ────────
 
 describe('serviceEligible fence', () => {
-  it('defaults every entry to service-ineligible (fail-closed, ships empty)', () => {
-    // #1803: the fence lands with no scope flipped on. A scope nobody has
-    // explicitly signed off on as service-eligible must stay out of a
-    // session-less service token even if a future entry forgets to set the
-    // flag at all.
-    expect(serviceEligibleScopes()).toEqual([]);
+  it('defaults every entry other than supply:read to service-ineligible (fail-closed)', () => {
+    // #1803 landed the fence with no scope flipped on. catalyst-power/xprize#70
+    // is the one signed-off flip: `supply:read` is now service-eligible because
+    // the per-lot channel_links gate (#1806) makes every app-token lot read
+    // consent-backed regardless of token shape. Every other scope nobody has
+    // explicitly signed off on must stay out of a session-less service token.
+    expect(serviceEligibleScopes()).toEqual(['supply:read']);
     for (const entry of SCOPE_VOCABULARY) {
+      if (entry.scope === 'supply:read') continue;
       expect(isServiceEligibleScope(entry)).toBe(false);
     }
   });
 
-  it('keeps supply:read and supply:write ineligible for a session-less service token', () => {
-    // The #1803 rescope: a session-less app read of supply data is not an
-    // intended capability, so these consent-tier platform scopes must never
-    // be marked serviceEligible, even though they are exactly what motivated
-    // adding the flag (catalyst-power/xprize#68).
-    expect(isServiceEligibleScope(scopeEntry('supply:read')!)).toBe(false);
+  it('flips supply:read service-eligible (xprize#70) while keeping supply:write ineligible', () => {
+    // xprize#70: the owner-signed-off flip step. supply:write is a distinct,
+    // deliberately untouched scope — this change is one scope, not the pair.
+    expect(isServiceEligibleScope(scopeEntry('supply:read')!)).toBe(true);
     expect(isServiceEligibleScope(scopeEntry('supply:write')!)).toBe(false);
-    expect(serviceEligibleScopes()).not.toContain('supply:read');
+    expect(serviceEligibleScopes()).toContain('supply:read');
     expect(serviceEligibleScopes()).not.toContain('supply:write');
   });
 });
