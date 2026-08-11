@@ -87,8 +87,11 @@ const NO_APP_CREDENTIALS = {
 
 type RouteRequest = Parameters<typeof POST>[0];
 
-function makeReq(headers: Record<string, string> = {}): RouteRequest {
-  return { headers: new Headers(headers) } as unknown as RouteRequest;
+function makeReq(headers: Record<string, string> = {}, body?: string): RouteRequest {
+  return {
+    headers: new Headers(headers),
+    text: async () => body ?? '',
+  } as unknown as RouteRequest;
 }
 
 function makeProps() {
@@ -134,7 +137,7 @@ describe('POST /api/inference/confirm/:sessionId — session auth', () => {
     const res = await POST(makeReq(), makeProps());
 
     expect(res.status).toBe(200);
-    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID);
+    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, undefined);
     expect(mockResolveIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, VOCAB);
     expect(await res.json()).toEqual(
       expect.objectContaining({ status: 'resolved', attestationId: 'attest_1' }),
@@ -148,7 +151,7 @@ describe('POST /api/inference/confirm/:sessionId — session auth', () => {
 
     await POST(makeReq(), makeProps());
 
-    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID);
+    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, undefined);
   });
 
   it('returns 401 when neither app nor session auth succeeds', async () => {
@@ -177,7 +180,7 @@ describe('POST /api/inference/confirm/:sessionId — app-authenticated caller pa
 
     expect(res.status).toBe(200);
     expect(mockRequireAppAuth).toHaveBeenCalledWith(expect.anything(), { scope: 'infer:provide' });
-    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID);
+    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, undefined);
     expect(mockRequireAuth).not.toHaveBeenCalled();
   });
 
@@ -187,7 +190,7 @@ describe('POST /api/inference/confirm/:sessionId — app-authenticated caller pa
     const res = await POST(makeReq({ 'x-acting-for': OWNER_DID }), makeProps());
 
     expect(res.status).toBe(200);
-    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID);
+    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, undefined);
   });
 
   it('rejects service tokens that name no owner DID', async () => {
@@ -253,5 +256,101 @@ describe('POST /api/inference/confirm/:sessionId — pipeline outcomes', () => {
   it('answers CORS pre-flight', async () => {
     const res = await OPTIONS(makeReq());
     expect(res.status).toBe(204);
+  });
+});
+
+/**
+ * #1789: the confirm route ignored the request body entirely, so human edits
+ * made on the card (recipient, lines, corrected values) were silently
+ * dropped and the kernel signed the ORIGINAL inferred payload. These tests
+ * pin the fix: an optional edited payload is validated, and — when valid —
+ * becomes what gets confirmed and signed; on validation failure the request
+ * fails closed and the session is left untouched; with no body, behavior is
+ * unchanged.
+ */
+describe('POST /api/inference/confirm/:sessionId — optional confirmed/edited payload (#1789)', () => {
+  it('(a) no body: confirms the inferred payload as-is (backward compatible)', async () => {
+    const res = await POST(makeReq(), makeProps());
+
+    expect(res.status).toBe(200);
+    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, undefined);
+  });
+
+  it('(a) empty-string body: treated identically to no body', async () => {
+    const res = await POST(makeReq({}, ''), makeProps());
+
+    expect(res.status).toBe(200);
+    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, undefined);
+  });
+
+  it('(b) valid edited body: the confirmed payload is passed through to confirmIntent and signed', async () => {
+    const editedPayload = { recipient: 'did:imajin:corrected-recipient', lot: 'LOT-42', notes: 'corrected on card' };
+
+    const res = await POST(makeReq({}, JSON.stringify(editedPayload)), makeProps());
+
+    expect(res.status).toBe(200);
+    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, editedPayload);
+  });
+
+  it('(b) valid edited body with vocab-specific fields (lines[]) is accepted', async () => {
+    const editedPayload = { recipient: 'acme-farms', lot: 'LOT-7', notes: '', lines: [{ product: 'seed', qty: 10 }] };
+
+    const res = await POST(makeReq({}, JSON.stringify(editedPayload)), makeProps());
+
+    expect(res.status).toBe(200);
+    expect(mockConfirmIntent).toHaveBeenCalledWith(SESSION_ID, OWNER_DID, editedPayload);
+  });
+
+  it('(c) invalid JSON body: fails closed with 400 and never calls confirmIntent', async () => {
+    const res = await POST(makeReq({}, '{not valid json'), makeProps());
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid JSON body' });
+    expect(mockConfirmIntent).not.toHaveBeenCalled();
+  });
+
+  it('(c) body that is valid JSON but not an object: fails closed with 400 and never calls confirmIntent', async () => {
+    const res = await POST(makeReq({}, JSON.stringify('just a string')), makeProps());
+
+    expect(res.status).toBe(400);
+    expect(mockConfirmIntent).not.toHaveBeenCalled();
+  });
+
+  it('(c) body that is a JSON array: fails closed with 400 and never calls confirmIntent', async () => {
+    const res = await POST(makeReq({}, JSON.stringify(['not', 'an', 'object'])), makeProps());
+
+    expect(res.status).toBe(400);
+    expect(mockConfirmIntent).not.toHaveBeenCalled();
+  });
+
+  it('(c) body that fails the vocab-specific shape check: fails closed with 400 and never calls confirmIntent', async () => {
+    mockGetVocabulary.mockReturnValue({
+      name: 'agrifortress',
+      validateMetadata: () => ({ ok: false, error: "metadata.qty must be a number" }),
+    });
+
+    const res = await POST(makeReq({}, JSON.stringify({ qty: 'fifty' })), makeProps());
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'metadata.qty must be a number' });
+    expect(mockConfirmIntent).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 without confirming when a body is present but the session cannot be found', async () => {
+    mockDbLimit.mockResolvedValueOnce([]);
+
+    const res = await POST(makeReq({}, JSON.stringify({ recipient: 'someone' })), makeProps());
+
+    expect(res.status).toBe(404);
+    expect(mockConfirmIntent).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 without confirming when a body is present but the vocabulary is unregistered', async () => {
+    mockGetVocabulary.mockReturnValueOnce(undefined);
+
+    const res = await POST(makeReq({}, JSON.stringify({ recipient: 'someone' })), makeProps());
+
+    expect(res.status).toBe(500);
+    expect(mockConfirmIntent).not.toHaveBeenCalled();
   });
 });

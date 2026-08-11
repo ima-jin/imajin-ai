@@ -277,6 +277,52 @@ describe('resolveIntent', () => {
     });
   });
 
+  describe('confirmed metadata delta (#1789)', () => {
+    it('resolves and signs with the inferred metadata unchanged when the session has no confirmedMetadata', async () => {
+      setupSelectSequence({ ...MOCK_SESSION, confirmedMetadata: null }, 'bafytest');
+
+      await resolveIntent('session_abc', 'did:imajin:farmer', VOCAB);
+
+      const [intent] = (VOCAB.resolve as ReturnType<typeof vi.fn>).mock.calls[0] as [CandidateIntent, string];
+      expect(intent.metadata).toEqual(SUPPLY_INTENT.metadata);
+
+      const rowArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+      expect(rowArg['inferredMetadata']).toEqual(SUPPLY_INTENT.metadata);
+      expect(rowArg['confirmedMetadata']).toEqual(SUPPLY_INTENT.metadata);
+    });
+
+    it('resolves and signs with the human-confirmed metadata when the session has an edited payload', async () => {
+      const editedMetadata = { product: 'maize', qty: 75, recipient: 'did:imajin:corrected' };
+      setupSelectSequence({ ...MOCK_SESSION, confirmedMetadata: editedMetadata }, 'bafytest');
+
+      await resolveIntent('session_abc', 'did:imajin:farmer', VOCAB);
+
+      // The vocabulary executes the domain action with the CONFIRMED metadata,
+      // not the original inferred metadata — approving on the canvas IS the
+      // signing event, so what's resolved must be what the human confirmed.
+      const [intent] = (VOCAB.resolve as ReturnType<typeof vi.fn>).mock.calls[0] as [CandidateIntent, string];
+      expect(intent.metadata).toEqual(editedMetadata);
+
+      const rowArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+      expect(rowArg['inferredMetadata']).toEqual(SUPPLY_INTENT.metadata);
+      expect(rowArg['confirmedMetadata']).toEqual(editedMetadata);
+      // The original inferred metadata is preserved, distinct from the confirmed edit.
+      expect(rowArg['confirmedMetadata']).not.toEqual(rowArg['inferredMetadata']);
+    });
+
+    it('signs both inferredMetadata and confirmedMetadata into the attestation payload', async () => {
+      const editedMetadata = { product: 'maize', qty: 75 };
+      setupSelectSequence({ ...MOCK_SESSION, confirmedMetadata: editedMetadata }, 'bafytest');
+
+      await resolveIntent('session_abc', 'did:imajin:farmer', VOCAB);
+
+      const { canonicalize } = await import('@imajin/auth');
+      const signedPayload = (canonicalize as ReturnType<typeof vi.fn>).mock.calls[0][0] as Record<string, unknown>;
+      expect(signedPayload['inferredMetadata']).toEqual(SUPPLY_INTENT.metadata);
+      expect(signedPayload['confirmedMetadata']).toEqual(editedMetadata);
+    });
+  });
+
   describe('error handling', () => {
     it('marks session as failed and rethrows when vocab.resolve rejects', async () => {
       setupSelectSequence(MOCK_SESSION, null);

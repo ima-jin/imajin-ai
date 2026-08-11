@@ -22,7 +22,13 @@
  */
 
 import { createHash } from 'node:crypto';
-import type { IntentVocabulary, CandidateIntent, ConsentTier, ResolutionReceipt } from './contract';
+import type {
+  IntentVocabulary,
+  CandidateIntent,
+  ConsentTier,
+  ResolutionReceipt,
+  MetadataValidationResult,
+} from './contract';
 
 const SUPPLY_API_URL = process.env.AGRIFORTRESS_SUPPLY_API_URL ?? '';
 const SUPPLY_API_KEY = process.env.AGRIFORTRESS_SUPPLY_API_KEY ?? '';
@@ -54,7 +60,72 @@ Produce a ranked JSON array of candidate intents.
     return 'deliberate';
   },
 
+  /**
+   * Validate a human-edited/confirmed metadata payload (#1789) — e.g. a
+   * corrected recipient, lot, notes, or line items from the confirm card.
+   * Known fields are type-checked when present; unrecognised extra fields are
+   * allowed so a forward-compatible client isn't rejected for sending fields
+   * this vocabulary doesn't read yet.
+   */
+  validateMetadata(_intentType: string, metadata: unknown): MetadataValidationResult {
+    if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
+      return { ok: false, error: 'metadata must be a JSON object' };
+    }
+    const m = metadata as Record<string, unknown>;
+
+    return (
+      validateOptionalStringFields(m) ??
+      validateOptionalQty(m) ??
+      validateOptionalLines(m) ?? { ok: true, metadata: m }
+    );
+  },
+
   async resolve(intent: CandidateIntent, ownerDid: string): Promise<ResolutionReceipt> {
+    return resolveAgriFortressIntent(intent, ownerDid);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// validateMetadata helpers (#1789) — each checks one optional field group and
+// returns undefined (pass) or a fail-closed MetadataValidationResult.
+// ---------------------------------------------------------------------------
+
+const OPTIONAL_STRING_FIELDS = ['product', 'unit', 'recipient', 'lot', 'notes'] as const;
+
+function validateOptionalStringFields(m: Record<string, unknown>): MetadataValidationResult | undefined {
+  for (const field of OPTIONAL_STRING_FIELDS) {
+    const value = m[field];
+    if (value !== undefined && value !== null && typeof value !== 'string') {
+      return { ok: false, error: `metadata.${field} must be a string` };
+    }
+  }
+  return undefined;
+}
+
+function validateOptionalQty(m: Record<string, unknown>): MetadataValidationResult | undefined {
+  if (m['qty'] !== undefined && m['qty'] !== null && typeof m['qty'] !== 'number') {
+    return { ok: false, error: 'metadata.qty must be a number' };
+  }
+  return undefined;
+}
+
+function validateOptionalLines(m: Record<string, unknown>): MetadataValidationResult | undefined {
+  const lines = m['lines'];
+  if (lines === undefined || lines === null) return undefined;
+  if (!Array.isArray(lines)) {
+    return { ok: false, error: 'metadata.lines must be an array' };
+  }
+  const hasInvalidEntry = lines.some(
+    (line) => typeof line !== 'object' || line === null || Array.isArray(line),
+  );
+  if (hasInvalidEntry) {
+    return { ok: false, error: 'metadata.lines entries must be objects' };
+  }
+  return undefined;
+}
+
+/** Execute the domain action via the catalyst-power supply API (or a dev stub). */
+async function resolveAgriFortressIntent(intent: CandidateIntent, ownerDid: string): Promise<ResolutionReceipt> {
     const resolvedAt = new Date().toISOString();
     const payload = {
       intentType: intent.intentType,
@@ -102,5 +173,4 @@ Produce a ranked JSON array of candidate intents.
       digest,
       resolvedAt,
     };
-  },
-};
+}
