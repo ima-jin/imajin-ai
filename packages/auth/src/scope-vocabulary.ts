@@ -219,6 +219,17 @@ export const SCOPE_VOCABULARY = [
   // actions, scoped to the connector's registered scope(s)) — distinct from
   // connectors:read-status, which only ever answers connected/not-connected.
   { scope: 'connectors:read-telemetry', connector: null, label: 'Read your connector usage telemetry' },
+  // #1677: telemetry ingestion pattern — a registered app (Delegated App
+  // Sessions, #244) reports structured usage events from an external tool,
+  // attributed to the delegating DID via the app's own consent grant.
+  // Platform scopes (no owning connector) rather than a `CONNECTOR_REGISTRY`
+  // entry: attribution is anchored to the app's delegated-app grant, not a
+  // per-DID sealed credential, so there is no card/credential step to model —
+  // the same shape `connections:write` already uses for POST
+  // /connections/api/invites. `telemetry:write` gates the ingestion endpoint;
+  // `telemetry:read` gates the caller's own usage projection on the same route.
+  { scope: 'telemetry:write', connector: null, label: 'Report structured usage telemetry on your behalf' },
+  { scope: 'telemetry:read', connector: null, label: 'Read your usage telemetry' },
 
   // ── MCP / Claude connector
   { scope: 'media:read', connector: 'mcp', verb: 'read', surface: 'media', classification: SELF_ONLY, surfaces: MCP_TOKENS,

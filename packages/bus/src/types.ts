@@ -1101,6 +1101,55 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  /**
+   * Structured operational usage reported by an external tool, attributed to a
+   * DID (#1677). This is the telemetry INGESTION pattern — sibling to the
+   * credential patterns (`token-paste`, `oauth`, `static-secret`) the connector
+   * framework already routes by `ingestionPattern`, except the payload is a
+   * structured usage event rather than a credential.
+   *
+   * `issuer` is the reporting tool's own app DID (the connector), minted via
+   * Delegated App Sessions (#244) — NOT the human. `subject` is the DID the
+   * usage is attributed to (the delegating principal, resolved from the app's
+   * own consent grant at ingestion, never trusted from the request body alone).
+   * `scope` is the fixed service scope `'telemetry'`.
+   *
+   * `data` is validated at ingestion to be a flat object of primitive values
+   * (see `validateTelemetryEventBatch` in apps/kernel) — deliberately generic
+   * rather than keyed to one tool's metrics, since `schema` is what the
+   * reporting tool uses to namespace its own fields (e.g. `usage.tokens`,
+   * `usage.cost`, `usage.model`).
+   */
+  'telemetry.usage': {
+    /** Delegated agent DID, when the connector itself is an agent acting for the principal (optional). */
+    agent?: string;
+    /** Namespaced schema key the reporting tool uses for this metric family, e.g. `usage.tokens`. */
+    schema: string;
+    /** Flat usage fields — primitive values only. */
+    data: Record<string, unknown>;
+    /** Optional correlation back to the reporting tool's own session/run id. */
+    sessionRef?: string;
+    context_id: string;
+    context_type: 'telemetry';
+  };
+  /** Same envelope as `telemetry.usage`, for a reported operational error (#1677). */
+  'telemetry.error': {
+    agent?: string;
+    schema: string;
+    data: Record<string, unknown>;
+    sessionRef?: string;
+    context_id: string;
+    context_type: 'telemetry';
+  };
+  /** Same envelope as `telemetry.usage`, for a reported lifecycle transition (#1677). */
+  'telemetry.lifecycle': {
+    agent?: string;
+    schema: string;
+    data: Record<string, unknown>;
+    sessionRef?: string;
+    context_id: string;
+    context_type: 'telemetry';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

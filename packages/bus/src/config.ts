@@ -370,6 +370,26 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'attestation', config: { attestationType: 'supply.received' }, enabled: true },
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #1677 — telemetry ingestion pattern: structured usage events from external
+  // tools, attributed to a DID. `audit-log` (#1140) gives the durable,
+  // queryable-by-subject persistence record every reader (including the #1799
+  // per-principal usage projection) reads from; `emit` puts it on
+  // registry.system_events alongside every other bus event. Deliberately NO
+  // `attestation` reactor — signing every usage tick would be prohibitively
+  // expensive for what is, by design, high-frequency operational exhaust
+  // (mirrors the #1805 rationale for dropping `notify` from warp.run.progress).
+  'telemetry.usage': [
+    { type: 'audit-log', config: {}, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'telemetry.error': [
+    { type: 'audit-log', config: {}, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  'telemetry.lifecycle': [
+    { type: 'audit-log', config: {}, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------
