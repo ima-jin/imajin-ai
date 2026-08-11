@@ -111,12 +111,14 @@ interface BaseScopeEntry {
    * assumed to require a human consent event, and must never reach a service
    * token even when the app's own `requestedScopes` lists it.
    *
-   * This ships with the fence empty: no scope in the vocabulary is currently
-   * `serviceEligible`. In particular `supply:read` / `supply:write` stay
-   * ineligible — the #1803 rescope decided session-less app reads are not an
-   * intended capability; the webhook use case that motivated this field falls
-   * through the selective-disclosure pipeline (`auth.channel_links`) instead
-   * of through this fence.
+   * #1803 shipped this fence empty. xprize#70 flips the first (and so far
+   * only) scope on: `supply:read` is now `serviceEligible` — owner-signed-off
+   * — because the fine-grained gate in `handleLotGet`
+   * (`hasAppAuthorizationGrant`, checked against the lot's originating
+   * supplier's `auth.channel_links` row) still stands between a service token
+   * carrying this scope and any actual lot read. `supply:write` stays
+   * ineligible: no fine-grained per-lot gate exists on the write path, so a
+   * session-less write remains an unreviewed capability.
    */
   serviceEligible?: boolean;
 }
@@ -242,7 +244,13 @@ export const SCOPE_VOCABULARY = [
 
   { scope: 'events:read', connector: null, label: 'View events you attend or have created' },
   { scope: 'events:write', connector: null, label: 'Create and manage events on your behalf' },
-  { scope: 'supply:read', connector: null, label: 'View your supply-chain lots and their stage history' },
+  // xprize#70: owner-signed-off flip of the #1803 fence — the sole
+  // serviceEligible scope. A service token can now carry `supply:read`; the
+  // per-lot `hasAppAuthorizationGrant` gate in `handleLotGet` still requires
+  // an active `channel_links` grant from the lot's originating supplier
+  // before any lot is actually readable. `supply:write` is NOT flipped: no
+  // equivalent fine-grained gate exists on the write path.
+  { scope: 'supply:read', connector: null, label: 'View your supply-chain lots and their stage history', serviceEligible: true },
   { scope: 'supply:write', connector: null, label: 'Record supply-chain stages (declare, collect, process, list) on your behalf' },
 
   { scope: 'messages:read', connector: 'mcp', verb: 'read', surface: 'messages', classification: SELF_ONLY, surfaces: MCP_TOKENS,
@@ -447,8 +455,8 @@ export function isServiceEligibleScope(entry: ScopeVocabularyEntry): boolean {
  * `POST /auth/api/apps/token/service` clamps against — the intersection of
  * this set and an app's own `requestedScopes` is what actually gets minted.
  *
- * Ships empty today: no scope has been explicitly signed off on as
- * service-eligible yet.
+ * xprize#70 flips the first entry on: `['supply:read']`. `supply:write`
+ * remains off the fence.
  */
 export function serviceEligibleScopes(): readonly string[] {
   return ENTRIES.filter(isServiceEligibleScope).map((e) => e.scope);

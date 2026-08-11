@@ -364,28 +364,29 @@ describe('SCOPES is a faithful projection', () => {
   });
 });
 
-// ── serviceEligible fence (#1803) ──────────────────────────────────────────────
+// ── serviceEligible fence (#1803, flipped for supply:read by xprize#70) ────────
 
 describe('serviceEligible fence', () => {
-  it('defaults every entry to service-ineligible (fail-closed, ships empty)', () => {
-    // #1803: the fence lands with no scope flipped on. A scope nobody has
-    // explicitly signed off on as service-eligible must stay out of a
-    // session-less service token even if a future entry forgets to set the
-    // flag at all.
-    expect(serviceEligibleScopes()).toEqual([]);
+  it('marks exactly one scope service-eligible: supply:read (xprize#70, owner-signed-off)', () => {
+    // xprize#70 flips the #1803 fence's first (and so far only) scope on. A
+    // scope nobody has explicitly signed off on as service-eligible must
+    // still stay out of a session-less service token even if a future entry
+    // forgets to set the flag at all — this is a fence, not a default-open.
+    expect(serviceEligibleScopes()).toEqual(['supply:read']);
     for (const entry of SCOPE_VOCABULARY) {
-      expect(isServiceEligibleScope(entry)).toBe(false);
+      expect(isServiceEligibleScope(entry)).toBe(entry.scope === 'supply:read');
     }
   });
 
-  it('keeps supply:read and supply:write ineligible for a session-less service token', () => {
-    // The #1803 rescope: a session-less app read of supply data is not an
-    // intended capability, so these consent-tier platform scopes must never
-    // be marked serviceEligible, even though they are exactly what motivated
-    // adding the flag (catalyst-power/xprize#68).
-    expect(isServiceEligibleScope(scopeEntry('supply:read')!)).toBe(false);
+  it('makes supply:read service-eligible while keeping supply:write ineligible for a session-less service token', () => {
+    // xprize#70: supply:read is the owner-signed-off flip of the #1803 fence.
+    // supply:write must stay fenced — there is no per-lot governance gate on
+    // the write path the way `handleLotGet`'s `hasAppAuthorizationGrant`
+    // check governs reads, so a session-less write remains ungoverned and
+    // must never reach a service token.
+    expect(isServiceEligibleScope(scopeEntry('supply:read')!)).toBe(true);
     expect(isServiceEligibleScope(scopeEntry('supply:write')!)).toBe(false);
-    expect(serviceEligibleScopes()).not.toContain('supply:read');
+    expect(serviceEligibleScopes()).toContain('supply:read');
     expect(serviceEligibleScopes()).not.toContain('supply:write');
   });
 });
