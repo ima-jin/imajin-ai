@@ -16,38 +16,26 @@ vi.mock('next/server', () => ({
 vi.mock('nanoid', () => ({ nanoid: () => 'testid0000000000' }));
 
 const {
-  mockDbSelectWhere,
+  mockAppSelectWhere,
+  mockAttestationSelectWhere,
   mockDbSelect,
   mockAttestationInsertValues,
   mockDbInsert,
   mockRequireAuth,
   mockPromoteActorOnGrant,
+  mockRevokeAttestationOnce,
+  ATTESTATIONS_TABLE,
+  REGISTRY_APPS_TABLE,
 } = vi.hoisted(() => {
-  const mockDbSelectWhere = vi.fn();
-  const mockDbSelect = vi.fn(() => ({
-    from: vi.fn(() => ({ where: mockDbSelectWhere })),
-  }));
-
-  const mockAttestationInsertValues = vi.fn().mockResolvedValue(undefined);
-  const mockDbInsert = vi.fn(() => ({ values: mockAttestationInsertValues }));
-
-  const mockRequireAuth = vi.fn();
-  const mockPromoteActorOnGrant = vi.fn().mockResolvedValue(undefined);
-
-  return {
-    mockDbSelectWhere,
-    mockDbSelect,
-    mockAttestationInsertValues,
-    mockDbInsert,
-    mockRequireAuth,
-    mockPromoteActorOnGrant,
+  const ATTESTATIONS_TABLE = {
+    id: 'attestations.id',
+    payload: 'attestations.payload',
+    issuerDid: 'attestations.issuerDid',
+    subjectDid: 'attestations.subjectDid',
+    type: 'attestations.type',
+    revokedAt: 'attestations.revokedAt',
   };
-});
-
-vi.mock('@/src/db', () => ({
-  db: { select: mockDbSelect, insert: mockDbInsert },
-  attestations: {},
-  registryApps: {
+  const REGISTRY_APPS_TABLE = {
     id: 'registryApps.id',
     appDid: 'registryApps.appDid',
     publicKey: 'registryApps.publicKey',
@@ -56,11 +44,56 @@ vi.mock('@/src/db', () => ({
     callbackUrl: 'registryApps.callbackUrl',
     name: 'registryApps.name',
     logoUrl: 'registryApps.logoUrl',
-  },
+  };
+
+  // Two distinct `.select().from(X).where(...)` call sites in the route (app
+  // lookup vs. existing-consent lookup) are routed to separate mocks keyed by
+  // the table identity passed to `.from(...)`, so each can be configured
+  // independently per test.
+  const mockAppSelectWhere = vi.fn();
+  const mockAttestationSelectWhere = vi.fn();
+  const mockDbFrom = vi.fn((table: unknown) =>
+    table === ATTESTATIONS_TABLE
+      ? { where: mockAttestationSelectWhere }
+      : { where: mockAppSelectWhere }
+  );
+  const mockDbSelect = vi.fn(() => ({ from: mockDbFrom }));
+
+  const mockAttestationInsertValues = vi.fn().mockResolvedValue(undefined);
+  const mockDbInsert = vi.fn(() => ({ values: mockAttestationInsertValues }));
+
+  const mockRequireAuth = vi.fn();
+  const mockPromoteActorOnGrant = vi.fn().mockResolvedValue(undefined);
+  const mockRevokeAttestationOnce = vi.fn().mockResolvedValue({ revoked: true });
+
+  return {
+    mockAppSelectWhere,
+    mockAttestationSelectWhere,
+    mockDbSelect,
+    mockAttestationInsertValues,
+    mockDbInsert,
+    mockRequireAuth,
+    mockPromoteActorOnGrant,
+    mockRevokeAttestationOnce,
+    ATTESTATIONS_TABLE,
+    REGISTRY_APPS_TABLE,
+  };
+});
+
+vi.mock('@/src/db', () => ({
+  db: { select: mockDbSelect, insert: mockDbInsert },
+  attestations: ATTESTATIONS_TABLE,
+  registryApps: REGISTRY_APPS_TABLE,
 }));
 
 vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]) => ({ eq: args }),
+  and: (...args: unknown[]) => ({ and: args }),
+  isNull: (...args: unknown[]) => ({ isNull: args }),
+}));
+
+vi.mock('@/src/lib/auth/revoke-attestation', () => ({
+  revokeAttestationOnce: mockRevokeAttestationOnce,
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -119,9 +152,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.AUTH_PRIVATE_KEY = 'test-private-key';
   mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID } });
-  mockDbSelectWhere.mockResolvedValue([APP_ROW]);
+  mockAppSelectWhere.mockResolvedValue([APP_ROW]);
+  mockAttestationSelectWhere.mockResolvedValue([]); // no existing consent by default
   mockAttestationInsertValues.mockResolvedValue(undefined);
   mockPromoteActorOnGrant.mockResolvedValue(undefined);
+  mockRevokeAttestationOnce.mockResolvedValue({ revoked: true });
 });
 
 describe('POST /api/auth/authorize (#1735)', () => {
@@ -163,16 +198,75 @@ describe('POST /api/auth/authorize (#1735)', () => {
   });
 
   it('returns 404 when the app does not exist', async () => {
-    mockDbSelectWhere.mockResolvedValue([]);
+    mockAppSelectWhere.mockResolvedValue([]);
     const res = await POST(makeRequest({ appId: 'app_missing', scopes: [] }) as never);
     expect(res.status).toBe(404);
     expect(mockPromoteActorOnGrant).not.toHaveBeenCalled();
   });
 
   it('returns 403 when the app has been revoked', async () => {
-    mockDbSelectWhere.mockResolvedValue([{ ...APP_ROW, status: 'revoked' }]);
+    mockAppSelectWhere.mockResolvedValue([{ ...APP_ROW, status: 'revoked' }]);
     const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: [] }) as never);
     expect(res.status).toBe(403);
     expect(mockPromoteActorOnGrant).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/auth/authorize — re-consent supersession (#1795)', () => {
+  const EXISTING_ATTESTATION_ID = 'att_existing0000';
+  // App must have both scopes registered for the "scopes changed" cases below.
+  const APP_ROW_WITH_CONNECTIONS_SCOPE = {
+    ...APP_ROW,
+    requestedScopes: ['profile:read', 'connections:read'],
+  };
+
+  it('reuses the existing attestation when the approved scope set is unchanged', async () => {
+    mockAttestationSelectWhere.mockResolvedValue([
+      { id: EXISTING_ATTESTATION_ID, payload: { scopes: ['profile:read'] } },
+    ]);
+
+    const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body.attestationId).toBe(EXISTING_ATTESTATION_ID);
+    expect(mockRevokeAttestationOnce).not.toHaveBeenCalled();
+    expect(mockAttestationInsertValues).not.toHaveBeenCalled();
+    expect(mockPromoteActorOnGrant).toHaveBeenCalledOnce();
+  });
+
+  it('revokes the old attestation exactly once and mints a new one when scopes change', async () => {
+    mockAppSelectWhere.mockResolvedValue([APP_ROW_WITH_CONNECTIONS_SCOPE]);
+    mockAttestationSelectWhere.mockResolvedValue([
+      { id: EXISTING_ATTESTATION_ID, payload: { scopes: ['profile:read'] } },
+    ]);
+
+    const res = await POST(
+      makeRequest({ appId: APP_ROW.id, scopes: ['profile:read', 'connections:read'] }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body.attestationId).not.toBe(EXISTING_ATTESTATION_ID);
+    expect(mockRevokeAttestationOnce).toHaveBeenCalledOnce();
+    expect(mockRevokeAttestationOnce).toHaveBeenCalledWith(
+      expect.objectContaining({ attestationId: EXISTING_ATTESTATION_ID }),
+    );
+    expect(mockAttestationInsertValues).toHaveBeenCalledOnce();
+  });
+
+  it('still mints the new attestation when a concurrent request already won the revoke race', async () => {
+    mockAppSelectWhere.mockResolvedValue([APP_ROW_WITH_CONNECTIONS_SCOPE]);
+    mockAttestationSelectWhere.mockResolvedValue([
+      { id: EXISTING_ATTESTATION_ID, payload: { scopes: ['profile:read'] } },
+    ]);
+    mockRevokeAttestationOnce.mockResolvedValue({ revoked: false });
+
+    const res = await POST(
+      makeRequest({ appId: APP_ROW.id, scopes: ['profile:read', 'connections:read'] }) as never,
+    );
+
+    expect(res.status).toBe(201);
+    expect(mockAttestationInsertValues).toHaveBeenCalledOnce();
   });
 });
