@@ -20,7 +20,8 @@
 
 | Concern | Canonical primitive | Location | Do NOT |
 |---------|--------------------|----------|--------|
-| **App/agent auth + scope** | `requireAppAuth(request, { scope })` | `packages/auth/src/require-app-auth.ts` | Read `x-app-did` / validate scopes inline. Use the dual-path: app-DID header → `requireAppAuth`; else `requireAuth`. |
+| **App/agent auth + scope** | `requireAppAuth(request, { scope })` | `packages/auth/src/require-app-auth.ts` | Read `x-app-did` / validate scopes inline. Use the dual-path: app-DID header → `requireAppAuth`; else `requireAuth`. Accepts both user-delegated (`app+jwt`) and session-less service (`app-service+jwt`) tokens — see the next row for the latter. |
+| **Session-less service credential (machine-to-machine reads)** | `POST /auth/api/apps/token/service` to mint, `requireAppAuth(request, { scope })` to gate | `apps/kernel/app/auth/api/apps/token/service/route.ts`, [service-credentials.md](./service-credentials.md) | Borrow a human's attestation/session for a webhook, cron, or other automated caller. A registered app proves possession of its own keypair and gets a token attributed to its own DID (`userDid: ''`, `isServiceToken: true`) — never a borrowed human identity. |
 | **Session auth** | `requireAuth(request)` / `optionalAuth(request)` | `@imajin/auth` | Parse the session cookie or call `/api/session` by hand. |
 | **Checkout buyer identity** | `resolveCheckoutIdentity(request, body, log, opts)` | `apps/events/src/lib/checkout-common.ts` | Reinvent soft-DID minting / profile-email backfill in a checkout route. Pass `opts.createSoftDid` for free-RSVP-style eager DID creation. |
 | **Ticket reconciliation after payment** | `confirmHeldTickets(...)` | `apps/events/src/lib/confirm-payment.ts` | Flip ticket status / increment sold / emit `ticket.purchased` / send bundle email inline. |
