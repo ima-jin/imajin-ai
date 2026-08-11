@@ -76,6 +76,13 @@ vi.mock('@/src/lib/auth/promote-actor', () => ({
   promoteActorOnGrant: vi.fn(async () => undefined),
 }));
 
+// #1804: POST now auto-publishes granted scopes via this helper. These tests
+// only drive GET, but the route module imports it at load time, and its real
+// implementation pulls in the media/asset stack (DB-backed) — stub it out.
+vi.mock('@/src/lib/kernel/consent-scope-projection', () => ({
+  projectConsentedScopes: vi.fn(async () => []),
+}));
+
 // Import AFTER mocks. oauth-config + oauth-redirect stay REAL — the whole point
 // is to exercise the actual scope resolution.
 const { GET } = await import('../../../../app/oauth/authorize/route');
