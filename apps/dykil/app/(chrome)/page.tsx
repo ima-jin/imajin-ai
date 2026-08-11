@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { buildPublicUrl } from '@imajin/config';
+import { buildPublicUrl, APP_DISPLAY_NAME } from '@imajin/config';
 import { ImajinFooter } from '@imajin/ui';
 import Link from 'next/link';
 
@@ -84,7 +84,7 @@ export default function Home() {
                 <div className="text-2xl">🎯</div>
                 <div>
                   <h3 className="font-semibold">Event integration</h3>
-                  <p className="text-gray-500 text-sm">Link surveys to Imajin events for pre/post-event feedback.</p>
+                  <p className="text-gray-500 text-sm">Link surveys to {APP_DISPLAY_NAME} events for pre/post-event feedback.</p>
                 </div>
               </div>
             </div>

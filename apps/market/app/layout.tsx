@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { NavBar } from '@imajin/ui';
 import { themeInitScript, buildServiceMetadata, defaultViewport, getServiceRuntimeEnv } from '@imajin/ui/server';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 import './globals.css';
 export const viewport: Viewport = defaultViewport;
-export const metadata: Metadata = buildServiceMetadata('Market', 'Local commerce — buy and sell with trust on the Imajin network');
+export const metadata: Metadata = buildServiceMetadata('Market', `Local commerce — buy and sell with trust on the ${APP_DISPLAY_NAME} network`);
 
 export default function RootLayout({
   children,

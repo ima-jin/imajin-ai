@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from 'next';
 import { NavBar } from '@imajin/ui';
 import { buildServiceMetadata, defaultViewport, getServiceRuntimeEnv } from '@imajin/ui/server';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 import './globals.css';
 import { Providers } from './providers';
 export const viewport: Viewport = defaultViewport;
-export const metadata: Metadata = buildServiceMetadata('Learn', 'Courses and lessons on the Imajin network — teach and learn, sovereign and DID-linked');
+export const metadata: Metadata = buildServiceMetadata('Learn', `Courses and lessons on the ${APP_DISPLAY_NAME} network — teach and learn, sovereign and DID-linked`);
 
 export default function RootLayout({
   children,

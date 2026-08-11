@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@imajin/config": "workspace:*",
     "@imajin/logger": "workspace:*",
     "marked": "^18.0.4",
     "nodemailer": "^9.0.1",

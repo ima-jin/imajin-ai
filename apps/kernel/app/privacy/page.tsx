@@ -1,8 +1,9 @@
 import Link from 'next/link';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 
 export const metadata = {
-  title: 'Privacy — Imajin',
-  description: 'How Imajin handles your data. Short version: we don\'t sell it.',
+  title: `Privacy — ${APP_DISPLAY_NAME}`,
+  description: `How ${APP_DISPLAY_NAME} handles your data. Short version: we don't sell it.`,
 };
 
 export default function PrivacyPage() {
@@ -70,7 +71,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-xl font-semibold mb-3">Where your data lives</h2>
             <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
-              Imajin is self-hosted on hardware we own in Toronto, Canada. Your data doesn&apos;t live
+              {APP_DISPLAY_NAME} is self-hosted on hardware we own in Toronto, Canada. Your data doesn&apos;t live
               on AWS or Google Cloud. We use Stripe for payment processing — they have their own{' '}
               <a href="https://stripe.com/privacy" className="text-amber-500 hover:underline" target="_blank" rel="noopener noreferrer">
                 privacy policy

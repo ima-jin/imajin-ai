@@ -1,17 +1,19 @@
+import { APP_DISPLAY_NAME } from '@imajin/config';
+
 export const defaultViewport = {
   width: 'device-width',
   initialScale: 1,
 } as const;
 
 export function buildServiceMetadata(serviceName: string, description: string) {
-  const title = `${serviceName} | Imajin`;
+  const title = `${serviceName} | ${APP_DISPLAY_NAME}`;
   return {
     title,
     description,
     openGraph: {
       title,
       description,
-      siteName: 'Imajin',
+      siteName: APP_DISPLAY_NAME,
       type: 'website',
     },
     twitter: {

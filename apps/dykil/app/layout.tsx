@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { buildServiceMetadata, defaultViewport } from '@imajin/ui/server';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 import './globals.css';
 import { Providers } from './providers';
 export const viewport: Viewport = defaultViewport;
-export const metadata: Metadata = buildServiceMetadata('Dykil', 'Sovereign surveys and forms on the Imajin network');
+export const metadata: Metadata = buildServiceMetadata('Dykil', `Sovereign surveys and forms on the ${APP_DISPLAY_NAME} network`);
 
 export default function RootLayout({
   children,

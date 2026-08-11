@@ -5,9 +5,10 @@ import path from 'node:path';
 import { remark } from 'remark';
 import remarkGfm from 'remark-gfm';
 import html from 'remark-html';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 
 export const metadata: Metadata = {
-  title: 'MJN Protocol Whitepaper — Imajin',
+  title: `MJN Protocol Whitepaper — ${APP_DISPLAY_NAME}`,
   description:
     'The iMaJiN Network Protocol. Identity · Attribution · Settlement · Presence. An open application-layer protocol that carries the human.',
   openGraph: {

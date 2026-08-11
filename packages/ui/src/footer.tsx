@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { APP_DISPLAY_NAME } from '@imajin/config';
 import { BuildInfo } from './BuildInfo';
 
 function getServiceFromPathname(pathname: string): string {
@@ -21,7 +22,7 @@ export function ImajinFooter({ className }: Readonly<{ className?: string }>) {
     <div className={`flex flex-col items-center gap-2 ${className || ""}`}>
       <p className="text-center text-sm text-gray-500">
         Part of the{" "}
-        <a href="https://imajin.ai" className="text-orange-500 hover:underline">Imajin</a>
+        <a href="https://imajin.ai" className="text-orange-500 hover:underline">{APP_DISPLAY_NAME}</a>
         {" "}sovereign network
       </p>
       <p className="text-center text-sm text-gray-500">
