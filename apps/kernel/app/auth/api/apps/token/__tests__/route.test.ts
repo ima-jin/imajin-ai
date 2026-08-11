@@ -24,7 +24,11 @@ const mocks = vi.hoisted(() => {
   const selectMock = vi.fn(() => ({ from: fromMock }));
   const verifySignatureMock = vi.fn();
   const createAppTokenMock = vi.fn().mockResolvedValue('signed.app.jwt');
-  return { whereMock, selectMock, verifySignatureMock, createAppTokenMock };
+  // Minting a token must be read-only w.r.t. the consent attestation (#1795):
+  // these spies let tests assert the route never reaches for a mutation path.
+  const insertMock = vi.fn();
+  const updateMock = vi.fn();
+  return { whereMock, selectMock, verifySignatureMock, createAppTokenMock, insertMock, updateMock };
 });
 
 function nextSelect(rows: unknown[]): void {
@@ -34,7 +38,7 @@ function nextSelect(rows: unknown[]): void {
 }
 
 vi.mock('@/src/db', () => ({
-  db: { select: mocks.selectMock },
+  db: { select: mocks.selectMock, insert: mocks.insertMock, update: mocks.updateMock },
   attestations: {
     id: 'attestations.id',
     subjectDid: 'attestations.subjectDid',
@@ -155,5 +159,45 @@ describe('POST /auth/api/apps/token — registry.apps PoP lookup (#1739)', () =>
     const res = await POST(makeRequest(VALID_BODY) as never);
 
     expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /auth/api/apps/token — mint is read-only w.r.t. the consent attestation (#1795)', () => {
+  it('never calls db.insert or db.update when minting a token', async () => {
+    nextSelect([REGISTRY_APP_ROW]);
+    nextSelect([ATTESTATION_ROW]);
+
+    const res = await POST(makeRequest(VALID_BODY) as never);
+
+    expect(res.status).toBe(200);
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('repeated mint calls against the same consent attestation never create app.revoked records', async () => {
+    // Simulates the #1795 retry storm: several rapid mint calls against the
+    // same attestationId (e.g. two parallel reads each minting their own
+    // short-lived token, possibly retried) must each succeed without ever
+    // touching the attestation.
+    for (let i = 0; i < 10; i++) {
+      nextSelect([REGISTRY_APP_ROW]);
+      nextSelect([ATTESTATION_ROW]);
+      const res = await POST(makeRequest(VALID_BODY) as never);
+      expect(res.status).toBe(200);
+    }
+
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not mutate the attestation even when the authorization has been revoked', async () => {
+    nextSelect([REGISTRY_APP_ROW]);
+    nextSelect([{ ...ATTESTATION_ROW, revokedAt: new Date().toISOString() }]);
+
+    const res = await POST(makeRequest(VALID_BODY) as never);
+
+    expect(res.status).toBe(403);
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(mocks.updateMock).not.toHaveBeenCalled();
   });
 });

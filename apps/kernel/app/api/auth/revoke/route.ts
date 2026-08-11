@@ -6,14 +6,19 @@
  *
  * Body: { attestationId }
  * Returns: { ok: true }
+ *
+ * Revocation itself is delegated to revokeAttestationOnce() (#1795), which
+ * atomically claims the attestation (compare-and-swap on revokedAt) before
+ * writing anything — so a retry storm or concurrent revoke calls against the
+ * same attestation can never produce more than one `app.revoked` record.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { nanoid } from 'nanoid';
-import { db, attestations, oauthRefreshTokens } from '@/src/db';
-import { eq, and, isNull } from 'drizzle-orm';
-import { requireAuth, canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { db, attestations } from '@/src/db';
+import { eq, and } from 'drizzle-orm';
+import { requireAuth } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
+import { revokeAttestationOnce } from '@/src/lib/auth/revoke-attestation';
 
 export const POST = withLogger('kernel', async (request: NextRequest) => {
   const authResult = await requireAuth(request);
@@ -58,52 +63,18 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
 
-  const issuedAtMs = Date.now();
-  const payload = { revokedAttestationId: attestationId, appDid: original.subjectDid };
-
-  const canonicalPayload = canonicalize({
-    subject_did: original.subjectDid,
-    type: 'app.revoked',
-    context_id: attestationId,
-    context_type: 'attestation',
-    payload,
-    issued_at: issuedAtMs,
+  const { revoked } = await revokeAttestationOnce({
+    attestationId,
+    revokedByDid: identity.id,
+    privateKey,
   });
 
-  const signature = authCrypto.signSync(canonicalPayload, privateKey);
-
-  await db.insert(attestations).values({
-    id: `att_${nanoid(16)}`,
-    issuerDid: identity.id,
-    subjectDid: original.subjectDid,
-    type: 'app.revoked',
-    contextId: attestationId,
-    contextType: 'attestation',
-    payload,
-    signature,
-    issuedAt: new Date(issuedAtMs),
-  });
-
-  // Mark original as revoked
-  await db
-    .update(attestations)
-    .set({ revokedAt: new Date(issuedAtMs) })
-    .where(eq(attestations.id, attestationId));
-
-  // Defense-in-depth (#1171, 5b): revoke this user's OAuth refresh-token chain for
-  // this grant. Per-user scoped via attestationId — never touches the shared
-  // registry.apps adapter row (Correction 4). handleRefreshToken already denies a
-  // refresh once the backing attestation is revoked; marking the tokens here also
-  // makes them surface as revoked and blocks reuse if that gate ever changes.
-  await db
-    .update(oauthRefreshTokens)
-    .set({ revokedAt: new Date(issuedAtMs) })
-    .where(
-      and(
-        eq(oauthRefreshTokens.attestationId, attestationId),
-        isNull(oauthRefreshTokens.revokedAt),
-      )
-    );
+  if (!revoked) {
+    // Lost the compare-and-swap to a concurrent revoke call against the same
+    // attestation — idempotent no-op rather than a duplicate `app.revoked`
+    // record (#1795).
+    return NextResponse.json({ error: 'Already revoked' }, { status: 409 });
+  }
 
   return NextResponse.json({ ok: true });
 });

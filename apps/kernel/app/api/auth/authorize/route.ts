@@ -6,15 +6,30 @@
  *
  * Body: { appId, scopes }
  * Returns: { attestationId }
+ *
+ * Re-consent (#1795): when the caller already holds an active grant for this
+ * app, an identical scope set reuses that attestation (no churn on duplicate
+ * submits); a changed scope set supersedes it — the old attestation is
+ * revoked exactly once (via the same compare-and-swap helper the explicit
+ * disconnect flow uses), then a fresh attestation is minted and its id
+ * returned so the caller's session picks up the new grant.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { db, attestations, registryApps } from '@/src/db';
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth, validateScopes, canonicalize, crypto as authCrypto, resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
+import { revokeAttestationOnce } from '@/src/lib/auth/revoke-attestation';
+
+function sameScopeSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((s, i) => s === sortedB[i]);
+}
 
 export const POST = withLogger('kernel', async (request: NextRequest) => {
   const authResult = await requireAuth(request);
@@ -78,6 +93,47 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   const privateKey = process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) {
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+  }
+
+  // Re-consent: look for an active grant already on file for this (user, app).
+  const [existing] = await db
+    .select({ id: attestations.id, payload: attestations.payload })
+    .from(attestations)
+    .where(
+      and(
+        eq(attestations.issuerDid, identity.id),
+        eq(attestations.subjectDid, app.appDid),
+        eq(attestations.type, 'app.authorized'),
+        isNull(attestations.revokedAt),
+      )
+    );
+
+  if (existing) {
+    const existingScopes = (existing.payload as { scopes?: string[] } | null)?.scopes ?? [];
+    if (sameScopeSet(existingScopes, validScopes)) {
+      // Nothing changed — reuse the existing grant rather than churning the
+      // attestation id (and, downstream, every cached token/session).
+      await promoteActorOnGrant({
+        appId: app.id,
+        appDid: app.appDid,
+        publicKey: app.publicKey,
+        ownerDid,
+        name: app.name,
+        avatarUrl: app.logoUrl,
+        adapter: 'keypair',
+      });
+      return NextResponse.json({ attestationId: existing.id, userDid: identity.id }, { status: 201 });
+    }
+
+    // Scopes changed — supersede: revoke the old grant exactly once before
+    // minting the replacement. If a concurrent request already won this race
+    // (revoked === false), we still proceed to mint the new attestation below
+    // — the caller's intent (grant the updated scope set) still holds.
+    await revokeAttestationOnce({
+      attestationId: existing.id,
+      revokedByDid: identity.id,
+      privateKey,
+    });
   }
 
   const issuedAtMs = Date.now();
