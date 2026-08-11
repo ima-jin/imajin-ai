@@ -1,10 +1,15 @@
 /**
- * `warp.run.*` → notify reactor (#1644; #1682).
+ * `warp.run.*` → notify reactor (#1644; #1682; #1805).
  *
- * This is the bus-chain test the issue asks for: publishing a Warp run event
- * must invoke the notify reactor for the event subject. The notify route then
- * writes the DB row and pushes the WebSocket frame; that lower layer is covered
- * in the kernel tests.
+ * This is the bus-chain test the issue asks for: publishing a Warp run
+ * *terminal* event must invoke the notify reactor for the event subject. The
+ * notify route then writes the DB row and pushes the WebSocket frame; that
+ * lower layer is covered in the kernel tests.
+ *
+ * `warp.run.progress` is the opposite assertion (#1805): it is telemetry-class,
+ * so publishing it must reach `emit` (the signed event stream, which is what
+ * the #1799 connector telemetry rollup queries) but must NEVER invoke `notify`
+ * — that is exactly the mid-run notification flood the issue removes.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -139,30 +144,34 @@ describe('publishing warp.run.completed', () => {
   });
 });
 
-describe('publishing warp.run.progress (#1682)', () => {
-  it('carries a mid-run delta down the same chain as the terminal events', async () => {
+describe('publishing warp.run.progress (#1682; telemetry-class per #1805)', () => {
+  it('emits to the live stream but never notifies, even across repeated ticks', async () => {
     await publish('warp.run.progress', {
       issuer: PRINCIPAL,
       subject: PRINCIPAL,
       scope: 'warp',
       payload: PROGRESS_PAYLOAD,
     });
+    await publish('warp.run.progress', {
+      issuer: PRINCIPAL,
+      subject: PRINCIPAL,
+      scope: 'warp',
+      payload: { ...PROGRESS_PAYLOAD, summary: '2 new messages', pollCount: 3 },
+    });
     await Promise.resolve();
 
-    expect(mockEmit).toHaveBeenCalledTimes(1);
-    expect(mockNotify).toHaveBeenCalledTimes(1);
-
-    const [event, config] = mockNotify.mock.calls[0];
+    // `emit` fires once per tick — the signed event stream (registry.system_events,
+    // queryable per-DID) is unaffected by the reclassification.
+    expect(mockEmit).toHaveBeenCalledTimes(2);
+    const [event] = mockEmit.mock.calls[0];
     expect(event).toMatchObject({
       type: 'warp.run.progress',
-      // The subject is the dispatching DID, which is what makes the WebSocket
-      // push land on the agent that is waiting on the run.
       subject: PRINCIPAL,
       payload: PROGRESS_PAYLOAD,
     });
-    expect(config).toMatchObject({
-      title: 'Warp run progress',
-      body: 'Run {{runId}}: {{summary}}',
-    });
+
+    // The notification flood this issue fixes: notify must never fire for a
+    // progress tick, no matter how many ticks a run produces.
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 });

@@ -286,21 +286,17 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
       enabled: true,
     },
   ],
-  // #1682 — mid-run deltas, down the same pipe as the terminal events so a
-  // progress tick reaches the dispatching DID's socket the same way a completion
-  // does. Kept in sync with migration 0086.
-  //
-  // `notify` is deliberate despite the volume worry: watchRun only publishes when
-  // something actually changed, so the row count tracks real activity rather than
-  // the poll schedule. `summary` is a scalar precisely so the body renders as one
-  // readable line without the reactor having to walk `newMessages`.
+  // #1682 — mid-run deltas, down the same pipe as the terminal events so the
+  // signed event stream carries every observed change. #1805 reclassifies this
+  // chain as telemetry-class: a parallel dispatch session was producing 99+
+  // notification rows for pure operational exhaust (message-count ticks, cost
+  // updates). `notify` is dropped here — `emit` stays so `registry.system_events`
+  // (queryable per-DID via its `did` index) keeps receiving every tick for the
+  // #1799 connector telemetry rollup. Terminal transitions (`warp.run.completed`,
+  // `warp.run.timeout` above) are state transitions a human should see, so they
+  // keep `notify` untouched. Kept in sync with migration 0090.
   'warp.run.progress': [
     { type: 'emit', config: {}, enabled: true },
-    {
-      type: 'notify',
-      config: { title: 'Warp run progress', body: 'Run {{runId}}: {{summary}}' },
-      enabled: true,
-    },
   ],
   'broker.release': [
     { type: 'emit', config: {}, enabled: true },
