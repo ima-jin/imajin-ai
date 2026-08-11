@@ -197,6 +197,10 @@ export const SCOPE_VOCABULARY = [
   { scope: 'identity:read', connector: null, label: 'Read your identity and DID' },
   { scope: 'identity:write', connector: null, label: 'Resolve or mint soft identities on your behalf (registry get-or-create)' },
   { scope: 'connectors:read-status', connector: null, label: 'Read your connector connection status' },
+  // #1799: powers the per-connector usage rollup (attestations + signed connector
+  // actions, scoped to the connector's registered scope(s)) — distinct from
+  // connectors:read-status, which only ever answers connected/not-connected.
+  { scope: 'connectors:read-telemetry', connector: null, label: 'Read your connector usage telemetry' },
 
   // ── MCP / Claude connector
   { scope: 'media:read', connector: 'mcp', verb: 'read', surface: 'media', classification: SELF_ONLY, surfaces: MCP_TOKENS,
