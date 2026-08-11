@@ -67,10 +67,13 @@ export default async function ChannelLinkApprovalPage(
   const params = await props.params;
   const { effectiveDid } = await getEffectiveDid();
 
-  // Not signed in — redirect to login, come back after.
+  // Not signed in — redirect to login, come back after. /auth/login only
+  // reads `next=` and `/auth` (the Identity Hub) doesn't consume `redirect=`
+  // at all, so this silently dropped the user on the homepage instead of
+  // back on the approval page (#1797).
   if (!effectiveDid) {
     const returnUrl = encodeURIComponent(`/auth/channel-link/${params.token}`);
-    redirect(`/auth?redirect=${returnUrl}`);
+    redirect(`/auth/login?next=${returnUrl}`);
   }
 
   const tokenDetails = await getTokenDetails(params.token);
