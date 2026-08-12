@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
 const {
-  mockRequireAppAuth,
+  mockResolveEffectiveDid,
   mockGetSessionFromCookies,
   mockGetSessionForDid,
   mockDbSelect,
@@ -11,7 +11,7 @@ const {
   mockPublish,
   mockIsVerifiedTier,
 } = vi.hoisted(() => ({
-  mockRequireAppAuth: vi.fn(),
+  mockResolveEffectiveDid: vi.fn(),
   mockGetSessionFromCookies: vi.fn(),
   mockGetSessionForDid: vi.fn(),
   mockDbSelect: vi.fn(),
@@ -21,7 +21,7 @@ const {
 }));
 
 vi.mock('@imajin/auth', () => ({
-  requireAppAuth: mockRequireAppAuth,
+  resolveEffectiveDid: mockResolveEffectiveDid,
   isVerifiedTier: mockIsVerifiedTier,
 }));
 
@@ -83,7 +83,6 @@ import { POST } from '../route';
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const OWNER_DID = 'did:imajin:owner';
-const APP_DID = 'did:imajin:some-app';
 
 const SESSION = {
   did: OWNER_DID,
@@ -106,27 +105,23 @@ function makeReq(
   } as unknown as RouteRequest;
 }
 
-/** App-auth denial shape returned when no app credentials are present at all. */
-const NO_APP_CREDENTIALS = {
-  error: 'Authorization Bearer <app-token>, or X-App-DID + X-App-Authorization headers required',
+const UNAUTHENTICATED = {
+  ok: false,
   status: 401,
+  error: 'Unauthorized',
 };
 
-function appAuth(overrides: Record<string, unknown> = {}) {
-  return {
-    appAuth: {
-      appDid: APP_DID,
-      userDid: OWNER_DID,
-      scopes: ['connections:write'],
-      attestationId: 'att_app',
-      ...overrides,
-    },
-  };
+function appAuthOk() {
+  return { ok: true, effectiveDid: OWNER_DID, via: 'app', composedBy: null };
+}
+
+function sessionAuthOk() {
+  return { ok: true, effectiveDid: OWNER_DID, via: 'session', composedBy: null };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockRequireAppAuth.mockResolvedValue(NO_APP_CREDENTIALS);
+  mockResolveEffectiveDid.mockResolvedValue(sessionAuthOk());
   mockGetSessionFromCookies.mockResolvedValue(SESSION);
   mockGetSessionForDid.mockResolvedValue(SESSION);
 
@@ -143,43 +138,36 @@ beforeEach(() => {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe('POST /connections/api/invites — session auth (existing behaviour)', () => {
-  it('creates a link invite for a cookie-authenticated user', async () => {
+describe('POST /connections/api/invites — dual guard via resolveEffectiveDid (#1832)', () => {
+  it('creates a link invite for a cookie/session-authenticated user', async () => {
     const res = await POST(makeReq({}));
 
     expect(res.status).toBe(201);
-    expect(mockGetSessionFromCookies).toHaveBeenCalled();
+    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(
+      expect.anything(),
+      { scope: 'connections:write' },
+    );
+    expect(mockGetSessionForDid).toHaveBeenCalledWith(OWNER_DID);
     expect(mockDbInsert).toHaveBeenCalled();
   });
 
   it('returns 401 when there is no session and no app credentials', async () => {
-    mockGetSessionFromCookies.mockResolvedValueOnce(null);
+    mockResolveEffectiveDid.mockResolvedValueOnce(UNAUTHENTICATED);
 
     const res = await POST(makeReq({}));
 
     expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: 'Not authenticated' });
+    expect(await res.json()).toEqual({ error: 'Unauthorized' });
     expect(mockDbInsert).not.toHaveBeenCalled();
   });
-});
 
-describe('POST /connections/api/invites — app-auth dual guard (#1793)', () => {
-  it('requires the connections:write app scope', async () => {
-    mockRequireAppAuth.mockResolvedValueOnce(appAuth());
-
-    await POST(makeReq({}));
-
-    expect(mockRequireAppAuth).toHaveBeenCalledWith(expect.anything(), { scope: 'connections:write' });
-  });
-
-  it('creates the invite issued from appAuth.userDid, never calling session auth', async () => {
-    mockRequireAppAuth.mockResolvedValueOnce(appAuth());
+  it('creates the invite for an app token with the connections:write scope', async () => {
+    mockResolveEffectiveDid.mockResolvedValueOnce(appAuthOk());
 
     const res = await POST(makeReq({}));
 
     expect(res.status).toBe(201);
     expect(mockGetSessionForDid).toHaveBeenCalledWith(OWNER_DID);
-    expect(mockGetSessionFromCookies).not.toHaveBeenCalled();
 
     const insertValues = mockDbInsert.mock.results[0].value.values as ReturnType<typeof vi.fn>;
     expect(insertValues).toHaveBeenCalledWith(
@@ -187,30 +175,22 @@ describe('POST /connections/api/invites — app-auth dual guard (#1793)', () => 
     );
   });
 
-  it('resolves the same issuer DID via app-auth and session-cookie paths', async () => {
-    mockRequireAppAuth.mockResolvedValueOnce(appAuth());
-    const appRes = await POST(makeReq({}));
-    const appBody = await appRes.json();
-
-    mockRequireAppAuth.mockResolvedValueOnce(NO_APP_CREDENTIALS);
-    const sessionRes = await POST(makeReq({}));
-    const sessionBody = await sessionRes.json();
-
-    expect(appBody.invite.fromDid).toBe(OWNER_DID);
-    expect(sessionBody.invite.fromDid).toBe(OWNER_DID);
-  });
-
-  it('rejects service tokens that name no delegating user DID', async () => {
-    mockRequireAppAuth.mockResolvedValueOnce(appAuth({ userDid: '', isServiceToken: true }));
+  it('rejects an app token missing the connections:write scope with 403, not a generic 401', async () => {
+    mockResolveEffectiveDid.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      error: "Scope 'connections:write' was not granted",
+    });
 
     const res = await POST(makeReq({}));
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Scope 'connections:write' was not granted" });
     expect(mockDbInsert).not.toHaveBeenCalled();
   });
 
-  it('returns 401 when the app-authenticated DID has no known identity', async () => {
-    mockRequireAppAuth.mockResolvedValueOnce(appAuth());
+  it('returns 401 when the effective DID has no known identity', async () => {
+    mockResolveEffectiveDid.mockResolvedValueOnce(appAuthOk());
     mockGetSessionForDid.mockResolvedValueOnce(null);
 
     const res = await POST(makeReq({}));
@@ -219,20 +199,16 @@ describe('POST /connections/api/invites — app-auth dual guard (#1793)', () => 
     expect(mockDbInsert).not.toHaveBeenCalled();
   });
 
-  it('surfaces the app-auth error instead of falling back when app headers were supplied but invalid', async () => {
-    mockRequireAppAuth.mockResolvedValueOnce({ error: 'Invalid app token', status: 401 });
-    mockGetSessionFromCookies.mockResolvedValueOnce(null);
+  it('resolves the same issuer DID via the app-auth and session paths', async () => {
+    mockResolveEffectiveDid.mockResolvedValueOnce(appAuthOk());
+    const appRes = await POST(makeReq({}));
+    const appBody = await appRes.json();
 
-    const res = await POST(makeReq({}, { 'x-app-did': APP_DID }));
+    mockResolveEffectiveDid.mockResolvedValueOnce(sessionAuthOk());
+    const sessionRes = await POST(makeReq({}));
+    const sessionBody = await sessionRes.json();
 
-    expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: 'Invalid app token' });
-  });
-
-  it('falls back to the session cookie when no app credentials are supplied at all', async () => {
-    const res = await POST(makeReq({}));
-
-    expect(res.status).toBe(201);
-    expect(mockGetSessionFromCookies).toHaveBeenCalled();
+    expect(appBody.invite.fromDid).toBe(OWNER_DID);
+    expect(sessionBody.invite.fromDid).toBe(OWNER_DID);
   });
 });
