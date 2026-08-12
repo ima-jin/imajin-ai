@@ -8,6 +8,7 @@ import { isVerifiedTier, resolveEffectiveDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { buildPublicUrl } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
+import { resolveOrMintInviteTarget } from '@/src/lib/auth/claimable-stub';
 
 import { getSessionFromCookies, getSessionForDid, type KernelSession } from '@/src/lib/kernel/session';
 
@@ -147,12 +148,21 @@ export async function POST(request: NextRequest) {
     const id = generateId('inv_');
     const expiresAtDate = new Date(now.getTime() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
+    // Mint-on-new-email (#1834 Phase 1): resolve toEmail to a stable target
+    // DID up front. A brand-new email mints a claimable stub; an email
+    // already owned by a real identity, or a previously-minted stub, is
+    // reused silently — the response shape below is identical either way,
+    // so a second introducer of the same email learns nothing about whether
+    // it already existed (match-without-disclosure).
+    const toDid = await resolveOrMintInviteTarget(toEmail);
+
     const [invite] = await db.insert(invites).values({
       id,
       code,
       fromDid: session.did,
       fromHandle: session.handle || null,
       toEmail: toEmail || null,
+      toDid,
       note: note || null,
       delivery: 'email',
       status: 'pending',
