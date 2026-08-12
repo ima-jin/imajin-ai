@@ -2,11 +2,13 @@
  * Tests for POST /auth/api/attestations/internal — the `attestation.created`
  * bus emit added in #1820.
  *
- * This route previously never published `attestation.created` at all. It also
- * never accepts `author_jws`, so every attestation it creates must publish with
- * `pendingSignature: false` — that is what keeps the `attestation-notify`
- * reactor from firing for the many system attestations (identity, vouch,
- * ticket receipts, etc.) that flow through this route via `emitAttestation()`.
+ * This route previously never published `attestation.created` at all, and
+ * always hardcoded `pendingSignature: false`. It now reads `pending` and
+ * `originUrl` from the request body (threaded by `emitAttestation()` for
+ * callers like the supply receipt flow), defaulting `pendingSignature` to
+ * false so the many one-shot system attestations (identity, vouch, ticket
+ * receipts, etc.) that flow through this route via `emitAttestation()` never
+ * trigger the `attestation-notify` reactor.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
@@ -78,12 +80,6 @@ describe('attestation.created payload (internal route)', () => {
     });
   });
 
-  it('always sets pendingSignature to false — this route never accepts author_jws', async () => {
-    await POST(makeReq({ issuer_did: ISSUER, subject_did: SUBJECT, type: 'identity.created' }));
-
-    expect(publishedPayload().pendingSignature).toBe(false);
-  });
-
   it('derives originUrl from the Origin header when the caller is a browser-facing app', async () => {
     await POST(
       makeReq(
@@ -99,6 +95,50 @@ describe('attestation.created payload (internal route)', () => {
     await POST(makeReq({ issuer_did: ISSUER, subject_did: SUBJECT, type: 'identity.created' }));
 
     expect(publishedPayload().originUrl).toBeUndefined();
+  });
+
+  it('sets pendingSignature true when the caller passes pending: true (#1820)', async () => {
+    await POST(
+      makeReq({ issuer_did: ISSUER, subject_did: SUBJECT, type: 'identity.created', pending: true }),
+    );
+
+    expect(publishedPayload().pendingSignature).toBe(true);
+  });
+
+  it('defaults pendingSignature to false when the caller omits pending (#1820)', async () => {
+    await POST(makeReq({ issuer_did: ISSUER, subject_did: SUBJECT, type: 'identity.created' }));
+
+    expect(publishedPayload().pendingSignature).toBe(false);
+  });
+
+  it('ignores a non-boolean pending value (defaults to false)', async () => {
+    await POST(
+      makeReq({ issuer_did: ISSUER, subject_did: SUBJECT, type: 'identity.created', pending: 'true' }),
+    );
+
+    expect(publishedPayload().pendingSignature).toBe(false);
+  });
+
+  it('prefers an explicit body.originUrl over Origin-header derivation (#1820)', async () => {
+    await POST(
+      makeReq(
+        { issuer_did: ISSUER, subject_did: SUBJECT, type: 'identity.created', originUrl: 'https://supplier.example.com' },
+        { origin: 'https://should-not-be-used.example.com' },
+      ),
+    );
+
+    expect(publishedPayload().originUrl).toBe('https://supplier.example.com');
+  });
+
+  it('falls back to the Origin header when body.originUrl is absent (#1820)', async () => {
+    await POST(
+      makeReq(
+        { issuer_did: ISSUER, subject_did: SUBJECT, type: 'identity.created' },
+        { origin: 'https://xprize.example.com' },
+      ),
+    );
+
+    expect(publishedPayload().originUrl).toBe('https://xprize.example.com');
   });
 
   it('does not publish when the request is unauthorized', async () => {

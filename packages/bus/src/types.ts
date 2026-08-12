@@ -1103,10 +1103,14 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
-  // #1384 — delivery-receipt stage: downstream recipient signs they received the lot.
-  // commodity is a payload field (product-agnostic); recipientDid is the signer.
+  // #1384 — delivery-receipt stage. commodity is a payload field (product-agnostic).
+  // #1820 — supplierDid (issuer) records the delivery; recipientDid (subject) is
+  // the counterparty being asked to countersign. recipientDid falls back to
+  // supplierDid when the caller doesn't identify a distinct counterparty (a
+  // self-attested receipt, same as the pre-#1820 behavior).
   'supply.received': {
     lotId: string;
+    supplierDid: string;
     recipientDid: string;
     commodity: string;
     quantity: number;

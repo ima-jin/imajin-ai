@@ -114,6 +114,58 @@ describe('skip: self-attestation', () => {
   });
 });
 
+describe('realistic supply.received delivery attestation (#1820)', () => {
+  const SUPPLIER = 'did:imajin:supplier';
+  const RECIPIENT = 'did:imajin:recipient';
+
+  it('fires notify for a bilateral delivery attestation naming a distinct counterparty', async () => {
+    await attestationNotifyReactor(
+      makeEvent(
+        { issuer: SUPPLIER, subject: RECIPIENT },
+        {
+          type: 'supply.received',
+          issuerDid: SUPPLIER,
+          subjectDid: RECIPIENT,
+          pendingSignature: true,
+        },
+      ),
+      {},
+    );
+
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    const sent = mockSend.mock.calls[0][0] as Record<string, unknown>;
+    expect(sent.to).toBe(RECIPIENT);
+    expect((sent.data as Record<string, unknown>).type).toBe('supply.received');
+  });
+
+  it('does not fire when the delivery is self-attested (no distinct counterparty)', async () => {
+    await attestationNotifyReactor(
+      makeEvent(
+        { issuer: SUPPLIER, subject: SUPPLIER },
+        { type: 'supply.received', issuerDid: SUPPLIER, subjectDid: SUPPLIER, pendingSignature: true },
+      ),
+      {},
+    );
+
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+});
+
+describe('does not fire for one-shot system attestations flowing through the internal route (#1820)', () => {
+  it.each([
+    ['vouch', ISSUER, SUBJECT],
+    ['identity.created', ISSUER, SUBJECT],
+    ['connection.accepted', ISSUER, SUBJECT],
+  ] as const)('skips %s (pendingSignature always false via the internal route)', async (type, issuer, subject) => {
+    await attestationNotifyReactor(
+      makeEvent({ issuer, subject }, { type, issuerDid: issuer, subjectDid: subject, pendingSignature: false }),
+      {},
+    );
+
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+});
+
 describe('skip: not awaiting a signature', () => {
   it('does not notify one-shot system attestations (pendingSignature: false)', async () => {
     await attestationNotifyReactor(makeEvent({}, { pendingSignature: false }), {});

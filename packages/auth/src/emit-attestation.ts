@@ -9,6 +9,22 @@ export async function emitAttestation(params: {
   context_type: string;
   payload?: Record<string, unknown>;
   expires_at?: string;
+  /**
+   * True when this attestation is genuinely awaiting the subject's
+   * counter-signature (bilateral flow) rather than a one-shot system
+   * attestation. Threaded through to the internal route's `attestation.created`
+   * publish as `pendingSignature` (#1820). Defaults to false — callers must opt
+   * in explicitly so the ~15 one-shot attestation types (vouch, receipts,
+   * identity, etc.) never trigger a counterparty notification.
+   */
+  pending?: boolean;
+  /**
+   * The originating app's URL, when the caller can supply one (#1820). This is
+   * a server-to-server call with no `Origin` header, so it can never be
+   * derived from the request itself — callers that want a deep link in the
+   * pending-signature notification must pass it explicitly.
+   */
+  originUrl?: string;
 }): Promise<void> {
   const authServiceUrl = process.env.AUTH_SERVICE_URL;
   const internalApiKey = process.env.AUTH_INTERNAL_API_KEY;
