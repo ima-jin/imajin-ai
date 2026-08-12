@@ -7,6 +7,7 @@ import { db, identities, credentials, identityMembers, onboardTokens } from '@/s
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
+import { mintOrAccrueClaimableStub } from '@/src/lib/auth/claimable-stub';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -93,8 +94,51 @@ export async function handleExpiredOrUsedToken(
 }
 
 /**
+ * Backfill `name`/`contactEmail` on an identity when they're missing, e.g.
+ * an existing record predates one of these fields, or a stub minted
+ * elsewhere never had them set. No-op (returns `identity` unchanged) when
+ * neither backfill applies. Shared by both branches of
+ * {@link createOrFindSoftDid} to keep its own cognitive complexity down.
+ */
+async function backfillIdentityContact(
+  did: string,
+  identity: typeof identities.$inferSelect,
+  name: string | null | undefined,
+  normalizedEmail: string,
+): Promise<typeof identities.$inferSelect> {
+  const wantNameUpdate = !!(name && !identity.name);
+  const missingEmail = !identity.contactEmail;
+  if (!wantNameUpdate && !missingEmail) return identity;
+
+  const [updated] = await db
+    .update(identities)
+    .set({
+      ...(wantNameUpdate ? { name: name! } : {}),
+      ...(missingEmail ? { contactEmail: normalizedEmail } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(identities.id, did))
+    .returning();
+  return updated;
+}
+
+/**
  * Create a new soft DID for the given email, or return the existing one.
  * Also updates name/contactEmail if the identity is missing them.
+ *
+ * #1834 Phase 3: the mint half is delegated to the claimable-stub primitive
+ * (`mintOrAccrueClaimableStub`) instead of a bespoke insert, so a
+ * genuinely-new email here dedupes against any stub already minted for it
+ * by another introduction path (connections invite, events checkout, ...)
+ * via the HMAC index — "one DID per email" (#1834 design pt. 1) now holds
+ * across every mint site. Clicking the onboard magic link IS proof of email
+ * ownership (unlike a bare invite-link click, #1834 design pt. 3), so this
+ * function still unconditionally inserts a verified `credentials` row
+ * itself, exactly as it did before this migration — self-serve onboarding
+ * keeps producing an immediately-usable, verified identity regardless of
+ * whether an inviter-side countersign ever exists. The bilateral
+ * claim/ratchet (`tryActivateClaim`) stays untouched and is not invoked
+ * from here.
  */
 export async function createOrFindSoftDid(
   normalizedEmail: string,
@@ -107,56 +151,51 @@ export async function createOrFindSoftDid(
     .limit(1);
 
   if (existingCred) {
-    let [identity] = await db
+    const [identity] = await db
       .select()
       .from(identities)
       .where(eq(identities.id, existingCred.did))
       .limit(1);
 
     if (identity) {
-      const wantNameUpdate = !!(name && !identity.name);
-      const missingEmail = !identity.contactEmail;
-      if (wantNameUpdate || missingEmail) {
-        [identity] = await db
-          .update(identities)
-          .set({
-            ...(wantNameUpdate ? { name: name! } : {}),
-            ...(missingEmail ? { contactEmail: normalizedEmail } : {}),
-            updatedAt: new Date(),
-          })
-          .where(eq(identities.id, existingCred.did))
-          .returning();
-      }
-      return { did: existingCred.did, identity, created: false };
+      const updated = await backfillIdentityContact(existingCred.did, identity, name, normalizedEmail);
+      return { did: existingCred.did, identity: updated, created: false };
     }
   }
 
-  // Mint a new stable soft DID.
-  const did = `did:imajin:${nanoid(44)}`;
-  const placeholderKey = `soft_${nanoid(32)}`;
-  const [identity] = await db
-    .insert(identities)
-    .values({
-      id: did,
-      scope: 'actor',
-      subtype: 'human',
-      publicKey: placeholderKey,
-      handle: null,
-      name: name ?? null,
-      contactEmail: normalizedEmail,
-      metadata: { email: normalizedEmail, tier: 'soft', source: 'onboard' },
-    })
-    .returning();
+  // Mint-or-accrue via the claimable-stub primitive (#1834 Phase 3).
+  const { did, isNewStub } = await mintOrAccrueClaimableStub(normalizedEmail);
 
+  const [mintedIdentity] = await db
+    .select()
+    .from(identities)
+    .where(eq(identities.id, did))
+    .limit(1);
+
+  if (!mintedIdentity) {
+    // Defensive: claim_stub_index.did is a NOT NULL FK into identities, so
+    // this shouldn't happen — but never fall through to minting a second
+    // DID for the same email if it somehow does.
+    throw new Error(`[onboard] claimable stub ${did} has no identities row`);
+  }
+
+  const identity = await backfillIdentityContact(did, mintedIdentity, name, normalizedEmail);
+
+  // The onboard magic-link click is itself the email-ownership proof, so
+  // insert the verified credential unconditionally — identical to the
+  // pre-migration behavior — regardless of whether this stub was freshly
+  // minted here or accrued from a prior introduction elsewhere.
+  // `onConflictDoNothing` guards the (already unlikely) race where another
+  // path inserted the same (type, value) row concurrently.
   await db.insert(credentials).values({
     id: `cred_${nanoid(16)}`,
     did,
     type: 'email',
     value: normalizedEmail,
     verifiedAt: new Date(),
-  });
+  }).onConflictDoNothing();
 
-  return { did, identity, created: true };
+  return { did, identity, created: isNewStub };
 }
 
 /**
