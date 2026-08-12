@@ -60,6 +60,25 @@ export const ATTESTATION_TYPES = [
 export type AttestationType = typeof ATTESTATION_TYPES[number];
 
 /**
+ * Attestation types that are minted automatically by the platform/kernel
+ * node identity as mechanical audit records — e.g. `session.created`, written
+ * by `emitSessionAttestation()` on every prod session start. These never
+ * carry an `author_jws`, are never bilateral, and are never intended for
+ * human countersignature.
+ *
+ * A denylist rather than an allowlist (#1822): the vast majority of
+ * `ATTESTATION_TYPES` are legitimate, human-relevant claims (vouches,
+ * receipts, document signing, etc.) whose "pending" vs. "not applicable"
+ * status is already correctly derived from whether the row carries an
+ * `author_jws`. Enumerating all of those as an allowlist would be far more
+ * error-prone — any type accidentally left off would have its real,
+ * legitimate pending-countersignature entries silently hidden — than
+ * explicitly naming the small, known set of mechanical types that must be
+ * excluded from any "pending your countersignature" view or query.
+ */
+export const MECHANICAL_ATTESTATION_TYPES = ['session.created'] as const;
+
+/**
  * Claim payload for the `imajin/nostr-key-binding` attestation type.
  *
  * A DID-key signs this to assert that the given Nostr public key
