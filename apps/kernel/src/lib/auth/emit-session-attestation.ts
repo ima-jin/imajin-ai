@@ -72,6 +72,13 @@ export async function emitSessionAttestation(params: {
       payload,
       signature,
       cid,
+      // #1822: `attestation_status` defaults to 'pending' at the column level
+      // (the correct default for the bilateral author_jws/witnessJws flow).
+      // session.created is a mechanical audit record with no author_jws and
+      // no countersignature step, so it must be explicitly nulled out here —
+      // otherwise every session start silently queues up as "pending your
+      // countersignature" in any view/query built on attestation_status.
+      attestationStatus: null,
       issuedAt: new Date(issuedAtMs),
     });
   } catch (err) {

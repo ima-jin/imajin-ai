@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, attestations, tokens } from '@/src/db';
-import { eq, and, isNull, gt, desc } from 'drizzle-orm';
+import { eq, and, isNull, gt, desc, notInArray } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
@@ -228,6 +228,14 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
   if (typeFilter) conditions.push(eq(attestations.type, typeFilter));
   if (issuerFilter) conditions.push(eq(attestations.issuerDid, issuerFilter));
   if (statusFilter) conditions.push(eq(attestations.attestationStatus, statusFilter));
+  // #1822: an untyped `status=pending` query is the "pending your
+  // countersignature" view — exclude mechanical audit-record types (e.g.
+  // session.created) that were never awaiting anyone's signature. A caller
+  // that explicitly asks for a mechanical type (`type=session.created`) still
+  // gets it back; this only guards the broad, no-type-filter dashboard query.
+  if (statusFilter === 'pending' && !typeFilter) {
+    conditions.push(notInArray(attestations.type, [...MECHANICAL_ATTESTATION_TYPES]));
+  }
 
   try {
     const rows = await db
