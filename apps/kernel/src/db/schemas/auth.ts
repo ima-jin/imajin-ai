@@ -287,9 +287,42 @@ export const channelLinks = authSchema.table('channel_links', {
   pairUnique: uniqueIndex('uniq_channel_links_pair').on(table.channel, table.channelUid, table.appDid),
 }));
 
+/**
+ * Claim Stub Index — email-keyed dedup index for the claimable-stub
+ * primitive (#1834 Phase 1).
+ *
+ * Keyed by a salted/peppered HMAC-SHA256 of the normalised email (never the
+ * plaintext), so a second introduction of the same email can be matched and
+ * silently accrued to the same stub `identities` row without ever exposing
+ * whether the email already existed ("match-without-disclosure").
+ *
+ * `emailEncrypted` holds the email AES-256-GCM-encrypted at rest with a
+ * server-held key derived from the same secret as the HMAC — needed so the
+ * reminder ladder (catalyst-power/xprize#75) can re-send later without
+ * asking the introducer to supply the email again. No plaintext email is
+ * ever stored here or searchable via this table.
+ *
+ * `claimantVerifiedAt` is one half of the ratcheted bilateral claim (#1834
+ * ratified design pt. 3): set when the claimant proves ownership of the
+ * email. The other half — the inviter-side countersign — is read from
+ * `connections.invites` (an accepted invite whose `toDid` is this stub's
+ * DID) rather than duplicated here.
+ */
+export const claimStubIndex = authSchema.table('claim_stub_index', {
+  emailHmac: text('email_hmac').primaryKey(),
+  did: text('did').notNull().unique().references(() => identities.id),
+  emailEncrypted: text('email_encrypted').notNull(),
+  claimantVerifiedAt: timestamp('claimant_verified_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  didIdx: index('idx_claim_stub_index_did').on(table.did),
+}));
+
 // Types
 export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;
+export type ClaimStubIndex = typeof claimStubIndex.$inferSelect;
+export type NewClaimStubIndex = typeof claimStubIndex.$inferInsert;
 export type Challenge = typeof challenges.$inferSelect;
 export type Token = typeof tokens.$inferSelect;
 export type OnboardToken = typeof onboardTokens.$inferSelect;

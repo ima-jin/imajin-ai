@@ -10,6 +10,7 @@ const {
   mockDbInsert,
   mockPublish,
   mockIsVerifiedTier,
+  mockResolveOrMintInviteTarget,
 } = vi.hoisted(() => ({
   mockRequireAppAuth: vi.fn(),
   mockGetSessionFromCookies: vi.fn(),
@@ -18,11 +19,16 @@ const {
   mockDbInsert: vi.fn(),
   mockPublish: vi.fn(async () => undefined),
   mockIsVerifiedTier: vi.fn(() => true),
+  mockResolveOrMintInviteTarget: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({
   requireAppAuth: mockRequireAppAuth,
   isVerifiedTier: mockIsVerifiedTier,
+}));
+
+vi.mock('@/src/lib/auth/claimable-stub', () => ({
+  resolveOrMintInviteTarget: mockResolveOrMintInviteTarget,
 }));
 
 vi.mock('@/src/lib/kernel/session', () => ({
@@ -234,5 +240,63 @@ describe('POST /connections/api/invites — app-auth dual guard (#1793)', () => 
 
     expect(res.status).toBe(201);
     expect(mockGetSessionFromCookies).toHaveBeenCalled();
+  });
+});
+
+describe('POST /connections/api/invites — mint-on-new-email (#1834 Phase 1)', () => {
+  const NEW_STUB_DID = 'did:imajin:new-stub';
+  const SENDER_PROFILE = {
+    did: OWNER_DID,
+    displayName: 'Owner',
+    handle: 'owner-handle',
+    nextInviteAvailableAt: null,
+  };
+
+  // Email-invite branch calls db.select() in this order:
+  //   1. isInTrustGraph (podMembers membership check)
+  //   2. sender profile lookup (cooldown + display info)
+  //   3. pending email invite count
+  function queueEmailBranchSelects() {
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([{ podId: 'pod_1' }]))
+      .mockImplementationOnce(() => makeSelectChain([SENDER_PROFILE]))
+      .mockImplementationOnce(() => makeSelectChain([{ value: 0 }]));
+  }
+
+  beforeEach(() => {
+    mockResolveOrMintInviteTarget.mockResolvedValue(NEW_STUB_DID);
+    queueEmailBranchSelects();
+    mockDbInsert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn(async () => [
+          { id: 'inv_test123', code: 'abc123', fromDid: OWNER_DID, toDid: NEW_STUB_DID, delivery: 'email' },
+        ]),
+      }),
+    });
+  });
+
+  it('resolves the invite target via resolveOrMintInviteTarget and stores it as toDid at creation time', async () => {
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com' }));
+
+    expect(res.status).toBe(201);
+    expect(mockResolveOrMintInviteTarget).toHaveBeenCalledWith('new@example.com');
+    const insertValues = mockDbInsert.mock.results[0].value.values as ReturnType<typeof vi.fn>;
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ toDid: NEW_STUB_DID }));
+  });
+
+  it('returns an identical response shape for a brand-new email and a silently-accrued repeat introduction', async () => {
+    const firstRes = await POST(makeReq({ delivery: 'email', toEmail: 'shared@example.com' }));
+    const firstBody = await firstRes.json();
+
+    // Second introducer of the SAME email: resolveOrMintInviteTarget silently
+    // returns the SAME stub DID with nothing distinguishing this from the
+    // first-time mint above (match-without-disclosure, #1834 design pt. 2).
+    queueEmailBranchSelects();
+    const secondRes = await POST(makeReq({ delivery: 'email', toEmail: 'shared@example.com' }));
+    const secondBody = await secondRes.json();
+
+    expect(secondRes.status).toBe(firstRes.status);
+    expect(Object.keys(secondBody).sort()).toEqual(Object.keys(firstBody).sort());
+    expect(Object.keys(secondBody.invite).sort()).toEqual(Object.keys(firstBody.invite).sort());
   });
 });
