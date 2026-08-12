@@ -252,6 +252,13 @@ export const SCOPE_VOCABULARY = [
   // POST /pay/api/checkout — not an MCP tool surface, so no owning connector.
   { scope: 'connections:write', connector: null, label: 'Create invites on your behalf' },
 
+  // Platform scope (#1823): same shape as connections:write — a registered
+  // app creates conversations / sends messages on the delegating user's
+  // behalf (e.g. a counterparty delivery notification), not through an MCP
+  // tool surface, so no owning connector. Distinct from the MCP-owned
+  // `messages:write` below, which gates the MCP send-message tool.
+  { scope: 'chat:write', connector: null, label: 'Create conversations and send messages on your behalf' },
+
   { scope: 'events:read', connector: null, label: 'View events you attend or have created' },
   { scope: 'events:write', connector: null, label: 'Create and manage events on your behalf' },
   // #1803 shipped this ineligible; catalyst-power/xprize#70 flips it on now that
