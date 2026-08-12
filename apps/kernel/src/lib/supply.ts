@@ -213,8 +213,15 @@ export async function handleLotsBySupplierGet(request: NextRequest): Promise<Nex
 
 /**
  * #1384 — handler for `POST /supply/api/received`. App-auth-gated (`supply:write`);
- * publishes `supply.received` on behalf of the downstream recipient — the
- * recipient DID is `issuer`/`subject` (the signer, not the supplier).
+ * publishes `supply.received` naming the supplier as `issuer` (`userDid`, same
+ * convention as every other supply.* stage) and, when the caller identifies a
+ * counterparty, that counterparty as `subject` — the party being asked to
+ * countersign the delivery attestation (#1820).
+ *
+ * Body accepts an optional `recipientDid`: the DID of the counterparty who
+ * received the delivery and must countersign to confirm it. When omitted,
+ * `subject` falls back to `userDid` (self-attested receipt, no counterparty to
+ * notify — preserves the pre-#1820 behavior for callers that don't yet send it).
  * Commodity is product-agnostic: eggs, seeds, fertiliser, etc.
  */
 export async function publishReceiptStage(request: NextRequest): Promise<NextResponse> {
@@ -232,9 +239,17 @@ export async function publishReceiptStage(request: NextRequest): Promise<NextRes
     );
   }
 
+  // #1820 — optional counterparty DID: the recipient being asked to countersign
+  // the delivery attestation. Falls back to the supplier (self-attested, no
+  // counterparty) when the caller doesn't yet send it.
+  const recipientDid = typeof body.recipientDid === 'string' && body.recipientDid.length > 0
+    ? body.recipientDid
+    : userDid;
+
   const base = {
     lotId: correlationId,
-    recipientDid: userDid,
+    supplierDid: userDid,
+    recipientDid,
     commodity,
     quantity,
     unit,
@@ -245,7 +260,7 @@ export async function publishReceiptStage(request: NextRequest): Promise<NextRes
 
   await publish('supply.received', {
     issuer: userDid,
-    subject: userDid,
+    subject: recipientDid,
     scope: SUPPLY_SCOPE,
     payload,
     correlationId,

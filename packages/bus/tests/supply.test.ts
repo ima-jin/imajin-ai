@@ -69,9 +69,11 @@ describe('supply.* chains (#1134/#1375/#1384)', () => {
       priorCid: 'bafy-declared-record',
     } satisfies BusEventMap['supply.collected'];
 
-    // #1384 — supply.received uses recipientDid (not supplierDid); commodity-agnostic.
+    // #1384/#1820 — supply.received carries both supplierDid (issuer) and
+    // recipientDid (subject, the counterparty asked to countersign); commodity-agnostic.
     const received = {
       lotId: 'lot_eggs_001',
+      supplierDid: 'did:imajin:scott',
       recipientDid: 'did:imajin:david',
       commodity: 'eggs',
       quantity: 12,
@@ -83,6 +85,7 @@ describe('supply.* chains (#1134/#1375/#1384)', () => {
 
     expect(declared.lotId).toBe('lot_eggs_001');
     expect(collected.priorCid).toBeDefined();
+    expect(received.supplierDid).toBe('did:imajin:scott');
     expect(received.recipientDid).toBe('did:imajin:david');
   });
 });

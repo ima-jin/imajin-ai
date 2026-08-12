@@ -113,7 +113,7 @@ describe('publishReceiptStage (#1384)', () => {
     requireAppAuthMock.mockResolvedValue({ appAuth: { appDid: 'did:app', userDid: did, scopes: ['supply:write'] } });
   }
 
-  it('publishes supply.received pinned to the recipient DID', async () => {
+  it('falls back to a self-attested receipt (issuer === subject) when no recipientDid is given (#1820)', async () => {
     grantWriteAs(DAVID);
     const res = await publishReceiptStage(
       req({ lotId: 'lot_eggs_1', commodity: 'eggs', quantity: 12, unit: 'dozen' }),
@@ -128,9 +128,27 @@ describe('publishReceiptStage (#1384)', () => {
     const [type, event] = publishMock.mock.calls[0];
     expect(type).toBe('supply.received');
     expect(event.issuer).toBe(DAVID);
+    expect(event.subject).toBe(DAVID);
     expect(event.correlationId).toBe('lot_eggs_1');
+    expect(event.payload.supplierDid).toBe(DAVID);
     expect(event.payload.recipientDid).toBe(DAVID);
     expect(event.payload.commodity).toBe('eggs');
+  });
+
+  it('names the caller as issuer/supplier and the explicit recipientDid as subject (#1820)', async () => {
+    const RECIPIENT = 'did:imajin:recipient';
+    grantWriteAs(DAVID);
+    const res = await publishReceiptStage(
+      req({ lotId: 'lot_eggs_1', commodity: 'eggs', quantity: 12, unit: 'dozen', recipientDid: RECIPIENT }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+    const [, event] = publishMock.mock.calls[0];
+    expect(event.issuer).toBe(DAVID);
+    expect(event.subject).toBe(RECIPIENT);
+    expect(event.payload.supplierDid).toBe(DAVID);
+    expect(event.payload.recipientDid).toBe(RECIPIENT);
   });
 
   it('requires lotId (no minting — receipt always threads an existing lot)', async () => {

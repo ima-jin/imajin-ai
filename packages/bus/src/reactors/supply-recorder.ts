@@ -119,7 +119,9 @@ export const supplyRecorderReactor: ReactorHandler = async (event) => {
       WHERE correlation_id = ${correlationId}
     `;
   }
-  // #1384 — delivery receipt: recipient signs they received the lot.
+  // #1384 — delivery receipt: supplier (event.issuer) records the delivery;
+  // #1820 corrected the recipient/counterparty to live on event.subject instead
+  // of being conflated with event.issuer.
   if (event.type === 'supply.received') {
     await sql`
       UPDATE kernel.supply_lots

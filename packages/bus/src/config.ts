@@ -86,8 +86,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'settle', config: {}, await: true, enabled: true },
     { type: 'notify', config: { scope: 'market:purchase' }, enabled: true },
   ],
+  // #1820 — `attestation-notify` additionally routes to notify's send for the
+  // subset of attestations that are genuinely awaiting the subject's
+  // counter-signature (gated internally on payload.pendingSignature).
   'attestation.created': [
     { type: 'emit', config: {}, enabled: true },
+    { type: 'attestation-notify', config: {}, enabled: true },
   ],
   'group.created': [
     { type: 'attestation', config: { attestationType: 'group.created' }, enabled: true },
@@ -365,9 +369,14 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'emit', config: {}, enabled: true },
   ],
   // #1384 — delivery-receipt stage. supply-recorder advances lot status to 'received'.
+  // #1820 — `pending: true`: a supply.received attestation is a bilateral,
+  // counterparty-signable claim (recipient countersigns to confirm receipt),
+  // so the attestation reactor's `pendingSignature` gate must be open for it.
+  // Harmless when there is no distinct counterparty (issuer === subject) since
+  // the `attestation-notify` reactor's self-attestation skip still applies.
   'supply.received': [
     { type: 'supply-recorder', config: {}, await: true, enabled: true },
-    { type: 'attestation', config: { attestationType: 'supply.received' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'supply.received', pending: true }, enabled: true },
     { type: 'emit', config: {}, enabled: true },
   ],
   // #1677 — telemetry ingestion pattern: structured usage events from external

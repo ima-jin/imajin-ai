@@ -5,12 +5,24 @@
  * Signs the attestation using the platform keypair (AUTH_PRIVATE_KEY).
  * Authenticated via Bearer token (ATTESTATION_INTERNAL_API_KEY).
  *
- * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, issued_at?, expires_at?, nostr_sig? }
+ * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, issued_at?, expires_at?, nostr_sig?, pending?, originUrl? }
  * No session cookie required — service-to-service only.
  *
  * For type `imajin/nostr-key-binding`: nostr_sig and issued_at are required.
  * The caller must compute nostr_sig client-side over the canonical payload
  * (including the provided issued_at) before calling this endpoint.
+ *
+ * `pending` (#1820): true only when the caller is creating a bilateral,
+ * counterparty-signable attestation (e.g. the supply receipt flow) — threaded
+ * into `attestation.created` as `pendingSignature`. Defaults to false so the
+ * ~15 one-shot system attestation types created via this route (identity,
+ * vouch, ticket receipts, etc.) never trigger a counterparty notification.
+ *
+ * `originUrl` (#1820): this route is called server-to-server, so it never
+ * carries a browser `Origin` header. Callers that know the originating app's
+ * URL (for the pending-signature notification's deep link) pass it explicitly
+ * here; the request's `Origin` header (via `deriveOriginUrl`) is only a
+ * fallback for the rare case a browser calls this route directly.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,8 +30,9 @@ import { db, attestations } from '@/src/db';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
+import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
-import { resolveIssuedAt, validateNostrKeyBinding } from '../attestation-helpers';
+import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl } from '../attestation-helpers';
 
 const log = createLogger('kernel');
 
@@ -59,6 +72,8 @@ export async function POST(request: NextRequest) {
   }
 
   const { issuer_did, subject_did, type, context_id, context_type, payload } = body;
+  const pendingSignature = body.pending === true;
+  const originUrl = (typeof body.originUrl === 'string' ? body.originUrl : undefined) ?? deriveOriginUrl(request);
 
   if (!issuer_did || typeof issuer_did !== 'string') {
     return NextResponse.json({ error: 'issuer_did required' }, { status: 400 });
@@ -130,6 +145,26 @@ export async function POST(request: NextRequest) {
         expiresAt,
       })
       .returning();
+
+    // This route never accepts author_jws, so callers must opt into
+    // `pendingSignature` explicitly via `pending` — it defaults to false so
+    // the many one-shot system attestations created here never trigger a
+    // counterparty notification (#1820).
+    publish('attestation.created', {
+      issuer: issuer_did,
+      subject: subject_did,
+      scope: 'auth',
+      payload: {
+        attestationId: attestation.id,
+        type,
+        issuerDid: issuer_did,
+        subjectDid: subject_did,
+        contextId: (context_id as string | undefined) ?? null,
+        contextType: (context_type as string | undefined) ?? null,
+        originUrl,
+        pendingSignature,
+      },
+    }).catch((err: unknown) => log.error({ err: String(err) }, 'attestation.created publish failed'));
 
     return NextResponse.json(attestation, { status: 201 });
   } catch (err) {

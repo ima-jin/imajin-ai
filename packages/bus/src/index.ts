@@ -1,5 +1,6 @@
 import { registerReactor } from './registry';
 import { attestationReactor } from './reactors/attestation';
+import { attestationNotifyReactor } from './reactors/attestation-notify';
 import { auditLogReactor } from './reactors/audit-log';
 import { dfosReactor } from './reactors/dfos';
 import { emitReactor } from './reactors/emit';
@@ -14,6 +15,7 @@ import { brokerPredicateInvalidationReactor } from './reactors/broker-predicate-
 
 // Auto-register built-in reactors on import
 registerReactor('attestation', attestationReactor);
+registerReactor('attestation-notify', attestationNotifyReactor);
 registerReactor('audit-log', auditLogReactor);
 registerReactor('dfos', dfosReactor);
 registerReactor('emit', emitReactor);
