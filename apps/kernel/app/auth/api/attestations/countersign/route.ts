@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
 import { db, attestations } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { requireAuth } from '@/src/lib/auth/middleware';
+import { resolveEffectiveDid } from '@imajin/auth';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -14,13 +14,24 @@ export async function OPTIONS(request: NextRequest) {
  * Witness countersigns an attestation, making it bilateral.
  * Only the attestation subject can countersign.
  *
+ * #1824: this used to gate on the kernel-local, cookie-only `requireAuth`
+ * (`@/src/lib/auth/middleware`), which never even looked at an
+ * `Authorization: Bearer` header — so ANY app-delegated call (e.g.
+ * AgriFortress countersigning on behalf of its delegating user) 401'd
+ * before the route body ran at all, regardless of scope. Switched to
+ * `resolveEffectiveDid` (the same dual-guard shape `connections:read` /
+ * `connections:write` already use, #1812/#1814): it tries an
+ * `attestations:write`-scoped app token (or legacy X-App-DID headers)
+ * first and falls back to a direct user session, so both a browser session
+ * and a registered app acting on the subject's behalf can countersign.
+ *
  * Body: { attestationId: string, witnessJws: string }
  */
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
-  const session = await requireAuth(request);
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
+  const auth = await resolveEffectiveDid(request, { scope: 'attestations:write' });
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
 
   let body: Record<string, unknown>;
@@ -52,7 +63,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Only the subject can countersign
-  if (session.sub !== att.subjectDid) {
+  if (auth.effectiveDid !== att.subjectDid) {
     return NextResponse.json(
       { error: 'Only the attestation subject can countersign' },
       { status: 403, headers: cors }
