@@ -162,6 +162,28 @@ export async function resolveOrMintInviteTarget(email: string): Promise<string> 
 }
 
 /**
+ * Find the DID of an existing claimable stub for `email`, without minting a
+ * new one (#1834 Phase 2). Returns `null` when no stub exists yet for this
+ * email — a genuinely new email, or an email that already belongs to a
+ * full, non-stub identity — so callers know to fall back to their own mint
+ * path instead. Used by onboarding (`/api/onboard/verify`) so a person
+ * completing email verification for an address that was already introduced
+ * via a claimable-stub invite resolves to the SAME DID (one DID per email,
+ * #1834 design pt. 1) instead of a second, independently-minted soft DID.
+ */
+export async function findClaimableStubDid(email: string): Promise<string | null> {
+  const emailHmac = hmacEmail(email);
+
+  const [stub] = await db
+    .select({ did: claimStubIndex.did })
+    .from(claimStubIndex)
+    .where(eq(claimStubIndex.emailHmac, emailHmac))
+    .limit(1);
+
+  return stub?.did ?? null;
+}
+
+/**
  * True when `did` is one of our claimable stubs and hasn't been claimed yet
  * (still soft tier). Only stubs we minted are eligible for the
  * link-click-alone accept path in the invite-accept route — an arbitrary

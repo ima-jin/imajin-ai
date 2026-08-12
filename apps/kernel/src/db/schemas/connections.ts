@@ -37,6 +37,11 @@ export const invitesInConnections = connectionsSchema.table("invites", {
   acceptedAt: timestamp("accepted_at", { withTimezone: true, mode: 'string' }),
   expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }),
   role: text(),
+  // Phase 2 of #1834 — invite context extension. Both stay server-side:
+  // resolved by looking up the invite row by its opaque `code`, never
+  // exposed directly in a URL. See migration 0094 for the design note.
+  scopeDid: text("scope_did"),                         // org/community DID to land the claimer in
+  pendingAttestationId: text("pending_attestation_id"), // record awaiting the invitee's countersignature
 }, (table) => [
   index("idx_invites_code").using("btree", table.code.asc().nullsLast().op("text_ops")),
   index("idx_invites_from_did").using("btree", table.fromDid.asc().nullsLast().op("text_ops")),
@@ -44,6 +49,8 @@ export const invitesInConnections = connectionsSchema.table("invites", {
   index("idx_invites_to_email").using("btree", table.toEmail.asc().nullsLast().op("text_ops")),
   index("idx_trust_invites_code").using("btree", table.code.asc().nullsLast().op("text_ops")),
   index("idx_trust_invites_from_did").using("btree", table.fromDid.asc().nullsLast().op("text_ops")),
+  index("idx_invites_scope_did").using("btree", table.scopeDid.asc().nullsLast().op("text_ops")),
+  index("idx_invites_pending_attestation_id").using("btree", table.pendingAttestationId.asc().nullsLast().op("text_ops")),
   unique("trust_invites_code_unique").on(table.code),
 ]);
 

@@ -3,11 +3,13 @@
  */
 
 import { NextResponse } from 'next/server';
-import { db, identities, credentials, identityMembers, onboardTokens } from '@/src/db';
+import { db, identities, credentials, identityMembers, onboardTokens, invites } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { createLogger } from '@imajin/logger';
+import { buildPublicUrlAbsolute } from '@imajin/config';
+import { findClaimableStubDid, verifyClaimantEmail } from '@/src/lib/auth/claimable-stub';
 
 const log = createLogger('kernel');
 
@@ -157,6 +159,104 @@ export async function createOrFindSoftDid(
   });
 
   return { did, identity, created: true };
+}
+
+export type OnboardIdentityResult = SoftDidResult & {
+  /**
+   * True when the Phase-1 bilateral claim ratchet closed as part of this
+   * resolution (both the claimant's email verification AND the inviter's
+   * countersign are present). False when there was no matching claimable
+   * stub, or the ratchet has not (yet) closed — the identity may still be
+   * `soft` tier in that case. Mirrors `tryActivateClaim`'s return value.
+   */
+  claimActivated: boolean;
+};
+
+/**
+ * Resolve the DID + identity a completed email verification should attach
+ * to (#1834 Phase 2).
+ *
+ * When `normalizedEmail` matches an existing claimable stub
+ * (`auth.claim_stub_index`, #1834 Phase 1), this IS the claimant proving
+ * ownership of that stub's email — the claimant-side half of the ratchet.
+ * Delegates to `verifyClaimantEmail`, which sets `claimant_verified_at` and
+ * attempts to close the ratchet (idempotent; still requires the inviter's
+ * countersign to already be present via an accepted invite — landing here
+ * is never enough on its own). Reuses the SAME DID rather than minting a
+ * second, independent one, preserving "one DID per email" (#1834 design
+ * pt. 1).
+ *
+ * Otherwise (no matching stub — a genuinely new email, or one already tied
+ * to a real identity), falls back to the pre-existing `createOrFindSoftDid`
+ * mint path, unchanged.
+ */
+export async function resolveOnboardIdentity(
+  normalizedEmail: string,
+  name: string | null | undefined,
+): Promise<OnboardIdentityResult> {
+  const stubDid = await findClaimableStubDid(normalizedEmail);
+  if (!stubDid) {
+    const result = await createOrFindSoftDid(normalizedEmail, name);
+    return { ...result, claimActivated: false };
+  }
+
+  const claimActivated = await verifyClaimantEmail(normalizedEmail).catch((err: unknown) => {
+    log.error({ err: String(err), did: stubDid }, '[onboard] verifyClaimantEmail error (non-fatal)');
+    return false;
+  });
+
+  const [identity] = await db
+    .select()
+    .from(identities)
+    .where(eq(identities.id, stubDid))
+    .limit(1);
+
+  if (!identity) {
+    // Defensive: claim_stub_index.did is a NOT NULL FK into identities, so
+    // this shouldn't happen — but never fall through to minting a second
+    // DID for the same email if it somehow does.
+    throw new Error(`[onboard] claimable stub ${stubDid} has no identities row`);
+  }
+
+  return { did: stubDid, identity, created: false, claimActivated };
+}
+
+/**
+ * Resolve the post-verify redirect target (#1834 Phase 2).
+ *
+ * When the onboarding round trip started from a connections invite
+ * (`inviteCode`) that carries a `pendingAttestationId`, AND the Phase-1
+ * claim ratchet closed as part of this verification, route the claimant to
+ * the record waiting for their countersignature — reusing the existing
+ * attestations dashboard (`/auth/attestations`, filtered to attestations
+ * about them) rather than building a new view or a new notification path
+ * (the counterparty-pending-signature notify contract, #1820/#1821,
+ * already covers reminding them). Otherwise falls back to
+ * `defaultRedirectUrl` unchanged.
+ *
+ * Context is always re-resolved from the invite row by `code` — never from
+ * a client-supplied query param — per the #1834 Phase 2 "context stays
+ * server-side" design. Landing here is navigation only: it does not touch
+ * the ratchet or the attestation itself, and the ratchet gate above means
+ * an unverified click alone can never reach this branch.
+ */
+export async function resolveOnboardRedirect(opts: {
+  inviteCode: string | null | undefined;
+  claimActivated: boolean;
+  defaultRedirectUrl: string;
+}): Promise<string> {
+  const { inviteCode, claimActivated, defaultRedirectUrl } = opts;
+  if (!inviteCode || !claimActivated) return defaultRedirectUrl;
+
+  const [invite] = await db
+    .select({ pendingAttestationId: invites.pendingAttestationId })
+    .from(invites)
+    .where(eq(invites.code, inviteCode))
+    .limit(1);
+
+  if (!invite?.pendingAttestationId) return defaultRedirectUrl;
+
+  return `${buildPublicUrlAbsolute('auth')}/attestations?role=subject`;
 }
 
 /**

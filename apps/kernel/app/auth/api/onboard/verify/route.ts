@@ -17,8 +17,9 @@ import { rateLimit, getClientIP } from '@imajin/config';
 import { consumePendingInvites } from '@/src/lib/auth/consume-invite';
 import {
   addScopeMembership,
-  createOrFindSoftDid,
   handleExpiredOrUsedToken,
+  resolveOnboardIdentity,
+  resolveOnboardRedirect,
 } from '@/src/lib/auth/onboard';
 
 const log = createLogger('kernel');
@@ -96,9 +97,13 @@ export async function GET(request: NextRequest) {
       .set({ usedAt: new Date() })
       .where(eq(onboardTokens.id, record.id));
 
-    // Create or find the soft DID for this email
+    // Resolve the DID + identity for this email (#1834 Phase 2): reuses an
+    // existing claimable stub's DID — running the claimant-verification
+    // half of the Phase-1 ratchet — when this email was previously
+    // introduced via a scoped invite, otherwise falls back to the
+    // pre-existing soft-DID mint path unchanged.
     const normalizedEmail = record.email.toLowerCase().trim();
-    const { did, identity, created } = await createOrFindSoftDid(normalizedEmail, record.name);
+    const { did, identity, created, claimActivated } = await resolveOnboardIdentity(normalizedEmail, record.name);
 
     // Emit identity.created for newly minted DIDs (triggers token emission)
     if (created) {
@@ -168,7 +173,17 @@ export async function GET(request: NextRequest) {
     });
 
     const cookieOptions = getSessionCookieOptions();
-    const redirectUrl = record.redirectUrl || '/';
+    // Post-claim routing (#1834 Phase 2): when this verification closed the
+    // ratchet for an invite carrying a pending attestation, land the
+    // claimant on the record waiting for their countersignature instead of
+    // the invite's default redirect. Landing here is navigation only — it
+    // never activates or signs anything, and an unverified click alone
+    // (claimActivated: false) can never reach this branch.
+    const redirectUrl = await resolveOnboardRedirect({
+      inviteCode: record.inviteCode,
+      claimActivated,
+      defaultRedirectUrl: record.redirectUrl || '/',
+    });
     const response = NextResponse.redirect(redirectUrl);
     response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
     if (record.scopeDid) {

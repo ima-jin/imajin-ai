@@ -47,6 +47,7 @@ import {
   mintOrAccrueClaimableStub,
   resolveOrMintInviteTarget,
   isUnclaimedStub,
+  findClaimableStubDid,
   verifyClaimantEmail,
   tryActivateClaim,
 } from '../claimable-stub';
@@ -201,6 +202,23 @@ describe('isUnclaimedStub', () => {
     queueSelect([{ did: 'did:imajin:stub' }], [{ tier: 'soft' }]);
 
     expect(await isUnclaimedStub('did:imajin:stub')).toBe(true);
+  });
+});
+
+// ─── findClaimableStubDid (#1834 Phase 2) ─────────────────────────────────────
+
+describe('findClaimableStubDid', () => {
+  it('returns null when no stub exists for the email', async () => {
+    queueSelect([]);
+
+    expect(await findClaimableStubDid('unknown@example.com')).toBeNull();
+  });
+
+  it('returns the existing stub DID without minting anything', async () => {
+    queueSelect([{ did: 'did:imajin:existing-stub' }]);
+
+    expect(await findClaimableStubDid('known@example.com')).toBe('did:imajin:existing-stub');
+    expect(mockInsert).not.toHaveBeenCalled();
   });
 });
 

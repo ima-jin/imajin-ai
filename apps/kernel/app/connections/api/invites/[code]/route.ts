@@ -29,6 +29,11 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ code
     note: invite.note,
     used: invite.usedCount >= invite.maxUses || invite.status !== 'pending',
     createdAt: invite.createdAt,
+    // Invite context extension (#1834 Phase 2): scopeDid is safe to expose
+    // client-side (it's the same org/community DID `/auth/onboard?scope=`
+    // already accepts). `pendingAttestationId` stays server-side — it is
+    // resolved from the invite row by code at accept/onboard time instead.
+    scopeDid: invite.scopeDid,
   });
 
   // Allow cross-origin reads from *.imajin.ai (auth needs to validate invites client-side)

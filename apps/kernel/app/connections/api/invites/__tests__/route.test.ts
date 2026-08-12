@@ -80,6 +80,13 @@ vi.mock('@/src/db', () => ({
   invites: {},
   profiles: {},
   podMembers: {},
+  identities: { id: 'identities.id' },
+  attestations: {
+    id: 'attestations.id',
+    issuerDid: 'attestations.issuer_did',
+    subjectDid: 'attestations.subject_did',
+    attestationStatus: 'attestations.attestation_status',
+  },
 }));
 
 // ─── Subject ─────────────────────────────────────────────────────────────────
@@ -274,5 +281,141 @@ describe('POST /connections/api/invites — mint-on-new-email (#1834 Phase 1)', 
     expect(secondRes.status).toBe(firstRes.status);
     expect(Object.keys(secondBody).sort()).toEqual(Object.keys(firstBody).sort());
     expect(Object.keys(secondBody.invite).sort()).toEqual(Object.keys(firstBody.invite).sort());
+  });
+});
+
+describe('POST /connections/api/invites — invite context extension (#1834 Phase 2)', () => {
+  const SCOPE_DID = 'did:imajin:scope-org';
+  const ATTESTATION_ID = 'att_pending123';
+  const NEW_STUB_DID = 'did:imajin:new-stub';
+  const SENDER_PROFILE = {
+    did: OWNER_DID,
+    displayName: 'Owner',
+    handle: 'owner-handle',
+    nextInviteAvailableAt: null,
+  };
+
+  // After context validation, the email-invite branch calls db.select() in
+  // this order: isInTrustGraph, sender profile lookup, pending count.
+  function queueEmailBranchSelects() {
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([{ podId: 'pod_1' }]))
+      .mockImplementationOnce(() => makeSelectChain([SENDER_PROFILE]))
+      .mockImplementationOnce(() => makeSelectChain([{ value: 0 }]));
+  }
+
+  beforeEach(() => {
+    mockResolveOrMintInviteTarget.mockResolvedValue(NEW_STUB_DID);
+    mockDbInsert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn(async () => [
+          {
+            id: 'inv_test123',
+            code: 'abc123',
+            fromDid: OWNER_DID,
+            toDid: NEW_STUB_DID,
+            delivery: 'email',
+            scopeDid: SCOPE_DID,
+            pendingAttestationId: ATTESTATION_ID,
+          },
+        ]),
+      }),
+    });
+  });
+
+  it('creates an invite without context fields, backward compatible', async () => {
+    queueEmailBranchSelects();
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'plain@example.com' }));
+
+    expect(res.status).toBe(201);
+    const insertValues = mockDbInsert.mock.results[0].value.values as ReturnType<typeof vi.fn>;
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ scopeDid: null, pendingAttestationId: null }),
+    );
+  });
+
+  it('creates an invite with a valid scopeDid + pendingAttestationId and persists both', async () => {
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([{ id: SCOPE_DID }])) // scopeDid identity lookup
+      .mockImplementationOnce(() =>
+        makeSelectChain([{ issuerDid: OWNER_DID, subjectDid: 'did:imajin:other', status: 'pending' }]),
+      ); // pendingAttestationId lookup — inviter is the issuer
+    queueEmailBranchSelects();
+
+    const res = await POST(makeReq({
+      delivery: 'email',
+      toEmail: 'new@example.com',
+      scopeDid: SCOPE_DID,
+      pendingAttestationId: ATTESTATION_ID,
+    }));
+
+    expect(res.status).toBe(201);
+    const insertValues = mockDbInsert.mock.results[0].value.values as ReturnType<typeof vi.fn>;
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ scopeDid: SCOPE_DID, pendingAttestationId: ATTESTATION_ID }),
+    );
+  });
+
+  it('accepts a pendingAttestationId where the inviter is the subject rather than the issuer', async () => {
+    mockDbSelect.mockImplementationOnce(() =>
+      makeSelectChain([{ issuerDid: 'did:imajin:other', subjectDid: OWNER_DID, status: 'pending' }]),
+    );
+    queueEmailBranchSelects();
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com', pendingAttestationId: ATTESTATION_ID }));
+
+    expect(res.status).toBe(201);
+  });
+
+  it('rejects an unknown scopeDid with 400 and does not create the invite', async () => {
+    mockDbSelect.mockImplementationOnce(() => makeSelectChain([])); // scopeDid lookup misses
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com', scopeDid: 'did:imajin:unknown' }));
+
+    expect(res.status).toBe(400);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a nonexistent pendingAttestationId with 400', async () => {
+    mockDbSelect.mockImplementationOnce(() => makeSelectChain([])); // attestation lookup misses
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com', pendingAttestationId: 'att_missing' }));
+
+    expect(res.status).toBe(400);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a pendingAttestationId that is not pending with 400', async () => {
+    mockDbSelect.mockImplementationOnce(() =>
+      makeSelectChain([{ issuerDid: OWNER_DID, subjectDid: 'did:imajin:other', status: 'bilateral' }]),
+    );
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com', pendingAttestationId: ATTESTATION_ID }));
+
+    expect(res.status).toBe(400);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a pendingAttestationId the inviter is not a party to with 403', async () => {
+    mockDbSelect.mockImplementationOnce(() =>
+      makeSelectChain([{ issuerDid: 'did:imajin:someone-else', subjectDid: 'did:imajin:another', status: 'pending' }]),
+    );
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com', pendingAttestationId: ATTESTATION_ID }));
+
+    expect(res.status).toBe(403);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('supports context on link invites too', async () => {
+    mockDbSelect.mockImplementationOnce(() => makeSelectChain([{ id: SCOPE_DID }])); // scopeDid lookup
+    mockDbSelect.mockImplementationOnce(() => makeSelectChain([{ count: 0 }])); // pending link-invite count
+
+    const res = await POST(makeReq({ scopeDid: SCOPE_DID }));
+
+    expect(res.status).toBe(201);
+    const insertValues = mockDbInsert.mock.results[0].value.values as ReturnType<typeof vi.fn>;
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ scopeDid: SCOPE_DID }));
   });
 });

@@ -29,6 +29,12 @@ function OnboardContent() {
   const params = useSearchParams();
   const scope = params.get('scope') || '';
   const redirect = params.get('redirect') || params.get('redirectUrl') || '';
+  // #1834 Phase 2: the connections-invite code, when this onboard visit
+  // came from a scoped invite. Threaded through to POST /api/onboard so
+  // /api/onboard/verify can resolve invite context (scopeDid,
+  // pendingAttestationId) server-side by code once email verification
+  // closes the Phase-1 claim ratchet.
+  const inviteCode = params.get('invite') || '';
 
   const [flow, setFlow] = useState<Flow>('choose');
   const [scopeProfile, setScopeProfile] = useState<ScopeProfile | null>(null);
@@ -105,6 +111,7 @@ function OnboardContent() {
           scopeDid: scope || undefined,
           redirectUrl: effectiveRedirect || undefined,
           context: scopeName ? `Join ${scopeName}` : undefined,
+          inviteCode: inviteCode || undefined,
         }),
       });
       if (res.ok) {
