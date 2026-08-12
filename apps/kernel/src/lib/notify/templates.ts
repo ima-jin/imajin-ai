@@ -601,6 +601,33 @@ export const templates: NotifyTemplate[] = [
     },
   },
   {
+    scope: 'attest.pending_signature',
+    urgency: 'urgent',
+    title: (data) => {
+      const type: string = typeof data.type === 'string' && data.type ? data.type : 'attestation';
+      return `New ${type} attestation awaiting your signature`;
+    },
+    body: (data) => {
+      const type: string = typeof data.type === 'string' && data.type ? data.type : 'attestation';
+      return `Someone issued a "${type}" attestation naming you as the counterparty. Review and countersign to complete it.`;
+    },
+    email: {
+      subject: (data) => {
+        const type: string = typeof data.type === 'string' && data.type ? data.type : 'attestation';
+        return `Attestation awaiting your signature \u2014 ${type}`;
+      },
+      html: (data) => {
+        const type = escapeHtml(data.type || 'attestation');
+        const originUrl: string = typeof data.originUrl === 'string' ? data.originUrl : '';
+        const intro = `You have been named as the counterparty on a <strong style="color:#ffffff;">${type}</strong> attestation that is awaiting your signature.`;
+        const cta = originUrl
+          ? `<br><br><a href="${escapeHtml(originUrl)}" style="color:#f97316;text-decoration:none;font-weight:600;">Review pending signatures &rarr;</a>`
+          : '';
+        return simpleEmailHtml('Attestation awaiting your signature', `${intro}${cta}`);
+      },
+    },
+  },
+  {
     scope: "connection:invite-accepted",
     urgency: "normal",
     title: (_data) => "Invitation accepted",

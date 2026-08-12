@@ -18,8 +18,9 @@ import { db, attestations } from '@/src/db';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
+import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
-import { resolveIssuedAt, validateNostrKeyBinding } from '../attestation-helpers';
+import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl } from '../attestation-helpers';
 
 const log = createLogger('kernel');
 
@@ -130,6 +131,24 @@ export async function POST(request: NextRequest) {
         expiresAt,
       })
       .returning();
+
+    // This route never accepts author_jws, so pendingSignature is always false —
+    // nothing created here is awaiting a counter-signature (#1820).
+    publish('attestation.created', {
+      issuer: issuer_did,
+      subject: subject_did,
+      scope: 'auth',
+      payload: {
+        attestationId: attestation.id,
+        type,
+        issuerDid: issuer_did,
+        subjectDid: subject_did,
+        contextId: (context_id as string | undefined) ?? null,
+        contextType: (context_type as string | undefined) ?? null,
+        originUrl: deriveOriginUrl(request),
+        pendingSignature: false,
+      },
+    }).catch((err: unknown) => log.error({ err: String(err) }, 'attestation.created publish failed'));
 
     return NextResponse.json(attestation, { status: 201 });
   } catch (err) {

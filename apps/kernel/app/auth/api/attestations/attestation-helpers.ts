@@ -5,6 +5,7 @@
 
 import { verifyNostrSig } from '@imajin/auth';
 import type { NostrKeyBindingClaim } from '@imajin/auth';
+import { toOrigin } from '@/src/lib/http/public-origin';
 
 /**
  * Resolve an issued_at field from a request body to a Unix timestamp in ms.
@@ -14,6 +15,19 @@ export function resolveIssuedAt(value: unknown): number {
   if (!value) return Date.now();
   if (typeof value === 'number') return value;
   return new Date(value as string).getTime();
+}
+
+/**
+ * Derive the calling app's origin from the request's `Origin` header, for the
+ * `attestation.created` event payload (#1820).
+ *
+ * Only browser-issued cross-origin requests reliably carry an `Origin` header —
+ * server-to-service calls (e.g. the internal attestation route) typically do
+ * not, so this legitimately returns `undefined` there. `toOrigin()` also
+ * rejects a malformed header value rather than propagating garbage.
+ */
+export function deriveOriginUrl(request: { headers: { get(name: string): string | null } }): string | undefined {
+  return toOrigin(request.headers.get('origin') ?? undefined) ?? undefined;
 }
 
 export type NostrValidationResult =

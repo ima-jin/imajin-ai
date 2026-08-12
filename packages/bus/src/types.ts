@@ -151,7 +151,21 @@ export interface BusEventMap {
   'attestation.created': {
     attestationId: string;
     type: string;
+    issuerDid: string;
     subjectDid: string;
+    contextId: string | null;
+    contextType: string | null;
+    /** The calling app's origin (from the create request's `Origin` header), when derivable (#1820). */
+    originUrl?: string;
+    /**
+     * True only when the attestation was created with an `author_jws` — i.e. it is
+     * a bilateral attestation genuinely awaiting the subject's counter-signature.
+     * The internal service-to-service creation path never accepts `author_jws`, so
+     * this is always false there — that is what keeps the `attestation-notify`
+     * reactor from firing for the many one-shot system attestations (identity,
+     * vouch, ticket receipts, etc.) that also flow through this same event (#1820).
+     */
+    pendingSignature: boolean;
   };
   'group.created': {
     context_id: string;

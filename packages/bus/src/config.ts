@@ -86,8 +86,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'settle', config: {}, await: true, enabled: true },
     { type: 'notify', config: { scope: 'market:purchase' }, enabled: true },
   ],
+  // #1820 — `attestation-notify` additionally routes to notify's send for the
+  // subset of attestations that are genuinely awaiting the subject's
+  // counter-signature (gated internally on payload.pendingSignature).
   'attestation.created': [
     { type: 'emit', config: {}, enabled: true },
+    { type: 'attestation-notify', config: {}, enabled: true },
   ],
   'group.created': [
     { type: 'attestation', config: { attestationType: 'group.created' }, enabled: true },
