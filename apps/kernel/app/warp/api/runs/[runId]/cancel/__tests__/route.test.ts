@@ -114,6 +114,15 @@ describe('POST /warp/api/runs/{runId}/cancel', () => {
     expect(await res.json()).toMatchObject({ error: 'warp_no_secret' });
   });
 
+  it('returns 403 when the caller holds no warp:dispatch grant', async () => {
+    vi.mocked(cancelAgentRun).mockRejectedValueOnce(new Error('warp_no_grant: nope'));
+
+    const res = await POST(makeReq(), { params: { runId: RUN_ID } });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: 'warp_no_grant' });
+  });
+
   it('carries the CORS headers and answers pre-flight', async () => {
     const res = await POST(makeReq(), { params: { runId: RUN_ID } });
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://app.imajin.ai');
