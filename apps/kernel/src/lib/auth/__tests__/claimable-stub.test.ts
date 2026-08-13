@@ -50,7 +50,11 @@ import {
   findClaimableStubDid,
   verifyClaimantEmail,
   tryActivateClaim,
+  withNoDisclosure,
 } from '../claimable-stub';
+
+/** No-op sleep so timing-floor padding (#1839) never slows down unit tests. */
+const noSleep = async () => undefined;
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
 
@@ -155,7 +159,7 @@ describe('resolveOrMintInviteTarget', () => {
   it('reuses an existing real identity\u2019s DID without minting a stub', async () => {
     queueSelect([{ did: 'did:imajin:real-user' }]); // credentials hit
 
-    const did = await resolveOrMintInviteTarget('real@example.com');
+    const did = await resolveOrMintInviteTarget('real@example.com', noSleep);
 
     expect(did).toBe('did:imajin:real-user');
     expect(mockInsert).not.toHaveBeenCalled();
@@ -164,7 +168,7 @@ describe('resolveOrMintInviteTarget', () => {
   it('mints a stub for a genuinely new email', async () => {
     queueSelect([], []); // no credentials row, no dedup-index row
 
-    const did = await resolveOrMintInviteTarget('brand-new@example.com');
+    const did = await resolveOrMintInviteTarget('brand-new@example.com', noSleep);
 
     expect(did).toMatch(/^did:imajin:/);
     expect(mockInsert).toHaveBeenCalledTimes(2);
@@ -172,14 +176,63 @@ describe('resolveOrMintInviteTarget', () => {
 
   it('returns the identical shape (just a DID string) whether minting or accruing — no-disclosure', async () => {
     queueSelect([], []); // first: mint
-    const firstDid = await resolveOrMintInviteTarget('shared@example.com');
+    const firstDid = await resolveOrMintInviteTarget('shared@example.com', noSleep);
 
     queueSelect([], [{ did: firstDid }]); // second: no credentials row, but dedup-index hit
-    const secondDid = await resolveOrMintInviteTarget('shared@example.com');
+    const secondDid = await resolveOrMintInviteTarget('shared@example.com', noSleep);
 
     expect(typeof firstDid).toBe('string');
     expect(typeof secondDid).toBe('string');
     expect(secondDid).toBe(firstDid); // accrues to the SAME stub — one DID per email
+  });
+
+  it('pads the fast (existing-real-user) path up to the same floor as the slower mint path (#1839 pt. 3)', async () => {
+    queueSelect([{ did: 'did:imajin:real-user' }]); // credentials hit — the cheapest branch
+
+    const sleepCalls: number[] = [];
+    const recordingSleep = async (ms: number) => {
+      sleepCalls.push(ms);
+    };
+
+    await resolveOrMintInviteTarget('real@example.com', recordingSleep);
+
+    // The fast branch still pays the latency floor instead of returning early.
+    expect(sleepCalls.length).toBe(1);
+    expect(sleepCalls[0]).toBeGreaterThan(0);
+  });
+
+  it('does not pad further when the work already exceeded the floor', async () => {
+    process.env.CLAIMABLE_STUB_MIN_RESOLVE_MS = '0';
+    queueSelect([{ did: 'did:imajin:real-user' }]);
+
+    const sleepCalls: number[] = [];
+    const recordingSleep = async (ms: number) => {
+      sleepCalls.push(ms);
+    };
+
+    await resolveOrMintInviteTarget('real@example.com', recordingSleep);
+
+    expect(sleepCalls.length).toBe(0);
+    delete process.env.CLAIMABLE_STUB_MIN_RESOLVE_MS;
+  });
+});
+
+// ─── withNoDisclosure — the response-side half of the #1839 contract ────────
+
+describe('withNoDisclosure', () => {
+  it('strips toDid from a pending invite', () => {
+    const invite = { toDid: 'did:imajin:target', status: 'pending' };
+    expect(withNoDisclosure(invite)).toEqual({ toDid: null, status: 'pending' });
+  });
+
+  it('strips toDid from an expired or revoked invite too — only accepted discloses', () => {
+    expect(withNoDisclosure({ toDid: 'did:imajin:target', status: 'expired' }).toDid).toBeNull();
+    expect(withNoDisclosure({ toDid: 'did:imajin:target', status: 'revoked' }).toDid).toBeNull();
+  });
+
+  it('leaves an accepted invite untouched — post-claim disclosure is legitimate (#1839 pt. 4)', () => {
+    const invite = { toDid: 'did:imajin:target', status: 'accepted' };
+    expect(withNoDisclosure(invite)).toEqual(invite);
   });
 });
 

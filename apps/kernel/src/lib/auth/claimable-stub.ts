@@ -35,6 +35,41 @@ const log = createLogger('kernel');
 
 const AES_ALGO = 'aes-256-gcm';
 
+/**
+ * Floor on how long {@link resolveOrMintInviteTarget} takes to return
+ * (#1839). Without this, the existing-real-user branch does one query and
+ * returns while the mint branch does a query plus two inserts — a caller
+ * timing invite-create requests could distinguish "fresh mint" / "accrue to
+ * an existing stub" / "email belongs to a real identity" purely from
+ * latency, even though the response body is identical across all three.
+ * Padding every call up to this floor is the "constant-ish work" mitigation
+ * called out in #1839 pt. 3 — not perfect (DB/network variance still leaks
+ * a little), but it removes the cheap, structural signal.
+ */
+const DEFAULT_MIN_RESOLVE_LATENCY_MS = 40;
+
+function minResolveLatencyMs(): number {
+  const raw = process.env.CLAIMABLE_STUB_MIN_RESOLVE_MS;
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MIN_RESOLVE_LATENCY_MS;
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Wait out whatever's left of `floorMs` since `startedAt`. No-op if already past it. */
+async function padToFloor(
+  startedAt: number,
+  floorMs: number,
+  sleep: (ms: number) => Promise<void>,
+): Promise<void> {
+  const remaining = floorMs - (Date.now() - startedAt);
+  if (remaining > 0) {
+    await sleep(remaining);
+  }
+}
+
 function normalizeEmail(email: string): string {
   return email.toLowerCase().trim();
 }
@@ -144,8 +179,18 @@ export async function mintOrAccrueClaimableStub(email: string): Promise<Claimabl
  * real, already-onboarded person is never shadowed by a duplicate stub.
  * Only a genuinely new email falls through to
  * {@link mintOrAccrueClaimableStub}.
+ *
+ * Total latency is padded up to {@link minResolveLatencyMs} (#1839 pt. 3) so
+ * the three outcomes — resolve-to-existing-real-user, accrue-to-an-existing-
+ * stub, mint-a-new-stub — aren't cheaply distinguishable by how fast the
+ * call returns, on top of already returning an identical DID-string shape.
+ * `sleep` is a test hook only; production callers should never pass it.
  */
-export async function resolveOrMintInviteTarget(email: string): Promise<string> {
+export async function resolveOrMintInviteTarget(
+  email: string,
+  sleep: (ms: number) => Promise<void> = defaultSleep,
+): Promise<string> {
+  const startedAt = Date.now();
   const normalized = normalizeEmail(email);
 
   const [existingCred] = await db
@@ -153,11 +198,12 @@ export async function resolveOrMintInviteTarget(email: string): Promise<string> 
     .from(credentials)
     .where(and(eq(credentials.type, 'email'), eq(credentials.value, normalized)))
     .limit(1);
-  if (existingCred) {
-    return existingCred.did;
-  }
 
-  const { did } = await mintOrAccrueClaimableStub(normalized);
+  const did = existingCred
+    ? existingCred.did
+    : (await mintOrAccrueClaimableStub(normalized)).did;
+
+  await padToFloor(startedAt, minResolveLatencyMs(), sleep);
   return did;
 }
 
@@ -287,4 +333,29 @@ export async function tryActivateClaim(did: string): Promise<boolean> {
   }).catch((err) => log.error({ did, err: String(err) }, '[claimable-stub] claim-activation attestation error'));
 
   return true;
+}
+
+/** Minimal shape any invite-like record needs to be run through {@link withNoDisclosure}. */
+interface DiscloseableInvite {
+  toDid: string | null;
+  status: string;
+}
+
+/**
+ * Strip the resolved target DID from an invite before it reaches an app or
+ * inviter, unless the bilateral claim ratchet has already closed (#1839).
+ *
+ * Pre-claim, `toDid` is exactly the oracle #1839 exists to close: a stable
+ * DID that lets a caller learn "this email already has an Imajin account"
+ * (and, worse, use the same DID as a cross-app correlation key). Every
+ * pre-claim surface — invite-create, invite list, anything else that reads
+ * an invite row — must run it through here before responding.
+ *
+ * Once `status === 'accepted'`, the app is legitimately a party to the
+ * resulting connection (it already learned the counterparty's DID via the
+ * accept flow itself), so that disclosure is the human's knob, not a leak
+ * (#1839 pt. 4) — the row is returned unchanged.
+ */
+export function withNoDisclosure<T extends DiscloseableInvite>(invite: T): T {
+  return invite.status === 'accepted' ? invite : { ...invite, toDid: null };
 }
