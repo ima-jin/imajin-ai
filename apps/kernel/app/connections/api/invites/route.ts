@@ -7,12 +7,13 @@ import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
 import { isVerifiedTier, resolveEffectiveDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { buildPublicUrl } from '@imajin/config';
-import { createLogger } from '@imajin/logger';
+import { withLogger } from '@imajin/logger';
+import type { Logger } from '@imajin/logger';
 import { resolveOrMintInviteTarget, withNoDisclosure } from '@/src/lib/auth/claimable-stub';
 
 import { getSessionFromCookies, getSessionForDid, type KernelSession } from '@/src/lib/kernel/session';
 
-const log = createLogger('kernel');
+type LoggerLike = Pick<Logger, 'error'>;
 
 const INVITE_COOLDOWN_DAYS = 7;
 const INVITE_EXPIRY_DAYS = 7;
@@ -111,6 +112,38 @@ async function validateInviteContext(
 }
 
 /**
+ * Sends the trust-graph invite email and reports whether delivery actually
+ * succeeded (#1847) — Postal (and other providers) return `{ success: false }`
+ * rather than throwing on most failures, so the boolean has to come from the
+ * result as well as from a caught exception.
+ */
+async function deliverInviteEmail(params: {
+  log: LoggerLike;
+  toEmail: string;
+  inviterName: string;
+  inviterHandle?: string;
+  inviteUrl: string;
+  note?: string;
+  expiresAt: string;
+}): Promise<boolean> {
+  const { log, toEmail, inviterName, inviterHandle, inviteUrl, note, expiresAt } = params;
+  try {
+    const result = await sendEmail({
+      to: toEmail,
+      subject: `${inviterName} invited you to Imajin`,
+      html: trustGraphInviteEmail({ inviterName, inviterHandle, inviteUrl, note, expiresAt }),
+    });
+    if (!result.success) {
+      log.error({ err: result.error, to: toEmail }, 'Failed to send invite email');
+    }
+    return result.success;
+  } catch (err) {
+    log.error({ err: String(err), to: toEmail }, 'Failed to send invite email');
+    return false;
+  }
+}
+
+/**
  * Dual guard (#1832): accept either an external app authenticated with the
  * `connections:write` scope, or a direct user session cookie — the same
  * `resolveEffectiveDid` shape already used by the countersign endpoint
@@ -140,7 +173,7 @@ async function resolveInviteAuth(request: NextRequest): Promise<InviteAuthResult
   return { session };
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withLogger('kernel', async (request, { log }) => {
   const authResult = await resolveInviteAuth(request);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
@@ -248,18 +281,14 @@ export async function POST(request: NextRequest) {
     const inviterName = profile.displayName || profile.handle || session.did;
     const inviterHandle = profile.handle || undefined;
 
-    sendEmail({
-      to: toEmail,
-      subject: `${inviterName} invited you to Imajin`,
-      html: trustGraphInviteEmail({
-        inviterName,
-        inviterHandle,
-        inviteUrl,
-        note: note || undefined,
-        expiresAt: expiresAtDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-      }),
-    }).catch((err: unknown) => {
-      log.error({ err: String(err) }, 'Failed to send invite email');
+    const emailSent = await deliverInviteEmail({
+      log,
+      toEmail,
+      inviterName,
+      inviterHandle,
+      inviteUrl,
+      note: note || undefined,
+      expiresAt: expiresAtDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
     });
 
     publish('connection.invited', {
@@ -274,7 +303,7 @@ export async function POST(request: NextRequest) {
     // No-disclosure (#1839): the caller must never learn toDid pre-claim —
     // it's the resolved match target and doubles as an existence oracle for
     // the email (fresh mint vs. accrue-to-stub vs. resolve-to-real-identity).
-    return NextResponse.json({ invite: withNoDisclosure(invite), url: inviteUrl }, { status: 201 });
+    return NextResponse.json({ invite: withNoDisclosure(invite), url: inviteUrl, emailSent }, { status: 201 });
   }
 
   // Link invite flow
@@ -331,7 +360,7 @@ export async function POST(request: NextRequest) {
     url: inviteUrl,
     remaining: limit - pendingCount - 1,
   }, { status: 201 });
-}
+});
 
 export async function GET(request: NextRequest) {
   const session = await getSessionFromCookies(request.headers.get('cookie'));

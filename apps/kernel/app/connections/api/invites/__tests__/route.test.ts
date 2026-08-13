@@ -42,7 +42,16 @@ vi.mock('@/src/lib/kernel/session', () => ({
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
+  // withLogger (#1847): the route now wraps POST for request-complete
+  // logging/observability. The test double skips correlation-id/timing
+  // plumbing and just invokes the handler with a stub logger context.
+  withLogger: (_service: string, handler: (req: unknown, ctx: { log: ReturnType<typeof createStubLog>; correlationId: string }) => Promise<Response>) =>
+    (req: unknown) => handler(req, { log: createStubLog(), correlationId: 'cor_test' }),
 }));
+
+function createStubLog() {
+  return { error: vi.fn(), info: vi.fn(), warn: vi.fn() };
+}
 
 vi.mock('@imajin/bus', () => ({
   publish: mockPublish,
@@ -53,7 +62,7 @@ vi.mock('@imajin/config', () => ({
 }));
 
 vi.mock('@imajin/email', () => ({
-  sendEmail: vi.fn(async () => undefined),
+  sendEmail: vi.fn(async () => ({ success: true, messageId: 'msg_test' })),
   trustGraphInviteEmail: vi.fn(() => '<html></html>'),
 }));
 
@@ -108,6 +117,7 @@ vi.mock('@/src/db', () => ({
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
 import { POST, GET } from '../route';
+import { sendEmail } from '@imajin/email';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -315,6 +325,66 @@ describe('POST /connections/api/invites — mint-on-new-email (#1834 Phase 1)', 
 
     expect(res.status).toBe(201);
     expect(body.invite.toDid).toBeNull();
+  });
+});
+
+describe('POST /connections/api/invites — emailSent observability (#1847)', () => {
+  const NEW_STUB_DID = 'did:imajin:new-stub';
+  const SENDER_PROFILE = {
+    did: OWNER_DID,
+    displayName: 'Owner',
+    handle: 'owner-handle',
+    nextInviteAvailableAt: null,
+  };
+
+  function queueEmailBranchSelects() {
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([{ podId: 'pod_1' }]))
+      .mockImplementationOnce(() => makeSelectChain([SENDER_PROFILE]))
+      .mockImplementationOnce(() => makeSelectChain([{ value: 0 }]));
+  }
+
+  beforeEach(() => {
+    mockResolveOrMintInviteTarget.mockResolvedValue(NEW_STUB_DID);
+    queueEmailBranchSelects();
+    mockDbInsert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn(async () => [
+          { id: 'inv_test123', code: 'abc123', fromDid: OWNER_DID, toDid: NEW_STUB_DID, delivery: 'email' },
+        ]),
+      }),
+    });
+  });
+
+  it('returns emailSent: true when the Postal delivery succeeds', async () => {
+    vi.mocked(sendEmail).mockResolvedValueOnce({ success: true, messageId: 'msg_ok' });
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body.emailSent).toBe(true);
+  });
+
+  it('returns emailSent: false without failing the request when the provider reports a failure', async () => {
+    vi.mocked(sendEmail).mockResolvedValueOnce({ success: false, error: 'Postal 500: Internal Server Error' });
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body.emailSent).toBe(false);
+    expect(body.invite).toBeDefined();
+  });
+
+  it('returns emailSent: false without failing the request when sendEmail throws', async () => {
+    vi.mocked(sendEmail).mockRejectedValueOnce(new Error('network error'));
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body.emailSent).toBe(false);
   });
 });
 
