@@ -48,15 +48,22 @@ export class PostalProvider implements EmailProvider {
         body: JSON.stringify(body),
       });
 
-      const resBody = await res.json().catch(() => null);
+      const rawBody = await res.text().catch(() => null);
+      let resBody: { status?: string; data?: { message_id?: string } } | null = null;
+      try {
+        resBody = rawBody === null ? null : JSON.parse(rawBody);
+      } catch {
+        resBody = null;
+      }
 
       if (res.status === 200 && resBody?.status === 'success') {
         log.info({ to: options.to, messageId: resBody.data?.message_id }, 'Email sent via Postal');
         return { success: true, messageId: resBody.data?.message_id };
-      } else {
-        log.error({ status: res.status, body: resBody }, 'Postal error');
-        return { success: false, error: `Postal ${res.status}: ${JSON.stringify(resBody)}` };
       }
+
+      const errorBody = resBody ?? rawBody;
+      log.error({ status: res.status, body: errorBody, to: options.to }, 'Postal error');
+      return { success: false, error: `Postal ${res.status}: ${JSON.stringify(errorBody)}` };
     } catch (error) {
       log.error({ err: String(error) }, 'Postal send failed');
       return { success: false, error };
