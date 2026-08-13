@@ -28,6 +28,10 @@ describe('ATTESTATION_TYPES', () => {
     expect(ATTESTATION_TYPES_SET.has('contributor.design')).toBe(true);
   });
 
+  it('contains agent.turn.usage', () => {
+    expect(ATTESTATION_TYPES_SET.has('agent.turn.usage')).toBe(true);
+  });
+
   it('preserves all pre-existing types', () => {
     const preExisting = [
       'event.attendance',
