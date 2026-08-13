@@ -117,6 +117,7 @@ export const attestations = authSchema.table('attestations', {
   issuerIdx: index('idx_auth_attestations_issuer').on(table.issuerDid),
   typeIdx: index('idx_auth_attestations_type').on(table.type),
   statusIdx: index('idx_auth_attestations_status').on(table.attestationStatus),
+  expiresIdx: index('idx_auth_attestations_expires').on(table.expiresAt).where(sql`${table.expiresAt} IS NOT NULL`),
 }));
 
 /**
