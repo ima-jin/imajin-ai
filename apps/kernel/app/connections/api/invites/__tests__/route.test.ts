@@ -29,6 +29,10 @@ vi.mock('@imajin/auth', () => ({
 
 vi.mock('@/src/lib/auth/claimable-stub', () => ({
   resolveOrMintInviteTarget: mockResolveOrMintInviteTarget,
+  // Real implementation — the route's no-disclosure contract (#1839) is
+  // exactly what these tests are verifying, so it must not be stubbed out.
+  withNoDisclosure: <T extends { toDid: string | null; status: string }>(invite: T): T =>
+    invite.status === 'accepted' ? invite : { ...invite, toDid: null },
 }));
 
 vi.mock('@/src/lib/kernel/session', () => ({
@@ -72,6 +76,18 @@ function makeSelectChain(result: unknown) {
   return chain;
 }
 
+// `db.select(...).from(...).leftJoin(...).where(...).orderBy(...)` — the GET
+// (list) shape — resolves via `.orderBy()` rather than `.then()`/`.limit()`.
+function makeListChain(result: unknown) {
+  const chain: Record<string, unknown> = {};
+  const self = () => chain;
+  chain.from = vi.fn(self);
+  chain.leftJoin = vi.fn(self);
+  chain.where = vi.fn(self);
+  chain.orderBy = vi.fn(async () => result);
+  return chain;
+}
+
 vi.mock('@/src/db', () => ({
   db: {
     select: (...args: unknown[]) => mockDbSelect(...args),
@@ -84,7 +100,7 @@ vi.mock('@/src/db', () => ({
 
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
-import { POST } from '../route';
+import { POST, GET } from '../route';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -251,7 +267,7 @@ describe('POST /connections/api/invites — mint-on-new-email (#1834 Phase 1)', 
     });
   });
 
-  it('resolves the invite target via resolveOrMintInviteTarget and stores it as toDid at creation time', async () => {
+  it('resolves the invite target via resolveOrMintInviteTarget and STORES it as toDid — internally only', async () => {
     const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com' }));
 
     expect(res.status).toBe(201);
@@ -260,7 +276,15 @@ describe('POST /connections/api/invites — mint-on-new-email (#1834 Phase 1)', 
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ toDid: NEW_STUB_DID }));
   });
 
-  it('returns an identical response shape for a brand-new email and a silently-accrued repeat introduction', async () => {
+  it('never returns toDid in the create response — no-disclosure (#1839)', async () => {
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com' }));
+    const body = await res.json();
+
+    expect(body.invite.toDid).toBeNull();
+    expect(body).not.toHaveProperty('tier');
+  });
+
+  it('returns an identical response shape for a brand-new email and a silently-accrued repeat introduction, with toDid stripped either way', async () => {
     const firstRes = await POST(makeReq({ delivery: 'email', toEmail: 'shared@example.com' }));
     const firstBody = await firstRes.json();
 
@@ -274,5 +298,106 @@ describe('POST /connections/api/invites — mint-on-new-email (#1834 Phase 1)', 
     expect(secondRes.status).toBe(firstRes.status);
     expect(Object.keys(secondBody).sort()).toEqual(Object.keys(firstBody).sort());
     expect(Object.keys(secondBody.invite).sort()).toEqual(Object.keys(firstBody.invite).sort());
+    expect(firstBody.invite.toDid).toBeNull();
+    expect(secondBody.invite.toDid).toBeNull();
+  });
+
+  it('never returns toDid for a link invite response either, for shape consistency', async () => {
+    const res = await POST(makeReq({}));
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body.invite.toDid).toBeNull();
+  });
+});
+
+describe('GET /connections/api/invites — no-disclosure list masking (#1839)', () => {
+  const INVITER_DID = OWNER_DID;
+  const REAL_TARGET_DID = 'did:imajin:real-target';
+
+  function pendingEmailInviteRow(overrides: Record<string, unknown> = {}) {
+    return {
+      invite: {
+        id: 'inv_pending',
+        code: 'code_pending',
+        fromDid: INVITER_DID,
+        toEmail: 'target@example.com',
+        toDid: REAL_TARGET_DID,
+        delivery: 'email',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        ...overrides,
+      },
+      // The email happens to belong to an existing, already-profiled real
+      // user — this is the sharpest oracle case (#1839): the leftJoin finds a
+      // profile row purely because toDid resolved to a real identity, even
+      // though the invite has not been accepted.
+      acceptedHandle: 'real-user-handle',
+      acceptedName: 'Real User',
+    };
+  }
+
+  function acceptedEmailInviteRow(overrides: Record<string, unknown> = {}) {
+    return {
+      invite: {
+        id: 'inv_accepted',
+        code: 'code_accepted',
+        fromDid: INVITER_DID,
+        toEmail: 'friend@example.com',
+        toDid: REAL_TARGET_DID,
+        delivery: 'email',
+        status: 'accepted',
+        createdAt: new Date().toISOString(),
+        ...overrides,
+      },
+      acceptedHandle: 'friend-handle',
+      acceptedName: 'Friend',
+    };
+  }
+
+  function makeGetReq(): Parameters<typeof GET>[0] {
+    return { headers: new Headers({ cookie: 'session=x' }) } as unknown as Parameters<typeof GET>[0];
+  }
+
+  it('never discloses toDid, acceptedBy, or acceptedHandle for a pending invite — even when toDid resolved to a real, already-profiled user', async () => {
+    mockGetSessionFromCookies.mockResolvedValue(SESSION);
+    // `mockReset` (not `mockImplementationOnce`) so a queued-but-unconsumed
+    // once-callback left over from an earlier POST test can't silently take
+    // priority over this test's single db.select() call.
+    mockDbSelect.mockReset();
+    mockDbSelect.mockImplementation(() => makeListChain([pendingEmailInviteRow()]));
+
+    const res = await GET(makeGetReq());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.invites).toHaveLength(1);
+    const row = body.invites[0];
+    expect(row.toDid).toBeNull();
+    expect(row.acceptedBy).toBeNull();
+    expect(row.acceptedHandle).toBeNull();
+  });
+
+  it('discloses toDid and the accepted-by profile once the invite has actually been accepted (#1839 pt. 4)', async () => {
+    mockGetSessionFromCookies.mockResolvedValue(SESSION);
+    mockDbSelect.mockReset();
+    mockDbSelect.mockImplementation(() => makeListChain([acceptedEmailInviteRow()]));
+
+    const res = await GET(makeGetReq());
+    const body = await res.json();
+
+    const row = body.invites[0];
+    expect(row.toDid).toBe(REAL_TARGET_DID);
+    expect(row.acceptedBy).toBe('friend-handle');
+    expect(row.acceptedHandle).toBe('friend-handle');
+  });
+
+  it('returns 401 for an unrelated, unauthenticated caller — no list data leaks without a session', async () => {
+    mockGetSessionFromCookies.mockResolvedValue(null);
+
+    const res = await GET(makeGetReq());
+
+    expect(res.status).toBe(401);
+    expect(mockDbSelect).not.toHaveBeenCalled();
   });
 });

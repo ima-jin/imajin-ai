@@ -8,7 +8,7 @@ import { isVerifiedTier, resolveEffectiveDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { buildPublicUrl } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
-import { resolveOrMintInviteTarget } from '@/src/lib/auth/claimable-stub';
+import { resolveOrMintInviteTarget, withNoDisclosure } from '@/src/lib/auth/claimable-stub';
 
 import { getSessionFromCookies, getSessionForDid, type KernelSession } from '@/src/lib/kernel/session';
 
@@ -197,7 +197,10 @@ export async function POST(request: NextRequest) {
       log.error({ err: String(err) }, 'Attestation (connection.invited) error');
     });
 
-    return NextResponse.json({ invite, url: inviteUrl }, { status: 201 });
+    // No-disclosure (#1839): the caller must never learn toDid pre-claim —
+    // it's the resolved match target and doubles as an existence oracle for
+    // the email (fresh mint vs. accrue-to-stub vs. resolve-to-real-identity).
+    return NextResponse.json({ invite: withNoDisclosure(invite), url: inviteUrl }, { status: 201 });
   }
 
   // Link invite flow
@@ -248,7 +251,7 @@ export async function POST(request: NextRequest) {
   });
 
   return NextResponse.json({
-    invite,
+    invite: withNoDisclosure(invite),
     url: inviteUrl,
     remaining: limit - pendingCount - 1,
   }, { status: 201 });
@@ -277,13 +280,20 @@ export async function GET(request: NextRequest) {
   const pending = results.filter((r) => r.invite.delivery === 'link' && r.invite.status === 'pending').length;
 
   const now = Date.now();
-  const withDaysAgo = results.map((r) => ({
-    ...r.invite,
-    acceptedBy: r.acceptedHandle || r.acceptedName || null,
-    acceptedHandle: r.acceptedHandle || null,
-    daysAgo: r.invite.createdAt ? Math.floor((now - new Date(r.invite.createdAt).getTime()) / 86400000) : 0,
-    url: `${buildPublicUrl('connections')}/invite/${r.invite.fromDid}/${r.invite.code}`,
-  }));
+  const withDaysAgo = results.map((r) => {
+    // No-disclosure (#1839): the joined profile (name/handle) and toDid are
+    // legitimate bilateral knowledge only once the invite is accepted — a
+    // pending row must never preview who (or whether anyone) toDid resolved
+    // to, or the list becomes the same existence oracle invite-create closes.
+    const disclosed = r.invite.status === 'accepted';
+    return {
+      ...withNoDisclosure(r.invite),
+      acceptedBy: disclosed ? (r.acceptedHandle || r.acceptedName || null) : null,
+      acceptedHandle: disclosed ? (r.acceptedHandle || null) : null,
+      daysAgo: r.invite.createdAt ? Math.floor((now - new Date(r.invite.createdAt).getTime()) / 86400000) : 0,
+      url: `${buildPublicUrl('connections')}/invite/${r.invite.fromDid}/${r.invite.code}`,
+    };
+  });
 
   return NextResponse.json({
     invites: withDaysAgo,
