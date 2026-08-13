@@ -262,9 +262,14 @@ export async function POST(request: NextRequest) {
       log.error({ err: String(err) }, 'Failed to send invite email');
     });
 
+    // subject = toDid (#1846): the invitee's DID, not the sender's. toDid is
+    // already resolved above (real identity, or a freshly-minted claimable
+    // stub) — using it here is what lets the attestation reactor land the
+    // resulting auth.attestation's PendingSignature on the invitee, not the
+    // sender.
     publish('connection.invited', {
       issuer: session.did,
-      subject: session.did,
+      subject: toDid,
       scope: 'connections',
       payload: { context_id: invite.id, context_type: 'connection', delivery: invite.delivery },
     }).catch((err: unknown) => {
@@ -317,6 +322,11 @@ export async function POST(request: NextRequest) {
 
   const inviteUrl = `${buildPublicUrl('connections')}/invite/${session.did}/${code}`;
 
+  // subject = session.did (#1846): for link invites the recipient is unknown
+  // until the link is claimed, so there is no toDid to publish yet — the
+  // link hasn't been claimed and no invitee identity exists. Publishing the
+  // sender as subject keeps this event schema-valid without asserting an
+  // invitee identity that doesn't exist yet.
   publish('connection.invited', {
     issuer: session.did,
     subject: session.did,

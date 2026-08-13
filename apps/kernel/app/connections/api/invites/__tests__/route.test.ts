@@ -318,6 +318,62 @@ describe('POST /connections/api/invites — mint-on-new-email (#1834 Phase 1)', 
   });
 });
 
+describe('POST /connections/api/invites — connection.invited subject DID (#1846)', () => {
+  const NEW_STUB_DID = 'did:imajin:new-stub';
+  const SENDER_PROFILE = {
+    did: OWNER_DID,
+    displayName: 'Owner',
+    handle: 'owner-handle',
+    nextInviteAvailableAt: null,
+  };
+
+  // Email-invite branch calls db.select() in this order:
+  //   1. isInTrustGraph (podMembers membership check)
+  //   2. sender profile lookup (cooldown + display info)
+  //   3. pending email invite count
+  function queueEmailBranchSelects() {
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([{ podId: 'pod_1' }]))
+      .mockImplementationOnce(() => makeSelectChain([SENDER_PROFILE]))
+      .mockImplementationOnce(() => makeSelectChain([{ value: 0 }]));
+  }
+
+  beforeEach(() => {
+    mockResolveOrMintInviteTarget.mockResolvedValue(NEW_STUB_DID);
+    mockDbInsert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn(async () => [
+          { id: 'inv_test123', code: 'abc123', fromDid: OWNER_DID, toDid: NEW_STUB_DID, delivery: 'email' },
+        ]),
+      }),
+    });
+  });
+
+  it('publishes connection.invited with subject = the invitee toDid (not the sender) for email invites', async () => {
+    queueEmailBranchSelects();
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: 'new@example.com' }));
+
+    expect(res.status).toBe(201);
+    expect(mockPublish).toHaveBeenCalledWith(
+      'connection.invited',
+      expect.objectContaining({ issuer: OWNER_DID, subject: NEW_STUB_DID }),
+    );
+    const [, publishedEvent] = mockPublish.mock.calls[0];
+    expect(publishedEvent.subject).not.toBe(OWNER_DID);
+  });
+
+  it('publishes connection.invited with subject = the sender DID for link invites, since the invitee is unknown pre-claim', async () => {
+    const res = await POST(makeReq({}));
+
+    expect(res.status).toBe(201);
+    expect(mockPublish).toHaveBeenCalledWith(
+      'connection.invited',
+      expect.objectContaining({ issuer: OWNER_DID, subject: OWNER_DID }),
+    );
+  });
+});
+
 describe('GET /connections/api/invites — no-disclosure list masking (#1839)', () => {
   const INVITER_DID = OWNER_DID;
   const REAL_TARGET_DID = 'did:imajin:real-target';
