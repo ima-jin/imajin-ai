@@ -54,6 +54,7 @@ export const ATTESTATION_TYPES = [
   'email_verified',
   'phone_verified',
   'imajin/nostr-key-binding',
+  'agent.turn.usage',
   'broker.release',
 ] as const;
 
@@ -76,7 +77,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * explicitly naming the small, known set of mechanical types that must be
  * excluded from any "pending your countersignature" view or query.
  */
-export const MECHANICAL_ATTESTATION_TYPES = ['session.created'] as const;
+export const MECHANICAL_ATTESTATION_TYPES = ['session.created', 'agent.turn.usage'] as const;
 
 /**
  * Claim payload for the `imajin/nostr-key-binding` attestation type.

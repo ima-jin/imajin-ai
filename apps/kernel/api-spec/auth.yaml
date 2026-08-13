@@ -389,23 +389,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
-  /api/magic:
-    get:
-      tags: [auth]
-      operationId: magicLink
-      summary: Authenticate via magic link token (deprecated — use /api/onboard/verify)
-      description: Verifies a ticket magic-link token via the events service, sets a session cookie, and redirects. Returns HTML on error.
-      parameters:
-        - name: token
-          in: query
-          required: true
-          schema: { type: string }
-      responses:
-        "302":
-          description: Redirects to event or destination after setting session cookie
-        "400":
-          description: Missing or invalid token (returns HTML error page)
-
   /api/onboard:
     post:
       tags: [auth]

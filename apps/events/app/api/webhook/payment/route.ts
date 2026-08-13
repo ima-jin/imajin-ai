@@ -28,32 +28,7 @@ import {
 // Shared secret between pay service and events service.
 // In production, use proper service-to-service auth.
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
-const PROFILE_URL = process.env.PROFILE_URL!;
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3003';
-
-/**
- * Create or get a guest DID from the profile service.
- * This creates a soft registration that can be claimed later.
- */
-async function getOrCreateGuestDid(email: string, eventId: string, eventDid: string): Promise<string> {
-  const response = await fetch(`${PROFILE_URL}/api/soft-register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      source: 'event',
-      sourceId: eventDid,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Soft register failed: ${response.status} ${await response.text()}`);
-  }
-
-  const data = await response.json();
-  log.info({ email, did: data.did, isNew: data.isNew }, 'Guest DID resolved');
-  return data.did;
-}
 
 /**
  * Resolve or create a soft DID via the auth service.

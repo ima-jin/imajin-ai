@@ -1067,6 +1067,37 @@ describe('cancelAgentRun', () => {
     await expect(cancelAgentRun(PRINCIPAL, '   ')).rejects.toThrow(/warp_invalid_run_id/);
     expect(requireAgentKeyMock).not.toHaveBeenCalled();
   });
+
+  it('surfaces a run type Warp cannot cancel at all as unsupported, not retryable', async () => {
+    respondJson(
+      {
+        title: 'Unprocessable',
+        type: '…/errors/operation_not_supported',
+        retryable: false,
+      },
+      422,
+    );
+
+    const err = (await cancelAgentRun(PRINCIPAL, RUN_ID).catch((e: unknown) => e)) as WarpApiError;
+
+    expect(err.status).toBe(422);
+    expect(err.code).toBe('operation_not_supported');
+    expect(err.retryable).toBe(false);
+  });
+
+  it('is gated by the same grant as dispatch', async () => {
+    requireAgentKeyMock.mockRejectedValue(new Error('warp_no_grant: nope'));
+
+    await expect(cancelAgentRun(PRINCIPAL, RUN_ID)).rejects.toThrow(/warp_no_grant/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('is gated by the same sealed key as dispatch', async () => {
+    requireAgentKeyMock.mockRejectedValue(new Error('warp_no_secret: nothing sealed'));
+
+    await expect(cancelAgentRun(PRINCIPAL, RUN_ID)).rejects.toThrow(/warp_no_secret/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
 });
 
 // ── Follow-ups (#1639) ────────────────────────────────────────────────────────

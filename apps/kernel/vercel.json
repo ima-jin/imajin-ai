@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/quickbooks-reconcile",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/attestation-cleanup",
+      "schedule": "0 0 * * *"
     }
   ]
 }
