@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, onboardTokens, credentials, identities } from '@/src/db';
+import { db, onboardTokens, credentials, identities, invites } from '@/src/db';
 import { sendEmail } from '@imajin/email';
 import { getClient } from '@imajin/db';
 import { eq, and } from 'drizzle-orm';
@@ -39,7 +39,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
   try {
     const body = await request.json();
-    const { email, name, redirectUrl, context, scopeDid, wantPolling, mode } = body;
+    const { email, name, redirectUrl, context, scopeDid, wantPolling, mode, inviteCode } = body;
 
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return NextResponse.json(
@@ -80,6 +80,13 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const id = `obt_${nanoid(16)}`;
     const pollHandle = wantPolling === true ? nanoid(24) : null;
 
+    // Invite context extension (#1834 Phase 2): re-resolve scopeDid from
+    // the invite row itself when an inviteCode is supplied, rather than
+    // trusting a client-supplied scopeDid outright — context stays
+    // server-side. An unknown/invalid code is ignored rather than blocking
+    // onboarding (the person can still complete plain email verification).
+    const { resolvedScopeDid, resolvedInviteCode } = await resolveInviteContext(inviteCode, scopeDid);
+
     // Store token (15 minute TTL)
     await db.insert(onboardTokens).values({
       id,
@@ -88,7 +95,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       token,
       redirectUrl: redirectUrl || null,
       context: context || null,
-      scopeDid: scopeDid || null,
+      scopeDid: resolvedScopeDid,
+      inviteCode: resolvedInviteCode,
       pollHandle,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     });
@@ -125,6 +133,34 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     );
   }
 });
+
+/**
+ * Re-resolve invite context (#1834 Phase 2) from the invite row by code,
+ * rather than trusting a client-supplied `scopeDid` outright. Returns the
+ * original `scopeDid` unchanged when there is no (valid) `inviteCode` —
+ * an unknown/invalid code is ignored rather than blocking onboarding.
+ */
+async function resolveInviteContext(
+  inviteCode: unknown,
+  scopeDid: unknown,
+): Promise<{ resolvedScopeDid: string | null; resolvedInviteCode: string | null }> {
+  const fallbackScopeDid = typeof scopeDid === 'string' && scopeDid ? scopeDid : null;
+  if (!inviteCode || typeof inviteCode !== 'string') {
+    return { resolvedScopeDid: fallbackScopeDid, resolvedInviteCode: null };
+  }
+
+  const [invite] = await db
+    .select({ code: invites.code, scopeDid: invites.scopeDid })
+    .from(invites)
+    .where(eq(invites.code, inviteCode))
+    .limit(1);
+
+  if (!invite) {
+    return { resolvedScopeDid: fallbackScopeDid, resolvedInviteCode: null };
+  }
+
+  return { resolvedScopeDid: invite.scopeDid || fallbackScopeDid, resolvedInviteCode: invite.code };
+}
 
 /** Returns { notFound } when the email has no account, { hardDid } when it does but isn't a soft DID. */
 async function resolveLoginEmail(

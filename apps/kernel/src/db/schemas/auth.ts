@@ -76,6 +76,11 @@ export const onboardTokens = authSchema.table('onboard_tokens', {
   redirectUrl: text('redirect_url'),
   context: text('context'),                       // Human-readable: "Enroll in Intro to AI"
   scopeDid: text('scope_did'),                    // Forest DID to join on completion
+  // Phase 2 of #1834: the connections-invite code (if any) that started
+  // this onboarding round trip. Lets /api/onboard/verify re-resolve
+  // invite context (scopeDid, pendingAttestationId) from the invite row
+  // server-side by code, rather than trusting a client-supplied param.
+  inviteCode: text('invite_code'),
   pollHandle: text('poll_handle').unique(),
   handoffToken: text('handoff_token').unique(),
   handoffUsedAt: timestamp('handoff_used_at', { withTimezone: true }),
@@ -87,6 +92,7 @@ export const onboardTokens = authSchema.table('onboard_tokens', {
   emailIdx: index('idx_auth_onboard_tokens_email').on(table.email),
   pollHandleIdx: index('idx_auth_onboard_tokens_poll_handle').on(table.pollHandle),
   handoffTokenIdx: index('idx_auth_onboard_tokens_handoff_token').on(table.handoffToken),
+  inviteCodeIdx: index('idx_auth_onboard_tokens_invite_code').on(table.inviteCode),
 }));
 
 /**

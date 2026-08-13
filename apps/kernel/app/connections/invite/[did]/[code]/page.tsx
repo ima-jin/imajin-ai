@@ -68,6 +68,16 @@ export default async function InvitePage(
   const invitePageUrl = `${connectionsUrl}/invite/${params.did}/${params.code}`;
   const loginUrl = `${AUTH_URL}/login?next=${encodeURIComponent(invitePageUrl)}`;
 
+  // Invite context extension (#1834 Phase 2): when this invite carries a
+  // scopeDid, route acceptors into onboarding (which already brands itself
+  // for `?scope=`) instead of the generic register/connected screens. The
+  // invite `code` travels along so /auth/api/onboard can re-resolve the
+  // full context (including pendingAttestationId) server-side by code —
+  // the attestation id itself is never put in this URL.
+  const onboardUrl = invite.scopeDid
+    ? `${AUTH_URL}/onboard?scope=${encodeURIComponent(invite.scopeDid)}&invite=${encodeURIComponent(params.code)}&redirect=${encodeURIComponent(connectionsUrl)}`
+    : null;
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
       <div className="text-center max-w-md mx-auto px-6">
@@ -82,7 +92,7 @@ export default async function InvitePage(
           Accept this invite to create a trusted connection.
         </p>
 
-        <AcceptSection loginUrl={loginUrl} code={params.code} connectionsUrl={connectionsUrl} />
+        <AcceptSection loginUrl={loginUrl} code={params.code} connectionsUrl={connectionsUrl} onboardUrl={onboardUrl} />
       </div>
     </div>
   );

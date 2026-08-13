@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'node:crypto';
 import { eq, desc, and, sql, isNull, count } from 'drizzle-orm';
-import { db, invites, profiles, podMembers } from '@/src/db';
+import { db, invites, profiles, podMembers, identities, attestations } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
 import { isVerifiedTier, resolveEffectiveDid } from '@imajin/auth';
@@ -45,6 +45,71 @@ async function isInTrustGraph(did: string): Promise<boolean> {
 
 type InviteAuthResult = { session: KernelSession } | { error: string; status: number };
 
+interface InviteContext {
+  scopeDid: string | null;
+  pendingAttestationId: string | null;
+}
+
+type InviteContextResult = { context: InviteContext } | { error: string; status: number };
+
+/**
+ * Validate the optional invite-context fields (#1834 Phase 2): `scopeDid`
+ * (the org/community DID to land the claimer in) and `pendingAttestationId`
+ * (the record awaiting the invitee's countersignature). Both are optional
+ * and backward compatible — omitting them preserves today's create
+ * behavior exactly.
+ *
+ * - `pendingAttestationId` must reference an existing, still-`pending`
+ *   attestation that the inviter is a party to (issuer or subject) — an
+ *   inviter cannot attach someone else's attestation to their invite.
+ * - `scopeDid` must reference a real identity.
+ */
+async function validateInviteContext(
+  session: KernelSession,
+  body: Record<string, unknown>,
+): Promise<InviteContextResult> {
+  const scopeDid = typeof body.scopeDid === 'string' && body.scopeDid ? body.scopeDid : null;
+  const pendingAttestationId =
+    typeof body.pendingAttestationId === 'string' && body.pendingAttestationId ? body.pendingAttestationId : null;
+
+  if (scopeDid) {
+    const [scope] = await db
+      .select({ id: identities.id })
+      .from(identities)
+      .where(eq(identities.id, scopeDid))
+      .limit(1);
+    if (!scope) {
+      return { error: 'scopeDid does not reference a known identity', status: 400 };
+    }
+  }
+
+  if (pendingAttestationId) {
+    const [attestation] = await db
+      .select({
+        issuerDid: attestations.issuerDid,
+        subjectDid: attestations.subjectDid,
+        status: attestations.attestationStatus,
+      })
+      .from(attestations)
+      .where(eq(attestations.id, pendingAttestationId))
+      .limit(1);
+    if (!attestation) {
+      return { error: 'pendingAttestationId does not reference a known attestation', status: 400 };
+    }
+    if (attestation.status !== 'pending') {
+      return { error: 'pendingAttestationId must reference a pending attestation', status: 400 };
+    }
+    if (attestation.issuerDid !== session.did && attestation.subjectDid !== session.did) {
+      return {
+        error: 'You must be a party to the attestation referenced by pendingAttestationId',
+        status: 403,
+      };
+    }
+  }
+
+  return { context: { scopeDid, pendingAttestationId } };
+}
+
 /**
  * Dual guard (#1832): accept either an external app authenticated with the
  * `connections:write` scope, or a direct user session cookie — the same
@@ -84,6 +149,13 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => ({}));
   const delivery: 'link' | 'email' = body.delivery === 'email' ? 'email' : 'link';
+
+  // Invite context extension (#1834 Phase 2): optional, backward compatible.
+  const contextResult = await validateInviteContext(session, body);
+  if ('error' in contextResult) {
+    return NextResponse.json({ error: contextResult.error }, { status: contextResult.status });
+  }
+  const { scopeDid, pendingAttestationId } = contextResult.context;
 
   if (delivery === 'email') {
     // Email invites require hard DID + trust graph membership
@@ -168,6 +240,8 @@ export async function POST(request: NextRequest) {
       status: 'pending',
       maxUses: 1,
       expiresAt: expiresAtDate.toISOString(),
+      scopeDid,
+      pendingAttestationId,
     }).returning();
 
     const inviteUrl = `${buildPublicUrl('connections')}/invite/${session.did}/${code}`;
@@ -234,6 +308,8 @@ export async function POST(request: NextRequest) {
     delivery: 'link',
     status: 'pending',
     maxUses: body.maxUses || 1,
+    scopeDid,
+    pendingAttestationId,
   }).returning();
 
   const inviteUrl = `${buildPublicUrl('connections')}/invite/${session.did}/${code}`;
