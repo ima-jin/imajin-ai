@@ -8,12 +8,14 @@ const {
   mockDbUpdate,
   mockFindClaimableStubDid,
   mockVerifyClaimantEmail,
+  mockMintOrAccrueClaimableStub,
 } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
   mockDbInsert: vi.fn(),
   mockDbUpdate: vi.fn(),
   mockFindClaimableStubDid: vi.fn(),
   mockVerifyClaimantEmail: vi.fn(),
+  mockMintOrAccrueClaimableStub: vi.fn(),
 }));
 
 vi.mock('@/src/db', () => ({
@@ -36,6 +38,10 @@ vi.mock('@/src/db', () => ({
 vi.mock('@/src/lib/auth/claimable-stub', () => ({
   findClaimableStubDid: mockFindClaimableStubDid,
   verifyClaimantEmail: mockVerifyClaimantEmail,
+  // #1834 Phase 3 (merged onto main after this file was authored): the
+  // no-matching-stub fallback inside createOrFindSoftDid now mints via this
+  // primitive rather than inserting the identity row directly.
+  mintOrAccrueClaimableStub: mockMintOrAccrueClaimableStub,
 }));
 
 vi.mock('@imajin/config', () => ({
@@ -72,6 +78,9 @@ function insertChain(returning: unknown[] = []) {
   const chain: Record<string, unknown> = {};
   chain.values = vi.fn(() => chain);
   chain.returning = vi.fn(async () => returning);
+  // createOrFindSoftDid's credential insert chains .onConflictDoNothing()
+  // after .values() (#1834 Phase 3).
+  chain.onConflictDoNothing = vi.fn(async () => undefined);
   chain.then = (resolve: (v: unknown) => void) => resolve(undefined);
   return chain;
 }
@@ -88,13 +97,20 @@ describe('resolveOnboardIdentity', () => {
 
   it('falls back to minting a new soft DID when no claimable stub matches the email', async () => {
     mockFindClaimableStubDid.mockResolvedValue(null);
-    // createOrFindSoftDid: no existing credential -> mints a new identity + credential.
-    queueSelect([]);
-    mockDbInsert.mockImplementationOnce(() => insertChain([{ id: 'did:imajin:new', name: null }]));
-    mockDbInsert.mockImplementationOnce(() => insertChain());
+    const NEW_DID = 'did:imajin:new';
+    // createOrFindSoftDid (#1834 Phase 3): no existing credential -> mints via
+    // the claimable-stub primitive, then looks up the identity row it just
+    // minted. contactEmail is pre-set so the backfill update path (untested
+    // here; see create-or-find-soft-did.test.ts) doesn't fire.
+    queueSelect(
+      [], // no existing credential
+      [{ id: NEW_DID, name: null, contactEmail: 'brand-new@example.com' }], // minted identity
+    );
+    mockMintOrAccrueClaimableStub.mockResolvedValueOnce({ did: NEW_DID, isNewStub: true });
 
     const result = await resolveOnboardIdentity('brand-new@example.com', undefined);
 
+    expect(mockMintOrAccrueClaimableStub).toHaveBeenCalledWith('brand-new@example.com');
     expect(result.claimActivated).toBe(false);
     expect(result.created).toBe(true);
     expect(mockVerifyClaimantEmail).not.toHaveBeenCalled();

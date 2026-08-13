@@ -1,4 +1,4 @@
--- 0094_invite_context.sql
+-- 0095_invite_context.sql
 -- Phase 2 of #1834 (claimable-stub invite context extension).
 --
 -- Adds the invite-URL context slots the research report on #1833 proposed:
