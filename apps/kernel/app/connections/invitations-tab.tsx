@@ -41,6 +41,18 @@ interface Quota {
   remaining: number | null;
 }
 
+/**
+ * Outcome of the email-invite create call (#1860). Distinct from a bare
+ * 'success' string so the UI can tell "invite created, email delivered"
+ * apart from "invite created, but the email channel failed" — the
+ * `emailSent` field #1849 added to the create response was previously
+ * ignored entirely, so both cases rendered the same blanket success.
+ */
+type EmailInviteResult =
+  | { type: 'success' }
+  | { type: 'email-failed'; url: string; code: string | null }
+  | { type: 'error'; message: string };
+
 function formatDate(iso: string | null) {
   if (!iso) return '';
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -61,6 +73,119 @@ function statusBadge(status: string) {
   );
 }
 
+interface EmailInvitePanelProps {
+  limitReached: boolean;
+  emailResult: EmailInviteResult | null;
+  inviteEmail: string;
+  setInviteEmail: (value: string) => void;
+  emailNote: string;
+  setEmailNote: (value: string) => void;
+  sendingEmail: boolean;
+  copiedCode: string | null;
+  onSend: () => void;
+  onCancel: () => void;
+  onReset: () => void;
+  onCopy: (url: string, code: string) => void;
+}
+
+/**
+ * The "Email Invite" create panel, split out from {@link InvitationsTab}
+ * (#1860) so the three-way success / email-failed / form branching that
+ * distinguishing `emailSent` (#1849) requires doesn't push the parent
+ * component's cognitive complexity past the repo's lint threshold.
+ */
+function EmailInvitePanel({
+  limitReached,
+  emailResult,
+  inviteEmail,
+  setInviteEmail,
+  emailNote,
+  setEmailNote,
+  sendingEmail,
+  copiedCode,
+  onSend,
+  onCancel,
+  onReset,
+  onCopy,
+}: Readonly<EmailInvitePanelProps>) {
+  if (emailResult?.type === 'success') {
+    return (
+      <div>
+        <p className="text-sm text-green-400 mb-3">✓ Invite sent successfully!</p>
+        <button type="button" onClick={onReset} className="text-xs text-gray-500 hover:text-gray-300 transition">
+          Send another
+        </button>
+      </div>
+    );
+  }
+
+  if (emailResult?.type === 'email-failed') {
+    const linkCode = emailResult.code ?? emailResult.url;
+    return (
+      <div>
+        <p className="text-sm text-yellow-400 mb-3">
+          ⚠️ Invite created, but the email could not be delivered. Share the link below instead.
+        </p>
+        <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-lg px-3 py-2 mb-3">
+          <code className="text-xs text-amber-300 flex-1 truncate">{emailResult.url}</code>
+          <button type="button"
+            onClick={() => onCopy(emailResult.url, linkCode)}
+            className="px-2.5 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-black font-medium rounded transition shrink-0"
+          >
+            {copiedCode === linkCode ? '✓ Copied' : 'Copy link'}
+          </button>
+        </div>
+        <button type="button" onClick={onReset} className="text-xs text-gray-500 hover:text-gray-300 transition">
+          Send another
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {limitReached && (
+        <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-xs text-yellow-300">
+          ⚠️ Invite limit reached. Pending email invites must be accepted, expired, or revoked before you can send more.
+        </div>
+      )}
+      <input
+        type="email"
+        value={inviteEmail}
+        onChange={(e) => setInviteEmail(e.target.value)}
+        placeholder="Email address"
+        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm mb-3"
+        onKeyDown={(e) => e.key === 'Enter' && onSend()}
+      />
+      <textarea
+        value={emailNote}
+        onChange={(e) => setEmailNote(e.target.value)}
+        placeholder="Add a personal message (optional)"
+        className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white placeholder-gray-500 text-sm resize-none mb-3"
+        rows={2}
+      />
+      {emailResult?.type === 'error' && (
+        <p className="text-xs text-red-400 mb-3">{emailResult.message}</p>
+      )}
+      <div className="flex gap-2">
+        <button type="button"
+          onClick={onSend}
+          disabled={sendingEmail || !inviteEmail.trim()}
+          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
+        >
+          {sendingEmail ? 'Sending…' : 'Send Invite'}
+        </button>
+        <button type="button"
+          onClick={onCancel}
+          className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpdate?: (pending: number, remaining: number | null) => void }>) {
   const { toast } = useToast();
   const [invitedBy, setInvitedBy] = useState<InvitedBy | null | 'loading'>('loading');
@@ -75,7 +200,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
   const [generatedInvite, setGeneratedInvite] = useState<{ url: string; code: string } | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
-  const [emailResult, setEmailResult] = useState<string | null>(null);
+  const [emailResult, setEmailResult] = useState<EmailInviteResult | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -155,17 +280,25 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
       });
       const data = await res.json();
       if (res.ok) {
-        setEmailResult('success');
+        // #1860: the create response distinguishes "invite created" from
+        // "email actually delivered" via `emailSent` (#1849) — surface a
+        // delivery failure instead of reporting blanket success, and fall
+        // back to the shareable link so the invite isn't silently stranded.
+        setEmailResult(
+          data.emailSent === false
+            ? { type: 'email-failed', url: data.url, code: data.invite?.code ?? null }
+            : { type: 'success' },
+        );
         setInviteEmail('');
         setEmailNote('');
         fetchSentInvites();
       } else {
-        setEmailResult(data.error || 'Failed to send invite');
+        setEmailResult({ type: 'error', message: data.error || 'Failed to send invite' });
         // If it's a pending invite issue, refresh the list
         if (data.pendingInvite) fetchSentInvites();
       }
     } catch {
-      setEmailResult('An error occurred');
+      setEmailResult({ type: 'error', message: 'An error occurred' });
     } finally {
       setSendingEmail(false);
     }
@@ -383,59 +516,23 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
         {/* Email Invite panel */}
         {activeCreate === 'email' && (
           <div className="p-5 bg-white/5 border border-amber-500/20 rounded-lg">
-            {quota && quota.remaining !== null && quota.remaining <= 0 &&
-              sentInvites.some(i => i.delivery === 'email' && i.status === 'pending') && (
-              <div className="mb-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-xs text-yellow-300">
-                ⚠️ Invite limit reached. Pending email invites must be accepted, expired, or revoked before you can send more.
-              </div>
-            )}
-            {emailResult === 'success' ? (
-              <div>
-                <p className="text-sm text-green-400 mb-3">✓ Invite sent successfully!</p>
-                <button type="button"
-                  onClick={() => { setEmailResult(null); }}
-                  className="text-xs text-gray-500 hover:text-gray-300 transition"
-                >
-                  Send another
-                </button>
-              </div>
-            ) : (
-              <div>
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="Email address"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white placeholder-gray-500 text-sm mb-3"
-                  onKeyDown={(e) => e.key === 'Enter' && sendEmailInvite()}
-                />
-                <textarea
-                  value={emailNote}
-                  onChange={(e) => setEmailNote(e.target.value)}
-                  placeholder="Add a personal message (optional)"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-3 text-white placeholder-gray-500 text-sm resize-none mb-3"
-                  rows={2}
-                />
-                {emailResult && emailResult !== 'success' && (
-                  <p className="text-xs text-red-400 mb-3">{emailResult}</p>
-                )}
-                <div className="flex gap-2">
-                  <button type="button"
-                    onClick={sendEmailInvite}
-                    disabled={sendingEmail || !inviteEmail.trim()}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black font-medium rounded-lg transition text-sm"
-                  >
-                    {sendingEmail ? 'Sending…' : 'Send Invite'}
-                  </button>
-                  <button type="button"
-                    onClick={() => setActiveCreate(null)}
-                    className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white rounded-lg transition text-sm"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
+            <EmailInvitePanel
+              limitReached={Boolean(
+                quota && quota.remaining !== null && quota.remaining <= 0 &&
+                  sentInvites.some(i => i.delivery === 'email' && i.status === 'pending'),
+              )}
+              emailResult={emailResult}
+              inviteEmail={inviteEmail}
+              setInviteEmail={setInviteEmail}
+              emailNote={emailNote}
+              setEmailNote={setEmailNote}
+              sendingEmail={sendingEmail}
+              copiedCode={copiedCode}
+              onSend={sendEmailInvite}
+              onCancel={() => setActiveCreate(null)}
+              onReset={() => setEmailResult(null)}
+              onCopy={copyLink}
+            />
           </div>
         )}
       </div>

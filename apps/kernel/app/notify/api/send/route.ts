@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { nanoid } from 'nanoid';
 import { withLogger } from '@imajin/logger';
-import { db, notifications, preferences, identities, profiles } from '@/src/db';
+import { db, notifications, preferences, identities, profiles, credentials } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { getTemplate } from '@/src/lib/notify/templates';
 import { buildNotificationFrame, pushNotificationToDid } from '@/src/lib/notify/ws-push';
@@ -14,9 +14,15 @@ export async function OPTIONS(request: NextRequest) {
 
 /**
  * Resolve the email address for a notification recipient.
- * Checks the request payload, then the profile table, then the identity table.
+ * Checks the request payload, then the profile table, then the identity
+ * table, then `auth.credentials` (#1854) — the table the claimable-stub and
+ * invite-create paths (#1834/#1849) treat as the source of truth, and which
+ * now has normalized rows for every onboarded identity (#1861). A recipient
+ * whose only email record lives there — e.g. someone who claimed their
+ * identity via an invite rather than Stripe/onboard — was previously
+ * invisible to this resolver even though invite-create already trusted it.
  *
- * Cognitive complexity: 3 (≤ 15)
+ * Cognitive complexity: 4 (≤ 15)
  */
 async function resolveRecipientEmail(
   to: string,
@@ -38,14 +44,39 @@ async function resolveRecipientEmail(
     .from(identities)
     .where(eq(identities.id, to))
     .limit(1);
-  return identity?.contactEmail ?? undefined;
+  if (identity?.contactEmail) return identity.contactEmail;
+
+  const [credential] = await db
+    .select({ value: credentials.value })
+    .from(credentials)
+    .where(and(eq(credentials.type, 'email'), eq(credentials.did, to)))
+    .limit(1);
+  return credential?.value ?? undefined;
 }
 
 /**
- * Resolve recipient email and send the email notification.
- * Returns true if the email was sent successfully.
+ * Outcome of attempting to resolve + deliver the email leg of a
+ * notification (#1854). Kept distinct from the boolean `sent` the response
+ * uses so a caller can tell "we never even found an address" apart from
+ * "we found one but the provider rejected it" — both used to collapse into
+ * the same unconditional `sent: true`.
+ */
+interface EmailDeliveryResult {
+  /** True once the email was actually handed off to the provider successfully. */
+  delivered: boolean;
+  /** True when a recipient email address could be resolved at all. */
+  emailResolved: boolean;
+  /** Safe, caller-facing reason when `delivered` is false. */
+  error?: string;
+}
+
+/**
+ * Resolve recipient email and send the email notification, reporting the
+ * real outcome (#1854) rather than a bare boolean — Postal (and other
+ * providers) return `{ success: false }` rather than throwing on most
+ * failures, mirroring the `deliverInviteEmail` fix from #1847.
  *
- * Cognitive complexity: 2 (≤ 15)
+ * Cognitive complexity: 4 (≤ 15)
  */
 async function resolveAndSendEmail(
   to: string,
@@ -53,20 +84,45 @@ async function resolveAndSendEmail(
   template: import('@/src/lib/notify/templates').NotifyTemplate,
   log: { error: (obj: Record<string, unknown>, msg: string) => void },
   notifId: string,
-): Promise<boolean> {
+): Promise<EmailDeliveryResult> {
   const recipientEmail = await resolveRecipientEmail(to, data);
-  if (!recipientEmail) return false;
+  if (!recipientEmail) {
+    return { delivered: false, emailResolved: false, error: 'No email address found for recipient' };
+  }
   try {
-    await sendEmail({
+    const result = await sendEmail({
       to: recipientEmail,
       subject: template.email!.subject(data as Record<string, any>),
       html: template.email!.html(data as Record<string, any>),
     });
-    return true;
+    if (!result.success) {
+      log.error({ err: result.error, id: notifId }, 'Email send failed for notification');
+      return { delivered: false, emailResolved: true, error: 'Email delivery failed' };
+    }
+    return { delivered: true, emailResolved: true };
   } catch (err) {
     log.error({ err: String(err), id: notifId }, 'Email send failed for notification');
-    return false;
+    return { delivered: false, emailResolved: true, error: 'Email delivery failed' };
   }
+}
+
+/**
+ * Build the /notify/api/send response body (#1854): honest about whether
+ * the email leg actually delivered, kept out of POST's own control flow so
+ * the handler's complexity stays where it was before this fix.
+ */
+function buildResponseBody(
+  id: string,
+  emailResult: EmailDeliveryResult | null,
+): { id: string; sent: boolean; emailResolved?: boolean; error?: string } {
+  if (!emailResult) return { id, sent: true };
+  const body: { id: string; sent: boolean; emailResolved?: boolean; error?: string } = {
+    id,
+    sent: emailResult.delivered,
+    emailResolved: emailResult.emailResolved,
+  };
+  if (emailResult.error) body.error = emailResult.error;
+  return body;
 }
 
 export const POST = withLogger('kernel', async (request, { log }) => {
@@ -148,10 +204,13 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     if (delivered) channelsSent.push('ws');
   }
 
-  // Send email if enabled and template has email config
+  // Send email if enabled and template has email config (#1854: the result
+  // is a structured outcome, not a boolean, so the response below can be
+  // honest about whether the email leg actually delivered).
+  let emailResult: EmailDeliveryResult | null = null;
   if (emailEnabled && template?.email) {
-    const emailSent = await resolveAndSendEmail(to, data, template, log, id);
-    if (emailSent) channelsSent.push('email');
+    emailResult = await resolveAndSendEmail(to, data, template, log, id);
+    if (emailResult.delivered) channelsSent.push('email');
   }
 
   // Update channels_sent
@@ -162,5 +221,10 @@ export const POST = withLogger('kernel', async (request, { log }) => {
       .where(eq(notifications.id, id));
   }
 
-  return NextResponse.json({ id, sent: true }, { headers: cors });
+  // #1854: `sent` used to be hardcoded `true` regardless of delivery outcome.
+  // When email was actually attempted, the response now reflects whether it
+  // was delivered; when it wasn't attempted (no email channel requested, or
+  // the recipient has it disabled), the notification itself still succeeded
+  // via its other channels, so `sent` stays true — there was nothing to fail.
+  return NextResponse.json(buildResponseBody(id, emailResult), { headers: cors });
 });
