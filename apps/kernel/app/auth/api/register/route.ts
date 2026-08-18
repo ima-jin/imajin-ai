@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, profiles } from '@/src/db';
+import { db, identities, profiles, credentials } from '@/src/db';
 import { eq, or } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { rateLimit, getClientIP } from '@imajin/config';
@@ -51,6 +52,9 @@ export async function POST(request: NextRequest) {
     } = body;
     const scope = rawScope || 'actor';
     const subtype = rawSubtype || (scope === 'actor' ? 'human' : null);
+    const normalizedEmail = typeof email === 'string' && email.trim()
+      ? email.toLowerCase().trim()
+      : null;
 
     if (!publicKey || typeof publicKey !== 'string') {
       return NextResponse.json({ error: 'publicKey required (Ed25519 hex)' }, { status: 400 });
@@ -121,6 +125,24 @@ export async function POST(request: NextRequest) {
       ? await linkDfosChainSafe(identity.id, body.dfosChain, publicKey)
       : false;
 
+    // Record the auth.credentials row for the signup email so this identity
+    // is resolvable via the same lookup every other identity-mint site uses
+    // (resolveOrMintInviteTarget, createOrFindSoftDid, ...) — without this,
+    // a later email invite for this same person misses and silently mints a
+    // disconnected stub DID (#1855). Left unverified (no verifiedAt): unlike
+    // the onboard magic-link flow, the keypair register flow never proves
+    // ownership of the email — it's only used here as a resolvable match
+    // key. onConflictDoNothing guards the (type, value) unique index in
+    // case the email is already claimed by another identity.
+    if (normalizedEmail) {
+      await db.insert(credentials).values({
+        id: `cred_${nanoid(16)}`,
+        did: identity.id,
+        type: 'email',
+        value: normalizedEmail,
+      }).onConflictDoNothing();
+    }
+
     // Create session token
     const token = await createSessionToken({
       sub: identity.id,
@@ -151,7 +173,7 @@ export async function POST(request: NextRequest) {
         did: identity.id,
         displayName: name?.trim().slice(0, 100) || handle || 'Anonymous',
         handle: handle || null,
-        contactEmail: email?.trim() || null,
+        contactEmail: normalizedEmail,
         phone: phone?.trim() || null,
         metadata: { optInUpdates: optInUpdates || false },
       }).onConflictDoNothing();
