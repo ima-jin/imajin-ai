@@ -89,6 +89,9 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   // #1820 — `attestation-notify` additionally routes to notify's send for the
   // subset of attestations that are genuinely awaiting the subject's
   // counter-signature (gated internally on payload.pendingSignature).
+  // Kept in sync with migration 0096 — #1821 added `attestation-notify` here
+  // but shipped no migration, so migration 0039's DB row (emit only) silently
+  // shadowed this default until #1856/0096 caught the DB row up.
   'attestation.created': [
     { type: 'emit', config: {}, enabled: true },
     { type: 'attestation-notify', config: {}, enabled: true },
