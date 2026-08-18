@@ -35,6 +35,17 @@ function getInviteLimit(tier: string): number {
   return INVITE_LIMITS[tier] ?? INVITE_LIMITS.preliminary;
 }
 
+/**
+ * Normalize an invite's `toEmail` at write time (#1858): lowercased +
+ * trimmed, so downstream comparisons against this column (invite-accept's
+ * isForUser check, consumePendingInvites' auto-accept-on-signup match)
+ * never miss on case/whitespace alone. Returns null for anything that
+ * isn't a non-empty string — `toEmail` is optional on link invites.
+ */
+function normalizeInviteEmail(email: unknown): string | null {
+  return typeof email === 'string' && email.trim() ? email.toLowerCase().trim() : null;
+}
+
 async function isInTrustGraph(did: string): Promise<boolean> {
   const [membership] = await db
     .select({ podId: podMembers.podId })
@@ -249,6 +260,10 @@ export const POST = withLogger('kernel', async (request, { log }) => {
       return NextResponse.json({ error: 'toEmail is required for email invites' }, { status: 400 });
     }
 
+    // Normalize at write time (#1858) — the as-typed toEmail is still used
+    // for actual delivery below so we don't alter what the recipient sees.
+    const normalizedToEmail = normalizeInviteEmail(toEmail);
+
     const code = randomBytes(12).toString('hex');
     const id = generateId('inv_');
     const expiresAtDate = new Date(now.getTime() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
@@ -266,7 +281,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
       code,
       fromDid: session.did,
       fromHandle: session.handle || null,
-      toEmail: toEmail || null,
+      toEmail: normalizedToEmail,
       toDid,
       note: note || null,
       delivery: 'email',
@@ -340,7 +355,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     code,
     fromDid: session.did,
     fromHandle: session.handle || null,
-    toEmail: body.toEmail || null,
+    toEmail: normalizeInviteEmail(body.toEmail),
     note: body.note || null,
     delivery: 'link',
     status: 'pending',

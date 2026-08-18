@@ -443,6 +443,68 @@ describe('POST /connections/api/invites — emailSent observability (#1847)', ()
     expect(body.emailSent).toBe(false);
   });
 });
+describe('POST /connections/api/invites — toEmail normalization at write time (#1858)', () => {
+  const NEW_STUB_DID = 'did:imajin:new-stub';
+  const SENDER_PROFILE = {
+    did: OWNER_DID,
+    displayName: 'Owner',
+    handle: 'owner-handle',
+    nextInviteAvailableAt: null,
+  };
+
+  function queueEmailBranchSelects() {
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([{ podId: 'pod_1' }]))
+      .mockImplementationOnce(() => makeSelectChain([SENDER_PROFILE]))
+      .mockImplementationOnce(() => makeSelectChain([{ value: 0 }]));
+  }
+
+  beforeEach(() => {
+    mockResolveOrMintInviteTarget.mockResolvedValue(NEW_STUB_DID);
+    mockDbInsert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn(async () => [
+          { id: 'inv_test123', code: 'abc123', fromDid: OWNER_DID, toDid: NEW_STUB_DID, delivery: 'email' },
+        ]),
+      }),
+    });
+  });
+
+  it('stores a mixed-case, whitespace-padded email invite toEmail as lowercased and trimmed', async () => {
+    queueEmailBranchSelects();
+
+    const res = await POST(makeReq({ delivery: 'email', toEmail: '  Kia@Example.COM  ' }));
+
+    expect(res.status).toBe(201);
+    const insertValues = mockDbInsert.mock.results[0].value.values as ReturnType<typeof vi.fn>;
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ toEmail: 'kia@example.com' }));
+  });
+
+  it('still delivers the email to the as-typed address, only the stored column is normalized', async () => {
+    queueEmailBranchSelects();
+
+    await POST(makeReq({ delivery: 'email', toEmail: '  Kia@Example.COM  ' }));
+
+    expect(mockResolveOrMintInviteTarget).toHaveBeenCalledWith('  Kia@Example.COM  ');
+  });
+
+  it('normalizes an optional toEmail hint on a link invite the same way', async () => {
+    const res = await POST(makeReq({ toEmail: '  Friend@Example.COM  ' }));
+
+    expect(res.status).toBe(201);
+    const insertValues = mockDbInsert.mock.results[0].value.values as ReturnType<typeof vi.fn>;
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ toEmail: 'friend@example.com' }));
+  });
+
+  it('stores null for a link invite with no toEmail hint at all', async () => {
+    const res = await POST(makeReq({}));
+
+    expect(res.status).toBe(201);
+    const insertValues = mockDbInsert.mock.results[0].value.values as ReturnType<typeof vi.fn>;
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ toEmail: null }));
+  });
+});
+
 describe('GET /connections/api/invites — no-disclosure list masking (#1839)', () => {
   const INVITER_DID = OWNER_DID;
   const REAL_TARGET_DID = 'did:imajin:real-target';
