@@ -6,6 +6,7 @@ import { publish } from '@imajin/bus';
 import { checkPreliminaryEligibility, checkHardEligibility } from '@/src/lib/kernel/verification';
 import { createLogger } from '@imajin/logger';
 import { isUnclaimedStub, tryActivateClaim } from '@/src/lib/auth/claimable-stub';
+import { resolveDidForEmail } from '@imajin/auth';
 
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
@@ -86,16 +87,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ code
     return NextResponse.json({ error: 'Cannot accept your own invite' }, { status: 400 });
   }
 
-  // For email invites, verify this invite is for the current user
+  // For email invites, verify this invite is for the current user. The
+  // fallback resolves invite.toEmail through the SAME identity-resolution
+  // seam invite-create uses (#1858 / #1834 structural review) instead of a
+  // raw, non-normalized profiles.contactEmail === invite.toEmail
+  // comparison — so create and accept agree on identity by construction.
+  // This is what lets a keypair-registered user whose email lives only in
+  // profiles.contactEmail (no auth.credentials row) still accept an invite
+  // that was minted against a mismatched stub DID at create time.
   if (invite.delivery === 'email') {
-    const [inviteeProfile] = await db
-      .select()
-      .from(profiles)
-      .where(eq(profiles.did, accepterDid))
-      .limit(1);
-
     const isForUser = invite.toDid === accepterDid ||
-      (invite.toEmail && inviteeProfile?.contactEmail === invite.toEmail);
+      (!!invite.toEmail && (await resolveDidForEmail(invite.toEmail)) === accepterDid);
 
     if (!isForUser) {
       return NextResponse.json({ error: 'This invite is not for you' }, { status: 403 });
