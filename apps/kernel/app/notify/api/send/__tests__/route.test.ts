@@ -29,6 +29,8 @@ vi.mock('@/src/db', () => ({
   preferences: { did: 'did', scope: 'scope' },
   identities: { id: 'id', contactEmail: 'contact_email' },
   profiles: { did: 'did', contactEmail: 'contact_email' },
+  // #1854: resolveRecipientEmail's new auth.credentials fallback.
+  credentials: { did: 'did', type: 'type', value: 'value' },
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -55,9 +57,9 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
-vi.mock('@imajin/email', () => ({ sendEmail: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@imajin/email', () => ({ sendEmail: vi.fn() }));
 
-vi.mock('@/src/lib/notify/templates', () => ({ getTemplate: () => undefined }));
+vi.mock('@/src/lib/notify/templates', () => ({ getTemplate: vi.fn(() => undefined) }));
 
 const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
 
@@ -73,12 +75,33 @@ vi.mock('@/src/lib/notify/ws-push', async () => {
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
 import { POST } from '../route';
+import { sendEmail } from '@imajin/email';
+import { getTemplate } from '@/src/lib/notify/templates';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const RECIPIENT = 'did:imajin:veteze';
 const WEBHOOK_SECRET = 'notify-webhook-secret';
 const NOTIFICATION_ID = 'ntf_abcdefgh12345678';
+const EMAIL_SCOPE = 'test.email.scope';
+
+/** A template with an email leg configured, so resolveAndSendEmail is exercised. */
+function emailTemplate() {
+  return {
+    scope: EMAIL_SCOPE,
+    urgency: 'normal' as const,
+    title: () => 'Test notification',
+    body: () => 'Test body',
+    email: {
+      subject: () => 'Test subject',
+      html: () => '<p>Test</p>',
+    },
+  };
+}
+
+function emailScopeBody(overrides: Record<string, unknown> = {}) {
+  return { to: RECIPIENT, scope: EMAIL_SCOPE, data: {}, ...overrides };
+}
 
 type RouteRequest = Parameters<typeof POST>[0];
 
@@ -126,6 +149,8 @@ beforeEach(() => {
   mockUpdateWhere.mockResolvedValue(undefined);
   mockDbUpdate.mockImplementation(() => ({ set: vi.fn(() => ({ where: mockUpdateWhere })) }));
   mockPush.mockResolvedValue(true);
+  vi.mocked(getTemplate).mockReturnValue(undefined);
+  vi.mocked(sendEmail).mockResolvedValue({ success: true, messageId: 'msg_default' });
 });
 
 // ─── WebSocket push (#1644) ──────────────────────────────────────────────────
@@ -243,5 +268,142 @@ describe('existing guards still hold', () => {
 
     expect(res.status).toBe(400);
     expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Honest email delivery outcome (#1854) ──────────────────────────────────
+
+describe('email delivery honesty (#1854)', () => {
+  beforeEach(() => {
+    vi.mocked(getTemplate).mockReturnValue(emailTemplate());
+  });
+
+  it('resolves the email from the payload without touching the db, and reports sent + emailResolved true', async () => {
+    const res = await POST(makeReq(emailScopeBody({ data: { email: 'payload@example.com' } })));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ sent: true, emailResolved: true });
+    expect(body.error).toBeUndefined();
+    expect(vi.mocked(sendEmail)).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'payload@example.com' }),
+    );
+    expect(recordedChannels()).toContain('email');
+  });
+
+  it('falls back to profiles.contactEmail when the payload has no email', async () => {
+    mockSelectLimit
+      .mockResolvedValueOnce([]) // preferences: no row
+      .mockResolvedValueOnce([{ contactEmail: 'profile@example.com' }]); // profiles hit
+
+    const res = await POST(makeReq(emailScopeBody()));
+    const body = await res.json();
+
+    expect(body).toMatchObject({ sent: true, emailResolved: true });
+    expect(vi.mocked(sendEmail)).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'profile@example.com' }),
+    );
+  });
+
+  it('falls back to identities.contactEmail when profiles has none', async () => {
+    mockSelectLimit
+      .mockResolvedValueOnce([]) // preferences
+      .mockResolvedValueOnce([]) // profiles miss
+      .mockResolvedValueOnce([{ contactEmail: 'identity@example.com' }]); // identities hit
+
+    const res = await POST(makeReq(emailScopeBody()));
+    const body = await res.json();
+
+    expect(body).toMatchObject({ sent: true, emailResolved: true });
+    expect(vi.mocked(sendEmail)).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'identity@example.com' }),
+    );
+  });
+
+  it('falls back to auth.credentials(type=email) when neither profiles nor identities has one', async () => {
+    mockSelectLimit
+      .mockResolvedValueOnce([]) // preferences
+      .mockResolvedValueOnce([]) // profiles miss
+      .mockResolvedValueOnce([]) // identities miss
+      .mockResolvedValueOnce([{ value: 'credential@example.com' }]); // auth.credentials hit
+
+    const res = await POST(makeReq(emailScopeBody()));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ sent: true, emailResolved: true });
+    expect(vi.mocked(sendEmail)).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'credential@example.com' }),
+    );
+    expect(recordedChannels()).toContain('email');
+  });
+
+  it('returns sent: false, emailResolved: false and a caller-safe error when no email resolves anywhere', async () => {
+    mockSelectLimit
+      .mockResolvedValueOnce([]) // preferences
+      .mockResolvedValueOnce([]) // profiles miss
+      .mockResolvedValueOnce([]) // identities miss
+      .mockResolvedValueOnce([]); // auth.credentials miss
+
+    const res = await POST(makeReq(emailScopeBody()));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      id: NOTIFICATION_ID,
+      sent: false,
+      emailResolved: false,
+      error: 'No email address found for recipient',
+    });
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(recordedChannels()).not.toContain('email');
+  });
+
+  it('returns sent: false with emailResolved: true when the provider reports a failure', async () => {
+    vi.mocked(sendEmail).mockResolvedValueOnce({ success: false, error: 'Postal 500: Internal Server Error' });
+
+    const res = await POST(makeReq(emailScopeBody({ data: { email: 'payload@example.com' } })));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      id: NOTIFICATION_ID,
+      sent: false,
+      emailResolved: true,
+      error: 'Email delivery failed',
+    });
+    expect(recordedChannels()).not.toContain('email');
+  });
+
+  it('returns sent: false with emailResolved: true when sendEmail throws', async () => {
+    vi.mocked(sendEmail).mockRejectedValueOnce(new Error('network error'));
+
+    const res = await POST(makeReq(emailScopeBody({ data: { email: 'payload@example.com' } })));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ sent: false, emailResolved: true, error: 'Email delivery failed' });
+  });
+
+  it('does not attempt email and omits emailResolved when the recipient has email disabled for the scope', async () => {
+    mockSelectLimit.mockResolvedValueOnce([{ email: false, inapp: true }]);
+
+    const res = await POST(makeReq(emailScopeBody({ data: { email: 'payload@example.com' } })));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ id: NOTIFICATION_ID, sent: true });
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('does not attempt email and keeps sent: true when the resolved scope has no email template', async () => {
+    vi.mocked(getTemplate).mockReturnValue(undefined);
+
+    const res = await POST(makeReq(emailScopeBody({ data: { email: 'payload@example.com' } })));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ id: NOTIFICATION_ID, sent: true });
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 });
