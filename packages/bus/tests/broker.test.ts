@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { broker } from '../src/broker';
+import { getBrokerReactor } from '../src/broker-registry';
 import type { BrokerPredicateClaim, BrokerRequest, BrokerRelease, BrokerRejection } from '../src/types';
 
 // Mock publish so audit events don't actually fire during tests
@@ -453,5 +454,14 @@ describe('bus.broker()', () => {
     expect(result.enforced).toBe(false);
     // A shadow rejection is a real, logged decision — the audit event fires.
     expect(mockPublish).toHaveBeenCalledWith('broker.rejection', expect.anything());
+  });
+
+  // --------------------------------------------------------------------------
+  // Match-engine reactor registration (#1872)
+  // --------------------------------------------------------------------------
+
+  it('has mutual-reach-consent and intersection-scope registered as broker reactors', () => {
+    expect(getBrokerReactor('mutual-reach-consent')).toBeDefined();
+    expect(getBrokerReactor('intersection-scope')).toBeDefined();
   });
 });

@@ -11,6 +11,8 @@ import { consentReactor } from './reactors/consent';
 import { scopeReactor } from './reactors/scope';
 import { releaseReactor } from './reactors/release';
 import { auditReactor, auditRejection } from './reactors/audit';
+import { mutualReachConsentReactor } from './reactors/mutual-reach-consent';
+import { intersectionScopeReactor } from './reactors/intersection-scope';
 import { sendConsentRequestNotification } from './reactors/consent-request-notify';
 import { getBrokerChainConfig } from './config';
 import { getBrokerReactor, registerBrokerReactor } from './broker-registry';
@@ -31,6 +33,8 @@ registerBrokerReactor('consent', consentReactor);
 registerBrokerReactor('scope', scopeReactor);
 registerBrokerReactor('release', releaseReactor);
 registerBrokerReactor('audit', auditReactor);
+registerBrokerReactor('mutual-reach-consent', mutualReachConsentReactor);
+registerBrokerReactor('intersection-scope', intersectionScopeReactor);
 
 /**
  * Default broker pipeline, used when no chain config row exists for the
