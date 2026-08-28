@@ -68,16 +68,24 @@ async function resolveBrokerChain(
     return DEFAULT_BROKER_CHAIN;
   }
 
+  // Load-time validation: every broker reactor referenced by the chain must
+  // be registered. Fail loudly at chain-resolution time instead of silently
+  // skipping at request time (#1872).
+  const missing = config.reactors
+    .filter((rc) => rc.enabled)
+    .map((rc) => rc.type)
+    .filter((t) => !getBrokerReactor(t));
+  if (missing.length > 0) {
+    throw new Error(
+      `Unknown broker reactor(s) in chain for eventType=${eventType} scope=${scope}: ${missing.join(', ')}`
+    );
+  }
+
   const chain: BrokerChainStep[] = [];
   for (const rc of config.reactors) {
     if (!rc.enabled) continue;
 
-    const reactor = getBrokerReactor(rc.type);
-    if (!reactor) {
-      log.warn({ reactor: rc.type, eventType, scope }, 'Unknown broker reactor type; skipping');
-      continue;
-    }
-
+    const reactor = getBrokerReactor(rc.type)!;
     chain.push({ type: rc.type, reactor });
   }
 
