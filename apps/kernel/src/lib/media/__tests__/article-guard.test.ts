@@ -26,6 +26,7 @@ const VALID_ARTICLE =
 const TITLELESS_HEADER = '---\nslug: "hello"\nstatus: "DRAFT"\n---\n\n# Hello\n';
 
 const ARTICLE_CONTEXT = { app: 'article' };
+const DOCUMENT_CONTEXT = { app: 'document' };
 const LIVE_ARTICLE_METADATA = {
   article: { slug: 'hello', title: 'Hello', status: 'POSTED', date: '2026-08-01' },
 };
@@ -37,6 +38,11 @@ describe('isArticleContext', () => {
     expect(isArticleContext({ app: 'article' })).toBe(true);
     expect(isArticleContext({ feature: 'Articles' })).toBe(true);
     expect(isArticleContext({ app: 'www', feature: 'article' })).toBe(true);
+  });
+
+  it('matches document context (#1870 — closes the silent lane)', () => {
+    expect(isArticleContext({ app: 'document' })).toBe(true);
+    expect(isArticleContext({ feature: 'Document' })).toBe(true);
   });
 
   it('is false for non-article contexts and non-objects', () => {
@@ -71,6 +77,19 @@ describe('checkArticleFrontmatter — plain notes are unaffected', () => {
         content: HEADERLESS,
         context: { app: 'chat' },
       }),
+    ).toBeNull();
+  });
+
+  it('does not warn for note context (or no context) — document is not note', () => {
+    expect(
+      checkArticleFrontmatter({
+        mimeType: 'text/markdown',
+        content: HEADERLESS,
+        context: { app: 'note' },
+      }),
+    ).toBeNull();
+    expect(
+      checkArticleFrontmatter({ mimeType: 'text/markdown', content: HEADERLESS }),
     ).toBeNull();
   });
 
@@ -132,6 +151,53 @@ describe('checkArticleFrontmatter — article context', () => {
 
     expect(check?.reason).toBe('missing_frontmatter');
     expect(check?.demotes).toBe(false);
+  });
+});
+
+// ─── checkArticleFrontmatter — document context (#1870) ───────────────────
+
+describe('checkArticleFrontmatter — document context (#1870)', () => {
+  it('warns with the machine-readable reason when there is no frontmatter', () => {
+    const check = checkArticleFrontmatter({
+      mimeType: 'text/markdown',
+      content: HEADERLESS,
+      context: DOCUMENT_CONTEXT,
+    });
+
+    expect(check).not.toBeNull();
+    expect(check?.reason).toBe('missing_frontmatter');
+    expect(check?.demotes).toBe(false);
+  });
+
+  it('stays silent when the frontmatter is a valid article', () => {
+    expect(
+      checkArticleFrontmatter({
+        mimeType: 'text/markdown',
+        content: VALID_ARTICLE,
+        context: DOCUMENT_CONTEXT,
+      }),
+    ).toBeNull();
+  });
+
+  it('picks up document intent from stored metadata.context on the update path', () => {
+    const check = checkArticleFrontmatter({
+      mimeType: 'text/markdown',
+      content: HEADERLESS,
+      existingMetadata: { context: { app: 'document' } },
+    });
+
+    expect(check?.reason).toBe('missing_frontmatter');
+    expect(check?.demotes).toBe(false);
+  });
+
+  it('does not warn for non-markdown content even under document context', () => {
+    expect(
+      checkArticleFrontmatter({
+        mimeType: 'text/plain',
+        content: HEADERLESS,
+        context: DOCUMENT_CONTEXT,
+      }),
+    ).toBeNull();
   });
 });
 
