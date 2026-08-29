@@ -37,7 +37,7 @@ export { getLotChain, recentLotsBySupplier } from './supply-lots';
 export { EMISSION_SCHEDULE } from './emissions';
 export { resolveConsent } from './broker-config';
 export { isBrokerRelease, isBrokerRejection } from './types';
-// Match engine broker reactors — registered via registerBrokerReactor() in broker.ts after #1103 merges.
+// Match engine broker reactors — registered in broker.ts alongside the core four.
 export { mutualReachConsentReactor } from './reactors/mutual-reach-consent';
 export { intersectionScopeReactor } from './reactors/intersection-scope';
 export type {
