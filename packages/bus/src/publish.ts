@@ -17,14 +17,23 @@ export async function publish<T extends BusEventType>(
 
   const config = await getChainConfig(type, event.scope);
 
+  // Load-time validation: every reactor referenced by the chain must be
+  // registered. Fail loudly at chain-resolution time instead of silently
+  // skipping at request time (#1872).
+  const missing = config.reactors
+    .filter((r) => r.enabled)
+    .map((r) => r.type)
+    .filter((t) => !getReactor(t));
+  if (missing.length > 0) {
+    throw new Error(
+      `Unknown reactor(s) in chain for eventType=${config.eventType} scope=${config.scope ?? 'null'}: ${missing.join(', ')}`
+    );
+  }
+
   for (const reactor of config.reactors) {
     if (!reactor.enabled) continue;
 
-    const handler = getReactor(reactor.type);
-    if (!handler) {
-      log.warn({ reactor: reactor.type, event: type }, 'Unknown reactor type');
-      continue;
-    }
+    const handler = getReactor(reactor.type)!;
 
     try {
       if (reactor.await) {

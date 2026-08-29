@@ -11,6 +11,8 @@ import { consentReactor } from './reactors/consent';
 import { scopeReactor } from './reactors/scope';
 import { releaseReactor } from './reactors/release';
 import { auditReactor, auditRejection } from './reactors/audit';
+import { mutualReachConsentReactor } from './reactors/mutual-reach-consent';
+import { intersectionScopeReactor } from './reactors/intersection-scope';
 import { sendConsentRequestNotification } from './reactors/consent-request-notify';
 import { getBrokerChainConfig } from './config';
 import { getBrokerReactor, registerBrokerReactor } from './broker-registry';
@@ -31,6 +33,8 @@ registerBrokerReactor('consent', consentReactor);
 registerBrokerReactor('scope', scopeReactor);
 registerBrokerReactor('release', releaseReactor);
 registerBrokerReactor('audit', auditReactor);
+registerBrokerReactor('mutual-reach-consent', mutualReachConsentReactor);
+registerBrokerReactor('intersection-scope', intersectionScopeReactor);
 
 /**
  * Default broker pipeline, used when no chain config row exists for the
@@ -64,16 +68,24 @@ async function resolveBrokerChain(
     return DEFAULT_BROKER_CHAIN;
   }
 
+  // Load-time validation: every broker reactor referenced by the chain must
+  // be registered. Fail loudly at chain-resolution time instead of silently
+  // skipping at request time (#1872).
+  const missing = config.reactors
+    .filter((rc) => rc.enabled)
+    .map((rc) => rc.type)
+    .filter((t) => !getBrokerReactor(t));
+  if (missing.length > 0) {
+    throw new Error(
+      `Unknown broker reactor(s) in chain for eventType=${eventType} scope=${scope}: ${missing.join(', ')}`
+    );
+  }
+
   const chain: BrokerChainStep[] = [];
   for (const rc of config.reactors) {
     if (!rc.enabled) continue;
 
-    const reactor = getBrokerReactor(rc.type);
-    if (!reactor) {
-      log.warn({ reactor: rc.type, eventType, scope }, 'Unknown broker reactor type; skipping');
-      continue;
-    }
-
+    const reactor = getBrokerReactor(rc.type)!;
     chain.push({ type: rc.type, reactor });
   }
 

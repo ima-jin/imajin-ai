@@ -62,7 +62,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'ticket.registration.reminder': [
     { type: 'notify', config: { scope: 'event:ticket-registration-reminder' }, enabled: true },
   ],
-  // #1375 — supply-recorder runs first (awaited) to write the settled stage row
+  // #1375 / migration 0098 — supply-recorder runs first (awaited) to write the settled stage row
   // before settle executes the .fair split. The recorder is a no-op for non-supply
   // order.completed events (scope !== 'supply').
   'order.completed': [
@@ -86,10 +86,10 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'settle', config: {}, await: true, enabled: true },
     { type: 'notify', config: { scope: 'market:purchase' }, enabled: true },
   ],
-  // #1820 — `attestation-notify` additionally routes to notify's send for the
+  // #1820 / migration 0098 — `attestation-notify` additionally routes to notify's send for the
   // subset of attestations that are genuinely awaiting the subject's
   // counter-signature (gated internally on payload.pendingSignature).
-  // Kept in sync with migration 0096 — #1821 added `attestation-notify` here
+  // Kept in sync with migration 0098 — #1821 added `attestation-notify` here
   // but shipped no migration, so migration 0039's DB row (emit only) silently
   // shadowed this default until #1856/0096 caught the DB row up.
   'attestation.created': [
@@ -332,6 +332,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'availability.intent.created': [
     { type: 'match-engine', config: {}, enabled: true },
   ],
+  // #1102 / migration 0098 — emit + notify-match-delivery for match-engine disclosures.
   'availability.match.surfaced': [
     { type: 'emit', config: {}, enabled: true },
     { type: 'notify-match-delivery', config: {}, enabled: true },
