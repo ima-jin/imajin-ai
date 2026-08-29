@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockDbSelect, mockDbInsert, mockDbInsertValues, mockSendEmail, mockRateLimit } = vi.hoisted(() => {
+const { mockDbSelect, mockDbInsert, mockDbInsertValues, mockSendEmail, mockRateLimit, mockGetClient } = vi.hoisted(() => {
   const mockDbInsertValuesInner = vi.fn(async (..._args: unknown[]) => undefined);
   return {
     mockDbSelect: vi.fn(),
@@ -10,6 +10,7 @@ const { mockDbSelect, mockDbInsert, mockDbInsertValues, mockSendEmail, mockRateL
     mockDbInsert: vi.fn(() => ({ values: (...args: unknown[]) => mockDbInsertValuesInner(...args) })),
     mockSendEmail: vi.fn(async () => ({ success: true })),
     mockRateLimit: vi.fn(() => ({ limited: false, retryAfter: 0 })),
+    mockGetClient: vi.fn(),
   };
 });
 
@@ -32,7 +33,7 @@ vi.mock('@imajin/email', () => ({
 }));
 
 vi.mock('@imajin/db', () => ({
-  getClient: vi.fn(),
+  getClient: mockGetClient,
 }));
 
 function selectChain(result: unknown) {
@@ -120,5 +121,63 @@ describe('POST /api/onboard — invite context threading (#1834 Phase 2)', () =>
     expect(mockDbInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({ scopeDid: null, inviteCode: null }),
     );
+  });
+});
+
+describe('POST /api/onboard — login mode security (#1871)', () => {
+  const SOFT_DID = 'did:imajin:soft-user';
+  const HARD_DID = 'did:imajin:hard-user';
+
+  it('sends magic link for an existing soft-DID credential', async () => {
+    mockDbSelect.mockImplementationOnce(() => selectChain([{ did: SOFT_DID }]));
+    mockDbSelect.mockImplementationOnce(() => selectChain([{ tier: 'soft' }]));
+
+    const res = await POST(makeReq({ email: 'soft@example.com', mode: 'login' }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.sent).toBe(true);
+  });
+
+  it('rejects hard DIDs before writing any onboard token', async () => {
+    mockDbSelect.mockImplementationOnce(() => selectChain([{ did: HARD_DID }]));
+    mockDbSelect.mockImplementationOnce(() => selectChain([{ tier: 'preliminary' }]));
+
+    const res = await POST(makeReq({ email: 'hard@example.com', mode: 'login' }));
+
+    expect(res.status).toBe(403);
+    // No token should have been inserted — the hardDid check blocks before that.
+    expect(mockDbInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('profile fallback is read-only and does not insert a credential (#1871)', async () => {
+    // No credential hit …
+    mockDbSelect.mockImplementationOnce(() => selectChain([]));
+    // … but profile.profiles has a row — return it via the raw-sql mock.
+    mockGetClient.mockReturnValueOnce(() => Promise.resolve([{ did: SOFT_DID }]));
+    // Identity tier lookup
+    mockDbSelect.mockImplementationOnce(() => selectChain([{ tier: 'soft' }]));
+
+    const res = await POST(makeReq({ email: 'profile-only@example.com', mode: 'login' }));
+
+    expect(res.status).toBe(200);
+    // The credential table must never have been written to in login resolution.
+    const credentialInserts = mockDbInsertValues.mock.calls.filter(
+      (call) => call[0]?.type === 'email',
+    );
+    expect(credentialInserts).toHaveLength(0);
+  });
+
+  it('enumerate-protects unknown emails in login mode (no inserts, still 200)', async () => {
+    mockDbSelect.mockImplementationOnce(() => selectChain([]));
+    mockGetClient.mockReturnValueOnce(() => Promise.resolve([]));
+
+    const res = await POST(makeReq({ email: 'unknown@example.com', mode: 'login' }));
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.sent).toBe(true);
+    // No onboard token should have been written for an unknown email.
+    expect(mockDbInsertValues).not.toHaveBeenCalled();
   });
 });

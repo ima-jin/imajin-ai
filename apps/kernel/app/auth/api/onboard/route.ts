@@ -183,18 +183,9 @@ async function resolveLoginEmail(
     `;
     if (profileRows.length > 0) {
       resolvedDid = profileRows[0].did;
-      try {
-        await db.insert(credentials).values({
-          id: `cred_${nanoid(16)}`,
-          did: resolvedDid,
-          type: 'email',
-          value: normalizedEmail,
-          verifiedAt: new Date(),
-        });
-      } catch (e: unknown) {
-        const code = (e as { code?: string } | null)?.code;
-        if (code !== '23505') throw e; // 23505 = unique violation; harmless race
-      }
+      // Intentionally NOT inserting a credential here — profile.contact_email
+      // is a lookup hint, not proof of ownership. Verified credentials are
+      // only created by the magic-link verify step (see createOrFindSoftDid).
     }
   }
 
