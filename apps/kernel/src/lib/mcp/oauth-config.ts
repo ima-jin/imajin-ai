@@ -29,7 +29,9 @@
  *     and /mcp rejects any token whose `aud` differs.
  *   - RFC 7591 (DCR) — reclassified as DEPRECATED, "retained for backwards
  *     compatibility". We keep it because Claude Desktop still requires a
- *     `registration_endpoint`. No change; Client ID Metadata Documents
+ *     `registration_endpoint`. #1878 opened registration to any spec-valid
+ *     client (see isValidRedirectUri()) instead of an Anthropic-only
+ *     allowlist. Client ID Metadata Documents
  *     (draft-ietf-oauth-client-id-metadata-document) is a SHOULD and is the
  *     forward path, tracked separately.
  *   - RFC 9207 (issuer identification) — NEW to the standards list in this
@@ -139,23 +141,6 @@ export function withIssuerIdentification(url: URL): URL {
 }
 
 /**
- * Redirect-URI allowlist for Dynamic Client Registration (RFC 7591, #1185).
- *
- * Claude Desktop's connector flow REQUIRES DCR (it rejects an AS with no
- * `registration_endpoint` → `oauth_error=registration_endpoint_missing`), so we
- * cannot use the pre-registered-client-only model. A registered client is inert
- * — it grants nothing until a real DID consents — but the one risk that matters
- * is a phished consent via an attacker-controlled `redirect_uri`. We kill that by
- * accepting registration ONLY for exact, known Anthropic callback URLs.
- *
- * Exact-match only. No prefix/substring/wildcard matching, ever.
- */
-export const DCR_ALLOWED_REDIRECT_URIS: readonly string[] = [
-  'https://claude.ai/api/mcp/auth_callback',
-  'https://claude.com/api/mcp/auth_callback',
-];
-
-/**
  * True iff the URI is an RFC 8252 §7.3 loopback redirect.
  *
  * Loopback redirects are safe to allow on any port AND any path because
@@ -181,6 +166,52 @@ export function isLoopbackRedirectUri(uri: string): boolean {
   if (url.protocol !== 'http:') return false;
   const host = url.hostname;
   return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
+}
+
+/**
+ * True iff `uri` is a spec-valid Dynamic Client Registration redirect URI
+ * (RFC 7591, opened up under #1878).
+ *
+ * DCR used to gate registration on an exact, hardcoded allowlist of Anthropic
+ * callback URLs (`DCR_ALLOWED_REDIRECT_URIS`, #1185): a registered client is
+ * inert — it grants nothing until a real DID consents — but the one risk that
+ * mattered was a phished consent via an attacker-controlled `redirect_uri`.
+ * Naming clients traded openness (any spec-compliant MCP client, e.g.
+ * TypingMind, could never register) for a maintenance burden (every new
+ * client needed a code change). This replaces the allowlist with structural
+ * validation that closes the same attack surface without naming clients:
+ *
+ *   - `https:` is required for any non-loopback redirect. This is what
+ *     actually neutralizes a phished consent — an attacker cannot stand up an
+ *     arbitrary HTTPS origin and have it recognized as the legitimate client's
+ *     without controlling that domain's TLS certificate.
+ *   - RFC 8252 §7.3 loopback (`http://localhost` / `127.0.0.1` / `[::1]`, any
+ *     port, any path — see isLoopbackRedirectUri()) is allowed over plain
+ *     http, safe because OAuth 2.1 mandates PKCE S256.
+ *   - No fragment: a fragment is stripped by the browser before the client
+ *     ever sees it (WHATWG URL / RFC 3986 §3.5), so one on a registered
+ *     redirect_uri can only be an attempt to smuggle data past the exact-match
+ *     check performed at authorize time (redirectUriMatches()).
+ *   - No `*` anywhere in the URI: a wildcard host or path (`*.evil.com`,
+ *     `/cb*`, …) would let one registration cover attacker-controlled
+ *     subdomains/paths, defeating that same exact-match check.
+ *   - No other scheme (`myapp://`, `intent://`, …): custom-scheme redirects
+ *     are a legitimate RFC 8252 pattern but need their own claimed-scheme
+ *     validation to mean anything; out of scope for this slice.
+ *   - Must be an absolute, well-formed URI — `new URL()` throws on anything
+ *     else (empty string, relative paths, garbage).
+ */
+export function isValidRedirectUri(uri: string): boolean {
+  if (!uri || uri.includes('*')) return false;
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    return false;
+  }
+  if (url.hash.length > 0) return false;
+  if (isLoopbackRedirectUri(uri)) return true;
+  return url.protocol === 'https:';
 }
 
 /**
@@ -210,11 +241,10 @@ export function redirectUriMatches(incoming: string | null | undefined, register
   }
 }
 
-/** True iff EVERY requested redirect_uri is allowed. */
+/** True iff EVERY requested redirect_uri is spec-valid (RFC 7591 DCR, #1878). */
 export function areRedirectUrisAllowed(uris: readonly string[]): boolean {
   if (uris.length === 0) return false;
-  const allow = new Set(DCR_ALLOWED_REDIRECT_URIS);
-  return uris.every((u) => allow.has(u) || isLoopbackRedirectUri(u));
+  return uris.every((u) => isValidRedirectUri(u));
 }
 
 /**

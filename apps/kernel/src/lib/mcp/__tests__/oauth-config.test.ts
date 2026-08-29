@@ -1,11 +1,13 @@
-// DCR redirect-URI allowlist: Anthropic callbacks are always allowed;
-// loopback redirects (RFC 8252 §7.3) are allowed on any port with no flag.
+// Open DCR (#1878): redirect_uri validation is spec-shaped, not a per-client
+// allowlist. Any absolute https URI registers; loopback redirects (RFC 8252
+// §7.3) are allowed on any port with no flag; fragments, wildcards, and
+// custom schemes are rejected.
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  DCR_ALLOWED_REDIRECT_URIS,
   MCP_SCOPES,
   areRedirectUrisAllowed,
   isLoopbackRedirectUri,
+  isValidRedirectUri,
   redirectUriMatches,
   resolveGrantedScopes,
   resolveRefreshScopes,
@@ -21,11 +23,57 @@ import {
 
 const CLAUDE_URI = 'https://claude.ai/api/mcp/auth_callback';
 
-describe('DCR redirect-URI allowlist', () => {
-  it('allows the exact Anthropic callbacks', () => {
-    for (const uri of DCR_ALLOWED_REDIRECT_URIS) {
-      expect(areRedirectUrisAllowed([uri])).toBe(true);
-    }
+describe('isValidRedirectUri (#1878)', () => {
+  it('accepts any absolute https URI, not only known Anthropic callbacks', () => {
+    expect(isValidRedirectUri(CLAUDE_URI)).toBe(true);
+    expect(isValidRedirectUri('https://claude.com/api/mcp/auth_callback')).toBe(true);
+    expect(isValidRedirectUri('https://typingmind.com/api/mcp/oauth/callback')).toBe(true);
+    expect(isValidRedirectUri('https://random-third-party-client.example/cb')).toBe(true);
+  });
+
+  it('accepts RFC 8252 §7.3 loopback redirects on any port/path', () => {
+    expect(isValidRedirectUri('http://127.0.0.1:6274/oauth/callback')).toBe(true);
+    expect(isValidRedirectUri('http://localhost:8080/oauth/callback')).toBe(true);
+    expect(isValidRedirectUri('http://[::1]:9999/oauth/callback')).toBe(true);
+    expect(isValidRedirectUri('http://127.0.0.1:6274/oauth/callback/debug')).toBe(true);
+  });
+
+  it('rejects plain http on a non-loopback host', () => {
+    expect(isValidRedirectUri('http://evil.example/cb')).toBe(false);
+    expect(isValidRedirectUri('http://typingmind.com/cb')).toBe(false);
+  });
+
+  it('rejects a fragment component', () => {
+    expect(isValidRedirectUri('https://example.com/cb#frag')).toBe(false);
+    expect(isValidRedirectUri('http://localhost:6274/oauth/callback#frag')).toBe(false);
+  });
+
+  it('rejects a wildcard anywhere in the URI', () => {
+    expect(isValidRedirectUri('https://*.evil.example/cb')).toBe(false);
+    expect(isValidRedirectUri('https://evil.example/*')).toBe(false);
+    expect(isValidRedirectUri('https://evil.example/cb*')).toBe(false);
+  });
+
+  it('rejects a custom/other scheme', () => {
+    expect(isValidRedirectUri('myapp://callback')).toBe(false);
+    expect(isValidRedirectUri('intent://callback#Intent')).toBe(false);
+  });
+
+  it('rejects empty or malformed values', () => {
+    expect(isValidRedirectUri('')).toBe(false);
+    expect(isValidRedirectUri('not-a-url')).toBe(false);
+    expect(isValidRedirectUri('/relative/path')).toBe(false);
+  });
+});
+
+describe('areRedirectUrisAllowed — every entry must be spec-valid (#1878)', () => {
+  it('allows the known Anthropic callbacks (still spec-valid https)', () => {
+    expect(areRedirectUrisAllowed([CLAUDE_URI])).toBe(true);
+    expect(areRedirectUrisAllowed(['https://claude.com/api/mcp/auth_callback'])).toBe(true);
+  });
+
+  it('allows an arbitrary spec-valid https client with zero server config', () => {
+    expect(areRedirectUrisAllowed(['https://typingmind.com/api/mcp/oauth/callback'])).toBe(true);
   });
 
   it('allows loopback redirect URIs on any port (RFC 8252 §7.3)', () => {
@@ -40,18 +88,23 @@ describe('DCR redirect-URI allowlist', () => {
     expect(areRedirectUrisAllowed(['http://localhost:8080/not-callback'])).toBe(true);
   });
 
-  it('rejects https on loopback (RFC 8252 loopback is http-only)', () => {
-    expect(areRedirectUrisAllowed(['https://127.0.0.1/oauth/callback'])).toBe(false);
-    expect(areRedirectUrisAllowed(['https://localhost:6274/oauth/callback'])).toBe(false);
+  it('allows https on a loopback host too (https is always acceptable)', () => {
+    expect(areRedirectUrisAllowed(['https://127.0.0.1/oauth/callback'])).toBe(true);
+    expect(areRedirectUrisAllowed(['https://localhost:6274/oauth/callback'])).toBe(true);
   });
 
-  it('rejects non-loopback non-allowlisted URIs', () => {
+  it('rejects non-loopback plain-http URIs', () => {
     expect(areRedirectUrisAllowed(['http://evil.example:6274/oauth/callback'])).toBe(false);
-    expect(areRedirectUrisAllowed(['https://attacker.example/cb'])).toBe(false);
   });
 
-  it('rejects when any one of several URIs is not allowed', () => {
-    expect(areRedirectUrisAllowed([CLAUDE_URI, 'https://attacker.example/cb'])).toBe(false);
+  it('rejects fragments, wildcards, and custom schemes', () => {
+    expect(areRedirectUrisAllowed(['https://attacker.example/cb#frag'])).toBe(false);
+    expect(areRedirectUrisAllowed(['https://*.attacker.example/cb'])).toBe(false);
+    expect(areRedirectUrisAllowed(['myapp://callback'])).toBe(false);
+  });
+
+  it('rejects when any one of several URIs is invalid', () => {
+    expect(areRedirectUrisAllowed([CLAUDE_URI, 'myapp://callback'])).toBe(false);
     expect(
       areRedirectUrisAllowed([
         'http://127.0.0.1:6274/oauth/callback',

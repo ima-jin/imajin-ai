@@ -34,14 +34,21 @@ function asStringArray(value: unknown): string[] | null {
  * Claude Desktop's connector flow requires this endpoint; the pre-registered
  * client model (#1166) was rejected with `registration_endpoint_missing`.
  *
+ * Open DCR (#1878): registration is no longer gated on a hardcoded, per-client
+ * allowlist of redirect URIs. ANY spec-valid client may register — see
+ * isValidRedirectUri() for the structural rules (https required except RFC
+ * 8252 loopback, no fragments, no wildcards, no custom schemes).
+ *
  * SECURITY MODEL — why an unauthenticated public registration is safe here:
  * - A registered client is INERT. It only records "this client MAY ask for
  *   scopes X with redirect Y." It grants ZERO access to any asset.
  * - The real gate is unchanged: /oauth/authorize requires a logged-in DID
  *   SESSION and an explicit consent commit before any token is minted.
  * - The one risk that matters — a phished consent via an attacker-controlled
- *   redirect_uri — is killed here by an EXACT-match redirect allowlist
- *   (Anthropic callbacks only). PKCE further binds the code to the client.
+ *   redirect_uri — is killed by requiring `https:` (or RFC 8252 loopback) and
+ *   rejecting fragments/wildcards/custom schemes at registration, combined
+ *   with the EXACT-match check redirectUriMatches() performs at authorize
+ *   time. PKCE further binds the code to the client.
  * - Scopes are capped to the MCP media scopes; a registered client can never
  *   request anything outside `media:read` / `media:write`.
  * - Rate-limited per-IP to keep registration spam from filling registry.apps.
@@ -66,13 +73,18 @@ export async function POST(request: NextRequest) {
     return regError('invalid_client_metadata', 'invalid JSON body');
   }
 
-  // 1. redirect_uris — required, and every entry must be on the exact allowlist.
+  // 1. redirect_uris — required, and every entry must be spec-valid (#1878):
+  //    https (or RFC 8252 loopback), absolute, no fragment, no wildcard, no
+  //    custom scheme. See isValidRedirectUri().
   const redirectUris = asStringArray(body.redirect_uris);
   if (!redirectUris || redirectUris.length === 0) {
     return regError('invalid_redirect_uri', 'redirect_uris is required and must be a non-empty array of strings');
   }
   if (!areRedirectUrisAllowed(redirectUris)) {
-    return regError('invalid_redirect_uri', 'one or more redirect_uris are not on the allowlist');
+    return regError(
+      'invalid_redirect_uri',
+      'one or more redirect_uris are invalid: must be an absolute https URI (or RFC 8252 loopback), with no fragment, wildcard, or custom scheme',
+    );
   }
 
   // 2. Auth method — public client only. Reject any attempt to register a
