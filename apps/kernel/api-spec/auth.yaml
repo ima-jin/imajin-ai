@@ -17,6 +17,8 @@ servers:
 tags:
   - name: auth
     description: imajin auth service
+  - name: grants
+    description: Scoped delegation grants for external agents (#1882)
 
 components:
   securitySchemes:
@@ -28,7 +30,37 @@ components:
       type: http
       scheme: bearer
       description: "Bearer token (imajin_tok_* API token)"
+    internalKeyAuth:
+      type: apiKey
+      in: header
+      name: x-internal-key
+      description: "Service-to-service key (AUTH_INTERNAL_API_KEY)"
   schemas:
+    DelegationAudience:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [all, dids] }
+        values:
+          type: array
+          items: { type: string, example: "did:imajin:abc123" }
+          description: Required and non-empty when type=dids; absent when type=all. No DID patterns/wildcards.
+    DelegationGrant:
+      type: object
+      properties:
+        grantId: { type: string, example: "grant_xxx" }
+        agentDid: { type: string }
+        delegatorDid: { type: string }
+        capabilities:
+          type: array
+          items: { type: string, example: "messages:write" }
+        audience: { $ref: "#/components/schemas/DelegationAudience" }
+        issuedAt: { type: string, format: date-time }
+        expiry: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        onBehalfOf:
+          type: array
+          items: { type: string }
     Identity:
       type: object
       properties:
@@ -1691,3 +1723,244 @@ paths:
           content:
             text/yaml:
               schema: { type: string }
+
+  /api/grants:
+    post:
+      tags: [grants]
+      operationId: issueGrant
+      summary: Issue a scoped delegation grant to an external agent (#1882)
+      description: |
+        User-push only: the caller must be a directly authenticated delegator
+        principal. A caller acting under `X-Acting-For` agent delegation is
+        rejected — authority flows delegator -> agent only, never the reverse.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentDid, capabilities, audience]
+              properties:
+                agentDid: { type: string }
+                capabilities:
+                  type: array
+                  items: { type: string }
+                audience: { $ref: "#/components/schemas/DelegationAudience" }
+                onBehalfOf:
+                  type: array
+                  items: { type: string }
+                ttlMs: { type: integer, description: "Lease length in ms; clamped to [default, max]." }
+      responses:
+        "201":
+          description: Grant issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grant: { $ref: "#/components/schemas/DelegationGrant" }
+        "400":
+          description: Invalid capabilities, audience, or onBehalfOf chain
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Caller is acting under agent delegation and may not issue grants
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      tags: [grants]
+      operationId: listGrants
+      summary: List the authenticated delegator's own grants
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The delegator's grants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grants:
+                    type: array
+                    items: { $ref: "#/components/schemas/DelegationGrant" }
+
+  /api/grants/{grantId}:
+    delete:
+      tags: [grants]
+      operationId: revokeGrant
+      summary: Revoke an entire grant
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: grantId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Revocation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revoked: { type: boolean }
+        "403":
+          description: Caller is not the delegator who issued this grant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Grant not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/grants/{grantId}/capabilities/{capability}:
+    delete:
+      tags: [grants]
+      operationId: revokeGrantCapability
+      summary: Revoke exactly one capability, without touching its siblings (#1882 item 4)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: grantId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: capability
+          in: path
+          required: true
+          schema: { type: string, example: "messages:write" }
+      responses:
+        "200":
+          description: Revocation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revoked: { type: boolean }
+        "403":
+          description: Caller is not the delegator who issued this grant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Grant not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/grants/{grantId}/renew:
+    post:
+      tags: [grants]
+      operationId: renewGrant
+      summary: Extend a grant's lease (grants are leases with expiry)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: grantId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ttlMs: { type: integer }
+      responses:
+        "200":
+          description: Renewed grant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grant:
+                    type: object
+                    properties:
+                      grantId: { type: string }
+                      expiresAt: { type: string, format: date-time }
+        "403":
+          description: Caller is not the delegator who issued this grant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Grant not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: A revoked grant cannot be renewed — issue a new one
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/internal/grants/introspect:
+    post:
+      tags: [grants]
+      operationId: introspectGrant
+      summary: Resolve delegated authority at execution time (internal, fail-closed)
+      description: |
+        Services call this per delegated action instead of trusting a cached
+        grant. Fails closed: an unauthenticated caller, a malformed body, or a
+        storage error all resolve `authorized: false`; only a genuinely
+        active, unexpired, audience-matching grant returns `true`. Successful
+        responses are cacheable for a short TTL (`Cache-Control: private,
+        max-age=<seconds>`).
+      security:
+        - internalKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentDid, capability]
+              properties:
+                agentDid: { type: string }
+                capability: { type: string, example: "messages:write" }
+                targetDid: { type: string, description: "Required to satisfy a type=dids audience." }
+      responses:
+        "200":
+          description: Introspection result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorized: { type: boolean }
+                  grantId: { type: string }
+                  delegatorDid: { type: string }
+                  agentDid: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  reason: { type: string }
+        "401":
+          description: Missing or invalid x-internal-key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Lookup failed (treated as denied by every caller)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
