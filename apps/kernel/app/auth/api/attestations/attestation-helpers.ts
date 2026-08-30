@@ -3,8 +3,8 @@
  * Extracted to avoid duplication between the public and internal POST endpoints.
  */
 
-import { verifyNostrSig } from '@imajin/auth';
-import type { NostrKeyBindingClaim } from '@imajin/auth';
+import { verifyNostrSig, isDisclosureScope, DISCLOSURE_SCOPES, DEFAULT_DISCLOSURE_SCOPE } from '@imajin/auth';
+import type { NostrKeyBindingClaim, DisclosureScope } from '@imajin/auth';
 import { toOrigin } from '@/src/lib/http/public-origin';
 
 /**
@@ -28,6 +28,58 @@ export function resolveIssuedAt(value: unknown): number {
  */
 export function deriveOriginUrl(request: { headers: { get(name: string): string | null } }): string | undefined {
   return toOrigin(request.headers.get('origin') ?? undefined) ?? undefined;
+}
+
+/**
+ * Envelope fields for the intro-funnel schema (#1885) — delegator_did,
+ * disclosure_scope, prev_event_ref. These ride inside the already-signed
+ * `payload` object rather than as new top-level canonicalize() inputs, so
+ * adding them is not a breaking wire-format change for existing callers.
+ * Both attestation-creation routes mirror them into dedicated indexed
+ * columns after validating here.
+ */
+export interface EnvelopeFields {
+  delegatorDid: string | null;
+  disclosureScope: DisclosureScope;
+  prevEventRef: string | null;
+}
+
+export type EnvelopeValidationResult =
+  | { ok: true; envelope: EnvelopeFields }
+  | { ok: false; error: string };
+
+/** Extract and validate the envelope fields carried inside `payload`. */
+export function resolveEnvelopeFields(payload: unknown): EnvelopeValidationResult {
+  const source: Record<string, unknown> =
+    payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
+
+  const delegatorDidRaw = source.delegator_did;
+  if (delegatorDidRaw !== undefined && delegatorDidRaw !== null && typeof delegatorDidRaw !== 'string') {
+    return { ok: false, error: 'payload.delegator_did must be a string' };
+  }
+
+  let disclosureScope: DisclosureScope = DEFAULT_DISCLOSURE_SCOPE;
+  const disclosureScopeRaw = source.disclosure_scope;
+  if (disclosureScopeRaw !== undefined && disclosureScopeRaw !== null) {
+    if (typeof disclosureScopeRaw !== 'string' || !isDisclosureScope(disclosureScopeRaw)) {
+      return { ok: false, error: `payload.disclosure_scope must be one of: ${DISCLOSURE_SCOPES.join(', ')}` };
+    }
+    disclosureScope = disclosureScopeRaw;
+  }
+
+  const prevEventRefRaw = source.prev_event_ref;
+  if (prevEventRefRaw !== undefined && prevEventRefRaw !== null && typeof prevEventRefRaw !== 'string') {
+    return { ok: false, error: 'payload.prev_event_ref must be a string' };
+  }
+
+  return {
+    ok: true,
+    envelope: {
+      delegatorDid: (delegatorDidRaw as string | undefined) ?? null,
+      disclosureScope,
+      prevEventRef: (prevEventRefRaw as string | undefined) ?? null,
+    },
+  };
 }
 
 export type NostrValidationResult =

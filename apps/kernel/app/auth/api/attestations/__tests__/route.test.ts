@@ -50,6 +50,10 @@ vi.mock('@imajin/auth', () => ({
   crypto: { verifySync: () => true },
   ATTESTATION_TYPES: ['delivery.receipt'],
   verifyNostrSig: vi.fn(),
+  DISCLOSURE_SCOPES: ['parties', 'connections', 'network', 'public'],
+  DEFAULT_DISCLOSURE_SCOPE: 'parties',
+  isDisclosureScope: (v: string) => ['parties', 'connections', 'network', 'public'].includes(v),
+  evidenceGradeForAttestationStatus: vi.fn(),
 }));
 
 vi.mock('@imajin/cid', () => ({ computeCid: vi.fn().mockResolvedValue('bafy-test') }));
@@ -60,6 +64,10 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 vi.mock('@imajin/bus', () => ({ publish: h.mockPublish }));
+
+vi.mock('@/src/lib/auth/attestation-type-registry', () => ({
+  isRegisteredAttestationType: vi.fn().mockResolvedValue(false),
+}));
 
 import { POST } from '../route';
 

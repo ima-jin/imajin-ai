@@ -27,17 +27,41 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, attestations } from '@/src/db';
+import { eq } from 'drizzle-orm';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
-import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl } from '../attestation-helpers';
+import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields } from '../attestation-helpers';
+import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
 
 const log = createLogger('kernel');
 
 function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+}
+
+type EnvelopeResolution = ReturnType<typeof resolveEnvelopeFields>;
+
+/**
+ * Resolve + validate the intro-funnel envelope fields carried in `payload`,
+ * including that `prev_event_ref` (when present) resolves to an existing
+ * attestation. Extracted from POST so the handler's own branching stays
+ * under the cognitive-complexity budget (#1885).
+ */
+async function resolveEnvelope(payload: unknown): Promise<EnvelopeResolution> {
+  const envelopeResult = resolveEnvelopeFields(payload);
+  if (!envelopeResult.ok) return envelopeResult;
+
+  const { prevEventRef } = envelopeResult.envelope;
+  if (!prevEventRef) return envelopeResult;
+
+  const [predecessor] = await db.select({ id: attestations.id }).from(attestations).where(eq(attestations.id, prevEventRef)).limit(1);
+  if (!predecessor) {
+    return { ok: false, error: `prev_event_ref "${prevEventRef}" does not reference an existing attestation` };
+  }
+  return envelopeResult;
 }
 
 function resolveExpiresAt(value: unknown): Date | null | undefined {
@@ -46,6 +70,24 @@ function resolveExpiresAt(value: unknown): Date | null | undefined {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return undefined;
   return parsed;
+}
+
+type NostrResolution = { ok: true; nostrSig: string | null } | { ok: false; error: string };
+
+/**
+ * For `imajin/nostr-key-binding` only: require + verify the caller-supplied
+ * nostr_sig. A no-op for every other type. Extracted from POST to keep the
+ * handler's own branching under the cognitive-complexity budget.
+ */
+function resolveNostrSignature(
+  type: string,
+  nostrSig: unknown,
+  payload: unknown,
+  canonicalPayload: string,
+): NostrResolution {
+  if (type !== 'imajin/nostr-key-binding') return { ok: true, nostrSig: null };
+  const nostrResult = validateNostrKeyBinding(nostrSig, payload, canonicalPayload);
+  return nostrResult.ok ? { ok: true, nostrSig: nostrResult.nostrSigToStore } : { ok: false, error: nostrResult.error };
 }
 
 export async function POST(request: NextRequest) {
@@ -85,12 +127,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'type required' }, { status: 400 });
   }
 
-  if (!(ATTESTATION_TYPES as readonly string[]).includes(type)) {
+  const isKnownType = (ATTESTATION_TYPES as readonly string[]).includes(type) || (await isRegisteredAttestationType(type));
+  if (!isKnownType) {
     return NextResponse.json(
-      { error: `Invalid type. Must be one of: ${ATTESTATION_TYPES.join(', ')}` },
+      { error: `Invalid type. Must be one of: ${ATTESTATION_TYPES.join(', ')}, or a type registered via /auth/api/attestations/types` },
       { status: 400 }
     );
   }
+
+  // Intro-funnel envelope fields (#1885) ride inside `payload` — see resolveEnvelope.
+  const envelopeResult = await resolveEnvelope(payload);
+  if (!envelopeResult.ok) {
+    return NextResponse.json({ error: envelopeResult.error }, { status: 400 });
+  }
+  const { delegatorDid, disclosureScope, prevEventRef } = envelopeResult.envelope;
 
   // Accept issued_at so the caller can pre-compute nostr_sig over the exact canonical form.
   const issuedAtMs = resolveIssuedAt(body.issued_at);
@@ -117,14 +167,11 @@ export async function POST(request: NextRequest) {
   }
 
   // For imajin/nostr-key-binding: require + verify the caller-supplied nostr_sig.
-  let nostrSigToStore: string | null = null;
-  if (type === 'imajin/nostr-key-binding') {
-    const nostrResult = validateNostrKeyBinding(body.nostr_sig, payload, canonicalPayload);
-    if (!nostrResult.ok) {
-      return NextResponse.json({ error: nostrResult.error }, { status: 400 });
-    }
-    nostrSigToStore = nostrResult.nostrSigToStore;
+  const nostrResolution = resolveNostrSignature(type, body.nostr_sig, payload, canonicalPayload);
+  if (!nostrResolution.ok) {
+    return NextResponse.json({ error: nostrResolution.error }, { status: 400 });
   }
+  const nostrSigToStore = nostrResolution.nostrSig;
 
   const id = genId('att');
 
@@ -141,6 +188,9 @@ export async function POST(request: NextRequest) {
         payload: (payload as Record<string, unknown> | undefined) ?? null,
         signature,
         nostrSig: nostrSigToStore,
+        delegatorDid,
+        disclosureScope,
+        prevEventRef,
         issuedAt: new Date(issuedAtMs),
         expiresAt,
       })

@@ -115,6 +115,15 @@ export const attestations = authSchema.table('attestations', {
   documentHash: text('document_hash'),                 // sha256 of signed document
   documentAssetId: text('document_asset_id'),          // references media.assets.id
   totalSigners: integer('total_signers'),              // expected number of signatures
+  // Intro-funnel envelope fields (#1885). subject/actor/timestamp are
+  // already covered by subjectDid/issuerDid/issuedAt above.
+  delegatorDid: text('delegator_did'),                  // optional DID that authorized issuerDid to act (actingFor-style delegation)
+  disclosureScope: text('disclosure_scope').notNull().default('parties'), // 'parties' | 'connections' | 'network' | 'public' — closed enum, DB CHECK-constrained
+  // Immediate predecessor attestation id — makes a funnel a verifiable chain.
+  // Plain column (no Drizzle .references() to avoid a circular self-type),
+  // same convention as messagesV2.replyToMessageId; the FK constraint is
+  // enforced at the DB level by migrations/0100_attestation_funnel_envelope.sql.
+  prevEventRef: text('prev_event_ref'),
   issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -124,6 +133,29 @@ export const attestations = authSchema.table('attestations', {
   typeIdx: index('idx_auth_attestations_type').on(table.type),
   statusIdx: index('idx_auth_attestations_status').on(table.attestationStatus),
   expiresIdx: index('idx_auth_attestations_expires').on(table.expiresAt).where(sql`${table.expiresAt} IS NOT NULL`),
+  prevEventRefIdx: index('idx_auth_attestations_prev_event_ref').on(table.prevEventRef).where(sql`${table.prevEventRef} IS NOT NULL`),
+  disclosureScopeIdx: index('idx_auth_attestations_disclosure_scope').on(table.disclosureScope),
+}));
+
+/**
+ * Attestation Type Registry — registry-as-data (#1885). Platform-seeded rows
+ * (namespace='platform') ship the intro-funnel vocabulary; third parties
+ * register new types under their own namespace via
+ * POST /auth/api/attestations/types, gated on requireEstablishedDID.
+ *
+ * Additive: the compile-time ATTESTATION_TYPES array in @imajin/auth is
+ * unchanged and keeps validating pre-existing types with zero DB hits. This
+ * table is the extension surface for types that don't ship in a release.
+ */
+export const attestationTypeRegistry = authSchema.table('attestation_type_registry', {
+  typeName: text('type_name').primaryKey(),
+  namespace: text('namespace').notNull().default('platform'),
+  registeredByDid: text('registered_by_did'),           // null for platform-seeded entries
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  namespaceIdx: index('idx_attestation_type_registry_namespace').on(table.namespace),
 }));
 
 /**
@@ -337,6 +369,8 @@ export type Attestation = typeof attestations.$inferSelect;
 export type NewAttestation = typeof attestations.$inferInsert;
 export type AttestationSignature = typeof attestationSignatures.$inferSelect;
 export type NewAttestationSignature = typeof attestationSignatures.$inferInsert;
+export type AttestationTypeRegistryRow = typeof attestationTypeRegistry.$inferSelect;
+export type NewAttestationTypeRegistryRow = typeof attestationTypeRegistry.$inferInsert;
 export type Credential = typeof credentials.$inferSelect;
 export type NewCredential = typeof credentials.$inferInsert;
 export type IdentityChain = typeof identityChains.$inferSelect;
