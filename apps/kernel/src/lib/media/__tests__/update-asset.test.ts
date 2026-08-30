@@ -267,3 +267,69 @@ describe('updateAssetContent — article frontmatter guard (#1542)', () => {
     expect(result.ok).toBe(true);
   });
 });
+
+// ─── #1870 — document-context markdown (silent lane) ───────────────────────
+
+describe('updateAssetContent — document-context frontmatter guard (#1870)', () => {
+  it('warns for a document-context asset that never had a projection', async () => {
+    setupAsset({ metadata: { context: { app: 'document' } } });
+
+    const result = await updateAssetContent({
+      assetId: 'asset_test',
+      requesterDid: 'did:imajin:owner',
+      content: HEADERLESS,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.articleWarning?.demotes).toBe(false);
+    expect(result.articleWarning?.reason).toBe('missing_frontmatter');
+    // Default is warn-only: the content is still written.
+    expect(writeFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT warn when the new document-context content keeps valid frontmatter', async () => {
+    setupAsset({ metadata: { context: { app: 'document' } } });
+
+    const result = await updateAssetContent({
+      assetId: 'asset_test',
+      requesterDid: 'did:imajin:owner',
+      content: WITH_HEADER,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.articleWarning).toBeNull();
+  });
+
+  it('hard-rejects a headerless document-context write under strict', async () => {
+    setupAsset({ metadata: { context: { app: 'document' } } });
+
+    const result = await updateAssetContent({
+      assetId: 'asset_test',
+      requesterDid: 'did:imajin:owner',
+      content: HEADERLESS,
+      strict: true,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('article_frontmatter_required');
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('does NOT warn for note-context markdown (stays exempt)', async () => {
+    setupAsset({ metadata: { context: { app: 'note' } } });
+
+    const result = await updateAssetContent({
+      assetId: 'asset_test',
+      requesterDid: 'did:imajin:owner',
+      content: HEADERLESS,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.articleWarning).toBeNull();
+  });
+});

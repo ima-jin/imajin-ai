@@ -23,8 +23,16 @@ import { projectArticleFromFrontmatter } from "./article-core";
 /** Markdown is the only content class that carries article frontmatter. */
 const MARKDOWN_MIME = "text/markdown";
 
-/** `context.app` / `context.feature` values that declare article intent. */
-const ARTICLE_CONTEXT_VALUES = new Set(["article", "articles"]);
+/**
+ * `context.app` / `context.feature` values that declare article intent.
+ *
+ * `document` is included (#1870): render-intent markdown uploaded/updated as
+ * `context: document` with no frontmatter was a silent lane — clean 200,
+ * `metadata.article: null`, served as raw text with no warning fields. Note
+ * context (and no context at all) stays exempt; only these values opt a
+ * markdown write into the guard.
+ */
+const ARTICLE_CONTEXT_VALUES = new Set(["article", "articles", "document"]);
 
 /** Why `metadata.article` will be null. */
 export type ArticleFrontmatterReason = "missing_frontmatter" | "invalid_frontmatter";
