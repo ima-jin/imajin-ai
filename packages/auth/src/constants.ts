@@ -55,6 +55,20 @@ export const KNOCK_IP_RATE_LIMIT = 10;
 export const KNOCK_IP_RATE_WINDOW = MINUTE;
 
 /**
+ * Grant-bound event-subscription surface for external agents (#1884).
+ *
+ * Retention is a modest window, not infinite replay (#1881 Day-1 review,
+ * "shrinks backpressure/dead-letter to near-zero: a chronically absent agent
+ * is just an old cursor plus an expiring grant"). A gap wider than this
+ * window is not recoverable via catch-up — the grant itself will typically
+ * have expired well before 14 days of absence anyway (GRANT_MAX_TTL=30d
+ * notwithstanding, GRANT_DEFAULT_TTL is 24h).
+ */
+export const EVENT_SUBSCRIPTION_RETENTION = 14 * DAY;
+/** Max events returned per GET /auth/api/events/subscriptions/catchup page. */
+export const EVENT_SUBSCRIPTION_CATCHUP_PAGE_SIZE = 200;
+
+/**
  * Signed Message Max Age: 5 minutes (default)
  * For real-time verification of signed messages.
  * Can be overridden per-verification.
