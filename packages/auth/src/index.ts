@@ -48,6 +48,9 @@ export {
   NODE_STALE_THRESHOLD,
   NODE_UNREACHABLE_THRESHOLD,
   NODE_GRACE_PERIOD,
+  GRANT_DEFAULT_TTL,
+  GRANT_MAX_TTL,
+  GRANT_INTROSPECTION_CACHE_TTL,
 } from "./constants";
 export type { NodeHeartbeat, NodeRegistration, NodeRegistrationRequest, NodeRegistrationResponse, NodeAttestation } from "./types/node";
 export { getEmailForDid, getDidForEmail, resolveDidForEmail, resolveEmailForDid } from "./credentials";
@@ -123,3 +126,26 @@ export type { AppAuthContext, AppAuthResult } from "./require-app-auth";
 export { resolveEffectiveDid } from "./resolve-effective-did";
 export type { EffectiveDidResult } from "./resolve-effective-did";
 export { resolveActingDid, resolveComposedBy } from "./acting-did";
+export {
+  GRANT_SCOPE_REGISTRY,
+  GRANT_SCOPE_GRAMMAR,
+  isKnownGrantScope,
+  grantScopeEntry,
+  allGrantScopes,
+  validateGrantCapabilities,
+  eventTypesForGrantScopes,
+} from "./grant-scopes";
+export type { GrantScope } from "./grant-scopes";
+export {
+  isDid,
+  isDelegationAudience,
+  audienceAllows,
+  isOnBehalfOfChain,
+  grantProvenance,
+} from "./delegation-grant";
+export type {
+  DelegationAudience,
+  CapabilityRevocation,
+  DelegationGrant,
+  DelegationProvenance,
+} from "./delegation-grant";

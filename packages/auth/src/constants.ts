@@ -32,6 +32,12 @@ export const CHALLENGE_TTL = 5 * MINUTE;
  */
 export const TOKEN_TTL = 24 * HOUR;
 
+/** Scoped delegation grants are leases, never perpetual authority (#1882). */
+export const GRANT_DEFAULT_TTL = 24 * HOUR;
+export const GRANT_MAX_TTL = 30 * DAY;
+/** Services may cache a positive introspection result for at most five seconds. */
+export const GRANT_INTROSPECTION_CACHE_TTL = 5 * SECOND;
+
 /**
  * Signed Message Max Age: 5 minutes (default)
  * For real-time verification of signed messages.
