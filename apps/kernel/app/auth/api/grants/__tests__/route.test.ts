@@ -3,16 +3,20 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { requireAuthMock, issueGrantMock, listGrantsForDelegatorMock } = vi.hoisted(() => ({
+const { requireAuthMock, issueGrantMock, listGrantsForDelegatorMock, recordIntroAttributionTermsMock } = vi.hoisted(() => ({
   requireAuthMock: vi.fn(),
   issueGrantMock: vi.fn(),
   listGrantsForDelegatorMock: vi.fn(),
+  recordIntroAttributionTermsMock: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAuth: requireAuthMock }));
 vi.mock('@/src/lib/auth/grants', () => ({
   issueGrant: issueGrantMock,
   listGrantsForDelegator: listGrantsForDelegatorMock,
+}));
+vi.mock('@/src/lib/fair/intro-attribution', () => ({
+  recordIntroAttributionTerms: recordIntroAttributionTermsMock,
 }));
 
 import { POST, GET } from '../route';
@@ -89,6 +93,94 @@ describe('POST /auth/api/grants — user-push-only issuance', () => {
     const res = await POST(makeRequest('POST', { agentDid: AGENT, capabilities: ['bogus:scope'], audience: { type: 'all' } }));
 
     expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /auth/api/grants — intro-attribution terms (#1886)', () => {
+  it('does not attempt to record terms when introAttributionTerms is omitted', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
+    issueGrantMock.mockResolvedValue({ grant: { grantId: 'grant_1' } });
+
+    const res = await POST(makeRequest('POST', { agentDid: AGENT, capabilities: ['intros:propose'], audience: { type: 'all' } }));
+
+    expect(res.status).toBe(201);
+    expect(recordIntroAttributionTermsMock).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ grant: { grantId: 'grant_1' } });
+  });
+
+  it('rejects a malformed split before issuing the grant', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
+
+    const res = await POST(
+      makeRequest('POST', {
+        agentDid: AGENT,
+        capabilities: ['intros:propose'],
+        audience: { type: 'all' },
+        introAttributionTerms: { split: { matchmakerBps: 5000, partyABps: 1000, partyBBps: 1000 } },
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(issueGrantMock).not.toHaveBeenCalled();
+    expect(recordIntroAttributionTermsMock).not.toHaveBeenCalled();
+  });
+
+  it('records declared terms after a successful grant when intros:propose is present', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
+    issueGrantMock.mockResolvedValue({ grant: { grantId: 'grant_1' } });
+    recordIntroAttributionTermsMock.mockResolvedValue({
+      terms: { id: 'iat_1', grantId: 'grant_1', split: { matchmakerBps: 7000, partyABps: 1500, partyBBps: 1500 } },
+    });
+
+    const res = await POST(
+      makeRequest('POST', {
+        agentDid: AGENT,
+        capabilities: ['intros:propose'],
+        audience: { type: 'all' },
+        introAttributionTerms: { attributionWindowDays: 365 },
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(recordIntroAttributionTermsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ grantId: 'grant_1', delegatorDid: DELEGATOR, attributionWindowDays: 365 }),
+    );
+    const body = await res.json();
+    expect(body.introAttributionTerms).toEqual({ id: 'iat_1', grantId: 'grant_1', split: { matchmakerBps: 7000, partyABps: 1500, partyBBps: 1500 } });
+  });
+
+  it('ignores introAttributionTerms when the grant does not carry intros:propose', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
+    issueGrantMock.mockResolvedValue({ grant: { grantId: 'grant_1' } });
+
+    const res = await POST(
+      makeRequest('POST', {
+        agentDid: AGENT,
+        capabilities: ['messages:write'],
+        audience: { type: 'all' },
+        introAttributionTerms: { attributionWindowDays: 365 },
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(recordIntroAttributionTermsMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a lib-level terms error with its own status code', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: DELEGATOR } });
+    issueGrantMock.mockResolvedValue({ grant: { grantId: 'grant_1' } });
+    recordIntroAttributionTermsMock.mockResolvedValue({ error: 'Intro-attribution terms are already declared for this grant', status: 409 });
+
+    const res = await POST(
+      makeRequest('POST', {
+        agentDid: AGENT,
+        capabilities: ['intros:propose'],
+        audience: { type: 'all' },
+        introAttributionTerms: {},
+      }),
+    );
+
+    expect(res.status).toBe(409);
   });
 });
 

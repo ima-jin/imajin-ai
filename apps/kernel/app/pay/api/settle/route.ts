@@ -28,9 +28,11 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { verifyManifest } from '@imajin/fair';
+import type { FairManifest, FairManifestV1_1 } from '@imajin/fair';
 import { createDbResolver } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
+import { verifyIntroAttributionManifestForSettlement } from '@/src/lib/fair/intro-attribution';
 
 const log = createLogger('kernel');
 
@@ -45,6 +47,145 @@ async function verifyChainStatus(did: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+interface FairManifestChainItem {
+  did: string;
+  amount: number;
+  role: string;
+}
+
+type SettlementValidationResult =
+  | { error: string; status: number }
+  | { signatureVerified: boolean };
+
+function validateChain(chain: unknown, total_amount: number): { error: string; status: number } | { chainTotal: number } {
+  if (!chain || !Array.isArray(chain)) {
+    return { error: 'fair_manifest.chain must be an array', status: 400 };
+  }
+  let chainTotal = 0;
+  for (const item of chain as FairManifestChainItem[]) {
+    if (!item.did || !item.amount || !item.role) {
+      return { error: 'Each chain item must have did, amount, and role', status: 400 };
+    }
+    chainTotal += item.amount;
+  }
+  if (Math.abs(chainTotal - total_amount) > 0.01) {
+    return { error: `Chain total (${chainTotal}) does not match total_amount (${total_amount})`, status: 400 };
+  }
+  return { chainTotal };
+}
+
+/**
+ * Verify a fair_manifest's optional Ed25519 signature for non-funded
+ * settlements. Funded (external/Stripe) settlements skip verification —
+ * the manifest came from our own service. `fair_manifest` is unvalidated
+ * JSON from the request body — typed `Record<string, unknown>` here (never
+ * `any`) and cast at the one call site that needs the full `FairManifest`
+ * shape, same looseness the route has always had.
+ */
+async function verifySettlementSignature(params: {
+  fair_manifest: Record<string, unknown>;
+  from_did: string;
+  service: string;
+}): Promise<{ error: string; status: number } | { signatureVerified: boolean }> {
+  const { fair_manifest, from_did, service } = params;
+  if (fair_manifest.signature === undefined) {
+    // Unsigned manifest — allow but warn (transitional period)
+    log.warn({ fromDid: from_did, service }, 'Settlement received unsigned fair_manifest');
+    return { signatureVerified: false };
+  }
+  const resolver = createDbResolver(db, identities);
+  const wrappedResolver = async (did: string): Promise<string> => {
+    const identity = await resolver(did);
+    if (!identity) throw new Error(`Could not resolve public key for DID: ${did}`);
+    return identity.publicKey;
+  };
+  const result = await verifyManifest(fair_manifest as unknown as FairManifest, wrappedResolver);
+  if (!result.valid) {
+    return { error: `fair_manifest signature verification failed: ${result.error}`, status: 400 };
+  }
+  return { signatureVerified: true };
+}
+
+/**
+ * Pre-mutation validation for POST /api/settle: chain shape/sum, the #1886
+ * intro-attribution money-rule guard, and (for non-funded settlements)
+ * signature verification. Extracted so this function — not `POST` itself
+ * — absorbs the branching these checks require; behavior is identical to
+ * having them inline.
+ */
+async function validateSettlementRequest(params: {
+  fair_manifest: Record<string, unknown>;
+  total_amount: number;
+  from_did: string;
+  service: string;
+  funded: boolean;
+}): Promise<SettlementValidationResult> {
+  const { fair_manifest, total_amount, from_did, service, funded } = params;
+
+  const chainCheck = validateChain(fair_manifest.chain, total_amount);
+  if ('error' in chainCheck) return chainCheck;
+
+  // #1886 money-rule guard: a no-op for every manifest that isn't the
+  // intro-attribution template. For that template, resolves
+  // fair_manifest.provenance[] against real auth.attestations rows and
+  // enforces the shared trigger gate (money points at facts; a dangling
+  // ref, a missing intro_made anchor, an uncountersigned value_realized
+  // claim, or an expired attribution window all refuse the settlement
+  // outright, before any balance is touched).
+  const introAttributionCheck = await verifyIntroAttributionManifestForSettlement(
+    fair_manifest as unknown as Partial<FairManifestV1_1>,
+  );
+  if (!introAttributionCheck.ok) {
+    return { error: introAttributionCheck.error, status: 400 };
+  }
+
+  if (funded) return { signatureVerified: false };
+  return verifySettlementSignature({ fair_manifest, from_did, service });
+}
+
+interface SettlementSource {
+  source: 'credit' | 'fiat' | 'mixed' | 'external';
+  creditBurn: number;
+  cashBurn: number;
+  settleCurrency: string;
+}
+
+function sourceFromBurn(creditBurn: number, cashBurn: number): 'credit' | 'fiat' | 'mixed' {
+  if (cashBurn === 0) return 'credit';
+  if (creditBurn === 0) return 'fiat';
+  return 'mixed';
+}
+
+/**
+ * Resolve how a non-funded settlement is paid for (credit balance, cash
+ * balance, or a mix), and how much of each to debit. Externally funded
+ * (e.g. Stripe) settlements skip this entirely — no balance check, no
+ * debit — and the caller never invokes this function for that case.
+ */
+async function resolveInternalSettlementSource(params: {
+  from_did: string;
+  total_amount: number;
+  currency: string;
+}): Promise<SettlementSource | { error: string; status: number }> {
+  const { from_did, total_amount, currency } = params;
+  const senderBalanceRows = await db.select().from(balances).where(eq(balances.did, from_did)).limit(1);
+
+  const senderBalance = senderBalanceRows[0];
+  const currentCash = senderBalance ? Number.parseFloat(senderBalance.cashAmount) : 0;
+  const currentCredit = senderBalance ? Number.parseFloat(senderBalance.creditAmount) : 0;
+  const totalBalance = currentCash + currentCredit;
+  const settleCurrency = senderBalance?.currency || currency;
+
+  if (totalBalance < total_amount) {
+    return { error: `Insufficient balance: ${totalBalance} < ${total_amount}`, status: 400 };
+  }
+
+  const creditBurn = Math.min(currentCredit, total_amount);
+  const cashBurn = total_amount - creditBurn;
+
+  return { source: sourceFromBurn(creditBurn, cashBurn), creditBurn, cashBurn, settleCurrency };
 }
 
 async function emitAttestations(
@@ -133,102 +274,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!fair_manifest.chain || !Array.isArray(fair_manifest.chain)) {
-      return NextResponse.json(
-        { error: 'fair_manifest.chain must be an array' },
-        { status: 400, headers: cors }
-      );
+    const validation = await validateSettlementRequest({ fair_manifest, total_amount, from_did, service, funded });
+    if ('error' in validation) {
+      return NextResponse.json({ error: validation.error }, { status: validation.status, headers: cors });
     }
+    const { signatureVerified } = validation;
 
-    // Validate chain
-    let chainTotal = 0;
-    for (const item of fair_manifest.chain) {
-      if (!item.did || !item.amount || !item.role) {
-        return NextResponse.json(
-          { error: 'Each chain item must have did, amount, and role' },
-          { status: 400, headers: cors }
-        );
-      }
-      chainTotal += item.amount;
+    // Externally funded (e.g. Stripe checkout) skips balance check/debit
+    // entirely; an internal settlement resolves which balance(s) to burn.
+    const sourceResolution: SettlementSource | { error: string; status: number } = funded
+      ? { source: 'external', creditBurn: 0, cashBurn: 0, settleCurrency: currency }
+      : await resolveInternalSettlementSource({ from_did, total_amount, currency });
+    if ('error' in sourceResolution) {
+      return NextResponse.json({ error: sourceResolution.error }, { status: sourceResolution.status, headers: cors });
     }
-
-    // Verify total matches chain sum
-    if (Math.abs(chainTotal - total_amount) > 0.01) {
-      return NextResponse.json(
-        { error: `Chain total (${chainTotal}) does not match total_amount (${total_amount})` },
-        { status: 400, headers: cors }
-      );
-    }
-
-    // Cryptographic signature verification for non-funded settlements.
-    // Funded (external/Stripe) settlements skip verification — manifest came from our own service.
-    let signatureVerified = false;
-
-    if (!funded) {
-      if (fair_manifest.signature === undefined) {
-        // Unsigned manifest — allow but warn (transitional period)
-        log.warn({ fromDid: from_did, service }, 'Settlement received unsigned fair_manifest');
-      } else {
-        const resolver = createDbResolver(db, identities);
-        const wrappedResolver = async (did: string): Promise<string> => {
-          const identity = await resolver(did);
-          if (!identity) throw new Error(`Could not resolve public key for DID: ${did}`);
-          return identity.publicKey;
-        };
-
-        const result = await verifyManifest(fair_manifest, wrappedResolver);
-        if (result.valid) {
-          signatureVerified = true;
-        } else {
-          // Signed but invalid — reject
-          return NextResponse.json(
-            { error: `fair_manifest signature verification failed: ${result.error}` },
-            { status: 400, headers: cors }
-          );
-        }
-      }
-    }
-
-    let source: 'credit' | 'fiat' | 'mixed' | 'external';
-    let creditBurn = 0;
-    let cashBurn = 0;
-    let settleCurrency = currency;
-
-    if (funded) {
-      // Externally funded (e.g. Stripe checkout) — no balance check, no debit
-      source = 'external';
-    } else {
-      // Internal balance settlement — check and debit
-      const senderBalanceRows = await db
-        .select()
-        .from(balances)
-        .where(eq(balances.did, from_did))
-        .limit(1);
-
-      const senderBalance = senderBalanceRows[0];
-      const currentCash = senderBalance ? Number.parseFloat(senderBalance.cashAmount) : 0;
-      const currentCredit = senderBalance ? Number.parseFloat(senderBalance.creditAmount) : 0;
-      const totalBalance = currentCash + currentCredit;
-      settleCurrency = senderBalance?.currency || currency;
-
-      if (totalBalance < total_amount) {
-        return NextResponse.json(
-          { error: `Insufficient balance: ${totalBalance} < ${total_amount}` },
-          { status: 400, headers: cors }
-        );
-      }
-
-      creditBurn = Math.min(currentCredit, total_amount);
-      cashBurn = total_amount - creditBurn;
-
-      if (cashBurn === 0) {
-        source = 'credit';
-      } else if (creditBurn === 0) {
-        source = 'fiat';
-      } else {
-        source = 'mixed';
-      }
-    }
+    const { source, creditBurn, cashBurn, settleCurrency } = sourceResolution;
 
     // Verify chain status for payer and all payees (non-blocking — don't fail payment)
     const payeeDids = [...new Set((fair_manifest.chain as Array<{ did: string; amount: number; role: string }>).map((r) => r.did))];

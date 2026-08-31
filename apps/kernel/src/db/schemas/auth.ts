@@ -481,6 +481,40 @@ export const agentKnocks = authSchema.table('agent_knocks', {
 export type AgentKnockRow = typeof agentKnocks.$inferSelect;
 export type NewAgentKnockRow = typeof agentKnocks.$inferInsert;
 
+/**
+ * Intro-attribution grant-time terms (#1886) — the matchmaking agent's
+ * declared 70/15/15 split + attribution window, consented by the
+ * delegator at the moment they issue an `intros:propose` grant (#1882).
+ * A side table keyed 1:1 on `delegation_grants(id)` rather than columns on
+ * that table, so the core grant lifecycle stays untouched by this
+ * template's concerns ("compose, don't rebuild" — #1886 rides #1882's
+ * grant object, it doesn't extend it).
+ *
+ * Deliberately NOT tied to `delegation_grants.expires_at` for its own
+ * validity: attribution survives grant expiry (expiry severs authority,
+ * never attribution — #1886 invariant 8), bounded instead by
+ * `attribution_window_days` measured from the funnel's own `intro_made`
+ * attestation.
+ */
+export const introAttributionTerms = authSchema.table('intro_attribution_terms', {
+  id: text('id').primaryKey(),                                      // iat_{nanoid}
+  grantId: text('grant_id').notNull().unique().references(() => delegationGrants.id, { onDelete: 'cascade' }),
+  knockId: text('knock_id').references(() => agentKnocks.id),       // originating #1883 knock, if any
+  delegatorDid: text('delegator_did').notNull(),                    // consenting principal (== grant.delegatorDid)
+  matchmakerDid: text('matchmaker_did').notNull(),                  // agent DID (== grant.agentDid)
+  matchmakerShareBps: integer('matchmaker_share_bps').notNull().default(7000),
+  partyAShareBps: integer('party_a_share_bps').notNull().default(1500),
+  partyBShareBps: integer('party_b_share_bps').notNull().default(1500),
+  attributionWindowDays: integer('attribution_window_days').notNull().default(365),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  grantIdx: index('idx_intro_attribution_terms_grant').on(table.grantId),
+  delegatorIdx: index('idx_intro_attribution_terms_delegator').on(table.delegatorDid),
+}));
+
+export type IntroAttributionTermsRow = typeof introAttributionTerms.$inferSelect;
+export type NewIntroAttributionTermsRow = typeof introAttributionTerms.$inferInsert;
+
 // Types
 export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;

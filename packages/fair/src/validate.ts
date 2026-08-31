@@ -209,6 +209,33 @@ function validateFees(fees: unknown): string[] {
   return [];
 }
 
+/**
+ * Validate the optional `provenance[]` field (#1886) — one-directional
+ * refs from a `.fair` manifest to the attestation facts that justify it.
+ * Existence/resolvability against real attestation rows is a DB-backed
+ * check performed by the caller (e.g. the settlement join surface), not
+ * here — this only validates shape.
+ */
+function validateProvenance(provenance: unknown): string[] {
+  if (provenance === undefined) return [];
+  if (!Array.isArray(provenance)) return ["provenance must be an array"];
+  const errors: string[] = [];
+  for (let i = 0; i < provenance.length; i++) {
+    const entry = provenance[i] as Record<string, unknown>;
+    if (typeof entry !== "object" || entry === null) {
+      errors.push(`provenance[${i}] must be an object`);
+      continue;
+    }
+    if (typeof entry.attestationId !== "string" || !entry.attestationId) {
+      errors.push(`provenance[${i}].attestationId must be a non-empty string`);
+    }
+    if (typeof entry.type !== "string" || !entry.type) {
+      errors.push(`provenance[${i}].type must be a non-empty string`);
+    }
+  }
+  return errors;
+}
+
 function validateV1_1(manifest: Record<string, unknown>): string[] {
   return [
     ...validateRequiredFieldsV1_1(manifest),
@@ -220,6 +247,7 @@ function validateV1_1(manifest: Record<string, unknown>): string[] {
     ...validateCommercial(manifest.commercial),
     ...validateSettlement(manifest.settlement),
     ...validateFees(manifest.fees),
+    ...validateProvenance(manifest.provenance),
   ];
 }
 
