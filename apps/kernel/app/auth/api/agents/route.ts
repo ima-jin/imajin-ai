@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, identityMembers } from '@/src/db';
-import { eq, and, isNull } from 'drizzle-orm';
+import { db, identities, identityMembers, attestations } from '@/src/db';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { requireAuth, generateKeypair, resolveActingDid } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
+import { listGrantDetailsForDelegator, type DelegationGrantDetail } from '@/src/lib/auth/grants';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -18,11 +19,31 @@ interface AgentResponse {
   tier: string;
   status: 'online' | 'offline';
   role: string;
+  /** True once #1887's grants-view has at least one grant on record for this agent. */
+  isExternal: boolean;
+  /** Bring-your-own DID recorded as an attestation at knock-accept time (#1883), if any. */
+  externalDid: string | null;
+  /** Grants-view read surface (#1887): every grant this caller has issued to this agent. */
+  grants: DelegationGrantDetail[];
+  /**
+   * True when this agent still has an active role='agent' identity_members
+   * row on the caller's identity — i.e. it may still be authorized via the
+   * #1887 dual-read membership fallback rather than a grant. Surfaced so
+   * the UI can nudge "issue a scoped grant to replace this".
+   */
+  hasLegacyMembership: boolean;
 }
 
 /**
  * GET /auth/api/agents
- * List all agents linked to the authenticated user.
+ *
+ * #1887: re-renders as a grants view. "One list, all agents": local agents
+ * (owned via the legacy identity_members owner/agent bootstrap) and external
+ * agents (connected via #1883's knock+accept, never owned via membership) are
+ * merged into a single list, distinguished by the external-identity
+ * attestation from #1883 rather than by type. Every agent's grants (issued,
+ * revoked, expired — the honest record) are embedded per the grants-view
+ * read-surface spec.
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request);
@@ -35,7 +56,7 @@ export async function GET(request: NextRequest) {
   const actingDid = resolveActingDid(authResult.identity);
 
   try {
-    const rows = await db
+    const ownedRows = await db
       .select({
         did: identities.id,
         handle: identities.handle,
@@ -56,16 +77,93 @@ export async function GET(request: NextRequest) {
       )
       .orderBy(identities.createdAt);
 
-    const agents: AgentResponse[] = rows.map((row) => ({
-      did: row.did,
-      handle: row.handle,
-      displayName: row.name,
-      name: row.name,
-      createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
-      tier: row.tier,
-      status: 'offline' as const, // placeholder until real status tracking
-      role: row.role,
-    }));
+    const grantDetails = await listGrantDetailsForDelegator(actingDid);
+    const grantsByAgent = new Map<string, DelegationGrantDetail[]>();
+    for (const grant of grantDetails) {
+      const list = grantsByAgent.get(grant.agentDid) ?? [];
+      list.push(grant);
+      grantsByAgent.set(grant.agentDid, list);
+    }
+
+    type OwnedRow = (typeof ownedRows)[number];
+    const ownedDids = new Set(ownedRows.map((row: OwnedRow) => row.did));
+    const externalOnlyDids = [...grantsByAgent.keys()].filter((did) => !ownedDids.has(did));
+
+    const externalIdentityRows = externalOnlyDids.length === 0 ? [] : await db
+      .select({
+        did: identities.id,
+        handle: identities.handle,
+        name: identities.name,
+        createdAt: identities.createdAt,
+        tier: identities.tier,
+      })
+      .from(identities)
+      .where(inArray(identities.id, externalOnlyDids));
+
+    const allAgentDids = [...new Set([...ownedRows.map((row: OwnedRow) => row.did), ...externalOnlyDids])];
+
+    // #1883: an agent that supplied a bring-your-own external DID at
+    // knock-accept time gets it recorded as an attestation — the sibling-
+    // topology signal the grants view uses to badge "external", never the
+    // agent's own identity `subtype` (every agent, local or external, is
+    // subtype='agent').
+    const externalIdentityAttestations = allAgentDids.length === 0 ? [] : await db
+      .select({ subjectDid: attestations.subjectDid, payload: attestations.payload })
+      .from(attestations)
+      .where(and(inArray(attestations.subjectDid, allAgentDids), eq(attestations.type, 'agent.external_identity')));
+    const externalDidByAgent = new Map<string, string>();
+    for (const row of externalIdentityAttestations) {
+      const payload = row.payload as { external_did?: string } | null;
+      if (payload?.external_did) externalDidByAgent.set(row.subjectDid, payload.external_did);
+    }
+
+    // Legacy dual-read fallback visibility (#1887): does this agent still
+    // hold the coarse role='agent' membership on the caller's identity?
+    const legacyMembershipRows = allAgentDids.length === 0 ? [] : await db
+      .select({ memberDid: identityMembers.memberDid })
+      .from(identityMembers)
+      .where(
+        and(
+          eq(identityMembers.identityDid, actingDid),
+          inArray(identityMembers.memberDid, allAgentDids),
+          eq(identityMembers.role, 'agent'),
+          isNull(identityMembers.removedAt),
+        ),
+      );
+    const legacyMembershipDids = new Set(legacyMembershipRows.map((row: { memberDid: string }) => row.memberDid));
+
+    type ExternalIdentityRow = (typeof externalIdentityRows)[number];
+
+    const agents: AgentResponse[] = [
+      ...ownedRows.map((row: OwnedRow) => ({
+        did: row.did,
+        handle: row.handle,
+        displayName: row.name,
+        name: row.name,
+        createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
+        tier: row.tier,
+        status: 'offline' as const, // placeholder until real status tracking
+        role: row.role,
+        isExternal: externalDidByAgent.has(row.did),
+        externalDid: externalDidByAgent.get(row.did) ?? null,
+        grants: grantsByAgent.get(row.did) ?? [],
+        hasLegacyMembership: legacyMembershipDids.has(row.did),
+      })),
+      ...externalIdentityRows.map((row: ExternalIdentityRow) => ({
+        did: row.did,
+        handle: row.handle,
+        displayName: row.name,
+        name: row.name,
+        createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
+        tier: row.tier,
+        status: 'offline' as const,
+        role: 'grant', // no identity_members ownership row — present solely via a grant
+        isExternal: externalDidByAgent.has(row.did),
+        externalDid: externalDidByAgent.get(row.did) ?? null,
+        grants: grantsByAgent.get(row.did) ?? [],
+        hasLegacyMembership: legacyMembershipDids.has(row.did),
+      })),
+    ];
 
     return NextResponse.json({ agents });
   } catch (error) {

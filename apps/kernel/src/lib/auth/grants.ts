@@ -22,8 +22,8 @@
  *   - Per-capability revocation never touches sibling capabilities or the
  *     parent grant; whole-grant revocation is a distinct, explicit action.
  */
-import { and, eq, gt, inArray } from 'drizzle-orm';
-import { db, delegationGrants, delegationGrantCapabilities } from '@/src/db';
+import { and, eq, gt, inArray, desc } from 'drizzle-orm';
+import { db, delegationGrants, delegationGrantCapabilities, delegationGrantEvents } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import {
@@ -72,6 +72,28 @@ function toGrantRecord(row: {
     capabilityRevocations: [],
     onBehalfOf: Array.isArray(row.onBehalfOf) ? (row.onBehalfOf as string[]) : [],
   };
+}
+
+/** Grant lifecycle audit trail (#1887 grants-view read surface). Best-effort:
+ * a logging failure must never unwind an otherwise-successful grant mutation. */
+async function recordGrantEvent(params: {
+  grantId: string;
+  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked';
+  actorDid: string;
+  capability?: string;
+}): Promise<void> {
+  try {
+    await db.insert(delegationGrantEvents).values({
+      id: generateId('gevt'),
+      grantId: params.grantId,
+      event: params.event,
+      capability: params.capability ?? null,
+      actorDid: params.actorDid,
+      createdAt: new Date(),
+    });
+  } catch (err) {
+    log.error({ err: String(err), grantId: params.grantId, event: params.event }, 'Failed to record grant lifecycle event');
+  }
 }
 
 export interface IssueGrantInput {
@@ -149,6 +171,7 @@ export async function issueGrant(input: IssueGrantInput): Promise<{ grant: Deleg
   }
 
   log.info({ grantId, delegatorDid, agentDid, capabilities: valid }, 'Delegation grant issued');
+  await recordGrantEvent({ grantId, event: 'issued', actorDid: delegatorDid });
 
   return {
     grant: toGrantRecord({ id: grantId, agentDid, delegatorDid, audience, onBehalfOf, issuedAt, expiresAt, status: 'active', revokedAt: null }, valid),
@@ -173,6 +196,10 @@ export async function revokeGrant(params: { grantId: string; requestedBy: string
     .set({ status: 'revoked', revokedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(delegationGrants.id, params.grantId), eq(delegationGrants.status, 'active')))
     .returning({ id: delegationGrants.id });
+
+  if (result.length > 0) {
+    await recordGrantEvent({ grantId: params.grantId, event: 'revoked', actorDid: params.requestedBy });
+  }
 
   return { revoked: result.length > 0 };
 }
@@ -209,6 +236,10 @@ export async function revokeGrantCapability(params: {
     )
     .returning({ id: delegationGrantCapabilities.id });
 
+  if (result.length > 0) {
+    await recordGrantEvent({ grantId: params.grantId, event: 'capability_revoked', actorDid: params.requestedBy, capability: params.capability });
+  }
+
   return { revoked: result.length > 0 };
 }
 
@@ -242,6 +273,8 @@ export async function renewGrant(params: {
     .update(delegationGrants)
     .set({ expiresAt, updatedAt: new Date() })
     .where(eq(delegationGrants.id, params.grantId));
+
+  await recordGrantEvent({ grantId: params.grantId, event: 'renewed', actorDid: params.requestedBy });
 
   return { grantId: params.grantId, expiresAt: expiresAt.toISOString() };
 }
@@ -321,6 +354,14 @@ export async function introspectGrant(params: {
     const audience = grant.audience as DelegationAudience;
     if (audience.type === 'dids' && (!targetDid || !audience.values.includes(targetDid))) continue;
 
+    // Grants-view read surface (#1887): lastUsedAt is the honest "did this
+    // grant actually do anything" signal. Best-effort — a logging failure
+    // must never turn a real authorization into a denial.
+    db.update(delegationGrants)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(delegationGrants.id, grant.grantId))
+      .catch((err: unknown) => log.error({ err: String(err), grantId: grant.grantId }, 'Failed to record grant lastUsedAt'));
+
     return {
       authorized: true,
       grantId: grant.grantId,
@@ -362,4 +403,129 @@ export async function listGrantsForDelegator(delegatorDid: string): Promise<Dele
   return grantRows
     .map((row: Parameters<typeof toGrantRecord>[0]) => toGrantRecord(row, capabilitiesByGrant.get(row.id) ?? []))
     .sort((a: DelegationGrant, b: DelegationGrant) => b.issuedAt.localeCompare(a.issuedAt));
+}
+
+export type GrantStatusLabel = 'active' | 'expiring' | 'expired' | 'revoked';
+
+/** A grant is "expiring" inside this window — a UI nudge to renew, not an enforcement boundary. */
+const EXPIRING_SOON_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function grantStatusLabel(params: { status: string; expiresAt: string; now?: Date }): GrantStatusLabel {
+  if (params.status === 'revoked') return 'revoked';
+  const now = params.now ?? new Date();
+  const expiresAt = new Date(params.expiresAt).getTime();
+  if (expiresAt <= now.getTime()) return 'expired';
+  if (expiresAt - now.getTime() <= EXPIRING_SOON_WINDOW_MS) return 'expiring';
+  return 'active';
+}
+
+export interface GrantCapabilityDetail {
+  capability: GrantScope;
+  status: 'active' | 'revoked';
+  revokedAt: string | null;
+}
+
+export interface GrantEventDetail {
+  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked';
+  capability: string | null;
+  actorDid: string;
+  createdAt: string;
+}
+
+export interface DelegationGrantDetail {
+  grantId: string;
+  agentDid: string;
+  delegatorDid: string;
+  audience: DelegationAudience;
+  onBehalfOf: string[];
+  issuedAt: string;
+  expiresAt: string;
+  status: GrantStatusLabel;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  capabilities: GrantCapabilityDetail[];
+  history: GrantEventDetail[];
+}
+
+/**
+ * List a delegator's grants with the full grants-view read-surface detail
+ * (#1887 pinned comment): every capability regardless of status (so revoked
+ * scopes still render as chips, not disappear), lastUsedAt, and lifecycle
+ * history. Revoked/expired grants are included, not filtered out — "the
+ * record doesn't disappear because the authority did".
+ */
+export async function listGrantDetailsForDelegator(delegatorDid: string): Promise<DelegationGrantDetail[]> {
+  const grantRows = await db
+    .select()
+    .from(delegationGrants)
+    .where(eq(delegationGrants.delegatorDid, delegatorDid));
+
+  if (grantRows.length === 0) return [];
+
+  const grantIds = grantRows.map((row: { id: string }) => row.id);
+
+  const capabilityRows = await db
+    .select({
+      grantId: delegationGrantCapabilities.grantId,
+      capability: delegationGrantCapabilities.capability,
+      status: delegationGrantCapabilities.status,
+      revokedAt: delegationGrantCapabilities.revokedAt,
+    })
+    .from(delegationGrantCapabilities)
+    .where(inArray(delegationGrantCapabilities.grantId, grantIds));
+
+  const capabilitiesByGrant = new Map<string, GrantCapabilityDetail[]>();
+  for (const row of capabilityRows) {
+    const list = capabilitiesByGrant.get(row.grantId) ?? [];
+    list.push({
+      capability: row.capability as GrantScope,
+      status: row.status as 'active' | 'revoked',
+      revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
+    });
+    capabilitiesByGrant.set(row.grantId, list);
+  }
+
+  const eventRows = await db
+    .select({
+      grantId: delegationGrantEvents.grantId,
+      event: delegationGrantEvents.event,
+      capability: delegationGrantEvents.capability,
+      actorDid: delegationGrantEvents.actorDid,
+      createdAt: delegationGrantEvents.createdAt,
+    })
+    .from(delegationGrantEvents)
+    .where(inArray(delegationGrantEvents.grantId, grantIds))
+    .orderBy(desc(delegationGrantEvents.createdAt));
+
+  const historyByGrant = new Map<string, GrantEventDetail[]>();
+  for (const row of eventRows) {
+    const list = historyByGrant.get(row.grantId) ?? [];
+    list.push({
+      event: row.event as GrantEventDetail['event'],
+      capability: row.capability ?? null,
+      actorDid: row.actorDid,
+      createdAt: row.createdAt.toISOString(),
+    });
+    historyByGrant.set(row.grantId, list);
+  }
+
+  return grantRows
+    .map((row: typeof grantRows[number]) => {
+      const expiresAt = row.expiresAt.toISOString();
+      return {
+        grantId: row.id,
+        agentDid: row.agentDid,
+        delegatorDid: row.delegatorDid,
+        audience: row.audience as DelegationAudience,
+        onBehalfOf: Array.isArray(row.onBehalfOf) ? (row.onBehalfOf as string[]) : [],
+        issuedAt: row.issuedAt.toISOString(),
+        expiresAt,
+        status: grantStatusLabel({ status: row.status, expiresAt }),
+        revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
+        lastUsedAt: row.lastUsedAt ? row.lastUsedAt.toISOString() : null,
+        capabilities: capabilitiesByGrant.get(row.id) ?? [],
+        history: historyByGrant.get(row.id) ?? [],
+      };
+    })
+    .sort((a: DelegationGrantDetail, b: DelegationGrantDetail) => b.issuedAt.localeCompare(a.issuedAt));
 }
