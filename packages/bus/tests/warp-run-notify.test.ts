@@ -19,7 +19,7 @@ const { mockEmit, mockNotify } = vi.hoisted(() => ({
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
+  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() }),
 }));
 
 // Force getChainConfig() to use the fallback DEFAULTS map, which now mirrors

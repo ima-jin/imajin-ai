@@ -504,6 +504,7 @@ async function fetchChainConfigFromDb(
         eventType,
         scope,
         reactors: row.enabled ? (row.reactors as ReactorConfig[]) : [],
+        source: 'db',
       };
     } else {
       // 2. Fall back to node default (scope IS NULL)
@@ -521,6 +522,7 @@ async function fetchChainConfigFromDb(
           eventType,
           scope: null,
           reactors: row.enabled ? (row.reactors as ReactorConfig[]) : [],
+          source: 'db',
         };
       }
     }
@@ -547,5 +549,6 @@ function makeFallbackConfig(eventType: string): ChainConfig {
     eventType,
     scope: null,
     reactors,
+    source: 'defaults',
   };
 }
