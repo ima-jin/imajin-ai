@@ -7,6 +7,9 @@ import { verifyNostrSig, isDisclosureScope, DISCLOSURE_SCOPES, DEFAULT_DISCLOSUR
 import type { NostrKeyBindingClaim, DisclosureScope } from '@imajin/auth';
 import { toOrigin } from '@/src/lib/http/public-origin';
 import { introspectGrant } from '@/src/lib/auth/grants';
+import { db, attestations } from '@/src/db';
+import type { Attestation } from '@/src/db';
+import { eq } from 'drizzle-orm';
 
 /**
  * Resolve an issued_at field from a request body to a Unix timestamp in ms.
@@ -43,6 +46,11 @@ export interface EnvelopeFields {
   delegatorDid: string | null;
   disclosureScope: DisclosureScope;
   prevEventRef: string | null;
+  // Amendment-by-supersession (#1790): the bilateral attestation this one
+  // proposes to amend, if any. Deliberately kept separate from prevEventRef
+  // both here and at the DB level (see attestations.supersedes) — a funnel
+  // envelope ref must never trip supersession logic.
+  supersedes: string | null;
 }
 
 export type EnvelopeValidationResult =
@@ -73,14 +81,158 @@ export function resolveEnvelopeFields(payload: unknown): EnvelopeValidationResul
     return { ok: false, error: 'payload.prev_event_ref must be a string' };
   }
 
+  const supersedesRaw = source.supersedes;
+  if (supersedesRaw !== undefined && supersedesRaw !== null && typeof supersedesRaw !== 'string') {
+    return { ok: false, error: 'payload.supersedes must be a string' };
+  }
+
   return {
     ok: true,
     envelope: {
       delegatorDid: (delegatorDidRaw as string | undefined) ?? null,
       disclosureScope,
       prevEventRef: (prevEventRefRaw as string | undefined) ?? null,
+      supersedes: (supersedesRaw as string | undefined) ?? null,
     },
   };
+}
+
+/**
+ * Thrown when the countersign-time re-check of a `supersedes` reference
+ * fails inside `db.transaction()` (see countersign/route.ts) — the
+ * transaction rolls back and the route maps this to an HTTP response.
+ * Mirrors the typed-error-with-status convention already used by
+ * `VaultDelegationError` (src/lib/vault/errors.ts) and `WarpApiError`
+ * (src/lib/warp/errors.ts).
+ */
+export class SupersessionError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'SupersessionError';
+    this.status = status;
+  }
+}
+
+export type SupersessionEligibilityTarget = Pick<Attestation, 'issuerDid' | 'subjectDid' | 'attestationStatus'>;
+
+export type SupersessionEligibilityResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Amendment-by-supersession (#1790) is only accepted when the proposer is a
+ * party (issuer or subject) to the referenced attestation, and that
+ * attestation is currently bilateral — supersession only applies
+ * post-bilateral, per the design. A `contextId`/`payload.amends`-style
+ * reference is not enough on its own (see migrations/0109's rationale).
+ *
+ * Pure and DB-independent so it can run both at creation time (against a
+ * freshly `db.select()`-ed row) and again at countersign time inside
+ * `db.transaction()` against a `tx.select()`-ed row — the same rule can
+ * never drift between the two call sites.
+ */
+export function checkSupersessionEligibility(
+  target: SupersessionEligibilityTarget,
+  proposerDid: string,
+): SupersessionEligibilityResult {
+  const isParty = target.issuerDid === proposerDid || target.subjectDid === proposerDid;
+  if (!isParty) {
+    return {
+      ok: false,
+      error: `supersedes must reference an attestation "${proposerDid}" is a party to (issuer or subject)`,
+    };
+  }
+  if (target.attestationStatus !== 'bilateral') {
+    return {
+      ok: false,
+      error: `supersedes must reference a bilateral attestation (found "${target.attestationStatus ?? 'legacy (no status)'}")`,
+    };
+  }
+  return { ok: true };
+}
+
+export type SupersedesValidationResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Creation-time validation for a `supersedes` reference: it must resolve to
+ * an existing attestation, and `checkSupersessionEligibility` must pass for
+ * `proposerDid` (the new attestation's issuer). Shared by both
+ * attestation-creation routes so the check can never drift between them.
+ */
+export async function validateSupersedesReference(
+  supersedes: string,
+  proposerDid: string,
+): Promise<SupersedesValidationResult> {
+  const [target] = await db.select().from(attestations).where(eq(attestations.id, supersedes)).limit(1);
+  if (!target) {
+    return { ok: false, error: `supersedes "${supersedes}" does not reference an existing attestation` };
+  }
+  return checkSupersessionEligibility(target, proposerDid);
+}
+
+/** A minimal projection of an attestation for chain-history responses. */
+export interface SupersessionChainLink {
+  id: string;
+  attestationStatus: string | null;
+  supersedes: string | null;
+}
+
+export interface AttestationHistoryResult {
+  /** The full v1<-v2<-... chain, root (v1) first, most recent last. */
+  chain: SupersessionChainLink[];
+  /** Still-`pending` amendments proposed against the chain's current end — #1790's "a pending amendment against a bilateral record must be queryable" (open-dispute visibility). */
+  openDisputes: SupersessionChainLink[];
+}
+
+// Defensive cap on chain-walk hops — creation-time + countersign-time
+// validation only ever let a `supersedes` link point at a bilateral row, so
+// a cycle should be structurally impossible, but this bounds the query
+// fan-out regardless.
+const MAX_SUPERSESSION_CHAIN_HOPS = 1000;
+
+function toChainLink(row: Attestation): SupersessionChainLink {
+  return { id: row.id, attestationStatus: row.attestationStatus, supersedes: row.supersedes };
+}
+
+/**
+ * Read-side chain walk for amendment-by-supersession (#1790). Given any
+ * attestation id in a v1<-v2<-... chain, returns the whole chain (walking
+ * `supersedes` backward to the root, then forward through whichever
+ * successor actually reached bilateral/superseded) plus any still-pending
+ * amendments proposed against the chain's current end.
+ *
+ * Reads default to operative records elsewhere (GET /auth/api/attestations
+ * excludes `superseded` unless explicitly asked for); this is the
+ * counterpart history view that shows the whole chain regardless of status.
+ */
+export async function resolveAttestationHistory(attestationId: string): Promise<AttestationHistoryResult | null> {
+  const [start] = await db.select().from(attestations).where(eq(attestations.id, attestationId)).limit(1);
+  if (!start) return null;
+
+  const backward: Attestation[] = [start];
+  let current = start;
+  for (let hops = 0; hops < MAX_SUPERSESSION_CHAIN_HOPS && current.supersedes; hops++) {
+    const [predecessor] = await db.select().from(attestations).where(eq(attestations.id, current.supersedes)).limit(1);
+    if (!predecessor) break;
+    backward.push(predecessor);
+    current = predecessor;
+  }
+  const chain = backward.reverse();
+
+  let tail = chain[chain.length - 1];
+  let openDisputes: Attestation[] = [];
+  for (let hops = 0; hops < MAX_SUPERSESSION_CHAIN_HOPS; hops++) {
+    const successors = await db.select().from(attestations).where(eq(attestations.supersedes, tail.id));
+    const winner = successors.find((row) => row.attestationStatus === 'bilateral' || row.attestationStatus === 'superseded');
+    if (!winner) {
+      openDisputes = successors.filter((row) => row.attestationStatus === 'pending');
+      break;
+    }
+    chain.push(winner);
+    tail = winner;
+  }
+
+  return { chain: chain.map(toChainLink), openDisputes: openDisputes.map(toChainLink) };
 }
 
 export type DelegationVerificationResult =

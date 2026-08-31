@@ -112,7 +112,7 @@ export const attestations = authSchema.table('attestations', {
   nostrSig: text('nostr_sig'),                          // secp256k1 Schnorr hex (imajin/nostr-key-binding proof-of-control)
   authorJws: text('author_jws'),                       // JWS compact token (author signature)
   witnessJws: text('witness_jws'),                     // JWS compact token (countersignature)
-  attestationStatus: text('attestation_status').default('pending'), // 'pending' | 'bilateral' | 'declined' | 'collecting' | 'executed' | 'expired'
+  attestationStatus: text('attestation_status').default('pending'), // 'pending' | 'bilateral' | 'declined' | 'superseded' | 'collecting' | 'executed' | 'expired'
   documentHash: text('document_hash'),                 // sha256 of signed document
   documentAssetId: text('document_asset_id'),          // references media.assets.id
   totalSigners: integer('total_signers'),              // expected number of signatures
@@ -132,6 +132,17 @@ export const attestations = authSchema.table('attestations', {
   // constraint is enforced at the DB level by
   // migrations/0107_attestation_delegation_grant.sql.
   delegationGrantId: text('delegation_grant_id'),
+  // Amendment-by-supersession (#1790): the bilateral attestation (v1) this
+  // row proposes to amend, if any. Distinct from prevEventRef — that column
+  // is deliberately side-effect-free funnel-chain plumbing, while this one
+  // drives an atomic status flip (v1 -> 'superseded') on countersign. Plain
+  // column (no Drizzle .references(), same convention as prevEventRef and
+  // delegationGrantId above); the FK constraint is enforced at the DB level
+  // by migrations/0109_attestation_supersedes.sql. Eligibility (proposer
+  // must be party to v1, and v1 must be bilateral) is validated at creation
+  // time and re-verified atomically at countersign time — see
+  // app/auth/api/attestations/attestation-helpers.ts.
+  supersedes: text('supersedes'),
   issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -144,6 +155,7 @@ export const attestations = authSchema.table('attestations', {
   prevEventRefIdx: index('idx_auth_attestations_prev_event_ref').on(table.prevEventRef).where(sql`${table.prevEventRef} IS NOT NULL`),
   disclosureScopeIdx: index('idx_auth_attestations_disclosure_scope').on(table.disclosureScope),
   delegationGrantIdx: index('idx_auth_attestations_delegation_grant').on(table.delegationGrantId).where(sql`${table.delegationGrantId} IS NOT NULL`),
+  supersedesIdx: index('idx_auth_attestations_supersedes').on(table.supersedes).where(sql`${table.supersedes} IS NOT NULL`),
 }));
 
 /**

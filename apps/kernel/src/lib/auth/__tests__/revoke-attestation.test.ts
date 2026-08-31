@@ -38,6 +38,7 @@ vi.mock('@/src/db', () => ({
     id: 'attestations.id',
     subjectDid: 'attestations.subjectDid',
     revokedAt: 'attestations.revokedAt',
+    attestationStatus: 'attestations.attestationStatus',
   },
   oauthRefreshTokens: {
     attestationId: 'oauthRefreshTokens.attestationId',
@@ -49,6 +50,7 @@ vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]) => ({ eq: args }),
   and: (...args: unknown[]) => ({ and: args }),
   isNull: (...args: unknown[]) => ({ isNull: args }),
+  ne: (...args: unknown[]) => ({ ne: args }),
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -125,5 +127,24 @@ describe('revokeAttestationOnce (#1795)', () => {
 
     expect(results.filter((r) => r.revoked)).toHaveLength(1);
     expect(mocks.insertValuesMock).toHaveBeenCalledOnce();
+  });
+
+  // #1790: bilateral attestations must be immune to unilateral revoke/cancel
+  // by construction, not by coincidence — an explicit guard in the CAS
+  // itself, not merely absence of a mutation path.
+  it('guards the compare-and-swap with an explicit exclusion of bilateral rows', async () => {
+    mocks.updateReturningMock.mockResolvedValueOnce([]);
+
+    await revokeAttestationOnce({
+      attestationId: ATTESTATION_ID,
+      revokedByDid: ISSUER_DID,
+      privateKey: 'test-private-key',
+    });
+
+    // The claim UPDATE's `.where(and(eq(...), isNull(...), ne(...)))` call
+    // must include a `ne` condition excluding attestationStatus = 'bilateral'.
+    const whereClause = mocks.updateWhereMock.mock.calls[0][0] as { and: Array<{ ne?: unknown[] }> };
+    const neCondition = whereClause.and.find((condition) => 'ne' in condition);
+    expect(neCondition).toEqual({ ne: ['attestations.attestationStatus', 'bilateral'] });
   });
 });

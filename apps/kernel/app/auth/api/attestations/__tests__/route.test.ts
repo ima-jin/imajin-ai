@@ -236,3 +236,71 @@ describe('delegated attestations (#1895, #1897)', () => {
     expect(h.mockIntrospectGrant).not.toHaveBeenCalled();
   });
 });
+
+// #1790 — amendment-by-supersession: creation-time party + bilateral validation.
+describe('amendment-by-supersession (#1790)', () => {
+  const V1_ID = 'att_v1_bilateral';
+
+  function supersedingBody(overrides: Record<string, unknown> = {}) {
+    return baseBody({ payload: { supersedes: V1_ID }, ...overrides });
+  }
+
+  it('rejects with 400 when supersedes does not reference an existing attestation', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([]); // supersedes lookup finds nothing
+
+    const res = await POST(makeReq(supersedingBody()));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/does not reference an existing attestation/);
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 400 when the issuer is not a party to the referenced attestation', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([
+      { id: V1_ID, issuerDid: 'did:imajin:unrelated', subjectDid: 'did:imajin:also-unrelated', attestationStatus: 'bilateral' },
+    ]);
+
+    const res = await POST(makeReq(supersedingBody()));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/party to/);
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 400 when the referenced attestation is not bilateral', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([
+      { id: V1_ID, issuerDid: ISSUER, subjectDid: SUBJECT, attestationStatus: 'pending' },
+    ]);
+
+    const res = await POST(makeReq(supersedingBody()));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/bilateral/);
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('accepts and persists supersedes when the issuer is a party to a bilateral target', async () => {
+    // First select() call resolves the supersedes lookup; the persistent
+    // default from beforeEach then serves the subsequent issuer-identity
+    // lookup in verifyIssuerAndDelegation.
+    h.mockSelectLimit.mockResolvedValueOnce([
+      { id: V1_ID, issuerDid: ISSUER, subjectDid: SUBJECT, attestationStatus: 'bilateral' },
+    ]);
+
+    const res = await POST(makeReq(supersedingBody()));
+
+    expect(res.status).toBe(201);
+    expect(h.mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ supersedes: V1_ID }));
+  });
+
+  it('never validates supersedes when the payload does not carry one', async () => {
+    await POST(makeReq(baseBody()));
+
+    // Only the issuer-identity lookup runs — a single select() call.
+    expect(h.mockSelectLimit).toHaveBeenCalledTimes(1);
+    expect(h.mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ supersedes: null }));
+  });
+});

@@ -3,6 +3,7 @@ import { corsHeaders } from '@imajin/config';
 import { db, attestations } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { resolveEffectiveDid } from '@imajin/auth';
+import { checkSupersessionEligibility, SupersessionError } from '../attestation-helpers';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -74,12 +75,52 @@ export async function POST(request: NextRequest) {
   // TODO: Verify witnessJws CID matches attestation CID
   // For now, store the JWS — crypto verification is a fast follow
 
-  await db.update(attestations)
-    .set({
-      witnessJws,
-      attestationStatus: 'bilateral',
-    })
-    .where(eq(attestations.id, attestationId));
+  // Amendment-by-supersession (#1790): when this attestation proposes to
+  // amend an earlier one, flip both rows atomically — v1 (referenced by
+  // `supersedes`) -> 'superseded', v2 (this one) -> 'bilateral' — so a
+  // reader can never observe a bilateral v2 whose v1 hasn't (yet) been
+  // retired, or vice versa. Re-verifies eligibility *inside* the
+  // transaction against a fresh read (not the creation-time check, which
+  // could be stale by now) to close the TOCTOU gap between proposing the
+  // amendment and it going bilateral. Follows the db.transaction() pattern
+  // established by promote-actor.ts.
+  if (att.supersedes) {
+    try {
+      await db.transaction(async (tx) => {
+        const [v1] = await tx.select().from(attestations).where(eq(attestations.id, att.supersedes as string)).limit(1);
+        if (!v1) {
+          throw new SupersessionError(`supersedes "${att.supersedes}" does not reference an existing attestation`, 404);
+        }
+        const eligibility = checkSupersessionEligibility(v1, att.issuerDid);
+        if (!eligibility.ok) {
+          throw new SupersessionError(eligibility.error, 409);
+        }
+
+        await tx.update(attestations)
+          .set({ attestationStatus: 'superseded' })
+          .where(eq(attestations.id, v1.id));
+
+        await tx.update(attestations)
+          .set({
+            witnessJws,
+            attestationStatus: 'bilateral',
+          })
+          .where(eq(attestations.id, attestationId));
+      });
+    } catch (err) {
+      if (err instanceof SupersessionError) {
+        return NextResponse.json({ error: err.message }, { status: err.status, headers: cors });
+      }
+      throw err;
+    }
+  } else {
+    await db.update(attestations)
+      .set({
+        witnessJws,
+        attestationStatus: 'bilateral',
+      })
+      .where(eq(attestations.id, attestationId));
+  }
 
   return NextResponse.json({
     id: attestationId,

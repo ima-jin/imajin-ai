@@ -1045,6 +1045,11 @@ paths:
         delegation grant from `delegator_did` to `issuer_did` covers the capability implied
         by `type` (#1895, #1897) — a self-asserted `delegator_did` is never trusted on its
         own. The verified grant id is recorded on the attestation as `delegationGrantId`.
+
+        `payload.supersedes` (amendment-by-supersession, #1790) names a bilateral attestation
+        this one proposes to amend. Once this attestation itself goes bilateral via
+        POST /api/attestations/countersign, the referenced attestation atomically flips to
+        `superseded` — it stays authoritative until then and remains readable afterwards.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -1065,7 +1070,11 @@ paths:
                   type: object
                   description: |
                     May carry the intro-funnel envelope fields (#1885): delegator_did,
-                    disclosure_scope, prev_event_ref.
+                    disclosure_scope, prev_event_ref. May also carry `supersedes` (#1790,
+                    amendment-by-supersession) — the id of a bilateral attestation this one
+                    proposes to amend. Accepted only when the caller (issuer_did) is a party
+                    (issuer or subject) to that attestation and it is currently `bilateral`;
+                    rejected with 400 otherwise. Deliberately independent of prev_event_ref.
                 signature: { type: string, description: "Ed25519 signature over canonical payload (hex)" }
                 issued_at: { type: number, description: "Unix timestamp ms (defaults to now)" }
                 author_jws: { type: string, description: "Optional JWS for bilateral attestation flow" }
@@ -1082,11 +1091,12 @@ paths:
                   issuerDid: { type: string }
                   subjectDid: { type: string }
                   type: { type: string }
-                  attestationStatus: { type: string, enum: [pending, bilateral, declined, "null"] }
+                  attestationStatus: { type: string, enum: [pending, bilateral, declined, superseded, "null"] }
+                  supersedes: { type: string, nullable: true, description: "Bilateral attestation this one proposes to amend, if any (#1790)" }
                   delegationGrantId: { type: string, nullable: true, description: "Grant verified against payload.delegator_did, if any (#1895, #1897)" }
                   issuedAt: { type: string, format: date-time }
         "400":
-          description: Invalid request or signature
+          description: Invalid request or signature, or an invalid/ineligible payload.supersedes reference (#1790)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1118,13 +1128,21 @@ paths:
           schema: { type: string }
         - name: status
           in: query
-          schema: { type: string, enum: [pending, bilateral, declined] }
+          schema: { type: string, enum: [pending, bilateral, declined, superseded] }
+        - name: history_of
+          in: query
+          schema: { type: string }
+          description: |
+            (#1790) Given any attestation id in a v1<-v2<-... supersession chain, returns
+            `{ chain, openDisputes }` instead of the normal list — the whole chain (root
+            first) plus any still-pending amendments against its current end. Bypasses
+            subject_did (not required with this param).
         - name: limit
           in: query
           schema: { type: integer, default: 20, maximum: 100 }
       responses:
         "200":
-          description: Attestation list
+          description: Attestation list (or, with `history_of`, a `{ chain, openDisputes }` chain-history object)
           content:
             application/json:
               schema:
@@ -1141,9 +1159,15 @@ paths:
                     contextType: { type: string }
                     payload: { type: object }
                     attestationStatus: { type: string }
+                    supersedes: { type: string, nullable: true, description: "Bilateral attestation this one proposes to amend, if any (#1790)" }
                     issuedAt: { type: string, format: date-time }
         "400":
           description: subject_did required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: history_of does not resolve to an existing attestation
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1173,7 +1197,16 @@ paths:
       tags: [auth]
       operationId: countersignAttestation
       summary: Countersign a pending attestation (witness/subject signs to make it bilateral)
-      description: Only the attestation subject can countersign. Transitions status from `pending` to `bilateral`.
+      description: |
+        Only the attestation subject can countersign. Transitions status from `pending` to
+        `bilateral`.
+
+        Amendment-by-supersession (#1790): when the attestation being countersigned carries
+        `supersedes`, this atomically also flips the referenced attestation to `superseded`
+        (both updates happen in one db transaction, re-verifying eligibility against a fresh
+        read to close the window since creation-time validation). Returns 404/409 without
+        countersigning either row if the referenced attestation no longer exists or is no
+        longer bilateral/party-eligible by the time this runs.
       security:
         - cookieAuth: []
         - bearerAuth: []

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, attestations, tokens, attestationTypeRegistry } from '@/src/db';
 import type { Attestation } from '@/src/db';
-import { eq, and, isNull, gt, desc, notInArray, inArray } from 'drizzle-orm';
+import { eq, and, isNull, ne, gt, desc, notInArray, inArray } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES, evidenceGradeForAttestationStatus, isDisclosureScope } from '@imajin/auth';
@@ -10,7 +10,7 @@ import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
-import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation } from './attestation-helpers';
+import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation, validateSupersedesReference, resolveAttestationHistory } from './attestation-helpers';
 import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
 import { trustRadius } from '@imajin/trust-graph';
 import { resolveDisclosureAccess } from '@/src/lib/auth/disclosure-access';
@@ -26,20 +26,30 @@ type EnvelopeResolution = ReturnType<typeof resolveEnvelopeFields>;
 /**
  * Resolve + validate the intro-funnel envelope fields carried in `payload`,
  * including that `prev_event_ref` (when present) resolves to an existing
- * attestation. Extracted from POST so the handler's own branching stays
- * under the cognitive-complexity budget (#1885).
+ * attestation, and that `supersedes` (when present) resolves to a bilateral
+ * attestation `proposerDid` is a party to (#1790 — amendment-by-supersession;
+ * deliberately a separate check from prevEventRef, see attestation-helpers).
+ * Extracted from POST so the handler's own branching stays under the
+ * cognitive-complexity budget (#1885).
  */
-async function resolveEnvelope(payload: unknown): Promise<EnvelopeResolution> {
+async function resolveEnvelope(payload: unknown, proposerDid: string): Promise<EnvelopeResolution> {
   const envelopeResult = resolveEnvelopeFields(payload);
   if (!envelopeResult.ok) return envelopeResult;
 
-  const { prevEventRef } = envelopeResult.envelope;
-  if (!prevEventRef) return envelopeResult;
+  const { prevEventRef, supersedes } = envelopeResult.envelope;
 
-  const [predecessor] = await db.select({ id: attestations.id }).from(attestations).where(eq(attestations.id, prevEventRef)).limit(1);
-  if (!predecessor) {
-    return { ok: false, error: `prev_event_ref "${prevEventRef}" does not reference an existing attestation` };
+  if (prevEventRef) {
+    const [predecessor] = await db.select({ id: attestations.id }).from(attestations).where(eq(attestations.id, prevEventRef)).limit(1);
+    if (!predecessor) {
+      return { ok: false, error: `prev_event_ref "${prevEventRef}" does not reference an existing attestation` };
+    }
   }
+
+  if (supersedes) {
+    const supersedesResult = await validateSupersedesReference(supersedes, proposerDid);
+    if (!supersedesResult.ok) return supersedesResult;
+  }
+
   return envelopeResult;
 }
 
@@ -181,11 +191,13 @@ export async function POST(request: NextRequest) {
 
   // Intro-funnel envelope fields (#1885) ride inside `payload`, which is
   // already part of the signed canonical form below — see resolveEnvelope.
-  const envelopeResult = await resolveEnvelope(payload);
+  // The proposer for a `supersedes` reference (#1790) is the issuer of this
+  // new attestation, i.e. whoever is signing the amendment.
+  const envelopeResult = await resolveEnvelope(payload, issuer_did);
   if (!envelopeResult.ok) {
     return NextResponse.json({ error: envelopeResult.error }, { status: 400, headers: cors });
   }
-  const { delegatorDid, disclosureScope, prevEventRef } = envelopeResult.envelope;
+  const { delegatorDid, disclosureScope, prevEventRef, supersedes } = envelopeResult.envelope;
 
   const issuedAtMs = resolveIssuedAt(issued_at);
 
@@ -262,6 +274,7 @@ export async function POST(request: NextRequest) {
       delegatorDid,
       disclosureScope,
       prevEventRef,
+      supersedes,
       delegationGrantId: verification.grantId,
       issuedAt: new Date(issuedAtMs),
     })
@@ -296,6 +309,76 @@ const EVIDENCE_GRADE_TO_STATUS: Record<string, string> = {
 };
 
 /**
+ * Build the `and(...)` condition list for the GET list query. Extracted
+ * from GET so the handler's own branching stays under the
+ * cognitive-complexity budget (#1885, #1790).
+ */
+function buildListConditions(params: {
+  subjectDid: string;
+  typeFilter: string | null;
+  issuerFilter: string | null;
+  statusFilter: string | null;
+}) {
+  const { subjectDid, typeFilter, issuerFilter, statusFilter } = params;
+  const conditions = [
+    eq(attestations.subjectDid, subjectDid),
+    isNull(attestations.revokedAt),
+  ];
+  if (typeFilter) conditions.push(eq(attestations.type, typeFilter));
+  if (issuerFilter) conditions.push(eq(attestations.issuerDid, issuerFilter));
+  if (statusFilter) {
+    conditions.push(eq(attestations.attestationStatus, statusFilter));
+  } else {
+    // #1790: reads default to operative records — a superseded v1 is still
+    // readable by id/history (resolveAttestationHistory, history_of above)
+    // but shouldn't clutter the default "current state" list view. A caller
+    // that explicitly asks for `status=superseded` (or evidence_grade) still
+    // gets it back, since that branch is skipped whenever statusFilter is set.
+    conditions.push(ne(attestations.attestationStatus, 'superseded'));
+  }
+  // #1822: an untyped `status=pending` query is the "pending your
+  // countersignature" view — exclude mechanical audit-record types (e.g.
+  // session.created) that were never awaiting anyone's signature. A caller
+  // that explicitly asks for a mechanical type (`type=session.created`) still
+  // gets it back; this only guards the broad, no-type-filter dashboard query.
+  if (statusFilter === 'pending' && !typeFilter) {
+    conditions.push(notInArray(attestations.type, [...MECHANICAL_ATTESTATION_TYPES]));
+  }
+  return conditions;
+}
+
+/**
+ * Apply disclosure_scope access control (#1885) to rows whose `type` is
+ * registry-gated, leaving legacy (non-registered) types unrestricted.
+ * Extracted from GET so the handler's own branching stays under the
+ * cognitive-complexity budget.
+ */
+async function filterVisibleRows(rows: Attestation[], request: NextRequest): Promise<Attestation[]> {
+  const distinctTypes: string[] = Array.from(new Set(rows.map((row: Attestation): string => row.type)));
+  const registeredTypeRows: { typeName: string }[] = distinctTypes.length
+    ? await db
+        .select({ typeName: attestationTypeRegistry.typeName })
+        .from(attestationTypeRegistry)
+        .where(and(inArray(attestationTypeRegistry.typeName, distinctTypes), isNull(attestationTypeRegistry.revokedAt)))
+    : [];
+  const registryGatedTypes = new Set(registeredTypeRows.map((row) => row.typeName));
+  if (registryGatedTypes.size === 0) return rows;
+
+  const viewerDid = await resolveCallerDid(request);
+  const connectedDids = viewerDid ? await trustRadius(db, viewerDid, 1) : null;
+  return rows.filter((row: Attestation) => {
+    if (!registryGatedTypes.has(row.type)) return true; // legacy type — unrestricted, unchanged behavior
+    const scope = isDisclosureScope(row.disclosureScope) ? row.disclosureScope : 'parties';
+    return resolveDisclosureAccess(
+      scope,
+      viewerDid,
+      { subjectDid: row.subjectDid, actorDid: row.issuerDid, delegatorDid: row.delegatorDid },
+      connectedDids,
+    );
+  });
+}
+
+/**
  * GET /api/attestations?subject_did=...&type=...&issuer_did=...&limit=...&evidence_grade=...
  * Returns non-revoked attestations for a subject, newest first, annotated
  * with a computed `evidenceGrade`.
@@ -311,6 +394,19 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
   const cors = corsHeaders(request);
   const { searchParams } = new URL(request.url);
 
+  // History view (#1790): given any id in a v1<-v2<-... supersession chain,
+  // return the whole chain plus any still-pending amendments against its
+  // current end — regardless of subject_did, since a chain link's subject
+  // never changes across v1/v2/etc.
+  const historyOf = searchParams.get('history_of');
+  if (historyOf) {
+    const history = await resolveAttestationHistory(historyOf);
+    if (!history) {
+      return NextResponse.json({ error: 'Attestation not found' }, { status: 404, headers: cors });
+    }
+    return NextResponse.json(history, { headers: cors });
+  }
+
   const subjectDid = searchParams.get('subject_did');
   if (!subjectDid) {
     return NextResponse.json({ error: 'subject_did required' }, { status: 400, headers: cors });
@@ -324,21 +420,7 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
   const limitParam = Number.parseInt(searchParams.get('limit') ?? '20', 10);
   const limit = Math.min(Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam), ATTESTATION_LIMIT_MAX);
 
-  const conditions = [
-    eq(attestations.subjectDid, subjectDid),
-    isNull(attestations.revokedAt),
-  ];
-  if (typeFilter) conditions.push(eq(attestations.type, typeFilter));
-  if (issuerFilter) conditions.push(eq(attestations.issuerDid, issuerFilter));
-  if (statusFilter) conditions.push(eq(attestations.attestationStatus, statusFilter));
-  // #1822: an untyped `status=pending` query is the "pending your
-  // countersignature" view — exclude mechanical audit-record types (e.g.
-  // session.created) that were never awaiting anyone's signature. A caller
-  // that explicitly asks for a mechanical type (`type=session.created`) still
-  // gets it back; this only guards the broad, no-type-filter dashboard query.
-  if (statusFilter === 'pending' && !typeFilter) {
-    conditions.push(notInArray(attestations.type, [...MECHANICAL_ATTESTATION_TYPES]));
-  }
+  const conditions = buildListConditions({ subjectDid, typeFilter, issuerFilter, statusFilter });
 
   try {
     const rows = await db
@@ -348,30 +430,7 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
       .orderBy(desc(attestations.issuedAt))
       .limit(limit);
 
-    const distinctTypes: string[] = Array.from(new Set(rows.map((row: Attestation): string => row.type)));
-    const registeredTypeRows: { typeName: string }[] = distinctTypes.length
-      ? await db
-          .select({ typeName: attestationTypeRegistry.typeName })
-          .from(attestationTypeRegistry)
-          .where(and(inArray(attestationTypeRegistry.typeName, distinctTypes), isNull(attestationTypeRegistry.revokedAt)))
-      : [];
-    const registryGatedTypes = new Set(registeredTypeRows.map((row) => row.typeName));
-
-    let visibleRows = rows;
-    if (registryGatedTypes.size > 0) {
-      const viewerDid = await resolveCallerDid(request);
-      const connectedDids = viewerDid ? await trustRadius(db, viewerDid, 1) : null;
-      visibleRows = rows.filter((row: Attestation) => {
-        if (!registryGatedTypes.has(row.type)) return true; // legacy type — unrestricted, unchanged behavior
-        const scope = isDisclosureScope(row.disclosureScope) ? row.disclosureScope : 'parties';
-        return resolveDisclosureAccess(
-          scope,
-          viewerDid,
-          { subjectDid: row.subjectDid, actorDid: row.issuerDid, delegatorDid: row.delegatorDid },
-          connectedDids,
-        );
-      });
-    }
+    const visibleRows = await filterVisibleRows(rows, request);
 
     const annotatedRows = visibleRows.map((row: Attestation) => ({
       ...row,
