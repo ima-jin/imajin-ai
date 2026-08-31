@@ -27,6 +27,10 @@ export function AcceptSection({ loginUrl, code, connectionsUrl, onboardUrl }: Re
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set on a terminal, non-retryable outcome (e.g. a 403 "not for you"
+  // response) — unlike `error`, this permanently disables/hides the Accept
+  // button instead of clearing on the next attempt (#1857).
+  const [terminalError, setTerminalError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
@@ -49,7 +53,16 @@ export function AcceptSection({ loginUrl, code, connectionsUrl, onboardUrl }: Re
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Failed to accept invite');
+        const message = data.error || 'Failed to accept invite';
+        // A 403 ("This invite is not for you") will always fail again the
+        // same way, so it's terminal — don't leave the button clickable to
+        // invite a retry that can never succeed (#1857). Other failures
+        // (network, 500, already-used, etc.) remain retryable.
+        if (res.status === 403) {
+          setTerminalError(message);
+        } else {
+          setError(message);
+        }
         return;
       }
       setDone(true);
@@ -119,13 +132,17 @@ export function AcceptSection({ loginUrl, code, connectionsUrl, onboardUrl }: Re
           Signed in as <span className="text-white font-medium">{session.handle ? `@${session.handle}` : session.did.slice(0, 20) + '...'}</span>
         </p>
         {error && <p className="text-red-400 text-sm">{error}</p>}
-        <button type="button"
-          onClick={handleAccept}
-          disabled={accepting}
-          className="w-full px-6 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-500/50 text-black font-semibold rounded-lg transition"
-        >
-          {accepting ? 'Accepting…' : 'Accept Invite'}
-        </button>
+        {terminalError ? (
+          <p className="text-red-400 text-sm">{terminalError}</p>
+        ) : (
+          <button type="button"
+            onClick={handleAccept}
+            disabled={accepting}
+            className="w-full px-6 py-3 bg-amber-500 hover:bg-amber-600 disabled:bg-amber-500/50 text-black font-semibold rounded-lg transition"
+          >
+            {accepting ? 'Accepting…' : 'Accept Invite'}
+          </button>
+        )}
       </div>
     );
   }

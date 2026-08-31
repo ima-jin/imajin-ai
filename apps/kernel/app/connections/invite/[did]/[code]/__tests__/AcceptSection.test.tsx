@@ -31,7 +31,7 @@ function deferred<T>() {
 /** Fetch stub: resolves the session check, and dispatches the accept call to `acceptImpl`. */
 function installFetch(
   session: unknown,
-  acceptImpl: () => Promise<{ ok: boolean; json: () => Promise<unknown> }> = async () => ({
+  acceptImpl: () => Promise<{ ok: boolean; json: () => Promise<unknown>; status?: number }> = async () => ({
     ok: true,
     json: async () => ({}),
   }),
@@ -235,6 +235,38 @@ describe('authenticated', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Accept Invite' }));
 
     await waitFor(() => expect(screen.getByText('Network error — please try again')).toBeDefined());
+    expect((screen.getByRole('button', { name: 'Accept Invite' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('hides the Accept button permanently and shows a terminal message on a 403 "not for you" response (#1857)', async () => {
+    installFetch(SESSION_WITH_HANDLE, async () => ({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: 'This invite is not for you' }),
+    }));
+
+    renderSection();
+    await waitForSessionCheck();
+    fireEvent.click(screen.getByRole('button', { name: 'Accept Invite' }));
+
+    await waitFor(() => expect(screen.getByText('This invite is not for you')).toBeDefined());
+    // Unlike a retryable error, the button must be gone entirely — not just
+    // disabled — so there's no way to trigger another doomed request.
+    expect(screen.queryByRole('button', { name: 'Accept Invite' })).toBeNull();
+  });
+
+  it('does not set a terminal state for non-403 failures, so the Accept button stays retryable', async () => {
+    installFetch(SESSION_WITH_HANDLE, async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'Internal server error' }),
+    }));
+
+    renderSection();
+    await waitForSessionCheck();
+    fireEvent.click(screen.getByRole('button', { name: 'Accept Invite' }));
+
+    await waitFor(() => expect(screen.getByText('Internal server error')).toBeDefined());
     expect((screen.getByRole('button', { name: 'Accept Invite' }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
