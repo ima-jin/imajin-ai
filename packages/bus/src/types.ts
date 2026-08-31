@@ -20,6 +20,8 @@ export interface ChainConfig {
   eventType: string;
   scope: string | null;      // null = node default
   reactors: ReactorConfig[];
+  /** Where this chain came from — 'db' (kernel.bus_chain_configs row) or 'defaults' (hardcoded fallback map). */
+  source: 'db' | 'defaults';
 }
 
 export type ReactorHandler = (event: BusEvent, config: Record<string, unknown>) => Promise<void>;

@@ -27,6 +27,21 @@ export async function publish<T extends BusEventType>(
 
   const config = await getChainConfig(type, event.scope);
 
+  // Structured chain-resolution log (#1859) — makes a chain silently missing
+  // an expected reactor discoverable from logs alone, without diffing source.
+  // Debug-level: available when diagnosing notification failures, but does
+  // not add noise in production.
+  log.debug(
+    {
+      event: type,
+      scope: event.scope,
+      reactorCount: config.reactors.length,
+      reactorTypes: config.reactors.map((r) => r.type),
+      source: config.source,
+    },
+    'Resolved reactor chain for publish()'
+  );
+
   // Load-time validation: every reactor referenced by the chain must be
   // registered. Fail loudly at chain-resolution time instead of silently
   // skipping at request time (#1872).
