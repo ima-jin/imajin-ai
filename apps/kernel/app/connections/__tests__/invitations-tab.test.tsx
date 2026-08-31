@@ -133,6 +133,52 @@ describe('email delivery failure (#1860)', () => {
   });
 });
 
+describe('email-failure banner still surfaces the fallback link (#1868 regression guard)', () => {
+  it('renders the failure banner and the fallback invite link + working copy button together', async () => {
+    // #1868: a prior report claimed the honest email-failed banner (#1867)
+    // rendered with no way to retrieve the invite link at all. Assert both
+    // pieces exist *in the same render* so a future change that keeps the
+    // banner but drops the link (or vice versa) fails this test.
+    Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
+    installFetch(async () => ({
+      ok: true,
+      json: async () => ({ invite: { code: 'abc123' }, url: INVITE_URL, emailSent: false }),
+    }));
+
+    render(<InvitationsTab />);
+    await openEmailPanelAndFillAddress();
+    fireEvent.click(screen.getByRole('button', { name: 'Send Invite' }));
+
+    await waitFor(() => expect(screen.getByText(FAILED_MESSAGE)).toBeDefined());
+    // The invite link itself must be visible, not just referenced in copy.
+    expect(screen.getByText(INVITE_URL)).toBeDefined();
+    const copyButton = screen.getByRole('button', { name: 'Copy link' });
+    expect(copyButton).toBeDefined();
+
+    fireEvent.click(copyButton);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(INVITE_URL);
+  });
+
+  it('surfaces the fallback link even when the invite code is missing', async () => {
+    // Guards the `emailResult.code ?? emailResult.url` fallback key: if the
+    // create response ever omits `invite.code`, the link must still render
+    // and remain copyable using the url itself as the identity.
+    Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
+    installFetch(async () => ({
+      ok: true,
+      json: async () => ({ invite: {}, url: INVITE_URL, emailSent: false }),
+    }));
+
+    render(<InvitationsTab />);
+    await openEmailPanelAndFillAddress();
+    fireEvent.click(screen.getByRole('button', { name: 'Send Invite' }));
+
+    await waitFor(() => expect(screen.getByText(INVITE_URL)).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(INVITE_URL);
+  });
+});
+
 describe('email invite limit banner', () => {
   it('shows the limit-reached warning when quota is exhausted by a pending email invite', async () => {
     const spy = vi.fn(async (url: string, init?: RequestInit) => {
