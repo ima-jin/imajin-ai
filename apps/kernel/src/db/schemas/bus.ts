@@ -1,4 +1,4 @@
-import { pgSchema, text, boolean, timestamp, jsonb, index, unique, bigserial } from 'drizzle-orm/pg-core';
+import { pgSchema, text, boolean, timestamp, jsonb, index, unique, uniqueIndex, bigserial } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const busSchema = pgSchema('kernel');
@@ -60,3 +60,34 @@ export type SupplyLot = typeof supplyLots.$inferSelect;
 export type NewSupplyLot = typeof supplyLots.$inferInsert;
 export type SupplyStage = typeof supplyStages.$inferSelect;
 export type NewSupplyStage = typeof supplyStages.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// #1884 — grant-bound event-subscription durable log (kernel.event_subscription_log).
+//
+// Written from packages/bus via raw SQL (see packages/bus/AGENTS.md — bus
+// must not import this schema); mirrored here purely for kernel-side reads
+// (GET /auth/api/events/subscriptions/catchup) and the retention cleanup
+// cron. `seq` is the monotonic cursor; `id` is the stable dedupe/idempotency
+// key. See migrations/0103_event_subscription_log.sql for the full design
+// rationale.
+// ---------------------------------------------------------------------------
+
+export const eventSubscriptionLog = busSchema.table('event_subscription_log', {
+  id: text('id').primaryKey(),
+  seq: bigserial('seq', { mode: 'bigint' }).notNull(),
+  eventType: text('event_type').notNull(),
+  issuerDid: text('issuer_did').notNull(),
+  subjectDid: text('subject_did').notNull(),
+  scope: text('scope').notNull(),
+  payload: jsonb('payload'),
+  correlationId: text('correlation_id'),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  seqIdx: uniqueIndex('idx_event_subscription_log_seq').on(table.seq),
+  typeSeqIdx: index('idx_event_subscription_log_type_seq').on(table.eventType, table.seq),
+  createdAtIdx: index('idx_event_subscription_log_created_at').on(table.createdAt),
+}));
+
+export type EventSubscriptionLogRow = typeof eventSubscriptionLog.$inferSelect;
+export type NewEventSubscriptionLogRow = typeof eventSubscriptionLog.$inferInsert;

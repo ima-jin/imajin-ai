@@ -1,6 +1,7 @@
 import { createLogger } from '@imajin/logger';
 import { getChainConfig } from './config';
 import { getReactor } from './registry';
+import { deliverToSubscribers } from './subscriptions';
 import type { BusEvent, BusEventMap, BusEventType } from './types';
 
 const log = createLogger('bus');
@@ -14,6 +15,15 @@ export async function publish<T extends BusEventType>(
     type,
     timestamp: event.timestamp || new Date().toISOString(),
   };
+
+  // Grant-bound event-subscription fan-out (#1884) — independent of the
+  // configured reactor chain below: entitlement is derived from #1882's live
+  // grants, not bus_chain_configs, so it must run for every event type
+  // uniformly, including ones with no chain config at all. Fire-and-forget;
+  // never blocks or fails the publish call.
+  deliverToSubscribers(fullEvent).catch((err: unknown) => {
+    log.error({ err: String(err), event: type }, 'Event-subscription fan-out failed');
+  });
 
   const config = await getChainConfig(type, event.scope);
 

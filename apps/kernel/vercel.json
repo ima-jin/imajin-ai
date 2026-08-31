@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/attestation-cleanup",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/event-subscription-cleanup",
+      "schedule": "0 1 * * *"
     }
   ]
 }
