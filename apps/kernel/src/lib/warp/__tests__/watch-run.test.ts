@@ -351,7 +351,7 @@ describe('terminal states', () => {
     ]);
   });
 
-  it('carries the failure reason so a failed run is diagnosable from the event', async () => {
+  it('publishes warp.run.failed, not warp.run.completed, carrying the failure reason (#1838)', async () => {
     respondRun(
       runBody('FAILED', {
         status_message: {
@@ -364,14 +364,20 @@ describe('terminal states', () => {
 
     await watchRun(PRINCIPAL, RUN_ID, { sleep });
 
-    expect(eventOfType('warp.run.completed').payload).toMatchObject({
+    expect(eventOfType('warp.run.failed').payload).toMatchObject({
       state: 'FAILED',
       statusMessage: {
         message: 'Team has no remaining add-on credits',
         errorCode: 'insufficient_credits',
         retryable: false,
       },
+      // Flat scalar for the notify reactor's `{{summary}}` substitution — prefers
+      // Warp's own error code over the free-text message.
+      summary: 'insufficient_credits',
     });
+    expect(typeof eventOfType('warp.run.failed').payload.failedAt).toBe('string');
+    // FAILED is no longer part of warp.run.completed's own state space.
+    expect(eventsOfType('warp.run.completed')).toHaveLength(0);
   });
 
   it('treats CANCELLED as an ending rather than watching it for another 30 minutes', async () => {
@@ -392,6 +398,52 @@ describe('terminal states', () => {
 
     expect(readCount()).toBe(3);
     expect(eventOfType('warp.run.completed').payload).toMatchObject({ state: 'SUCCEEDED' });
+  });
+
+  it('publishes warp.run.blocked the moment BLOCKED is observed, exactly once (#1838)', async () => {
+    respondRun(
+      runBody('BLOCKED', {
+        title: 'Nightly',
+        status_message: { message: 'Waiting on repo access', error_code: null, retryable: null },
+      }),
+    );
+    respondRun(runBody('BLOCKED'));
+    respondRun(runBody('BLOCKED'));
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    // Not gated behind the 30-minute timeout budget — this fires on the very
+    // first poll that observes BLOCKED.
+    expect(eventsOfType('warp.run.blocked')).toHaveLength(1);
+    const [blocked] = eventsOfType('warp.run.blocked');
+    expect(blocked.issuer).toBe(PRINCIPAL);
+    expect(blocked.subject).toBe(PRINCIPAL);
+    expect(blocked.scope).toBe('warp');
+    expect(blocked.payload).toMatchObject({
+      runId: RUN_ID,
+      state: 'BLOCKED',
+      title: 'Nightly',
+      summary: 'Waiting on repo access',
+      statusMessage: { message: 'Waiting on repo access', errorCode: null, retryable: null },
+      principalDid: PRINCIPAL,
+      context_id: RUN_ID,
+      context_type: 'warp.agent',
+    });
+    expect(typeof blocked.payload.blockedAt).toBe('string');
+    // The run eventually resolves, and the ending is still reported normally.
+    expect(eventOfType('warp.run.completed').payload).toMatchObject({ state: 'SUCCEEDED' });
+  });
+
+  it('does not publish warp.run.blocked when progress reporting is turned off (#1838)', async () => {
+    respondRun(runBody('BLOCKED'));
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep, progress: false });
+
+    // warp.run.blocked is not progress telemetry, so it still fires even when
+    // `progress: false` disables warp.run.progress.
+    expect(eventsOfType('warp.run.blocked')).toHaveLength(1);
   });
 
   it('publishes exactly one event and stops reading once terminal', async () => {

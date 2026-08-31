@@ -56,6 +56,42 @@ const COMPLETED_PAYLOAD: BusEventMap['warp.run.completed'] = {
   context_type: 'warp.agent',
 };
 
+const FAILED_PAYLOAD: BusEventMap['warp.run.failed'] = {
+  runId: RUN_ID,
+  state: 'FAILED',
+  title: 'Nightly',
+  configName: 'veteze-jin',
+  runTime: 'PT4S',
+  statusMessage: {
+    message: 'Team has no remaining add-on credits',
+    errorCode: 'insufficient_credits',
+    retryable: false,
+  },
+  summary: 'insufficient_credits',
+  requestUsage: null,
+  artifacts: [],
+  sessionLink: null,
+  principalDid: PRINCIPAL,
+  failedAt: '2026-08-06T03:18:11.000Z',
+  context_id: RUN_ID,
+  context_type: 'warp.agent',
+};
+
+const BLOCKED_PAYLOAD: BusEventMap['warp.run.blocked'] = {
+  runId: RUN_ID,
+  state: 'BLOCKED',
+  title: 'Nightly',
+  configName: 'veteze-jin',
+  statusMessage: { message: 'Waiting on repo access', errorCode: null, retryable: null },
+  summary: 'Waiting on repo access',
+  artifacts: [],
+  sessionLink: null,
+  principalDid: PRINCIPAL,
+  blockedAt: '2026-08-06T03:18:11.000Z',
+  context_id: RUN_ID,
+  context_type: 'warp.agent',
+};
+
 const PROGRESS_PAYLOAD: BusEventMap['warp.run.progress'] = {
   runId: RUN_ID,
   principalDid: PRINCIPAL,
@@ -140,6 +176,62 @@ describe('publishing warp.run.completed', () => {
     expect(mockNotify.mock.calls[0][1]).toMatchObject({
       title: 'Warp run timed out',
       body: 'Run {{runId}} last seen {{lastKnownState}}',
+    });
+  });
+});
+
+describe('publishing warp.run.failed (#1838)', () => {
+  it('fires the notify reactor for the dispatching agent DID', async () => {
+    await publish('warp.run.failed', {
+      issuer: PRINCIPAL,
+      subject: PRINCIPAL,
+      scope: 'warp',
+      payload: FAILED_PAYLOAD,
+    });
+    await Promise.resolve();
+
+    expect(mockEmit).toHaveBeenCalledTimes(1);
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+
+    const [event, config] = mockNotify.mock.calls[0];
+    expect(event).toMatchObject({
+      type: 'warp.run.failed',
+      issuer: PRINCIPAL,
+      subject: PRINCIPAL,
+      scope: 'warp',
+      payload: FAILED_PAYLOAD,
+    });
+    expect(config).toMatchObject({
+      title: 'Warp run failed',
+      body: 'Run failed: {{title}} — {{summary}}',
+    });
+  });
+});
+
+describe('publishing warp.run.blocked (#1838)', () => {
+  it('fires the notify reactor for the dispatching agent DID, not only at a timeout', async () => {
+    await publish('warp.run.blocked', {
+      issuer: PRINCIPAL,
+      subject: PRINCIPAL,
+      scope: 'warp',
+      payload: BLOCKED_PAYLOAD,
+    });
+    await Promise.resolve();
+
+    expect(mockEmit).toHaveBeenCalledTimes(1);
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+
+    const [event, config] = mockNotify.mock.calls[0];
+    expect(event).toMatchObject({
+      type: 'warp.run.blocked',
+      issuer: PRINCIPAL,
+      subject: PRINCIPAL,
+      scope: 'warp',
+      payload: BLOCKED_PAYLOAD,
+    });
+    expect(config).toMatchObject({
+      title: 'Warp run blocked',
+      body: 'Run blocked: {{title}} — {{summary}}',
     });
   });
 });

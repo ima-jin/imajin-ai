@@ -45,6 +45,29 @@
  * movement, artifacts, and any early error. Those deltas were already being read
  * and discarded, which made a 30-minute run 30 minutes of silence. Terminal
  * behaviour is untouched — progress is never published for a terminal state.
+ *
+ * ## Lifecycle -> signed bus events, first-class BLOCKED (#1838)
+ * FAILED now publishes its own `warp.run.failed` rather than sharing
+ * `warp.run.completed`'s `state` field, and a run entering BLOCKED publishes
+ * `warp.run.blocked` the moment the watch sees it — not 30 minutes later as a
+ * generic timeout. {@link publishTerminalRunOutcome} and
+ * {@link publishBlockedRunOutcome} are the shared publish path: both this
+ * in-request watch AND the scheduled fallback sweep
+ * (`apps/kernel/src/lib/warp/run-watch-sweep.ts`, `GET /api/cron/warp-run-watch`)
+ * call them, so there is exactly one place that decides which event a run's
+ * state becomes.
+ *
+ * Webhook ingress was investigated first, per #1838's own preference order:
+ * Warp's run object carries `triggerUrl` (see {@link WarpAgentRun}), but that
+ * field documents what *triggered* the run — a Slack thread, a Linear issue, a
+ * schedule — not a callback target Warp will POST a completion to, and Warp's
+ * public API surface has no run-completion webhook registration endpoint. So
+ * the fallback (b) from the issue is what is implemented: polling, now with a
+ * scheduled sweep behind it so an in-request watch that the serverless
+ * platform kills mid-flight (the watch is fire-and-forget background work in
+ * the same invocation that already sent its response — see
+ * `apps/kernel/app/warp/api/dispatch/route.ts`) is not the only thing that can
+ * ever report a stuck run's outcome.
  */
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -1170,9 +1193,19 @@ export type WarpRunTerminalState = 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
  *
  * `BLOCKED` is deliberately absent: a blocked run is waiting on a human, not
  * finished, and a watch that treated it as an ending would report a completion
- * for work that is still going to happen.
+ * for work that is still going to happen. It still gets its own signed event,
+ * `warp.run.blocked` (#1838) — see {@link publishBlockedRunOutcome} — published
+ * the moment it is observed rather than only at the watch timeout.
  */
 const TERMINAL_STATES = new Set<string>(['SUCCEEDED', 'FAILED', 'CANCELLED']);
+
+/** Whether `state` is one {@link pollUntilTerminal} ends the watch on (#1838). */
+export function isTerminalRunState(state: string | null): state is WarpRunTerminalState {
+  return state !== null && TERMINAL_STATES.has(state);
+}
+
+/** Warp's own name for the non-terminal, human-actionable state (#1838). */
+const BLOCKED_STATE = 'BLOCKED';
 
 /**
  * Gaps between polls, in ms, applied in order and then held at the last value.
@@ -1330,6 +1363,13 @@ interface ProgressTracker {
   statusMessage: WarpRunStatusMessage | null;
   artifactCount: number;
   pollCount: number;
+  /**
+   * Whether `warp.run.blocked` has already been published this watch (#1838).
+   *
+   * Guards against re-publishing on every subsequent poll while the run stays
+   * blocked — the nudge only needs to fire once per entry into the state.
+   */
+  blockedNotified: boolean;
 }
 
 function newProgressTracker(): ProgressTracker {
@@ -1340,6 +1380,7 @@ function newProgressTracker(): ProgressTracker {
     statusMessage: null,
     artifactCount: 0,
     pollCount: 0,
+    blockedNotified: false,
   };
 }
 
@@ -1621,6 +1662,39 @@ async function reportProgress(
   }
 }
 
+/**
+ * Publish `warp.run.blocked` the moment a run enters BLOCKED (#1838).
+ *
+ * BLOCKED sits outside `TERMINAL_STATES` deliberately — the watch keeps
+ * polling because the run may still resume — but a human waiting on it must
+ * not learn that only once the 30-minute watch times out, which was the gap
+ * this issue fixes. Published once per watch: `tracker.blockedNotified`
+ * guards against re-publishing on every subsequent poll while the run stays
+ * blocked.
+ *
+ * Never throws, the same invariant as {@link reportProgress}: a failed notify
+ * must not cost the rest of the watch. Not gated by the `progress` option
+ * either — unlike `warp.run.progress`, this is not operational telemetry, so
+ * turning progress reporting off must not silence it.
+ */
+async function notifyIfBlocked(
+  principalDid: string,
+  run: WarpAgentRun,
+  tracker: ProgressTracker,
+): Promise<void> {
+  if (run.state !== BLOCKED_STATE || tracker.blockedNotified) return;
+  tracker.blockedNotified = true;
+
+  try {
+    await publishBlockedRunOutcome(principalDid, run);
+  } catch (err) {
+    log.warn(
+      { err: String(err), principalDid, runId: run.runId },
+      'Warp run watch could not publish warp.run.blocked; the watch continues',
+    );
+  }
+}
+
 /** How a watch ended. */
 type WatchOutcome =
   | { kind: 'terminal'; run: WarpAgentRun; state: WarpRunTerminalState }
@@ -1681,9 +1755,11 @@ async function pollUntilTerminal(
 
     lastKnownState = run.state ?? lastKnownState;
     tracker.pollCount += 1;
-    if (run.state !== null && TERMINAL_STATES.has(run.state)) {
-      return { kind: 'terminal', run, state: run.state as WarpRunTerminalState };
+    if (isTerminalRunState(run.state)) {
+      return { kind: 'terminal', run, state: run.state };
     }
+
+    await notifyIfBlocked(principalDid, run, tracker);
 
     if (reportsProgress) {
       await reportProgress(principalDid, runId, run, tracker);
@@ -1694,7 +1770,7 @@ async function pollUntilTerminal(
 async function publishRunCompleted(
   principalDid: string,
   run: WarpAgentRun,
-  state: WarpRunTerminalState,
+  state: 'SUCCEEDED' | 'CANCELLED',
 ): Promise<void> {
   await publish('warp.run.completed', {
     issuer: principalDid,
@@ -1718,6 +1794,106 @@ async function publishRunCompleted(
       context_type: 'warp.agent',
     },
   });
+}
+
+/**
+ * One-line reason a run stopped where it did, for the notify reactor's flat
+ * `{{summary}}` substitution (#1838). Prefers Warp's own error code (it is the
+ * machine-readable one) and falls back to the free-text message, then to
+ * `state` itself when Warp populated neither.
+ */
+function runStatusSummary(statusMessage: WarpRunStatusMessage | null, state: string): string {
+  return statusMessage?.errorCode ?? statusMessage?.message ?? state;
+}
+
+/**
+ * Publish `warp.run.failed` (#1838).
+ *
+ * Split out from `warp.run.completed` so a listener that only cares about
+ * failures does not have to inspect `state` on the shared event to tell a
+ * genuine failure from a clean SUCCEEDED/CANCELLED ending.
+ */
+async function publishRunFailed(principalDid: string, run: WarpAgentRun): Promise<void> {
+  await publish('warp.run.failed', {
+    issuer: principalDid,
+    subject: principalDid,
+    scope: 'warp',
+    payload: {
+      runId: run.runId,
+      state: 'FAILED',
+      title: run.title,
+      configName: run.configName,
+      runTime: run.runTime,
+      statusMessage: run.statusMessage,
+      summary: runStatusSummary(run.statusMessage, 'FAILED'),
+      requestUsage: run.requestUsage,
+      artifacts: toEventArtifacts(run.artifacts),
+      sessionLink: run.sessionLink,
+      principalDid,
+      failedAt: new Date().toISOString(),
+      context_id: run.runId,
+      context_type: 'warp.agent',
+    },
+  });
+}
+
+/**
+ * Publish `warp.run.blocked` (#1838).
+ *
+ * BLOCKED is the state this issue exists for: previously a blocked run was
+ * silent until either a human polled {@link getAgentRun} by hand or the
+ * watch's 30-minute budget expired and reported a generic timeout. This is
+ * the first-class, immediate nudge instead.
+ */
+async function publishRunBlocked(principalDid: string, run: WarpAgentRun): Promise<void> {
+  await publish('warp.run.blocked', {
+    issuer: principalDid,
+    subject: principalDid,
+    scope: 'warp',
+    payload: {
+      runId: run.runId,
+      state: 'BLOCKED',
+      title: run.title,
+      configName: run.configName,
+      statusMessage: run.statusMessage,
+      summary: runStatusSummary(run.statusMessage, 'BLOCKED'),
+      artifacts: toEventArtifacts(run.artifacts),
+      sessionLink: run.sessionLink,
+      principalDid,
+      blockedAt: new Date().toISOString(),
+      context_id: run.runId,
+      context_type: 'warp.agent',
+    },
+  });
+}
+
+/**
+ * Publish the right terminal event for `state` (#1838).
+ *
+ * Single source of truth for "which event does this terminal state become",
+ * shared by the in-request watch ({@link watchRun}) and the scheduled fallback
+ * sweep (`apps/kernel/src/lib/warp/run-watch-sweep.ts`) that picks up a run
+ * whose in-request watch never got to report it — see that module's docs for
+ * why one is needed at all.
+ */
+export async function publishTerminalRunOutcome(
+  principalDid: string,
+  run: WarpAgentRun,
+  state: WarpRunTerminalState,
+): Promise<void> {
+  if (state === 'FAILED') {
+    await publishRunFailed(principalDid, run);
+    return;
+  }
+  await publishRunCompleted(principalDid, run, state);
+}
+
+/**
+ * Publish `warp.run.blocked` for a run found blocked outside the in-request
+ * watch, e.g. from the scheduled sweep (#1838).
+ */
+export async function publishBlockedRunOutcome(principalDid: string, run: WarpAgentRun): Promise<void> {
+  await publishRunBlocked(principalDid, run);
 }
 
 async function publishRunTimeout(
@@ -1784,7 +1960,7 @@ export async function watchRun(
         },
         'Warp cloud agent run reached a terminal state',
       );
-      await publishRunCompleted(principalDid, outcome.run, outcome.state);
+      await publishTerminalRunOutcome(principalDid, outcome.run, outcome.state);
       return;
     }
 

@@ -18,7 +18,7 @@ export const GRANT_SCOPE_REGISTRY = [
   { scope: 'github:write', origin: 'mcp', eventTypes: ['github.issue.created', 'github.comment.created'] },
   { scope: 'github:org', origin: 'mcp', eventTypes: ['action.proposed', 'action.approved', 'action.denied'] },
   { scope: 'github:actions', origin: 'mcp', eventTypes: ['action.proposed', 'action.done'] },
-  { scope: 'warp:dispatch', origin: 'mcp', eventTypes: ['warp.agent.dispatched', 'warp.run.progress', 'warp.run.completed', 'warp.run.timeout'] },
+  { scope: 'warp:dispatch', origin: 'mcp', eventTypes: ['warp.agent.dispatched', 'warp.run.progress', 'warp.run.completed', 'warp.run.failed', 'warp.run.blocked', 'warp.run.timeout'] },
   { scope: 'discovery:read', origin: 'mcp', eventTypes: [] },
   { scope: 'inference:read', origin: 'mcp', eventTypes: ['attestation.created'] },
   { scope: 'inference:write', origin: 'mcp', eventTypes: ['attestation.created'] },

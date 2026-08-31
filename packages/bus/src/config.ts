@@ -293,6 +293,27 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
       enabled: true,
     },
   ],
+  // #1838 — FAILED and BLOCKED get their own first-class notify chains rather
+  // than sharing warp.run.completed's `state` field. `summary` is the flat
+  // scalar the notify reactor's `{{field}}` substitution can read (it never
+  // walks nested objects like `statusMessage`). Kept in sync with migration
+  // 0109 for the same "DB row replaces this list" reason as warp.run.completed.
+  'warp.run.failed': [
+    { type: 'emit', config: {}, enabled: true },
+    {
+      type: 'notify',
+      config: { title: 'Warp run failed', body: 'Run failed: {{title}} — {{summary}}' },
+      enabled: true,
+    },
+  ],
+  'warp.run.blocked': [
+    { type: 'emit', config: {}, enabled: true },
+    {
+      type: 'notify',
+      config: { title: 'Warp run blocked', body: 'Run blocked: {{title}} — {{summary}}' },
+      enabled: true,
+    },
+  ],
   // #1682 — mid-run deltas, down the same pipe as the terminal events so the
   // signed event stream carries every observed change. #1805 reclassifies this
   // chain as telemetry-class: a parallel dispatch session was producing 99+
