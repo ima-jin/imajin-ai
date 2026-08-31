@@ -1,4 +1,4 @@
--- 0111_stripe_webhook_index.sql
+-- 0113_stripe_webhook_index.sql
 -- routingId -> { ownerDid, endpointId } lookup index for the Stripe
 -- BYO-restricted-key connector (#1785).
 --
