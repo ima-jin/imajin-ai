@@ -84,7 +84,7 @@ async function sweepStub(did: string, now: Date): Promise<SweptStub | null> {
     // and this transaction committing.
     const lapsedInvites = await tx
       .update(invites)
-      .set({ status: 'lapsed', lapsedAt: now })
+      .set({ status: 'lapsed', lapsedAt: now.toISOString() })
       .where(and(eq(invites.toDid, did), eq(invites.status, 'pending')))
       .returning({ id: invites.id });
 
