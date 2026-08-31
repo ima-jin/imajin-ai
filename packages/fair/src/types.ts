@@ -155,6 +155,19 @@ export interface SettlementConfig {
   fallback?: SettlementScheme;   // preferred for human checkout
 }
 
+/**
+ * One-directional provenance reference (#1886): a `.fair` manifest may cite
+ * the attestation facts that justify its distribution, but attestations
+ * never point back at money. `attestationId` is the id of a row in
+ * `auth.attestations` (e.g. an `intro_proposed` / `consent_given` /
+ * `intro_made` / `value_realized` record); `type` mirrors that
+ * attestation's own `type` for cheap filtering without a lookup.
+ */
+export interface FairProvenanceRef {
+  attestationId: string;
+  type: string;
+}
+
 export interface FairManifestV1_1 {
   fair: string; // "1.1"
   version: '1.1';
@@ -181,6 +194,10 @@ export interface FairManifestV1_1 {
   signature?: Signature;
   tipping?: { enabled: boolean };
   settlement?: SettlementConfig;
+  // Money points at facts; facts never point at money (#1886). Optional —
+  // most manifests (media, tickets, courses) have no attestation-chain
+  // dependency and omit this entirely.
+  provenance?: FairProvenanceRef[];
   // backward compat aliases
   distributions?: DidShareList;
   chain?: DidShareList;

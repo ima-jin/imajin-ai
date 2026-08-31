@@ -22,6 +22,7 @@ export type {
   SignedFairManifest,
   SettlementScheme,
   SettlementConfig,
+  FairProvenanceRef,
 } from './types';
 export { isFairManifestV1_1 } from './types';
 
@@ -111,3 +112,29 @@ export type {
   ResolveChainOptions,
   ResolvedChain,
 } from './settlement';
+
+// ── Intro-attribution .fair template (#1886) ───────────────────────────────────
+export {
+  VALUE_REALIZED_ATTESTATION_TYPE,
+  INTRO_MADE_ATTESTATION_TYPE,
+  INTRO_ATTRIBUTION_MANIFEST_TYPE,
+  INTRO_ATTRIBUTION_ROLES,
+  DEFAULT_INTRO_ATTRIBUTION_SPLIT_BPS,
+  DEFAULT_ATTRIBUTION_WINDOW_DAYS,
+  validateIntroAttributionSplitBps,
+  isWithinAttributionWindow,
+  validateIntroAttributionProvenance,
+  buildIntroAttributionManifest,
+  introAttributionSettlementChain,
+  isIntroAttributionManifest,
+} from './intro-attribution';
+export type {
+  IntroAttributionRole,
+  IntroAttributionSplitBps,
+  SplitValidationResult,
+  AttributionWindowParams,
+  AttestationFact,
+  ProvenanceGateResult,
+  BuildIntroAttributionManifestParams,
+  IntroAttributionChainEntry,
+} from './intro-attribution';

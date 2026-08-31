@@ -75,6 +75,18 @@ export const ATTESTATION_TYPES = [
   // Never used as an auth basis — auth root stays homogeneous (did:imajin +
   // challenge-response); this is provenance only.
   'agent.external_identity',
+
+  // Off-platform value-realization fact (#1886) — the intro-attribution
+  // .fair template's second trigger class. One party claims value was
+  // realized outside the platform (a deal closed, a hire made); the other
+  // countersigns via the existing bilateral flow. Per #1885's money rule,
+  // only the COUNTERSIGNED (bilateral) form may ever trigger a .fair
+  // settlement — a lone `pending` claim is structurally inert. Not part of
+  // the ordered intro-funnel chain (packages/auth/src/intro-funnel.ts) —
+  // it is the outcome fact the funnel's provenance points at, referenced
+  // via the existing generic `prev_event_ref` envelope field rather than a
+  // funnel-specific one.
+  'value_realized',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
