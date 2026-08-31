@@ -393,6 +393,15 @@ export const SCOPE_VOCABULARY = [
     label: 'Read and search the corpus', manifestLabel: 'Read and search your corpus' },
   { scope: 'corpus:write', connector: 'mcp', verb: 'write', surface: 'corpus', classification: SELF_ONLY, surfaces: MCP_TOKENS, releaseOverride: 'on-consent', credentialFree: true,
     label: 'Load and sync corpus sources', manifestLabel: 'Load and sync your corpus sources' },
+
+  // ── Generic consent-request primitive (#1817) — platform scope, no owning
+  // connector. Generalizes the inference confirm gate (#1782/#1784/#1791) for
+  // any app-authed requester: gates raising a consent.requested bus event that
+  // renders as a confirm card on /jin for an explicit approver DID. Holding
+  // this scope only authorizes RAISING a request — the approver's own signed
+  // decision (approval.decision) is the sole path to an approve/reject outcome;
+  // there is deliberately no auto-approval or standing-approval policy here.
+  { scope: 'consent:write', connector: null, label: 'Raise consent requests for another identity to approve on your behalf' },
 ] as const satisfies readonly ScopeVocabularyEntry[];
 
 /** Every scope string in the vocabulary, as a literal union. */

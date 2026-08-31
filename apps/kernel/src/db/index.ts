@@ -23,6 +23,7 @@ import * as contactSchema from './schemas/contact';
 import * as contactMetadataSchema from './schemas/contact-metadata';
 import * as githubSchema from './schemas/github';
 import * as quickbooksSchema from './schemas/quickbooks';
+import * as consentRequestsSchema from './schemas/consent-requests';
 
 const schema = {
   ...authSchema,
@@ -48,6 +49,7 @@ const schema = {
   ...contactMetadataSchema,
   ...githubSchema,
   ...quickbooksSchema,
+  ...consentRequestsSchema,
 };
 
 export const db = createDb(schema);
@@ -76,6 +78,7 @@ export * from './schemas/contact';
 export * from './schemas/contact-metadata';
 export * from './schemas/github';
 export * from './schemas/quickbooks';
+export * from './schemas/consent-requests';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";
