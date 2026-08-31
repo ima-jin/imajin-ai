@@ -723,12 +723,14 @@ export interface BusEventMap {
     /**
      * The terminal state.
      *
-     * `CANCELLED` is included alongside Warp's two natural endings: a cancelled
-     * run is just as finished, and reporting it as a completion is honest where
-     * watching it for another 30 minutes and then claiming a timeout would not
-     * be.
+     * `FAILED` moved to its own event, `warp.run.failed` (#1838), so a
+     * listener that only cares about failures does not have to inspect this
+     * field on the shared "it stopped" event. `CANCELLED` stays here
+     * alongside Warp's natural SUCCEEDED ending: a cancelled run is just as
+     * finished, and reporting it as a completion is honest where watching it
+     * for another 30 minutes and then claiming a timeout would not be.
      */
-    state: 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+    state: 'SUCCEEDED' | 'CANCELLED';
     title: string | null;
     /** Warp `config.name`, e.g. `veteze-jin` — the dispatching credential's tag. */
     configName: string | null;
@@ -751,6 +753,66 @@ export interface BusEventMap {
     /** Who dispatched it — the DID whose sealed key fired and watched the run. */
     principalDid: string;
     completedAt: string;
+    context_id: string;
+    context_type: 'warp.agent';
+  };
+  /**
+   * A dispatched Warp run ended in FAILED (#1838).
+   *
+   * Split out of `warp.run.completed` so a failure notification does not
+   * require inspecting `state` on a shared "ended" event — a subscriber that
+   * only wants failures just subscribes to this type. `summary` is a flat
+   * scalar (Warp's `errorCode`, falling back to the raw message) because the
+   * notify reactor only substitutes flat payload keys, the same reason
+   * `warp.run.progress` carries its own `summary` (#1682) — see
+   * packages/bus/src/reactors/notify.ts.
+   *
+   * Same NO prompt / NO transcript / NO credential material invariant as the
+   * rest of `warp.*`.
+   */
+  'warp.run.failed': {
+    runId: string;
+    state: 'FAILED';
+    title: string | null;
+    configName: string | null;
+    runTime: string | null;
+    statusMessage: { message: string; errorCode: string | null; retryable: boolean | null } | null;
+    /** Flat one-line reason, for the notify reactor's `{{summary}}` substitution. */
+    summary: string;
+    requestUsage: { inferenceCost: number | null; computeCost: number | null; platformCost: number | null } | null;
+    artifacts: Array<{ type: string; url: string | null; branch: string | null }>;
+    sessionLink: string | null;
+    principalDid: string;
+    failedAt: string;
+    context_id: string;
+    context_type: 'warp.agent';
+  };
+  /**
+   * A dispatched Warp run entered BLOCKED — waiting on a human, not finished
+   * (#1838).
+   *
+   * Published the moment the watch (or the fallback sweep) observes the
+   * transition, NOT at the 30-minute watch timeout: BLOCKED is the state most
+   * likely to need a human nudge (e.g. missing repo access), and the bug this
+   * issue exists for was exactly a run sitting BLOCKED for 40+ minutes with
+   * nothing surfacing it.
+   *
+   * Deliberately NOT a terminal event — the run may resume once a human
+   * resolves the block, so the watch keeps checking afterwards instead of
+   * treating this as an ending.
+   */
+  'warp.run.blocked': {
+    runId: string;
+    state: 'BLOCKED';
+    title: string | null;
+    configName: string | null;
+    statusMessage: { message: string; errorCode: string | null; retryable: boolean | null } | null;
+    /** Flat one-line reason, for the notify reactor's `{{summary}}` substitution. */
+    summary: string;
+    artifacts: Array<{ type: string; url: string | null; branch: string | null }>;
+    sessionLink: string | null;
+    principalDid: string;
+    blockedAt: string;
     context_id: string;
     context_type: 'warp.agent';
   };

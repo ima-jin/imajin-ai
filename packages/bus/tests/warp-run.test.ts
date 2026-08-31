@@ -20,14 +20,15 @@ import type { BusEventMap } from '../src/types';
 const WARP_SCOPE = 'warp';
 
 describe('warp.run.* default chains', () => {
-  it.each(['warp.run.completed', 'warp.run.timeout'] as const)(
+  it.each(['warp.run.completed', 'warp.run.failed', 'warp.run.blocked', 'warp.run.timeout'] as const)(
     'emits %s to the live stream and notifies by default',
     async (eventType) => {
       const cfg = await getChainConfig(eventType, WARP_SCOPE);
 
-      // Mirrors migration 0084. `notify` is what turns the event into a
-      // durable notification row and, through it, a WebSocket push to the
-      // dispatching DID (#1644); `emit` keeps the live stream #1639 added.
+      // Mirrors migration 0084 (completed/timeout) and 0109 (failed/blocked,
+      // #1838). `notify` is what turns the event into a durable notification
+      // row and, through it, a WebSocket push to the dispatching DID (#1644);
+      // `emit` keeps the live stream #1639 added.
       expect(cfg.reactors.map((r) => r.type)).toEqual(['emit', 'notify']);
       expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
     },
@@ -47,6 +48,8 @@ describe('warp.run.* default chains', () => {
 
   it.each([
     ['warp.run.completed', 'Run {{state}}: {{title}}'],
+    ['warp.run.failed', 'Run failed: {{title}} — {{summary}}'],
+    ['warp.run.blocked', 'Run blocked: {{title}} — {{summary}}'],
     ['warp.run.timeout', 'Run {{runId}} last seen {{lastKnownState}}'],
   ] as const)('configures the %s notification body from payload fields', async (eventType, body) => {
     const cfg = await getChainConfig(eventType, WARP_SCOPE);
@@ -87,7 +90,7 @@ describe('warp.run.completed payload', () => {
     expect(completed.artifacts[0].url).toContain('/pull/1638');
   });
 
-  it('type-checks a failed run carrying Warp own error code', () => {
+  it('type-checks a failed run carrying Warp own error code (#1838: its own event type)', () => {
     const failed = {
       runId: '019f9990-2a46-7552-b177-3a23b17eef2e',
       state: 'FAILED',
@@ -99,16 +102,37 @@ describe('warp.run.completed payload', () => {
         errorCode: 'insufficient_credits',
         retryable: false,
       },
+      summary: 'insufficient_credits',
       requestUsage: null,
       artifacts: [],
       sessionLink: null,
       principalDid: 'did:imajin:veteze',
-      completedAt: '2026-08-06T03:18:11.000Z',
+      failedAt: '2026-08-06T03:18:11.000Z',
       context_id: '019f9990-2a46-7552-b177-3a23b17eef2e',
       context_type: 'warp.agent',
-    } satisfies BusEventMap['warp.run.completed'];
+    } satisfies BusEventMap['warp.run.failed'];
 
     expect(failed.statusMessage?.errorCode).toBe('insufficient_credits');
+    expect(failed.summary).toBe('insufficient_credits');
+  });
+
+  it('type-checks a blocked run waiting on a human (#1838)', () => {
+    const blocked = {
+      runId: '019f9990-2a46-7552-b177-3a23b17eef2e',
+      state: 'BLOCKED',
+      title: 'Nightly',
+      configName: 'veteze-jin',
+      statusMessage: { message: 'Waiting on repo access', errorCode: null, retryable: null },
+      summary: 'Waiting on repo access',
+      artifacts: [],
+      sessionLink: null,
+      principalDid: 'did:imajin:veteze',
+      blockedAt: '2026-08-06T03:18:11.000Z',
+      context_id: '019f9990-2a46-7552-b177-3a23b17eef2e',
+      context_type: 'warp.agent',
+    } satisfies BusEventMap['warp.run.blocked'];
+
+    expect(blocked.summary).toBe('Waiting on repo access');
   });
 
   it('type-checks a timeout carrying the last state the watch saw', () => {
