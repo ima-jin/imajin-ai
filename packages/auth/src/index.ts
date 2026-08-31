@@ -15,6 +15,28 @@ export * as crypto from "./crypto";
 export { hexToBytes, stringToBytes, bytesToHex, bytesToMultibase, multibaseToPubkey, hexToMultibase, multibaseToHex, generateKeypair, generatePrivateKey, getPublicKey, extractPrivateKeySeed, verifySync, isValidPublicKey, isValidPrivateKey, isValidSignature } from "./crypto";
 export type { Attestation, AttestationType, NostrKeyBindingClaim } from "./types/attestation";
 export { ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from "./types/attestation";
+export {
+  INTRO_FUNNEL_ATTESTATION_TYPES,
+  EVIDENCE_GRADED_ATTESTATION_TYPES,
+  DISCLOSURE_SCOPES,
+  DEFAULT_DISCLOSURE_SCOPE,
+  EVIDENCE_GRADES,
+  INTRO_FUNNEL_CONTEXT_TYPE,
+  isIntroFunnelAttestationType,
+  isDisclosureScope,
+  evidenceGradeForAttestationStatus,
+  expectedPrevEventType,
+  verifyFunnelChainLink,
+  verifyFunnelChain,
+  funnelCorrelationContext,
+} from "./intro-funnel";
+export type {
+  IntroFunnelAttestationType,
+  DisclosureScope,
+  EvidenceGrade,
+  FunnelChainEvent,
+  FunnelChainVerification,
+} from "./intro-funnel";
 export { verifyNostrSig, signNostrAttestation, getNostrPublicKey, nostrAttestationDigest } from "./nostr-crypto";
 export { resolvePublicKey, createDbResolver, createHttpResolver } from "./resolve";
 export type { ResolvedIdentity, PublicKeyResolver } from "./resolve";

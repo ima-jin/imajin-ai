@@ -34,6 +34,9 @@ vi.mock('@imajin/auth', () => ({
   crypto: { signSync: () => 'fake-signature' },
   ATTESTATION_TYPES: ['identity.created'],
   verifyNostrSig: vi.fn(),
+  DISCLOSURE_SCOPES: ['parties', 'connections', 'network', 'public'],
+  DEFAULT_DISCLOSURE_SCOPE: 'parties',
+  isDisclosureScope: (v: string) => ['parties', 'connections', 'network', 'public'].includes(v),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -41,6 +44,10 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 vi.mock('@imajin/bus', () => ({ publish: h.mockPublish }));
+
+vi.mock('@/src/lib/auth/attestation-type-registry', () => ({
+  isRegisteredAttestationType: vi.fn().mockResolvedValue(false),
+}));
 
 import { POST } from '../route';
 

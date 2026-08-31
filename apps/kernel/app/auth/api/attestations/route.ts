@@ -1,20 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, attestations, tokens } from '@/src/db';
-import { eq, and, isNull, gt, desc, notInArray } from 'drizzle-orm';
+import { db, identities, attestations, tokens, attestationTypeRegistry } from '@/src/db';
+import type { Attestation } from '@/src/db';
+import { eq, and, isNull, gt, desc, notInArray, inArray } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
-import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES, evidenceGradeForAttestationStatus, isDisclosureScope } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
-import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl } from './attestation-helpers';
+import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields } from './attestation-helpers';
+import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
+import { trustRadius } from '@imajin/trust-graph';
+import { resolveDisclosureAccess } from '@/src/lib/auth/disclosure-access';
 
 const ATTESTATION_LIMIT_MAX = 100;
 
 function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+}
+
+type EnvelopeResolution = ReturnType<typeof resolveEnvelopeFields>;
+
+/**
+ * Resolve + validate the intro-funnel envelope fields carried in `payload`,
+ * including that `prev_event_ref` (when present) resolves to an existing
+ * attestation. Extracted from POST so the handler's own branching stays
+ * under the cognitive-complexity budget (#1885).
+ */
+async function resolveEnvelope(payload: unknown): Promise<EnvelopeResolution> {
+  const envelopeResult = resolveEnvelopeFields(payload);
+  if (!envelopeResult.ok) return envelopeResult;
+
+  const { prevEventRef } = envelopeResult.envelope;
+  if (!prevEventRef) return envelopeResult;
+
+  const [predecessor] = await db.select({ id: attestations.id }).from(attestations).where(eq(attestations.id, prevEventRef)).limit(1);
+  if (!predecessor) {
+    return { ok: false, error: `prev_event_ref "${prevEventRef}" does not reference an existing attestation` };
+  }
+  return envelopeResult;
 }
 
 /** Resolve calling identity from session cookie or Bearer token */
@@ -95,12 +121,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'signature required' }, { status: 400, headers: cors });
   }
 
-  if (!(ATTESTATION_TYPES as readonly string[]).includes(type)) {
+  const isKnownType = (ATTESTATION_TYPES as readonly string[]).includes(type) || (await isRegisteredAttestationType(type));
+  if (!isKnownType) {
     return NextResponse.json(
-      { error: `Invalid type. Must be one of: ${ATTESTATION_TYPES.join(', ')}` },
+      { error: `Invalid type. Must be one of: ${ATTESTATION_TYPES.join(', ')}, or a type registered via /auth/api/attestations/types` },
       { status: 400, headers: cors }
     );
   }
+
+  // Intro-funnel envelope fields (#1885) ride inside `payload`, which is
+  // already part of the signed canonical form below — see resolveEnvelope.
+  const envelopeResult = await resolveEnvelope(payload);
+  if (!envelopeResult.ok) {
+    return NextResponse.json({ error: envelopeResult.error }, { status: 400, headers: cors });
+  }
+  const { delegatorDid, disclosureScope, prevEventRef } = envelopeResult.envelope;
 
   // Resolve issuer's public key
   const [issuerIdentity] = await db
@@ -178,6 +213,9 @@ export async function POST(request: NextRequest) {
       nostrSig: nostrSigToStore,
       authorJws,
       attestationStatus: authorJws ? 'pending' : null, // null for legacy attestations
+      delegatorDid,
+      disclosureScope,
+      prevEventRef,
       issuedAt: new Date(issuedAtMs),
     })
     .returning();
@@ -201,10 +239,26 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(attestation, { status: 201, headers: cors });
 }
 
+// evidence_grade is the public-facing name for the countersign/decline
+// state machine (#1885); `status` (the raw attestationStatus values) is
+// kept for backward compatibility.
+const EVIDENCE_GRADE_TO_STATUS: Record<string, string> = {
+  unilateral: 'pending',
+  corroborated: 'bilateral',
+  disputed: 'declined',
+};
+
 /**
- * GET /api/attestations?subject_did=...&type=...&issuer_did=...&limit=...
- * Returns non-revoked attestations for a subject, newest first.
+ * GET /api/attestations?subject_did=...&type=...&issuer_did=...&limit=...&evidence_grade=...
+ * Returns non-revoked attestations for a subject, newest first, annotated
+ * with a computed `evidenceGrade`.
  * subject_did is required.
+ *
+ * disclosure_scope (#1885) is enforced only for attestation types present in
+ * the attestation_type_registry (i.e. the new envelope-aware vocabulary —
+ * platform-seeded funnel types and third-party registered types). The ~59
+ * pre-existing hardcoded types keep today's unrestricted query behavior, so
+ * this stays anonymous-callable for legacy use cases.
  */
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -217,7 +271,9 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
 
   const typeFilter = searchParams.get('type');
   const issuerFilter = searchParams.get('issuer_did');
-  const statusFilter = searchParams.get('status'); // 'pending' | 'bilateral' | 'declined'
+  const evidenceGradeFilter = searchParams.get('evidence_grade'); // 'unilateral' | 'corroborated' | 'disputed'
+  const statusFilter = searchParams.get('status') ?? // 'pending' | 'bilateral' | 'declined'
+    (evidenceGradeFilter ? EVIDENCE_GRADE_TO_STATUS[evidenceGradeFilter] : null);
   const limitParam = Number.parseInt(searchParams.get('limit') ?? '20', 10);
   const limit = Math.min(Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam), ATTESTATION_LIMIT_MAX);
 
@@ -245,7 +301,37 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
       .orderBy(desc(attestations.issuedAt))
       .limit(limit);
 
-    return NextResponse.json(rows, { headers: cors });
+    const distinctTypes: string[] = Array.from(new Set(rows.map((row: Attestation): string => row.type)));
+    const registeredTypeRows: { typeName: string }[] = distinctTypes.length
+      ? await db
+          .select({ typeName: attestationTypeRegistry.typeName })
+          .from(attestationTypeRegistry)
+          .where(and(inArray(attestationTypeRegistry.typeName, distinctTypes), isNull(attestationTypeRegistry.revokedAt)))
+      : [];
+    const registryGatedTypes = new Set(registeredTypeRows.map((row) => row.typeName));
+
+    let visibleRows = rows;
+    if (registryGatedTypes.size > 0) {
+      const viewerDid = await resolveCallerDid(request);
+      const connectedDids = viewerDid ? await trustRadius(db, viewerDid, 1) : null;
+      visibleRows = rows.filter((row: Attestation) => {
+        if (!registryGatedTypes.has(row.type)) return true; // legacy type — unrestricted, unchanged behavior
+        const scope = isDisclosureScope(row.disclosureScope) ? row.disclosureScope : 'parties';
+        return resolveDisclosureAccess(
+          scope,
+          viewerDid,
+          { subjectDid: row.subjectDid, actorDid: row.issuerDid, delegatorDid: row.delegatorDid },
+          connectedDids,
+        );
+      });
+    }
+
+    const annotatedRows = visibleRows.map((row: Attestation) => ({
+      ...row,
+      evidenceGrade: evidenceGradeForAttestationStatus(row.attestationStatus),
+    }));
+
+    return NextResponse.json(annotatedRows, { headers: cors });
   } catch (error) {
     log.error({ err: String(error) }, 'Attestations GET error');
     return NextResponse.json({ error: 'Failed to query attestations' }, { status: 500, headers: cors });

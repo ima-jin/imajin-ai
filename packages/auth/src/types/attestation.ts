@@ -56,6 +56,18 @@ export const ATTESTATION_TYPES = [
   'imajin/nostr-key-binding',
   'agent.turn.usage',
   'broker.release',
+
+  // Intro-funnel vocabulary (#1885) — shared schema for matchmaking-style
+  // intro funnels so any agent's funnel is signed, comparable, and
+  // recomputable. Ordered: intro_proposed -> consent_given|consent_declined
+  // -> intro_made -> conversation_happened. See packages/auth/src/intro-funnel.ts
+  // for the envelope/evidence-grade/disclosure-scope mechanics built on top
+  // of these types.
+  'intro_proposed',
+  'consent_given',
+  'consent_declined',
+  'intro_made',
+  'conversation_happened',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
