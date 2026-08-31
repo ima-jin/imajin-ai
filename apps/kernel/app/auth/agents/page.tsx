@@ -270,6 +270,10 @@ export default function AgentsPage() {
   const [createdAgent, setCreatedAgent] = useState<CreatedAgent | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [revokeConfirm, setRevokeConfirm] = useState<string | null>(null);
+  // First-grant issuance affordance (#1894): a knock-accepted agent can sit
+  // at zero grants indefinitely with no other UI path to issue one, so the
+  // agent card itself carries a minimal capabilities input per agent DID.
+  const [grantCapabilitiesInput, setGrantCapabilitiesInput] = useState<Record<string, string>>({});
 
   // Form state
   const [handle, setHandle] = useState('');
@@ -467,6 +471,45 @@ export default function AgentsPage() {
       } else {
         const body = await res.json().catch(() => ({}));
         showStatus('error', body.error || 'Failed to renew grant');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  /**
+   * Issue the first grant to an agent directly from its card (#1894). This
+   * is the only UI path a knock-accepted, zero-grant agent has toward
+   * authority — it now exists at all because the agent finally appears in
+   * `agents` (the read-path fix), not because this call implies any
+   * authority by itself.
+   */
+  async function handleIssueFirstGrant(agentDid: string) {
+    const raw = grantCapabilitiesInput[agentDid] ?? '';
+    const capabilities = raw.split(',').map((c) => c.trim()).filter(Boolean);
+    if (capabilities.length === 0) {
+      showStatus('error', 'Enter at least one capability (e.g. messages:write).');
+      return;
+    }
+
+    const key = `issue-grant-${agentDid}`;
+    setActionLoading(key);
+    try {
+      const res = await fetch('/auth/api/grants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ agentDid, capabilities, audience: { type: 'all' } }),
+      });
+      if (res.ok) {
+        showStatus('success', 'Grant issued.');
+        setGrantCapabilitiesInput((prev) => ({ ...prev, [agentDid]: '' }));
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to issue grant');
       }
     } catch {
       showStatus('error', 'Network error. Please try again.');
@@ -763,6 +806,14 @@ export default function AgentsPage() {
                             legacy fallback
                           </span>
                         )}
+                        {agent.role === 'connected' && (
+                          <span
+                            className="px-1.5 py-0.5 text-xs rounded border border-sky-800 text-sky-300 bg-sky-950/30"
+                            title="This agent knocked and was accepted (#1883), but holds no delegation grant yet. Appearing here implies no authority — issue a scoped grant below to grant its first capability."
+                          >
+                            connected — no capabilities granted
+                          </span>
+                        )}
                       </div>
                       {agent.handle && <p className="text-xs text-gray-500">@{agent.handle}</p>}
                       <p className="text-xs text-gray-600 font-mono mt-0.5 truncate">{agent.did}</p>
@@ -810,9 +861,31 @@ export default function AgentsPage() {
                   </div>
 
                   {agent.grants.length === 0 ? (
-                    <p className="text-xs text-gray-600">
-                      No grants issued yet{agent.hasLegacyMembership ? ' — this agent is currently authorized only via the legacy membership fallback.' : '.'}
-                    </p>
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-600">
+                        No grants issued yet{agent.hasLegacyMembership ? ' — this agent is currently authorized only via the legacy membership fallback.' : '.'}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          aria-label={`Capabilities to grant ${agentLabel(agent)}`}
+                          placeholder="e.g. messages:write, intros:propose"
+                          value={grantCapabilitiesInput[agent.did] ?? ''}
+                          onChange={(e) =>
+                            setGrantCapabilitiesInput((prev) => ({ ...prev, [agent.did]: e.target.value }))
+                          }
+                          className="flex-1 px-2 py-1 text-xs border border-gray-700 rounded bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleIssueFirstGrant(agent.did)}
+                          disabled={actionLoading === `issue-grant-${agent.did}`}
+                          className="text-xs px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black rounded transition disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {actionLoading === `issue-grant-${agent.did}` ? '…' : 'Issue grant'}
+                        </button>
+                      </div>
+                    </div>
                   ) : (
                     <div className="space-y-2">
                       {agent.grants.map((grant) => (
