@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, authErrorResponse } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -18,7 +18,7 @@ interface RouteParams {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return authErrorResponse(authResult);
   }
   const { identity: caller } = authResult;
 

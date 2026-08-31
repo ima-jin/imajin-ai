@@ -108,6 +108,11 @@ vi.mock('drizzle-orm', () => ({
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: mockRequireAuth,
+  authErrorResponse: (authError: { error: string; status: number }) =>
+    new Response(JSON.stringify({ error: authError.error, onboarding: 'https://imajin.ai/.well-known/agent.json' }), {
+      status: authError.status,
+      headers: { 'Content-Type': 'application/json' },
+    }),
   // Mirrors the real precedence in packages/auth/src/acting-did.ts (#1717):
   // a route that regresses to reading `identity.id` directly instead of
   // threading the whole identity through `resolveActingDid` fails these tests.

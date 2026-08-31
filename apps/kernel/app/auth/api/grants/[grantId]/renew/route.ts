@@ -9,7 +9,7 @@
  * Body: { ttlMs?: number }  // clamped to [default, max] lease bounds
  */
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, authErrorResponse } from '@imajin/auth';
 import { renewGrant } from '@/src/lib/auth/grants';
 
 export async function POST(request: Request, props: { params: Promise<{ grantId: string }> }) {
@@ -17,7 +17,7 @@ export async function POST(request: Request, props: { params: Promise<{ grantId:
 
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return authErrorResponse(authResult);
   }
   const requestedBy = authResult.identity.actingAs ?? authResult.identity.id;
 

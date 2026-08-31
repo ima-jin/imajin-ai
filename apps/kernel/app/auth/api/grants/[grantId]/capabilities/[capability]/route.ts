@@ -6,7 +6,7 @@
  * Session-authenticated; only the delegator who issued the grant may revoke.
  */
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, authErrorResponse } from '@imajin/auth';
 import { revokeGrantCapability } from '@/src/lib/auth/grants';
 
 export async function DELETE(
@@ -17,7 +17,7 @@ export async function DELETE(
 
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return authErrorResponse(authResult);
   }
   const requestedBy = authResult.identity.actingAs ?? authResult.identity.id;
 

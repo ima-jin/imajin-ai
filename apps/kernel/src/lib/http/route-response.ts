@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { publicOrigin } from "./public-origin";
+import { agentCardUrl } from "./node-url";
 
 /**
  * Shared route-response helpers for kernel HTTP routes.
@@ -78,8 +79,11 @@ export function respondUnauthorized(
       ),
     );
   }
+  // `onboarding` (#1899): a stranger's agent hitting this with an unknown or
+  // ungranted key has no prior docs to consult — the rejection itself must
+  // teach it where the front door (the agent card) is.
   return NextResponse.json(
-    { error: "Authentication required" },
+    { error: "Authentication required", onboarding: agentCardUrl() },
     { status: 401, headers: { "WWW-Authenticate": "Bearer" } },
   );
 }
@@ -108,8 +112,9 @@ export function respondForbidden(
     });
   }
   const error = jsonError ?? htmlMessage;
+  // `onboarding` (#1899) — see respondUnauthorized() above for why.
   return NextResponse.json(
-    reason ? { error, reason } : { error },
+    reason ? { error, reason, onboarding: agentCardUrl() } : { error, onboarding: agentCardUrl() },
     { status: 403 },
   );
 }

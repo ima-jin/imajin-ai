@@ -8,7 +8,14 @@ const { requireAuthMock, listPendingKnocksForTargetMock } = vi.hoisted(() => ({
   listPendingKnocksForTargetMock: vi.fn(),
 }));
 
-vi.mock('@imajin/auth', () => ({ requireAuth: requireAuthMock }));
+vi.mock('@imajin/auth', () => ({
+  requireAuth: requireAuthMock,
+  authErrorResponse: (authError: { error: string; status: number }) =>
+    new Response(JSON.stringify({ error: authError.error, onboarding: 'https://imajin.ai/.well-known/agent.json' }), {
+      status: authError.status,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+}));
 vi.mock('@/src/lib/auth/knock', () => ({ listPendingKnocksForTarget: listPendingKnocksForTargetMock }));
 
 import { GET } from '../route';

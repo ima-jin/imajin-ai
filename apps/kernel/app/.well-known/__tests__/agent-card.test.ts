@@ -32,6 +32,7 @@ type AgentCard = {
   version: string;
   capabilities: { streaming: boolean; pushNotifications: boolean; stateTransitionHistory: boolean };
   authentication: { schemes: string[]; oauth2: { authorizationUrl: string; tokenUrl: string; discoveryUrl: string } };
+  onboarding: { flow: string; endpoint: string; spec: string; flowDocument: string; description: string };
   defaultInputModes: string[];
   defaultOutputModes: string[];
   // `a2a` is deliberately absent until /api/a2a/tasks exists (#1614).
@@ -156,6 +157,25 @@ describe('GET /.well-known/agent.json', () => {
     const card = invoke();
     expect(card.protocols.mcp.endpoint).toBe('https://mcp.test.example/mcp');
     expect(card.authentication.oauth2.authorizationUrl).toContain('https://mcp.test.example');
+  });
+
+  // #1899 — agent-facing discovery of the knock onboarding flow.
+  it('advertises the knock onboarding flow, pointing at the knock endpoint, the auth spec, and the flow document', () => {
+    const card = invoke();
+    expect(card.onboarding).toEqual({
+      flow: 'knock',
+      endpoint: 'https://imajin.ai/auth/api/knock',
+      spec: 'https://imajin.ai/auth/api/spec',
+      flowDocument: 'https://imajin.ai/.well-known/imajin-onboarding.json',
+      description: 'Zero-authority contact request; did:imajin minted on human acceptance; capabilities only via scoped grants',
+    });
+  });
+
+  it('anchors the onboarding URLs to the resolved node origin, not a hardcoded default', () => {
+    const card = invoke({ NEXT_PUBLIC_SERVICE_PREFIX: 'https://jin.imajin.ai/', NEXT_PUBLIC_DOMAIN: 'imajin.ai' });
+    expect(card.onboarding.endpoint).toBe('https://jin.imajin.ai/auth/api/knock');
+    expect(card.onboarding.spec).toBe('https://jin.imajin.ai/auth/api/spec');
+    expect(card.onboarding.flowDocument).toBe('https://jin.imajin.ai/.well-known/imajin-onboarding.json');
   });
 
   it('federation.enabled is false when RELAY_DID is unset', () => {

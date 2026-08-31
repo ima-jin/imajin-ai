@@ -10,7 +10,15 @@ const { requireAuthMock, issueGrantMock, listGrantsForDelegatorMock, recordIntro
   recordIntroAttributionTermsMock: vi.fn(),
 }));
 
-vi.mock('@imajin/auth', () => ({ requireAuth: requireAuthMock }));
+vi.mock('@imajin/auth', () => ({
+  requireAuth: requireAuthMock,
+  authErrorResponse: (authError: { error: string; status: number }) =>
+    new Response(JSON.stringify({ error: authError.error, onboarding: 'https://imajin.ai/.well-known/agent.json' }), {
+      status: authError.status,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  agentCardUrl: () => 'https://imajin.ai/.well-known/agent.json',
+}));
 vi.mock('@/src/lib/auth/grants', () => ({
   issueGrant: issueGrantMock,
   listGrantsForDelegator: listGrantsForDelegatorMock,

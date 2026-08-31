@@ -1,10 +1,57 @@
 import { createLogger } from '@imajin/logger';
 const log = createLogger('auth');
 
+import { NextResponse } from "next/server";
 import { SESSION_COOKIE_NAME } from "@imajin/config";
 import type { Identity, AuthResult, AuthError } from "./types";
 
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
+
+/**
+ * This node's public origin, for the onboarding discovery pointer added to
+ * 401/403 error bodies (#1899). Mirrors apps/kernel's `nodeUrl()` resolution
+ * order exactly (`APP_URL` -> `NEXT_PUBLIC_BASE_URL` -> service-prefix
+ * convention) so the URL this package hands back always matches the one the
+ * agent card itself advertises. Duplicated rather than imported: this
+ * package must not depend on apps/kernel (same package-boundary rule as
+ * packages/bus, which must not import apps/kernel either).
+ */
+function nodeOrigin(): string {
+  const explicit = process.env.APP_URL || process.env.NEXT_PUBLIC_BASE_URL;
+  if (explicit) {
+    try {
+      const { origin } = new URL(explicit);
+      if (origin !== "null") return origin;
+    } catch {
+      // Malformed env var — fall through to the service-prefix convention.
+    }
+  }
+  const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX ?? "https://";
+  const domain = process.env.NEXT_PUBLIC_DOMAIN ?? "imajin.ai";
+  const scheme = prefix.startsWith("http://") ? "http" : "https";
+  const prefixHost = prefix.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const host = prefixHost.includes(".") ? prefixHost : domain;
+  return `${scheme}://${host}`;
+}
+
+/** URL of this node's agent card — see {@link nodeOrigin} for why it is derived here. */
+export function agentCardUrl(): string {
+  return `${nodeOrigin()}/.well-known/agent.json`;
+}
+
+/**
+ * Build the standard JSON error response for an {@link AuthError} returned by
+ * `requireAuth()` / `requireHardDID()` (#1899). Every rejection carries an
+ * `onboarding` pointer to the agent card so a caller — human or a stranger's
+ * agent holding an unknown or ungranted key — learns how to become a known
+ * one, without changing the status code or weakening the underlying check.
+ */
+export function authErrorResponse(authError: AuthError): NextResponse {
+  return NextResponse.json(
+    { error: authError.error, onboarding: agentCardUrl() },
+    { status: authError.status },
+  );
+}
 
 /** Parse a single cookie value from a raw Cookie header string */
 function parseCookieValue(cookieHeader: string | null, name: string): string | null {

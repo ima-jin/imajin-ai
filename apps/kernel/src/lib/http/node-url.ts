@@ -60,3 +60,13 @@ export function nodeUrl(): string {
     originFromServicePrefix()
   );
 }
+
+/**
+ * URL of this node's agent card — the onboarding discovery pointer every
+ * 401/403 an unrecognized caller receives points back to (#1899). Centralised
+ * here so the agent card itself and every error-response helper agree on
+ * exactly the same URL.
+ */
+export function agentCardUrl(): string {
+  return `${nodeUrl()}/.well-known/agent.json`;
+}

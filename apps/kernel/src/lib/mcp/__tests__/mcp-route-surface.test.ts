@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ─── Mock next/server ───────────────────────────────────────────────────────
 function mockNextResponseJson(body: unknown, init?: { status?: number; headers?: Record<string, string> }) {
@@ -95,10 +95,24 @@ function validPayload(overrides: Record<string, unknown> = {}) {
 }
 
 describe('POST /mcp surface scope gate (#1337)', () => {
+  const originalEnv: Record<string, string | undefined> = {};
+  const ENV_KEYS = ['APP_URL', 'NEXT_PUBLIC_BASE_URL', 'NEXT_PUBLIC_SERVICE_PREFIX', 'NEXT_PUBLIC_DOMAIN'];
+
   beforeEach(() => {
     h.tokenPayload = null;
     vi.mocked(verifyAppToken).mockClear();
     vi.mocked(handleMcpRpc).mockClear();
+    for (const key of ENV_KEYS) {
+      originalEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      if (originalEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = originalEnv[key];
+    }
   });
 
   it('returns 401 when no Bearer header is present', async () => {
@@ -106,6 +120,14 @@ describe('POST /mcp surface scope gate (#1337)', () => {
     expect(res.status).toBe(401);
     const json = await res.json();
     expect(json.error).toBe('invalid_token');
+  });
+
+  // #1899 — an unknown/ungranted key needs to be told where the front door is.
+  it('includes an onboarding pointer to the agent card on 401', async () => {
+    process.env.APP_URL = 'https://jin.imajin.ai';
+    const res = await POST(makeRequest({}));
+    const json = await res.json();
+    expect(json.onboarding).toBe('https://jin.imajin.ai/.well-known/agent.json');
   });
 
   it('returns 401 when token verification fails', async () => {
@@ -190,6 +212,15 @@ describe('POST /mcp surface scope gate (#1337)', () => {
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error).toBe('insufficient_scope');
+  });
+
+  // #1899 — a recognized-but-ungranted key gets the same onboarding pointer.
+  it('includes an onboarding pointer to the agent card on 403 insufficient_scope', async () => {
+    process.env.APP_URL = 'https://jin.imajin.ai';
+    h.tokenPayload = validPayload({ scope: 'unknown:scope' });
+    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
+    const json = await res.json();
+    expect(json.onboarding).toBe('https://jin.imajin.ai/.well-known/agent.json');
   });
 
   it('rejects 403 when token has empty scope', async () => {

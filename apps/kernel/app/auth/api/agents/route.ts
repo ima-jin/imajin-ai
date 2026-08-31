@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, identityMembers, attestations, agentKnocks } from '@/src/db';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
-import { requireAuth, generateKeypair, resolveActingDid } from '@imajin/auth';
+import { requireAuth, authErrorResponse, generateKeypair, resolveActingDid } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { listGrantDetailsForDelegator, type DelegationGrantDetail } from '@/src/lib/auth/grants';
 import { createLogger } from '@imajin/logger';
@@ -57,7 +57,7 @@ interface AgentResponse {
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return authErrorResponse(authResult);
   }
   // Resolve the acting DID (#1717): when the caller is operating on behalf of
   // a business/app DID (X-Acting-For), agents they create/list belong to that
@@ -202,7 +202,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return authErrorResponse(authResult);
   }
   // Resolve the acting DID (#1717): an agent created while acting on behalf of
   // a business/app DID must be owned by (and delegated to) that acting DID —
