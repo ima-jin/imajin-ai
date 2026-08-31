@@ -281,3 +281,74 @@ describe('no grants yet', () => {
     expect(within(card).getByText('No grants issued yet.')).toBeDefined();
   });
 });
+
+describe('knock-accepted zero-grant agents (#1894)', () => {
+  it('surfaces a connected, zero-grant agent with a distinct badge and the empty-grants message', async () => {
+    await renderAgentsPage([
+      agent({
+        did: EXTERNAL_AGENT,
+        displayName: 'Boardy',
+        role: 'connected',
+        isExternal: true,
+        externalDid: 'did:web:boardy.ai',
+        grants: [],
+        hasLegacyMembership: false,
+      }),
+    ]);
+
+    expect(screen.getByText('Boardy')).toBeDefined();
+    expect(screen.getByText('connected — no capabilities granted')).toBeDefined();
+    const card = screen.getByText('Boardy').closest('div.space-y-3') as HTMLElement;
+    expect(within(card).getByText('No grants issued yet.')).toBeDefined();
+  });
+
+  it('issues the first grant to a connected, zero-grant agent from its card', async () => {
+    const spy = await renderAgentsPage(
+      [
+        agent({
+          did: EXTERNAL_AGENT,
+          displayName: 'Boardy',
+          role: 'connected',
+          isExternal: true,
+          externalDid: 'did:web:boardy.ai',
+          grants: [],
+          hasLegacyMembership: false,
+        }),
+      ],
+      {
+        '/auth/api/grants': async () => ({ ok: true, status: 201, json: async () => ({ grant: { grantId: 'grant_new' } }) } as unknown as Response),
+      },
+    );
+
+    fireEvent.change(screen.getByLabelText('Capabilities to grant Boardy'), { target: { value: 'messages:write' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Issue grant' }));
+
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/api/grants'),
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ agentDid: EXTERNAL_AGENT, capabilities: ['messages:write'], audience: { type: 'all' } }),
+        }),
+      ),
+    );
+  });
+
+  it('rejects issuing a first grant with no capabilities entered', async () => {
+    const spy = await renderAgentsPage([
+      agent({
+        did: EXTERNAL_AGENT,
+        displayName: 'Boardy',
+        role: 'connected',
+        isExternal: true,
+        grants: [],
+        hasLegacyMembership: false,
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Issue grant' }));
+
+    expect(screen.getByText('Enter at least one capability (e.g. messages:write).')).toBeDefined();
+    expect(spy).not.toHaveBeenCalledWith(expect.stringContaining('/auth/api/grants'), expect.anything());
+  });
+});

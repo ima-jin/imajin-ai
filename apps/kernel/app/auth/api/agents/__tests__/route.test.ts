@@ -92,6 +92,11 @@ vi.mock('@/src/db', () => ({
     type: 'attestations.type',
     payload: 'attestations.payload',
   },
+  agentKnocks: {
+    agentDid: 'agentKnocks.agentDid',
+    declaredTarget: 'agentKnocks.declaredTarget',
+    status: 'agentKnocks.status',
+  },
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -245,6 +250,7 @@ describe('GET /auth/api/agents (#1887 grants-view: sibling topology)', () => {
       { did: LOCAL_AGENT_DID, handle: 'jin', name: 'Jin', createdAt: null, tier: 'preliminary', role: 'owner' },
     ]);
     mockListGrantDetailsForDelegator.mockResolvedValue([grantDetail()]);
+    pushSelectResult([]); // acceptedKnockRows: no knocks
     // allAgentDids is non-empty (owned agent) -> attestations query + legacy membership query both run.
     pushSelectResult([]); // externalIdentityAttestations: none
     pushSelectResult([]); // legacyMembershipRows: none
@@ -267,6 +273,7 @@ describe('GET /auth/api/agents (#1887 grants-view: sibling topology)', () => {
   it('surfaces an external agent that only exists via a grant, never via identity_members ownership', async () => {
     pushSelectResult([]); // ownedRows: caller owns nothing locally
     mockListGrantDetailsForDelegator.mockResolvedValue([grantDetail({ agentDid: EXTERNAL_AGENT_DID })]);
+    pushSelectResult([]); // acceptedKnockRows: no knocks
     pushSelectResult([
       { did: EXTERNAL_AGENT_DID, handle: null, name: 'Boardy', createdAt: null, tier: 'preliminary' },
     ]); // externalIdentityRows
@@ -295,6 +302,7 @@ describe('GET /auth/api/agents (#1887 grants-view: sibling topology)', () => {
       grantDetail({ agentDid: LOCAL_AGENT_DID }),
       grantDetail({ grantId: 'grant_2', agentDid: EXTERNAL_AGENT_DID }),
     ]);
+    pushSelectResult([]); // acceptedKnockRows: no knocks
     pushSelectResult([
       { did: EXTERNAL_AGENT_DID, handle: null, name: 'Boardy', createdAt: null, tier: 'preliminary' },
     ]); // externalIdentityRows (only the non-owned agent)
@@ -320,6 +328,7 @@ describe('GET /auth/api/agents (#1887 grants-view: sibling topology)', () => {
       { did: LOCAL_AGENT_DID, handle: 'jin', name: 'Jin', createdAt: null, tier: 'preliminary', role: 'owner' },
     ]);
     mockListGrantDetailsForDelegator.mockResolvedValue([]); // no grant issued yet
+    pushSelectResult([]); // acceptedKnockRows: no knocks
     pushSelectResult([]); // externalIdentityAttestations
     pushSelectResult([{ memberDid: LOCAL_AGENT_DID }]); // legacyMembershipRows: still has role='agent' membership
 
@@ -336,6 +345,7 @@ describe('GET /auth/api/agents (#1887 grants-view: sibling topology)', () => {
     mockListGrantDetailsForDelegator.mockResolvedValue([
       grantDetail({ grantId: 'grant_revoked', status: 'revoked', revokedAt: '2026-08-15T00:00:00.000Z' }),
     ]);
+    pushSelectResult([]); // acceptedKnockRows: no knocks
     pushSelectResult([]);
     pushSelectResult([]);
 
@@ -344,5 +354,61 @@ describe('GET /auth/api/agents (#1887 grants-view: sibling topology)', () => {
 
     expect(body.agents[0].grants).toHaveLength(1);
     expect(body.agents[0].grants[0]).toMatchObject({ grantId: 'grant_revoked', status: 'revoked' });
+  });
+});
+
+describe('GET /auth/api/agents (#1894 knock-accepted zero-grant visibility)', () => {
+  it('surfaces a knock-accepted agent that holds zero grants — the accept-without-grant invariant must not hide it', async () => {
+    pushSelectResult([]); // ownedRows: caller owns nothing locally
+    pushSelectResult([{ agentDid: EXTERNAL_AGENT_DID }]); // acceptedKnockRows: accepted, no grant
+    mockListGrantDetailsForDelegator.mockResolvedValue([]); // zero grants issued
+    pushSelectResult([
+      { did: EXTERNAL_AGENT_DID, handle: null, name: 'Boardy', createdAt: null, tier: 'preliminary' },
+    ]); // externalIdentityRows
+    pushSelectResult([
+      { subjectDid: EXTERNAL_AGENT_DID, payload: { external_did: 'did:web:boardy.ai' } },
+    ]); // externalIdentityAttestations
+    pushSelectResult([]); // legacyMembershipRows
+
+    const res = await GET(makeGetRequest());
+    const body = await res.json();
+
+    expect(body.agents).toHaveLength(1);
+    expect(body.agents[0]).toMatchObject({
+      did: EXTERNAL_AGENT_DID,
+      role: 'connected',
+      isExternal: true,
+      externalDid: 'did:web:boardy.ai',
+      hasLegacyMembership: false,
+    });
+    expect(body.agents[0].grants).toEqual([]);
+  });
+
+  it('deduplicates an agent that is both knock-accepted and grant-holding, never listing it twice', async () => {
+    pushSelectResult([]); // ownedRows
+    pushSelectResult([{ agentDid: EXTERNAL_AGENT_DID }]); // acceptedKnockRows
+    mockListGrantDetailsForDelegator.mockResolvedValue([grantDetail({ agentDid: EXTERNAL_AGENT_DID })]);
+    pushSelectResult([
+      { did: EXTERNAL_AGENT_DID, handle: null, name: 'Boardy', createdAt: null, tier: 'preliminary' },
+    ]); // externalIdentityRows
+    pushSelectResult([]); // externalIdentityAttestations
+    pushSelectResult([]); // legacyMembershipRows
+
+    const res = await GET(makeGetRequest());
+    const body = await res.json();
+
+    expect(body.agents).toHaveLength(1);
+    expect(body.agents[0]).toMatchObject({ did: EXTERNAL_AGENT_DID, role: 'grant' });
+  });
+
+  it('does not surface a knock-accepted agent for a different target DID', async () => {
+    mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID } });
+    pushSelectResult([]); // ownedRows
+    pushSelectResult([]); // acceptedKnockRows: none for this actingDid
+
+    const res = await GET(makeGetRequest());
+    const body = await res.json();
+
+    expect(body.agents).toEqual([]);
   });
 });

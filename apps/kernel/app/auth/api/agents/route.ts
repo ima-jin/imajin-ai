@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, identityMembers, attestations } from '@/src/db';
+import { db, identities, identityMembers, attestations, agentKnocks } from '@/src/db';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { requireAuth, generateKeypair, resolveActingDid } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
@@ -44,6 +44,15 @@ interface AgentResponse {
  * attestation from #1883 rather than by type. Every agent's grants (issued,
  * revoked, expired — the honest record) are embedded per the grants-view
  * read-surface spec.
+ *
+ * #1894: a third union source. #1883's `acceptKnock()` deliberately mints an
+ * identity and a `connections` linkage with ZERO grants ("accept must never
+ * be optimized into accept+grant") — such an agent matches neither the
+ * owned-membership source nor the grants-derived source above and would
+ * otherwise never appear here, leaving no UI path to issue its first grant.
+ * READ-PATH VISIBILITY ONLY: appearing in this list implies no authority —
+ * the grant-issuance authorization path (POST /auth/api/grants, #1882) is
+ * untouched by this source.
  */
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request);
@@ -85,9 +94,21 @@ export async function GET(request: NextRequest) {
       grantsByAgent.set(grant.agentDid, list);
     }
 
+    // #1894: agents the acting DID has knock-accepted (#1883) but may hold
+    // zero grants for. Sourced from `agent_knocks` rather than `connections`
+    // since it's already indexed on (declared_target, status) for exactly
+    // this lookup and carries the agent's DID directly.
+    const acceptedKnockRows = await db
+      .select({ agentDid: agentKnocks.agentDid })
+      .from(agentKnocks)
+      .where(and(eq(agentKnocks.declaredTarget, actingDid), eq(agentKnocks.status, 'accepted')));
+    const knockAcceptedDids = new Set(acceptedKnockRows.map((row: { agentDid: string }) => row.agentDid));
+
     type OwnedRow = (typeof ownedRows)[number];
     const ownedDids = new Set(ownedRows.map((row: OwnedRow) => row.did));
-    const externalOnlyDids = [...grantsByAgent.keys()].filter((did) => !ownedDids.has(did));
+    const externalOnlyDids = [...new Set([...grantsByAgent.keys(), ...knockAcceptedDids])].filter(
+      (did) => !ownedDids.has(did),
+    );
 
     const externalIdentityRows = externalOnlyDids.length === 0 ? [] : await db
       .select({
@@ -157,7 +178,9 @@ export async function GET(request: NextRequest) {
         createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
         tier: row.tier,
         status: 'offline' as const,
-        role: 'grant', // no identity_members ownership row — present solely via a grant
+        // No identity_members ownership row — present via a grant, or (#1894)
+        // via a knock-accept with zero grants issued yet.
+        role: grantsByAgent.has(row.did) ? 'grant' : 'connected',
         isExternal: externalDidByAgent.has(row.did),
         externalDid: externalDidByAgent.get(row.did) ?? null,
         grants: grantsByAgent.get(row.did) ?? [],
