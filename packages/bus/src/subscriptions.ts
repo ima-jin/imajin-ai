@@ -143,7 +143,7 @@ export async function deliverToSubscribers(event: BusEvent): Promise<void> {
         AND c.status = 'active'
         AND c.capability = ANY(${capabilities})
     `;
-    grantRows = (rows as Array<{ agent_did: string; grant_id: string; audience: unknown }>).map((row) => ({
+    grantRows = (rows as unknown as Array<{ agent_did: string; grant_id: string; audience: unknown }>).map((row) => ({
       agentDid: row.agent_did,
       grantId: row.grant_id,
       audience: row.audience as DelegationAudience,
