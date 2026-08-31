@@ -61,3 +61,20 @@ export function isKnockExternalDid(value: unknown): value is string {
  */
 export const KNOCK_STATUSES = ['pending', 'accepted', 'declined'] as const;
 export type KnockStatus = typeof KNOCK_STATUSES[number];
+
+/**
+ * Verification state for a knock's optional `external_did` claim (#1900).
+ * Domain control (did:web) is the only trust anchor checked in v1:
+ *
+ *   - `verified`: the knock's Ed25519 public key was found among the
+ *     resolved did:web document's verification methods.
+ *   - `declared_unverified`: the claim was never checked (non-did:web
+ *     method — out of scope for v1) or was checked and did NOT match — a
+ *     resolved document that doesn't list the knock's key is exactly as
+ *     untrusted as an unchecked claim, never treated as a rejection.
+ *   - `resolution_failed`: resolving the did:web document itself failed
+ *     (timeout, missing did.json, parse error). Never fatal to the knock
+ *     and never silently upgraded to `verified`.
+ */
+export const EXTERNAL_DID_VERIFICATION_STATES = ['verified', 'declared_unverified', 'resolution_failed'] as const;
+export type ExternalDidVerificationState = typeof EXTERNAL_DID_VERIFICATION_STATES[number];

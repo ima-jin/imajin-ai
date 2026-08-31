@@ -33,6 +33,8 @@ interface Grant {
   history: GrantHistoryEntry[];
 }
 
+type ExternalDidVerification = 'verified' | 'declared_unverified' | 'resolution_failed' | null;
+
 interface Agent {
   did: string;
   handle: string | null;
@@ -44,6 +46,7 @@ interface Agent {
   role: string;
   isExternal: boolean;
   externalDid: string | null;
+  externalDidVerification: ExternalDidVerification;
   grants: Grant[];
   hasLegacyMembership: boolean;
 }
@@ -70,8 +73,38 @@ interface PendingKnock {
   selfDescription: string | null;
   requestedCapabilities: string[];
   externalDid: string | null;
+  externalDidVerification: ExternalDidVerification;
   expiresAt: string;
   createdAt: string;
+}
+
+/**
+ * #1900: an accepting human must never see an unverified `external_did`
+ * claim presented as fact. Every rendering of an external DID goes through
+ * this so the label always accompanies the claim.
+ */
+const EXTERNAL_DID_VERIFICATION_STYLES: Record<NonNullable<ExternalDidVerification>, string> = {
+  verified: 'border-green-700 text-green-400 bg-green-900/20',
+  declared_unverified: 'border-amber-600 text-amber-400 bg-amber-900/20',
+  resolution_failed: 'border-gray-700 text-gray-500 bg-gray-900/20',
+};
+
+const EXTERNAL_DID_VERIFICATION_LABELS: Record<NonNullable<ExternalDidVerification>, string> = {
+  verified: 'verified',
+  declared_unverified: 'unverified',
+  resolution_failed: 'verification failed',
+};
+
+function ExternalDidBadge({ verification }: Readonly<{ verification: ExternalDidVerification }>) {
+  const state = verification ?? 'declared_unverified';
+  return (
+    <span
+      className={`px-1.5 py-0.5 text-xs rounded border ${EXTERNAL_DID_VERIFICATION_STYLES[state]}`}
+      title="Claimed external identities are attested as linkage only, never used for auth. Domain control (did:web) is the only basis for 'verified'."
+    >
+      {EXTERNAL_DID_VERIFICATION_LABELS[state]}
+    </span>
+  );
 }
 
 const GRANT_STATUS_STYLES: Record<Grant['status'], string> = {
@@ -730,7 +763,10 @@ export default function AgentsPage() {
                       <p className="text-white text-sm">{knock.selfDescription || 'No description provided.'}</p>
                       <p className="text-xs text-gray-600 font-mono mt-1 truncate">{knock.agentDid}</p>
                       {knock.externalDid && (
-                        <p className="text-xs text-gray-600 mt-1">Claims external identity: <span className="font-mono">{knock.externalDid}</span></p>
+                        <p className="text-xs text-gray-600 mt-1 flex items-center gap-1.5 flex-wrap">
+                          Claims external identity: <span className="font-mono">{knock.externalDid}</span>
+                          <ExternalDidBadge verification={knock.externalDidVerification} />
+                        </p>
                       )}
                       {knock.requestedCapabilities.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mt-2">
@@ -818,8 +854,9 @@ export default function AgentsPage() {
                       {agent.handle && <p className="text-xs text-gray-500">@{agent.handle}</p>}
                       <p className="text-xs text-gray-600 font-mono mt-0.5 truncate">{agent.did}</p>
                       {agent.externalDid && (
-                        <p className="text-xs text-gray-600 mt-1">
+                        <p className="text-xs text-gray-600 mt-1 flex items-center gap-1.5 flex-wrap">
                           External identity: <span className="font-mono">{agent.externalDid}</span>
+                          <ExternalDidBadge verification={agent.externalDidVerification} />
                         </p>
                       )}
                       {agent.createdAt && (
