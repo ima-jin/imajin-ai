@@ -479,7 +479,7 @@ export const agentKnocks = authSchema.table('agent_knocks', {
   // #1900: computed once at knock-submission time (never re-derived in the
   // background) so the pending-review surface can label the claim before
   // accept. NULL when no external_did was declared. See
-  // migrations/0107_knock_external_did_verification.sql for the CHECK
+  // migrations/0108_knock_external_did_verification.sql for the CHECK
   // constraint enumerating the closed 'verified' | 'declared_unverified' |
   // 'resolution_failed' set.
   externalDidVerification: text('external_did_verification'),
