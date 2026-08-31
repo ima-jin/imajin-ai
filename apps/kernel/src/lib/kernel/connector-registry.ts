@@ -395,6 +395,35 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     },
     modelsRoute: null,
   },
+  {
+    id: 'stripe',
+    name: 'Stripe',
+    description: 'Bring your own Stripe restricted key so reactors can act on your payment events — no Stripe Connect, no shared platform account.',
+    icon: '💳',
+    ingestionPattern: 'token-paste',
+    channel: 'stripe',
+    connectorDid: 'did:imajin:stripe-connector',
+    scopes: connectorUiScopes('stripe'),
+    statusEndpoint: '/stripe/api/scope-manifest',
+    backendPending: false,
+    connectRoute: null,
+    configureRoute: null,
+    tokenRoute: '/stripe/api/token',
+    // Deprovisions the self-provisioned webhook endpoint with the owner's own
+    // key before revoking the sealed key's delegation grant (#1776 pattern).
+    disconnectRoute: '/stripe/api/disconnect',
+    credentialUi: {
+      label: 'Restricted Key',
+      placeholder: 'Stripe Restricted Key (rk_...)',
+      hint: 'Key is sealed server-side and never returned. Create a RESTRICTED key (not your full secret key) in the ' +
+        'Stripe Dashboard → Developers → API keys → Create restricted key, and grant only: Payments = Write, ' +
+        'Webhooks = Write. Leave every other resource — especially Account — at None. Connecting self-provisions a ' +
+        'webhook endpoint on your own Stripe account; disconnecting removes it. Rotating your key in the Stripe ' +
+        'Dashboard? Just paste the new key here again — reconnecting replaces the webhook endpoint automatically.',
+    },
+    settings: null,
+    modelsRoute: null,
+  },
 ] as const;
 
 /** Look up a connector entry by its id. Returns undefined for unknown ids. */

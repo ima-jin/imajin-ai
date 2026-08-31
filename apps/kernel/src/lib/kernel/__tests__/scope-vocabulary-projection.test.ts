@@ -31,7 +31,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'gcp', 'quickbooks', 'warp'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'gcp', 'quickbooks', 'warp', 'stripe'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -164,6 +164,10 @@ describe('pinned scope sets (change these deliberately)', () => {
 
   it('pins the Warp connector card toggles', () => {
     expect(connectorUiScopes('warp').map((s) => s.name)).toEqual(['warp:dispatch']);
+  });
+
+  it('pins the Stripe connector card toggles', () => {
+    expect(connectorUiScopes('stripe').map((s) => s.name)).toEqual(['stripe:events']);
   });
 
   /**
@@ -301,6 +305,7 @@ const ANTHROPIC_DID = 'did:imajin:anthropic-connector';
 const GCP_DID = 'did:imajin:gcp-connector';
 const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
 const WARP_DID = 'did:imajin:warp-connector';
+const STRIPE_DID = 'did:imajin:stripe-connector';
 
 describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('mcp', () => {
@@ -369,6 +374,15 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
     expect(connectorScopeDescriptors('quickbooks')).toEqual({
       'quickbooks:read': { verb: 'read', surface: 'invoices', label: 'Read your QuickBooks invoices', release: { discloses_others: false, sensitive: false } },
       'quickbooks:write': { verb: 'write', surface: 'invoices', label: 'Create QuickBooks invoices', release: { discloses_others: true, sensitive: false, viewer: QUICKBOOKS_DID } },
+    });
+  });
+
+  // #1785 — new descriptor, not a migrated literal. Same SELF_SENSITIVE
+  // quadrant as gemini:infer/warp:dispatch: the owner's own restricted key is
+  // what makes the events exist, and they are never released to a third party.
+  it('stripe', () => {
+    expect(connectorScopeDescriptors('stripe')).toEqual({
+      'stripe:events': { verb: 'events', surface: 'payments', label: 'Publish your own Stripe payment events onto the bus', release: { discloses_others: false, sensitive: true, viewer: STRIPE_DID } },
     });
   });
 });
