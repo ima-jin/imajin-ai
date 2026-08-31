@@ -5,6 +5,7 @@
  * construct and verify funnels without pulling in kernel-specific code.
  */
 import type { AttestationType } from './types/attestation';
+import type { GrantScope } from './grant-scopes';
 
 /** The platform-seeded intro-funnel vocabulary, in funnel order. */
 export const INTRO_FUNNEL_ATTESTATION_TYPES = [
@@ -19,6 +20,26 @@ export type IntroFunnelAttestationType = typeof INTRO_FUNNEL_ATTESTATION_TYPES[n
 
 export function isIntroFunnelAttestationType(type: string): type is IntroFunnelAttestationType {
   return (INTRO_FUNNEL_ATTESTATION_TYPES as readonly string[]).includes(type);
+}
+
+/**
+ * The grant capability that must be live from `delegator_did` to
+ * `issuer_did` for a delegated intro-funnel attestation to be accepted
+ * (#1895, #1897). One capability covers the whole funnel — proposing,
+ * consenting, and completing an intro are all facets of the delegator's
+ * single `intros:propose` grant to the matchmaking agent.
+ */
+export const INTRO_FUNNEL_DELEGATION_CAPABILITY: GrantScope = 'intros:propose';
+
+/**
+ * Resolve the grant capability that must cover a delegated attestation of
+ * this `type`, or `null` when delegation is not a defined concept for the
+ * type. `payload.delegator_did` (#1885's envelope) was purpose-built for
+ * the intro-funnel vocabulary — callers MUST fail closed on `null` (reject
+ * the write) rather than accept an unverifiable delegation claim.
+ */
+export function capabilityForDelegatedAttestationType(type: string): GrantScope | null {
+  return isIntroFunnelAttestationType(type) ? INTRO_FUNNEL_DELEGATION_CAPABILITY : null;
 }
 
 /**

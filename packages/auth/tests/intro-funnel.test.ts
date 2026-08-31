@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   INTRO_FUNNEL_ATTESTATION_TYPES,
+  INTRO_FUNNEL_DELEGATION_CAPABILITY,
   DISCLOSURE_SCOPES,
   isDisclosureScope,
   isIntroFunnelAttestationType,
@@ -9,6 +10,7 @@ import {
   verifyFunnelChainLink,
   verifyFunnelChain,
   funnelCorrelationContext,
+  capabilityForDelegatedAttestationType,
   type FunnelChainEvent,
 } from '../src/intro-funnel';
 
@@ -26,6 +28,20 @@ describe('INTRO_FUNNEL_ATTESTATION_TYPES', () => {
   it('isIntroFunnelAttestationType recognizes funnel types and rejects others', () => {
     expect(isIntroFunnelAttestationType('intro_proposed')).toBe(true);
     expect(isIntroFunnelAttestationType('vouch.given')).toBe(false);
+  });
+});
+
+describe('capabilityForDelegatedAttestationType (#1895, #1897)', () => {
+  it('maps every intro-funnel type to the intros:propose capability', () => {
+    for (const type of INTRO_FUNNEL_ATTESTATION_TYPES) {
+      expect(capabilityForDelegatedAttestationType(type)).toBe('intros:propose');
+      expect(capabilityForDelegatedAttestationType(type)).toBe(INTRO_FUNNEL_DELEGATION_CAPABILITY);
+    }
+  });
+
+  it('returns null for a type with no defined delegation capability', () => {
+    expect(capabilityForDelegatedAttestationType('vouch.given')).toBeNull();
+    expect(capabilityForDelegatedAttestationType('value_realized')).toBeNull();
   });
 });
 

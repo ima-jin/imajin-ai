@@ -16,27 +16,40 @@ import type { NextRequest } from 'next/server';
 const ISSUER = 'did:imajin:alice';
 const SUBJECT = 'did:imajin:bob';
 const API_KEY = 'internal-api-key';
+const DELEGATOR = 'did:imajin:ryan';
 
 const h = vi.hoisted(() => ({
   mockReturning: vi.fn(),
   mockPublish: vi.fn().mockResolvedValue(undefined),
+  mockInsertValues: vi.fn(),
+  mockIntrospectGrant: vi.fn(),
 }));
 
 vi.mock('@/src/db', () => ({
   db: {
-    insert: () => ({ values: () => ({ returning: h.mockReturning }) }),
+    insert: () => ({
+      values: (values: Record<string, unknown>) => {
+        h.mockInsertValues(values);
+        return { returning: h.mockReturning };
+      },
+    }),
   },
   attestations: {},
+}));
+
+vi.mock('@/src/lib/auth/grants', () => ({
+  introspectGrant: h.mockIntrospectGrant,
 }));
 
 vi.mock('@imajin/auth', () => ({
   canonicalize: (obj: unknown) => JSON.stringify(obj),
   crypto: { signSync: () => 'fake-signature' },
-  ATTESTATION_TYPES: ['identity.created'],
+  ATTESTATION_TYPES: ['identity.created', 'intro_proposed'],
   verifyNostrSig: vi.fn(),
   DISCLOSURE_SCOPES: ['parties', 'connections', 'network', 'public'],
   DEFAULT_DISCLOSURE_SCOPE: 'parties',
   isDisclosureScope: (v: string) => ['parties', 'connections', 'network', 'public'].includes(v),
+  capabilityForDelegatedAttestationType: (type: string) => (type === 'intro_proposed' ? 'intros:propose' : null),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -68,6 +81,7 @@ beforeEach(() => {
   process.env.AUTH_PRIVATE_KEY = 'fake-private-key';
   h.mockReturning.mockResolvedValue([{ id: 'att_internal_123' }]);
   h.mockPublish.mockResolvedValue(undefined);
+  h.mockIntrospectGrant.mockResolvedValue({ authorized: false, reason: 'No active, unexpired grant covers this capability and audience' });
 });
 
 describe('attestation.created payload (internal route)', () => {
@@ -158,5 +172,61 @@ describe('attestation.created payload (internal route)', () => {
 
     expect(res.status).toBe(401);
     expect(h.mockPublish).not.toHaveBeenCalled();
+  });
+});
+
+// #1895 / #1897 — RFC #1881 revocation finding: this internal route shares
+// resolveEnvelopeFields with the public route, and must mirror the same
+// live-grant verification for payload.delegator_did.
+describe('delegated attestations (#1895, #1897)', () => {
+  function delegatedBody(overrides: Record<string, unknown> = {}) {
+    return {
+      issuer_did: ISSUER,
+      subject_did: SUBJECT,
+      type: 'intro_proposed',
+      payload: { delegator_did: DELEGATOR },
+      ...overrides,
+    };
+  }
+
+  it('rejects with 403 when no grant exists at all from the claimed delegator (absent grant)', async () => {
+    h.mockIntrospectGrant.mockResolvedValue({ authorized: false, reason: 'No active, unexpired grant covers this capability and audience' });
+
+    const res = await POST(makeReq(delegatedBody()));
+
+    expect(res.status).toBe(403);
+    expect(h.mockPublish).not.toHaveBeenCalled();
+    expect(h.mockIntrospectGrant).toHaveBeenCalledWith({
+      agentDid: ISSUER,
+      capability: 'intros:propose',
+      targetDid: SUBJECT,
+      delegatorDid: DELEGATOR,
+    });
+  });
+
+  it('rejects with 403 when the delegator revoked the grant before this write (revoked grant)', async () => {
+    h.mockIntrospectGrant.mockResolvedValue({ authorized: false, reason: 'No active, unexpired grant covers this capability and audience' });
+
+    const res = await POST(makeReq(delegatedBody()));
+
+    expect(res.status).toBe(403);
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('accepts and records the verified grantId when a live grant covers the claimed delegator', async () => {
+    h.mockIntrospectGrant.mockResolvedValue({ authorized: true, grantId: 'grant_live_456', delegatorDid: DELEGATOR, agentDid: ISSUER });
+
+    const res = await POST(makeReq(delegatedBody()));
+
+    expect(res.status).toBe(201);
+    expect(h.mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ delegatorDid: DELEGATOR, delegationGrantId: 'grant_live_456' }),
+    );
+  });
+
+  it('never calls introspectGrant for a self-issued attestation (no delegator_did)', async () => {
+    await POST(makeReq({ issuer_did: ISSUER, subject_did: SUBJECT, type: 'identity.created' }));
+
+    expect(h.mockIntrospectGrant).not.toHaveBeenCalled();
   });
 });

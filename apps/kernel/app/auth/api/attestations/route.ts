@@ -10,7 +10,7 @@ import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
-import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields } from './attestation-helpers';
+import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation } from './attestation-helpers';
 import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
 import { trustRadius } from '@imajin/trust-graph';
 import { resolveDisclosureAccess } from '@/src/lib/auth/disclosure-access';
@@ -41,6 +41,56 @@ async function resolveEnvelope(payload: unknown): Promise<EnvelopeResolution> {
     return { ok: false, error: `prev_event_ref "${prevEventRef}" does not reference an existing attestation` };
   }
   return envelopeResult;
+}
+
+type IssuerAndDelegationResult =
+  | { ok: true; grantId: string | null }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Resolve the issuer's public key, verify the Ed25519 signature over the
+ * canonical payload, and — when the envelope asserts delegator_did — verify
+ * the backing delegation grant (#1895, #1897). Extracted from POST so the
+ * handler's own branching stays under the cognitive-complexity budget
+ * (#1885).
+ */
+async function verifyIssuerAndDelegation(params: {
+  issuerDid: string;
+  subjectDid: string;
+  type: string;
+  canonicalPayload: string;
+  signature: string;
+  delegatorDid: string | null;
+}): Promise<IssuerAndDelegationResult> {
+  const [issuerIdentity] = await db
+    .select({ publicKey: identities.publicKey })
+    .from(identities)
+    .where(eq(identities.id, params.issuerDid))
+    .limit(1);
+
+  if (!issuerIdentity) {
+    return { ok: false, status: 400, error: 'Issuer DID not found' };
+  }
+
+  const sigValid = authCrypto.verifySync(params.signature, params.canonicalPayload, issuerIdentity.publicKey);
+  if (!sigValid) {
+    return { ok: false, status: 400, error: 'Invalid signature' };
+  }
+
+  // A self-asserted delegator_did is not proof of delegation — verify a
+  // live grant actually backs it before minting a "delegated" fact into
+  // the honest record.
+  const delegationCheck = await verifyDelegatedAttestation({
+    delegatorDid: params.delegatorDid,
+    issuerDid: params.issuerDid,
+    subjectDid: params.subjectDid,
+    type: params.type,
+  });
+  if (!delegationCheck.ok) {
+    return { ok: false, status: 403, error: delegationCheck.error };
+  }
+
+  return { ok: true, grantId: delegationCheck.grantId };
 }
 
 /** Resolve calling identity from session cookie or Bearer token */
@@ -137,17 +187,6 @@ export async function POST(request: NextRequest) {
   }
   const { delegatorDid, disclosureScope, prevEventRef } = envelopeResult.envelope;
 
-  // Resolve issuer's public key
-  const [issuerIdentity] = await db
-    .select({ publicKey: identities.publicKey })
-    .from(identities)
-    .where(eq(identities.id, issuer_did))
-    .limit(1);
-
-  if (!issuerIdentity) {
-    return NextResponse.json({ error: 'Issuer DID not found' }, { status: 400, headers: cors });
-  }
-
   const issuedAtMs = resolveIssuedAt(issued_at);
 
   // Canonical form that was signed
@@ -160,9 +199,16 @@ export async function POST(request: NextRequest) {
     issued_at: issuedAtMs,
   });
 
-  const sigValid = authCrypto.verifySync(signature, canonicalPayload, issuerIdentity.publicKey);
-  if (!sigValid) {
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 400, headers: cors });
+  const verification = await verifyIssuerAndDelegation({
+    issuerDid: issuer_did,
+    subjectDid: subject_did,
+    type,
+    canonicalPayload,
+    signature,
+    delegatorDid,
+  });
+  if (!verification.ok) {
+    return NextResponse.json({ error: verification.error }, { status: verification.status, headers: cors });
   }
 
   // For imajin/nostr-key-binding: require + verify the Nostr key's Schnorr signature
@@ -216,6 +262,7 @@ export async function POST(request: NextRequest) {
       delegatorDid,
       disclosureScope,
       prevEventRef,
+      delegationGrantId: verification.grantId,
       issuedAt: new Date(issuedAtMs),
     })
     .returning();
