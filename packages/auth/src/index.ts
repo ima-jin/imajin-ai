@@ -56,6 +56,8 @@ export {
   KNOCK_TARGET_RATE_WINDOW,
   KNOCK_IP_RATE_LIMIT,
   KNOCK_IP_RATE_WINDOW,
+  EVENT_SUBSCRIPTION_RETENTION,
+  EVENT_SUBSCRIPTION_CATCHUP_PAGE_SIZE,
 } from "./constants";
 export type { NodeHeartbeat, NodeRegistration, NodeRegistrationRequest, NodeRegistrationResponse, NodeAttestation } from "./types/node";
 export { getEmailForDid, getDidForEmail, resolveDidForEmail, resolveEmailForDid } from "./credentials";
