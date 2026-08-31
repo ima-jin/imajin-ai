@@ -41,7 +41,9 @@ export type ReadDecision =
  * Decide whether `requesterDid` (null = unauthenticated) may READ the asset.
  *
  *   public:       anyone, no auth required
- *   private:      owner only
+ *   private:      owner only here; non-owner group/business-scope membership
+ *                 (identity_members, #1851) is resolved by the async
+ *                 authorizeAssetRead() wrapper (deny-by-default otherwise).
  *   trust-graph:  owner OR an explicitly granted DID (allowedDids)
  *   conversation: owner only here; non-owner membership is resolved by the async
  *                 authorizeAssetRead() wrapper (deny-by-default otherwise).
@@ -75,7 +77,10 @@ export function canReadAsset(
       // Deny here so any caller that skips that async check stays secure (#1168).
       return { allowed: false, requiresAuth: true, accessType, reason: 'Conversation membership required' };
     default:
-      // private (owner already handled above) and any unknown type → deny.
+      // private (owner already handled above): non-owner group/business-scope
+      // membership also needs a DB lookup — resolved by authorizeAssetRead()
+      // (#1851). Deny here so any caller that skips that async check stays
+      // secure, same posture as the conversation case above.
       return { allowed: false, requiresAuth: true, accessType, reason: 'Private asset — owner only' };
   }
 }
