@@ -1232,6 +1232,53 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'telemetry';
   };
+  /**
+   * Generic consent-request primitive (#1817) — an external system asks a
+   * principal to consent to one described action. Generalizes the inference
+   * confirm gate (`pending_confirm` → Confirm tap = the signing event,
+   * #1782/#1784/#1791) to any vocabulary: `kind` names the request type in the
+   * requester's own vocabulary (e.g. `openclaw.exec_command`), `summary` is the
+   * full human-readable description of exactly what will happen, and `detail`
+   * is an optional structured payload the card may render alongside it.
+   *
+   * issuer = requesterDid (the app that raised it, gated on `consent:write`),
+   * subject = approverDid (who must decide) — routed by the notify reactor to
+   * the /jin confirm card via the #1644/#1645 WebSocket push rail.
+   */
+  'consent.requested': {
+    requestId: string;
+    requesterDid: string;
+    approverDid: string;
+    kind: string;
+    summary: string;
+    detail: Record<string, unknown> | null;
+    expiresAt: string;
+    context_id: string;
+    context_type: 'consent_request';
+  };
+  /**
+   * Emitted when the approver taps Approve/Reject on a `consent.requested`
+   * card (#1817). The canvas tap IS the signing event: `attestationId`
+   * references the kernel-witnessed decision record — issuer = approverDid —
+   * that binds this outcome to the exact request it decided.
+   *
+   * issuer = approverDid, subject = requesterDid — emitted back on the bus for
+   * the requesting system to consume. Never published for an expired request:
+   * expiry resolves the record directly (status: 'expired'), never via a
+   * decision event, so a consumer can trust that every `approval.decision` it
+   * sees is a genuine human tap.
+   */
+  'approval.decision': {
+    requestId: string;
+    requesterDid: string;
+    approverDid: string;
+    kind: string;
+    decision: 'approve' | 'reject';
+    attestationId: string;
+    decidedAt: string;
+    context_id: string;
+    context_type: 'consent_request';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

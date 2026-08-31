@@ -424,6 +424,23 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'audit-log', config: {}, enabled: true },
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #1817 — generic consent-request primitive. `notify` routes the approver's
+  // /jin confirm card down the #1644/#1645 WebSocket push rail; `emit` puts it
+  // on the signed event stream. Kept in sync with the seed migration.
+  'consent.requested': [
+    { type: 'emit', config: {}, enabled: true },
+    {
+      type: 'notify',
+      config: { title: 'Consent requested: {{kind}}', body: '{{summary}}' },
+      enabled: true,
+    },
+  ],
+  // The decision is emitted back for the requesting system to consume off the
+  // signed event stream — no human-facing notification is implied by the
+  // primitive itself (the requester is typically a machine, not a /jin viewer).
+  'approval.decision': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------
