@@ -149,7 +149,7 @@ export const attestations = authSchema.table('attestations', {
   // Stamped when this attestation is cascaded to attestation_status='lapsed'
   // by the claim-stub-expiry sweep (#1841) — distinct from expiresAt/expired,
   // which is this attestation's own TTL, orthogonal to its subject's stub
-  // lapsing out from under it. See migrations/0110_claim_stub_expiry.sql.
+  // lapsing out from under it. See migrations/0112_claim_stub_expiry.sql.
   lapsedAt: timestamp('lapsed_at', { withTimezone: true }),
 }, (table) => ({
   subjectIdx: index('idx_auth_attestations_subject').on(table.subjectDid),
