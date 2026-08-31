@@ -17,8 +17,15 @@
  * Model: none declared. The farmer's own sealed connector card decides which
  * brain runs this vocabulary (#1621).
  *
- * Hard boundary: resolve() MUST NOT import Imajin kernel internals. It calls
- * the catalyst-power supply domain API exclusively.
+ * Hard boundary: resolve() MUST NOT import Imajin kernel internals.
+ *
+ * Resolution (#1850): resolve() ONLY produces a stub attestation receipt
+ * (digest + resolvedAt) here. It never calls out to a tenant supply API —
+ * that endpoint (`/supply/events`) never existed on the platform. Lot
+ * materialization is handled app-side: the xprize app calls the kernel's own
+ * `/supply/api/received` route post-inference-confirm (catalyst-power/xprize#92).
+ * `AGRIFORTRESS_SUPPLY_API_URL` / `AGRIFORTRESS_SUPPLY_API_KEY` are xprize-only
+ * env vars now — the kernel resolver reads neither.
  */
 
 import { createHash } from 'node:crypto';
@@ -29,9 +36,6 @@ import type {
   ResolutionReceipt,
   MetadataValidationResult,
 } from './contract';
-
-const SUPPLY_API_URL = process.env.AGRIFORTRESS_SUPPLY_API_URL ?? '';
-const SUPPLY_API_KEY = process.env.AGRIFORTRESS_SUPPLY_API_KEY ?? '';
 
 export const agrifortressVocabulary: IntentVocabulary = {
   name: 'agrifortress',
@@ -124,53 +128,27 @@ function validateOptionalLines(m: Record<string, unknown>): MetadataValidationRe
   return undefined;
 }
 
-/** Execute the domain action via the catalyst-power supply API (or a dev stub). */
-async function resolveAgriFortressIntent(intent: CandidateIntent, ownerDid: string): Promise<ResolutionReceipt> {
-    const resolvedAt = new Date().toISOString();
-    const payload = {
-      intentType: intent.intentType,
-      ownerDid,
-      metadata: intent.metadata,
-      resolvedAt,
-    };
-    const digest = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+/**
+ * Produce a stub attestation receipt (#1850).
+ *
+ * The kernel resolver never calls a tenant supply API — it only attests
+ * (digest + timestamp) that the intent was resolved. Lot materialization is
+ * the xprize app's responsibility, via its own post-confirm call to the
+ * kernel's `/supply/api/received` route (catalyst-power/xprize#92).
+ */
+function resolveAgriFortressIntent(intent: CandidateIntent, ownerDid: string): ResolutionReceipt {
+  const resolvedAt = new Date().toISOString();
+  const payload = {
+    intentType: intent.intentType,
+    ownerDid,
+    metadata: intent.metadata,
+    resolvedAt,
+  };
+  const digest = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 
-    if (!SUPPLY_API_URL) {
-      // No supply API configured — return a stub receipt for development.
-      return {
-        primitiveType: intent.intentType,
-        digest,
-        resolvedAt,
-      };
-    }
-
-    // POST to the catalyst-power supply domain API.
-    // Tenant-owned: no Imajin kernel internals used here.
-    const res = await fetch(`${SUPPLY_API_URL}/supply/events`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(SUPPLY_API_KEY ? { Authorization: `Bearer ${SUPPLY_API_KEY}` } : {}),
-      },
-      body: JSON.stringify({
-        type: intent.intentType,
-        ownerDid,
-        metadata: intent.metadata,
-        attestedAt: resolvedAt,
-      }),
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => '');
-      throw new Error(`AgriFortress supply API error ${res.status}: ${errorText}`);
-    }
-
-    const result = await res.json() as { id?: string };
-
-    return {
-      primitiveType: intent.intentType,
-      externalId: result.id,
-      digest,
-      resolvedAt,
-    };
+  return {
+    primitiveType: intent.intentType,
+    digest,
+    resolvedAt,
+  };
 }
