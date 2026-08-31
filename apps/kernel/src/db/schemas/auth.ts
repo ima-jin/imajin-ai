@@ -1,5 +1,6 @@
 import { text, timestamp, jsonb, integer, boolean, index, uniqueIndex, pgSchema } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
+import type { DelegationAudience } from '@imajin/auth';
 
 /** Key role configuration for multi-device / role-separated identities */
 export interface KeyRoles {
@@ -324,6 +325,59 @@ export const claimStubIndex = authSchema.table('claim_stub_index', {
 }, (table) => ({
   didIdx: index('idx_claim_stub_index_did').on(table.did),
 }));
+
+/**
+ * Scoped delegation grants for external agents (#1882) — grant/revoke
+ * lifecycle for `domain:verb` capabilities, independent from the coarse
+ * X-Acting-For agent bootstrap in `identity_members` (role='agent').
+ *
+ * Fail-closed by construction: `status` only ever moves active -> revoked
+ * (there is no automatic "expired" transition), and `expires_at` is compared
+ * at introspection time rather than swept in the background — a lookup after
+ * expiry fails a plain timestamp comparison, not a stale cached status.
+ *
+ * Renewal (#1882 item 4, "grants are leases with expiry") updates
+ * `expires_at` in place; no lineage row is kept for the previous expiry.
+ */
+export const delegationGrants = authSchema.table('delegation_grants', {
+  id: text('id').primaryKey(),                          // grant_{nanoid}
+  agentDid: text('agent_did').notNull(),                // external agent the grant is issued to
+  delegatorDid: text('delegator_did').notNull(),        // principal who issued the grant (user-push only)
+  audience: jsonb('audience').notNull().$type<DelegationAudience>(),
+  onBehalfOf: jsonb('on_behalf_of').notNull().default([]).$type<string[]>(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  status: text('status').notNull().default('active'),   // 'active' | 'revoked'
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  agentIdx: index('idx_delegation_grants_agent').on(table.agentDid, table.status),
+  delegatorIdx: index('idx_delegation_grants_delegator').on(table.delegatorDid, table.status),
+  expiresIdx: index('idx_delegation_grants_expires').on(table.expiresAt).where(sql`${table.status} = 'active'`),
+}));
+
+/**
+ * One row per capability within a grant, so a single `domain:verb` scope can
+ * be revoked independently of its siblings and the parent grant (#1882
+ * item 4).
+ */
+export const delegationGrantCapabilities = authSchema.table('delegation_grant_capabilities', {
+  id: text('id').primaryKey(),                          // gcap_{nanoid}
+  grantId: text('grant_id').notNull().references(() => delegationGrants.id, { onDelete: 'cascade' }),
+  capability: text('capability').notNull(),             // domain:verb scope string
+  status: text('status').notNull().default('active'),   // 'active' | 'revoked'
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  grantCapabilityUniq: uniqueIndex('uniq_delegation_grant_capability').on(table.grantId, table.capability),
+  lookupIdx: index('idx_delegation_grant_capabilities_lookup').on(table.grantId, table.capability, table.status),
+}));
+
+export type DelegationGrantRow = typeof delegationGrants.$inferSelect;
+export type NewDelegationGrantRow = typeof delegationGrants.$inferInsert;
+export type DelegationGrantCapabilityRow = typeof delegationGrantCapabilities.$inferSelect;
+export type NewDelegationGrantCapabilityRow = typeof delegationGrantCapabilities.$inferInsert;
 
 // Types
 export type Identity = typeof identities.$inferSelect;
