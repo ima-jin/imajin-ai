@@ -1279,6 +1279,49 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'consent_request';
   };
+  /**
+   * Stripe BYO-restricted-key connector events (#1785).
+   *
+   * Verified webhook deliveries from an owner's OWN Stripe account (Connect is
+   * deliberately bypassed — see the connector's class doc) are republished
+   * here, tagged with the owning principal DID (`ownerDid`, also `issuer` and
+   * `subject` on the envelope) so reactors can compose against them
+   * `onBehalfOf` that identity.
+   *
+   * #1073 settlement seam: this PR intentionally stops at the bus event. A
+   * follow-up reactor can subscribe to these three types and route them to
+   * the canonical `POST /api/settle`, the same way `.fair` manifests already
+   * converge platform-funded settlements — that convergence is NOT built here
+   * (see the connector's class doc for why).
+   */
+  'stripe.payment_intent.succeeded': {
+    ownerDid: string;
+    eventId: string;
+    paymentIntentId: string;
+    amount: number;
+    currency: string;
+    context_id: string;
+    context_type: 'stripe';
+  };
+  'stripe.invoice.paid': {
+    ownerDid: string;
+    eventId: string;
+    invoiceId: string;
+    amountPaid: number;
+    currency: string;
+    context_id: string;
+    context_type: 'stripe';
+  };
+  'stripe.payout.paid': {
+    ownerDid: string;
+    eventId: string;
+    payoutId: string;
+    amount: number;
+    currency: string;
+    arrivalDate: string | null;
+    context_id: string;
+    context_type: 'stripe';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

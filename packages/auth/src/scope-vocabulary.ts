@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'gcp' | 'quickbooks' | 'warp';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -49,6 +49,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   gcp: 'did:imajin:gcp-connector',
   quickbooks: 'did:imajin:quickbooks-connector',
   warp: 'did:imajin:warp-connector',
+  stripe: 'did:imajin:stripe-connector',
 };
 
 /** Channel label used in `auth.channel_links`. Currently always the id. */
@@ -61,6 +62,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   gcp: 'gcp',
   quickbooks: 'quickbooks',
   warp: 'warp',
+  stripe: 'stripe',
 };
 
 // ── Release tiers (#1196 consent 2×2) ─────────────────────────────────────────
@@ -338,6 +340,15 @@ export const SCOPE_VOCABULARY = [
   // the whole point: the credential individuates the dispatch.
   { scope: 'warp:dispatch', connector: 'warp', verb: 'dispatch', surface: 'cloud-agents', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
     label: 'Dispatch Warp cloud agents using your sealed Warp Agent key', manifestLabel: 'Dispatch Warp cloud agents under your own credential' },
+
+  // ── Stripe connector (#1785) — BYO restricted-key, Connect deliberately
+  // bypassed. The owner's own sealed restricted key self-provisions a webhook
+  // endpoint and is consumed to verify and republish their own Stripe events
+  // onto the bus. Never released to a third party → SELF_SENSITIVE →
+  // owner-only, same quadrant as gemini:infer / warp:dispatch.
+  { scope: 'stripe:events', connector: 'stripe', verb: 'events', surface: 'payments', classification: SELF_SENSITIVE,
+    label: 'Publish your Stripe payment events (payments, invoices, payouts) to your reactor chains',
+    manifestLabel: 'Publish your own Stripe payment events onto the bus' },
 
   // ── Discovery (#1636, re-homed onto `mcp` by #1679)
   //
