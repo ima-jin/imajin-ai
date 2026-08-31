@@ -33,7 +33,7 @@ import type { AttestationType } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
-import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields } from '../attestation-helpers';
+import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation } from '../attestation-helpers';
 import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
 
 const log = createLogger('kernel');
@@ -142,6 +142,19 @@ export async function POST(request: NextRequest) {
   }
   const { delegatorDid, disclosureScope, prevEventRef } = envelopeResult.envelope;
 
+  // Delegated attestations (#1895, #1897): a self-asserted delegator_did is
+  // not proof of delegation — verify a live grant actually backs it before
+  // minting a "delegated" fact into the honest record.
+  const delegationCheck = await verifyDelegatedAttestation({
+    delegatorDid,
+    issuerDid: issuer_did,
+    subjectDid: subject_did,
+    type,
+  });
+  if (!delegationCheck.ok) {
+    return NextResponse.json({ error: delegationCheck.error }, { status: 403 });
+  }
+
   // Accept issued_at so the caller can pre-compute nostr_sig over the exact canonical form.
   const issuedAtMs = resolveIssuedAt(body.issued_at);
   const expiresAt = resolveExpiresAt(body.expires_at);
@@ -191,6 +204,7 @@ export async function POST(request: NextRequest) {
         delegatorDid,
         disclosureScope,
         prevEventRef,
+        delegationGrantId: delegationCheck.grantId,
         issuedAt: new Date(issuedAtMs),
         expiresAt,
       })

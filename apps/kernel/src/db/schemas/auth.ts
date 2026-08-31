@@ -125,6 +125,13 @@ export const attestations = authSchema.table('attestations', {
   // same convention as messagesV2.replyToMessageId; the FK constraint is
   // enforced at the DB level by migrations/0101_attestation_funnel_envelope.sql.
   prevEventRef: text('prev_event_ref'),
+  // The delegation_grants(id) the write path verified `delegator_did` against
+  // at issuance time (#1895, #1897) — null when delegatorDid is absent/self.
+  // Plain column (no Drizzle .references(), same convention as prevEventRef
+  // above) since delegation_grants is declared later in this file; the FK
+  // constraint is enforced at the DB level by
+  // migrations/0107_attestation_delegation_grant.sql.
+  delegationGrantId: text('delegation_grant_id'),
   issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -136,6 +143,7 @@ export const attestations = authSchema.table('attestations', {
   expiresIdx: index('idx_auth_attestations_expires').on(table.expiresAt).where(sql`${table.expiresAt} IS NOT NULL`),
   prevEventRefIdx: index('idx_auth_attestations_prev_event_ref').on(table.prevEventRef).where(sql`${table.prevEventRef} IS NOT NULL`),
   disclosureScopeIdx: index('idx_auth_attestations_disclosure_scope').on(table.disclosureScope),
+  delegationGrantIdx: index('idx_auth_attestations_delegation_grant').on(table.delegationGrantId).where(sql`${table.delegationGrantId} IS NOT NULL`),
 }));
 
 /**

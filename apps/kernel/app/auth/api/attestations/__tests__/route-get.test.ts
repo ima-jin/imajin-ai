@@ -68,6 +68,9 @@ vi.mock('@imajin/cid', () => ({ computeCid: vi.fn() }));
 vi.mock('@imajin/logger', () => ({
   withLogger: (_service: string, handler: (req: unknown, ctx: unknown) => Promise<Response>) =>
     (req: unknown) => handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }),
+  // The route module transitively imports grants.ts (via attestation-helpers'
+  // delegation check, #1895/#1897), which calls createLogger at module scope.
+  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
 vi.mock('@imajin/bus', () => ({ publish: vi.fn() }));

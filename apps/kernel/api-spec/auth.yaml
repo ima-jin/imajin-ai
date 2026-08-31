@@ -1011,6 +1011,13 @@ paths:
       description: |
         Caller must be the issuer (session cookie or Bearer token). The signature must be an
         Ed25519 signature over the canonical JSON of `{subject_did, type, context_id, context_type, payload, issued_at}`.
+
+        `payload.delegator_did` (intro-funnel envelope, #1885) asserts that `delegator_did`
+        authorized `issuer_did` to act on its behalf. When present and different from
+        `issuer_did`, the write is rejected with 403 unless a live (unexpired, unrevoked)
+        delegation grant from `delegator_did` to `issuer_did` covers the capability implied
+        by `type` (#1895, #1897) — a self-asserted `delegator_did` is never trusted on its
+        own. The verified grant id is recorded on the attestation as `delegationGrantId`.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -1027,7 +1034,11 @@ paths:
                 type: { type: string, description: "Attestation type (from ATTESTATION_TYPES registry)" }
                 context_id: { type: string }
                 context_type: { type: string }
-                payload: { type: object }
+                payload:
+                  type: object
+                  description: |
+                    May carry the intro-funnel envelope fields (#1885): delegator_did,
+                    disclosure_scope, prev_event_ref.
                 signature: { type: string, description: "Ed25519 signature over canonical payload (hex)" }
                 issued_at: { type: number, description: "Unix timestamp ms (defaults to now)" }
                 author_jws: { type: string, description: "Optional JWS for bilateral attestation flow" }
@@ -1045,6 +1056,7 @@ paths:
                   subjectDid: { type: string }
                   type: { type: string }
                   attestationStatus: { type: string, enum: [pending, bilateral, declined, "null"] }
+                  delegationGrantId: { type: string, nullable: true, description: "Grant verified against payload.delegator_did, if any (#1895, #1897)" }
                   issuedAt: { type: string, format: date-time }
         "400":
           description: Invalid request or signature
@@ -1053,6 +1065,11 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: payload.delegator_did asserted but no live delegation grant covers this action
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1232,6 +1249,11 @@ paths:
       description: |
         Signs the attestation using the platform keypair (AUTH_PRIVATE_KEY).
         Requires `ATTESTATION_INTERNAL_API_KEY` as Bearer token. No session cookie.
+
+        `payload.delegator_did` is subject to the same live-grant verification as
+        POST /api/attestations (#1895, #1897): present and different from `issuer_did`
+        requires a live delegation grant from `delegator_did` to `issuer_did` covering
+        the capability implied by `type`, or the write is rejected with 403.
       security:
         - bearerAuth: []
       requestBody:
@@ -1247,7 +1269,11 @@ paths:
                 type: { type: string }
                 context_id: { type: string }
                 context_type: { type: string }
-                payload: { type: object }
+                payload:
+                  type: object
+                  description: |
+                    May carry the intro-funnel envelope fields (#1885): delegator_did,
+                    disclosure_scope, prev_event_ref.
       responses:
         "201":
           description: Attestation issued
@@ -1261,6 +1287,7 @@ paths:
                   issuerDid: { type: string }
                   subjectDid: { type: string }
                   type: { type: string }
+                  delegationGrantId: { type: string, nullable: true, description: "Grant verified against payload.delegator_did, if any (#1895, #1897)" }
         "400":
           description: Invalid request
           content:
@@ -1268,6 +1295,11 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Unauthorized (invalid API key)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: payload.delegator_did asserted but no live delegation grant covers this action
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

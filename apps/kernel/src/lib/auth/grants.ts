@@ -290,22 +290,28 @@ export interface IntrospectionResult {
 
 /**
  * Resolve whether `agentDid` currently holds `capability`, optionally scoped
- * to `targetDid` via the grant's audience. This is the execution-time
- * enforcement point (#1882 item 5): it re-reads current storage on every
- * call rather than trusting any caller-held cache, so a revocation or expiry
- * is visible on the very next check.
+ * to `targetDid` via the grant's audience and/or narrowed to grants issued
+ * by a specific `delegatorDid` (#1895, #1897 — verifying a self-asserted
+ * `delegator_did` on an attestation requires exactly this: does THIS
+ * claimed delegator, not merely some delegator, currently grant the agent
+ * this capability). This is the execution-time enforcement point (#1882
+ * item 5): it re-reads current storage on every call rather than trusting
+ * any caller-held cache, so a revocation or expiry is visible on the very
+ * next check.
  *
  * Fails closed: any outcome other than a positive, active, unexpired,
- * audience-matching row returns `authorized: false`. A storage error is
- * NOT caught here — it propagates so the route layer can distinguish "denied"
- * from "the lookup itself failed" and refuse to treat the latter as an allow.
+ * audience-matching (and, when supplied, delegator-matching) row returns
+ * `authorized: false`. A storage error is NOT caught here — it propagates
+ * so the route layer can distinguish "denied" from "the lookup itself
+ * failed" and refuse to treat the latter as an allow.
  */
 export async function introspectGrant(params: {
   agentDid: string;
   capability: string;
   targetDid?: string;
+  delegatorDid?: string;
 }): Promise<IntrospectionResult> {
-  const { agentDid, capability, targetDid } = params;
+  const { agentDid, capability, targetDid, delegatorDid } = params;
   if (!agentDid || !capability) {
     return { authorized: false, reason: 'agentDid and capability are required' };
   }
@@ -329,6 +335,7 @@ export async function introspectGrant(params: {
         eq(delegationGrants.agentDid, agentDid),
         eq(delegationGrants.status, 'active'),
         gt(delegationGrants.expiresAt, now),
+        ...(delegatorDid ? [eq(delegationGrants.delegatorDid, delegatorDid)] : []),
       ),
     );
 

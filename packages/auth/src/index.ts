@@ -22,6 +22,7 @@ export {
   DEFAULT_DISCLOSURE_SCOPE,
   EVIDENCE_GRADES,
   INTRO_FUNNEL_CONTEXT_TYPE,
+  INTRO_FUNNEL_DELEGATION_CAPABILITY,
   isIntroFunnelAttestationType,
   isDisclosureScope,
   evidenceGradeForAttestationStatus,
@@ -29,6 +30,7 @@ export {
   verifyFunnelChainLink,
   verifyFunnelChain,
   funnelCorrelationContext,
+  capabilityForDelegatedAttestationType,
 } from "./intro-funnel";
 export type {
   IntroFunnelAttestationType,
