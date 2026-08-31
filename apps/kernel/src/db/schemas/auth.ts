@@ -123,7 +123,7 @@ export const attestations = authSchema.table('attestations', {
   // Immediate predecessor attestation id — makes a funnel a verifiable chain.
   // Plain column (no Drizzle .references() to avoid a circular self-type),
   // same convention as messagesV2.replyToMessageId; the FK constraint is
-  // enforced at the DB level by migrations/0100_attestation_funnel_envelope.sql.
+  // enforced at the DB level by migrations/0101_attestation_funnel_envelope.sql.
   prevEventRef: text('prev_event_ref'),
   issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),

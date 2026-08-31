@@ -15,7 +15,7 @@ Ordered funnel, all in `packages/auth/src/types/attestation.ts` `ATTESTATION_TYP
 
 ## Attestation-type registry: additive, not a replacement
 
-`auth.attestation_type_registry` (migration `0099_attestation_type_registry.sql`) is registry-as-data: platform-seeded rows for the five funnel types, plus third-party rows namespaced under a registrant's own handle (`acme/referral_made`), registered via `POST /auth/api/attestations/types` and gated on `requireEstablishedDID`.
+`auth.attestation_type_registry` (migration `0100_attestation_type_registry.sql`) is registry-as-data: platform-seeded rows for the five funnel types, plus third-party rows namespaced under a registrant's own handle (`acme/referral_made`), registered via `POST /auth/api/attestations/types` and gated on `requireEstablishedDID`.
 
 This is deliberately **additive**: the compile-time `ATTESTATION_TYPES` array is untouched, and both attestation-creation routes validate `type` as `ATTESTATION_TYPES.includes(type) || isRegisteredAttestationType(type)`. The ~59 pre-existing hardcoded types keep zero-DB-hit validation; the registry is the extension surface for types that don't ship in a release. Registering a type does not grant any special write access — issuing an attestation of that type still goes through the normal signature-verification path.
 
@@ -25,7 +25,7 @@ The full envelope is `{ subject, actor, delegator?, timestamp, disclosure_scope,
 
 The three new fields (`delegator_did`, `disclosure_scope`, `prev_event_ref`) are accepted as keys inside the existing `payload` object on `POST /auth/api/attestations` and `.../internal`, **not** as new inputs to `canonicalize()`. This was a deliberate choice: `payload` is already part of the Ed25519-signed canonical form (`canonicalize({ subject_did, type, context_id, context_type, payload, issued_at })`), so putting the envelope fields there means they are cryptographically covered with **zero change to the signing/verification wire format** used by every existing caller across ~10 services. Adding them as new top-level canonicalize() inputs would have changed the signed byte sequence for every attestation type, breaking any client that pre-computed a signature against the old shape.
 
-At insert time, both routes extract and validate `payload.delegator_did` / `payload.disclosure_scope` / `payload.prev_event_ref` (see `resolveEnvelopeFields` in `attestation-helpers.ts`) and mirror them into dedicated indexed columns on `auth.attestations` (migration `0100_attestation_funnel_envelope.sql`) so they're queryable and chain-walkable without scanning JSON.
+At insert time, both routes extract and validate `payload.delegator_did` / `payload.disclosure_scope` / `payload.prev_event_ref` (see `resolveEnvelopeFields` in `attestation-helpers.ts`) and mirror them into dedicated indexed columns on `auth.attestations` (migration `0101_attestation_funnel_envelope.sql`) so they're queryable and chain-walkable without scanning JSON.
 
 ## `prev_event_ref`: chain shape
 

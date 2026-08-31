@@ -1,4 +1,4 @@
--- 0099_attestation_type_registry.sql
+-- 0100_attestation_type_registry.sql
 -- Attestation-type registry as DATA, not hardcoded per-service (#1885).
 --
 -- Problem: `packages/auth/src/types/attestation.ts` ATTESTATION_TYPES is a

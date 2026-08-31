@@ -1,4 +1,4 @@
--- 0100_attestation_funnel_envelope.sql
+-- 0101_attestation_funnel_envelope.sql
 -- Envelope fields for the intro-funnel schema (#1885): { subject, actor,
 -- delegator?, timestamp, disclosure_scope, prev_event_ref }.
 --
