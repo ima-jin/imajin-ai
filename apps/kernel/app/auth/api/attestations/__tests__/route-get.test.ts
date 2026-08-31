@@ -43,6 +43,7 @@ vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]): Op => ({ op: 'eq', args }),
   and: (...args: unknown[]): Op => ({ op: 'and', args }),
   isNull: (...args: unknown[]): Op => ({ op: 'isNull', args }),
+  ne: (...args: unknown[]): Op => ({ op: 'ne', args }),
   gt: (...args: unknown[]): Op => ({ op: 'gt', args }),
   desc: (...args: unknown[]): Op => ({ op: 'desc', args }),
   notInArray: (...args: unknown[]): Op => ({ op: 'notInArray', args }),
@@ -94,6 +95,10 @@ function hasNotInArray(args: unknown[]): boolean {
   return args.some((arg) => (arg as Op).op === 'notInArray');
 }
 
+function hasNe(args: unknown[]): boolean {
+  return args.some((arg) => (arg as Op).op === 'ne');
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.limitMock.mockResolvedValue([]);
@@ -126,5 +131,30 @@ describe('GET /auth/api/attestations — countersign-pending filter (#1822)', ()
     await GET(makeGetReq('https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob'));
 
     expect(hasNotInArray(whereArgs())).toBe(false);
+  });
+});
+
+// #1790 — reads default to operative records (exclude superseded); an
+// explicit status filter (including `status=superseded`, the history-ish
+// query) is never overridden by the default exclusion.
+describe('GET /auth/api/attestations — operative-vs-history reads (#1790)', () => {
+  it('excludes superseded attestations by default (no status/evidence_grade filter)', async () => {
+    await GET(makeGetReq('https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob'));
+
+    expect(hasNe(whereArgs())).toBe(true);
+  });
+
+  it('does not add the default exclusion when an explicit status filter is given', async () => {
+    await GET(makeGetReq('https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob&status=superseded'));
+
+    expect(hasNe(whereArgs())).toBe(false);
+  });
+
+  it('does not add the default exclusion when an explicit evidence_grade filter is given', async () => {
+    await GET(
+      makeGetReq('https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob&evidence_grade=corroborated'),
+    );
+
+    expect(hasNe(whereArgs())).toBe(false);
   });
 });

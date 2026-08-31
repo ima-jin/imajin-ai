@@ -19,11 +19,20 @@ describe('authorizeAssetRead (conversation membership #1168)', () => {
     expect(checkAccess).not.toHaveBeenCalled();
   });
 
-  it('non-conversation access never calls checkAccess', async () => {
+  it('conversation access never calls isGroupMember', async () => {
+    const checkAccess = vi.fn().mockResolvedValue({ allowed: true });
+    const isGroupMember = vi.fn();
+    await authorizeAssetRead({ ownerDid: OWNER, access: conv(DM) }, MEMBER, { checkAccess, isGroupMember });
+    expect(isGroupMember).not.toHaveBeenCalled();
+  });
+
+  it('public access never calls checkAccess or isGroupMember', async () => {
     const checkAccess = vi.fn();
-    expect((await authorizeAssetRead({ ownerDid: OWNER, access: 'private' }, STRANGER, { checkAccess })).allowed).toBe(false);
-    expect((await authorizeAssetRead({ ownerDid: OWNER, access: 'public' }, STRANGER, { checkAccess })).allowed).toBe(true);
+    const isGroupMember = vi.fn();
+    const d = await authorizeAssetRead({ ownerDid: OWNER, access: 'public' }, STRANGER, { checkAccess, isGroupMember });
+    expect(d.allowed).toBe(true);
     expect(checkAccess).not.toHaveBeenCalled();
+    expect(isGroupMember).not.toHaveBeenCalled();
   });
 
   it('conversation member is allowed via checkAccess (DM)', async () => {
@@ -67,5 +76,52 @@ describe('authorizeAssetRead (conversation membership #1168)', () => {
     );
     expect(d.allowed).toBe(false);
     expect(checkAccess).not.toHaveBeenCalled();
+  });
+});
+
+describe('authorizeAssetRead (private-asset group/business membership #1851)', () => {
+  it('owner is allowed without a group-membership check', async () => {
+    const isGroupMember = vi.fn();
+    const d = await authorizeAssetRead({ ownerDid: OWNER, access: 'private' }, OWNER, { isGroupMember });
+    expect(d.allowed).toBe(true);
+    expect(isGroupMember).not.toHaveBeenCalled();
+  });
+
+  it('unauthenticated requester is denied without a group-membership check', async () => {
+    const isGroupMember = vi.fn();
+    const d = await authorizeAssetRead({ ownerDid: OWNER, access: 'private' }, null, { isGroupMember });
+    expect(d.allowed).toBe(false);
+    expect(isGroupMember).not.toHaveBeenCalled();
+  });
+
+  it('(a) an active identity_members row on a group/business owner grants read', async () => {
+    const isGroupMember = vi.fn().mockResolvedValue(true);
+    const d = await authorizeAssetRead({ ownerDid: OWNER, access: 'private' }, MEMBER, { isGroupMember });
+    expect(d.allowed).toBe(true);
+    expect(isGroupMember).toHaveBeenCalledWith(OWNER, MEMBER);
+  });
+
+  it('(b) a non-member stays denied', async () => {
+    const isGroupMember = vi.fn().mockResolvedValue(false);
+    const d = await authorizeAssetRead({ ownerDid: OWNER, access: 'private' }, STRANGER, { isGroupMember });
+    expect(d.allowed).toBe(false);
+    expect(d.accessType).toBe('private');
+    expect(isGroupMember).toHaveBeenCalledWith(OWNER, STRANGER);
+  });
+
+  // (c) Personal-scope owners unaffected: the scope gate (only group/
+  // business/community owners consult identity_members) lives inside
+  // isActiveGroupMember itself, exercised against a real (mocked-DB)
+  // implementation in group-membership.test.ts — not re-mocked here.
+
+  it('trust-graph access never calls isGroupMember', async () => {
+    const isGroupMember = vi.fn();
+    const d = await authorizeAssetRead(
+      { ownerDid: OWNER, access: { type: 'trust-graph', allowedDids: [MEMBER] } },
+      MEMBER,
+      { isGroupMember },
+    );
+    expect(d.allowed).toBe(true);
+    expect(isGroupMember).not.toHaveBeenCalled();
   });
 });

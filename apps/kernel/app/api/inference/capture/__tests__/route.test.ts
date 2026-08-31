@@ -96,13 +96,25 @@ vi.mock('@/src/lib/inference/brain', () => {
       this.name = 'NoModelSelectedError';
     }
   }
-  return { NoBrainSealedError, NoModelSelectedError };
+  // #1818: same reasoning as the other two — the route only needs the error
+  // TYPE (plus its `connector`/`modelId` fields) for `instanceof` matching.
+  class ModelDeprecatedError extends Error {
+    readonly connector: string;
+    readonly modelId: string;
+    constructor(connector: string, modelId: string) {
+      super(`model_deprecated: ${connector} model '${modelId}' was not found upstream`);
+      this.name = 'ModelDeprecatedError';
+      this.connector = connector;
+      this.modelId = modelId;
+    }
+  }
+  return { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError };
 });
 
-// ─── Subject ─────────────────────────────────────────────────────
+// ─── Subject ────────────────────────────────────
 
 import { POST, OPTIONS } from '../route';
-import { NoBrainSealedError, NoModelSelectedError } from '@/src/lib/inference/brain';
+import { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError } from '@/src/lib/inference/brain';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { RetryError } from 'ai';
 
@@ -410,6 +422,29 @@ describe('POST /api/inference/capture — pipeline outcomes', () => {
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual(
       expect.objectContaining({ error: 'no_model_selected', message: expect.stringContaining('no model is selected') }),
+    );
+  });
+
+  /**
+   * #1818: the model selected on a connector card can be retired upstream
+   * after the fact — Google keeps dead models listed in its own ListModels
+   * API, so pick-time validation narrows this window but cannot close it.
+   * This must be its own typed 422, distinct from `no_model_selected`,
+   * naming the connector/model so the UI can point back at the picker.
+   */
+  it('returns 422 with a model_deprecated code when the selected model is retired upstream', async () => {
+    mockInfer.mockRejectedValueOnce(new ModelDeprecatedError('gemini', 'gemini-2.5-flash'));
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body).toEqual(
+      expect.objectContaining({
+        error: 'model_deprecated',
+        connector: 'gemini',
+        modelId: 'gemini-2.5-flash',
+      }),
     );
   });
 

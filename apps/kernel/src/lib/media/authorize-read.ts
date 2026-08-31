@@ -2,16 +2,22 @@ import type { FairManifest } from '@imajin/fair';
 import { canReadAsset, type ReadDecision } from './read-access';
 
 /**
- * Async per-asset READ authorization (#1166, closes #1168).
+ * Async per-asset READ authorization (#1166, closes #1168, closes #1851).
  *
- * Wraps the pure canReadAsset decision and adds conversation-membership gating
- * for non-owners, using the canonical chat access check (checkAccess from
- * @/src/lib/kernel/access — DM participation incl. the re-derivable dmDid hash,
- * group membership via chat.conversation_members, pods, events). This is the
- * function the HTTP media routes and the MCP media tools call.
+ * Wraps the pure canReadAsset decision and adds two DB-backed fallbacks for
+ * non-owners:
+ *   - conversation-membership gating, using the canonical chat access check
+ *     (checkAccess from @/src/lib/kernel/access — DM participation incl. the
+ *     re-derivable dmDid hash, group membership via chat.conversation_members,
+ *     pods, events).
+ *   - group/business-scope identity_members membership (#1851): a private
+ *     asset owned by an org/community/family identity is readable by that
+ *     identity's own members, matching the delegated WRITE path (which
+ *     already authorizes via identity_members for X-Acting-For).
+ * This is the function the HTTP media routes and the MCP media tools call.
  *
- * checkAccess is dependency-injectable (and otherwise lazily imported) so this
- * module can be unit-tested without standing up a DB client.
+ * Both fallbacks are dependency-injectable (and otherwise lazily imported) so
+ * this module can be unit-tested without standing up a DB client.
  */
 
 export interface AuthorizeSubject {
@@ -22,9 +28,11 @@ export interface AuthorizeSubject {
 }
 
 type CheckAccessFn = (requesterDid: string, targetDid: string) => Promise<{ allowed: boolean }>;
+type IsGroupMemberFn = (ownerDid: string, requesterDid: string) => Promise<boolean>;
 
 export interface AuthorizeDeps {
   checkAccess?: CheckAccessFn;
+  isGroupMember?: IsGroupMemberFn;
 }
 
 /**
@@ -55,8 +63,21 @@ export async function authorizeAssetRead(
 ): Promise<ReadDecision> {
   const base = canReadAsset({ ownerDid: subject.ownerDid, access: subject.access }, requesterDid);
 
-  // Only conversation reads by an authenticated non-owner need the membership check.
-  if (base.allowed || base.accessType !== 'conversation' || !requesterDid) {
+  // Already allowed, or no authenticated requester to re-check against.
+  if (base.allowed || !requesterDid) {
+    return base;
+  }
+
+  // Private (#1851): fall back to identity_members when the owner is a
+  // group/business-scope identity — mirrors the delegated WRITE path, which
+  // already treats org membership as authorization.
+  if (base.accessType === 'private') {
+    const isGroupMember = deps.isGroupMember ?? (await import('@/src/lib/auth/group-membership')).isActiveGroupMember;
+    const allowed = await isGroupMember(subject.ownerDid, requesterDid);
+    return allowed ? { allowed: true, requiresAuth: true, accessType: 'private' } : base;
+  }
+
+  if (base.accessType !== 'conversation') {
     return base;
   }
 

@@ -44,7 +44,7 @@ export const invitesInConnections = connectionsSchema.table("invites", {
   pendingAttestationId: text("pending_attestation_id"), // record awaiting the invitee's countersignature
   // Stamped when this invite is cascaded to status='lapsed' by the
   // claim-stub-expiry sweep (#1841) — the invite's target stub tombstoned
-  // while this invite was still pending. See migrations/0109_claim_stub_expiry.sql.
+  // while this invite was still pending. See migrations/0110_claim_stub_expiry.sql.
   lapsedAt: timestamp("lapsed_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
   index("idx_invites_code").using("btree", table.code.asc().nullsLast().op("text_ops")),

@@ -1,4 +1,4 @@
--- 0109_claim_stub_expiry.sql
+-- 0110_claim_stub_expiry.sql
 -- Unclaimed-stub expiry policy (#1841, ratified proposal comment on #1841,
 -- 2026-08-31: "Proposed policy: unclaimed-stub expiry, tombstone,
 -- re-introduction, and `lapsed` attestations"). Builds on the claimable-stub

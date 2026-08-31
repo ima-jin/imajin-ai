@@ -193,7 +193,7 @@ export async function mintOrAccrueClaimableStub(email: string): Promise<Claimabl
   });
 
   // Deliberately no `stub_status` here — defaults to 'active' at the DB
-  // level (migrations/0109_claim_stub_expiry.sql). The partial-unique index
+  // level (migrations/0110_claim_stub_expiry.sql). The partial-unique index
   // on (email_hmac) WHERE stub_status = 'active' is what allows this insert
   // to succeed even when an `expired` row for the same email_hmac already
   // exists (re-introduction after expiry).

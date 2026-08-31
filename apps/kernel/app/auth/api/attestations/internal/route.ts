@@ -33,7 +33,7 @@ import type { AttestationType } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
-import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation } from '../attestation-helpers';
+import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation, validateSupersedesReference } from '../attestation-helpers';
 import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
 
 const log = createLogger('kernel');
@@ -47,20 +47,30 @@ type EnvelopeResolution = ReturnType<typeof resolveEnvelopeFields>;
 /**
  * Resolve + validate the intro-funnel envelope fields carried in `payload`,
  * including that `prev_event_ref` (when present) resolves to an existing
- * attestation. Extracted from POST so the handler's own branching stays
- * under the cognitive-complexity budget (#1885).
+ * attestation, and that `supersedes` (when present) resolves to a bilateral
+ * attestation `proposerDid` is a party to (#1790 — amendment-by-supersession;
+ * deliberately a separate check from prevEventRef, see attestation-helpers).
+ * Extracted from POST so the handler's own branching stays under the
+ * cognitive-complexity budget (#1885).
  */
-async function resolveEnvelope(payload: unknown): Promise<EnvelopeResolution> {
+async function resolveEnvelope(payload: unknown, proposerDid: string): Promise<EnvelopeResolution> {
   const envelopeResult = resolveEnvelopeFields(payload);
   if (!envelopeResult.ok) return envelopeResult;
 
-  const { prevEventRef } = envelopeResult.envelope;
-  if (!prevEventRef) return envelopeResult;
+  const { prevEventRef, supersedes } = envelopeResult.envelope;
 
-  const [predecessor] = await db.select({ id: attestations.id }).from(attestations).where(eq(attestations.id, prevEventRef)).limit(1);
-  if (!predecessor) {
-    return { ok: false, error: `prev_event_ref "${prevEventRef}" does not reference an existing attestation` };
+  if (prevEventRef) {
+    const [predecessor] = await db.select({ id: attestations.id }).from(attestations).where(eq(attestations.id, prevEventRef)).limit(1);
+    if (!predecessor) {
+      return { ok: false, error: `prev_event_ref "${prevEventRef}" does not reference an existing attestation` };
+    }
   }
+
+  if (supersedes) {
+    const supersedesResult = await validateSupersedesReference(supersedes, proposerDid);
+    if (!supersedesResult.ok) return supersedesResult;
+  }
+
   return envelopeResult;
 }
 
@@ -136,11 +146,13 @@ export async function POST(request: NextRequest) {
   }
 
   // Intro-funnel envelope fields (#1885) ride inside `payload` — see resolveEnvelope.
-  const envelopeResult = await resolveEnvelope(payload);
+  // The proposer for a `supersedes` reference (#1790) is the issuer of this
+  // new attestation, i.e. whoever is signing the amendment.
+  const envelopeResult = await resolveEnvelope(payload, issuer_did);
   if (!envelopeResult.ok) {
     return NextResponse.json({ error: envelopeResult.error }, { status: 400 });
   }
-  const { delegatorDid, disclosureScope, prevEventRef } = envelopeResult.envelope;
+  const { delegatorDid, disclosureScope, prevEventRef, supersedes } = envelopeResult.envelope;
 
   // Delegated attestations (#1895, #1897): a self-asserted delegator_did is
   // not proof of delegation — verify a live grant actually backs it before
@@ -204,6 +216,7 @@ export async function POST(request: NextRequest) {
         delegatorDid,
         disclosureScope,
         prevEventRef,
+        supersedes,
         delegationGrantId: delegationCheck.grantId,
         issuedAt: new Date(issuedAtMs),
         expiresAt,

@@ -71,6 +71,7 @@ beforeEach(() => {
   mockResolveConnectorOwnerDid.mockReset();
   mockResolveConnectorOwnerDid.mockResolvedValue({ ok: true, ownerDid: OWNER_DID });
   mockLoadGeminiSealedCredentials.mockReset();
+  mockLoadGeminiSealedCredentials.mockResolvedValue({ apiKey: API_KEY });
   mockGeminiKeyPending.mockReset();
   mockGeminiKeyPending.mockResolvedValue(false);
   mockSetModelId.mockReset();
@@ -211,18 +212,30 @@ describe('GET', () => {
 
 // ── PUT ───────────────────────────────────────────────────────────────────────
 
-describe('PUT', () => {
-  it('seals the chosen modelId for the acting DID', async () => {
+describe('PUT (#1818: validates liveness before persisting)', () => {
+  it('probes the model with the sealed key, then seals the chosen modelId for the acting DID', async () => {
+    const fetchMock = stubFetch({}, true, 200);
+
     const res = await PUT(makeReq({ modelId: 'gemini-3.6-flash' }));
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ modelId: 'gemini-3.6-flash' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('gemini-3.6-flash:generateContent'),
+      expect.objectContaining({ method: 'POST' }),
+    );
     expect(mockSetModelId).toHaveBeenCalledWith(OWNER_DID, 'gemini-3.6-flash');
   });
 
-  it('trims before storing', async () => {
+  it('trims before probing and storing', async () => {
+    const fetchMock = stubFetch({}, true, 200);
+
     await PUT(makeReq({ modelId: '  gemini-3.6-flash  ' }));
 
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('gemini-3.6-flash:generateContent'),
+      expect.any(Object),
+    );
     expect(mockSetModelId).toHaveBeenCalledWith(OWNER_DID, 'gemini-3.6-flash');
   });
 
@@ -244,7 +257,67 @@ describe('PUT', () => {
     expect(mockSetModelId).not.toHaveBeenCalled();
   });
 
-  it('returns 500 when sealing fails', async () => {
+  it('returns 400 gemini_no_key when no key is sealed, without probing', async () => {
+    mockLoadGeminiSealedCredentials.mockResolvedValue(undefined);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await PUT(makeReq({ modelId: 'gemini-3.6-flash' }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/gemini_no_key/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockSetModelId).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 gemini_credential_pending when the key is sealed but awaiting grant approval', async () => {
+    mockLoadGeminiSealedCredentials.mockResolvedValue(undefined);
+    mockGeminiKeyPending.mockResolvedValue(true);
+
+    const res = await PUT(makeReq({ modelId: 'gemini-3.6-flash' }));
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/gemini_credential_pending/);
+    expect(mockSetModelId).not.toHaveBeenCalled();
+  });
+
+  it('rejects a retired model with 422 model_deprecated when the probe 404s, without sealing it', async () => {
+    stubFetch({ error: { message: 'model not found' } }, false, 404);
+
+    const res = await PUT(makeReq({ modelId: 'gemini-2.0-flash' }));
+    const body = await res.json() as { error: string; modelId: string };
+
+    expect(res.status).toBe(422);
+    expect(body.error).toBe('model_deprecated');
+    expect(body.modelId).toBe('gemini-2.0-flash');
+    expect(mockSetModelId).not.toHaveBeenCalled();
+  });
+
+  it('maps a non-404 probe failure to 502 and never leaks the key', async () => {
+    const fetchMock = stubFetch({ error: { message: 'API key not valid' } }, false, 400);
+
+    const res = await PUT(makeReq({ modelId: 'gemini-3.6-flash' }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(encodeURIComponent(API_KEY)),
+      expect.any(Object),
+    );
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(await res.json())).not.toContain(API_KEY);
+    expect(mockSetModelId).not.toHaveBeenCalled();
+  });
+
+  it('maps a network failure during the probe to 502, without sealing the model', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+
+    const res = await PUT(makeReq({ modelId: 'gemini-3.6-flash' }));
+
+    expect(res.status).toBe(502);
+    expect(mockSetModelId).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when sealing fails after a successful probe', async () => {
+    stubFetch({}, true, 200);
     mockSetModelId.mockRejectedValueOnce(new Error('vault down'));
 
     const res = await PUT(makeReq({ modelId: 'gemini-3.6-flash' }));

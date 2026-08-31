@@ -17,10 +17,11 @@
  */
 
 import { eq } from 'drizzle-orm';
+import { APICallError } from 'ai';
 import { db, inferenceSessions } from '@/src/db';
 import { getModel, generateText } from '@imajin/llm';
 import { createLogger } from '@imajin/logger';
-import { resolveBrain, type BrainCredentialContext } from './brain';
+import { resolveBrain, ModelDeprecatedError, type BrainCredentialContext, type ResolvedBrain } from './brain';
 import type { CandidateIntent, InferenceContext, IntentVocabulary } from './types';
 
 const log = createLogger('kernel:inference:policy');
@@ -62,11 +63,16 @@ export async function infer(
   credentialContext: string | ModelCredentialContext,
 ): Promise<CandidateIntent[]> {
   let rawText: string;
+  // Set once brain resolution succeeds, so the catch block below can tell a
+  // 404 from the chat-completions call (this DID's model, now dead upstream)
+  // apart from a 404 that could theoretically surface from resolving the
+  // brain itself (#1818) — the latter has no sealed model to name.
+  let brain: ResolvedBrain | undefined;
   try {
     // Brain resolution is inside the try so a missing connection marks the
     // session failed like any other policy failure — otherwise the session
     // would sit in `inferring` forever with no candidates and no explanation.
-    const brain = await resolveBrain(credentialContext);
+    brain = await resolveBrain(credentialContext);
     const model = getModel(brain.provider, brain.modelId, {
       apiKey: brain.apiKey,
       ...(brain.baseURL === undefined ? {} : { baseURL: brain.baseURL }),
@@ -102,15 +108,34 @@ export async function infer(
     });
     rawText = result.text;
   } catch (err) {
+    // #1818: the model sealed on a connector card can be retired upstream
+    // after selection — Google (and other providers) keep dead model ids in
+    // their own models-list API, so pick-time validation narrows this window
+    // but cannot close it. Surface a 404/NotFound on the chat-completions
+    // call as a typed, named error instead of letting it fall through to the
+    // generic 500 below — the capture route maps this to 422 model_deprecated
+    // so the UI can point the user back at the picker instead of reporting an
+    // opaque crash.
+    if (
+      brain !== undefined &&
+      APICallError.isInstance(err) &&
+      (err.statusCode === 404 || /not found/i.test(err.message))
+    ) {
+      const deprecatedErr = new ModelDeprecatedError(brain.connector, brain.modelId);
+      log.error(
+        { err: String(err), sessionId: ctx.sessionId, connector: brain.connector, model: brain.modelId },
+        'LLM inference failed: selected model retired upstream',
+      );
+      await markSessionFailed(ctx.sessionId);
+      throw deprecatedErr;
+    }
+
     // Rethrow the original error rather than wrapping it: the capture route
     // matches on error identity (NoBrainSealedError, RetryError, etc.) to
     // return typed HTTP responses (#1764). Wrapping in a generic Error here
     // erased that identity before it ever reached the route.
     log.error({ err: String(err), sessionId: ctx.sessionId }, 'LLM inference failed');
-    await db
-      .update(inferenceSessions)
-      .set({ status: 'failed', updatedAt: new Date() })
-      .where(eq(inferenceSessions.id, ctx.sessionId));
+    await markSessionFailed(ctx.sessionId);
     throw err;
   }
 
@@ -134,6 +159,13 @@ export async function infer(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+async function markSessionFailed(sessionId: string): Promise<void> {
+  await db
+    .update(inferenceSessions)
+    .set({ status: 'failed', updatedAt: new Date() })
+    .where(eq(inferenceSessions.id, sessionId));
+}
 
 function buildUserMessage(ctx: InferenceContext): string {
   const lines: string[] = [
