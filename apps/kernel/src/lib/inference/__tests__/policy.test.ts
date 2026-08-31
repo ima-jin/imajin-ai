@@ -30,13 +30,28 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 const mockResolveBrain = vi.hoisted(() => vi.fn());
-vi.mock('../brain', () => ({
-  resolveBrain: mockResolveBrain,
-}));
+vi.mock('../brain', () => {
+  // #1818: real class (no DB/vault imports, unlike the rest of brain.ts), so
+  // policy.ts's `new ModelDeprecatedError(...)` and this test's
+  // `instanceof ModelDeprecatedError` refer to the exact same constructor.
+  class ModelDeprecatedError extends Error {
+    readonly connector: string;
+    readonly modelId: string;
+    constructor(connector: string, modelId: string) {
+      super(`model_deprecated: ${connector} model '${modelId}' was not found upstream`);
+      this.name = 'ModelDeprecatedError';
+      this.connector = connector;
+      this.modelId = modelId;
+    }
+  }
+  return { resolveBrain: mockResolveBrain, ModelDeprecatedError };
+});
 
-// ─── Subject ────────────────────────────────────────────────────────────────
+// ─── Subject ────────────────────────────────────
 
+import { APICallError } from 'ai';
 import { infer } from '../policy';
+import { ModelDeprecatedError } from '../brain';
 import type { InferenceContext, IntentVocabulary } from '../types';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -236,6 +251,62 @@ describe('infer — inference policy layer', () => {
     expect(mockUpdateSet).toHaveBeenCalledOnce();
     const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
     expect(setArg['status']).toBe('failed');
+  });
+
+  /**
+   * #1818: the model sealed on a connector card can be retired upstream
+   * after selection — Google's own ListModels API keeps listing dead models,
+   * so a 404 on the actual chat-completions call is the only reliable
+   * signal. This must surface as a distinctly-typed `ModelDeprecatedError`
+   * naming the connector/model, not the original opaque provider error, so
+   * the capture route can map it to 422 model_deprecated instead of a bare
+   * 500.
+   */
+  describe('when the provider reports the sealed model as not found (#1818)', () => {
+    it('throws ModelDeprecatedError naming the connector and model, and marks the session failed', async () => {
+      const notFound = new APICallError({
+        message: 'Not Found',
+        url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+        requestBodyValues: {},
+        statusCode: 404,
+        isRetryable: false,
+      });
+      mockGenerateText.mockRejectedValueOnce(notFound);
+
+      const thrown = await infer(CTX, VOCAB, OWNER).catch((err: unknown) => err);
+
+      expect(thrown).toBeInstanceOf(ModelDeprecatedError);
+      expect((thrown as InstanceType<typeof ModelDeprecatedError>).connector).toBe('gemini');
+      expect((thrown as InstanceType<typeof ModelDeprecatedError>).modelId).toBe('gemini-2.0-flash');
+
+      const setArg = mockUpdateSet.mock.calls[0][0] as Record<string, unknown>;
+      expect(setArg['status']).toBe('failed');
+    });
+
+    it('also maps a 404 that only surfaces as a "not found" message with no statusCode', async () => {
+      const notFound = new APICallError({
+        message: 'The model `gemini-2.0-flash` was Not Found',
+        url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+        requestBodyValues: {},
+        isRetryable: false,
+      });
+      mockGenerateText.mockRejectedValueOnce(notFound);
+
+      await expect(infer(CTX, VOCAB, OWNER)).rejects.toBeInstanceOf(ModelDeprecatedError);
+    });
+
+    it('does not reclassify a non-404 APICallError (e.g. a genuine 429) as model_deprecated', async () => {
+      const rateLimited = new APICallError({
+        message: 'Too Many Requests',
+        url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+        requestBodyValues: {},
+        statusCode: 429,
+        isRetryable: true,
+      });
+      mockGenerateText.mockRejectedValueOnce(rateLimited);
+
+      await expect(infer(CTX, VOCAB, OWNER)).rejects.toBe(rateLimited);
+    });
   });
 
   /**

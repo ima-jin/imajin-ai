@@ -230,6 +230,40 @@ export class NoModelSelectedError extends Error {
 }
 
 /**
+ * Thrown when the provider rejects the sealed model id as not found (#1818).
+ *
+ * A connector card can be fully resolved — grant, key, and model id all
+ * present — and still die at call time: Google (and other providers) retire
+ * model ids out from under a standing selection, and Google's own
+ * `ListModels` API keeps listing retired models, so pick-time validation
+ * (`PUT /gemini/api/models`, #1818 item 2) narrows this window but cannot
+ * close it. `resolveBrain` never throws this itself — it has no way to know
+ * the model is dead until the provider is actually called — so the policy
+ * layer (`infer`) raises it once a chat-completions call comes back
+ * 404/NotFound, with the connector/model that was actually in use.
+ *
+ * Distinct from `NoModelSelectedError`: a model IS selected, it just no
+ * longer exists upstream — the remedy is to pick a *different* model, not to
+ * pick one for the first time.
+ */
+export class ModelDeprecatedError extends Error {
+  /** Connector whose sealed model id the provider rejected. */
+  readonly connector: BrainConnectorId;
+  /** The model id that was sealed and is no longer servable upstream. */
+  readonly modelId: string;
+
+  constructor(connector: BrainConnectorId, modelId: string) {
+    super(
+      `model_deprecated: ${connector} model '${modelId}' was not found upstream — it has ` +
+      'likely been retired. Choose a different model on the connector card.',
+    );
+    this.name = 'ModelDeprecatedError';
+    this.connector = connector;
+    this.modelId = modelId;
+  }
+}
+
+/**
  * Candidate DIDs in resolution order: owner first, then the app/org.
  *
  * Deduped, because an app invoking on its own behalf would otherwise have its
