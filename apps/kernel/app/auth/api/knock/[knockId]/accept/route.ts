@@ -8,7 +8,7 @@
  * (#1882): "Accept must never be optimized into accept+grant."
  */
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, authErrorResponse } from '@imajin/auth';
 import { acceptKnock } from '@/src/lib/auth/knock';
 
 export async function POST(request: Request, props: { params: Promise<{ knockId: string }> }) {
@@ -16,7 +16,7 @@ export async function POST(request: Request, props: { params: Promise<{ knockId:
 
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return authErrorResponse(authResult);
   }
   const requestedBy = authResult.identity.actingAs ?? authResult.identity.id;
 

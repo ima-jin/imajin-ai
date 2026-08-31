@@ -27,7 +27,7 @@
  * Returns: { grant: DelegationGrant, introAttributionTerms?: IntroAttributionTermsRecord }
  */
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, authErrorResponse, agentCardUrl } from '@imajin/auth';
 import { issueGrant, listGrantsForDelegator } from '@/src/lib/auth/grants';
 import { recordIntroAttributionTerms } from '@/src/lib/fair/intro-attribution';
 import { validateIntroAttributionSplitBps, type IntroAttributionSplitBps } from '@imajin/fair';
@@ -35,13 +35,18 @@ import { validateIntroAttributionSplitBps, type IntroAttributionSplitBps } from 
 export async function POST(request: Request) {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return authErrorResponse(authResult);
   }
   const { identity } = authResult;
 
   if (identity.actingFor) {
+    // `onboarding` (#1899): the agent-delegation caller here is itself an
+    // agent's own key being told it lacks the standing to self-grant.
     return NextResponse.json(
-      { error: 'Grants must be issued by the delegator principal directly, not while acting under agent delegation' },
+      {
+        error: 'Grants must be issued by the delegator principal directly, not while acting under agent delegation',
+        onboarding: agentCardUrl(),
+      },
       { status: 403 },
     );
   }
@@ -117,7 +122,7 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return authErrorResponse(authResult);
   }
   const delegatorDid = authResult.identity.actingAs ?? authResult.identity.id;
 

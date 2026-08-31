@@ -5,6 +5,7 @@ import { db, identityChains, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { verifyChainLog } from './chain-providers';
 import { createLogger } from '@imajin/logger';
+import { agentCardUrl } from '@/src/lib/http/node-url';
 
 const log = createLogger('kernel');
 
@@ -164,10 +165,14 @@ export async function requireControllerKey(request: NextRequest): Promise<Sessio
 }
 
 /**
- * Helper to create a JSON response with authentication error
+ * Helper to create a JSON response with authentication error.
+ *
+ * Carries an `onboarding` pointer to the agent card (#1899): the caller may
+ * be a stranger's agent that has never heard of this node's knock flow, and
+ * the rejection itself is the only message it is guaranteed to read.
  */
 export function unauthorizedResponse(message = 'Authentication required') {
-  return NextResponse.json({ error: message }, { status: 401 });
+  return NextResponse.json({ error: message, onboarding: agentCardUrl() }, { status: 401 });
 }
 
 /**
@@ -177,5 +182,6 @@ export function hardDIDRequiredResponse(message = 'This action requires a full i
   return NextResponse.json({
     error: message,
     upgradeRequired: true,
+    onboarding: agentCardUrl(),
   }, { status: 403 });
 }

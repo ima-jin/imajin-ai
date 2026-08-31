@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAppToken } from '@/src/lib/auth/jwt';
 import { getMcpResource, getProtectedResourceMetadataUrl, MCP_SCOPE_SET } from '@/src/lib/mcp/oauth-config';
 import { handleMcpRpc } from '@/src/lib/mcp/server';
+import { agentCardUrl } from '@/src/lib/http/node-url';
 import {
   headerMismatchError,
   httpStatusForModernResponse,
@@ -18,8 +19,10 @@ export const dynamic = 'force-dynamic';
  * verified DFOS contract (#1166).
  */
 function unauthorized(error = 'invalid_token') {
+  // `onboarding` (#1899): an unknown key has no way to learn this node speaks
+  // the knock flow other than being told so at the point of rejection.
   return NextResponse.json(
-    { error },
+    { error, onboarding: agentCardUrl() },
     {
       status: 401,
       headers: {
@@ -92,8 +95,10 @@ export async function POST(request: NextRequest) {
   const tokenScopes = Array.from(scopes);
   const hasRecognizedScope = tokenScopes.some((s) => MCP_SCOPE_SET.has(s));
   if (!hasRecognizedScope) {
+    // `onboarding` (#1899): a recognized-but-ungranted key needs the same
+    // pointer back to the agent card as a wholly unknown one.
     return NextResponse.json(
-      { error: 'insufficient_scope' },
+      { error: 'insufficient_scope', onboarding: agentCardUrl() },
       { status: 403, headers: { 'WWW-Authenticate': 'Bearer error="insufficient_scope"' } },
     );
   }

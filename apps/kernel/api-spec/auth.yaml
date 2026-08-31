@@ -82,6 +82,15 @@ components:
       required: [error]
       properties:
         error: { type: string }
+        onboarding:
+          type: string
+          description: |
+            Present on 401/403 responses (#1899). Points at this node's
+            `/.well-known/agent.json` agent card, whose `onboarding` block
+            documents the knock flow — the front door for an unrecognized or
+            ungranted caller to become a known one. Never changes the status
+            code or weakens the underlying auth check; it is purely a
+            discovery affordance.
     ExternalDidVerification:
       type: string
       nullable: true

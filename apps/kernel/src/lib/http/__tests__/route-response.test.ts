@@ -70,6 +70,13 @@ describe('respondUnauthorized', () => {
     expect(body.error).toContain('Authentication required');
   });
 
+  // #1899 — the onboarding discovery pointer on every JSON 401.
+  it('includes an onboarding pointer to the agent card for API clients', async () => {
+    const res = respondUnauthorized(makeRequest({ accept: 'application/json' }), '/foo');
+    const body = await res.json();
+    expect(body.onboarding).toBe('https://imajin.ai/.well-known/agent.json');
+  });
+
   it('returns a redirect to login for HTML clients', () => {
     const res = respondUnauthorized(makeRequest({ accept: 'text/html' }), '/protected');
     // Next.js defaults to 307 Temporary Redirect for NextResponse.redirect()
@@ -156,6 +163,13 @@ describe('respondForbidden', () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toBeTruthy();
+  });
+
+  // #1899 — the onboarding discovery pointer on every JSON 403.
+  it('includes an onboarding pointer to the agent card for API clients', async () => {
+    const res = respondForbidden(makeRequest({ accept: 'application/json' }));
+    const body = await res.json();
+    expect(body.onboarding).toBe('https://imajin.ai/.well-known/agent.json');
   });
 
   it('returns 403 JSON with the jsonError override and reason', async () => {

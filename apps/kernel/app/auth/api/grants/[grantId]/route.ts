@@ -5,7 +5,7 @@
  * it. Revocation is immediate — the next introspection check fails closed.
  */
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, authErrorResponse } from '@imajin/auth';
 import { revokeGrant } from '@/src/lib/auth/grants';
 
 export async function DELETE(request: Request, props: { params: Promise<{ grantId: string }> }) {
@@ -13,7 +13,7 @@ export async function DELETE(request: Request, props: { params: Promise<{ grantI
 
   const authResult = await requireAuth(request);
   if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+    return authErrorResponse(authResult);
   }
   const requestedBy = authResult.identity.actingAs ?? authResult.identity.id;
 

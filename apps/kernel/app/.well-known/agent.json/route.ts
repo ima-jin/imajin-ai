@@ -91,6 +91,25 @@ export function GET() {
       },
     },
 
+    /**
+     * How a stranger's agent — holding no did-imajin identity yet — becomes
+     * known to this node (#1899). `knock` is public and zero-authority;
+     * `spec` documents it and the follow-on grants lifecycle in full;
+     * `flowDocument` encodes the whole state machine (knock -> pending ->
+     * accepted/declined -> challenge -> verify -> denied-without-grant ->
+     * grant -> act -> attest -> revoked-fails) as machine-readable data.
+     * Every 401/403 this node returns to an unrecognized caller points back
+     * here, so this block is the one page of prose an operator ever needs
+     * to write for onboarding.
+     */
+    onboarding: {
+      flow: 'knock',
+      endpoint: `${node}/auth/api/knock`,
+      spec: `${node}/auth/api/spec`,
+      flowDocument: `${node}/.well-known/imajin-onboarding.json`,
+      description: 'Zero-authority contact request; did:imajin minted on human acceptance; capabilities only via scoped grants',
+    },
+
     defaultInputModes: ['text'],
     defaultOutputModes: ['text', 'json'],
 
