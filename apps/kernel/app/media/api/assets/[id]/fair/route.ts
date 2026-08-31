@@ -8,7 +8,8 @@ import { isFairManifestV1_1 } from "@imajin/fair";
 import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
 import { createLogger } from "@imajin/logger";
 import { renderFairHtml } from "@/src/lib/media/render-fair-html";
-import { getAccessType, canReadAsset } from "@/src/lib/media/read-access";
+import { getAccessType } from "@/src/lib/media/read-access";
+import { authorizeAssetRead } from "@/src/lib/media/authorize-read";
 
 const log = createLogger("kernel");
 
@@ -74,7 +75,8 @@ export async function GET(
   const access = manifest.access ?? "private";
   const accessType = getAccessType(access);
 
-  // 3. Access control (same rules as the asset itself)
+  // 3. Access control (same rules as the asset itself, incl. conversation
+  // membership #1168 and group/business identity_members membership #1851)
   if (accessType !== "public") {
     const authResult = await requireAuth(request);
     if ("error" in authResult) {
@@ -84,7 +86,10 @@ export async function GET(
       );
     }
     const requesterDid = resolveActingDid(authResult.identity);
-    const decision = canReadAsset({ ownerDid: asset.ownerDid, access }, requesterDid);
+    const decision = await authorizeAssetRead(
+      { ownerDid: asset.ownerDid, access, metadata: asset.metadata },
+      requesterDid,
+    );
     if (!decision.allowed) {
       return NextResponse.json(
         { error: "Access denied", reason: decision.reason },
