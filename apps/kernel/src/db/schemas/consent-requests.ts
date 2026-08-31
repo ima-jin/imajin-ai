@@ -20,7 +20,7 @@
  * established for inference.attestations and the GitHub confirm route
  * (getNodeSigningIdentity + canonicalize + signSync).
  *
- * See migration 0109_consent_requests.sql for the full schema rationale.
+ * See migration 0110_consent_requests.sql for the full schema rationale.
  */
 import { pgSchema, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
 
