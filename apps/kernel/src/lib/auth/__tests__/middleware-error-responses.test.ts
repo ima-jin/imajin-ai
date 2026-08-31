@@ -13,21 +13,20 @@ vi.mock('@/src/db', () => ({ db: {}, identityChains: {}, identities: {} }));
 
 import { unauthorizedResponse, hardDIDRequiredResponse } from '../middleware';
 
+// Same baseline convention as apps/kernel/src/lib/http/__tests__/node-url.test.ts:
+// stub each key empty then delete it, so every test starts from a real "unset"
+// state, and let vi.unstubAllEnvs() undo it — no manual save/restore array.
 const ENV_KEYS = ['APP_URL', 'NEXT_PUBLIC_BASE_URL', 'NEXT_PUBLIC_SERVICE_PREFIX', 'NEXT_PUBLIC_DOMAIN'] as const;
-const originalEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
   for (const key of ENV_KEYS) {
-    originalEnv[key] = process.env[key];
+    vi.stubEnv(key, '');
     delete process.env[key];
   }
 });
 
 afterEach(() => {
-  for (const key of ENV_KEYS) {
-    if (originalEnv[key] === undefined) delete process.env[key];
-    else process.env[key] = originalEnv[key];
-  }
+  vi.unstubAllEnvs();
 });
 
 describe('unauthorizedResponse', () => {
@@ -45,7 +44,7 @@ describe('unauthorizedResponse', () => {
   });
 
   it('includes an onboarding pointer to this node\'s agent card', async () => {
-    process.env.APP_URL = 'https://jin.imajin.ai';
+    vi.stubEnv('APP_URL', 'https://jin.imajin.ai');
     const res = unauthorizedResponse();
     const body = await res.json();
     expect(body.onboarding).toBe('https://jin.imajin.ai/.well-known/agent.json');
@@ -62,7 +61,7 @@ describe('hardDIDRequiredResponse', () => {
   });
 
   it('includes an onboarding pointer to this node\'s agent card', async () => {
-    process.env.APP_URL = 'https://jin.imajin.ai';
+    vi.stubEnv('APP_URL', 'https://jin.imajin.ai');
     const res = hardDIDRequiredResponse();
     const body = await res.json();
     expect(body.onboarding).toBe('https://jin.imajin.ai/.well-known/agent.json');

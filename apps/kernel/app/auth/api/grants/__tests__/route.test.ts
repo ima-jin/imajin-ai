@@ -203,4 +203,13 @@ describe('GET /auth/api/grants', () => {
     expect(await res.json()).toEqual({ grants: [{ grantId: 'grant_1' }] });
     expect(listGrantsForDelegatorMock).toHaveBeenCalledWith(DELEGATOR);
   });
+
+  it('propagates an unauthenticated caller', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'Not authenticated', status: 401 });
+
+    const res = await GET(makeRequest('GET'));
+
+    expect(res.status).toBe(401);
+    expect(listGrantsForDelegatorMock).not.toHaveBeenCalled();
+  });
 });

@@ -41,6 +41,12 @@ describe('agentCardUrl', () => {
     process.env.NEXT_PUBLIC_DOMAIN = 'imajin.ai';
     expect(agentCardUrl()).toBe('https://jin.imajin.ai/.well-known/agent.json');
   });
+
+  it('ignores an unparseable APP_URL and falls back to the service-prefix convention', () => {
+    process.env.APP_URL = 'not-a-url';
+    process.env.NEXT_PUBLIC_SERVICE_PREFIX = 'https://jin.imajin.ai/';
+    expect(agentCardUrl()).toBe('https://jin.imajin.ai/.well-known/agent.json');
+  });
 });
 
 describe('authErrorResponse', () => {

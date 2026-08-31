@@ -29,9 +29,21 @@ function nodeOrigin(): string {
   const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX ?? "https://";
   const domain = process.env.NEXT_PUBLIC_DOMAIN ?? "imajin.ai";
   const scheme = prefix.startsWith("http://") ? "http" : "https";
-  const prefixHost = prefix.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const prefixHost = stripTrailingSlashes(prefix.replace(/^https?:\/\//, ""));
   const host = prefixHost.includes(".") ? prefixHost : domain;
   return `${scheme}://${host}`;
+}
+
+/**
+ * Trim trailing slashes without a regex — `/\/+$/` was flagged as
+ * super-linear on attacker-controlled input (SonarCloud typescript:S8786).
+ * `NEXT_PUBLIC_SERVICE_PREFIX` is operator-configured, not request input,
+ * but this is just as clear and has no backtracking risk at all.
+ */
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end -= 1;
+  return value.slice(0, end);
 }
 
 /** URL of this node's agent card — see {@link nodeOrigin} for why it is derived here. */
