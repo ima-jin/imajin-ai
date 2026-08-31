@@ -1,7 +1,7 @@
 /**
  * Unit tests for the external-agent knock lifecycle (#1883).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 type Row = Record<string, unknown>;
 type Predicate = (row: Row) => boolean;
@@ -32,6 +32,7 @@ const {
     __table: 'agent_knocks',
     id: 'id', publicKey: 'publicKey', agentDid: 'agentDid', declaredTarget: 'declaredTarget',
     selfDescription: 'selfDescription', requestedCapabilities: 'requestedCapabilities', externalDid: 'externalDid',
+    externalDidVerification: 'externalDidVerification', externalDidVerifiedAt: 'externalDidVerifiedAt',
     status: 'status', expiresAt: 'expiresAt', respondedAt: 'respondedAt', createdAt: 'createdAt',
   };
   const CONNECTIONS_TABLE = {
@@ -188,6 +189,7 @@ vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: v
 
 vi.mock('@imajin/cid', () => ({ computeCid: vi.fn().mockResolvedValue('cid_fixed') }));
 
+import { hexToMultibase } from '@imajin/auth';
 import {
   submitKnock,
   listPendingKnocksForTarget,
@@ -195,6 +197,18 @@ import {
   declineKnock,
   resolveDeclaredTarget,
 } from '../knock';
+
+function mockFetchOnce(response: unknown) {
+  (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    ok: true,
+    status: 200,
+    json: async () => response,
+  } as unknown as Response);
+}
+
+function didDocumentFor(publicKeyHex: string) {
+  return { verificationMethod: [{ id: '#key-1', publicKeyMultibase: hexToMultibase(publicKeyHex) }] };
+}
 
 const TARGET_DID = 'did:imajin:ryan';
 const TARGET_HANDLE = 'ryan';
@@ -214,6 +228,14 @@ beforeEach(() => {
   getNodeDidMock.mockReset().mockResolvedValue('did:imajin:platform-node');
   delete process.env.AUTH_PRIVATE_KEY;
   seedTargetIdentity();
+  // did:web resolution (#1900) hits the network — stub it out by default so
+  // externalDid-bearing tests that don't care about verification specifics
+  // still resolve deterministically and fast, without a real fetch.
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network disabled in tests')));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 const VALID_INPUT = {
@@ -323,6 +345,70 @@ describe('submitKnock — validation and escrow', () => {
     expect(first.knock.agentDid).toBe(second.knock.agentDid);
     expect(first.knock.knockId).not.toBe(second.knock.knockId);
     expect(knocksStore.size).toBe(2);
+  });
+
+  describe('external_did verification against its did:web document (#1900)', () => {
+    it('has null verification fields when no external_did was declared', async () => {
+      const result = await submitKnock(VALID_INPUT);
+      if (!('knock' in result)) throw new Error('expected knock');
+      expect(result.knock.externalDid).toBeNull();
+      expect(result.knock.externalDidVerification).toBeNull();
+      expect(result.knock.externalDidVerifiedAt).toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('marks the claim verified when the resolved did:web document lists the knock key', async () => {
+      mockFetchOnce(didDocumentFor(PUBLIC_KEY));
+
+      const result = await submitKnock({ ...VALID_INPUT, externalDid: 'did:web:boardy.ai' });
+      if (!('knock' in result)) throw new Error('expected knock');
+
+      expect(result.knock.externalDidVerification).toBe('verified');
+      expect(result.knock.externalDidVerifiedAt).not.toBeNull();
+      expect(fetch).toHaveBeenCalledWith('https://boardy.ai/.well-known/did.json', expect.any(Object));
+    });
+
+    it('negative test: labels the claim declared_unverified (never rejects the knock) when the did:web document does NOT contain the knock key', async () => {
+      mockFetchOnce(didDocumentFor(OTHER_PUBLIC_KEY));
+
+      const result = await submitKnock({ ...VALID_INPUT, externalDid: 'did:web:boardy.ai' });
+      if (!('knock' in result)) throw new Error('expected knock, not a rejection');
+
+      expect(result.knock.status).toBe('pending');
+      expect(result.knock.externalDidVerification).toBe('declared_unverified');
+      expect(result.knock.externalDidVerifiedAt).not.toBeNull();
+    });
+
+    it('marks the claim resolution_failed (never fatal to the knock) when did:web resolution fails', async () => {
+      // beforeEach's default fetch mock rejects — simulating a network error.
+      const result = await submitKnock({ ...VALID_INPUT, externalDid: 'did:web:unreachable.example' });
+      if (!('knock' in result)) throw new Error('expected knock, not a rejection');
+
+      expect(result.knock.status).toBe('pending');
+      expect(result.knock.externalDidVerification).toBe('resolution_failed');
+    });
+
+    it('marks a non-did:web external_did declared_unverified without resolving anything', async () => {
+      const result = await submitKnock({ ...VALID_INPUT, externalDid: 'did:key:z6MkfakeKey' });
+      if (!('knock' in result)) throw new Error('expected knock');
+
+      expect(result.knock.externalDidVerification).toBe('declared_unverified');
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('recomputes verification on an idempotent re-knock refresh', async () => {
+      mockFetchOnce(didDocumentFor(OTHER_PUBLIC_KEY));
+      const first = await submitKnock({ ...VALID_INPUT, externalDid: 'did:web:boardy.ai' });
+      if (!('knock' in first)) throw new Error('expected knock');
+      expect(first.knock.externalDidVerification).toBe('declared_unverified');
+
+      mockFetchOnce(didDocumentFor(PUBLIC_KEY));
+      const second = await submitKnock({ ...VALID_INPUT, externalDid: 'did:web:boardy.ai' });
+      if (!('knock' in second)) throw new Error('expected knock');
+
+      expect(second.knock.knockId).toBe(first.knock.knockId);
+      expect(second.knock.externalDidVerification).toBe('verified');
+    });
   });
 });
 
@@ -507,6 +593,37 @@ describe('acceptKnock — mint-on-accept, zero grants', () => {
         payload: { external_did: 'did:web:boardy.ai' },
         attestationStatus: null,
       });
+    });
+
+    it('carries the knock-time verification state (#1900) into the attestation payload unchanged', async () => {
+      process.env.AUTH_PRIVATE_KEY = 'a'.repeat(64);
+      mockFetchOnce(didDocumentFor(PUBLIC_KEY));
+      const submitted = await submitKnock({ ...VALID_INPUT, externalDid: 'did:web:boardy.ai' });
+      if (!('knock' in submitted)) throw new Error('expected knock');
+      expect(submitted.knock.externalDidVerification).toBe('verified');
+
+      await acceptKnock({ knockId: submitted.knock.knockId, requestedBy: TARGET_DID });
+
+      const attestation = [...attestationsStore.values()].find((row) => row.subjectDid === submitted.knock.agentDid);
+      expect(attestation?.payload).toMatchObject({
+        external_did: 'did:web:boardy.ai',
+        external_did_verification: 'verified',
+      });
+      expect((attestation?.payload as { external_did_verified_at?: string }).external_did_verified_at).toBe(
+        submitted.knock.externalDidVerifiedAt,
+      );
+    });
+
+    it('negative test: labels an unverified claim in the attestation too, never fabricating verified', async () => {
+      process.env.AUTH_PRIVATE_KEY = 'a'.repeat(64);
+      mockFetchOnce(didDocumentFor(OTHER_PUBLIC_KEY));
+      const submitted = await submitKnock({ ...VALID_INPUT, externalDid: 'did:web:boardy.ai' });
+      if (!('knock' in submitted)) throw new Error('expected knock');
+
+      await acceptKnock({ knockId: submitted.knock.knockId, requestedBy: TARGET_DID });
+
+      const attestation = [...attestationsStore.values()].find((row) => row.subjectDid === submitted.knock.agentDid);
+      expect(attestation?.payload).toMatchObject({ external_did_verification: 'declared_unverified' });
     });
 
     it('never records an attestation when no external_did was declared', async () => {

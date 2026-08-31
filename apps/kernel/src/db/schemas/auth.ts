@@ -468,6 +468,14 @@ export const agentKnocks = authSchema.table('agent_knocks', {
   selfDescription: text('self_description'),
   requestedCapabilities: jsonb('requested_capabilities').notNull().default([]).$type<string[]>(), // advisory only — never authority (#1882 grants are separate)
   externalDid: text('external_did'),                    // optional bring-your-own DID (e.g. did:web:boardy.ai); recorded as an attestation on accept, never used for auth
+  // #1900: computed once at knock-submission time (never re-derived in the
+  // background) so the pending-review surface can label the claim before
+  // accept. NULL when no external_did was declared. See
+  // migrations/0107_knock_external_did_verification.sql for the CHECK
+  // constraint enumerating the closed 'verified' | 'declared_unverified' |
+  // 'resolution_failed' set.
+  externalDidVerification: text('external_did_verification'),
+  externalDidVerifiedAt: timestamp('external_did_verified_at', { withTimezone: true }),
   status: text('status').notNull().default('pending'),  // 'pending' | 'accepted' | 'declined'
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   respondedAt: timestamp('responded_at', { withTimezone: true }),

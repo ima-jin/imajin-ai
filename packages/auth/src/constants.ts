@@ -55,6 +55,14 @@ export const KNOCK_IP_RATE_LIMIT = 10;
 export const KNOCK_IP_RATE_WINDOW = MINUTE;
 
 /**
+ * How long a did:web resolution attempt (#1900) may take before it is
+ * treated as `resolution_failed`. No retries in v1 — a slow or unreachable
+ * domain simply fails closed to unverified-by-resolution-failure rather
+ * than blocking the knock or being retried.
+ */
+export const DID_WEB_RESOLUTION_TIMEOUT_MS = 5 * SECOND;
+
+/**
  * Grant-bound event-subscription surface for external agents (#1884).
  *
  * Retention is a modest window, not infinite replay (#1881 Day-1 review,

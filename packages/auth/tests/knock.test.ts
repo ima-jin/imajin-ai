@@ -7,6 +7,7 @@ import {
   KNOCK_SELF_DESCRIPTION_MAX_LENGTH,
   KNOCK_MAX_REQUESTED_CAPABILITIES,
   KNOCK_STATUSES,
+  EXTERNAL_DID_VERIFICATION_STATES,
 } from '../src/knock';
 
 const VALID_PUBLIC_KEY = 'a'.repeat(64);
@@ -86,5 +87,11 @@ describe('isKnockExternalDid', () => {
 describe('KNOCK_STATUSES — fail-closed, no stored "expired" state', () => {
   it('only ever contains pending, accepted, and declined', () => {
     expect(KNOCK_STATUSES).toEqual(['pending', 'accepted', 'declined']);
+  });
+});
+
+describe('EXTERNAL_DID_VERIFICATION_STATES (#1900) — never a fatal/reject state', () => {
+  it('only ever contains verified, declared_unverified, and resolution_failed', () => {
+    expect(EXTERNAL_DID_VERIFICATION_STATES).toEqual(['verified', 'declared_unverified', 'resolution_failed']);
   });
 });
