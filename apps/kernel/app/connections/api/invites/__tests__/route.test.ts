@@ -505,6 +505,50 @@ describe('POST /connections/api/invites — toEmail normalization at write time 
   });
 });
 
+describe('POST /connections/api/invites — rejects whitespace-only toEmail for email invites (#1853)', () => {
+  // Regression coverage for the "not for you" + silent email-delivery bug:
+  // a whitespace-only toEmail (e.g. "   ") is truthy, so the old
+  // `if (!toEmail)` guard let it through while normalizeInviteEmail()
+  // quietly returned null. That null toEmail broke the accept route's
+  // isForUser fallback (#1858) and still triggered a doomed delivery
+  // attempt / stub mint against a blank address. The route must now
+  // reject it up front with a 400, before minting a target DID or
+  // attempting delivery.
+  it('returns 400 for a whitespace-only toEmail and does not create an invite', async () => {
+    const res = await POST(makeReq({ delivery: 'email', toEmail: '   ' }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'toEmail is required for email invites' });
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('never resolves/mints a target DID for a whitespace-only toEmail', async () => {
+    await POST(makeReq({ delivery: 'email', toEmail: '   ' }));
+
+    expect(mockResolveOrMintInviteTarget).not.toHaveBeenCalled();
+  });
+
+  it('never attempts email delivery for a whitespace-only toEmail', async () => {
+    await POST(makeReq({ delivery: 'email', toEmail: '\n\t  ' }));
+
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('still returns 400 for a completely empty toEmail, same as before', async () => {
+    const res = await POST(makeReq({ delivery: 'email', toEmail: '' }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'toEmail is required for email invites' });
+  });
+
+  it('still returns 400 when toEmail is omitted entirely', async () => {
+    const res = await POST(makeReq({ delivery: 'email' }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'toEmail is required for email invites' });
+  });
+});
+
 describe('GET /connections/api/invites — no-disclosure list masking (#1839)', () => {
   const INVITER_DID = OWNER_DID;
   const REAL_TARGET_DID = 'did:imajin:real-target';

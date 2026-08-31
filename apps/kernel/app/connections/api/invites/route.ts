@@ -256,13 +256,26 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     }
 
     const { toEmail, note } = body;
-    if (!toEmail) {
-      return NextResponse.json({ error: 'toEmail is required for email invites' }, { status: 400 });
-    }
 
     // Normalize at write time (#1858) — the as-typed toEmail is still used
     // for actual delivery below so we don't alter what the recipient sees.
+    //
+    // Validate against the NORMALIZED value, not the raw `toEmail` (#1853):
+    // a whitespace-only string (e.g. "   ") is truthy, so the old `if
+    // (!toEmail)` check let it through while normalizeInviteEmail() quietly
+    // returned null. That null got written to invites.toEmail, which broke
+    // the accept route's isForUser fallback (its `!!invite.toEmail` guard
+    // skips resolveDidForEmail entirely — #1858), leaving only the toDid
+    // check — which also failed, because resolveOrMintInviteTarget still
+    // minted a real (but unreachable) stub DID for the blank string. The
+    // net result was "This invite is not for you" for the intended
+    // recipient, plus a doomed deliverInviteEmail() attempt against a
+    // blank address that silently produced emailSent: false instead of
+    // failing fast with a clear 400 at creation time.
     const normalizedToEmail = normalizeInviteEmail(toEmail);
+    if (!normalizedToEmail) {
+      return NextResponse.json({ error: 'toEmail is required for email invites' }, { status: 400 });
+    }
 
     const code = randomBytes(12).toString('hex');
     const id = generateId('inv_');
