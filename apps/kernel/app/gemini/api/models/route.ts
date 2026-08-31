@@ -1,5 +1,5 @@
 /**
- * GET + PUT /gemini/api/models (#1769)
+ * GET + PUT /gemini/api/models (#1769, live-probe #1818)
  *
  * Backs the Gemini connector card's model picker. Google retires/renames
  * Gemini model ids often enough that a hardcoded `defaultModelId` goes stale
@@ -11,8 +11,13 @@
  *          to those supporting `generateContent`. The key is sent to Google
  *          server-side and never returned to the browser — only
  *          `{ id, name }` pairs come back.
- *   PUT  — seals `{ modelId }` as the owner's chosen model, without touching
- *          the sealed API key or base URL (`setModelId`, #1769).
+ *   PUT  — fires a minimal (1-output-token) `generateContent` probe against
+ *          the chosen model with the owner's own sealed key, and only seals
+ *          `{ modelId }` (`setModelId`, #1769) if that probe succeeds. This
+ *          is required because Google's `ListModels` API (what GET reads)
+ *          keeps listing models well after they are retired (#1818) — the
+ *          picker can offer a corpse, and only a real generate call proves
+ *          the model is actually servable right now.
  *
  * Security invariant: the API key never leaves the server, in either
  * direction — not in the GET response, and not echoed back on PUT.
@@ -21,7 +26,12 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
-import { loadGeminiSealedCredentials, geminiKeyPending, setModelId } from '@/src/lib/gemini/connector';
+import {
+  loadGeminiSealedCredentials,
+  geminiKeyPending,
+  setModelId,
+  type GeminiCredentials,
+} from '@/src/lib/gemini/connector';
 
 const log = createLogger('kernel');
 
@@ -58,6 +68,96 @@ function toModelOptions(raw: readonly RawGeminiModel[]): GeminiModelOption[] {
   return options;
 }
 
+/**
+ * Result of {@link requireSealedGeminiKey}: either the sealed credentials, or
+ * a ready-to-return response for the "nothing usable sealed yet" cases.
+ */
+type SealedKeyLookup =
+  | { ok: true; creds: GeminiCredentials }
+  | { ok: false; response: NextResponse };
+
+/**
+ * Resolve the caller's sealed Gemini key, or the typed failure response for
+ * `gemini_no_key` (400) / `gemini_credential_pending` (409) — shared by GET
+ * and PUT so both routes report identically on "nothing sealed yet" instead
+ * of drifting apart (#1818).
+ *
+ * `gemini_no_key` when nothing is sealed yet — the owner must seal a key on
+ * the connector card (step 1) before there is anything to list/validate
+ * models against. `gemini_credential_pending` when a key IS sealed but still
+ * awaiting the owner agent's Tier 1 grant approval — a different, temporary
+ * state that a flat "no key sealed" would misreport.
+ */
+async function requireSealedGeminiKey(
+  ownerDid: string,
+  cors: Record<string, string>,
+): Promise<SealedKeyLookup> {
+  const creds = await loadGeminiSealedCredentials(ownerDid);
+  if (creds) {
+    return { ok: true, creds };
+  }
+  if (await geminiKeyPending(ownerDid)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error:
+            'gemini_credential_pending: Gemini API key is sealed but awaiting owner grant approval',
+        },
+        { status: 409, headers: cors },
+      ),
+    };
+  }
+  return {
+    ok: false,
+    response: NextResponse.json(
+      {
+        error:
+          'gemini_no_key: no Gemini API key sealed for this identity — seal one on the Gemini connector card first',
+      },
+      { status: 400, headers: cors },
+    ),
+  };
+}
+
+/** Outcome of {@link probeModelLive} against Google's `generateContent` API. */
+type ModelProbeResult =
+  | { ok: true }
+  | { ok: false; deprecated: true }
+  | { ok: false; deprecated: false; status: number; statusText: string };
+
+/**
+ * Fire a minimal (1-output-token) `generateContent` call against `modelId`
+ * with the owner's own sealed key (#1818 item 2) — the only reliable way to
+ * know a model is actually servable right now, since Google's `ListModels`
+ * API (what GET reads) keeps listing models well after they are retired.
+ *
+ * A 404 means the model id itself is gone (`deprecated: true`). Any other
+ * non-OK status is an unrelated upstream failure (invalid key, quota, region
+ * restriction, etc.) and is reported as such rather than misclassified as a
+ * dead model.
+ */
+async function probeModelLive(apiKey: string, modelId: string): Promise<ModelProbeResult> {
+  const res = await fetch(
+    `${GEMINI_MODELS_URL}/${encodeURIComponent(modelId)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
+        generationConfig: { maxOutputTokens: 1 },
+      }),
+    },
+  );
+  if (res.ok) {
+    return { ok: true };
+  }
+  if (res.status === 404) {
+    return { ok: false, deprecated: true };
+  }
+  return { ok: false, deprecated: false, status: res.status, statusText: res.statusText };
+}
+
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
@@ -70,11 +170,8 @@ export async function OPTIONS(request: NextRequest) {
  * their own key can do, typically before they have reached the "grant
  * scopes" step, not spending the credential on inference.
  *
- * `gemini_no_key` (400) when nothing is sealed yet — the owner must seal a
- * key on the connector card (step 1) before there is anything to list models
- * for. `gemini_credential_pending` (409) when a key IS sealed but still
- * awaiting the owner agent's Tier 1 grant approval — a different, temporary
- * state that a flat "no key sealed" would misreport. Upstream failures map
+ * `gemini_no_key` (400) / `gemini_credential_pending` (409) come from
+ * {@link requireSealedGeminiKey} — see its doc comment. Upstream failures map
  * to 502: they are Google's fault, not the caller's.
  */
 export async function GET(request: NextRequest) {
@@ -86,25 +183,11 @@ export async function GET(request: NextRequest) {
   }
   const { ownerDid } = auth;
 
-  const creds = await loadGeminiSealedCredentials(ownerDid);
-  if (!creds) {
-    if (await geminiKeyPending(ownerDid)) {
-      return NextResponse.json(
-        {
-          error:
-            'gemini_credential_pending: Gemini API key is sealed but awaiting owner grant approval',
-        },
-        { status: 409, headers: cors },
-      );
-    }
-    return NextResponse.json(
-      {
-        error:
-          'gemini_no_key: no Gemini API key sealed for this identity — seal one on the Gemini connector card first',
-      },
-      { status: 400, headers: cors },
-    );
+  const lookup = await requireSealedGeminiKey(ownerDid, cors);
+  if (!lookup.ok) {
+    return lookup.response;
   }
+  const { creds } = lookup;
 
   let raw: { models?: RawGeminiModel[] };
   try {
@@ -134,7 +217,13 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Seal the owner's chosen model id, without touching the sealed API key.
+ * Validate, then seal, the owner's chosen model id, without touching the
+ * sealed API key.
+ *
+ * `model_deprecated` (422) when the live probe 404s — the model id is gone
+ * upstream even though it may still appear in `ListModels` (#1818). Any other
+ * probe failure maps to 502, matching GET's treatment of upstream failures.
+ * `setModelId` is only called once the probe succeeds.
  */
 export async function PUT(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -155,6 +244,41 @@ export async function PUT(request: NextRequest) {
   const modelId = typeof body.modelId === 'string' ? body.modelId.trim() : '';
   if (!modelId) {
     return NextResponse.json({ error: 'modelId must be a non-empty string' }, { status: 400, headers: cors });
+  }
+
+  const lookup = await requireSealedGeminiKey(ownerDid, cors);
+  if (!lookup.ok) {
+    return lookup.response;
+  }
+  const { creds } = lookup;
+
+  let probe: ModelProbeResult;
+  try {
+    probe = await probeModelLive(creds.apiKey, modelId);
+  } catch (err) {
+    log.error({ err: String(err), ownerDid }, 'gemini models: liveness probe failed to reach Google');
+    return NextResponse.json({ error: 'gemini_models: failed to reach Google' }, { status: 502, headers: cors });
+  }
+
+  if (!probe.ok) {
+    if (probe.deprecated) {
+      log.warn({ ownerDid, modelId }, 'gemini models: rejected selection of a model retired upstream');
+      return NextResponse.json(
+        {
+          error: 'model_deprecated',
+          message: `Gemini model '${modelId}' was not found — it has likely been retired. Choose a different model.`,
+          modelId,
+        },
+        { status: 422, headers: cors },
+      );
+    }
+    // The response body is never surfaced, matching GET: Google's error pages
+    // can echo back the query string, which would leak the key.
+    log.warn({ ownerDid, status: probe.status }, 'gemini models: liveness probe failed');
+    return NextResponse.json(
+      { error: `gemini_models: upstream ${probe.status} ${probe.statusText}` },
+      { status: 502, headers: cors },
+    );
   }
 
   try {

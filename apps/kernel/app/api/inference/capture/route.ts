@@ -7,7 +7,7 @@ import { inferMime, isAllowedMime } from '@/src/lib/media/create-asset';
 import { captureGesture } from '@/src/lib/inference/capture';
 import { gatherContext } from '@/src/lib/inference/context';
 import { infer } from '@/src/lib/inference/policy';
-import { NoBrainSealedError, NoModelSelectedError } from '@/src/lib/inference/brain';
+import { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError } from '@/src/lib/inference/brain';
 import { resolveConsentGate } from '@/src/lib/inference/consent';
 import { resolveIntent } from '@/src/lib/inference/resolve';
 import { getVocabulary, listVocabularyNames } from '@/src/lib/inference/vocabulary';
@@ -199,6 +199,30 @@ function handlePipelineError(
       {
         error: 'no_model_selected',
         message: 'Connected, but no model is selected — choose one on the connector card',
+        detail: err.message,
+      },
+      { status: 422, headers: cors },
+    );
+  }
+
+  // #1818: the sealed model can be retired upstream after selection — pick-
+  // time validation (`PUT /gemini/api/models`) narrows this window but
+  // cannot close it, since a live model can still die between selection and
+  // the next call. Distinct from `no_model_selected`: a model IS chosen, it
+  // just no longer exists at the provider — the remedy is to pick a
+  // *different* model on the connector card, which the UI can point at using
+  // `connector`/`modelId` below.
+  if (err instanceof ModelDeprecatedError) {
+    log.warn(
+      { err: err.message, ownerDid, connector: err.connector, modelId: err.modelId },
+      'Inference capture: selected model retired upstream',
+    );
+    return NextResponse.json(
+      {
+        error: 'model_deprecated',
+        message: `Your selected ${err.connector} model '${err.modelId}' was retired upstream — pick a new one`,
+        connector: err.connector,
+        modelId: err.modelId,
         detail: err.message,
       },
       { status: 422, headers: cors },
