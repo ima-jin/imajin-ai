@@ -19,6 +19,8 @@ tags:
     description: imajin auth service
   - name: grants
     description: Scoped delegation grants for external agents (#1882)
+  - name: knock
+    description: External-agent knock onboarding path (#1883) — relationship-anchored, zero-authority contact requests
 
 components:
   securitySchemes:
@@ -80,6 +82,21 @@ components:
       required: [error]
       properties:
         error: { type: string }
+    Knock:
+      type: object
+      properties:
+        knockId: { type: string, example: "knock_xxx" }
+        agentDid: { type: string, description: "did:imajin derived from the escrowed publicKey — prospective until accept" }
+        declaredTarget: { type: string }
+        selfDescription: { type: string, nullable: true }
+        requestedCapabilities:
+          type: array
+          items: { type: string }
+          description: Advisory preview only — never auto-granted.
+        externalDid: { type: string, nullable: true }
+        status: { type: string, enum: [pending, accepted, declined] }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
 
 paths:
   /api/health:
@@ -1961,6 +1978,163 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "500":
           description: Lookup failed (treated as denied by every caller)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/knock:
+    post:
+      tags: [knock]
+      operationId: submitKnock
+      summary: External agent knocks, declaring the principal it wants to serve (#1883)
+      description: |
+        Public, unauthenticated. `declared_target` must resolve to an
+        existing principal (DID or handle) or the knock is rejected outright
+        — no stub-minting. Carries zero authority: `requested_capabilities`
+        are an advisory preview only, never auto-granted. No identity is
+        minted here; the public key sits in escrow until the declared target
+        accepts (see POST /api/knock/{knockId}/accept). Rate-limited per-IP
+        and per-target.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey, declared_target, self_description, requested_capabilities]
+              properties:
+                publicKey: { type: string, description: "64-char hex Ed25519 public key" }
+                declared_target: { type: string, description: "DID or handle of an existing principal" }
+                self_description: { type: string }
+                requested_capabilities:
+                  type: array
+                  items: { type: string, example: "intros:propose" }
+                  description: Advisory only — never becomes authority.
+                external_did: { type: string, description: "Optional bring-your-own DID, e.g. did:web:boardy.ai. Recorded as an attestation on accept, never used for auth." }
+      responses:
+        "201":
+          description: Knock submitted (or refreshed, if already pending from this keypair to this target)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  knock: { $ref: "#/components/schemas/Knock" }
+        "400":
+          description: Invalid publicKey, self_description, requested_capabilities, or external_did
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: declared_target does not resolve to an existing principal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Per-IP or per-target rate limit exceeded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/knock/pending:
+    get:
+      tags: [knock]
+      operationId: listPendingKnocks
+      summary: List the authenticated principal's own pending, unexpired knocks
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Pending knocks addressed to this principal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  knocks:
+                    type: array
+                    items: { $ref: "#/components/schemas/Knock" }
+
+  /api/knock/{knockId}/accept:
+    post:
+      tags: [knock]
+      operationId: acceptKnock
+      summary: Mint-on-accept — zero grants (#1883)
+      description: |
+        Only the declared target may accept. Mints a new did:imajin agent
+        identity (or, for a returning multi-tenant agent keypair, reuses the
+        existing one) and links it to the accepting principal. Grants zero
+        authority — issue capabilities separately via POST /api/grants
+        (#1882) after this call.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: knockId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agentDid: { type: string }
+                  minted: { type: boolean, description: "True only when this accept minted a brand-new identity." }
+        "403":
+          description: Caller is not the declared target
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Knock not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Knock already responded to, or expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/knock/{knockId}/decline:
+    post:
+      tags: [knock]
+      operationId: declineKnock
+      summary: Discard a pending knock — no identity was ever created
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: knockId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Declined
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  declined: { type: boolean }
+        "403":
+          description: Caller is not the declared target
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Knock not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Knock already responded to, or expired
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

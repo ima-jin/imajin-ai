@@ -68,6 +68,13 @@ export const ATTESTATION_TYPES = [
   'consent_declined',
   'intro_made',
   'conversation_happened',
+
+  // External-agent onboarding (#1883) — minted by the platform node identity
+  // at knock-accept time. Records a bring-your-own DID an external agent
+  // claims (e.g. did:web:boardy.ai) as linkage to its did:imajin identity.
+  // Never used as an auth basis — auth root stays homogeneous (did:imajin +
+  // challenge-response); this is provenance only.
+  'agent.external_identity',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -89,7 +96,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * explicitly naming the small, known set of mechanical types that must be
  * excluded from any "pending your countersignature" view or query.
  */
-export const MECHANICAL_ATTESTATION_TYPES = ['session.created', 'agent.turn.usage'] as const;
+export const MECHANICAL_ATTESTATION_TYPES = ['session.created', 'agent.turn.usage', 'agent.external_identity'] as const;
 
 /**
  * Claim payload for the `imajin/nostr-key-binding` attestation type.
