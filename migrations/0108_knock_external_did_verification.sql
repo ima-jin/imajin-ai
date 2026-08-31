@@ -1,4 +1,4 @@
--- 0107_knock_external_did_verification.sql
+-- 0108_knock_external_did_verification.sql
 -- Verify external_did against its did:web document on knock (#1900) —
 -- domain control is the trust anchor, same root as TLS. Today a knock's
 -- optional bring-your-own `external_did` is recorded but never resolved,
