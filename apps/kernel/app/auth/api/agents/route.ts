@@ -23,6 +23,8 @@ interface AgentResponse {
   isExternal: boolean;
   /** Bring-your-own DID recorded as an attestation at knock-accept time (#1883), if any. */
   externalDid: string | null;
+  /** #1900: did:web verification state for externalDid — null when externalDid is null. */
+  externalDidVerification: 'verified' | 'declared_unverified' | 'resolution_failed' | null;
   /** Grants-view read surface (#1887): every grant this caller has issued to this agent. */
   grants: DelegationGrantDetail[];
   /**
@@ -133,9 +135,15 @@ export async function GET(request: NextRequest) {
       .from(attestations)
       .where(and(inArray(attestations.subjectDid, allAgentDids), eq(attestations.type, 'agent.external_identity')));
     const externalDidByAgent = new Map<string, string>();
+    const externalDidVerificationByAgent = new Map<string, AgentResponse['externalDidVerification']>();
     for (const row of externalIdentityAttestations) {
-      const payload = row.payload as { external_did?: string } | null;
+      const payload = row.payload as { external_did?: string; external_did_verification?: string } | null;
       if (payload?.external_did) externalDidByAgent.set(row.subjectDid, payload.external_did);
+      // #1900: label, never presented as fact — null (pre-#1900 attestations)
+      // renders the same as an unresolved claim, never as verified.
+      if (payload?.external_did_verification === 'verified' || payload?.external_did_verification === 'declared_unverified' || payload?.external_did_verification === 'resolution_failed') {
+        externalDidVerificationByAgent.set(row.subjectDid, payload.external_did_verification);
+      }
     }
 
     // Legacy dual-read fallback visibility (#1887): does this agent still
@@ -167,6 +175,7 @@ export async function GET(request: NextRequest) {
         role: row.role,
         isExternal: externalDidByAgent.has(row.did),
         externalDid: externalDidByAgent.get(row.did) ?? null,
+        externalDidVerification: externalDidVerificationByAgent.get(row.did) ?? null,
         grants: grantsByAgent.get(row.did) ?? [],
         hasLegacyMembership: legacyMembershipDids.has(row.did),
       })),
@@ -183,6 +192,7 @@ export async function GET(request: NextRequest) {
         role: grantsByAgent.has(row.did) ? 'grant' : 'connected',
         isExternal: externalDidByAgent.has(row.did),
         externalDid: externalDidByAgent.get(row.did) ?? null,
+        externalDidVerification: externalDidVerificationByAgent.get(row.did) ?? null,
         grants: grantsByAgent.get(row.did) ?? [],
         hasLegacyMembership: legacyMembershipDids.has(row.did),
       })),

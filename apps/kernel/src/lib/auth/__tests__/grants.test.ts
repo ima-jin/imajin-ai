@@ -398,6 +398,36 @@ describe('introspectGrant — fail-closed resolution', () => {
     await revokeGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR });
     await expect(introspectGrant({ agentDid: AGENT, capability: 'messages:write' })).resolves.toMatchObject({ authorized: false });
   });
+});
+
+describe('introspectGrant — delegatorDid narrowing (#1895, #1897)', () => {
+  it('authorizes when the narrowed delegatorDid matches the live grant\'s own delegator', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['intros:propose'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+
+    await expect(
+      introspectGrant({ agentDid: AGENT, capability: 'intros:propose', delegatorDid: DELEGATOR }),
+    ).resolves.toMatchObject({ authorized: true, grantId: issued.grant.grantId });
+  });
+
+  it('denies when the agent holds a live grant, but not from the claimed delegator (absent grant from that delegator)', async () => {
+    const otherDelegator = 'did:imajin:someone-else';
+    await issueGrant({ delegatorDid: otherDelegator, agentDid: AGENT, capabilities: ['intros:propose'], audience: { type: 'all' } });
+
+    await expect(
+      introspectGrant({ agentDid: AGENT, capability: 'intros:propose', delegatorDid: DELEGATOR }),
+    ).resolves.toMatchObject({ authorized: false });
+  });
+
+  it('denies a delegator-narrowed lookup once the delegator\'s own grant is revoked', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['intros:propose'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    await revokeGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR });
+
+    await expect(
+      introspectGrant({ agentDid: AGENT, capability: 'intros:propose', delegatorDid: DELEGATOR }),
+    ).resolves.toMatchObject({ authorized: false });
+  });
 
   it('allows an "all" audience against any target', async () => {
     await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });

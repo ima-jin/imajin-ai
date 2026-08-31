@@ -91,6 +91,22 @@ components:
             ungranted caller to become a known one. Never changes the status
             code or weakens the underlying auth check; it is purely a
             discovery affordance.
+    ExternalDidVerification:
+      type: string
+      nullable: true
+      enum: [verified, declared_unverified, resolution_failed]
+      description: |
+        Verification state for `externalDid` (#1900). Null when no
+        external_did was declared. Computed once, at knock-submission
+        time, and never silently upgraded:
+          - verified: the knock's Ed25519 public key was found among the
+            resolved did:web document's verification methods.
+          - declared_unverified: never checked (non-did:web method — out
+            of scope for v1) or checked and the key was not found. Never
+            a rejection, only a label.
+          - resolution_failed: resolving the did:web document itself
+            failed (timeout, missing did.json, parse error). Never fatal
+            to the knock.
     Knock:
       type: object
       properties:
@@ -103,6 +119,8 @@ components:
           items: { type: string }
           description: Advisory preview only — never auto-granted.
         externalDid: { type: string, nullable: true }
+        externalDidVerification: { $ref: "#/components/schemas/ExternalDidVerification" }
+        externalDidVerifiedAt: { type: string, format: date-time, nullable: true, description: "When externalDidVerification was computed. Null when no external_did was declared." }
         status: { type: string, enum: [pending, accepted, declined] }
         expiresAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
@@ -1020,6 +1038,13 @@ paths:
       description: |
         Caller must be the issuer (session cookie or Bearer token). The signature must be an
         Ed25519 signature over the canonical JSON of `{subject_did, type, context_id, context_type, payload, issued_at}`.
+
+        `payload.delegator_did` (intro-funnel envelope, #1885) asserts that `delegator_did`
+        authorized `issuer_did` to act on its behalf. When present and different from
+        `issuer_did`, the write is rejected with 403 unless a live (unexpired, unrevoked)
+        delegation grant from `delegator_did` to `issuer_did` covers the capability implied
+        by `type` (#1895, #1897) — a self-asserted `delegator_did` is never trusted on its
+        own. The verified grant id is recorded on the attestation as `delegationGrantId`.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -1036,7 +1061,11 @@ paths:
                 type: { type: string, description: "Attestation type (from ATTESTATION_TYPES registry)" }
                 context_id: { type: string }
                 context_type: { type: string }
-                payload: { type: object }
+                payload:
+                  type: object
+                  description: |
+                    May carry the intro-funnel envelope fields (#1885): delegator_did,
+                    disclosure_scope, prev_event_ref.
                 signature: { type: string, description: "Ed25519 signature over canonical payload (hex)" }
                 issued_at: { type: number, description: "Unix timestamp ms (defaults to now)" }
                 author_jws: { type: string, description: "Optional JWS for bilateral attestation flow" }
@@ -1054,6 +1083,7 @@ paths:
                   subjectDid: { type: string }
                   type: { type: string }
                   attestationStatus: { type: string, enum: [pending, bilateral, declined, "null"] }
+                  delegationGrantId: { type: string, nullable: true, description: "Grant verified against payload.delegator_did, if any (#1895, #1897)" }
                   issuedAt: { type: string, format: date-time }
         "400":
           description: Invalid request or signature
@@ -1062,6 +1092,11 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: payload.delegator_did asserted but no live delegation grant covers this action
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1241,6 +1276,11 @@ paths:
       description: |
         Signs the attestation using the platform keypair (AUTH_PRIVATE_KEY).
         Requires `ATTESTATION_INTERNAL_API_KEY` as Bearer token. No session cookie.
+
+        `payload.delegator_did` is subject to the same live-grant verification as
+        POST /api/attestations (#1895, #1897): present and different from `issuer_did`
+        requires a live delegation grant from `delegator_did` to `issuer_did` covering
+        the capability implied by `type`, or the write is rejected with 403.
       security:
         - bearerAuth: []
       requestBody:
@@ -1256,7 +1296,11 @@ paths:
                 type: { type: string }
                 context_id: { type: string }
                 context_type: { type: string }
-                payload: { type: object }
+                payload:
+                  type: object
+                  description: |
+                    May carry the intro-funnel envelope fields (#1885): delegator_did,
+                    disclosure_scope, prev_event_ref.
       responses:
         "201":
           description: Attestation issued
@@ -1270,6 +1314,7 @@ paths:
                   issuerDid: { type: string }
                   subjectDid: { type: string }
                   type: { type: string }
+                  delegationGrantId: { type: string, nullable: true, description: "Grant verified against payload.delegator_did, if any (#1895, #1897)" }
         "400":
           description: Invalid request
           content:
@@ -1277,6 +1322,11 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Unauthorized (invalid API key)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: payload.delegator_did asserted but no live delegation grant covers this action
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2004,6 +2054,16 @@ paths:
         minted here; the public key sits in escrow until the declared target
         accepts (see POST /api/knock/{knockId}/accept). Rate-limited per-IP
         and per-target.
+
+        When `external_did` is a `did:web` DID (#1900), its DID document is
+        resolved synchronously here and checked for the knock's own Ed25519
+        public key among its verification methods — domain control is the
+        trust anchor. The resulting `externalDidVerification` /
+        `externalDidVerifiedAt` are recorded on the knock immediately (so
+        the pending-review surface can label the claim before accept) and
+        never block or fail the knock itself; resolution problems surface
+        as `resolution_failed`. Non-`did:web` methods are always
+        `declared_unverified` in v1.
       requestBody:
         required: true
         content:

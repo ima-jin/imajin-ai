@@ -3,9 +3,10 @@
  * Extracted to avoid duplication between the public and internal POST endpoints.
  */
 
-import { verifyNostrSig, isDisclosureScope, DISCLOSURE_SCOPES, DEFAULT_DISCLOSURE_SCOPE } from '@imajin/auth';
+import { verifyNostrSig, isDisclosureScope, DISCLOSURE_SCOPES, DEFAULT_DISCLOSURE_SCOPE, capabilityForDelegatedAttestationType } from '@imajin/auth';
 import type { NostrKeyBindingClaim, DisclosureScope } from '@imajin/auth';
 import { toOrigin } from '@/src/lib/http/public-origin';
+import { introspectGrant } from '@/src/lib/auth/grants';
 
 /**
  * Resolve an issued_at field from a request body to a Unix timestamp in ms.
@@ -80,6 +81,55 @@ export function resolveEnvelopeFields(payload: unknown): EnvelopeValidationResul
       prevEventRef: (prevEventRefRaw as string | undefined) ?? null,
     },
   };
+}
+
+export type DelegationVerificationResult =
+  | { ok: true; grantId: string | null }
+  | { ok: false; error: string };
+
+/**
+ * Verify that a live (unexpired, unrevoked) delegation grant exists from
+ * `delegatorDid` to `issuerDid` covering the capability implied by `type`,
+ * whenever an attestation asserts delegated authority via
+ * payload.delegator_did (#1895, #1897 — the RFC #1881 revocation finding:
+ * a self-asserted delegator_did was never checked against a live grant, so
+ * a revoked or never-granted agent could still mint a valid-looking
+ * "delegated" attestation).
+ *
+ * Self-attestation — `delegatorDid` absent or equal to `issuerDid` — needs
+ * no grant and resolves immediately with `grantId: null`.
+ *
+ * Fails closed: an attestation type with no defined delegation capability,
+ * or a lookup that finds no live grant from exactly this delegator to this
+ * issuer, is rejected rather than accepted on an unverified claim. Shared
+ * by both attestation-creation routes so the check can never drift between
+ * them.
+ */
+export async function verifyDelegatedAttestation(params: {
+  delegatorDid: string | null;
+  issuerDid: string;
+  subjectDid: string;
+  type: string;
+}): Promise<DelegationVerificationResult> {
+  const { delegatorDid, issuerDid, subjectDid, type } = params;
+  if (!delegatorDid || delegatorDid === issuerDid) {
+    return { ok: true, grantId: null };
+  }
+
+  const capability = capabilityForDelegatedAttestationType(type);
+  if (!capability) {
+    return { ok: false, error: `Attestation type "${type}" does not support payload.delegator_did` };
+  }
+
+  const introspection = await introspectGrant({ agentDid: issuerDid, capability, targetDid: subjectDid, delegatorDid });
+  if (!introspection.authorized || !introspection.grantId) {
+    return {
+      ok: false,
+      error: `No live delegation grant from "${delegatorDid}" to "${issuerDid}" covers "${capability}"`,
+    };
+  }
+
+  return { ok: true, grantId: introspection.grantId };
 }
 
 export type NostrValidationResult =

@@ -30,8 +30,9 @@ import { db, identities, agentKnocks, connections, attestations, type AgentKnock
 import { generateId } from '@/src/lib/kernel/id';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
+import { resolveExternalDidVerification } from '@/src/lib/auth/did-web';
 import { canonicalize, crypto as authCrypto, isDid } from '@imajin/auth';
-import type { AttestationType } from '@imajin/auth';
+import type { AttestationType, ExternalDidVerificationState } from '@imajin/auth';
 import {
   isKnockPublicKey,
   isKnockRequestedCapabilities,
@@ -57,6 +58,9 @@ export interface KnockRecord {
   selfDescription: string | null;
   requestedCapabilities: string[];
   externalDid: string | null;
+  /** #1900: did:web verification state for `externalDid` — null when no external_did was declared. */
+  externalDidVerification: ExternalDidVerificationState | null;
+  externalDidVerifiedAt: string | null;
   status: 'pending' | 'accepted' | 'declined';
   expiresAt: string;
   createdAt: string;
@@ -70,6 +74,8 @@ function toRecord(row: AgentKnockRow): KnockRecord {
     selfDescription: row.selfDescription ?? null,
     requestedCapabilities: Array.isArray(row.requestedCapabilities) ? (row.requestedCapabilities as string[]) : [],
     externalDid: row.externalDid ?? null,
+    externalDidVerification: (row.externalDidVerification as ExternalDidVerificationState | null) ?? null,
+    externalDidVerifiedAt: row.externalDidVerifiedAt ? row.externalDidVerifiedAt.toISOString() : null,
     status: row.status as KnockRecord['status'],
     expiresAt: row.expiresAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
@@ -127,11 +133,20 @@ export async function submitKnock(input: SubmitKnockInput): Promise<{ knock: Kno
   }
 
   let externalDid: string | null = null;
+  let externalDidVerification: ExternalDidVerificationState | null = null;
+  let externalDidVerifiedAt: Date | null = null;
   if (input.externalDid !== undefined && input.externalDid !== null && input.externalDid !== '') {
     if (!isKnockExternalDid(input.externalDid)) {
       return { error: 'external_did must be a valid DID', status: 400 };
     }
     externalDid = input.externalDid;
+    // #1900: resolve/verify once, here, at knock-submission time — so the
+    // pending-review surface (GET /auth/api/knock/pending) already carries
+    // the state before a human ever sees the claim. Never fatal to the
+    // knock: any resolution problem falls through to 'resolution_failed'.
+    const verification = await resolveExternalDidVerification(externalDid, publicKey);
+    externalDidVerification = verification.state;
+    externalDidVerifiedAt = verification.verifiedAt;
   }
 
   const agentDid = didFromPublicKey(publicKey);
@@ -163,6 +178,8 @@ export async function submitKnock(input: SubmitKnockInput): Promise<{ knock: Kno
         selfDescription: input.selfDescription,
         requestedCapabilities: [...input.requestedCapabilities],
         externalDid,
+        externalDidVerification,
+        externalDidVerifiedAt,
         expiresAt,
       })
       .where(eq(agentKnocks.id, knockId));
@@ -175,6 +192,8 @@ export async function submitKnock(input: SubmitKnockInput): Promise<{ knock: Kno
       selfDescription: input.selfDescription,
       requestedCapabilities: [...input.requestedCapabilities],
       externalDid,
+      externalDidVerification,
+      externalDidVerifiedAt,
       status: 'pending',
       expiresAt,
       createdAt: now,
@@ -324,7 +343,16 @@ export async function acceptKnock(params: RespondToKnockParams): Promise<{ resul
   }).catch((err: unknown) => log.error({ err: String(err) }, '[knock] connection.accepted publish failed'));
 
   if (knock.externalDid) {
-    await emitExternalIdentityAttestation({ agentDid: knock.agentDid, externalDid: knock.externalDid }).catch((err: unknown) =>
+    await emitExternalIdentityAttestation({
+      agentDid: knock.agentDid,
+      externalDid: knock.externalDid,
+      // #1900: carried forward unchanged from the knock-submission-time
+      // resolution — never re-derived or upgraded here. Falls back to
+      // 'declared_unverified' only for pre-#1900 rows that predate these
+      // columns.
+      verification: (knock.externalDidVerification as ExternalDidVerificationState | null) ?? 'declared_unverified',
+      verifiedAt: knock.externalDidVerifiedAt ?? new Date(),
+    }).catch((err: unknown) =>
       log.error({ err: String(err), agentDid: knock.agentDid }, '[knock] external-identity attestation failed'),
     );
   }
@@ -343,7 +371,12 @@ function genAttestationId(): string {
  * did:web:boardy.ai") — linkage only, never the auth basis (mirrors
  * `emitSessionAttestation`'s direct-insert + node-signature pattern).
  */
-async function emitExternalIdentityAttestation(params: { agentDid: string; externalDid: string }): Promise<void> {
+async function emitExternalIdentityAttestation(params: {
+  agentDid: string;
+  externalDid: string;
+  verification: ExternalDidVerificationState;
+  verifiedAt: Date;
+}): Promise<void> {
   const privateKey = process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) {
     log.warn({}, 'external-identity attestation skipped: AUTH_PRIVATE_KEY not set');
@@ -356,7 +389,15 @@ async function emitExternalIdentityAttestation(params: { agentDid: string; exter
   }
 
   const issuedAtMs = Date.now();
-  const payload = { external_did: params.externalDid };
+  // #1900: the verification state travels with the claim itself, so any
+  // reader of this attestation (accept surface, agents list, third parties)
+  // sees the same label the accepting human saw — never re-derived, never
+  // silently upgraded after the fact.
+  const payload = {
+    external_did: params.externalDid,
+    external_did_verification: params.verification,
+    external_did_verified_at: params.verifiedAt.toISOString(),
+  };
 
   const canonicalPayload = canonicalize({
     subject_did: params.agentDid,

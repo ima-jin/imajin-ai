@@ -22,6 +22,7 @@ export {
   DEFAULT_DISCLOSURE_SCOPE,
   EVIDENCE_GRADES,
   INTRO_FUNNEL_CONTEXT_TYPE,
+  INTRO_FUNNEL_DELEGATION_CAPABILITY,
   isIntroFunnelAttestationType,
   isDisclosureScope,
   evidenceGradeForAttestationStatus,
@@ -29,6 +30,7 @@ export {
   verifyFunnelChainLink,
   verifyFunnelChain,
   funnelCorrelationContext,
+  capabilityForDelegatedAttestationType,
 } from "./intro-funnel";
 export type {
   IntroFunnelAttestationType,
@@ -56,6 +58,7 @@ export {
   KNOCK_TARGET_RATE_WINDOW,
   KNOCK_IP_RATE_LIMIT,
   KNOCK_IP_RATE_WINDOW,
+  DID_WEB_RESOLUTION_TIMEOUT_MS,
   EVENT_SUBSCRIPTION_RETENTION,
   EVENT_SUBSCRIPTION_CATCHUP_PAGE_SIZE,
 } from "./constants";
@@ -160,9 +163,10 @@ export {
   KNOCK_SELF_DESCRIPTION_MAX_LENGTH,
   KNOCK_MAX_REQUESTED_CAPABILITIES,
   KNOCK_STATUSES,
+  EXTERNAL_DID_VERIFICATION_STATES,
   isKnockPublicKey,
   isKnockRequestedCapabilities,
   isKnockSelfDescription,
   isKnockExternalDid,
 } from "./knock";
-export type { KnockStatus } from "./knock";
+export type { KnockStatus, ExternalDidVerificationState } from "./knock";
