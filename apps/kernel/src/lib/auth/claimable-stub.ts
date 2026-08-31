@@ -54,6 +54,27 @@ function minResolveLatencyMs(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MIN_RESOLVE_LATENCY_MS;
 }
 
+/**
+ * Default TTL (#1841 design consideration 1) before the claim-stub-expiry
+ * cron sweep (app/api/cron/claim-stub-expiry) tombstones an unclaimed stub.
+ * Comfortably longer than any plausible reminder-ladder rung
+ * (catalyst-power/xprize#75's longest rung is 7d) — the sweep's own
+ * pending-invite guard, not the size of this TTL, is what actually protects
+ * a stub with reminders still in flight.
+ */
+const DEFAULT_CLAIMABLE_STUB_EXPIRY_DAYS = 90;
+
+function claimableStubExpiryDays(): number {
+  const raw = process.env.CLAIMABLE_STUB_EXPIRY_DAYS;
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CLAIMABLE_STUB_EXPIRY_DAYS;
+}
+
+/** `stub_expires_at` to stamp on a freshly minted stub — now + the configured TTL. */
+function stubExpiresAtFromNow(): Date {
+  return new Date(Date.now() + claimableStubExpiryDays() * 24 * 60 * 60 * 1000);
+}
+
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -134,10 +155,20 @@ export interface ClaimableStubResult {
 /**
  * Mint-or-accrue a claimable stub identity for `email`.
  *
- * A dedup-index hit means some prior introduction already minted a stub for
- * this person — that same DID is returned silently. A miss mints a new
- * soft-tier identity, encrypts the email at rest, and records the HMAC
- * index row.
+ * A dedup-index hit against a still-`active` row means some prior
+ * introduction already minted a live stub for this person — that same DID
+ * is returned silently. A miss — genuinely no row yet, OR the only row(s)
+ * for this email have already been tombstoned (`stub_status = 'expired'`)
+ * — mints a brand-new stub: new soft-tier identity, new DID, new
+ * `claim_stub_index` row (#1841 design consideration 3, "new stub, not
+ * resurrection"). Both branches of the miss case are handled identically on
+ * purpose — a caller must not be able to tell "first-ever introduction"
+ * apart from "re-introduced after the prior stub lapsed" (match-without-
+ * disclosure, #1834 design pt. 2).
+ *
+ * Old accrual history (pods, connections, attestations already recorded
+ * against the tombstoned DID) is untouched — only *forward* accrual moves
+ * to the new DID.
  */
 export async function mintOrAccrueClaimableStub(email: string): Promise<ClaimableStubResult> {
   const emailHmac = hmacEmail(email);
@@ -145,7 +176,7 @@ export async function mintOrAccrueClaimableStub(email: string): Promise<Claimabl
   const [existing] = await db
     .select({ did: claimStubIndex.did })
     .from(claimStubIndex)
-    .where(eq(claimStubIndex.emailHmac, emailHmac))
+    .where(and(eq(claimStubIndex.emailHmac, emailHmac), eq(claimStubIndex.stubStatus, 'active')))
     .limit(1);
   if (existing) {
     return { did: existing.did, isNewStub: false };
@@ -161,10 +192,17 @@ export async function mintOrAccrueClaimableStub(email: string): Promise<Claimabl
     metadata: { source: 'connections.invite', stub: true },
   });
 
+  // Deliberately no `stub_status` here — defaults to 'active' at the DB
+  // level (migrations/0109_claim_stub_expiry.sql). The partial-unique index
+  // on (email_hmac) WHERE stub_status = 'active' is what allows this insert
+  // to succeed even when an `expired` row for the same email_hmac already
+  // exists (re-introduction after expiry).
   await db.insert(claimStubIndex).values({
+    id: `cstub_${nanoid(32)}`,
     emailHmac,
     did,
     emailEncrypted: encryptEmail(email),
+    stubExpiresAt: stubExpiresAtFromNow(),
   });
 
   return { did, isNewStub: true };
@@ -220,28 +258,35 @@ export async function resolveOrMintInviteTarget(
 export async function findClaimableStubDid(email: string): Promise<string | null> {
   const emailHmac = hmacEmail(email);
 
+  // #1841: only a live stub is "the" stub for this email. A tombstoned
+  // (`stub_status = 'expired'`) row must not be handed back here — the
+  // caller's existing null-means-"fall back to your own mint path" contract
+  // is exactly the right outcome once the prior stub has lapsed.
   const [stub] = await db
     .select({ did: claimStubIndex.did })
     .from(claimStubIndex)
-    .where(eq(claimStubIndex.emailHmac, emailHmac))
+    .where(and(eq(claimStubIndex.emailHmac, emailHmac), eq(claimStubIndex.stubStatus, 'active')))
     .limit(1);
 
   return stub?.did ?? null;
 }
 
 /**
- * True when `did` is one of our claimable stubs and hasn't been claimed yet
- * (still soft tier). Only stubs we minted are eligible for the
- * link-click-alone accept path in the invite-accept route — an arbitrary
- * soft DID from a different mint site must not be reachable this way.
+ * True when `did` is one of our claimable stubs, hasn't been claimed yet
+ * (still soft tier), AND hasn't been swept to `expired` (#1841). Only stubs
+ * we minted are eligible for the link-click-alone accept path in the
+ * invite-accept route — an arbitrary soft DID from a different mint site
+ * must not be reachable this way, and neither must a tombstoned one: the
+ * expiry sweep having already flipped `stub_status` removes the DID from
+ * this path even if `tier` hasn't (yet) needed to change.
  */
 export async function isUnclaimedStub(did: string): Promise<boolean> {
   const [stub] = await db
-    .select({ did: claimStubIndex.did })
+    .select({ did: claimStubIndex.did, stubStatus: claimStubIndex.stubStatus })
     .from(claimStubIndex)
     .where(eq(claimStubIndex.did, did))
     .limit(1);
-  if (!stub) return false;
+  if (!stub || stub.stubStatus !== 'active') return false;
 
   const [identity] = await db
     .select({ tier: identities.tier })
@@ -255,23 +300,29 @@ export async function isUnclaimedStub(did: string): Promise<boolean> {
  * Claimant-side half of the ratchet: mark the stub matching `email` as
  * email-verified, then attempt to close the ratchet.
  *
- * Returns `false` when `email` doesn't match any known stub (nothing to
- * verify); otherwise returns whatever {@link tryActivateClaim} returns.
+ * Returns `false` when `email` doesn't match any known LIVE stub (nothing
+ * to verify — either it never existed, or it already lapsed, #1841);
+ * otherwise returns whatever {@link tryActivateClaim} returns.
  */
 export async function verifyClaimantEmail(email: string): Promise<boolean> {
   const emailHmac = hmacEmail(email);
 
+  // #1841: `email_hmac` is no longer unique across all rows (only among
+  // `active` ones, per the partial-unique index) once re-introduction after
+  // expiry can mint a second row for the same email. Filtering to the live
+  // row here is what keeps this matching the SAME stub
+  // `mintOrAccrueClaimableStub` would resolve this email to right now.
   const [stub] = await db
     .select({ did: claimStubIndex.did })
     .from(claimStubIndex)
-    .where(eq(claimStubIndex.emailHmac, emailHmac))
+    .where(and(eq(claimStubIndex.emailHmac, emailHmac), eq(claimStubIndex.stubStatus, 'active')))
     .limit(1);
   if (!stub) return false;
 
   await db
     .update(claimStubIndex)
     .set({ claimantVerifiedAt: new Date() })
-    .where(eq(claimStubIndex.emailHmac, emailHmac));
+    .where(and(eq(claimStubIndex.emailHmac, emailHmac), eq(claimStubIndex.stubStatus, 'active')));
 
   return tryActivateClaim(stub.did);
 }
@@ -293,11 +344,18 @@ export async function verifyClaimantEmail(email: string): Promise<boolean> {
  */
 export async function tryActivateClaim(did: string): Promise<boolean> {
   const [stub] = await db
-    .select({ claimantVerifiedAt: claimStubIndex.claimantVerifiedAt, emailEncrypted: claimStubIndex.emailEncrypted })
+    .select({
+      claimantVerifiedAt: claimStubIndex.claimantVerifiedAt,
+      emailEncrypted: claimStubIndex.emailEncrypted,
+      stubStatus: claimStubIndex.stubStatus,
+    })
     .from(claimStubIndex)
     .where(eq(claimStubIndex.did, did))
     .limit(1);
-  if (!stub?.claimantVerifiedAt) return false;
+  // #1841: refuse to activate (flip tier) against a tombstoned stub — closes
+  // the race where a claimant's email verification lands just after the
+  // expiry sweep has already flipped stub_status to 'expired'.
+  if (!stub?.claimantVerifiedAt || stub.stubStatus !== 'active') return false;
 
   const [countersign] = await db
     .select({ id: invites.id })

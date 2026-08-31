@@ -1170,6 +1170,25 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'telemetry';
   };
+  /**
+   * Emitted by the claim-stub-expiry cron sweep (#1841) when an unclaimed
+   * stub's `auth.claim_stub_index.stub_status` is flipped `active ->
+   * expired`. `subject` on the envelope is the tombstoned stub DID.
+   *
+   * Lets a future reminder-ladder consumer (catalyst-power/xprize#75/#82,
+   * not yet built) cancel any last-second scheduled send for a stub that
+   * just lapsed, without the sweep needing to know anything about the
+   * ladder's own state.
+   */
+  'identity.stub.lapsed': {
+    did: string;
+    /** `auth.attestations.id` rows cascaded to `attestation_status = 'lapsed'` by this sweep. */
+    lapsedAttestationIds: string[];
+    /** `connections.invites.id` rows cascaded to `status = 'lapsed'` by this sweep. */
+    lapsedInviteIds: string[];
+    context_id: string;
+    context_type: 'identity.stub';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

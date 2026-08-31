@@ -270,6 +270,13 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'vault.delegation.revoked': [
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #1841 — claim-stub-expiry sweep. `emit` puts the tombstone event on the
+  // signed event stream; no `attestation`/`mjn` reactor since a lapsing
+  // stub is a garbage-collection outcome, not an economic/identity event
+  // worth signing (mirrors vault.delegation.revoked above).
+  'identity.stub.lapsed': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
   // #1639 Stage 3 — `emit` puts the outcome on the live event stream, so an
   // orchestrating agent is woken by a dispatched run finishing instead of polling
   // `get_run` for it. #1644 adds `notify`, which turns that into a durable

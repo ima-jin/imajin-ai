@@ -24,6 +24,8 @@ vi.mock('@/src/db', () => ({
     did: 'claim_stub_index.did',
     claimantVerifiedAt: 'claim_stub_index.claimant_verified_at',
     emailEncrypted: 'claim_stub_index.email_encrypted',
+    stubStatus: 'claim_stub_index.stub_status',
+    stubExpiresAt: 'claim_stub_index.stub_expires_at',
   },
   invitesInConnections: { toDid: 'invites.to_did', status: 'invites.status', id: 'invites.id' },
 }));
@@ -151,6 +153,50 @@ describe('mintOrAccrueClaimableStub', () => {
     expect(second.did).toBe(first.did);
     expect(second.isNewStub).toBe(false);
   });
+
+  it('stamps stub_expires_at ~CLAIMABLE_STUB_EXPIRY_DAYS (default 90d) ahead of now at mint time', async () => {
+    queueSelect([]);
+    const before = Date.now();
+
+    await mintOrAccrueClaimableStub('fresh@example.com');
+
+    const claimStubInsertCall = mockInsert.mock.results[1].value as ReturnType<typeof insertChain>;
+    const insertedRow = (claimStubInsertCall.values as ReturnType<typeof vi.fn>).mock.calls[0][0] as { stubExpiresAt: Date };
+    const expectedMs = 90 * 24 * 60 * 60 * 1000;
+    const deltaMs = insertedRow.stubExpiresAt.getTime() - before;
+    expect(deltaMs).toBeGreaterThan(expectedMs - 5_000);
+    expect(deltaMs).toBeLessThan(expectedMs + 5_000);
+  });
+
+  // ─── #1841: expired-then-reintroduced — mint a NEW stub, never resurrect ───
+
+  it('mints a brand-new stub DID when the only prior row for this email has already expired (design consideration 3)', async () => {
+    // The dedup lookup filters on stub_status = 'active'; a tombstoned
+    // (`expired`) row for this email_hmac simply doesn't match — from
+    // mintOrAccrueClaimableStub's point of view this is indistinguishable
+    // from a genuinely new email (match-without-disclosure).
+    queueSelect([]); // no ACTIVE row — the prior stub for this email already expired
+
+    const result = await mintOrAccrueClaimableStub('reintroduced@example.com');
+
+    expect(result.isNewStub).toBe(true);
+    expect(result.did).toMatch(/^did:imajin:/);
+    expect(mockInsert).toHaveBeenCalledTimes(2); // new identities row, new claim_stub_index row
+    // The tombstoned row is never written to — no resurrection, and its old
+    // accrual history (pods/connections/attestations on the old DID) is
+    // left completely untouched by this call.
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('mints a DID distinct from the tombstoned one on re-introduction, so forward accrual moves to the new stub', async () => {
+    const tombstonedDid = 'did:imajin:tombstoned-stub';
+
+    queueSelect([]); // no active row for this email (only the tombstoned one)
+    const reintroduced = await mintOrAccrueClaimableStub('lapsed-then-back@example.com');
+
+    expect(reintroduced.did).not.toBe(tombstonedDid);
+    expect(reintroduced.isNewStub).toBe(true);
+  });
 });
 
 // ─── resolveOrMintInviteTarget — no-disclosure response equivalence ───────────
@@ -246,15 +292,24 @@ describe('isUnclaimedStub', () => {
   });
 
   it('is false once the stub has already activated to preliminary', async () => {
-    queueSelect([{ did: 'did:imajin:stub' }], [{ tier: 'preliminary' }]);
+    queueSelect([{ did: 'did:imajin:stub', stubStatus: 'active' }], [{ tier: 'preliminary' }]);
 
     expect(await isUnclaimedStub('did:imajin:stub')).toBe(false);
   });
 
   it('is true for a still-soft claimable stub', async () => {
-    queueSelect([{ did: 'did:imajin:stub' }], [{ tier: 'soft' }]);
+    queueSelect([{ did: 'did:imajin:stub', stubStatus: 'active' }], [{ tier: 'soft' }]);
 
     expect(await isUnclaimedStub('did:imajin:stub')).toBe(true);
+  });
+
+  it('is false for a tombstoned (expired) stub, even though tier is still soft (#1841)', async () => {
+    // The expiry sweep flips stub_status before it would ever need to touch
+    // tier — isUnclaimedStub must close the link-click-alone accept path on
+    // stub_status alone, not wait for a tier change that may never happen.
+    queueSelect([{ did: 'did:imajin:stub', stubStatus: 'expired' }]);
+
+    expect(await isUnclaimedStub('did:imajin:stub')).toBe(false);
   });
 });
 
@@ -281,7 +336,7 @@ describe('tryActivateClaim — bilateral ratchet', () => {
   const STUB_DID = 'did:imajin:stub-under-claim';
 
   it('does not activate on an accepted invite alone (claimant never verified) — click alone is not a claim', async () => {
-    queueSelect([{ claimantVerifiedAt: null, emailEncrypted: 'irrelevant' }]);
+    queueSelect([{ claimantVerifiedAt: null, emailEncrypted: 'irrelevant', stubStatus: 'active' }]);
 
     const activated = await tryActivateClaim(STUB_DID);
 
@@ -291,7 +346,7 @@ describe('tryActivateClaim — bilateral ratchet', () => {
 
   it('does not activate on claimant verification alone (invite not yet accepted)', async () => {
     queueSelect(
-      [{ claimantVerifiedAt: new Date(), emailEncrypted: 'irrelevant' }],
+      [{ claimantVerifiedAt: new Date(), emailEncrypted: 'irrelevant', stubStatus: 'active' }],
       [], // no accepted invite targeting this DID
     );
 
@@ -305,7 +360,7 @@ describe('tryActivateClaim — bilateral ratchet', () => {
     mockUpdate.mockImplementationOnce(() => updateChain([{ id: STUB_DID }]));
 
     queueSelect(
-      [{ claimantVerifiedAt: new Date(), emailEncrypted: encryptedFor('claim-me@example.com') }],
+      [{ claimantVerifiedAt: new Date(), emailEncrypted: encryptedFor('claim-me@example.com'), stubStatus: 'active' }],
       [{ id: 'inv_abc' }], // an accepted invite targets this DID
     );
 
@@ -329,7 +384,7 @@ describe('tryActivateClaim — bilateral ratchet', () => {
     mockUpdate.mockImplementationOnce(() => updateChain([]));
 
     queueSelect(
-      [{ claimantVerifiedAt: new Date(), emailEncrypted: encryptedFor('claim-me@example.com') }],
+      [{ claimantVerifiedAt: new Date(), emailEncrypted: encryptedFor('claim-me@example.com'), stubStatus: 'active' }],
       [{ id: 'inv_abc' }],
     );
 
@@ -342,7 +397,7 @@ describe('tryActivateClaim — bilateral ratchet', () => {
   it('keeps the same DID through the entire claim — the DID never changes', async () => {
     mockUpdate.mockImplementationOnce(() => updateChain([{ id: STUB_DID }]));
     queueSelect(
-      [{ claimantVerifiedAt: new Date(), emailEncrypted: encryptedFor('stable@example.com') }],
+      [{ claimantVerifiedAt: new Date(), emailEncrypted: encryptedFor('stable@example.com'), stubStatus: 'active' }],
       [{ id: 'inv_abc' }],
     );
 
@@ -352,6 +407,24 @@ describe('tryActivateClaim — bilateral ratchet', () => {
     const insertCall = mockInsert.mock.results[0].value as ReturnType<typeof insertChain>;
     expect((insertCall.values as ReturnType<typeof vi.fn>).mock.calls[0][0].did).toBe(STUB_DID);
     expect(mockEmitAttestation).toHaveBeenCalledWith(expect.objectContaining({ subject_did: STUB_DID }));
+  });
+
+  // ─── #1841: post-expiry activation-race guard ───────────────────────────────
+
+  it('refuses to activate against a stub already swept to expired, even with both signals present (post-expiry activation-race guard)', async () => {
+    // Simulates the race the guard exists to close: the expiry sweep flips
+    // stub_status to 'expired' in between the claimant's email verification
+    // landing and the inviter's countersign being checked here.
+    queueSelect(
+      [{ claimantVerifiedAt: new Date(), emailEncrypted: encryptedFor('too-late@example.com'), stubStatus: 'expired' }],
+    );
+
+    const activated = await tryActivateClaim(STUB_DID);
+
+    expect(activated).toBe(false);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockEmitAttestation).not.toHaveBeenCalled();
   });
 });
 
@@ -366,8 +439,8 @@ describe('verifyClaimantEmail', () => {
   it('marks the stub verified and defers to tryActivateClaim for the rest of the ratchet', async () => {
     const did = 'did:imajin:to-verify';
     queueSelect(
-      [{ did }], // hmac lookup hit
-      [{ claimantVerifiedAt: new Date(), emailEncrypted: encryptedFor('v@example.com') }], // tryActivateClaim's own lookup
+      [{ did }], // hmac lookup hit (active row)
+      [{ claimantVerifiedAt: new Date(), emailEncrypted: encryptedFor('v@example.com'), stubStatus: 'active' }], // tryActivateClaim's own lookup
       [], // no accepted invite yet
     );
 
@@ -377,6 +450,15 @@ describe('verifyClaimantEmail', () => {
     expect(mockUpdate).toHaveBeenCalledTimes(1);
     // ...but bilateral completion still requires the inviter-side countersign.
     expect(activated).toBe(false);
+  });
+
+  it('returns false when the only row for this email has already lapsed (#1841) — an expired stub is not claimable', async () => {
+    // The emailHmac lookup here is filtered to stub_status = 'active'; a
+    // tombstoned row for this email simply doesn't match.
+    queueSelect([]);
+
+    expect(await verifyClaimantEmail('lapsed@example.com')).toBe(false);
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
 
