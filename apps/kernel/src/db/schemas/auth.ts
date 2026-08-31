@@ -112,7 +112,7 @@ export const attestations = authSchema.table('attestations', {
   nostrSig: text('nostr_sig'),                          // secp256k1 Schnorr hex (imajin/nostr-key-binding proof-of-control)
   authorJws: text('author_jws'),                       // JWS compact token (author signature)
   witnessJws: text('witness_jws'),                     // JWS compact token (countersignature)
-  attestationStatus: text('attestation_status').default('pending'), // 'pending' | 'bilateral' | 'declined' | 'superseded' | 'collecting' | 'executed' | 'expired'
+  attestationStatus: text('attestation_status').default('pending'), // 'pending' | 'bilateral' | 'declined' | 'superseded' | 'collecting' | 'executed' | 'expired' | 'lapsed'
   documentHash: text('document_hash'),                 // sha256 of signed document
   documentAssetId: text('document_asset_id'),          // references media.assets.id
   totalSigners: integer('total_signers'),              // expected number of signatures
@@ -146,6 +146,11 @@ export const attestations = authSchema.table('attestations', {
   issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  // Stamped when this attestation is cascaded to attestation_status='lapsed'
+  // by the claim-stub-expiry sweep (#1841) — distinct from expiresAt/expired,
+  // which is this attestation's own TTL, orthogonal to its subject's stub
+  // lapsing out from under it. See migrations/0112_claim_stub_expiry.sql.
+  lapsedAt: timestamp('lapsed_at', { withTimezone: true }),
 }, (table) => ({
   subjectIdx: index('idx_auth_attestations_subject').on(table.subjectDid),
   issuerIdx: index('idx_auth_attestations_issuer').on(table.issuerDid),
@@ -369,13 +374,28 @@ export const channelLinks = authSchema.table('channel_links', {
  * DID) rather than duplicated here.
  */
 export const claimStubIndex = authSchema.table('claim_stub_index', {
-  emailHmac: text('email_hmac').primaryKey(),
+  // Synthetic PK (migration 0109, #1841 design consideration 3). Lets an
+  // expired row's email_hmac be reused by a fresh mint via the partial
+  // unique index below, instead of email_hmac itself gating inserts.
+  id: text('id').primaryKey(),                    // cstub_{nanoid} (backfilled as cstub_{email_hmac} for pre-0109 rows)
+  emailHmac: text('email_hmac').notNull(),
   did: text('did').notNull().unique().references(() => identities.id),
   emailEncrypted: text('email_encrypted').notNull(),
   claimantVerifiedAt: timestamp('claimant_verified_at', { withTimezone: true }),
+  // 'active' | 'expired' (#1841). Tombstone, never delete: an expired row
+  // is retained as-is (email_hmac/email_encrypted untouched) so a later
+  // re-introduction of the same email recognizes a prior stub existed.
+  stubStatus: text('stub_status').notNull().default('active'),
+  stubExpiresAt: timestamp('stub_expires_at', { withTimezone: true }),
+  expiredAt: timestamp('expired_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   didIdx: index('idx_claim_stub_index_did').on(table.did),
+  // Enforces "at most one LIVE claimable stub DID per email" (#1841) rather
+  // than the pre-0109 "exactly one DID ever" — a fresh mint can insert a new
+  // row for the same email_hmac once the prior row is stub_status='expired'.
+  activeEmailIdx: uniqueIndex('uniq_claim_stub_index_active_email').on(table.emailHmac).where(sql`${table.stubStatus} = 'active'`),
+  expiryIdx: index('idx_claim_stub_index_expiry').on(table.stubExpiresAt).where(sql`${table.stubStatus} = 'active'`),
 }));
 
 /**

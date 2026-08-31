@@ -42,6 +42,10 @@ export const invitesInConnections = connectionsSchema.table("invites", {
   // exposed directly in a URL. See migration 0094 for the design note.
   scopeDid: text("scope_did"),                         // org/community DID to land the claimer in
   pendingAttestationId: text("pending_attestation_id"), // record awaiting the invitee's countersignature
+  // Stamped when this invite is cascaded to status='lapsed' by the
+  // claim-stub-expiry sweep (#1841) — the invite's target stub tombstoned
+  // while this invite was still pending. See migrations/0112_claim_stub_expiry.sql.
+  lapsedAt: timestamp("lapsed_at", { withTimezone: true, mode: 'string' }),
 }, (table) => [
   index("idx_invites_code").using("btree", table.code.asc().nullsLast().op("text_ops")),
   index("idx_invites_from_did").using("btree", table.fromDid.asc().nullsLast().op("text_ops")),
