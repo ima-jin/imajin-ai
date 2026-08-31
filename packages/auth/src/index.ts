@@ -51,6 +51,11 @@ export {
   GRANT_DEFAULT_TTL,
   GRANT_MAX_TTL,
   GRANT_INTROSPECTION_CACHE_TTL,
+  KNOCK_TTL,
+  KNOCK_TARGET_RATE_LIMIT,
+  KNOCK_TARGET_RATE_WINDOW,
+  KNOCK_IP_RATE_LIMIT,
+  KNOCK_IP_RATE_WINDOW,
 } from "./constants";
 export type { NodeHeartbeat, NodeRegistration, NodeRegistrationRequest, NodeRegistrationResponse, NodeAttestation } from "./types/node";
 export { getEmailForDid, getDidForEmail, resolveDidForEmail, resolveEmailForDid } from "./credentials";
@@ -149,3 +154,13 @@ export type {
   DelegationGrant,
   DelegationProvenance,
 } from "./delegation-grant";
+export {
+  KNOCK_SELF_DESCRIPTION_MAX_LENGTH,
+  KNOCK_MAX_REQUESTED_CAPABILITIES,
+  KNOCK_STATUSES,
+  isKnockPublicKey,
+  isKnockRequestedCapabilities,
+  isKnockSelfDescription,
+  isKnockExternalDid,
+} from "./knock";
+export type { KnockStatus } from "./knock";

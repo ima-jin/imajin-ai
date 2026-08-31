@@ -411,6 +411,48 @@ export type NewDelegationGrantRow = typeof delegationGrants.$inferInsert;
 export type DelegationGrantCapabilityRow = typeof delegationGrantCapabilities.$inferSelect;
 export type NewDelegationGrantCapabilityRow = typeof delegationGrantCapabilities.$inferInsert;
 
+/**
+ * External-agent knocks (#1883) — pending contact requests from an
+ * external agent to a declared target principal, settled at the #1881
+ * Day-1 review (2026-08-30). "Knock, not registration": the agent's
+ * `public_key` sits here in escrow — it is never written to
+ * `auth.identities` until the declared target accepts. Declining or letting
+ * a knock expire leaves no identity behind at all.
+ *
+ * `agent_did` is the did:imajin address deterministically derived from
+ * `public_key` (see `didFromPublicKey`) — computed at knock time so a
+ * multi-tenant agent's *second* knock (to a different target, same keypair)
+ * can be recognized as the same prospective/actual identity without an
+ * extra lookup. It only becomes a real row in `identities` on the *first*
+ * accepted knock for that key; every later accept reuses it ("the DID is
+ * minted once ... declaration is per-knock; identity is singular").
+ *
+ * Fail-closed by construction, same convention as `delegation_grants`:
+ * `status` only ever moves pending -> accepted | declined — there is no
+ * background "expired" transition. `expires_at` is compared as a plain
+ * timestamp at list/accept/decline time.
+ */
+export const agentKnocks = authSchema.table('agent_knocks', {
+  id: text('id').primaryKey(),                          // knock_{nanoid}
+  publicKey: text('public_key').notNull(),              // Ed25519 hex, escrowed — not yet in identities.public_key
+  agentDid: text('agent_did').notNull(),                // did:imajin derived from public_key (prospective until accept)
+  declaredTarget: text('declared_target').notNull(),    // resolved DID of the existing principal the agent wants to serve
+  selfDescription: text('self_description'),
+  requestedCapabilities: jsonb('requested_capabilities').notNull().default([]).$type<string[]>(), // advisory only — never authority (#1882 grants are separate)
+  externalDid: text('external_did'),                    // optional bring-your-own DID (e.g. did:web:boardy.ai); recorded as an attestation on accept, never used for auth
+  status: text('status').notNull().default('pending'),  // 'pending' | 'accepted' | 'declined'
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  respondedAt: timestamp('responded_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  targetStatusIdx: index('idx_agent_knocks_target_status').on(table.declaredTarget, table.status),
+  agentDidIdx: index('idx_agent_knocks_agent_did').on(table.agentDid),
+  pendingLookupIdx: index('idx_agent_knocks_pending_lookup').on(table.publicKey, table.declaredTarget, table.status),
+}));
+
+export type AgentKnockRow = typeof agentKnocks.$inferSelect;
+export type NewAgentKnockRow = typeof agentKnocks.$inferInsert;
+
 // Types
 export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;

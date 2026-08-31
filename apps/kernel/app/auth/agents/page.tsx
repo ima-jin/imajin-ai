@@ -32,8 +32,19 @@ interface Session {
   name?: string | null;
 }
 
+interface PendingKnock {
+  knockId: string;
+  agentDid: string;
+  selfDescription: string | null;
+  requestedCapabilities: string[];
+  externalDid: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [pendingKnocks, setPendingKnocks] = useState<PendingKnock[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState('');
@@ -57,14 +68,20 @@ export default function AgentsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [agentsRes, sessionRes] = await Promise.all([
+      const [agentsRes, sessionRes, knocksRes] = await Promise.all([
         fetch('/auth/api/agents', { credentials: 'include' }),
         fetch('/auth/api/session', { credentials: 'include' }),
+        fetch('/auth/api/knock/pending', { credentials: 'include' }),
       ]);
 
       if (agentsRes.ok) {
         const data = await agentsRes.json();
         setAgents(data.agents || []);
+      }
+
+      if (knocksRes.ok) {
+        const data = await knocksRes.json();
+        setPendingKnocks(data.knocks || []);
       }
 
       if (sessionRes.ok) {
@@ -121,6 +138,28 @@ export default function AgentsPage() {
       } else {
         const body = await res.json().catch(() => ({}));
         showStatus('error', body.error || 'Failed to create agent');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleKnockResponse(knockId: string, action: 'accept' | 'decline') {
+    setActionLoading(`${action}-${knockId}`);
+    try {
+      const res = await fetch(`/auth/api/knock/${encodeURIComponent(knockId)}/${action}`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (res.ok) {
+        showStatus('success', action === 'accept' ? 'Contact request accepted.' : 'Contact request declined.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || `Failed to ${action} the request`);
       }
     } catch {
       showStatus('error', 'Network error. Please try again.');
@@ -346,6 +385,56 @@ export default function AgentsPage() {
             >
               Done
             </button>
+          </div>
+        )}
+
+        {/* Pending contact requests (knocks, #1883) */}
+        {pendingKnocks.length > 0 && (
+          <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
+            <h2 className="text-lg font-semibold text-white mb-1">Pending contact requests</h2>
+            <p className="text-gray-400 text-sm mb-6">
+              External agents that have knocked, declaring you as their target. Accepting creates an identity only — it grants zero capabilities. Grant capabilities separately from an agent&apos;s detail view once it&apos;s in your agents list below.
+            </p>
+            <div className="space-y-3">
+              {pendingKnocks.map((knock) => (
+                <div key={knock.knockId} className="p-4 bg-gray-900 rounded-xl border border-gray-800">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm">{knock.selfDescription || 'No description provided.'}</p>
+                      <p className="text-xs text-gray-600 font-mono mt-1 truncate">{knock.agentDid}</p>
+                      {knock.externalDid && (
+                        <p className="text-xs text-gray-600 mt-1">Claims external identity: <span className="font-mono">{knock.externalDid}</span></p>
+                      )}
+                      {knock.requestedCapabilities.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {knock.requestedCapabilities.map((cap) => (
+                            <span key={cap} className="px-1.5 py-0.5 text-xs rounded border border-gray-700 text-gray-400">
+                              {cap} <span className="text-gray-600">(requested, advisory only)</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2 flex-shrink-0">
+                      <button type="button"
+                        onClick={() => handleKnockResponse(knock.knockId, 'accept')}
+                        disabled={actionLoading === `accept-${knock.knockId}` || actionLoading === `decline-${knock.knockId}`}
+                        className="text-xs px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black rounded transition disabled:opacity-50"
+                      >
+                        {actionLoading === `accept-${knock.knockId}` ? '…' : 'Accept'}
+                      </button>
+                      <button type="button"
+                        onClick={() => handleKnockResponse(knock.knockId, 'decline')}
+                        disabled={actionLoading === `accept-${knock.knockId}` || actionLoading === `decline-${knock.knockId}`}
+                        className="text-xs px-3 py-1 border border-gray-700 text-gray-400 rounded hover:text-white transition disabled:opacity-50"
+                      >
+                        {actionLoading === `decline-${knock.knockId}` ? '…' : 'Decline'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

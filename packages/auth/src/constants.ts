@@ -39,6 +39,22 @@ export const GRANT_MAX_TTL = 30 * DAY;
 export const GRANT_INTROSPECTION_CACHE_TTL = 5 * SECOND;
 
 /**
+ * External-agent knock (#1883): how long a pending contact request sits in
+ * escrow awaiting the declared target's accept/decline before it is treated
+ * as expired. Not caller-configurable — fixed so an agent can't flood a
+ * target's inbox with long-lived pending requests. Fail-closed like grants:
+ * there is no background sweep to a stored 'expired' status; expiry is a
+ * plain timestamp compared at read/accept/decline time.
+ */
+export const KNOCK_TTL = 14 * DAY;
+/** Per-target knock rate limit (#1883 Day-1: "rate limiting keys naturally per-target"). */
+export const KNOCK_TARGET_RATE_LIMIT = 20;
+export const KNOCK_TARGET_RATE_WINDOW = HOUR;
+/** Coarser per-IP guard against a single client hammering the public submission endpoint. */
+export const KNOCK_IP_RATE_LIMIT = 10;
+export const KNOCK_IP_RATE_WINDOW = MINUTE;
+
+/**
  * Signed Message Max Age: 5 minutes (default)
  * For real-time verification of signed messages.
  * Can be overridden per-verification.
