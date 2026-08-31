@@ -216,18 +216,61 @@ export async function requireAuth(
   if ("identity" in result && result.identity) {
     const actingFor = request.headers.get("x-acting-for");
     if (actingFor) {
-      const actingForResult = await validateActingAs(
+      const authorized = await resolveAgentDelegationAuthority(
         result.identity.id,
         actingFor,
         options?.service
       );
-      if (!actingForResult.valid || actingForResult.role !== 'agent') {
+      if (!authorized) {
         return { error: "Not authorized to act for this identity", status: 403 };
       }
       result.identity.actingFor = actingFor;
-      result.identity.actingForRole = actingForResult.role;
+      result.identity.actingForRole = 'agent';
     }
   }
 
   return result;
+}
+
+/**
+ * Resolve whether `agentDid` may act for `principalDid` under X-Acting-For
+ * (#1887 dual-read migration). Calls the same grants-first-with-
+ * membership-fallback endpoint kernel's ws-server uses for `register_also`
+ * (`/auth/api/internal/verify-delegation`, backed by
+ * `apps/kernel/src/lib/auth/agent-authority.ts`), so both call sites move to
+ * grants-first resolution together.
+ *
+ * Falls back to the legacy membership-only check (`validateActingAs`
+ * against role='agent') when the dual-read endpoint itself is unreachable
+ * or `AUTH_INTERNAL_API_KEY` is unset in this service's environment — a
+ * missing/misconfigured key must never turn into an authorization
+ * regression for services that haven't been given that secret.
+ */
+async function resolveAgentDelegationAuthority(
+  agentDid: string,
+  principalDid: string,
+  service?: string
+): Promise<boolean> {
+  const internalKey = process.env.AUTH_INTERNAL_API_KEY;
+  if (internalKey) {
+    try {
+      const res = await fetch(`${getAuthUrl()}/api/internal/verify-delegation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-internal-key": internalKey },
+        body: JSON.stringify({ agentDid, principalDid }),
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.allowed === true;
+      }
+      log.warn({ status: res.status }, "[AUTH] verify-delegation call failed — falling back to legacy membership check");
+    } catch (err) {
+      log.error({ err: String(err) }, "[AUTH] verify-delegation call errored — falling back to legacy membership check");
+    }
+  }
+
+  // Legacy fallback path (pre-#1887): unscoped role='agent' membership check.
+  const legacy = await validateActingAs(agentDid, principalDid, service);
+  return legacy.valid && legacy.role === 'agent';
 }

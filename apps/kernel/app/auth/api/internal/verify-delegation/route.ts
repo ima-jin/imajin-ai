@@ -2,26 +2,28 @@
  * POST /auth/api/internal/verify-delegation
  *
  * Internal-only endpoint (guarded by AUTH_INTERNAL_API_KEY) that answers a
- * single question: does `agentDid` hold an active (not revoked) role='agent'
- * membership on `principalDid` in identity_members?
+ * single question: may `agentDid` act for `principalDid`?
+ *
+ * #1887 migrated this from a membership-only lookup to the grants-first
+ * dual-read resolution in `@/src/lib/auth/agent-authority` — grants first,
+ * falling back to the pre-#1887 role='agent' `identity_members` check when
+ * no active grant exists (logged, so fallback volume is observable). See
+ * that module for the flag that controls/rolls back this behavior.
  *
  * ws-server.js calls this to authorize `register_also` (#1653). ws-server is
  * plain CJS running outside Next, so it reaches the database through this route
  * rather than importing drizzle directly — the same shape as the session and
- * ws-token checks it already makes.
+ * ws-token checks it already makes. packages/auth's `requireAuth` also calls
+ * this endpoint to resolve the X-Acting-For bootstrap (#1887).
  *
  * Fails closed: anything short of a positive match answers `allowed: false`.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identityMembers } from '@/src/db';
-import { eq, and, isNull } from 'drizzle-orm';
+import { resolveAgentAuthority } from '@/src/lib/auth/agent-authority';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-
-/** The identity_members role that lets one DID act on another's behalf. */
-const AGENT_ROLE = 'agent';
 
 export async function POST(request: NextRequest) {
   const expectedKey = process.env.AUTH_INTERNAL_API_KEY;
@@ -44,29 +46,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing agentDid or principalDid' }, { status: 400 });
   }
 
-  // Check identity_members for an active agent delegation:
-  //   identityDid = principalDid (the identity being acted for)
-  //   memberDid   = agentDid     (the agent doing the acting)
-  //   role        = 'agent'
-  //   removedAt IS NULL          (not revoked)
-  //
-  // identity_members has no surrogate key, so the projection is memberDid; the
-  // presence of a row is the entire answer.
   try {
-    const [membership] = await db
-      .select({ memberDid: identityMembers.memberDid })
-      .from(identityMembers)
-      .where(
-        and(
-          eq(identityMembers.identityDid, principalDid),
-          eq(identityMembers.memberDid, agentDid),
-          eq(identityMembers.role, AGENT_ROLE),
-          isNull(identityMembers.removedAt),
-        ),
-      )
-      .limit(1);
-
-    return NextResponse.json({ allowed: Boolean(membership) });
+    const result = await resolveAgentAuthority(agentDid, principalDid);
+    return NextResponse.json({ allowed: result.allowed, via: result.via, grantId: result.grantId });
   } catch (err) {
     // A lookup failure is not an authorization. Deny, and say so loudly enough
     // that a broken database does not read as "this agent has no delegation".

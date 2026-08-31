@@ -5,6 +5,34 @@ import { buildPublicUrlAbsolute } from '@imajin/config';
 
 const NODE_URL = buildPublicUrlAbsolute('kernel');
 
+interface GrantCapability {
+  capability: string;
+  status: 'active' | 'revoked';
+  revokedAt: string | null;
+}
+
+interface GrantHistoryEntry {
+  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked';
+  capability: string | null;
+  actorDid: string;
+  createdAt: string;
+}
+
+interface Grant {
+  grantId: string;
+  agentDid: string;
+  delegatorDid: string;
+  audience: { type: 'all' } | { type: 'dids'; values: string[] };
+  onBehalfOf: string[];
+  issuedAt: string;
+  expiresAt: string;
+  status: 'active' | 'expiring' | 'expired' | 'revoked';
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  capabilities: GrantCapability[];
+  history: GrantHistoryEntry[];
+}
+
 interface Agent {
   did: string;
   handle: string | null;
@@ -14,6 +42,10 @@ interface Agent {
   tier: string;
   status: 'online' | 'offline';
   role: string;
+  isExternal: boolean;
+  externalDid: string | null;
+  grants: Grant[];
+  hasLegacyMembership: boolean;
 }
 
 interface CreatedAgent {
@@ -40,6 +72,192 @@ interface PendingKnock {
   externalDid: string | null;
   expiresAt: string;
   createdAt: string;
+}
+
+const GRANT_STATUS_STYLES: Record<Grant['status'], string> = {
+  active: 'border-green-700 text-green-400 bg-green-900/20',
+  expiring: 'border-amber-600 text-amber-400 bg-amber-900/20',
+  expired: 'border-gray-700 text-gray-500 bg-gray-900/20',
+  revoked: 'border-red-800 text-red-400 bg-red-900/20',
+};
+
+const HISTORY_EVENT_LABELS: Record<GrantHistoryEntry['event'], string> = {
+  issued: 'Issued',
+  renewed: 'Renewed',
+  revoked: 'Revoked',
+  capability_revoked: 'Capability revoked',
+};
+
+function formatDate(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateTime(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+/** "3 days left" / "expired 2 hours ago" — the read surface's "expiry (+ time-remaining)". */
+function formatTimeRemaining(expiresAt: string): string {
+  const diffMs = new Date(expiresAt).getTime() - Date.now();
+  const absMs = Math.abs(diffMs);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  let amount: number;
+  let unit: string;
+  if (absMs >= day) {
+    amount = Math.round(absMs / day);
+    unit = amount === 1 ? 'day' : 'days';
+  } else if (absMs >= hour) {
+    amount = Math.round(absMs / hour);
+    unit = amount === 1 ? 'hour' : 'hours';
+  } else {
+    amount = Math.max(1, Math.round(absMs / minute));
+    unit = amount === 1 ? 'minute' : 'minutes';
+  }
+  return diffMs >= 0 ? `${amount} ${unit} left` : `expired ${amount} ${unit} ago`;
+}
+
+function agentLabel(agent: Pick<Agent, 'displayName' | 'name' | 'handle' | 'did'>): string {
+  return agent.displayName || agent.name || (agent.handle ? `@${agent.handle}` : agent.did);
+}
+
+/** One grant's detail card: capability chips, audience, lease, controls. */
+function GrantCard({
+  grant,
+  actionLoading,
+  onRevokeCapability,
+  onRevokeAll,
+  onRenew,
+}: Readonly<{
+  grant: Grant;
+  actionLoading: string;
+  onRevokeCapability: (grantId: string, capability: string) => void;
+  onRevokeAll: (grantId: string) => void;
+  onRenew: (grantId: string) => void;
+}>) {
+  const [expanded, setExpanded] = useState(false);
+  const isRevoked = grant.status === 'revoked';
+  const isExpired = grant.status === 'expired';
+  const canAct = !isRevoked;
+
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-950 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`px-1.5 py-0.5 text-xs rounded border capitalize ${GRANT_STATUS_STYLES[grant.status]}`}>
+            {grant.status}
+          </span>
+          <span className="text-xs text-gray-500 font-mono" title={grant.grantId}>
+            {grant.grantId}
+          </span>
+          {!isRevoked && !isExpired && (
+            <span className="text-xs text-gray-500">{formatTimeRemaining(grant.expiresAt)}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {canAct && (
+            <>
+              <button
+                type="button"
+                onClick={() => onRenew(grant.grantId)}
+                disabled={actionLoading === `renew-${grant.grantId}`}
+                className="text-xs px-2 py-1 border border-gray-700 text-gray-300 rounded hover:border-amber-600 hover:text-amber-400 transition disabled:opacity-40"
+              >
+                {actionLoading === `renew-${grant.grantId}` ? '…' : 'Renew'}
+              </button>
+              <button
+                type="button"
+                onClick={() => onRevokeAll(grant.grantId)}
+                disabled={actionLoading === `revoke-all-${grant.grantId}`}
+                className="text-xs px-2 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition disabled:opacity-40"
+              >
+                {actionLoading === `revoke-all-${grant.grantId}` ? '…' : 'Revoke all'}
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs px-2 py-1 text-gray-500 hover:text-gray-300 transition"
+          >
+            {expanded ? 'Hide detail' : 'Show detail'}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {grant.capabilities.map((cap) => (
+          <span
+            key={cap.capability}
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded border ${
+              cap.status === 'revoked'
+                ? 'border-gray-800 text-gray-600 line-through'
+                : 'border-violet-800 text-violet-300 bg-violet-950/30'
+            }`}
+          >
+            {cap.capability}
+            {canAct && cap.status === 'active' && (
+              <button
+                type="button"
+                onClick={() => onRevokeCapability(grant.grantId, cap.capability)}
+                disabled={actionLoading === `revoke-cap-${grant.grantId}-${cap.capability}`}
+                title={`Revoke ${cap.capability}`}
+                className="text-violet-500 hover:text-red-400 transition disabled:opacity-40"
+              >
+                {actionLoading === `revoke-cap-${grant.grantId}-${cap.capability}` ? '…' : '×'}
+              </button>
+            )}
+          </span>
+        ))}
+      </div>
+
+      {expanded && (
+        <div className="pt-2 border-t border-gray-900 space-y-2 text-xs text-gray-500">
+          <p>
+            Audience:{' '}
+            <span className="text-gray-300">
+              {grant.audience.type === 'all' ? 'all' : grant.audience.values.join(', ')}
+            </span>
+          </p>
+          <p>
+            Issued: <span className="text-gray-300">{formatDateTime(grant.issuedAt)}</span>
+          </p>
+          <p>
+            Expiry: <span className="text-gray-300">{formatDateTime(grant.expiresAt)}</span>
+          </p>
+          <p>
+            Last used:{' '}
+            <span className="text-gray-300">{grant.lastUsedAt ? formatDateTime(grant.lastUsedAt) : 'never'}</span>
+          </p>
+          {grant.revokedAt && (
+            <p>
+              Revoked: <span className="text-red-400">{formatDateTime(grant.revokedAt)}</span>
+            </p>
+          )}
+          {grant.history.length > 0 && (
+            <div>
+              <p className="text-gray-600 mb-1">History</p>
+              <ul className="space-y-0.5">
+                {grant.history.map((entry, i) => (
+                  <li key={`${entry.event}-${entry.createdAt}-${i}`}>
+                    {HISTORY_EVENT_LABELS[entry.event]}
+                    {entry.capability ? ` (${entry.capability})` : ''} — {formatDateTime(entry.createdAt)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function AgentsPage() {
@@ -168,7 +386,7 @@ export default function AgentsPage() {
     }
   }
 
-  async function handleRevoke(agentDid: string) {
+  async function handleRevokeMembership(agentDid: string) {
     setActionLoading(`revoke-${agentDid}`);
     try {
       const res = await fetch(`/auth/api/agents/${encodeURIComponent(agentDid)}`, {
@@ -177,12 +395,78 @@ export default function AgentsPage() {
       });
 
       if (res.ok) {
-        showStatus('success', 'Agent revoked successfully.');
+        showStatus('success', 'Legacy membership removed.');
         setRevokeConfirm(null);
         await loadData();
       } else {
         const body = await res.json().catch(() => ({}));
         showStatus('error', body.error || 'Failed to revoke agent');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleRevokeCapability(grantId: string, capability: string) {
+    const key = `revoke-cap-${grantId}-${capability}`;
+    setActionLoading(key);
+    try {
+      const res = await fetch(
+        `/auth/api/grants/${encodeURIComponent(grantId)}/capabilities/${encodeURIComponent(capability)}`,
+        { method: 'DELETE', credentials: 'include' },
+      );
+      if (res.ok) {
+        showStatus('success', `Revoked ${capability}.`);
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to revoke capability');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleRevokeAll(grantId: string) {
+    const key = `revoke-all-${grantId}`;
+    setActionLoading(key);
+    try {
+      const res = await fetch(`/auth/api/grants/${encodeURIComponent(grantId)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        showStatus('success', 'Grant revoked.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to revoke grant');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleRenew(grantId: string) {
+    const key = `renew-${grantId}`;
+    setActionLoading(key);
+    try {
+      const res = await fetch(`/auth/api/grants/${encodeURIComponent(grantId)}/renew`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        showStatus('success', 'Grant renewed.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to renew grant');
       }
     } catch {
       showStatus('error', 'Network error. Please try again.');
@@ -245,7 +529,7 @@ export default function AgentsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white mb-1">Agents</h1>
-            <p className="text-gray-400 text-sm">Create and manage AI agents that act on your behalf.</p>
+            <p className="text-gray-400 text-sm">Scoped delegation grants for agents that act on your behalf.</p>
           </div>
           <button type="button"
             onClick={() => { setShowCreateForm(true); resetForm(); }}
@@ -438,7 +722,7 @@ export default function AgentsPage() {
           </div>
         )}
 
-        {/* Agents list */}
+        {/* Agents list — grants view (#1887): one list, local and external agents alike */}
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
           <h2 className="text-lg font-semibold text-white mb-6">Your agents</h2>
 
@@ -451,68 +735,98 @@ export default function AgentsPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {agents.map((agent) => (
                 <div
                   key={agent.did}
-                  className="flex items-start justify-between p-4 bg-gray-900 rounded-xl border border-gray-800"
+                  className="p-4 bg-gray-900 rounded-xl border border-gray-800 space-y-3"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-lg">🤖</span>
-                      <span className="text-white font-medium">
-                        {agent.displayName || agent.name || agent.handle || 'Unnamed Agent'}
-                      </span>
-                      <span className={`px-1.5 py-0.5 text-xs rounded border ${
-                        agent.status === 'online'
-                          ? 'bg-green-900/30 border-green-800 text-green-400'
-                          : 'bg-gray-800 border-gray-700 text-gray-500'
-                      }`}>
-                        {agent.status}
-                      </span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="text-lg">{agent.isExternal ? '🌐' : '🤖'}</span>
+                        <span className="text-white font-medium">{agentLabel(agent)}</span>
+                        <span
+                          className={`px-1.5 py-0.5 text-xs rounded border ${
+                            agent.isExternal
+                              ? 'border-sky-700 text-sky-400 bg-sky-900/20'
+                              : 'border-gray-700 text-gray-400 bg-gray-800'
+                          }`}
+                        >
+                          {agent.isExternal ? 'external' : 'local'}
+                        </span>
+                        {agent.hasLegacyMembership && (
+                          <span
+                            className="px-1.5 py-0.5 text-xs rounded border border-amber-700 text-amber-400 bg-amber-900/20"
+                            title="This agent still relies on the legacy role:agent membership fallback — issue a scoped grant to replace it."
+                          >
+                            legacy fallback
+                          </span>
+                        )}
+                      </div>
+                      {agent.handle && <p className="text-xs text-gray-500">@{agent.handle}</p>}
+                      <p className="text-xs text-gray-600 font-mono mt-0.5 truncate">{agent.did}</p>
+                      {agent.externalDid && (
+                        <p className="text-xs text-gray-600 mt-1">
+                          External identity: <span className="font-mono">{agent.externalDid}</span>
+                        </p>
+                      )}
+                      {agent.createdAt && (
+                        <p className="text-xs text-gray-600 mt-1">Created {formatDate(agent.createdAt)}</p>
+                      )}
                     </div>
-                    {agent.handle && (
-                      <p className="text-xs text-gray-500">@{agent.handle}</p>
-                    )}
-                    <p className="text-xs text-gray-600 font-mono mt-0.5 truncate">
-                      {agent.did}
-                    </p>
-                    {agent.createdAt && (
-                      <p className="text-xs text-gray-600 mt-1">
-                        Created {new Date(agent.createdAt).toLocaleDateString()}
-                      </p>
+
+                    {agent.hasLegacyMembership && (
+                      <div className="ml-3 flex-shrink-0">
+                        {revokeConfirm === agent.did ? (
+                          <div className="flex flex-col items-end gap-2">
+                            <p className="text-xs text-red-400">Remove legacy membership?</p>
+                            <div className="flex gap-2">
+                              <button type="button"
+                                onClick={() => handleRevokeMembership(agent.did)}
+                                disabled={actionLoading === `revoke-${agent.did}`}
+                                className="text-xs px-3 py-1 bg-red-700 hover:bg-red-600 text-white rounded transition disabled:opacity-50"
+                              >
+                                {actionLoading === `revoke-${agent.did}` ? '…' : 'Confirm'}
+                              </button>
+                              <button type="button"
+                                onClick={() => setRevokeConfirm(null)}
+                                className="text-xs px-3 py-1 border border-gray-700 text-gray-400 rounded hover:text-white transition"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button type="button"
+                            onClick={() => setRevokeConfirm(agent.did)}
+                            className="text-xs px-3 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition"
+                          >
+                            Remove legacy membership
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
 
-                  <div className="ml-3 flex-shrink-0">
-                    {revokeConfirm === agent.did ? (
-                      <div className="flex flex-col items-end gap-2">
-                        <p className="text-xs text-red-400">Revoke this agent?</p>
-                        <div className="flex gap-2">
-                          <button type="button"
-                            onClick={() => handleRevoke(agent.did)}
-                            disabled={actionLoading === `revoke-${agent.did}`}
-                            className="text-xs px-3 py-1 bg-red-700 hover:bg-red-600 text-white rounded transition disabled:opacity-50"
-                          >
-                            {actionLoading === `revoke-${agent.did}` ? '…' : 'Confirm'}
-                          </button>
-                          <button type="button"
-                            onClick={() => setRevokeConfirm(null)}
-                            className="text-xs px-3 py-1 border border-gray-700 text-gray-400 rounded hover:text-white transition"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button type="button"
-                        onClick={() => setRevokeConfirm(agent.did)}
-                        className="text-xs px-3 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition"
-                      >
-                        Revoke
-                      </button>
-                    )}
-                  </div>
+                  {agent.grants.length === 0 ? (
+                    <p className="text-xs text-gray-600">
+                      No grants issued yet{agent.hasLegacyMembership ? ' — this agent is currently authorized only via the legacy membership fallback.' : '.'}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {agent.grants.map((grant) => (
+                        <GrantCard
+                          key={grant.grantId}
+                          grant={grant}
+                          actionLoading={actionLoading}
+                          onRevokeCapability={handleRevokeCapability}
+                          onRevokeAll={handleRevokeAll}
+                          onRenew={handleRenew}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

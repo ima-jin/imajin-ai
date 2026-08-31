@@ -381,12 +381,38 @@ export const delegationGrants = authSchema.table('delegation_grants', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   status: text('status').notNull().default('active'),   // 'active' | 'revoked'
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  // #1887 grants-view read surface: last successful introspectGrant() hit
+  // against this grant (any capability). Not a per-capability timestamp —
+  // see delegationGrantEvents below for the capability-level audit trail.
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   agentIdx: index('idx_delegation_grants_agent').on(table.agentDid, table.status),
   delegatorIdx: index('idx_delegation_grants_delegator').on(table.delegatorDid, table.status),
   expiresIdx: index('idx_delegation_grants_expires').on(table.expiresAt).where(sql`${table.status} = 'active'`),
+}));
+
+/**
+ * Grant lifecycle audit trail (#1887 grants-view read surface: "audit trail
+ * ... action history under the grant"). Records the lifecycle events this
+ * codebase actually performs on a grant — issue/renew/revoke/capability
+ * revoke — so revoked/expired grants stay visible in history even after
+ * their authority is gone ("the record doesn't disappear because the
+ * authority did"). This is deliberately narrower than a general delegated-
+ * action log (#1882's dual-stamp provenance chain for arbitrary actions is
+ * still an open question per #1882's "grants as attestations?" note) — it
+ * only ever gets a row from the grants.ts lifecycle functions themselves.
+ */
+export const delegationGrantEvents = authSchema.table('delegation_grant_events', {
+  id: text('id').primaryKey(),                          // gevt_{nanoid}
+  grantId: text('grant_id').notNull().references(() => delegationGrants.id, { onDelete: 'cascade' }),
+  event: text('event').notNull(),                       // 'issued' | 'renewed' | 'revoked' | 'capability_revoked'
+  capability: text('capability'),                       // set only for 'capability_revoked'
+  actorDid: text('actor_did').notNull(),                // the delegator who performed the action
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  grantIdx: index('idx_delegation_grant_events_grant').on(table.grantId, table.createdAt),
 }));
 
 /**
@@ -410,6 +436,8 @@ export type DelegationGrantRow = typeof delegationGrants.$inferSelect;
 export type NewDelegationGrantRow = typeof delegationGrants.$inferInsert;
 export type DelegationGrantCapabilityRow = typeof delegationGrantCapabilities.$inferSelect;
 export type NewDelegationGrantCapabilityRow = typeof delegationGrantCapabilities.$inferInsert;
+export type DelegationGrantEventRow = typeof delegationGrantEvents.$inferSelect;
+export type NewDelegationGrantEventRow = typeof delegationGrantEvents.$inferInsert;
 
 /**
  * External-agent knocks (#1883) — pending contact requests from an

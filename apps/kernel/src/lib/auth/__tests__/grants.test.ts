@@ -6,9 +6,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 type Row = Record<string, unknown>;
 type Predicate = (row: Row) => boolean;
 
-const { grantsStore, capsStore, GRANTS_TABLE, CAPS_TABLE } = vi.hoisted(() => {
+const { grantsStore, capsStore, eventsStore, GRANTS_TABLE, CAPS_TABLE, EVENTS_TABLE } = vi.hoisted(() => {
   const grantsStore = new Map<string, Row>();
   const capsStore = new Map<string, Row>();
+  const eventsStore = new Map<string, Row>();
 
   // Column tokens are identity-mapped to their own field name — safe because
   // grants.ts never mixes columns from both tables inside a single `and()`
@@ -18,19 +19,26 @@ const { grantsStore, capsStore, GRANTS_TABLE, CAPS_TABLE } = vi.hoisted(() => {
     __table: 'grants',
     id: 'id', agentDid: 'agentDid', delegatorDid: 'delegatorDid', audience: 'audience',
     onBehalfOf: 'onBehalfOf', issuedAt: 'issuedAt', expiresAt: 'expiresAt', status: 'status',
-    revokedAt: 'revokedAt', createdAt: 'createdAt', updatedAt: 'updatedAt',
+    revokedAt: 'revokedAt', lastUsedAt: 'lastUsedAt', createdAt: 'createdAt', updatedAt: 'updatedAt',
   };
   const CAPS_TABLE = {
     __table: 'caps',
     id: 'id', grantId: 'grantId', capability: 'capability', status: 'status',
     revokedAt: 'revokedAt', createdAt: 'createdAt',
   };
+  const EVENTS_TABLE = {
+    __table: 'events',
+    id: 'id', grantId: 'grantId', event: 'event', capability: 'capability',
+    actorDid: 'actorDid', createdAt: 'createdAt',
+  };
 
-  return { grantsStore, capsStore, GRANTS_TABLE, CAPS_TABLE };
+  return { grantsStore, capsStore, eventsStore, GRANTS_TABLE, CAPS_TABLE, EVENTS_TABLE };
 });
 
 function storeFor(table: { __table: string }): Map<string, Row> {
-  return table.__table === 'grants' ? grantsStore : capsStore;
+  if (table.__table === 'grants') return grantsStore;
+  if (table.__table === 'caps') return capsStore;
+  return eventsStore;
 }
 
 /** Project `rows` through a `{ resultKey: sourceField }` map, or pass through unprojected. */
@@ -44,6 +52,8 @@ function projectRow(row: Row, projection: Record<string, string>): Row {
   for (const key of Object.keys(projection)) result[key] = row[projection[key]];
   return result;
 }
+
+interface DescSpec { __desc: string }
 
 vi.mock('drizzle-orm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('drizzle-orm')>();
@@ -59,7 +69,8 @@ vi.mock('drizzle-orm', async (importOriginal) => {
   };
   const inArray = (column: string, values: readonly unknown[]): Predicate => (row) => values.includes(row[column]);
   const and = (...preds: Predicate[]): Predicate => (row) => preds.every((p) => p(row));
-  return { ...actual, eq, gt, inArray, and };
+  const desc = (column: string): DescSpec => ({ __desc: column });
+  return { ...actual, eq, gt, inArray, and, desc };
 });
 
 /**
@@ -70,6 +81,16 @@ vi.mock('drizzle-orm', async (importOriginal) => {
  * evaluating the predicate lazily and more than once would re-filter against
  * rows this same call already mutated.
  */
+function sortByDesc(rows: Row[], spec?: DescSpec): Row[] {
+  if (!spec) return rows;
+  const { __desc: column } = spec;
+  return [...rows].sort((a, b) => {
+    const av = a[column] instanceof Date ? (a[column] as Date).getTime() : (a[column] as number);
+    const bv = b[column] instanceof Date ? (b[column] as Date).getTime() : (b[column] as number);
+    return bv - av;
+  });
+}
+
 function queryable(rows: Row[]) {
   const p = Promise.resolve(rows);
   return {
@@ -78,6 +99,7 @@ function queryable(rows: Row[]) {
     finally: p.finally.bind(p),
     limit: (n: number) => Promise.resolve(rows.slice(0, n)),
     returning: (projection?: Record<string, string>) => Promise.resolve(project(rows, projection)),
+    orderBy: (spec?: DescSpec) => Promise.resolve(sortByDesc(rows, spec)),
   };
 }
 
@@ -138,6 +160,7 @@ vi.mock('@/src/db', () => ({
   },
   delegationGrants: GRANTS_TABLE,
   delegationGrantCapabilities: CAPS_TABLE,
+  delegationGrantEvents: EVENTS_TABLE,
 }));
 
 vi.mock('@/src/lib/kernel/id', () => {
@@ -154,6 +177,8 @@ import {
   renewGrant,
   introspectGrant,
   listGrantsForDelegator,
+  listGrantDetailsForDelegator,
+  grantStatusLabel,
 } from '../grants';
 
 const DELEGATOR = 'did:imajin:ryan';
@@ -164,6 +189,7 @@ const TARGET = 'did:imajin:contact-x';
 beforeEach(() => {
   grantsStore.clear();
   capsStore.clear();
+  eventsStore.clear();
   vi.clearAllMocks();
 });
 
@@ -446,5 +472,128 @@ describe('listGrantsForDelegator', () => {
 
   it('returns an empty list for a delegator with no grants', async () => {
     await expect(listGrantsForDelegator('did:imajin:nobody')).resolves.toEqual([]);
+  });
+});
+
+describe('grantStatusLabel — #1887 grants-view read surface', () => {
+  const NOW = new Date('2026-08-30T00:00:00.000Z');
+
+  it('labels a revoked grant as revoked regardless of expiry', () => {
+    expect(grantStatusLabel({ status: 'revoked', expiresAt: '2027-01-01T00:00:00.000Z', now: NOW })).toBe('revoked');
+  });
+
+  it('labels an unexpired, unrevoked grant as active', () => {
+    expect(grantStatusLabel({ status: 'active', expiresAt: '2027-01-01T00:00:00.000Z', now: NOW })).toBe('active');
+  });
+
+  it('labels a grant expiring within 24 hours as expiring', () => {
+    expect(grantStatusLabel({ status: 'active', expiresAt: '2026-08-30T12:00:00.000Z', now: NOW })).toBe('expiring');
+  });
+
+  it('labels a lapsed grant as expired', () => {
+    expect(grantStatusLabel({ status: 'active', expiresAt: '2026-08-29T00:00:00.000Z', now: NOW })).toBe('expired');
+  });
+});
+
+describe('grant lifecycle audit trail (#1887)', () => {
+  it('records an "issued" event when a grant is created', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+
+    const details = await listGrantDetailsForDelegator(DELEGATOR);
+    expect(details[0].history).toEqual([
+      expect.objectContaining({ event: 'issued', actorDid: DELEGATOR, capability: null }),
+    ]);
+  });
+
+  it('records both an "issued" and a "renewed" event on the grant\u2019s history', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    await renewGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR });
+
+    const details = await listGrantDetailsForDelegator(DELEGATOR);
+    expect(details[0].history.map((h) => h.event).sort()).toEqual(['issued', 'renewed']);
+  });
+
+  it('records a "capability_revoked" event naming the capability', async () => {
+    const issued = await issueGrant({
+      delegatorDid: DELEGATOR,
+      agentDid: AGENT,
+      capabilities: ['messages:write', 'intros:propose'],
+      audience: { type: 'all' },
+    });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    await revokeGrantCapability({ grantId: issued.grant.grantId, capability: 'messages:write', requestedBy: DELEGATOR });
+
+    const details = await listGrantDetailsForDelegator(DELEGATOR);
+    expect(details[0].history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: 'capability_revoked', capability: 'messages:write', actorDid: DELEGATOR }),
+      ]),
+    );
+  });
+
+  it('records a "revoked" event for whole-grant revocation, but not when the grant was already revoked', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+
+    await revokeGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR });
+    await revokeGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR }); // no-op second call
+
+    const details = await listGrantDetailsForDelegator(DELEGATOR);
+    expect(details[0].history.filter((h) => h.event === 'revoked')).toHaveLength(1);
+  });
+
+  it('bumps lastUsedAt on a successful introspection and leaves it null until then', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+
+    expect((await listGrantDetailsForDelegator(DELEGATOR))[0].lastUsedAt).toBeNull();
+
+    await introspectGrant({ agentDid: AGENT, capability: 'messages:write' });
+
+    expect((await listGrantDetailsForDelegator(DELEGATOR))[0].lastUsedAt).not.toBeNull();
+  });
+
+  it('does not bump lastUsedAt on a denied introspection', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+
+    await introspectGrant({ agentDid: AGENT, capability: 'intros:propose' }); // never granted
+
+    expect((await listGrantDetailsForDelegator(DELEGATOR))[0].lastUsedAt).toBeNull();
+  });
+});
+
+describe('listGrantDetailsForDelegator — #1887 grants-view read surface', () => {
+  it('includes every capability regardless of status, unlike listGrantsForDelegator', async () => {
+    const issued = await issueGrant({
+      delegatorDid: DELEGATOR,
+      agentDid: AGENT,
+      capabilities: ['messages:write', 'intros:propose'],
+      audience: { type: 'all' },
+    });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    await revokeGrantCapability({ grantId: issued.grant.grantId, capability: 'messages:write', requestedBy: DELEGATOR });
+
+    const details = await listGrantDetailsForDelegator(DELEGATOR);
+    expect(details[0].capabilities.sort((a, b) => a.capability.localeCompare(b.capability))).toEqual([
+      { capability: 'intros:propose', status: 'active', revokedAt: null },
+      { capability: 'messages:write', status: 'revoked', revokedAt: expect.any(String) },
+    ]);
+  });
+
+  it('keeps a fully revoked grant in the list — the record does not disappear because the authority did', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    await revokeGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR });
+
+    const details = await listGrantDetailsForDelegator(DELEGATOR);
+    expect(details).toHaveLength(1);
+    expect(details[0]).toMatchObject({ grantId: issued.grant.grantId, status: 'revoked' });
+  });
+
+  it('returns an empty list for a delegator with no grants', async () => {
+    await expect(listGrantDetailsForDelegator('did:imajin:nobody')).resolves.toEqual([]);
   });
 });

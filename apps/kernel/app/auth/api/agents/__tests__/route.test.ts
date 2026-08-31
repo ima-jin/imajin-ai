@@ -14,17 +14,31 @@ vi.mock('next/server', () => ({
 }));
 
 const {
-  mockSelectLimit,
-  mockSelectOrderBy,
   mockSelectWhere,
   mockDbSelect,
   mockTxInsertValues,
   mockTransaction,
   mockRequireAuth,
+  mockListGrantDetailsForDelegator,
+  pushSelectResult,
+  resetSelectQueue,
 } = vi.hoisted(() => {
-  const mockSelectLimit = vi.fn().mockResolvedValue([]);
-  const mockSelectOrderBy = vi.fn().mockResolvedValue([]);
-  const mockSelectWhere = vi.fn(() => ({ limit: mockSelectLimit, orderBy: mockSelectOrderBy }));
+  let queue: unknown[][] = [];
+  const pushSelectResult = (rows: unknown[]) => queue.push(rows);
+  const resetSelectQueue = () => { queue = []; };
+
+  function queryableResult(rows: unknown[]) {
+    const p = Promise.resolve(rows);
+    return {
+      then: p.then.bind(p),
+      catch: p.catch.bind(p),
+      finally: p.finally.bind(p),
+      limit: (n: number) => Promise.resolve(rows.slice(0, n)),
+      orderBy: () => Promise.resolve(rows),
+    };
+  }
+
+  const mockSelectWhere = vi.fn(() => queryableResult(queue.length > 0 ? queue.shift()! : []));
   const mockDbSelect = vi.fn(() => ({
     from: vi.fn(() => ({
       where: mockSelectWhere,
@@ -39,15 +53,17 @@ const {
   });
 
   const mockRequireAuth = vi.fn();
+  const mockListGrantDetailsForDelegator = vi.fn().mockResolvedValue([]);
 
   return {
-    mockSelectLimit,
-    mockSelectOrderBy,
     mockSelectWhere,
     mockDbSelect,
     mockTxInsertValues,
     mockTransaction,
     mockRequireAuth,
+    mockListGrantDetailsForDelegator,
+    pushSelectResult,
+    resetSelectQueue,
   };
 });
 
@@ -71,12 +87,18 @@ vi.mock('@/src/db', () => ({
     role: 'identityMembers.role',
     removedAt: 'identityMembers.removedAt',
   },
+  attestations: {
+    subjectDid: 'attestations.subjectDid',
+    type: 'attestations.type',
+    payload: 'attestations.payload',
+  },
 }));
 
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
   eq: (...args: unknown[]) => ({ eq: args }),
   isNull: (...args: unknown[]) => ({ isNull: args }),
+  inArray: (...args: unknown[]) => ({ inArray: args }),
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -93,6 +115,10 @@ vi.mock('@/src/lib/auth/crypto', () => ({
   didFromPublicKey: (publicKey: string) => `did:imajin:${publicKey}`,
 }));
 
+vi.mock('@/src/lib/auth/grants', () => ({
+  listGrantDetailsForDelegator: mockListGrantDetailsForDelegator,
+}));
+
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
@@ -105,6 +131,8 @@ import { GET, POST } from '../route';
 
 const PERSONAL_DID = 'did:imajin:ryan-personal';
 const BUSINESS_DID = 'did:imajin:agrifortress';
+const LOCAL_AGENT_DID = 'did:imajin:jin';
+const EXTERNAL_AGENT_DID = 'did:imajin:boardy-agent';
 const BASE_URL = 'https://test.imajin.ai/auth/api/agents';
 
 function makeGetRequest(): Request {
@@ -119,12 +147,30 @@ function makePostRequest(body: Record<string, unknown>): Request {
   });
 }
 
+function grantDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    grantId: 'grant_1',
+    agentDid: LOCAL_AGENT_DID,
+    delegatorDid: PERSONAL_DID,
+    audience: { type: 'all' },
+    onBehalfOf: [],
+    issuedAt: '2026-08-01T00:00:00.000Z',
+    expiresAt: '2026-09-01T00:00:00.000Z',
+    status: 'active',
+    revokedAt: null,
+    lastUsedAt: null,
+    capabilities: [{ capability: 'messages:write', status: 'active', revokedAt: null }],
+    history: [{ event: 'issued', capability: null, actorDid: PERSONAL_DID, createdAt: '2026-08-01T00:00:00.000Z' }],
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  resetSelectQueue();
   mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID } });
-  mockSelectLimit.mockResolvedValue([]);
-  mockSelectOrderBy.mockResolvedValue([]);
   mockTxInsertValues.mockResolvedValue(undefined);
+  mockListGrantDetailsForDelegator.mockResolvedValue([]);
   mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
     const tx = { insert: vi.fn(() => ({ values: mockTxInsertValues })) };
     return fn(tx);
@@ -173,7 +219,7 @@ describe('POST /auth/api/agents (#1717)', () => {
   });
 });
 
-describe('GET /auth/api/agents (#1717)', () => {
+describe('GET /auth/api/agents (#1717 acting-for scoping)', () => {
   it('lists agents owned by the acting-for DID, not the caller personal DID', async () => {
     mockRequireAuth.mockResolvedValue({ identity: { id: PERSONAL_DID, actingFor: BUSINESS_DID } });
 
@@ -182,5 +228,121 @@ describe('GET /auth/api/agents (#1717)', () => {
     expect(res.status).toBe(200);
     expect(JSON.stringify(mockSelectWhere.mock.calls)).toContain(BUSINESS_DID);
     expect(JSON.stringify(mockSelectWhere.mock.calls)).not.toContain(PERSONAL_DID);
+    expect(mockListGrantDetailsForDelegator).toHaveBeenCalledWith(BUSINESS_DID);
+  });
+
+  it('returns an empty grants-view list when the caller owns no agents and holds no grants', async () => {
+    const res = await GET(makeGetRequest());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ agents: [] });
+  });
+});
+
+describe('GET /auth/api/agents (#1887 grants-view: sibling topology)', () => {
+  it('embeds grants on an owned (local) agent and marks it internal by default', async () => {
+    pushSelectResult([
+      { did: LOCAL_AGENT_DID, handle: 'jin', name: 'Jin', createdAt: null, tier: 'preliminary', role: 'owner' },
+    ]);
+    mockListGrantDetailsForDelegator.mockResolvedValue([grantDetail()]);
+    // allAgentDids is non-empty (owned agent) -> attestations query + legacy membership query both run.
+    pushSelectResult([]); // externalIdentityAttestations: none
+    pushSelectResult([]); // legacyMembershipRows: none
+
+    const res = await GET(makeGetRequest());
+    const body = await res.json();
+
+    expect(body.agents).toHaveLength(1);
+    expect(body.agents[0]).toMatchObject({
+      did: LOCAL_AGENT_DID,
+      role: 'owner',
+      isExternal: false,
+      externalDid: null,
+      hasLegacyMembership: false,
+    });
+    expect(body.agents[0].grants).toHaveLength(1);
+    expect(body.agents[0].grants[0].grantId).toBe('grant_1');
+  });
+
+  it('surfaces an external agent that only exists via a grant, never via identity_members ownership', async () => {
+    pushSelectResult([]); // ownedRows: caller owns nothing locally
+    mockListGrantDetailsForDelegator.mockResolvedValue([grantDetail({ agentDid: EXTERNAL_AGENT_DID })]);
+    pushSelectResult([
+      { did: EXTERNAL_AGENT_DID, handle: null, name: 'Boardy', createdAt: null, tier: 'preliminary' },
+    ]); // externalIdentityRows
+    pushSelectResult([
+      { subjectDid: EXTERNAL_AGENT_DID, payload: { external_did: 'did:web:boardy.ai' } },
+    ]); // externalIdentityAttestations
+    pushSelectResult([]); // legacyMembershipRows
+
+    const res = await GET(makeGetRequest());
+    const body = await res.json();
+
+    expect(body.agents).toHaveLength(1);
+    expect(body.agents[0]).toMatchObject({
+      did: EXTERNAL_AGENT_DID,
+      role: 'grant',
+      isExternal: true,
+      externalDid: 'did:web:boardy.ai',
+    });
+  });
+
+  it('merges a local and an external agent into one list, distinguished by the external-identity attestation', async () => {
+    pushSelectResult([
+      { did: LOCAL_AGENT_DID, handle: 'jin', name: 'Jin', createdAt: null, tier: 'preliminary', role: 'owner' },
+    ]);
+    mockListGrantDetailsForDelegator.mockResolvedValue([
+      grantDetail({ agentDid: LOCAL_AGENT_DID }),
+      grantDetail({ grantId: 'grant_2', agentDid: EXTERNAL_AGENT_DID }),
+    ]);
+    pushSelectResult([
+      { did: EXTERNAL_AGENT_DID, handle: null, name: 'Boardy', createdAt: null, tier: 'preliminary' },
+    ]); // externalIdentityRows (only the non-owned agent)
+    pushSelectResult([
+      { subjectDid: EXTERNAL_AGENT_DID, payload: { external_did: 'did:web:boardy.ai' } },
+    ]); // externalIdentityAttestations
+    pushSelectResult([]); // legacyMembershipRows
+
+    const res = await GET(makeGetRequest());
+    const body = await res.json();
+
+    expect(body.agents.map((a: { did: string }) => a.did).sort()).toEqual(
+      [LOCAL_AGENT_DID, EXTERNAL_AGENT_DID].sort(),
+    );
+    const local = body.agents.find((a: { did: string }) => a.did === LOCAL_AGENT_DID);
+    const external = body.agents.find((a: { did: string }) => a.did === EXTERNAL_AGENT_DID);
+    expect(local.isExternal).toBe(false);
+    expect(external.isExternal).toBe(true);
+  });
+
+  it('flags an agent that is still reachable only via the #1887 dual-read membership fallback', async () => {
+    pushSelectResult([
+      { did: LOCAL_AGENT_DID, handle: 'jin', name: 'Jin', createdAt: null, tier: 'preliminary', role: 'owner' },
+    ]);
+    mockListGrantDetailsForDelegator.mockResolvedValue([]); // no grant issued yet
+    pushSelectResult([]); // externalIdentityAttestations
+    pushSelectResult([{ memberDid: LOCAL_AGENT_DID }]); // legacyMembershipRows: still has role='agent' membership
+
+    const res = await GET(makeGetRequest());
+    const body = await res.json();
+
+    expect(body.agents[0]).toMatchObject({ did: LOCAL_AGENT_DID, hasLegacyMembership: true, grants: [] });
+  });
+
+  it('includes revoked/expired grants on an agent — the record does not disappear because the authority did', async () => {
+    pushSelectResult([
+      { did: LOCAL_AGENT_DID, handle: 'jin', name: 'Jin', createdAt: null, tier: 'preliminary', role: 'owner' },
+    ]);
+    mockListGrantDetailsForDelegator.mockResolvedValue([
+      grantDetail({ grantId: 'grant_revoked', status: 'revoked', revokedAt: '2026-08-15T00:00:00.000Z' }),
+    ]);
+    pushSelectResult([]);
+    pushSelectResult([]);
+
+    const res = await GET(makeGetRequest());
+    const body = await res.json();
+
+    expect(body.agents[0].grants).toHaveLength(1);
+    expect(body.agents[0].grants[0]).toMatchObject({ grantId: 'grant_revoked', status: 'revoked' });
   });
 });

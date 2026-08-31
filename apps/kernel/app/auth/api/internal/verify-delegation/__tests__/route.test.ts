@@ -1,82 +1,34 @@
 /**
- * Tests for POST /auth/api/internal/verify-delegation (#1653).
+ * Tests for POST /auth/api/internal/verify-delegation (#1653, migrated to
+ * grants-first dual-read resolution by #1887).
  *
- * This endpoint is the whole authorization story behind `register_also`: the WS
- * server has no database of its own, so whatever this returns is what decides
- * whether one DID may read another's notification stream. The drizzle mock here
- * therefore evaluates the predicate the route builds against a fixture table
- * rather than returning a canned row — a revoked or non-agent membership has to
- * be excluded by the query itself, which is the only place that filtering lives.
+ * The actual grants-first / membership-fallback logic lives in and is
+ * thoroughly tested by `@/src/lib/auth/agent-authority`
+ * (`agent-authority.test.ts`). This route is a thin, internal-key-guarded
+ * HTTP wrapper around `resolveAgentAuthority`, so these tests focus on the
+ * route's own responsibilities: caller authentication, request validation,
+ * and translating the resolver's result/failure into the wire response.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
-const { mockSelect, mockWhere } = vi.hoisted(() => {
-  const mockWhere = vi.fn();
-  const mockSelect = vi.fn((_projection?: Record<string, unknown>) => ({
-    from: () => ({ where: mockWhere }),
-  }));
-  return { mockSelect, mockWhere };
-});
-
-vi.mock('@/src/db', () => ({
-  db: { select: mockSelect },
-  identityMembers: {
-    identityDid: 'identity_did',
-    memberDid: 'member_did',
-    role: 'role',
-    removedAt: 'removed_at',
-  },
+const { resolveAgentAuthorityMock } = vi.hoisted(() => ({
+  resolveAgentAuthorityMock: vi.fn(),
 }));
 
-vi.mock('drizzle-orm', () => ({
-  and: (...args: unknown[]) => ({ and: args }),
-  eq: (...args: unknown[]) => ({ eq: args }),
-  isNull: (col: unknown) => ({ isNull: col }),
+vi.mock('@/src/lib/auth/agent-authority', () => ({
+  resolveAgentAuthority: resolveAgentAuthorityMock,
 }));
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-// ─── Subject ─────────────────────────────────────────────────────────────────
-
 import { POST } from '../route';
-
-// ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const INTERNAL_KEY = 'test-internal-key';
 const AGENT = 'did:imajin:jin';
 const PRINCIPAL = 'did:imajin:ryan';
 const ENDPOINT = 'http://localhost:3000/auth/api/internal/verify-delegation';
-
-type Row = Record<string, unknown>;
-type Predicate =
-  | { and: Predicate[] }
-  | { eq: [string, unknown] }
-  | { isNull: string };
-
-/** The subset of drizzle predicates this route builds, applied to one row. */
-function matches(row: Row, predicate: Predicate): boolean {
-  if ('and' in predicate) return predicate.and.every((sub) => matches(row, sub));
-  if ('eq' in predicate) return row[predicate.eq[0]] === predicate.eq[1];
-  return row[predicate.isNull] == null;
-}
-
-/** An identity_members row: `memberDid` acts for `identityDid`. */
-function membership(overrides: Row = {}): Row {
-  return {
-    identity_did: PRINCIPAL,
-    member_did: AGENT,
-    role: 'agent',
-    removed_at: null,
-    ...overrides,
-  };
-}
-
-/** Rows the mocked `identity_members` table holds for the current test. */
-let table: Row[] = [];
 
 type RouteRequest = Parameters<typeof POST>[0];
 
@@ -93,52 +45,37 @@ function verify(body: unknown, options?: { key?: string | null }) {
   return POST(makeRequest(JSON.stringify(body), options));
 }
 
-async function allowedFor(body: unknown): Promise<boolean> {
-  const res = await verify(body);
-  expect(res.status).toBe(200);
-  return ((await res.json()) as { allowed: boolean }).allowed;
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.AUTH_INTERNAL_API_KEY = INTERNAL_KEY;
-  table = [];
-  mockWhere.mockImplementation((predicate: Predicate) => ({
-    limit: (n: number) =>
-      Promise.resolve(table.filter((row) => matches(row, predicate)).slice(0, n)),
-  }));
 });
 
 afterEach(() => {
   delete process.env.AUTH_INTERNAL_API_KEY;
 });
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
-
 describe('POST /auth/api/internal/verify-delegation — caller authentication', () => {
   it('rejects a request with no x-internal-key header', async () => {
     const res = await verify({ agentDid: AGENT, principalDid: PRINCIPAL }, { key: null });
 
     expect(res.status).toBe(401);
-    expect(mockSelect).not.toHaveBeenCalled();
+    expect(resolveAgentAuthorityMock).not.toHaveBeenCalled();
   });
 
   it('rejects a request with the wrong key', async () => {
     const res = await verify({ agentDid: AGENT, principalDid: PRINCIPAL }, { key: 'nope' });
 
     expect(res.status).toBe(401);
-    expect(mockSelect).not.toHaveBeenCalled();
+    expect(resolveAgentAuthorityMock).not.toHaveBeenCalled();
   });
 
   it('rejects every caller when AUTH_INTERNAL_API_KEY is unset', async () => {
-    // Otherwise a missing key turns `header !== undefined` into an open endpoint
-    // for anyone who omits the header.
     delete process.env.AUTH_INTERNAL_API_KEY;
 
     const res = await verify({ agentDid: AGENT, principalDid: PRINCIPAL }, { key: null });
 
     expect(res.status).toBe(401);
-    expect(mockSelect).not.toHaveBeenCalled();
+    expect(resolveAgentAuthorityMock).not.toHaveBeenCalled();
   });
 });
 
@@ -160,63 +97,40 @@ describe('POST /auth/api/internal/verify-delegation — request body', () => {
     const res = await verify(body);
 
     expect(res.status).toBe(400);
-    expect(mockSelect).not.toHaveBeenCalled();
+    expect(resolveAgentAuthorityMock).not.toHaveBeenCalled();
   });
 });
 
-describe('POST /auth/api/internal/verify-delegation — delegation lookup', () => {
-  it('allows an active agent membership', async () => {
-    table = [membership()];
+describe('POST /auth/api/internal/verify-delegation — delegates to resolveAgentAuthority', () => {
+  it('passes agentDid and principalDid through and returns an allowed grant result verbatim', async () => {
+    resolveAgentAuthorityMock.mockResolvedValue({ allowed: true, via: 'grant', grantId: 'grant_1' });
 
-    expect(await allowedFor({ agentDid: AGENT, principalDid: PRINCIPAL })).toBe(true);
+    const res = await verify({ agentDid: AGENT, principalDid: PRINCIPAL });
+
+    expect(resolveAgentAuthorityMock).toHaveBeenCalledWith(AGENT, PRINCIPAL);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ allowed: true, via: 'grant', grantId: 'grant_1' });
   });
 
-  it('denies when no membership exists at all', async () => {
-    expect(await allowedFor({ agentDid: AGENT, principalDid: PRINCIPAL })).toBe(false);
+  it('surfaces a membership-fallback result (the #1887 dual-read path)', async () => {
+    resolveAgentAuthorityMock.mockResolvedValue({ allowed: true, via: 'membership' });
+
+    const res = await verify({ agentDid: AGENT, principalDid: PRINCIPAL });
+
+    expect(await res.json()).toEqual({ allowed: true, via: 'membership', grantId: undefined });
   });
 
-  it('denies a revoked membership', async () => {
-    table = [membership({ removed_at: new Date('2026-01-01T00:00:00.000Z') })];
+  it('returns allowed: false when the resolver denies', async () => {
+    resolveAgentAuthorityMock.mockResolvedValue({ allowed: false, via: 'none' });
 
-    expect(await allowedFor({ agentDid: AGENT, principalDid: PRINCIPAL })).toBe(false);
+    const res = await verify({ agentDid: AGENT, principalDid: PRINCIPAL });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ allowed: false });
   });
 
-  it.each(['member', 'owner', 'admin', 'maintainer'])(
-    'denies a role=%s membership — only agents may act for an identity',
-    async (role) => {
-      table = [membership({ role })];
-
-      expect(await allowedFor({ agentDid: AGENT, principalDid: PRINCIPAL })).toBe(false);
-    },
-  );
-
-  it('denies when the delegation points the other way round', async () => {
-    // Ryan being an agent of Jin does not let Jin read Ryan's stream.
-    table = [membership({ identity_did: AGENT, member_did: PRINCIPAL })];
-
-    expect(await allowedFor({ agentDid: AGENT, principalDid: PRINCIPAL })).toBe(false);
-  });
-
-  it('denies a membership on a different principal', async () => {
-    table = [membership({ identity_did: 'did:imajin:someone-else' })];
-
-    expect(await allowedFor({ agentDid: AGENT, principalDid: PRINCIPAL })).toBe(false);
-  });
-
-  it('projects a column that exists — identity_members has no surrogate key', async () => {
-    // Selecting `identityMembers.id` compiles to `undefined` and never reaches
-    // the database as a column, so pin the projection to a real one.
-    table = [membership()];
-
-    await verify({ agentDid: AGENT, principalDid: PRINCIPAL });
-
-    expect(mockSelect.mock.calls[0][0]).toEqual({ memberDid: 'member_did' });
-  });
-
-  it('denies rather than throwing when the lookup fails', async () => {
-    mockWhere.mockImplementation(() => ({
-      limit: () => Promise.reject(new Error('connection terminated')),
-    }));
+  it('denies rather than throwing when the resolver rejects (fail-closed on lookup failure)', async () => {
+    resolveAgentAuthorityMock.mockRejectedValue(new Error('connection terminated'));
 
     const res = await verify({ agentDid: AGENT, principalDid: PRINCIPAL });
 
