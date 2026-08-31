@@ -240,41 +240,34 @@ describe('sibling topology: local and external agents in one list', () => {
 });
 
 describe('grant controls call the #1882 grants endpoints', () => {
-  it('revokes a single capability via DELETE /auth/api/grants/:grantId/capabilities/:capability', async () => {
+  it.each([
+    [
+      'revokes a single capability via DELETE /auth/api/grants/:grantId/capabilities/:capability',
+      () => screen.getByTitle('Revoke messages:write'),
+      '/auth/api/grants/grant_1/capabilities/messages%3Awrite',
+      'DELETE',
+    ],
+    [
+      'revokes the whole grant via DELETE /auth/api/grants/:grantId',
+      () => screen.getByRole('button', { name: 'Revoke all' }),
+      '/auth/api/grants/grant_1',
+      'DELETE',
+    ],
+    [
+      'renews the grant via POST /auth/api/grants/:grantId/renew',
+      () => screen.getByRole('button', { name: 'Renew' }),
+      '/auth/api/grants/grant_1/renew',
+      'POST',
+    ],
+  ] as const)('%s', async (_description, getControl, expectedUrl, expectedMethod) => {
     const spy = await renderAgentsPage([agent()]);
 
-    fireEvent.click(screen.getByTitle('Revoke messages:write'));
+    fireEvent.click(getControl());
 
     await waitFor(() =>
       expect(spy).toHaveBeenCalledWith(
-        expect.stringContaining('/auth/api/grants/grant_1/capabilities/messages%3Awrite'),
-        expect.objectContaining({ method: 'DELETE' }),
-      ),
-    );
-  });
-
-  it('revokes the whole grant via DELETE /auth/api/grants/:grantId', async () => {
-    const spy = await renderAgentsPage([agent()]);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke all' }));
-
-    await waitFor(() =>
-      expect(spy).toHaveBeenCalledWith(
-        expect.stringContaining('/auth/api/grants/grant_1'),
-        expect.objectContaining({ method: 'DELETE' }),
-      ),
-    );
-  });
-
-  it('renews the grant via POST /auth/api/grants/:grantId/renew', async () => {
-    const spy = await renderAgentsPage([agent()]);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Renew' }));
-
-    await waitFor(() =>
-      expect(spy).toHaveBeenCalledWith(
-        expect.stringContaining('/auth/api/grants/grant_1/renew'),
-        expect.objectContaining({ method: 'POST' }),
+        expect.stringContaining(expectedUrl),
+        expect.objectContaining({ method: expectedMethod }),
       ),
     );
   });

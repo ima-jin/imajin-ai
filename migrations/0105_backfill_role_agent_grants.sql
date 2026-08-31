@@ -1,4 +1,4 @@
--- 0104_backfill_role_agent_grants.sql
+-- 0105_backfill_role_agent_grants.sql
 -- #1887 migration step 2: "mint a wide owner-agent grant for every existing
 -- role:agent member", per the #1882 Day-1 amendment settling what "wide"
 -- means (issue comment, 2026-08-30):

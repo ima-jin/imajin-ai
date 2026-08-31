@@ -82,16 +82,6 @@ describe('requireAuth — X-Acting-For grants-first resolution (#1887)', () => {
     expect('identity' in result && result.identity.actingFor).toBe(PRINCIPAL);
   });
 
-  it('rejects when the dual-read endpoint denies outright', async () => {
-    const { requireAuth } = await import('../src/require-auth');
-    mockSessionOk();
-    fetchMock.mockImplementationOnce(() => Promise.resolve(jsonResponse({ allowed: false, via: 'none' })));
-
-    const result = await requireAuth(sessionRequest({ 'x-acting-for': PRINCIPAL }));
-
-    expect(result).toEqual({ error: 'Not authorized to act for this identity', status: 403 });
-  });
-
   it('falls back to the legacy membership-only controllers check when AUTH_INTERNAL_API_KEY is unset', async () => {
     delete process.env.AUTH_INTERNAL_API_KEY;
     const { requireAuth } = await import('../src/require-auth');
@@ -130,7 +120,10 @@ describe('requireAuth — X-Acting-For grants-first resolution (#1887)', () => {
     expect('identity' in result && result.identity.actingFor).toBe(PRINCIPAL);
   });
 
-  it('rejects when both the dual-read endpoint and the legacy fallback deny', async () => {
+  it.each([
+    'rejects when the dual-read endpoint denies outright',
+    'rejects when both the dual-read endpoint and the legacy fallback deny',
+  ])('%s', async () => {
     const { requireAuth } = await import('../src/require-auth');
     mockSessionOk();
     fetchMock.mockImplementationOnce(() => Promise.resolve(jsonResponse({ allowed: false, via: 'none' })));

@@ -18,7 +18,7 @@
  *      that have been migrated to check it.
  *   2. Membership fallback, logged: if no grant is found, fall back to the
  *      pre-#1887 membership check so existing agents (backfilled with a wide
- *      grant by migration 0104, or not yet backfilled for any reason) are
+ *      grant by migration 0105, or not yet backfilled for any reason) are
  *      never cut off mid-migration. Every fallback is logged so the flip to
  *      grants-only (step 4 of the migration sketch, out of scope for #1887)
  *      can be scheduled once fallback traffic reaches zero.

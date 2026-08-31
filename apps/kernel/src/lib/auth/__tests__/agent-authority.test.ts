@@ -3,9 +3,7 @@
  * resolution (`resolveAgentAuthority`).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
-type Row = Record<string, unknown>;
-type Predicate = (row: Row) => boolean;
+import { eqPredicate, gtPredicate, isNullPredicate, andPredicate, type Row, type Predicate } from './drizzle-predicate-mocks';
 
 const { membersStore, grantsStore, MEMBERS_TABLE, GRANTS_TABLE } = vi.hoisted(() => {
   const membersStore = new Map<string, Row>();
@@ -34,19 +32,7 @@ function storeFor(table: { __table: string }): Map<string, Row> {
 
 vi.mock('drizzle-orm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('drizzle-orm')>();
-  const eq = (column: string, value: unknown): Predicate => (row) => row[column] === value;
-  const gt = (column: string, value: unknown): Predicate => {
-    const b = value instanceof Date ? value.getTime() : (value as number);
-    return (row) => {
-      const raw = row[column] as Date | number | undefined;
-      if (raw === undefined) return false;
-      const a = raw instanceof Date ? raw.getTime() : raw;
-      return a > b;
-    };
-  };
-  const isNull = (column: string): Predicate => (row) => row[column] == null;
-  const and = (...preds: Predicate[]): Predicate => (row) => preds.every((p) => p(row));
-  return { ...actual, eq, gt, isNull, and };
+  return { ...actual, eq: eqPredicate, gt: gtPredicate, isNull: isNullPredicate, and: andPredicate };
 });
 
 function projectRow(row: Row, projection: Record<string, string>): Row {

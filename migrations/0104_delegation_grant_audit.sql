@@ -1,4 +1,4 @@
--- 0103_delegation_grant_audit.sql
+-- 0104_delegation_grant_audit.sql
 -- Grants-view read surface (#1887 migration step 5), building on #1882's
 -- auth.delegation_grants / auth.delegation_grant_capabilities (migration
 -- 0099). Adds exactly what the read-surface spec asks for that #1882 did
