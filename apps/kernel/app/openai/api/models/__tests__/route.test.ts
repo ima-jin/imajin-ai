@@ -1,12 +1,12 @@
 /**
- * Tests for GET/PUT /xai/api/models (#1924).
+ * Tests for GET/PUT /openai/api/models (#1927).
  *
  * The route CONTRACT — auth, credential states, GET, PUT — and the
  * mock-setup boilerplate for the connector-agnostic dependencies
  * (auth, CORS, logger) are shared with every OpenAI-compatible model picker;
  * see `mockModelPickerRouteDeps` and `describeModelPickerRouteContract` in
- * `src/lib/kernel/__tests__/model-picker-route-test-support.ts` (#1927).
- * Only the provider-specific mock and route import live here.
+ * `src/lib/kernel/__tests__/model-picker-route-test-support.ts`. Only the
+ * provider-specific mock and route import live here.
  */
 import { vi } from 'vitest';
 import {
@@ -20,23 +20,23 @@ const mockSetModelId = vi.fn();
 
 const { resolveOwnerDid: mockResolveOwnerDid } = mockModelPickerRouteDeps();
 
-vi.doMock('@/src/lib/xai/connector', () => ({
-  loadXaiSealedCredentials: mockLoadSealed,
-  xaiKeyPending: mockKeyPending,
+vi.doMock('@/src/lib/openai/connector', () => ({
+  loadOpenaiSealedCredentials: mockLoadSealed,
+  openaiKeyPending: mockKeyPending,
   setModelId: mockSetModelId,
-  XAI_BASE_URL: 'https://api.x.ai/v1',
+  OPENAI_BASE_URL: 'https://api.openai.com/v1',
 }));
 
 const { GET, PUT, OPTIONS } = await import('../route');
 
 describeModelPickerRouteContract({
-  label: 'xAI',
-  id: 'xai',
-  baseUrl: 'https://api.x.ai/v1',
+  label: 'OpenAI',
+  id: 'openai',
+  baseUrl: 'https://api.openai.com/v1',
   ownerDid: 'did:imajin:farmer',
-  apiKey: 'xai-SEALED-KEY',
-  sampleModelIds: ['grok-4', 'grok-4-fast'],
-  deprecatedModelId: 'grok-1',
+  apiKey: 'sk-SEALED-KEY',
+  sampleModelIds: ['gpt-5.5', 'gpt-5.6-sol'],
+  deprecatedModelId: 'gpt-3',
   GET,
   PUT,
   OPTIONS,

@@ -22,7 +22,7 @@ import {
 } from '../src/scope-vocabulary';
 import { SCOPES, validateScopes } from '../src/scopes';
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'gcp', 'quickbooks', 'warp', 'stripe'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'gcp', 'quickbooks', 'warp', 'stripe'];
 
 const connectorEntries = SCOPE_VOCABULARY.filter(isConnectorScope);
 
@@ -274,6 +274,31 @@ describe('SCOPES is a faithful projection', () => {
    */
   it('keeps xai:infer off the MCP capability ceiling', () => {
     expect(scopesForSurface('mcp')).not.toContain('xai:infer');
+  });
+
+  /**
+   * #1927: the fourth brain a DID can seal, and the reference dialect for the
+   * OpenAI-compatible passthrough (#1925). Same quadrant as gemini:infer,
+   * anthropic:infer, and xai:infer, so it must derive owner-only and name its
+   * own connector as the sole viewer.
+   */
+  it('includes openai:infer as an owner-only connector scope', () => {
+    expect(SCOPES['openai:infer']).toBe('Use your OpenAI API key for inference');
+    expect(validateScopes(['openai:infer']).invalid).toEqual([]);
+
+    const entry = scopeEntry('openai:infer') as ConnectorScopeEntry;
+    expect(entry.connector).toBe('openai');
+    expect(entry.surface).toBe('openai-api');
+    expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
+    expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.openai);
+  });
+
+  /**
+   * The passthrough (#1922 Phase 2) is not built yet, so no MCP tool can spend
+   * the sealed OpenAI key either.
+   */
+  it('keeps openai:infer off the MCP capability ceiling', () => {
+    expect(scopesForSurface('mcp')).not.toContain('openai:infer');
   });
 
   /**

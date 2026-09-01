@@ -31,7 +31,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'gcp', 'quickbooks', 'warp', 'stripe'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'gcp', 'quickbooks', 'warp', 'stripe'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -149,6 +149,10 @@ describe('pinned scope sets (change these deliberately)', () => {
 
   it('pins the xAI connector card toggles', () => {
     expect(connectorUiScopes('xai').map((s) => s.name)).toEqual(['xai:infer']);
+  });
+
+  it('pins the OpenAI connector card toggles', () => {
+    expect(connectorUiScopes('openai').map((s) => s.name)).toEqual(['openai:infer']);
   });
 
   it('pins the Google Cloud connector card toggles', () => {
@@ -307,6 +311,7 @@ const DISCORD_DID = 'did:imajin:discord-connector';
 const GEMINI_DID = 'did:imajin:gemini-connector';
 const ANTHROPIC_DID = 'did:imajin:anthropic-connector';
 const XAI_DID = 'did:imajin:xai-connector';
+const OPENAI_DID = 'did:imajin:openai-connector';
 const GCP_DID = 'did:imajin:gcp-connector';
 const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
 const WARP_DID = 'did:imajin:warp-connector';
@@ -370,6 +375,15 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('xai', () => {
     expect(connectorScopeDescriptors('xai')).toEqual({
       'xai:infer': { verb: 'infer', surface: 'xai-api', label: 'Use your xAI API key for inference', release: { discloses_others: false, sensitive: true, viewer: XAI_DID } },
+    });
+  });
+
+  // #1927 — new descriptor, not a migrated literal. Same SELF_SENSITIVE
+  // quadrant as gemini:infer / anthropic:infer / xai:infer: the owner's own
+  // key is spent on every OpenAI call and never released to a third party.
+  it('openai', () => {
+    expect(connectorScopeDescriptors('openai')).toEqual({
+      'openai:infer': { verb: 'infer', surface: 'openai-api', label: 'Use your OpenAI API key for inference', release: { discloses_others: false, sensitive: true, viewer: OPENAI_DID } },
     });
   });
 

@@ -1,11 +1,11 @@
 /**
- * xAI route wiring tests (#1924).
+ * OpenAI route wiring tests (#1927).
  *
  * The wiring contract, and the mock-setup boilerplate for the two
  * connector-agnostic route factories, are shared with every other
  * token-paste connector — see `mockRouteWiringFactories` and
  * `describeRouteWiringContract` in
- * `src/lib/kernel/__tests__/brain-connector-contract.ts` (#1927). Only the
+ * `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
  * provider-specific mocks and route imports live here.
  */
 import { vi } from 'vitest';
@@ -24,29 +24,29 @@ const publish = vi.fn();
 
 const { tokenOpts, disconnectOpts, manifestOpts } = mockRouteWiringFactories();
 
-vi.doMock('@/src/lib/xai/connector', () => ({
+vi.doMock('@/src/lib/openai/connector', () => ({
   sealApiKey,
-  xaiKeySealed: keySealed,
+  openaiKeySealed: keySealed,
   revokeApiKey,
 }));
 
-vi.doMock('@/src/lib/xai/scope-manifest', () => ({
-  findXaiManifestAsset: findAsset,
-  readActiveXaiScopes: readScopes,
-  publishXaiScopeManifest: publish,
-  xaiKeySealed: keySealed,
-  xaiKeyPending: keyPending,
-  VALID_XAI_SCOPES: ['xai:infer'],
+vi.doMock('@/src/lib/openai/scope-manifest', () => ({
+  findOpenaiManifestAsset: findAsset,
+  readActiveOpenaiScopes: readScopes,
+  publishOpenaiScopeManifest: publish,
+  openaiKeySealed: keySealed,
+  openaiKeyPending: keyPending,
+  VALID_OPENAI_SCOPES: ['openai:infer'],
 }));
 
 // Importing evaluates each route module → each factory records its options.
-const tokenRoute = await import('../../../../app/xai/api/token/route');
-const disconnectRoute = await import('../../../../app/xai/api/disconnect/route');
-const manifestRoute = await import('../../../../app/xai/api/scope-manifest/route');
+const tokenRoute = await import('../../../../app/openai/api/token/route');
+const disconnectRoute = await import('../../../../app/openai/api/disconnect/route');
+const manifestRoute = await import('../../../../app/openai/api/scope-manifest/route');
 
 describeRouteWiringContract({
-  label: 'xAI',
-  inferScope: 'xai:infer',
+  label: 'OpenAI',
+  inferScope: 'openai:infer',
   tokenOpts,
   disconnectOpts,
   manifestOpts,

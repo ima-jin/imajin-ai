@@ -273,6 +273,23 @@ const XAI_ENTRY = brainConnectorEntry({
   modelsRoute: '/xai/api/models',
 });
 
+/** OpenAI's registry entry (#1927) — see {@link GEMINI_ENTRY}. */
+const OPENAI_ENTRY = brainConnectorEntry({
+  id: 'openai',
+  name: 'OpenAI',
+  description: 'Seal your own OpenAI API key per-DID so inference runs on your credential, not a shared env var.',
+  icon: '🧩',
+  credentialUi: {
+    label: 'API Key',
+    placeholder: 'OpenAI API Key (sk-...)',
+    hint: 'Key is sealed server-side and never returned. Create one at platform.openai.com → API keys.',
+  },
+  // #1927, following #1769: no hardcoded default model. OpenAI ids turn over
+  // at least as fast as Gemini's, so the owner picks a live one here and it
+  // is sealed as `modelId`.
+  modelsRoute: '/openai/api/models',
+});
+
 export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'mcp',
@@ -368,6 +385,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     modelsRoute: null,
   },
   XAI_ENTRY,
+  OPENAI_ENTRY,
   {
     id: 'gcp',
     name: 'Google Cloud',
