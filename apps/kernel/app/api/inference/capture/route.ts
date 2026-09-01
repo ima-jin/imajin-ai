@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { RetryError } from 'ai';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
@@ -7,12 +6,11 @@ import { inferMime, isAllowedMime } from '@/src/lib/media/create-asset';
 import { captureGesture } from '@/src/lib/inference/capture';
 import { gatherContext } from '@/src/lib/inference/context';
 import { infer } from '@/src/lib/inference/policy';
-import { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError } from '@/src/lib/inference/brain';
 import { resolveConsentGate } from '@/src/lib/inference/consent';
 import { resolveIntent } from '@/src/lib/inference/resolve';
 import { getVocabulary, listVocabularyNames } from '@/src/lib/inference/vocabulary';
-import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { resolveInferenceAuth } from '@/src/lib/inference/auth';
+import { mapBrainErrorToHttp } from '@/src/lib/inference/brain-http-errors';
 
 const log = createLogger('kernel:inference:capture-route');
 
@@ -167,94 +165,20 @@ export async function POST(request: NextRequest) {
  * made "no model connected", "upstream rate limited", and "credentials
  * pending owner approval" all indistinguishable from a genuine crash — both
  * to the caller (no machine-readable signal to branch on) and to whoever was
- * debugging the incident. Each case below is a real, expected runtime outcome
- * with its own remedy, so each gets its own status and `error` code; only an
- * unrecognized failure still falls through to the generic 500.
+ * debugging the incident. Each recognized case gets its own status and
+ * `error` code via the shared `mapBrainErrorToHttp` (#1925 extracted this out
+ * of this route so the completions passthrough does not clone it); only an
+ * unrecognized failure still falls through to the generic 500 here.
  */
 function handlePipelineError(
   err: unknown,
   ownerDid: string,
   cors: Record<string, string>,
 ): NextResponse {
-  if (err instanceof NoBrainSealedError) {
-    log.warn({ err: err.message, ownerDid }, 'Inference capture: no brain sealed');
-    return NextResponse.json(
-      {
-        error: 'no_brain',
-        message: 'No AI model connected — connect Gemini or Anthropic',
-        detail: err.message,
-      },
-      { status: 422, headers: cors },
-    );
-  }
-
-  // #1773: a connector can be fully connected (grant + key both resolved) with
-  // no model chosen yet — distinct from `NoBrainSealedError` (nothing
-  // connected at all). This used to fall through to the generic 500 below,
-  // which reported it as an unrecognized crash (`pipeline_failed`) instead of
-  // the fixable "pick a model" state it actually is.
-  if (err instanceof NoModelSelectedError) {
-    log.warn({ err: err.message, ownerDid }, 'Inference capture: connected brain has no model selected');
-    return NextResponse.json(
-      {
-        error: 'no_model_selected',
-        message: 'Connected, but no model is selected — choose one on the connector card',
-        detail: err.message,
-      },
-      { status: 422, headers: cors },
-    );
-  }
-
-  // #1818: the sealed model can be retired upstream after selection — pick-
-  // time validation (`PUT /gemini/api/models`) narrows this window but
-  // cannot close it, since a live model can still die between selection and
-  // the next call. Distinct from `no_model_selected`: a model IS chosen, it
-  // just no longer exists at the provider — the remedy is to pick a
-  // *different* model on the connector card, which the UI can point at using
-  // `connector`/`modelId` below.
-  if (err instanceof ModelDeprecatedError) {
-    log.warn(
-      { err: err.message, ownerDid, connector: err.connector, modelId: err.modelId },
-      'Inference capture: selected model retired upstream',
-    );
-    return NextResponse.json(
-      {
-        error: 'model_deprecated',
-        message: `Your selected ${err.connector} model '${err.modelId}' was retired upstream — pick a new one`,
-        connector: err.connector,
-        modelId: err.modelId,
-        detail: err.message,
-      },
-      { status: 422, headers: cors },
-    );
-  }
-
-  // Upstream 429s surface as an AI SDK RetryError once every retry attempt is
-  // exhausted. Matched on message content, not just the RetryError type,
-  // because a RetryError can also wrap non-rate-limit failures (timeouts,
-  // 5xxs) that belong on the generic 500 path instead.
-  if (RetryError.isInstance(err) && /too many requests|429/i.test(err.message)) {
-    log.warn({ err: err.message, ownerDid }, 'Inference capture: upstream rate limited');
-    return NextResponse.json(
-      {
-        error: 'rate_limited',
-        message: 'Model rate limit hit — try again shortly',
-        detail: err.message,
-      },
-      { status: 429, headers: cors },
-    );
-  }
-
-  if (err instanceof VaultDelegationError) {
-    log.warn({ err: err.message, ownerDid }, 'Inference capture: credential pending approval');
-    return NextResponse.json(
-      {
-        error: 'credential_pending',
-        message: 'Model credentials pending approval',
-        detail: err.message,
-      },
-      { status: 503, headers: cors },
-    );
+  const mapped = mapBrainErrorToHttp(err);
+  if (mapped) {
+    log.warn({ ownerDid, error: mapped.body['error'], detail: mapped.body['detail'] }, 'Inference capture: pipeline error');
+    return NextResponse.json(mapped.body, { status: mapped.status, headers: cors });
   }
 
   log.error({ err: String(err), ownerDid }, 'Inference capture pipeline failed');
