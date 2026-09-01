@@ -1,27 +1,24 @@
 import { describe, it, expect, vi } from 'vitest';
+import { describeScopeManifestIdentityContract } from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
-// ─── Gemini scope-manifest wrapper tests ──────────────────────────────────────
+// ─── Gemini scope-manifest wrapper tests ────────────────────────────────────────
 //
-// Tests the Gemini-specific layer: descriptor values, constants, and that the
-// wrapper functions delegate to scope-manifest-core with the right parameters.
-// The core logic (DB queries, consent grant sync, publish orchestration) is
-// tested in kernel/__tests__/scope-manifest-core.test.ts.
+// The identity contract — every delegation into scope-manifest-core must
+// carry the Gemini connector DID and channel — is shared with every other
+// token-paste connector; see `describeScopeManifestIdentityContract` in
+// `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
+// provider-specific mock wiring and the `#1774` re-export regression live
+// here.
 
-const { mockBuild, mockFind, mockReadActive, mockSync, mockPublish } = vi.hoisted(() => ({
-  mockBuild: vi.fn(() => 'yaml-content'),
-  mockFind: vi.fn(async () => null),
-  mockReadActive: vi.fn(async () => []),
-  mockSync: vi.fn(async () => undefined),
-  mockPublish: vi.fn(async () => 'asset_gem'),
+const core = vi.hoisted(() => ({
+  buildConnectorManifestContent: vi.fn(() => 'yaml-content'),
+  findConnectorManifestAsset: vi.fn(async () => null),
+  readActiveConnectorScopes: vi.fn(async () => ['gemini:infer']),
+  syncConnectorConsentGrants: vi.fn(async () => undefined),
+  publishConnectorScopeManifest: vi.fn(async () => 'asset_1'),
 }));
 
-vi.mock('@/src/lib/kernel/scope-manifest-core', () => ({
-  buildConnectorManifestContent: mockBuild,
-  findConnectorManifestAsset: mockFind,
-  readActiveConnectorScopes: mockReadActive,
-  syncConnectorConsentGrants: mockSync,
-  publishConnectorScopeManifest: mockPublish,
-}));
+vi.mock('@/src/lib/kernel/scope-manifest-core', () => core);
 
 const { sealedMock, statusMock } = vi.hoisted(() => ({
   sealedMock: vi.fn().mockResolvedValue(false),
@@ -46,62 +43,21 @@ import {
 } from '../scope-manifest';
 import { GEMINI_CONNECTOR_DID } from '../connector';
 
-describe('GEMINI_SCOPE_DESCRIPTORS', () => {
-  it('defines gemini:infer as owner-only (sensitive, not disclosing others)', () => {
-    expect(VALID_GEMINI_SCOPES).toEqual(['gemini:infer']);
-    const r = GEMINI_SCOPE_DESCRIPTORS['gemini:infer'].release;
-    expect(r.discloses_others).toBe(false);
-    expect(r.sensitive).toBe(true);
-    expect(r.viewer).toBe(GEMINI_CONNECTOR_DID);
-  });
-});
-
-describe('buildManifestContent', () => {
-  it('calls buildConnectorManifestContent with Gemini DID, channel, descriptors', () => {
-    buildManifestContent(['gemini:infer']);
-    expect(mockBuild).toHaveBeenCalledWith(
-      GEMINI_CONNECTOR_DID, 'gemini', GEMINI_SCOPE_DESCRIPTORS, ['gemini:infer'],
-    );
-  });
-});
-
-describe('findGeminiManifestAsset', () => {
-  it('calls findConnectorManifestAsset with Gemini DID', async () => {
-    await findGeminiManifestAsset('did:owner');
-    expect(mockFind).toHaveBeenCalledWith('did:owner', GEMINI_CONNECTOR_DID);
-  });
-});
-
-describe('readActiveGeminiScopes', () => {
-  it('calls readActiveConnectorScopes with gemini channel and Gemini DID', async () => {
-    await readActiveGeminiScopes('did:owner');
-    expect(mockReadActive).toHaveBeenCalledWith('did:owner', 'gemini', GEMINI_CONNECTOR_DID);
-  });
-});
-
-describe('syncConsentGrants', () => {
-  /**
-   * gemini:infer derives `owner-only` from the #1196 2×2 (#1253), not
-   * `on-consent` — but it still sits behind a consent barrier, so publishing it
-   * must record a consent_grants row exactly as before. This asserts the tier
-   * change did not silently drop that row.
-   */
-  it('records a consent row for gemini:infer (owner-only is still consent-barriered)', async () => {
-    await syncConsentGrants('did:owner', 'asset_x', ['gemini:infer']);
-    const [, connDid, , , isOnConsent] = mockSync.mock.calls[0];
-    expect(connDid).toBe(GEMINI_CONNECTOR_DID);
-    expect(isOnConsent('gemini:infer')).toBe(true);
-  });
-});
-
-describe('publishGeminiScopeManifest', () => {
-  it('calls publishConnectorScopeManifest with correct Gemini opts', async () => {
-    await publishGeminiScopeManifest('did:owner', ['gemini:infer']);
-    const opts = mockPublish.mock.calls[0][0] as Record<string, unknown>;
-    expect(opts.connectorDid).toBe(GEMINI_CONNECTOR_DID);
-    expect(opts.channel).toBe('gemini');
-    expect(opts.filename).toBe('gemini-scope-manifest.md');
-  });
+describeScopeManifestIdentityContract({
+  label: 'Gemini',
+  id: 'gemini',
+  connectorDid: GEMINI_CONNECTOR_DID,
+  channel: 'gemini',
+  inferScope: 'gemini:infer',
+  filename: 'gemini-scope-manifest.md',
+  core,
+  scopeDescriptors: GEMINI_SCOPE_DESCRIPTORS,
+  validScopes: VALID_GEMINI_SCOPES,
+  buildManifestContent,
+  findManifestAsset: findGeminiManifestAsset,
+  readActiveScopes: readActiveGeminiScopes,
+  syncConsentGrants,
+  publishScopeManifest: publishGeminiScopeManifest,
 });
 
 describe('geminiKeySealed re-export (#1774)', () => {
