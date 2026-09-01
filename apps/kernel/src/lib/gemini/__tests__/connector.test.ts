@@ -1,42 +1,27 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+/**
+ * Gemini connector wiring tests (#1432).
+ *
+ * Gemini predates `createConnectorTokenPaste` (#1621) being extracted into
+ * its own factory, so — unlike OpenAI/xAI — this exercises the REAL
+ * `resolveActiveGrant` / `sealApiKey` / `loadGeminiCredentials` /
+ * `requireGrantAndKey` / `geminiKeySealed` / `geminiKeyPending` /
+ * `revokeApiKey` against mocked vault/DB seams, rather than mocking the
+ * factory itself. The whole contract — identity, the grant gate, the v1/v2
+ * custody split, credential-resolution error handling, and the
+ * `channel_links` sweep on disconnect — is shared with every other
+ * vault/DB-backed token-paste connector; see
+ * `describeConnectorCredentialLifecycleContract` in
+ * `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
+ * provider-specific mock wiring and sample values live here.
+ */
+import {
+  mockConnectorVaultAndDb,
+  describeConnectorCredentialLifecycleContract,
+} from '@/src/lib/kernel/__tests__/brain-connector-contract';
+
+const mocks = mockConnectorVaultAndDb();
 
 const {
-  sealMock, sealV1Mock, loadMock, existsMock, statusMock, whereMock,
-  revokeVaultGrantsMock, channelLinksRevokeMock,
-} = vi.hoisted(() => ({
-  sealMock: vi.fn(),
-  sealV1Mock: vi.fn(),
-  loadMock: vi.fn(),
-  existsMock: vi.fn(),
-  statusMock: vi.fn(),
-  whereMock: vi.fn(),
-  revokeVaultGrantsMock: vi.fn(),
-  // #1733: `revokeApiKey` also sweeps active channel_links rows — backs the
-  // `.returning(...)` call on `db.update(channelLinks)...`.
-  channelLinksRevokeMock: vi.fn(),
-}));
-
-vi.mock('@/src/lib/vault', () => ({
-  sealAndStore: sealV1Mock,
-  sealAndStoreV2: sealMock,
-  loadAndUnseal: loadMock,
-  vaultFieldExists: existsMock,
-  vaultFieldStatus: statusMock,
-  revokeVaultDelegationGrantsForConnector: revokeVaultGrantsMock,
-}));
-vi.mock('@/src/db', () => ({
-  db: {
-    select: () => ({ from: () => ({ where: whereMock }) }),
-    update: () => ({ set: () => ({ where: () => ({ returning: channelLinksRevokeMock }) }) }),
-  },
-  channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes', id: 'id' },
-}));
-vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-}));
-
-import { VaultDelegationError } from '@/src/lib/vault/errors';
-import {
   resolveActiveGrant,
   sealApiKey,
   loadGeminiCredentials,
@@ -46,317 +31,24 @@ import {
   vaultField,
   revokeApiKey,
   GEMINI_CONNECTOR_DID,
-} from '../connector';
+  GEMINI_INFER_SCOPE,
+} = await import('../connector');
 
-const OWNER = 'did:imajin:farmer';
-const API_KEY = 'AIzaSy-REDACTED';
-const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
-const MODEL_ID = 'gemini-2.0-flash';
-
-function grant(scopes: string[]) {
-  whereMock.mockResolvedValue([{ scopes }]);
-}
-
-function noGrant() {
-  whereMock.mockResolvedValue([]);
-}
-
-beforeEach(() => {
-  sealMock.mockReset();
-  sealMock.mockResolvedValue(undefined);
-  sealV1Mock.mockReset();
-  sealV1Mock.mockResolvedValue(undefined);
-  loadMock.mockReset();
-  loadMock.mockResolvedValue(undefined);
-  existsMock.mockReset();
-  existsMock.mockResolvedValue(false);
-  statusMock.mockReset();
-  statusMock.mockResolvedValue('absent');
-  whereMock.mockReset();
-  revokeVaultGrantsMock.mockReset();
-  revokeVaultGrantsMock.mockResolvedValue(0);
-  channelLinksRevokeMock.mockReset();
-  channelLinksRevokeMock.mockResolvedValue([]);
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
-// ── vaultField ────────────────────────────────────────────────────────────────
-
-describe('vaultField', () => {
-  it('encodes the ownerDid in the field name for per-DID isolation', () => {
-    expect(vaultField(OWNER)).toBe(`gemini-api-key:${OWNER}`);
-  });
-});
-
-// ── Cross-DID isolation ───────────────────────────────────────────────────────
-
-describe('cross-DID isolation', () => {
-  it('different DIDs have different vault fields', () => {
-    const fieldA = vaultField('did:imajin:alice');
-    const fieldB = vaultField('did:imajin:bob');
-    expect(fieldA).not.toBe(fieldB);
-    expect(fieldA).toBe('gemini-api-key:did:imajin:alice');
-    expect(fieldB).toBe('gemini-api-key:did:imajin:bob');
-  });
-});
-
-// ── GEMINI_CONNECTOR_DID ──────────────────────────────────────────────────────
-
-describe('GEMINI_CONNECTOR_DID', () => {
-  it('is stable', () => {
-    expect(GEMINI_CONNECTOR_DID).toBe('did:imajin:gemini-connector');
-  });
-});
-
-// ── resolveActiveGrant ────────────────────────────────────────────────────────
-
-describe('resolveActiveGrant', () => {
-  it('is true when an active row includes the required scope', async () => {
-    grant(['gemini:infer']);
-    expect(await resolveActiveGrant(OWNER, 'gemini:infer')).toBe(true);
-  });
-
-  it('is false when no active row includes the required scope', async () => {
-    grant(['other:scope']);
-    expect(await resolveActiveGrant(OWNER, 'gemini:infer')).toBe(false);
-  });
-
-  it('is false when there are no rows at all', async () => {
-    noGrant();
-    expect(await resolveActiveGrant(OWNER, 'gemini:infer')).toBe(false);
-  });
-});
-
-// ── sealApiKey ────────────────────────────────────────────────────────────────
-
-describe('sealApiKey', () => {
-  it('seals the API key under the per-DID vault field with delegation-grant custody', async () => {
-    await sealApiKey(OWNER, API_KEY);
-    const [field, plaintext] = sealMock.mock.calls[0] as [string, string];
-    expect(field).toBe(vaultField(OWNER));
-    expect(plaintext).toBe(API_KEY);
-  });
-
-  it('seals baseUrl node-sealed (v1), not delegation-grant (#1637)', async () => {
-    await sealApiKey(OWNER, API_KEY, BASE_URL);
-    expect(sealMock).toHaveBeenCalledTimes(1);
-    expect(sealV1Mock).toHaveBeenCalledTimes(1);
-    expect(sealV1Mock.mock.calls[0]).toEqual([`gemini-base-url:${OWNER}`, BASE_URL]);
-  });
-
-  it('seals modelId node-sealed (v1), not delegation-grant (#1637)', async () => {
-    await sealApiKey(OWNER, API_KEY, undefined, MODEL_ID);
-    expect(sealMock).toHaveBeenCalledTimes(1);
-    expect(sealV1Mock).toHaveBeenCalledTimes(1);
-    expect(sealV1Mock.mock.calls[0]).toEqual([`gemini-model-id:${OWNER}`, MODEL_ID]);
-  });
-
-  it('seals all three, one under v2 custody and two under v1', async () => {
-    await sealApiKey(OWNER, API_KEY, BASE_URL, MODEL_ID);
-    expect(sealMock).toHaveBeenCalledTimes(1);
-    expect(sealV1Mock).toHaveBeenCalledTimes(2);
-  });
-
-  it('does not seal baseUrl or modelId when omitted', async () => {
-    await sealApiKey(OWNER, API_KEY);
-    expect(sealMock).toHaveBeenCalledTimes(1);
-    expect(sealV1Mock).not.toHaveBeenCalled();
-  });
-});
-
-// ── loadGeminiCredentials ────────────────────────────────────────────────────
-
-describe('loadGeminiCredentials', () => {
-  it('returns undefined when there is no active grant', async () => {
-    noGrant();
-    const result = await loadGeminiCredentials(OWNER);
-    expect(result).toBeUndefined();
-    expect(loadMock).not.toHaveBeenCalled();
-  });
-
-  it('returns undefined when there is a grant but no sealed key', async () => {
-    grant(['gemini:infer']);
-    loadMock.mockResolvedValue(undefined); // no key sealed
-    const result = await loadGeminiCredentials(OWNER);
-    expect(result).toBeUndefined();
-  });
-
-  it('returns credentials with apiKey when grant and key are present', async () => {
-    grant(['gemini:infer']);
-    // loadAndUnseal called three times: apiKey, baseUrl, modelId
-    loadMock.mockResolvedValueOnce(API_KEY)      // apiKey field
-      .mockResolvedValueOnce(undefined)           // baseUrl field (not set)
-      .mockResolvedValueOnce(undefined);          // modelId field (not set)
-
-    const result = await loadGeminiCredentials(OWNER);
-    expect(result).not.toBeUndefined();
-    expect(result?.apiKey).toBe(API_KEY);
-    expect(result?.baseUrl).toBeUndefined();
-    expect(result?.modelId).toBeUndefined();
-  });
-
-  it('returns credentials with apiKey + baseUrl + modelId when all are sealed', async () => {
-    grant(['gemini:infer']);
-    loadMock.mockResolvedValueOnce(API_KEY)
-      .mockResolvedValueOnce(BASE_URL)
-      .mockResolvedValueOnce(MODEL_ID);
-
-    const result = await loadGeminiCredentials(OWNER);
-    expect(result?.apiKey).toBe(API_KEY);
-    expect(result?.baseUrl).toBe(BASE_URL);
-    expect(result?.modelId).toBe(MODEL_ID);
-  });
-
-  /**
-   * #1637: this used to throw, which took the whole brain walk down with it — so
-   * a Gemini key awaiting Tier 1 approval meant a healthy Anthropic key was never
-   * tried. `undefined` is the documented answer for "no usable connection".
-   */
-  it('returns undefined when the key is sealed but awaiting owner approval', async () => {
-    grant(['gemini:infer']);
-    loadMock.mockRejectedValueOnce(
-      new VaultDelegationError('no active grant', {
-        field: vaultField(OWNER),
-        nodeDid: 'did:imajin:node',
-      }),
-    );
-
-    await expect(loadGeminiCredentials(OWNER)).resolves.toBeUndefined();
-  });
-
-  it('still propagates a non-delegation vault failure', async () => {
-    grant(['gemini:infer']);
-    loadMock.mockRejectedValueOnce(new Error('vault integrity failure'));
-
-    await expect(loadGeminiCredentials(OWNER)).rejects.toThrow('vault integrity failure');
-  });
-
-  it('degrades an unreadable baseUrl/modelId to "no override" instead of failing', async () => {
-    grant(['gemini:infer']);
-    loadMock
-      .mockResolvedValueOnce(API_KEY)
-      .mockRejectedValueOnce(
-        // A pre-#1637 v2 config entry whose grant never arrived.
-        new VaultDelegationError('no active grant', {
-          field: `gemini-base-url:${OWNER}`,
-          nodeDid: 'did:imajin:node',
-        }),
-      )
-      .mockRejectedValueOnce(new Error('corrupt entry'));
-
-    await expect(loadGeminiCredentials(OWNER)).resolves.toEqual({ apiKey: API_KEY });
-  });
-});
-
-// ── requireGrantAndKey ───────────────────────────────────────────────────────
-
-describe('requireGrantAndKey (fail-closed gate)', () => {
-  it('throws gemini_no_grant when there is no active grant', async () => {
-    noGrant();
-    await expect(requireGrantAndKey(OWNER, 'gemini:infer')).rejects.toThrow(/gemini_no_grant/);
-  });
-
-  it('throws gemini_no_key when grant exists but no key is sealed', async () => {
-    grant(['gemini:infer']);
-    loadMock.mockResolvedValue(undefined);
-    await expect(requireGrantAndKey(OWNER, 'gemini:infer')).rejects.toThrow(/gemini_no_key/);
-  });
-
-  it('returns the key when both grant and key are present', async () => {
-    grant(['gemini:infer']);
-    loadMock.mockResolvedValue(API_KEY);
-    const key = await requireGrantAndKey(OWNER, 'gemini:infer');
-    expect(key).toBe(API_KEY);
-  });
-
-  it('throws gemini_credential_pending when the key is sealed but no grant has arrived (#1521)', async () => {
-    grant(['gemini:infer']);
-    loadMock.mockRejectedValue(new VaultDelegationError('no active grant', { field: vaultField(OWNER), nodeDid: 'did:imajin:node' }));
-    await expect(requireGrantAndKey(OWNER, 'gemini:infer')).rejects.toThrow(/gemini_credential_pending/);
-  });
-});
-
-// ── geminiKeySealed ───────────────────────────────────────────────────────────
-
-// #1724: `geminiKeySealed` used to delegate to `vaultFieldExists`, which only
-// checks that the vault entry exists — not whether an active grant covers it.
-// `revokeApiKey` (disconnect) leaves the entry in place and only revokes the
-// grant, so that reported a disconnected key as sealed forever. It now
-// delegates to `vaultFieldStatus`, which filters `WHERE status = 'active'`.
-describe('geminiKeySealed', () => {
-  it('delegates to vaultFieldStatus with the per-DID field', async () => {
-    statusMock.mockResolvedValue('ready');
-    expect(await geminiKeySealed(OWNER)).toBe(true);
-    expect(statusMock).toHaveBeenCalledWith(vaultField(OWNER));
-  });
-
-  it('returns false when no key is sealed', async () => {
-    statusMock.mockResolvedValue('absent');
-    expect(await geminiKeySealed(OWNER)).toBe(false);
-  });
-
-  it('returns false once the grant is revoked, even though the vault entry still exists', async () => {
-    // A revoked grant reports 'pending-grant' (no active grant covers the
-    // entry), not 'ready' — this is the exact disconnect state from #1724.
-    statusMock.mockResolvedValue('pending-grant');
-    expect(await geminiKeySealed(OWNER)).toBe(false);
-  });
-
-  it('returns false for an unverifiable entry', async () => {
-    statusMock.mockResolvedValue('unverifiable');
-    expect(await geminiKeySealed(OWNER)).toBe(false);
-  });
-});
-
-describe('geminiKeyPending (#1521)', () => {
-  it('is true when the field status is pending-grant', async () => {
-    statusMock.mockResolvedValue('pending-grant');
-    expect(await geminiKeyPending(OWNER)).toBe(true);
-    expect(statusMock).toHaveBeenCalledWith(vaultField(OWNER));
-  });
-
-  it('is false when the field is ready, absent, or unverifiable', async () => {
-    for (const status of ['ready', 'absent', 'unverifiable']) {
-      statusMock.mockResolvedValue(status);
-      expect(await geminiKeyPending(OWNER)).toBe(false);
-    }
-  });
-});
-
-// ── revokeApiKey (#1720) ──────────────────────────────────────────────────────
-
-describe('revokeApiKey', () => {
-  it('delegates to revokeVaultDelegationGrantsForConnector with the connector id and owner DID', async () => {
-    revokeVaultGrantsMock.mockResolvedValue(1);
-    await revokeApiKey(OWNER);
-    expect(revokeVaultGrantsMock).toHaveBeenCalledWith('gemini', OWNER);
-  });
-
-  it('returns true when at least one grant was revoked', async () => {
-    revokeVaultGrantsMock.mockResolvedValue(1);
-    expect(await revokeApiKey(OWNER)).toBe(true);
-  });
-
-  it('returns false when no active grant existed', async () => {
-    revokeVaultGrantsMock.mockResolvedValue(0);
-    expect(await revokeApiKey(OWNER)).toBe(false);
-  });
-
-  // #1733: revoking only the vault grant left every previously granted
-  // channel_links scope reporting active forever. `revokeApiKey` now also
-  // sweeps active channel_links rows for this connector + DID.
-  it('also revokes active channel_links rows, even with nothing left in the vault to revoke', async () => {
-    revokeVaultGrantsMock.mockResolvedValue(0);
-    channelLinksRevokeMock.mockResolvedValue([{ id: 'clink_1' }]);
-    expect(await revokeApiKey(OWNER)).toBe(true);
-  });
-
-  it('returns false when neither the vault grant nor any channel_links row was active', async () => {
-    revokeVaultGrantsMock.mockResolvedValue(0);
-    channelLinksRevokeMock.mockResolvedValue([]);
-    expect(await revokeApiKey(OWNER)).toBe(false);
-  });
+describeConnectorCredentialLifecycleContract({
+  label: 'Gemini',
+  id: 'gemini',
+  connectorDid: GEMINI_CONNECTOR_DID,
+  inferScope: GEMINI_INFER_SCOPE,
+  vaultField,
+  sampleApiKey: 'AIzaSy-REDACTED',
+  sampleBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  sampleModelId: 'gemini-2.0-flash',
+  resolveActiveGrant,
+  sealApiKey,
+  loadProviderCredentials: loadGeminiCredentials,
+  requireGrantAndKey,
+  keySealed: geminiKeySealed,
+  keyPending: geminiKeyPending,
+  revokeApiKey,
+  mocks,
 });

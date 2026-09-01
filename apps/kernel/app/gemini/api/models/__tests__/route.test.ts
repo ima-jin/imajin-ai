@@ -9,41 +9,33 @@
  * filtered to `generateContent`-capable models with the `models/` prefix
  * stripped, listing does not require an active `gemini:infer` grant (#1773),
  * and upstream/credential failures map to sane statuses.
+ *
+ * Gemini's model listing is NOT OpenAI-compatible, so this does not use
+ * `describeModelPickerRouteContract` — only the connector-agnostic mock
+ * scaffolding (auth, CORS, logger) is shared, via `mockModelPickerRouteDeps`
+ * in `src/lib/kernel/__tests__/model-picker-route-test-support.ts`.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import {
   makeModelPickerRequest,
   stubModelPickerFetch,
   resetModelPickerMocks,
+  mockModelPickerRouteDeps,
 } from '@/src/lib/kernel/__tests__/model-picker-route-test-support';
 
-const { mockResolveConnectorOwnerDid, mockLoadGeminiSealedCredentials, mockGeminiKeyPending, mockSetModelId } = vi.hoisted(() => ({
-  mockResolveConnectorOwnerDid: vi.fn(),
-  mockLoadGeminiSealedCredentials: vi.fn(),
-  mockGeminiKeyPending: vi.fn(),
-  mockSetModelId: vi.fn(),
-}));
+const mockLoadGeminiSealedCredentials = vi.fn();
+const mockGeminiKeyPending = vi.fn();
+const mockSetModelId = vi.fn();
 
-vi.mock('@/src/lib/kernel/connector-owner-did', () => ({
-  resolveConnectorOwnerDid: mockResolveConnectorOwnerDid,
-}));
+const { resolveOwnerDid: mockResolveConnectorOwnerDid } = mockModelPickerRouteDeps();
 
-vi.mock('@/src/lib/gemini/connector', () => ({
+vi.doMock('@/src/lib/gemini/connector', () => ({
   loadGeminiSealedCredentials: mockLoadGeminiSealedCredentials,
   geminiKeyPending: mockGeminiKeyPending,
   setModelId: mockSetModelId,
 }));
 
-vi.mock('@/src/lib/kernel/cors', () => ({
-  corsHeaders: () => ({ 'Access-Control-Allow-Origin': 'https://app.imajin.ai' }),
-  corsOptions: () => new Response(null, { status: 204 }),
-}));
-
-vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
-}));
-
-import { GET, PUT, OPTIONS } from '../route';
+const { GET, PUT, OPTIONS } = await import('../route');
 
 const OWNER_DID = 'did:imajin:farmer';
 const API_KEY = 'AIzaSy-GEMINI-SEALED';

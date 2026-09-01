@@ -24,6 +24,7 @@
  * files for the pattern.
  */
 import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
+import { VaultDelegationError } from '@/src/lib/vault/errors';
 
 const OWNER = 'did:imajin:farmer';
 
@@ -78,16 +79,26 @@ export interface ConnectorIdentityContractFixture {
   connectorDid: string;
   channel: string;
   inferScope: string;
-  /** The connector's exported base-URL constant. */
-  baseUrl: string;
+  /**
+   * The connector's exported base-URL constant, when it has one. Gemini and
+   * Anthropic do not export a shared endpoint constant the way the
+   * OpenAI-compatible providers (OpenAI, xAI) do, so this — and
+   * `expectedBaseUrl` — are omitted for them and the endpoint test is skipped.
+   */
+  baseUrl?: string;
   /** The literal endpoint that constant is expected to hold. */
-  expectedBaseUrl: string;
+  expectedBaseUrl?: string;
   vaultField: (ownerDid: string) => string;
   capturedOpts: { current: Record<string, unknown> | null };
   loadCredentials: Mock;
-  loadSealedCredentials: Mock;
+  /**
+   * Only providers with a model picker (#1773) have a grant-skipping read.
+   * Anthropic has none, so this — and `loadProviderSealedCredentials` — are
+   * omitted for it and that test is skipped.
+   */
+  loadSealedCredentials?: Mock;
   loadProviderCredentials: (ownerDid: string) => Promise<unknown>;
-  loadProviderSealedCredentials: (ownerDid: string) => Promise<unknown>;
+  loadProviderSealedCredentials?: (ownerDid: string) => Promise<unknown>;
   /** A believable sealed-key value; never asserted, just needs to resolve. */
   sampleApiKey: string;
 }
@@ -132,11 +143,15 @@ export function describeConnectorIdentityContract(fixture: ConnectorIdentityCont
     /**
      * The brain entry's `defaultBaseUrl` and the model-picker route both read
      * this. Two copies of a provider endpoint is how one of them ends up
-     * pointing somewhere retired.
+     * pointing somewhere retired. Only OpenAI-compatible providers (OpenAI,
+     * xAI) export this constant — Gemini and Anthropic omit `baseUrl`, so
+     * this test is skipped for them.
      */
-    it(`exports one ${label} endpoint for every caller to share`, () => {
-      expect(baseUrl).toBe(expectedBaseUrl);
-    });
+    if (baseUrl !== undefined) {
+      it(`exports one ${label} endpoint for every caller to share`, () => {
+        expect(baseUrl).toBe(expectedBaseUrl);
+      });
+    }
   });
 
   describe('credential resolution', () => {
@@ -152,16 +167,19 @@ export function describeConnectorIdentityContract(fixture: ConnectorIdentityCont
      * #1773: the picker asks "what can the owner's own key do?", which the
      * owner asks before the grant step exists. It must NOT be reachable
      * through the grant-checked path, and the grant-checked path must not
-     * quietly become this one.
+     * quietly become this one. Only providers with a model picker have this
+     * read — Anthropic has none, so this test is skipped for it.
      */
-    it('reserves the grant-skipping read for the model picker', async () => {
-      loadSealedCredentials.mockResolvedValueOnce({ apiKey: sampleApiKey });
+    if (loadSealedCredentials !== undefined && loadProviderSealedCredentials !== undefined) {
+      it('reserves the grant-skipping read for the model picker', async () => {
+        loadSealedCredentials.mockResolvedValueOnce({ apiKey: sampleApiKey });
 
-      await loadProviderSealedCredentials(OWNER);
+        await loadProviderSealedCredentials(OWNER);
 
-      expect(loadSealedCredentials).toHaveBeenCalledWith(OWNER);
-      expect(loadSealedCredentials).not.toHaveBeenCalledWith(OWNER, inferScope);
-    });
+        expect(loadSealedCredentials).toHaveBeenCalledWith(OWNER);
+        expect(loadSealedCredentials).not.toHaveBeenCalledWith(OWNER, inferScope);
+      });
+    }
   });
 }
 
@@ -264,7 +282,7 @@ export function describeScopeManifestIdentityContract(fixture: ScopeManifestCont
       expect(opts).toMatchObject({ ownerDid: OWNER, connectorDid, channel, filename });
       expect(opts.isOnConsent(inferScope)).toBe(true);
       // Fail-closed: a scope this connector does not own never records consent.
-      expect(opts.isOnConsent('gemini:infer')).toBe(false);
+      expect(opts.isOnConsent('not-this-connector:infer')).toBe(false);
     });
   });
 }
@@ -400,6 +418,384 @@ export function describeRouteWiringContract(fixture: RouteWiringContractFixture)
       const getExtraFields = manifestOpts.current?.getExtraFields as (did: string) => Promise<unknown>;
 
       expect(await getExtraFields(OWNER)).toEqual(expected);
+    });
+  });
+}
+
+// ── Vault/DB-backed credential lifecycle (pre-#1621 style connectors) ──────
+//
+// Gemini (#1432) and Anthropic (#1621) predate `createConnectorTokenPaste`
+// being extracted into its own factory — their `connector.test.ts` files
+// mock `@/src/lib/vault` and `@/src/db` directly and exercise the REAL
+// `resolveActiveGrant` / `sealApiKey` / `loadCredentials` / `requireGrantAndKey`
+// / `keySealed` / `keyPending` / `revokeApiKey` returned by the factory,
+// rather than mocking the factory itself the way `mockConnectorTokenPasteFactory`
+// does for OpenAI/xAI. That is exactly what makes the two files near-identical
+// (same mocks, same describe/it tree, differing only in id/scope/field
+// literals) — this contract declares that tree once.
+
+export interface ConnectorVaultAndDbMocks {
+  sealMock: Mock;
+  sealV1Mock: Mock;
+  loadMock: Mock;
+  statusMock: Mock;
+  whereMock: Mock;
+  revokeVaultGrantsMock: Mock;
+  channelLinksRevokeMock: Mock;
+}
+
+/**
+ * Mock `@/src/lib/vault`, `@/src/db`, and `@imajin/logger` — the seams
+ * `createConnectorTokenPaste` itself is built on — via `vi.doMock`. Call this
+ * BEFORE dynamically importing the connector module under test, same as
+ * `mockConnectorTokenPasteFactory`.
+ */
+export function mockConnectorVaultAndDb(): ConnectorVaultAndDbMocks {
+  const sealMock = vi.fn();
+  const sealV1Mock = vi.fn();
+  const loadMock = vi.fn();
+  const statusMock = vi.fn();
+  const whereMock = vi.fn();
+  const revokeVaultGrantsMock = vi.fn();
+  const channelLinksRevokeMock = vi.fn();
+
+  vi.doMock('@/src/lib/vault', () => ({
+    sealAndStore: sealV1Mock,
+    sealAndStoreV2: sealMock,
+    loadAndUnseal: loadMock,
+    vaultFieldStatus: statusMock,
+    revokeVaultDelegationGrantsForConnector: revokeVaultGrantsMock,
+  }));
+  const updateWhere = () => ({ returning: channelLinksRevokeMock });
+  const updateSet = () => ({ where: updateWhere });
+  vi.doMock('@/src/db', () => ({
+    db: {
+      select: () => ({ from: () => ({ where: whereMock }) }),
+      update: () => ({ set: updateSet }),
+    },
+    channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes', id: 'id' },
+  }));
+  vi.doMock('@imajin/logger', () => ({
+    createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  }));
+
+  return { sealMock, sealV1Mock, loadMock, statusMock, whereMock, revokeVaultGrantsMock, channelLinksRevokeMock };
+}
+
+export interface ConnectorCredentialLifecycleFixture {
+  /** Display name, e.g. `'Gemini'`. Only used in a couple of `it()` titles. */
+  label: string;
+  /** Lowercase connector id, e.g. `'gemini'`. */
+  id: string;
+  connectorDid: string;
+  inferScope: string;
+  vaultField: (ownerDid: string) => string;
+  sampleApiKey: string;
+  sampleBaseUrl: string;
+  sampleModelId: string;
+  resolveActiveGrant: (ownerDid: string, scope: string) => Promise<boolean>;
+  sealApiKey: (ownerDid: string, apiKey: string, baseUrl?: string, modelId?: string) => Promise<void>;
+  loadProviderCredentials: (ownerDid: string) => Promise<{ apiKey: string; baseUrl?: string; modelId?: string } | undefined>;
+  requireGrantAndKey: (ownerDid: string, scope: string) => Promise<string>;
+  keySealed: (ownerDid: string) => Promise<boolean>;
+  keyPending: (ownerDid: string) => Promise<boolean>;
+  revokeApiKey: (ownerDid: string) => Promise<boolean>;
+  mocks: ConnectorVaultAndDbMocks;
+}
+
+/**
+ * Pins the REAL behaviour of a token-paste connector built directly against
+ * vault/DB mocks: DID stability and vault-field isolation, the grant gate
+ * (`resolveActiveGrant`), the v2-vs-v1 custody split in `sealApiKey`, every
+ * branch of credential resolution (missing grant, missing key, pending
+ * owner approval, corrupt optional fields), the fail-closed
+ * `requireGrantAndKey` gate, the `keySealed`/`keyPending` status matrix
+ * (#1724/#1521), and `revokeApiKey`'s `channel_links` sweep (#1733).
+ *
+ * This is the Gemini/Anthropic counterpart to `describeConnectorIdentityContract`
+ * — those two predate the `createConnectorTokenPaste` factory extraction and
+ * still exercise it end-to-end rather than through a mocked factory, so their
+ * contract pins the factory's real behaviour rather than just identity wiring.
+ */
+export function describeConnectorCredentialLifecycleContract(fixture: ConnectorCredentialLifecycleFixture): void {
+  const {
+    label, id, connectorDid, inferScope, vaultField, sampleApiKey, sampleBaseUrl, sampleModelId,
+    resolveActiveGrant, sealApiKey, loadProviderCredentials, requireGrantAndKey, keySealed, keyPending, revokeApiKey,
+    mocks: { sealMock, sealV1Mock, loadMock, statusMock, whereMock, revokeVaultGrantsMock, channelLinksRevokeMock },
+  } = fixture;
+
+  function grant(scopes: string[]) {
+    whereMock.mockResolvedValue([{ scopes }]);
+  }
+
+  function noGrant() {
+    whereMock.mockResolvedValue([]);
+  }
+
+  beforeEach(() => {
+    sealMock.mockReset();
+    sealMock.mockResolvedValue(undefined);
+    sealV1Mock.mockReset();
+    sealV1Mock.mockResolvedValue(undefined);
+    loadMock.mockReset();
+    loadMock.mockResolvedValue(undefined);
+    statusMock.mockReset();
+    statusMock.mockResolvedValue('absent');
+    whereMock.mockReset();
+    revokeVaultGrantsMock.mockReset();
+    revokeVaultGrantsMock.mockResolvedValue(0);
+    channelLinksRevokeMock.mockReset();
+    channelLinksRevokeMock.mockResolvedValue([]);
+  });
+
+  describe(`${label} connector identity`, () => {
+    it('is stable', () => {
+      expect(connectorDid).toBe(`did:imajin:${id}-connector`);
+    });
+
+    it('encodes the ownerDid in the field name for per-DID isolation', () => {
+      expect(vaultField(OWNER)).toBe(`${id}-api-key:${OWNER}`);
+    });
+
+    it('gives different DIDs different fields, so cross-DID reads are structural', () => {
+      const fieldA = vaultField('did:imajin:alice');
+      const fieldB = vaultField('did:imajin:bob');
+      expect(fieldA).not.toBe(fieldB);
+      expect(fieldA).toBe(`${id}-api-key:did:imajin:alice`);
+      expect(fieldB).toBe(`${id}-api-key:did:imajin:bob`);
+    });
+  });
+
+  describe('resolveActiveGrant', () => {
+    it('is true when an active row includes the required scope', async () => {
+      grant([inferScope]);
+      expect(await resolveActiveGrant(OWNER, inferScope)).toBe(true);
+    });
+
+    it('is false when an active row lacks the required scope', async () => {
+      grant(['other:scope']);
+      expect(await resolveActiveGrant(OWNER, inferScope)).toBe(false);
+    });
+
+    it('is false when there are no rows at all', async () => {
+      noGrant();
+      expect(await resolveActiveGrant(OWNER, inferScope)).toBe(false);
+    });
+  });
+
+  describe('sealApiKey', () => {
+    it('seals the API key under the per-DID vault field with delegation-grant custody', async () => {
+      await sealApiKey(OWNER, sampleApiKey);
+      const [field, plaintext] = sealMock.mock.calls[0] as [string, string];
+      expect(field).toBe(vaultField(OWNER));
+      expect(plaintext).toBe(sampleApiKey);
+    });
+
+    /**
+     * The endpoint and the model name are neither secret nor
+     * authority-bearing, so they are node-sealed (v1) rather than
+     * delegation-grant (#1637). Under Tier 1 a v2 write is unreadable until
+     * the owner agent approves it, which would mean a model override
+     * silently not applying.
+     */
+    it('seals baseUrl node-sealed (v1), not delegation-grant (#1637)', async () => {
+      await sealApiKey(OWNER, sampleApiKey, sampleBaseUrl);
+      expect(sealMock).toHaveBeenCalledTimes(1);
+      expect(sealV1Mock).toHaveBeenCalledTimes(1);
+      expect(sealV1Mock.mock.calls[0]).toEqual([`${id}-base-url:${OWNER}`, sampleBaseUrl]);
+    });
+
+    it('seals modelId node-sealed (v1), not delegation-grant (#1637)', async () => {
+      await sealApiKey(OWNER, sampleApiKey, undefined, sampleModelId);
+      expect(sealMock).toHaveBeenCalledTimes(1);
+      expect(sealV1Mock).toHaveBeenCalledTimes(1);
+      expect(sealV1Mock.mock.calls[0]).toEqual([`${id}-model-id:${OWNER}`, sampleModelId]);
+    });
+
+    it('seals all three, one under v2 custody and two under v1', async () => {
+      await sealApiKey(OWNER, sampleApiKey, sampleBaseUrl, sampleModelId);
+      expect(sealMock).toHaveBeenCalledTimes(1);
+      expect(sealV1Mock).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not seal baseUrl or modelId when omitted', async () => {
+      await sealApiKey(OWNER, sampleApiKey);
+      expect(sealMock).toHaveBeenCalledTimes(1);
+      expect(sealV1Mock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('credential resolution', () => {
+    it('returns undefined without an active grant and never touches the vault', async () => {
+      noGrant();
+      expect(await loadProviderCredentials(OWNER)).toBeUndefined();
+      expect(loadMock).not.toHaveBeenCalled();
+    });
+
+    it('returns undefined when granted but no key is sealed', async () => {
+      grant([inferScope]);
+      loadMock.mockResolvedValue(undefined);
+      expect(await loadProviderCredentials(OWNER)).toBeUndefined();
+    });
+
+    it('returns the key alone when no overrides are sealed', async () => {
+      grant([inferScope]);
+      loadMock.mockResolvedValueOnce(sampleApiKey).mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
+      const result = await loadProviderCredentials(OWNER);
+      expect(result?.apiKey).toBe(sampleApiKey);
+      expect(result?.baseUrl).toBeUndefined();
+      expect(result?.modelId).toBeUndefined();
+    });
+
+    it('returns the sealed baseUrl and modelId when present', async () => {
+      grant([inferScope]);
+      loadMock.mockResolvedValueOnce(sampleApiKey).mockResolvedValueOnce(sampleBaseUrl).mockResolvedValueOnce(sampleModelId);
+      expect(await loadProviderCredentials(OWNER)).toEqual({
+        apiKey: sampleApiKey, baseUrl: sampleBaseUrl, modelId: sampleModelId,
+      });
+    });
+
+    /**
+     * #1637: this used to throw, which took the whole brain walk down with
+     * it — a key awaiting Tier 1 approval meant a healthy sibling provider's
+     * key was never tried. `undefined` is the documented answer for "no
+     * usable connection".
+     */
+    it('returns undefined when the key is sealed but awaiting owner approval', async () => {
+      grant([inferScope]);
+      loadMock.mockRejectedValueOnce(
+        new VaultDelegationError('no active grant', { field: vaultField(OWNER), nodeDid: 'did:imajin:node' }),
+      );
+      await expect(loadProviderCredentials(OWNER)).resolves.toBeUndefined();
+    });
+
+    it('still propagates a non-delegation vault failure', async () => {
+      grant([inferScope]);
+      loadMock.mockRejectedValueOnce(new Error('vault integrity failure'));
+      await expect(loadProviderCredentials(OWNER)).rejects.toThrow('vault integrity failure');
+    });
+
+    it('degrades an unreadable baseUrl/modelId to "no override" instead of failing', async () => {
+      grant([inferScope]);
+      loadMock
+        .mockResolvedValueOnce(sampleApiKey)
+        .mockRejectedValueOnce(
+          new VaultDelegationError('no active grant', { field: `${id}-base-url:${OWNER}`, nodeDid: 'did:imajin:node' }),
+        )
+        .mockRejectedValueOnce(new Error('corrupt entry'));
+      await expect(loadProviderCredentials(OWNER)).resolves.toEqual({ apiKey: sampleApiKey });
+    });
+  });
+
+  describe('requireGrantAndKey (fail-closed gate)', () => {
+    it(`throws ${id}_no_grant when there is no active grant`, async () => {
+      noGrant();
+      await expect(requireGrantAndKey(OWNER, inferScope)).rejects.toThrow(new RegExp(`${id}_no_grant`));
+    });
+
+    it(`throws ${id}_no_key when grant exists but no key is sealed`, async () => {
+      grant([inferScope]);
+      loadMock.mockResolvedValue(undefined);
+      await expect(requireGrantAndKey(OWNER, inferScope)).rejects.toThrow(new RegExp(`${id}_no_key`));
+    });
+
+    it('returns the key when both grant and key are present', async () => {
+      grant([inferScope]);
+      loadMock.mockResolvedValue(sampleApiKey);
+      expect(await requireGrantAndKey(OWNER, inferScope)).toBe(sampleApiKey);
+    });
+
+    it(`throws ${id}_credential_pending when the key is sealed but no grant has arrived (#1521)`, async () => {
+      grant([inferScope]);
+      loadMock.mockRejectedValue(
+        new VaultDelegationError('no active grant', { field: vaultField(OWNER), nodeDid: 'did:imajin:node' }),
+      );
+      await expect(requireGrantAndKey(OWNER, inferScope)).rejects.toThrow(new RegExp(`${id}_credential_pending`));
+    });
+
+    it('never names the key in a failure message', async () => {
+      noGrant();
+      const err = await requireGrantAndKey(OWNER, inferScope).catch((e: unknown) => e as Error);
+      expect(err.message).not.toContain(sampleApiKey);
+    });
+  });
+
+  // #1724: `keySealed` used to delegate to `vaultFieldExists`, which only
+  // checks that the vault entry exists — not whether an active grant covers
+  // it. `revokeApiKey` (disconnect) leaves the entry in place and only
+  // revokes the grant, so that reported a disconnected key as sealed
+  // forever. It now delegates to `vaultFieldStatus`, which filters
+  // `WHERE status = 'active'`.
+  describe('keySealed (#1724)', () => {
+    it('delegates to vaultFieldStatus with the per-DID field', async () => {
+      statusMock.mockResolvedValue('ready');
+      expect(await keySealed(OWNER)).toBe(true);
+      expect(statusMock).toHaveBeenCalledWith(vaultField(OWNER));
+    });
+
+    it('returns false when no key is sealed', async () => {
+      statusMock.mockResolvedValue('absent');
+      expect(await keySealed(OWNER)).toBe(false);
+    });
+
+    it('returns false once the grant is revoked, even though the vault entry still exists', async () => {
+      // A revoked grant reports 'pending-grant' (no active grant covers the
+      // entry), not 'ready' — this is the exact disconnect state from #1724.
+      statusMock.mockResolvedValue('pending-grant');
+      expect(await keySealed(OWNER)).toBe(false);
+    });
+
+    it('returns false for an unverifiable entry', async () => {
+      statusMock.mockResolvedValue('unverifiable');
+      expect(await keySealed(OWNER)).toBe(false);
+    });
+  });
+
+  describe('keyPending (#1521)', () => {
+    it('is true when the field status is pending-grant', async () => {
+      statusMock.mockResolvedValue('pending-grant');
+      expect(await keyPending(OWNER)).toBe(true);
+      expect(statusMock).toHaveBeenCalledWith(vaultField(OWNER));
+    });
+
+    it('is false when the field is ready, absent, or unverifiable', async () => {
+      for (const status of ['ready', 'absent', 'unverifiable']) {
+        statusMock.mockResolvedValue(status);
+        expect(await keyPending(OWNER)).toBe(false);
+      }
+    });
+  });
+
+  describe('revokeApiKey (#1720)', () => {
+    it('delegates to revokeVaultDelegationGrantsForConnector with the connector id and owner DID', async () => {
+      revokeVaultGrantsMock.mockResolvedValue(1);
+      await revokeApiKey(OWNER);
+      expect(revokeVaultGrantsMock).toHaveBeenCalledWith(id, OWNER);
+    });
+
+    it('returns true when at least one grant was revoked', async () => {
+      revokeVaultGrantsMock.mockResolvedValue(1);
+      expect(await revokeApiKey(OWNER)).toBe(true);
+    });
+
+    it('returns false when no active grant existed', async () => {
+      revokeVaultGrantsMock.mockResolvedValue(0);
+      expect(await revokeApiKey(OWNER)).toBe(false);
+    });
+
+    // #1733: revoking only the vault grant left every previously granted
+    // channel_links scope reporting active forever. `revokeApiKey` now also
+    // sweeps active channel_links rows for this connector + DID.
+    it('also revokes active channel_links rows, even with nothing left in the vault to revoke', async () => {
+      revokeVaultGrantsMock.mockResolvedValue(0);
+      channelLinksRevokeMock.mockResolvedValue([{ id: 'clink_1' }]);
+      expect(await revokeApiKey(OWNER)).toBe(true);
+    });
+
+    it('returns false when neither the vault grant nor any channel_links row was active', async () => {
+      revokeVaultGrantsMock.mockResolvedValue(0);
+      channelLinksRevokeMock.mockResolvedValue([]);
+      expect(await revokeApiKey(OWNER)).toBe(false);
     });
   });
 }
