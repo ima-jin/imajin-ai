@@ -30,17 +30,19 @@ import {
   connectorUiScopes,
   type ConnectorId,
   type ConnectorScope,
-  type ReleaseClass,
 } from './scope-projections';
 
 /** How the connector ingests credentials. */
 export type IngestionPattern = 'oauth' | 'token-paste' | 'native' | 'static-secret';
 
 // Release class and per-scope shape live in ./scope-projections alongside the
-// derivation, and are re-exported here (from the single import above, rather
-// than a second `from './scope-projections'` clause) so existing importers
-// (the connector card, ConnectorDetail) keep working unchanged.
-export type { ReleaseClass, ConnectorScope };
+// derivation, and are re-exported here so existing importers (the connector
+// card, ConnectorDetail) keep working unchanged. `ReleaseClass` has no local
+// use, so it is re-exported directly via `export … from`; `ConnectorScope`
+// is also used locally below (`ConnectorEntry.scopes`), so it comes from the
+// value import above instead of a second `from './scope-projections'` import.
+export type { ReleaseClass } from './scope-projections';
+export type { ConnectorScope };
 
 /**
  * Per-connector copy for the credential-paste step (#1604).
