@@ -8,12 +8,19 @@
  * Body:
  *   {
  *     "message": "…",                    // required, non-empty
- *     "mode"?: "normal" | "plan" | "orchestrate"
+ *     "mode"?: "normal" | "plan" | "orchestrate",
+ *     "resume"?: boolean                  // continue a terminal run via handoff (#1939)
  *   }
  *
  * Returns `{ runId, accepted: true }`. Acceptance is not application: Warp routes
  * the message according to whatever the run is doing, and the effect is observed
  * through `GET /warp/api/runs/{runId}`.
+ *
+ * A terminal run is refused with 409 `warp_run_terminal` unless `resume: true`
+ * is given (#1939) — refusal-by-default, so a follow-up cannot accidentally wake
+ * a finished run back up. With `resume: true`, the follow-up is proxied to
+ * Warp's cloud-to-cloud handoff and the resume is recorded on the kernel run
+ * record as a `warp.run.resumed` bus event.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
@@ -38,9 +45,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
   const run = warpRunId(params, cors);
   if ('response' in run) return run.response;
 
-  let body: { message?: unknown; mode?: unknown };
+  let body: { message?: unknown; mode?: unknown; resume?: unknown };
   try {
-    body = (await request.json()) as { message?: unknown; mode?: unknown };
+    body = (await request.json()) as { message?: unknown; mode?: unknown; resume?: unknown };
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
   }
@@ -56,11 +63,13 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
   // `mode` is left to the client library to validate against the closed set, so
   // the rule lives in one place for HTTP and MCP callers alike.
   const mode = typeof body.mode === 'string' ? (body.mode as WarpFollowupMode) : undefined;
+  const resume = typeof body.resume === 'boolean' ? body.resume : undefined;
 
   try {
     const ack = await sendFollowup(acting.did, run.runId, {
       message,
       ...(mode === undefined ? {} : { mode }),
+      ...(resume === undefined ? {} : { resume }),
     });
     return NextResponse.json(ack, { status: 202, headers: cors });
   } catch (err) {

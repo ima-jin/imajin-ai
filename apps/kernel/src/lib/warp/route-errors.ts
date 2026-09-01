@@ -66,6 +66,19 @@ export function warpErrorResponse(err: unknown, cors: Record<string, string>): N
     );
   }
 
+  // A terminal run refused a follow-up because `resume: true` was not given
+  // (#1939) — conflict, not a bad request: the id and body were both fine, the
+  // run's current state is what stands in the way.
+  if (message.startsWith('warp_run_terminal')) {
+    return NextResponse.json(
+      {
+        error: 'warp_run_terminal',
+        detail: message.replace(/^warp_run_terminal: /, ''),
+      },
+      { status: 409, headers: cors },
+    );
+  }
+
   if (message.startsWith('warp_invalid_')) {
     return NextResponse.json({ error: message }, { status: 400, headers: cors });
   }

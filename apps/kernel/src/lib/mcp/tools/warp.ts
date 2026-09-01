@@ -128,6 +128,18 @@ const dispatchTool: McpTool = {
         type: 'string',
         description: 'Optional Warp cloud environment UID to run in',
       },
+      conversation_id: {
+        type: 'string',
+        description:
+          'Optional conversation id to continue (#1939) — Warp resumes from where a prior ' +
+          'run under this conversation left off',
+      },
+      parent_run_id: {
+        type: 'string',
+        description:
+          'Optional parent run id for an orchestration hierarchy (#1939). The parent run ' +
+          'must exist and be visible to your own sealed key.',
+      },
       model_id: {
         type: 'string',
         description: 'Optional model override (defaults to the team default)',
@@ -159,6 +171,8 @@ const dispatchTool: McpTool = {
     const title = str(args, 'title');
     const skillSpec = str(args, 'skill_spec');
     const environmentId = str(args, 'environment_id');
+    const conversationId = str(args, 'conversation_id');
+    const parentRunId = str(args, 'parent_run_id');
     const modelId = str(args, 'model_id');
     const basePrompt = str(args, 'base_prompt');
     const mcpServers = mcpServersArg(args);
@@ -168,6 +182,8 @@ const dispatchTool: McpTool = {
       ...(title === undefined ? {} : { title }),
       ...(skillSpec === undefined ? {} : { skillSpec }),
       ...(environmentId === undefined ? {} : { environmentId }),
+      ...(conversationId === undefined ? {} : { conversationId }),
+      ...(parentRunId === undefined ? {} : { parentRunId }),
       ...(modelId === undefined ? {} : { modelId }),
       ...(basePrompt === undefined ? {} : { basePrompt }),
       ...(mcpServers === undefined ? {} : { mcpServers }),
@@ -239,6 +255,7 @@ function listFilters(args: Record<string, unknown>): ListAgentRunsInput {
   const environmentId = str(args, 'environment_id');
   const createdAfter = str(args, 'created_after');
   const cursor = str(args, 'cursor');
+  const ancestorRunId = str(args, 'ancestor_run_id');
   const limit = num(args, 'limit');
 
   return {
@@ -247,6 +264,7 @@ function listFilters(args: Record<string, unknown>): ListAgentRunsInput {
     ...(environmentId === undefined ? {} : { environmentId }),
     ...(createdAfter === undefined ? {} : { createdAfter }),
     ...(cursor === undefined ? {} : { cursor }),
+    ...(ancestorRunId === undefined ? {} : { ancestorRunId }),
     ...(limit === undefined ? {} : { limit }),
   };
 }
@@ -291,6 +309,12 @@ const listRunsTool: McpTool = {
       cursor: {
         type: 'string',
         description: 'Optional nextCursor from a previous warp_list_runs page',
+      },
+      ancestor_run_id: {
+        type: 'string',
+        description:
+          'Optional run id (#1939) — lists every run spawned, directly or transitively, ' +
+          "from this ancestor's parentRunId lineage",
       },
     },
     additionalProperties: false,
@@ -380,6 +404,8 @@ const sendFollowupTool: McpTool = {
     'correction instead of cancel-and-redispatch. Returns { runId, accepted: true }: ' +
     'acceptance is not application, so observe the effect with warp_get_run. ' +
     'Delivered with your own sealed key, so you can only talk to your own runs. ' +
+    'A run that has already ended is refused unless resume is set (#1939) — pass ' +
+    'resume: true to continue it via Warp\'s cloud-to-cloud handoff. ' +
     'Requires an active warp:dispatch grant and a key sealed via warp_seal_key.',
   inputSchema: {
     type: 'object',
@@ -400,6 +426,12 @@ const sendFollowupTool: McpTool = {
           'infer this from the message text, so state it when you want plan or ' +
           'orchestrate behaviour.',
       },
+      resume: {
+        type: 'boolean',
+        description:
+          'Continue a run that has already ended, via cloud-to-cloud handoff (#1939). ' +
+          'Defaults to false — a terminal run is refused unless this is explicitly true.',
+      },
     },
     required: ['run_id', 'message'],
     additionalProperties: false,
@@ -413,11 +445,13 @@ const sendFollowupTool: McpTool = {
     // Cast rather than validated here: the closed set lives in the client, so the
     // HTTP and MCP callers reject an unknown mode with the same error.
     const mode = str(args, 'mode') as WarpFollowupMode | undefined;
+    const resume = typeof args.resume === 'boolean' ? args.resume : undefined;
 
     return json(
       await sendFollowup(ctx.did, runId, {
         message,
         ...(mode === undefined ? {} : { mode }),
+        ...(resume === undefined ? {} : { resume }),
       }),
     );
   },

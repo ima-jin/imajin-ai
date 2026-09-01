@@ -352,6 +352,34 @@ describe('dispatch config surface', () => {
   });
 });
 
+// ── Conversation/parent lineage passthrough (#1939) ───────────────────────────
+
+describe('dispatch lineage passthrough', () => {
+  it('sends conversationId as top-level conversation_id, not inside config', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', conversationId: 'conv-123' });
+
+    expect(lastRequestBody().conversation_id).toBe('conv-123');
+    expect(lastConfig()).not.toHaveProperty('conversation_id');
+  });
+
+  it('sends parentRunId as top-level parent_run_id, not inside config', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', parentRunId: 'run-parent-1' });
+
+    expect(lastRequestBody().parent_run_id).toBe('run-parent-1');
+    expect(lastConfig()).not.toHaveProperty('parent_run_id');
+  });
+
+  it('omits both lineage fields when neither is given', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    expect(lastRequestBody()).not.toHaveProperty('conversation_id');
+    expect(lastRequestBody()).not.toHaveProperty('parent_run_id');
+  });
+});
+
 // ── Environment resolution (#1632) ───────────────────────────────────────────
 //
 // The default used to be a single node-wide env var. It is now resolved from
@@ -571,6 +599,29 @@ describe('warp.agent.dispatched', () => {
     await expect(dispatchAgentRun(PRINCIPAL, { prompt: 'go' })).resolves.toMatchObject({
       runId: RUN_ID,
     });
+  });
+
+  it('records the Warp-confirmed conversation and parent lineage (#1939)', async () => {
+    respondJson({ ...QUEUED_RUN, conversation_id: 'conv-123', parent_run_id: 'run-parent-1' });
+    await dispatchAgentRun(PRINCIPAL, {
+      prompt: 'go',
+      conversationId: 'conv-123',
+      parentRunId: 'run-parent-1',
+    });
+
+    const [, envelope] = publishMock.mock.calls[0] as [string, { payload: Record<string, unknown> }];
+    expect(envelope.payload).toMatchObject({
+      conversationId: 'conv-123',
+      parentRunId: 'run-parent-1',
+    });
+  });
+
+  it('records null lineage when the dispatch named neither', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    const [, envelope] = publishMock.mock.calls[0] as [string, { payload: Record<string, unknown> }];
+    expect(envelope.payload).toMatchObject({ conversationId: null, parentRunId: null });
   });
 });
 
@@ -1020,6 +1071,14 @@ describe('listAgentRuns', () => {
     await expect(listAgentRuns(PRINCIPAL)).rejects.toThrow(/warp_no_grant/);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
+
+  it('passes ancestorRunId through as ancestor_run_id (#1939)', async () => {
+    respondJson({ runs: [], page_info: { has_next_page: false } });
+    await listAgentRuns(PRINCIPAL, { ancestorRunId: 'run-ancestor-1' });
+
+    const query = new URL(lastFetchCall().url).searchParams;
+    expect(query.get('ancestor_run_id')).toBe('run-ancestor-1');
+  });
 });
 
 // ── Cancel (#1639) ────────────────────────────────────────────────────────────
@@ -1100,10 +1159,17 @@ describe('cancelAgentRun', () => {
   });
 });
 
-// ── Follow-ups (#1639) ────────────────────────────────────────────────────────
+// ── Follow-ups (#1639) ────────────────────────────────────────────────────────────────────────────
+//
+// Every follow-up first reads the run's current state (#1939), so a run fixture
+// is queued before the followups ack in every test below except the ones that
+// fail before ever reaching the network.
+
+const INPROGRESS_RUN = { run_id: RUN_ID, state: 'INPROGRESS' };
 
 describe('sendFollowup', () => {
   it('POSTs the trimmed message to the followups endpoint', async () => {
+    respondJson(INPROGRESS_RUN);
     respondJson({});
 
     const ack = await sendFollowup(PRINCIPAL, RUN_ID, { message: '  use pnpm, not npm  ' });
@@ -1115,7 +1181,19 @@ describe('sendFollowup', () => {
     expect(ack).toEqual({ runId: RUN_ID, accepted: true });
   });
 
+  it('reads the run state first, with the same key, before delivering', async () => {
+    respondJson(INPROGRESS_RUN);
+    respondJson({});
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'carry on' });
+
+    const first = fetchCall(0);
+    expect(first.url).toBe(`${BASE_URL}/agent/runs/${RUN_ID}`);
+    expect(first.init.method).toBe('GET');
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(2);
+  });
+
   it('forwards an explicit mode, since Warp does not infer it from the message', async () => {
+    respondJson(INPROGRESS_RUN);
     respondJson({});
     await sendFollowup(PRINCIPAL, RUN_ID, { message: 'replan', mode: 'plan' });
 
@@ -1123,6 +1201,7 @@ describe('sendFollowup', () => {
   });
 
   it('omits mode entirely when the caller names none', async () => {
+    respondJson(INPROGRESS_RUN);
     respondJson({});
     await sendFollowup(PRINCIPAL, RUN_ID, { message: 'carry on' });
 
@@ -1156,10 +1235,106 @@ describe('sendFollowup', () => {
   });
 
   it('keeps the sealed key out of the request body and the log line', async () => {
+    respondJson(INPROGRESS_RUN);
     respondJson({});
     await sendFollowup(PRINCIPAL, RUN_ID, { message: 'go', mode: 'normal' });
 
     expect(JSON.stringify(lastRequestBody())).not.toContain(AGENT_KEY);
     expect(JSON.stringify(logMock.info.mock.calls)).not.toContain(AGENT_KEY);
+  });
+});
+
+// ── Terminal-run refusal vs. resume (#1939) ───────────────────────────────────────
+
+describe('sendFollowup terminal-run resume', () => {
+  it('refuses a terminal run without resume, and never delivers the follow-up', async () => {
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED' });
+
+    await expect(sendFollowup(PRINCIPAL, RUN_ID, { message: 'go' })).rejects.toThrow(
+      /warp_run_terminal/,
+    );
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a terminal run when resume is explicitly false', async () => {
+    respondJson({ run_id: RUN_ID, state: 'FAILED' });
+
+    await expect(
+      sendFollowup(PRINCIPAL, RUN_ID, { message: 'go', resume: false }),
+    ).rejects.toThrow(/warp_run_terminal/);
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refuse a non-terminal run even without resume', async () => {
+    respondJson(INPROGRESS_RUN);
+    respondJson({});
+
+    await expect(sendFollowup(PRINCIPAL, RUN_ID, { message: 'go' })).resolves.toEqual({
+      runId: RUN_ID,
+      accepted: true,
+    });
+  });
+
+  it('proxies the follow-up to a terminal run when resume is true', async () => {
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED' });
+    respondJson({});
+
+    const ack = await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true });
+
+    expect(ack).toEqual({ runId: RUN_ID, accepted: true });
+    const { url, init } = lastFetchCall();
+    expect(url).toBe(`${BASE_URL}/agent/runs/${RUN_ID}/followups`);
+    expect(init.method).toBe('POST');
+    expect(lastRequestBody()).toEqual({ message: 'keep going' });
+  });
+
+  it('records the resume on the bus as the honest kernel run record', async () => {
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED' });
+    respondJson({});
+
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', mode: 'plan', resume: true });
+
+    const [eventType, envelope] = publishMock.mock.calls[0] as [
+      string,
+      { issuer: string; payload: Record<string, unknown> },
+    ];
+    expect(eventType).toBe('warp.run.resumed');
+    expect(envelope.issuer).toBe(PRINCIPAL);
+    expect(envelope.payload).toMatchObject({
+      runId: RUN_ID,
+      principalDid: PRINCIPAL,
+      previousState: 'SUCCEEDED',
+      mode: 'plan',
+      context_type: 'warp.agent',
+    });
+  });
+
+  it('defaults the recorded resume mode to normal when none was given', async () => {
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED' });
+    respondJson({});
+
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true });
+
+    const [, envelope] = publishMock.mock.calls[0] as [string, { payload: Record<string, unknown> }];
+    expect(envelope.payload.mode).toBe('normal');
+  });
+
+  it('does not publish a resume event for a non-terminal run, even with resume: true', async () => {
+    respondJson(INPROGRESS_RUN);
+    respondJson({});
+
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true });
+
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the follow-up when the resume bus publish rejects', async () => {
+    publishMock.mockRejectedValue(new Error('bus down'));
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED' });
+    respondJson({});
+
+    await expect(
+      sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true }),
+    ).resolves.toEqual({ runId: RUN_ID, accepted: true });
   });
 });

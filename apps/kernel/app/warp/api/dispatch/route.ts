@@ -13,6 +13,8 @@
  *     "modelId"?: "…",
  *     "basePrompt"?: "…",
  *     "environmentId"?: "…",
+ *     "conversationId"?: "…",             // continue an existing conversation (#1939)
+ *     "parentRunId"?: "…",                // orchestration lineage (#1939)
  *     "skillSpec"?: "owner/repo:skill",    // versioned SKILL.md as the payload
  *     "mcpServers"?: { name: { url, headers? } },
  *     "attachImajinMcp"?: boolean,         // attach mcp.imajin.ai (Wire B)
@@ -106,6 +108,12 @@ export async function POST(request: NextRequest) {
     ...(optionalString(body.environmentId) === undefined
       ? {}
       : { environmentId: optionalString(body.environmentId) }),
+    ...(optionalString(body.conversationId) === undefined
+      ? {}
+      : { conversationId: optionalString(body.conversationId) }),
+    ...(optionalString(body.parentRunId) === undefined
+      ? {}
+      : { parentRunId: optionalString(body.parentRunId) }),
     ...(optionalString(body.skillSpec) === undefined
       ? {}
       : { skillSpec: optionalString(body.skillSpec) }),

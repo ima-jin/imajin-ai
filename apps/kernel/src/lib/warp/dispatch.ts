@@ -204,6 +204,20 @@ export interface DispatchAgentRunInput {
    */
   environmentId?: string;
   /**
+   * Continue an existing conversation (#1939). When set, Warp resumes from
+   * where a prior run under this conversation left off — transcript
+   * continuity, not just a reference. Top-level on `RunAgentRequest`, not
+   * part of `config`.
+   */
+  conversationId?: string;
+  /**
+   * Parent run id for an orchestration hierarchy (#1939). The parent run must
+   * exist and be visible to the caller's own key; Warp enforces that upstream
+   * and its rejection is surfaced verbatim rather than pre-validated here.
+   * Top-level on `RunAgentRequest`, not part of `config`.
+   */
+  parentRunId?: string;
+  /**
    * Skill to use as the base prompt, `owner/repo:skill-name` or
    * `owner/repo:path/to/SKILL.md`. A versioned SKILL.md in the repo becomes the
    * dispatchable payload instead of a pasted prompt blob.
@@ -362,6 +376,12 @@ export interface ListAgentRunsInput {
   limit?: number;
   /** `nextCursor` from a previous page. */
   cursor?: string;
+  /**
+   * Filter to descendants of this run id (#1939) — Warp's own
+   * `?ancestor_run_id=` lineage query. Lists every run spawned (directly or
+   * transitively) via `parentRunId` from this ancestor.
+   */
+  ancestorRunId?: string;
 }
 
 /**
@@ -432,6 +452,12 @@ export interface SendFollowupInput {
   message: string;
   /** Defaults to Warp's own default (`normal`) when omitted. */
   mode?: WarpFollowupMode;
+  /**
+   * Resume a terminal run via Warp's cloud-to-cloud handoff (#1939). Defaults
+   * to `false` — a terminal run is refused unless this is explicitly `true`,
+   * so a caller cannot accidentally wake a finished run back up.
+   */
+  resume?: boolean;
 }
 
 /**
@@ -856,6 +882,8 @@ export async function dispatchAgentRun(
     body: {
       prompt,
       ...(input.title === undefined ? {} : { title: input.title }),
+      ...(input.conversationId === undefined ? {} : { conversation_id: input.conversationId }),
+      ...(input.parentRunId === undefined ? {} : { parent_run_id: input.parentRunId }),
       config,
     },
   });
@@ -885,6 +913,10 @@ export async function dispatchAgentRun(
       state: run.state,
       skillSpec: config.skill_spec ?? null,
       environmentId: config.environment_id ?? null,
+      // Warp-confirmed, not request-echoed — see the field docs on
+      // `warp.agent.dispatched` in packages/bus/src/types.ts (#1939).
+      conversationId: run.conversationId,
+      parentRunId: run.parentRunId,
       context_id: run.runId,
       context_type: 'warp.agent',
     },
@@ -914,8 +946,18 @@ export async function getAgentRun(principalDid: string, runId: string): Promise<
   const id = requireRunId(runId);
 
   const agentKey = await requireAgentKey(principalDid);
-  const payload = await warpFetch(agentKey, runPath(id), { method: 'GET' });
+  return fetchAgentRun(agentKey, id);
+}
 
+/**
+ * `GET /agent/runs/{runId}` with an already-unwrapped key.
+ *
+ * Factored out of {@link getAgentRun} so {@link sendFollowup} can read a run's
+ * current state to gate a resume (#1939) without unwrapping the caller's
+ * sealed key a second time.
+ */
+async function fetchAgentRun(agentKey: string, id: string): Promise<WarpAgentRun> {
+  const payload = await warpFetch(agentKey, runPath(id), { method: 'GET' });
   return toAgentRun(payload, id);
 }
 
@@ -944,6 +986,9 @@ function buildRunsQuery(input: ListAgentRunsInput): string {
 
   const cursor = optionalString(input.cursor?.trim());
   if (cursor !== undefined) params.set('cursor', cursor);
+
+  const ancestorRunId = optionalString(input.ancestorRunId?.trim());
+  if (ancestorRunId !== undefined) params.set('ancestor_run_id', ancestorRunId);
 
   // Clamped rather than rejected: an out-of-range page size is a caller
   // misunderstanding, not a reason to fail a read they are entitled to.
@@ -1143,7 +1188,42 @@ export async function cancelAgentRun(
 const FOLLOWUP_MODES: readonly WarpFollowupMode[] = ['normal', 'plan', 'orchestrate'];
 
 /**
- * Send a follow-up message to an existing run as `principalDid` (#1639).
+ * Publish `warp.run.resumed` for the honest record that a terminal run was
+ * woken back up (#1939). Never throws: a failed audit publish must not cost
+ * the resume that already happened upstream, the same invariant every other
+ * `warp.*` publish in this module follows.
+ */
+async function publishRunResumed(
+  principalDid: string,
+  runId: string,
+  previousState: string | null,
+  mode: WarpFollowupMode,
+): Promise<void> {
+  try {
+    await publish('warp.run.resumed', {
+      issuer: principalDid,
+      subject: principalDid,
+      scope: 'warp',
+      payload: {
+        runId,
+        principalDid,
+        previousState,
+        mode,
+        resumedAt: new Date().toISOString(),
+        context_id: runId,
+        context_type: 'warp.agent',
+      },
+    });
+  } catch (err) {
+    log.error(
+      { err: String(err), principalDid, runId },
+      'Bus publish error for warp.run.resumed',
+    );
+  }
+}
+
+/**
+ * Send a follow-up message to an existing run as `principalDid` (#1639, #1939).
  *
  * Mid-run course correction: Warp routes the message according to whatever the
  * run is currently doing, so a 200 means "accepted", not "applied" — the effect is
@@ -1152,6 +1232,17 @@ const FOLLOWUP_MODES: readonly WarpFollowupMode[] = ['normal', 'plan', 'orchestr
  * An unknown `mode` is rejected here rather than forwarded: the set is small and
  * closed, and a typo silently downgrading a `plan` follow-up to `normal` is worse
  * than a 400.
+ *
+ * ## Terminal-run resume (#1939)
+ * Warp's `/followups` endpoint transparently resumes a terminal run via
+ * cloud-to-cloud handoff rather than refusing it — the kernel is what draws
+ * the refusal line, not Warp. So every follow-up first reads the run's
+ * current state with the same key: a terminal run is refused unless the
+ * caller explicitly opted in with `resume: true`, which is what keeps
+ * "no accidental necromancy" true regardless of what Warp itself would do.
+ * When a resumed run is confirmed terminal, the delivery is followed by a
+ * `warp.run.resumed` bus event — the kernel run record's honest trace of
+ * *that* it happened, distinct from the follow-up's own delivery.
  */
 export async function sendFollowup(
   principalDid: string,
@@ -1169,7 +1260,21 @@ export async function sendFollowup(
     throw new Error(`warp_invalid_mode: mode must be one of ${FOLLOWUP_MODES.join(', ')}`);
   }
 
+  const resume = input.resume === true;
+
   const agentKey = await requireAgentKey(principalDid);
+
+  const current = await fetchAgentRun(agentKey, id);
+  const wasTerminal = isTerminalRunState(current.state);
+
+  if (wasTerminal && !resume) {
+    throw new Error(
+      `warp_run_terminal: run ${id} has already ended (${current.state}); pass resume: true ` +
+        "to continue it via Warp's cloud-to-cloud handoff",
+    );
+  }
+
+  const mode = input.mode ?? 'normal';
   await warpFetch(agentKey, runPath(id, '/followups'), {
     method: 'POST',
     body: {
@@ -1178,7 +1283,14 @@ export async function sendFollowup(
     },
   });
 
-  log.info({ principalDid, runId: id, mode: input.mode ?? null }, 'Warp run follow-up accepted');
+  log.info(
+    { principalDid, runId: id, mode: input.mode ?? null, resume: wasTerminal && resume },
+    'Warp run follow-up accepted',
+  );
+
+  if (wasTerminal && resume) {
+    await publishRunResumed(principalDid, id, current.state, mode);
+  }
 
   return { runId: id, accepted: true };
 }

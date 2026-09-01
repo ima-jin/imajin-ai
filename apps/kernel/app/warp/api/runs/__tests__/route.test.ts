@@ -89,7 +89,8 @@ describe('GET /warp/api/runs', () => {
     await GET(
       makeReq(
         '?name=veteze-jin&state=QUEUED&state=INPROGRESS' +
-          '&environmentId=ENVUID&createdAfter=2026-08-01T00:00:00Z&cursor=c1&limit=50',
+          '&environmentId=ENVUID&createdAfter=2026-08-01T00:00:00Z&cursor=c1' +
+          '&ancestorRunId=run-ancestor-1&limit=50',
       ),
     );
 
@@ -99,6 +100,7 @@ describe('GET /warp/api/runs', () => {
       environmentId: 'ENVUID',
       createdAfter: '2026-08-01T00:00:00Z',
       cursor: 'c1',
+      ancestorRunId: 'run-ancestor-1',
       limit: 50,
     });
   });

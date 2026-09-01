@@ -132,6 +132,8 @@ describe('body validation', () => {
         modelId: 'auto',
         basePrompt: 'be brief',
         environmentId: 'UA17BXYZ',
+        conversationId: 'conv-123',
+        parentRunId: 'run-parent-1',
         skillSpec: 'ima-jin/imajin-ai:catalyst',
         mcpServers: { imajin: { url: 'https://mcp.example/mcp' } },
         attachImajinMcp: true,
@@ -146,11 +148,20 @@ describe('body validation', () => {
       modelId: 'auto',
       basePrompt: 'be brief',
       environmentId: 'UA17BXYZ',
+      conversationId: 'conv-123',
+      parentRunId: 'run-parent-1',
       skillSpec: 'ima-jin/imajin-ai:catalyst',
       mcpServers: { imajin: { url: 'https://mcp.example/mcp' } },
       attachImajinMcp: true,
       computerUseEnabled: false,
     });
+  });
+
+  it('omits conversationId/parentRunId when neither is given (#1939)', async () => {
+    await POST(makeReq({ prompt: 'go' }));
+
+    expect(dispatchInput()).not.toHaveProperty('conversationId');
+    expect(dispatchInput()).not.toHaveProperty('parentRunId');
   });
 
   it('drops malformed optional fields instead of forwarding junk', async () => {
