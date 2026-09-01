@@ -1,42 +1,33 @@
 /**
  * Tests for GET/PUT /openai/api/models (#1927).
  *
- * The route CONTRACT — auth, credential states, GET, PUT — is shared with
- * every OpenAI-compatible model picker; see `describeModelPickerRouteContract`
- * in `src/lib/kernel/__tests__/model-picker-route-test-support.ts`. Only the
- * provider-specific mock wiring lives here.
+ * The route CONTRACT — auth, credential states, GET, PUT — and the
+ * mock-setup boilerplate for the connector-agnostic dependencies
+ * (auth, CORS, logger) are shared with every OpenAI-compatible model picker;
+ * see `mockModelPickerRouteDeps` and `describeModelPickerRouteContract` in
+ * `src/lib/kernel/__tests__/model-picker-route-test-support.ts`. Only the
+ * provider-specific mock and route import live here.
  */
 import { vi } from 'vitest';
-import { describeModelPickerRouteContract } from '@/src/lib/kernel/__tests__/model-picker-route-test-support';
+import {
+  mockModelPickerRouteDeps,
+  describeModelPickerRouteContract,
+} from '@/src/lib/kernel/__tests__/model-picker-route-test-support';
 
-const { mockResolveOwnerDid, mockLoadSealed, mockKeyPending, mockSetModelId } = vi.hoisted(() => ({
-  mockResolveOwnerDid: vi.fn(),
-  mockLoadSealed: vi.fn(),
-  mockKeyPending: vi.fn(),
-  mockSetModelId: vi.fn(),
-}));
+const mockLoadSealed = vi.fn();
+const mockKeyPending = vi.fn();
+const mockSetModelId = vi.fn();
 
-vi.mock('@/src/lib/kernel/connector-owner-did', () => ({
-  resolveConnectorOwnerDid: mockResolveOwnerDid,
-}));
+const { resolveOwnerDid: mockResolveOwnerDid } = mockModelPickerRouteDeps();
 
-vi.mock('@/src/lib/openai/connector', () => ({
+vi.doMock('@/src/lib/openai/connector', () => ({
   loadOpenaiSealedCredentials: mockLoadSealed,
   openaiKeyPending: mockKeyPending,
   setModelId: mockSetModelId,
   OPENAI_BASE_URL: 'https://api.openai.com/v1',
 }));
 
-vi.mock('@/src/lib/kernel/cors', () => ({
-  corsHeaders: () => ({ 'Access-Control-Allow-Origin': 'https://app.imajin.ai' }),
-  corsOptions: () => new Response(null, { status: 204 }),
-}));
-
-vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
-}));
-
-import { GET, PUT, OPTIONS } from '../route';
+const { GET, PUT, OPTIONS } = await import('../route');
 
 describeModelPickerRouteContract({
   label: 'OpenAI',

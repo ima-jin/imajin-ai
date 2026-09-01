@@ -84,6 +84,42 @@ export function resetModelPickerMocks(mocks: ModelPickerRouteMocks): void {
   mocks.setModelId.mockResolvedValue(undefined);
 }
 
+export interface ModelPickerRouteDeps {
+  resolveOwnerDid: Mock;
+}
+
+/**
+ * Mock the three dependencies every model-picker route shares regardless of
+ * provider — `resolveConnectorOwnerDid`, CORS headers, and the logger — via
+ * `vi.doMock` (unlike `vi.mock`, NOT hoisted, so it registers only for the
+ * NEXT dynamic import). Call this BEFORE mocking the connector-specific
+ * module and dynamically importing the route under test:
+ *
+ * ```ts
+ * const { resolveOwnerDid } = mockModelPickerRouteDeps();
+ * vi.doMock('@/src/lib/openai/connector', () => ({ ... }));
+ * const { GET, PUT, OPTIONS } = await import('../route');
+ * ```
+ */
+export function mockModelPickerRouteDeps(): ModelPickerRouteDeps {
+  const resolveOwnerDid = vi.fn();
+
+  vi.doMock('@/src/lib/kernel/connector-owner-did', () => ({
+    resolveConnectorOwnerDid: resolveOwnerDid,
+  }));
+
+  vi.doMock('@/src/lib/kernel/cors', () => ({
+    corsHeaders: () => ({ 'Access-Control-Allow-Origin': 'https://app.imajin.ai' }),
+    corsOptions: () => new Response(null, { status: 204 }),
+  }));
+
+  vi.doMock('@imajin/logger', () => ({
+    createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
+  }));
+
+  return { resolveOwnerDid };
+}
+
 export interface ModelPickerRouteContractFixture<Req = ModelPickerRouteRequest> {
   /** Display name used in owner-facing prose, e.g. `'OpenAI'`. */
   label: string;

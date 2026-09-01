@@ -5,22 +5,70 @@
  * xAI (#1924) and OpenAI (#1927) pin the exact same three things per
  * connector — identity wiring (`connector.ts`), scope-manifest delegation
  * (`scope-manifest.ts`), and route wiring (`app/{id}/api/**\/route.ts`) — and
- * had been hand-copied down to the `it()` prose. Declaring each contract once
- * here, parameterized on the connector's own mocks and imports, means the
- * next token-paste provider with a scope manifest and routes (#1930, #1931)
- * gets full identity/wiring coverage for the price of one call per contract
- * instead of another full copy of these suites.
+ * had been hand-copied down to the `it()` prose AND the `vi.mock(...)`
+ * boilerplate that sets each contract up. Declaring each contract's
+ * assertions once here, parameterized on the connector's own mocks and
+ * imports, means the next token-paste provider with a scope manifest and
+ * routes (#1930, #1931) gets full identity/wiring coverage for the price of
+ * one call per contract instead of another full copy of these suites.
  *
- * Each `describe*Contract` function is called from the actual per-connector
- * `*.test.ts` file, which still owns its own `vi.mock(...)` calls — those
- * must stay in the file that imports the mocked module for Vitest's hoisting
- * to intercept it, so only the assertions move here, not the mocking.
+ * The `mock*Factory`/`mock*Deps` helpers below share the mock-setup
+ * boilerplate itself, which is provider-agnostic. They use `vi.doMock`
+ * (unlike `vi.mock`, NOT hoisted) rather than `vi.mock`, because `vi.mock`'s
+ * hoisting only reorders calls within the file that contains them — moving it
+ * into a shared, imported function would not hoist it above that function's
+ * OWN caller's imports. `vi.doMock` intercepts the next dynamic `import()` of
+ * the mocked path instead, so every per-connector test file calls the shared
+ * setup function first and then `await import('../connector')` (etc.) rather
+ * than a static `import` — see `connector-token-paste.test.ts`'s sibling
+ * files for the pattern.
  */
-import { describe, it, expect, beforeEach, type Mock } from 'vitest';
+import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
 
 const OWNER = 'did:imajin:farmer';
 
 // ── Connector identity (connector.ts) ───────────────────────────────────────
+
+export interface ConnectorTokenPasteMockFactory {
+  capturedOpts: { current: Record<string, unknown> | null };
+  loadCredentials: Mock;
+  loadSealedCredentials: Mock;
+}
+
+/**
+ * Mock `createConnectorTokenPaste` (#1621) and capture the options it was
+ * built with, so `describeConnectorIdentityContract` can assert on them.
+ * Call this BEFORE dynamically importing the connector module under test —
+ * see the module doc comment for why this must be `vi.doMock` + a dynamic
+ * import rather than the hoisted `vi.mock`.
+ */
+export function mockConnectorTokenPasteFactory(): ConnectorTokenPasteMockFactory {
+  const capturedOpts: { current: Record<string, unknown> | null } = { current: null };
+  const factoryStub: Record<string, unknown> = {};
+  const loadCredentials = vi.fn();
+  const loadSealedCredentials = vi.fn();
+
+  vi.doMock('@/src/lib/kernel/connector-token-paste', () => ({
+    createConnectorTokenPaste: vi.fn((opts: Record<string, unknown>) => {
+      capturedOpts.current = opts;
+      Object.assign(factoryStub, {
+        vaultField: (did: string) => `${opts.id as string}-api-key:${did}`,
+        sealApiKey: vi.fn(),
+        resolveActiveGrant: vi.fn(),
+        requireGrantAndKey: vi.fn(),
+        keySealed: vi.fn(),
+        keyPending: vi.fn(),
+        revokeApiKey: vi.fn(),
+        setModelId: vi.fn(),
+        loadCredentials,
+        loadSealedCredentials,
+      });
+      return factoryStub;
+    }),
+  }));
+
+  return { capturedOpts, loadCredentials, loadSealedCredentials };
+}
 
 export interface ConnectorIdentityContractFixture {
   /** Display name used in owner-facing prose, e.g. `'OpenAI'`. */
@@ -222,6 +270,47 @@ export function describeScopeManifestIdentityContract(fixture: ScopeManifestCont
 }
 
 // ── Route wiring (app/{id}/api/**\/route.ts) ────────────────────────────────
+
+export interface RouteWiringMockFactories {
+  tokenOpts: { current: Record<string, unknown> | null };
+  disconnectOpts: { current: Record<string, unknown> | null };
+  manifestOpts: { current: Record<string, unknown> | null };
+}
+
+/**
+ * Mock the two connector-agnostic route factories
+ * (`createConnectorTokenRoutes` / `createConnectorTokenDisconnectRoute` from
+ * `connector-token-route.ts`, and `createConnectorScopeManifestRoute` from
+ * `scope-manifest-route.ts`) and capture the options each was built with, so
+ * `describeRouteWiringContract` can assert on them. Call this BEFORE
+ * dynamically importing the three route modules under test.
+ */
+export function mockRouteWiringFactories(): RouteWiringMockFactories {
+  const tokenOpts: { current: Record<string, unknown> | null } = { current: null };
+  const disconnectOpts: { current: Record<string, unknown> | null } = { current: null };
+  const manifestOpts: { current: Record<string, unknown> | null } = { current: null };
+  const handlers = { GET: vi.fn(), POST: vi.fn(), OPTIONS: vi.fn() };
+
+  vi.doMock('@/src/lib/kernel/connector-token-route', () => ({
+    createConnectorTokenRoutes: vi.fn((opts: Record<string, unknown>) => {
+      tokenOpts.current = opts;
+      return handlers;
+    }),
+    createConnectorTokenDisconnectRoute: vi.fn((opts: Record<string, unknown>) => {
+      disconnectOpts.current = opts;
+      return handlers;
+    }),
+  }));
+
+  vi.doMock('@/src/lib/kernel/scope-manifest-route', () => ({
+    createConnectorScopeManifestRoute: vi.fn((opts: Record<string, unknown>) => {
+      manifestOpts.current = opts;
+      return handlers;
+    }),
+  }));
+
+  return { tokenOpts, disconnectOpts, manifestOpts };
+}
 
 export interface RouteWiringContractFixture {
   label: string;

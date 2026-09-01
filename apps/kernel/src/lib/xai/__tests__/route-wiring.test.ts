@@ -1,58 +1,36 @@
 /**
  * xAI route wiring tests (#1924).
  *
- * The wiring contract itself — the token, disconnect and scope-manifest
- * routes must bind to the right connector and nothing else — is shared with
- * every other token-paste connector; see `describeRouteWiringContract` in
+ * The wiring contract, and the mock-setup boilerplate for the two
+ * connector-agnostic route factories, are shared with every other
+ * token-paste connector — see `mockRouteWiringFactories` and
+ * `describeRouteWiringContract` in
  * `src/lib/kernel/__tests__/brain-connector-contract.ts` (#1927). Only the
- * provider-specific mock wiring and route imports live here.
+ * provider-specific mocks and route imports live here.
  */
 import { vi } from 'vitest';
-import { describeRouteWiringContract } from '@/src/lib/kernel/__tests__/brain-connector-contract';
+import {
+  mockRouteWiringFactories,
+  describeRouteWiringContract,
+} from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
-const {
-  tokenOpts, disconnectOpts, manifestOpts, handlers,
-  sealApiKey, keySealed, keyPending, revokeApiKey,
-  findAsset, readScopes, publish,
-} = vi.hoisted(() => ({
-  tokenOpts: { current: null as Record<string, unknown> | null },
-  disconnectOpts: { current: null as Record<string, unknown> | null },
-  manifestOpts: { current: null as Record<string, unknown> | null },
-  handlers: { GET: vi.fn(), POST: vi.fn(), OPTIONS: vi.fn() },
-  sealApiKey: vi.fn(),
-  keySealed: vi.fn(),
-  keyPending: vi.fn(),
-  revokeApiKey: vi.fn(),
-  findAsset: vi.fn(),
-  readScopes: vi.fn(),
-  publish: vi.fn(),
-}));
+const sealApiKey = vi.fn();
+const keySealed = vi.fn();
+const keyPending = vi.fn();
+const revokeApiKey = vi.fn();
+const findAsset = vi.fn();
+const readScopes = vi.fn();
+const publish = vi.fn();
 
-vi.mock('@/src/lib/kernel/connector-token-route', () => ({
-  createConnectorTokenRoutes: vi.fn((opts: Record<string, unknown>) => {
-    tokenOpts.current = opts;
-    return handlers;
-  }),
-  createConnectorTokenDisconnectRoute: vi.fn((opts: Record<string, unknown>) => {
-    disconnectOpts.current = opts;
-    return handlers;
-  }),
-}));
+const { tokenOpts, disconnectOpts, manifestOpts } = mockRouteWiringFactories();
 
-vi.mock('@/src/lib/kernel/scope-manifest-route', () => ({
-  createConnectorScopeManifestRoute: vi.fn((opts: Record<string, unknown>) => {
-    manifestOpts.current = opts;
-    return handlers;
-  }),
-}));
-
-vi.mock('@/src/lib/xai/connector', () => ({
+vi.doMock('@/src/lib/xai/connector', () => ({
   sealApiKey,
   xaiKeySealed: keySealed,
   revokeApiKey,
 }));
 
-vi.mock('@/src/lib/xai/scope-manifest', () => ({
+vi.doMock('@/src/lib/xai/scope-manifest', () => ({
   findXaiManifestAsset: findAsset,
   readActiveXaiScopes: readScopes,
   publishXaiScopeManifest: publish,
