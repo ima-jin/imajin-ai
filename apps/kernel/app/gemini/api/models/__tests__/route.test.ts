@@ -11,6 +11,11 @@
  * and upstream/credential failures map to sane statuses.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  makeModelPickerRequest,
+  stubModelPickerFetch,
+  resetModelPickerMocks,
+} from '@/src/lib/kernel/__tests__/model-picker-route-test-support';
 
 const { mockResolveConnectorOwnerDid, mockLoadGeminiSealedCredentials, mockGeminiKeyPending, mockSetModelId } = vi.hoisted(() => ({
   mockResolveConnectorOwnerDid: vi.fn(),
@@ -46,36 +51,22 @@ const API_KEY = 'AIzaSy-GEMINI-SEALED';
 type RouteRequest = Parameters<typeof PUT>[0];
 
 function makeReq(body?: unknown, opts: { malformed?: boolean } = {}): RouteRequest {
-  return {
-    headers: new Headers(),
-    json: async () => {
-      if (opts.malformed === true) throw new Error('invalid json');
-      return body;
-    },
-  } as unknown as RouteRequest;
+  return makeModelPickerRequest(body, opts) as unknown as RouteRequest;
 }
 
 function stubFetch(body: unknown, ok = true, status = 200) {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok,
-    status,
-    statusText: ok ? 'OK' : 'Error',
-    json: async () => body,
-  });
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
+  return stubModelPickerFetch(body, ok, status);
 }
 
 beforeEach(() => {
-  vi.unstubAllGlobals();
-  mockResolveConnectorOwnerDid.mockReset();
-  mockResolveConnectorOwnerDid.mockResolvedValue({ ok: true, ownerDid: OWNER_DID });
-  mockLoadGeminiSealedCredentials.mockReset();
-  mockLoadGeminiSealedCredentials.mockResolvedValue({ apiKey: API_KEY });
-  mockGeminiKeyPending.mockReset();
-  mockGeminiKeyPending.mockResolvedValue(false);
-  mockSetModelId.mockReset();
-  mockSetModelId.mockResolvedValue(undefined);
+  resetModelPickerMocks({
+    resolveOwnerDid: mockResolveConnectorOwnerDid,
+    loadSealedCredentials: mockLoadGeminiSealedCredentials,
+    keyPending: mockGeminiKeyPending,
+    setModelId: mockSetModelId,
+    ownerDid: OWNER_DID,
+    apiKey: API_KEY,
+  });
 });
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

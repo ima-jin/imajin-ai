@@ -12,6 +12,11 @@
  *   - upstream failures surface as a status, never as an upstream body.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  makeModelPickerRequest,
+  stubModelPickerFetch,
+  resetModelPickerMocks,
+} from '@/src/lib/kernel/__tests__/model-picker-route-test-support';
 
 const { mockResolveOwnerDid, mockLoadSealed, mockKeyPending, mockSetModelId } = vi.hoisted(() => ({
   mockResolveOwnerDid: vi.fn(),
@@ -48,36 +53,22 @@ const API_KEY = 'xai-SEALED-KEY';
 type RouteRequest = Parameters<typeof PUT>[0];
 
 function makeReq(body?: unknown, opts: { malformed?: boolean } = {}): RouteRequest {
-  return {
-    headers: new Headers(),
-    json: async () => {
-      if (opts.malformed === true) throw new Error('invalid json');
-      return body;
-    },
-  } as unknown as RouteRequest;
+  return makeModelPickerRequest(body, opts) as unknown as RouteRequest;
 }
 
 function stubFetch(body: unknown, ok = true, status = 200) {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok,
-    status,
-    statusText: ok ? 'OK' : 'Error',
-    json: async () => body,
-  });
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
+  return stubModelPickerFetch(body, ok, status);
 }
 
 beforeEach(() => {
-  vi.unstubAllGlobals();
-  mockResolveOwnerDid.mockReset();
-  mockResolveOwnerDid.mockResolvedValue({ ok: true, ownerDid: OWNER_DID });
-  mockLoadSealed.mockReset();
-  mockLoadSealed.mockResolvedValue({ apiKey: API_KEY });
-  mockKeyPending.mockReset();
-  mockKeyPending.mockResolvedValue(false);
-  mockSetModelId.mockReset();
-  mockSetModelId.mockResolvedValue(undefined);
+  resetModelPickerMocks({
+    resolveOwnerDid: mockResolveOwnerDid,
+    loadSealedCredentials: mockLoadSealed,
+    keyPending: mockKeyPending,
+    setModelId: mockSetModelId,
+    ownerDid: OWNER_DID,
+    apiKey: API_KEY,
+  });
 });
 
 // ── Auth ──────────────────────────────────────────────────────────────────────

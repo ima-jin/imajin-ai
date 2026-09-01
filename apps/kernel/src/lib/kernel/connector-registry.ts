@@ -230,6 +230,45 @@ function brainConnectorEntry(opts: {
   };
 }
 
+/**
+ * Gemini's registry entry (#1928): declared once here, referenced by name
+ * below, so the array itself keeps the exact literal shape every other
+ * entry uses — nothing about `CONNECTOR_REGISTRY`'s own structure changes.
+ */
+const GEMINI_ENTRY = brainConnectorEntry({
+  id: 'gemini',
+  name: 'Google Gemini',
+  description: 'Seal your own Gemini API key per-DID so inference uses your credential instead of the global env var.',
+  icon: '✨',
+  credentialUi: {
+    label: 'API Key',
+    placeholder: 'Gemini API Key',
+    hint: 'Key is sealed server-side and never returned. Create one in Google AI Studio → Get API key.',
+  },
+  // #1769: dynamic model picker — GET lists live models for the sealed key,
+  // PUT seals the choice. Replaces the hardcoded `defaultModelId` that went
+  // stale when Google retired gemini-2.0-flash (#1764).
+  modelsRoute: '/gemini/api/models',
+});
+
+/** xAI's registry entry (#1928) — see {@link GEMINI_ENTRY}. */
+const XAI_ENTRY = brainConnectorEntry({
+  id: 'xai',
+  name: 'xAI Grok',
+  description: 'Seal your own xAI API key per-DID so Grok inference runs on your credential, not a shared env var.',
+  icon: '🚀',
+  credentialUi: {
+    label: 'API Key',
+    placeholder: 'xAI API Key (xai-...)',
+    hint: 'Key is sealed server-side and never returned. Create one at console.x.ai → API Keys.',
+  },
+  // #1924, following #1769: no hardcoded default model. Grok ids turn over
+  // fast enough that a baked-in string would go stale the same way
+  // gemini-2.0-flash did (#1764), so the owner picks a live one here and it
+  // is sealed as `modelId`.
+  modelsRoute: '/xai/api/models',
+});
+
 export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'mcp',
@@ -299,21 +338,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
     modelsRoute: null,
   },
-  brainConnectorEntry({
-    id: 'gemini',
-    name: 'Google Gemini',
-    description: 'Seal your own Gemini API key per-DID so inference uses your credential instead of the global env var.',
-    icon: '✨',
-    credentialUi: {
-      label: 'API Key',
-      placeholder: 'Gemini API Key',
-      hint: 'Key is sealed server-side and never returned. Create one in Google AI Studio → Get API key.',
-    },
-    // #1769: dynamic model picker — GET lists live models for the sealed key,
-    // PUT seals the choice. Replaces the hardcoded `defaultModelId` that went
-    // stale when Google retired gemini-2.0-flash (#1764).
-    modelsRoute: '/gemini/api/models',
-  }),
+  GEMINI_ENTRY,
   {
     id: 'anthropic',
     name: 'Anthropic Claude',
@@ -338,22 +363,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
     modelsRoute: null,
   },
-  brainConnectorEntry({
-    id: 'xai',
-    name: 'xAI Grok',
-    description: 'Seal your own xAI API key per-DID so Grok inference runs on your credential, not a shared env var.',
-    icon: '🚀',
-    credentialUi: {
-      label: 'API Key',
-      placeholder: 'xAI API Key (xai-...)',
-      hint: 'Key is sealed server-side and never returned. Create one at console.x.ai → API Keys.',
-    },
-    // #1924, following #1769: no hardcoded default model. Grok ids turn over
-    // fast enough that a baked-in string would go stale the same way
-    // gemini-2.0-flash did (#1764), so the owner picks a live one here and it
-    // is sealed as `modelId`.
-    modelsRoute: '/xai/api/models',
-  }),
+  XAI_ENTRY,
   {
     id: 'gcp',
     name: 'Google Cloud',
