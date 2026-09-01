@@ -1,4 +1,4 @@
--- 0115_recovery_codes.sql
+-- 0116_recovery_codes.sql
 -- Recovery codes — the self-custody key-recovery floor (#1250 Phase 1).
 --
 -- Makes the previously-dead `recovery_code` mfa_methods.type enum value real:
