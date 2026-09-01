@@ -196,6 +196,20 @@ describe('warp_dispatch_agent', () => {
     });
   });
 
+  it('maps conversation_id/parent_run_id onto the client input (#1939)', async () => {
+    await call('warp_dispatch_agent', {
+      prompt: 'go',
+      conversation_id: 'conv-123',
+      parent_run_id: 'run-parent-1',
+    });
+
+    expect(dispatchInput()).toEqual({
+      prompt: 'go',
+      conversationId: 'conv-123',
+      parentRunId: 'run-parent-1',
+    });
+  });
+
   it('passes an mcp_servers map through and honours attach_imajin_mcp', async () => {
     await call('warp_dispatch_agent', {
       prompt: 'go',
@@ -335,6 +349,11 @@ describe('warp_list_runs', () => {
     await call('warp_list_runs', { limit: '50' });
     expect(listInput()).not.toHaveProperty('limit');
   });
+
+  it('maps ancestor_run_id onto the client input (#1939)', async () => {
+    await call('warp_list_runs', { ancestor_run_id: 'run-ancestor-1' });
+    expect(listInput()).toEqual({ ancestorRunId: 'run-ancestor-1' });
+  });
 });
 
 // ─── warp_get_transcript ───────────────────────────────────────────────────
@@ -428,6 +447,28 @@ describe('warp_send_followup', () => {
       /run_id is required/,
     );
     expect(sendFollowup).not.toHaveBeenCalled();
+  });
+
+  it('passes an explicit resume through (#1939)', async () => {
+    await call('warp_send_followup', { run_id: RUN_ID, message: 'keep going', resume: true });
+    expect(sendFollowup).toHaveBeenCalledWith(ctx.did, RUN_ID, {
+      message: 'keep going',
+      resume: true,
+    });
+  });
+
+  it('omits resume entirely when the caller names none', async () => {
+    await call('warp_send_followup', { run_id: RUN_ID, message: 'go' });
+    expect(sendFollowup).toHaveBeenCalledWith(ctx.did, RUN_ID, { message: 'go' });
+  });
+
+  it('surfaces a terminal-run refusal instead of reporting acceptance (#1939)', async () => {
+    vi.mocked(sendFollowup).mockRejectedValueOnce(
+      new Error('warp_run_terminal: run has already ended'),
+    );
+    await expect(
+      tool('warp_send_followup').handler({ run_id: RUN_ID, message: 'go' }, ctx),
+    ).rejects.toThrow(/warp_run_terminal/);
   });
 });
 

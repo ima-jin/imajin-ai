@@ -84,6 +84,29 @@ describe('POST /warp/api/runs/{runId}/followups', () => {
     });
   });
 
+  it('forwards an explicit resume (#1939)', async () => {
+    await POST(makeReq({ message: 'keep going', resume: true }), { params: { runId: RUN_ID } });
+
+    expect(sendFollowup).toHaveBeenCalledWith(OWNER_DID, RUN_ID, {
+      message: 'keep going',
+      resume: true,
+    });
+  });
+
+  it('omits resume entirely when the caller names none', async () => {
+    await POST(makeReq(), { params: { runId: RUN_ID } });
+
+    expect(sendFollowup).toHaveBeenCalledWith(OWNER_DID, RUN_ID, {
+      message: 'use pnpm, not npm',
+    });
+  });
+
+  it('ignores a non-boolean resume rather than coercing it', async () => {
+    await POST(makeReq({ message: 'go', resume: 'yes' }), { params: { runId: RUN_ID } });
+
+    expect(sendFollowup).toHaveBeenCalledWith(OWNER_DID, RUN_ID, { message: 'go' });
+  });
+
   it('returns 400 for an unparseable body', async () => {
     const res = await POST(makeReq('not json'), { params: { runId: RUN_ID } });
 
@@ -122,6 +145,20 @@ describe('POST /warp/api/runs/{runId}/followups', () => {
     const res = await POST(makeReq(), { params: { runId: RUN_ID } });
 
     expect(res.status).toBe(403);
+  });
+
+  it('maps a terminal-run refusal to 409 without resume (#1939)', async () => {
+    vi.mocked(sendFollowup).mockRejectedValueOnce(
+      new Error(
+        `warp_run_terminal: run ${RUN_ID} has already ended (SUCCEEDED); pass resume: true ` +
+          "to continue it via Warp's cloud-to-cloud handoff",
+      ),
+    );
+
+    const res = await POST(makeReq(), { params: { runId: RUN_ID } });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: 'warp_run_terminal' });
   });
 
   it('maps an upstream refusal to the status Warp reported', async () => {

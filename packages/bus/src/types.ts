@@ -697,6 +697,42 @@ export interface BusEventMap {
     state: string | null;
     skillSpec: string | null;
     environmentId: string | null;
+    /**
+     * Warp-confirmed conversation lineage (#1939): the conversation this run
+     * continues, when the dispatch named one via `conversationId`.
+     */
+    conversationId: string | null;
+    /**
+     * Warp-confirmed orchestration lineage (#1939): the run that spawned this
+     * one, when the dispatch named one via `parentRunId`. Read back from
+     * Warp's own response rather than echoing the request, so the record
+     * reflects what Warp actually accepted.
+     */
+    parentRunId: string | null;
+    context_id: string;
+    context_type: 'warp.agent';
+  };
+  /**
+   * A terminal Warp run was resumed via cloud-to-cloud handoff (#1939).
+   *
+   * `send_followup`'s `resume: true` path proxies the follow-up to the same
+   * `runId` — Warp continues it in place rather than spawning a new run — so
+   * this is the honest record of *that a resume happened*, distinct from the
+   * follow-up's own delivery. Published only on the resume path; an ordinary
+   * mid-run follow-up publishes nothing extra.
+   *
+   * Deliberately NO prompt/message and NO credential material, the same
+   * invariant as the rest of `warp.*`.
+   */
+  'warp.run.resumed': {
+    runId: string;
+    /** Who asked for the resume — the DID whose sealed key delivered it. */
+    principalDid: string;
+    /** The state the run was in before this resume, e.g. `SUCCEEDED`. */
+    previousState: string | null;
+    /** The follow-up mode the resume was delivered with. */
+    mode: string;
+    resumedAt: string;
     context_id: string;
     context_type: 'warp.agent';
   };

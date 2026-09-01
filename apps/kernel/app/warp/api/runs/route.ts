@@ -12,6 +12,7 @@
  *   ?createdAfter=2026-08-01T00:00:00Z — RFC-3339 lower bound
  *   ?limit=50                   — 1–500, clamped rather than rejected
  *   ?cursor=…                   — `nextCursor` from a previous page
+ *   ?ancestorRunId=…            — descendants of this run id (#1939), Warp's own lineage query
  *
  * Returns `{ runs, hasNextPage, nextCursor }`.
  */
@@ -58,6 +59,9 @@ function readFilters(url: URL): ListAgentRunsInput {
       ? {}
       : { createdAfter: param(query, 'createdAfter') }),
     ...(param(query, 'cursor') === undefined ? {} : { cursor: param(query, 'cursor') }),
+    ...(param(query, 'ancestorRunId') === undefined
+      ? {}
+      : { ancestorRunId: param(query, 'ancestorRunId') }),
     ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
   };
 }
