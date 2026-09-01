@@ -1,0 +1,20 @@
+{
+  "//": "Example config only. NEVER commit real sealed/sensitive terms to this repo. Copy the `terms` array below into plugins.entries.reflex-guard.config.guard.terms in openclaw.json on the operator's own machine, then replace `pattern` with the real sealed phrase(s).",
+  "terms": [
+    {
+      "id": "example-term",
+      "type": "literal",
+      "pattern": "REPLACE_WITH_YOUR_SEALED_PHRASE",
+      "action": "block",
+      "description": "Example only — not a real sealed term. Demonstrates the shape: literal substring match, case-insensitive, blocks delivery on match."
+    },
+    {
+      "id": "example-flagged-term",
+      "type": "regex",
+      "pattern": "example-regex-[0-9]+",
+      "flags": "i",
+      "action": "flag",
+      "description": "Example only — demonstrates a regex term with action \"flag\" (audit-logs the trip but lets the message through)."
+    }
+  ]
+}

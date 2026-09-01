@@ -1,0 +1,18 @@
+{
+  "name": "@imajin/openclaw-reflex-guard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenClaw plugin: post-turn instruction-check guard (imajin-ai#1252) — deterministic outbound sealed-term guard (Layer 1) + fuzzy reflex scaffold (Layer 2)",
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vitest": "^2.1.9",
+    "@types/node": "^22.0.0"
+  }
+}

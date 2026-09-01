@@ -1,0 +1,92 @@
+{
+  "id": "reflex-guard",
+  "name": "Reflex Guard",
+  "activation": {
+    "onStartup": true
+  },
+  "uiHints": {
+    "guard.auditLogPath": {
+      "label": "Audit Log Path",
+      "help": "JSONL path to append Layer 1 guard trip records to (term id, surface, action taken — never the matched text).",
+      "placeholder": "reflex-guard/audit-log.jsonl"
+    },
+    "reflex.logPath": {
+      "label": "Reflex Log Path",
+      "help": "JSONL path to append Layer 2 reflex-log records to (warranted turns only).",
+      "placeholder": "reflex-guard/reflex-log.jsonl"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "guard": {
+        "type": "object",
+        "description": "Layer 1 — deterministic outbound sealed-term guard. No LLM call.",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Explicit opt-out. Defaults to true."
+          },
+          "terms": {
+            "type": "array",
+            "description": "Sealed-term list. NEVER commit real sealed/sensitive terms to this repo — inject the real list via gateway config on the operator's machine only. Ships empty by default.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "pattern", "action"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Stable term id. Used in audit-log records and nowhere else — never the sealed phrase itself."
+                },
+                "pattern": {
+                  "type": "string",
+                  "description": "Literal substring (case-insensitive) or regex source, depending on `type`."
+                },
+                "type": {
+                  "type": "string",
+                  "enum": ["literal", "regex"],
+                  "description": "Defaults to \"literal\"."
+                },
+                "flags": {
+                  "type": "string",
+                  "description": "Regex flags, only used when type is \"regex\". Defaults to \"i\"."
+                },
+                "action": {
+                  "type": "string",
+                  "enum": ["block", "flag"],
+                  "description": "\"block\" cancels delivery; \"flag\" only audit-logs the trip and lets the message through."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Human-readable operator note. NEVER the sealed phrase itself."
+                }
+              }
+            }
+          },
+          "auditLogPath": {
+            "type": "string",
+            "description": "JSONL path for guard trip records (term id, surface, action taken)."
+          }
+        }
+      },
+      "reflex": {
+        "type": "object",
+        "description": "Layer 2 — fuzzy reflex scaffold on before_agent_finalize. Off by default.",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Explicit opt-in. Defaults to false — ships as a scaffold, not a live guard."
+          },
+          "logPath": {
+            "type": "string",
+            "description": "JSONL path for reflex-log records (warranted turns only)."
+          }
+        }
+      }
+    }
+  }
+}
