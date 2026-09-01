@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-const { mockLoadGemini, mockLoadAnthropic } = vi.hoisted(() => ({
+const { mockLoadGemini, mockLoadAnthropic, mockLoadXai } = vi.hoisted(() => ({
   mockLoadGemini: vi.fn(),
   mockLoadAnthropic: vi.fn(),
+  mockLoadXai: vi.fn(),
 }));
 
 vi.mock('@/src/lib/gemini/connector', () => ({
@@ -13,6 +14,11 @@ vi.mock('@/src/lib/gemini/connector', () => ({
 
 vi.mock('@/src/lib/anthropic/connector', () => ({
   loadAnthropicCredentials: mockLoadAnthropic,
+}));
+
+vi.mock('@/src/lib/xai/connector', () => ({
+  loadXaiCredentials: mockLoadXai,
+  XAI_BASE_URL: 'https://api.x.ai/v1',
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -50,6 +56,7 @@ const OWNER = 'did:imajin:farmer';
 const APP = 'did:imajin:agrifortress';
 const GEMINI_KEY = 'AIzaSy-GEMINI-SEALED';
 const ANTHROPIC_KEY = 'sk-ant-SEALED';
+const XAI_KEY = 'xai-SEALED';
 const APP_KEY = 'AIzaSy-APP-SEALED';
 
 beforeEach(() => {
@@ -60,6 +67,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mockLoadGemini.mockResolvedValue(undefined);
   mockLoadAnthropic.mockResolvedValue(undefined);
+  mockLoadXai.mockResolvedValue(undefined);
   // Default: no app registrant found (no parent org DID)
   mockDbSelect.mockResolvedValue([]);
 });
@@ -373,7 +381,7 @@ describe('resolveBrain — fail closed with no env fallback', () => {
   it('carries the available connector ids for programmatic callers', async () => {
     const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
 
-    expect(err.availableConnectors).toEqual(['gemini', 'anthropic']);
+    expect(err.availableConnectors).toEqual(['gemini', 'anthropic', 'xai']);
     expect(err.triedDids).toEqual([OWNER]);
   });
 
@@ -437,6 +445,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
   it('still fails closed when every connector throws', async () => {
     mockLoadGemini.mockRejectedValue(new Error('gemini boom'));
     mockLoadAnthropic.mockRejectedValue(new Error('anthropic boom'));
+    mockLoadXai.mockRejectedValue(new Error('xai boom'));
 
     const err = await resolveBrain({ ownerDid: OWNER, appDid: APP })
       .catch((e: unknown) => e as NoBrainSealedError);
@@ -446,8 +455,10 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
     expect(err.failures.map((f) => `${f.credentialDid}/${f.connector}`)).toEqual([
       `${OWNER}/gemini`,
       `${OWNER}/anthropic`,
+      `${OWNER}/xai`,
       `${APP}/gemini`,
       `${APP}/anthropic`,
+      `${APP}/xai`,
     ]);
   });
 
@@ -474,6 +485,64 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
 
 describe('listBrainConnectors', () => {
   it('reports the brain connectors in resolution order', () => {
-    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic']);
+    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic', 'xai']);
+  });
+});
+
+// ─── xAI (#1924) ────────────────────────────────────────────────────────────
+
+describe('resolveBrain — the xAI card (#1924)', () => {
+  /**
+   * xAI speaks the OpenAI-compatible surface, so the resolved brain must name
+   * the `openai` adapter pointed at api.x.ai — not a new provider. Getting this
+   * wrong fails at `getModel()` with "Unknown provider", well after resolution.
+   */
+  it('resolves as an OpenAI-compatible brain pointed at xAI', async () => {
+    mockLoadXai.mockResolvedValueOnce({ apiKey: XAI_KEY, modelId: 'grok-4' });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain).toEqual({
+      connector: 'xai',
+      credentialDid: OWNER,
+      provider: 'openai',
+      modelId: 'grok-4',
+      apiKey: XAI_KEY,
+      baseURL: 'https://api.x.ai/v1',
+    });
+  });
+
+  /**
+   * The #1769 decision, applied to a third provider: no `defaultModelId`, so a
+   * sealed key with no model chosen fails closed with "pick a model" instead of
+   * silently running whichever Grok id was hardcoded when this shipped.
+   */
+  it('fails closed with NoModelSelectedError when no model is sealed', async () => {
+    mockLoadXai.mockResolvedValueOnce({ apiKey: XAI_KEY });
+
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoModelSelectedError);
+
+    expect(err).toBeInstanceOf(NoModelSelectedError);
+    expect(err.message).toContain('/xai/api/token');
+    expect(err.message).not.toContain(XAI_KEY);
+  });
+
+  /**
+   * Appended, not inserted: the table's order IS resolution priority, so an
+   * existing dual-sealed DID must keep the brain it already had.
+   */
+  it('does not displace an earlier sealed connector', async () => {
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+    mockLoadXai.mockResolvedValueOnce({ apiKey: XAI_KEY, modelId: 'grok-4' });
+
+    expect((await resolveBrain(OWNER)).connector).toBe('anthropic');
+    expect(mockLoadXai).not.toHaveBeenCalled();
+  });
+
+  it('names xai:infer and its token route in the fail-closed error', async () => {
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err.message).toContain('xai:infer');
+    expect(err.message).toContain('/xai/api/token');
   });
 });

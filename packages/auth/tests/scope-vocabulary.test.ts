@@ -22,7 +22,7 @@ import {
 } from '../src/scope-vocabulary';
 import { SCOPES, validateScopes } from '../src/scopes';
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'gcp', 'quickbooks', 'warp', 'stripe'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'gcp', 'quickbooks', 'warp', 'stripe'];
 
 const connectorEntries = SCOPE_VOCABULARY.filter(isConnectorScope);
 
@@ -248,6 +248,32 @@ describe('SCOPES is a faithful projection', () => {
     expect(entry.connector).toBe('anthropic');
     expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
     expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.anthropic);
+  });
+
+  /**
+   * #1924: the third brain a DID can seal, and the net-new provider the #1922
+   * passthrough is validated on first. Same quadrant as gemini:infer and
+   * anthropic:infer, so it must derive owner-only and name its own connector as
+   * the sole viewer.
+   */
+  it('includes xai:infer as an owner-only connector scope', () => {
+    expect(SCOPES['xai:infer']).toBe('Use your xAI API key for inference');
+    expect(validateScopes(['xai:infer']).invalid).toEqual([]);
+
+    const entry = scopeEntry('xai:infer') as ConnectorScopeEntry;
+    expect(entry.connector).toBe('xai');
+    expect(entry.surface).toBe('xai-api');
+    expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
+    expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.xai);
+  });
+
+  /**
+   * The passthrough (#1922 Phase 2) is not built yet, so no MCP tool can spend
+   * the sealed Grok key. Keeping it off the ceiling until then mirrors how the
+   * GCP scopes were staged below.
+   */
+  it('keeps xai:infer off the MCP capability ceiling', () => {
+    expect(scopesForSurface('mcp')).not.toContain('xai:infer');
   });
 
   /**

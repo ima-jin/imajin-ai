@@ -32,12 +32,13 @@ import { createLogger } from '@imajin/logger';
 import type { ProviderName } from '@imajin/llm';
 import { loadGeminiCredentials } from '@/src/lib/gemini/connector';
 import { loadAnthropicCredentials } from '@/src/lib/anthropic/connector';
+import { loadXaiCredentials, XAI_BASE_URL } from '@/src/lib/xai/connector';
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 
 const log = createLogger('kernel:inference:brain');
 
 /** Connector ids that can supply a brain, in resolution order. */
-export type BrainConnectorId = 'gemini' | 'anthropic';
+export type BrainConnectorId = 'gemini' | 'anthropic' | 'xai';
 
 /**
  * Whose sealed card may supply the model (#1624).
@@ -144,6 +145,29 @@ const BRAIN_CONNECTORS: readonly BrainConnector[] = [
     tokenRoute: '/anthropic/api/token',
     defaultModelId: 'claude-sonnet-4-20250514',
     load: loadAnthropicCredentials,
+  },
+  {
+    // #1924. Appended rather than slotted in: this table's order IS resolution
+    // priority, so inserting xAI above Anthropic would silently move existing
+    // dual-sealed DIDs onto a different brain. The #1922 migration-order call
+    // (2026-09-01) is about which provider the passthrough is validated on
+    // first, not about which sealed card wins here.
+    id: 'xai',
+    name: 'xAI Grok',
+    // xAI speaks the OpenAI-compatible surface, so its provider adapter is
+    // `openai` pointed at api.x.ai — the same move Gemini makes above, not a
+    // separate provider.
+    provider: 'openai',
+    scope: 'xai:infer',
+    tokenRoute: '/xai/api/token',
+    // No hardcoded default, matching the Gemini precedent set by #1769: a
+    // baked-in Grok id goes stale the way gemini-2.0-flash did (#1764), and a
+    // retired model can answer 429 rather than 404, which is indistinguishable
+    // from a rate limit. The owner picks a live model from GET /xai/api/models
+    // and it is sealed as `modelId` — see `NoModelSelectedError` for the
+    // fail-closed path when none is chosen yet.
+    defaultBaseUrl: XAI_BASE_URL,
+    load: loadXaiCredentials,
   },
 ];
 

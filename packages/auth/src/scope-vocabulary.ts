@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -46,6 +46,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   discord: 'did:imajin:discord-connector',
   gemini: 'did:imajin:gemini-connector',
   anthropic: 'did:imajin:anthropic-connector',
+  xai: 'did:imajin:xai-connector',
   gcp: 'did:imajin:gcp-connector',
   quickbooks: 'did:imajin:quickbooks-connector',
   warp: 'did:imajin:warp-connector',
@@ -59,6 +60,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   discord: 'discord',
   gemini: 'gemini',
   anthropic: 'anthropic',
+  xai: 'xai',
   gcp: 'gcp',
   quickbooks: 'quickbooks',
   warp: 'warp',
@@ -316,6 +318,14 @@ export const SCOPE_VOCABULARY = [
   // and never released to a third party → SELF_SENSITIVE → owner-only.
   { scope: 'anthropic:infer', connector: 'anthropic', verb: 'infer', surface: 'anthropic-api', classification: SELF_SENSITIVE,
     label: 'Use your Anthropic API key for inference' },
+
+  // ── xAI connector (#1924) — the third brain a DID can seal, and the
+  // net-new provider the #1922 passthrough is validated on first (Ryan's
+  // 2026-09-01 migration-order call: Grok → OpenAI → Gemini, Anthropic last).
+  // Same quadrant and shape as gemini:infer / anthropic:infer: the owner's own
+  // key is spent on every call and never released → SELF_SENSITIVE → owner-only.
+  { scope: 'xai:infer', connector: 'xai', verb: 'infer', surface: 'xai-api', classification: SELF_SENSITIVE,
+    label: 'Use your xAI API key for inference' },
 
   // ── Google Cloud connector (#1317) — a sealed service-account key, not an
   // inference-only brain. The key is the owner's own credential and is consumed

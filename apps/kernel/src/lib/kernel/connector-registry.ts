@@ -26,18 +26,23 @@
  *   owner-only — never released to a third party; the owner grants it explicitly
  *   never      — structural drop; never materialises (omitted from the UI list)
  */
-import { connectorUiScopes } from './scope-projections';
+import {
+  connectorUiScopes,
+  type ConnectorId,
+  type ConnectorScope,
+} from './scope-projections';
 
 /** How the connector ingests credentials. */
 export type IngestionPattern = 'oauth' | 'token-paste' | 'native' | 'static-secret';
 
-// Release class and per-scope shape now live in ./scope-projections alongside
-// the derivation, and are re-exported here so existing importers (the connector
-// card, ConnectorDetail) keep working unchanged. The local import is separate
-// because a re-export alone does not bring the name into this module's scope,
-// and `ConnectorEntry.scopes` below refers to it.
-export type { ReleaseClass, ConnectorScope } from './scope-projections';
-import type { ConnectorScope } from './scope-projections';
+// Release class and per-scope shape live in ./scope-projections alongside the
+// derivation, and are re-exported here so existing importers (the connector
+// card, ConnectorDetail) keep working unchanged. `ReleaseClass` has no local
+// use, so it is re-exported directly via `export … from`; `ConnectorScope`
+// is also used locally below (`ConnectorEntry.scopes`), so it comes from the
+// value import above instead of a second `from './scope-projections'` import.
+export type { ReleaseClass } from './scope-projections';
+export type { ConnectorScope };
 
 /**
  * Per-connector copy for the credential-paste step (#1604).
@@ -189,6 +194,85 @@ export interface ConnectorEntry {
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
+/**
+ * Shared shape for the token-paste "brain" connectors — the ones whose sealed
+ * API key is spent on inference (Gemini, xAI; #1928). They share every field
+ * except identity, credential-step copy, and whether they have a model
+ * picker: no OAuth step, no settings section, and a disconnect that revokes
+ * the delegation grant (#1720) and sweeps channel_links (#1733). Declaring
+ * that shape once here is what keeps the next brain connector's registry
+ * entry (#1927 OpenAI, #1930 Moonshot, #1931 Z.ai) a same-shape call instead
+ * of a ~30-line clone.
+ */
+function brainConnectorEntry(opts: {
+  id: ConnectorId;
+  name: string;
+  description: string;
+  icon: string;
+  credentialUi: CredentialUiCopy;
+  /** `null` for connectors with no dynamic model picker (#1769). */
+  modelsRoute: string | null;
+}): ConnectorEntry {
+  return {
+    id: opts.id,
+    name: opts.name,
+    description: opts.description,
+    icon: opts.icon,
+    ingestionPattern: 'token-paste',
+    channel: opts.id,
+    connectorDid: `did:imajin:${opts.id}-connector`,
+    scopes: connectorUiScopes(opts.id),
+    statusEndpoint: `/${opts.id}/api/scope-manifest`,
+    backendPending: false,
+    connectRoute: null,
+    configureRoute: null,
+    tokenRoute: `/${opts.id}/api/token`,
+    disconnectRoute: `/${opts.id}/api/disconnect`,
+    credentialUi: opts.credentialUi,
+    settings: null,
+    modelsRoute: opts.modelsRoute,
+  };
+}
+
+/**
+ * Gemini's registry entry (#1928): declared once here, referenced by name
+ * below, so the array itself keeps the exact literal shape every other
+ * entry uses — nothing about `CONNECTOR_REGISTRY`'s own structure changes.
+ */
+const GEMINI_ENTRY = brainConnectorEntry({
+  id: 'gemini',
+  name: 'Google Gemini',
+  description: 'Seal your own Gemini API key per-DID so inference uses your credential instead of the global env var.',
+  icon: '✨',
+  credentialUi: {
+    label: 'API Key',
+    placeholder: 'Gemini API Key',
+    hint: 'Key is sealed server-side and never returned. Create one in Google AI Studio → Get API key.',
+  },
+  // #1769: dynamic model picker — GET lists live models for the sealed key,
+  // PUT seals the choice. Replaces the hardcoded `defaultModelId` that went
+  // stale when Google retired gemini-2.0-flash (#1764).
+  modelsRoute: '/gemini/api/models',
+});
+
+/** xAI's registry entry (#1928) — see {@link GEMINI_ENTRY}. */
+const XAI_ENTRY = brainConnectorEntry({
+  id: 'xai',
+  name: 'xAI Grok',
+  description: 'Seal your own xAI API key per-DID so Grok inference runs on your credential, not a shared env var.',
+  icon: '🚀',
+  credentialUi: {
+    label: 'API Key',
+    placeholder: 'xAI API Key (xai-...)',
+    hint: 'Key is sealed server-side and never returned. Create one at console.x.ai → API Keys.',
+  },
+  // #1924, following #1769: no hardcoded default model. Grok ids turn over
+  // fast enough that a baked-in string would go stale the same way
+  // gemini-2.0-flash did (#1764), so the owner picks a live one here and it
+  // is sealed as `modelId`.
+  modelsRoute: '/xai/api/models',
+});
+
 export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'mcp',
@@ -258,33 +342,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
     modelsRoute: null,
   },
-  {
-    id: 'gemini',
-    name: 'Google Gemini',
-    description: 'Seal your own Gemini API key per-DID so inference uses your credential instead of the global env var.',
-    icon: '✨',
-    ingestionPattern: 'token-paste',
-    channel: 'gemini',
-    connectorDid: 'did:imajin:gemini-connector',
-    scopes: connectorUiScopes('gemini'),
-    statusEndpoint: '/gemini/api/scope-manifest',
-    backendPending: false,
-    connectRoute: null,
-    configureRoute: null,
-    tokenRoute: '/gemini/api/token',
-    // #1720: revokes the sealed key's delegation grant (kernel.vault_delegation_grants).
-    disconnectRoute: '/gemini/api/disconnect',
-    credentialUi: {
-      label: 'API Key',
-      placeholder: 'Gemini API Key',
-      hint: 'Key is sealed server-side and never returned. Create one in Google AI Studio → Get API key.',
-    },
-    settings: null,
-    // #1769: dynamic model picker — GET lists live models for the sealed key,
-    // PUT seals the choice. Replaces the hardcoded `defaultModelId` that went
-    // stale when Google retired gemini-2.0-flash (#1764).
-    modelsRoute: '/gemini/api/models',
-  },
+  GEMINI_ENTRY,
   {
     id: 'anthropic',
     name: 'Anthropic Claude',
@@ -309,6 +367,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
     modelsRoute: null,
   },
+  XAI_ENTRY,
   {
     id: 'gcp',
     name: 'Google Cloud',
@@ -424,7 +483,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
     modelsRoute: null,
   },
-] as const;
+];
 
 /** Look up a connector entry by its id. Returns undefined for unknown ids. */
 export function getConnector(id: string): ConnectorEntry | undefined {

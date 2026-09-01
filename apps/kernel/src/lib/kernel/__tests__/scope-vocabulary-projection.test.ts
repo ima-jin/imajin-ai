@@ -31,7 +31,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'gcp', 'quickbooks', 'warp', 'stripe'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'gcp', 'quickbooks', 'warp', 'stripe'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -145,6 +145,10 @@ describe('pinned scope sets (change these deliberately)', () => {
 
   it('pins the Anthropic connector card toggles', () => {
     expect(connectorUiScopes('anthropic').map((s) => s.name)).toEqual(['anthropic:infer']);
+  });
+
+  it('pins the xAI connector card toggles', () => {
+    expect(connectorUiScopes('xai').map((s) => s.name)).toEqual(['xai:infer']);
   });
 
   it('pins the Google Cloud connector card toggles', () => {
@@ -302,6 +306,7 @@ const GITHUB_DID = 'did:imajin:github-connector';
 const DISCORD_DID = 'did:imajin:discord-connector';
 const GEMINI_DID = 'did:imajin:gemini-connector';
 const ANTHROPIC_DID = 'did:imajin:anthropic-connector';
+const XAI_DID = 'did:imajin:xai-connector';
 const GCP_DID = 'did:imajin:gcp-connector';
 const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
 const WARP_DID = 'did:imajin:warp-connector';
@@ -356,6 +361,15 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('anthropic', () => {
     expect(connectorScopeDescriptors('anthropic')).toEqual({
       'anthropic:infer': { verb: 'infer', surface: 'anthropic-api', label: 'Use your Anthropic API key for inference', release: { discloses_others: false, sensitive: true, viewer: ANTHROPIC_DID } },
+    });
+  });
+
+  // #1924 — new descriptor, not a migrated literal. Same SELF_SENSITIVE
+  // quadrant as gemini:infer / anthropic:infer: the owner's own key is spent on
+  // every Grok call and never released to a third party.
+  it('xai', () => {
+    expect(connectorScopeDescriptors('xai')).toEqual({
+      'xai:infer': { verb: 'infer', surface: 'xai-api', label: 'Use your xAI API key for inference', release: { discloses_others: false, sensitive: true, viewer: XAI_DID } },
     });
   });
 
