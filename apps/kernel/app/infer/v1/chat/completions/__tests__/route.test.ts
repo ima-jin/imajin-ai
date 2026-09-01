@@ -1,0 +1,301 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// ─── Mocks ───────────────────────────────────────────────────────────────────
+
+const {
+  mockResolveInferenceAuth,
+  mockRateLimit,
+  mockResolveBrain,
+  mockForwardAnthropic,
+  mockForwardOpenAiCompatible,
+} = vi.hoisted(() => ({
+  mockResolveInferenceAuth: vi.fn(),
+  mockRateLimit: vi.fn(),
+  mockResolveBrain: vi.fn(),
+  mockForwardAnthropic: vi.fn(),
+  mockForwardOpenAiCompatible: vi.fn(),
+}));
+
+vi.mock('@/src/lib/inference/auth', () => ({
+  resolveInferenceAuth: mockResolveInferenceAuth,
+}));
+
+vi.mock('@/src/lib/kernel/cors', () => ({
+  corsHeaders: () => ({ 'Access-Control-Allow-Origin': 'https://agent.example' }),
+  corsOptions: () => new Response(null, { status: 204 }),
+}));
+
+vi.mock('@imajin/config', () => ({
+  rateLimit: mockRateLimit,
+  getClientIP: () => '203.0.113.7',
+}));
+
+vi.mock('@imajin/logger', () => ({
+  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
+}));
+
+// `brain.ts` pulls in a real drizzle client + connector modules purely to
+// build error messages. The route only needs `resolveBrain` plus the error
+// TYPES for `instanceof` matching — same pattern the capture route test uses.
+vi.mock('@/src/lib/inference/brain', () => {
+  class NoBrainSealedError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'NoBrainSealedError';
+    }
+  }
+  class NoModelSelectedError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'NoModelSelectedError';
+    }
+  }
+  class ModelDeprecatedError extends Error {
+    readonly connector: string;
+    readonly modelId: string;
+    constructor(connector: string, modelId: string) {
+      super(`model_deprecated: ${connector} model '${modelId}' was not found upstream`);
+      this.name = 'ModelDeprecatedError';
+      this.connector = connector;
+      this.modelId = modelId;
+    }
+  }
+  return { resolveBrain: mockResolveBrain, NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError };
+});
+
+vi.mock('@/src/lib/inference/completions/anthropic-adapter', () => ({
+  forwardAnthropic: mockForwardAnthropic,
+}));
+
+vi.mock('@/src/lib/inference/completions/openai-compatible-adapter', () => ({
+  forwardOpenAiCompatible: mockForwardOpenAiCompatible,
+}));
+
+// ─── Subject ────────────────────────────────────────────────────────────────
+
+import { POST, OPTIONS } from '../route';
+import { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError } from '@/src/lib/inference/brain';
+import { UpstreamTimeoutError, UpstreamUnavailableError } from '@/src/lib/inference/completions/errors';
+import { VaultDelegationError } from '@/src/lib/vault/errors';
+import { RetryError } from 'ai';
+
+// ─── Fixtures ────────────────────────────────────────────────────────────────
+
+const OWNER_DID = 'did:imajin:supplier';
+const APP_DID = 'did:imajin:openclaw-app';
+
+type RouteRequest = Parameters<typeof POST>[0];
+
+function makeReq(opts: {
+  headers?: Record<string, string>;
+  body?: unknown;
+  invalidJson?: boolean;
+} = {}): RouteRequest {
+  return {
+    headers: new Headers(opts.headers ?? {}),
+    json: async () => {
+      if (opts.invalidJson) throw new Error('invalid json');
+      return opts.body ?? { messages: [{ role: 'user', content: 'hi' }] };
+    },
+  } as unknown as RouteRequest;
+}
+
+const XAI_BRAIN = {
+  connector: 'xai',
+  credentialDid: OWNER_DID,
+  provider: 'openai' as const,
+  modelId: 'grok-4',
+  apiKey: 'xai-secret',
+  baseURL: 'https://api.x.ai/v1',
+};
+
+const ANTHROPIC_BRAIN = {
+  connector: 'anthropic',
+  credentialDid: OWNER_DID,
+  provider: 'anthropic' as const,
+  modelId: 'claude-sonnet-4-20250514',
+  apiKey: 'anthropic-secret',
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockRateLimit.mockReturnValue({ limited: false });
+  mockResolveInferenceAuth.mockResolvedValue({ ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID } });
+  mockResolveBrain.mockResolvedValue(XAI_BRAIN);
+  mockForwardOpenAiCompatible.mockResolvedValue(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
+  mockForwardAnthropic.mockResolvedValue(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
+});
+
+describe('POST /infer/v1/chat/completions — request gating', () => {
+  it('answers CORS pre-flight', async () => {
+    const res = await OPTIONS(makeReq());
+    expect(res.status).toBe(204);
+  });
+
+  it('returns 429 when rate limited, before auth is even checked', async () => {
+    mockRateLimit.mockReturnValueOnce({ limited: true, retryAfter: 12 });
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('12');
+    expect(mockResolveInferenceAuth).not.toHaveBeenCalled();
+  });
+
+  it('propagates an auth failure with its own status and error', async () => {
+    mockResolveInferenceAuth.mockResolvedValueOnce({ ok: false, error: 'Invalid app token', status: 401 });
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'Invalid app token' });
+  });
+
+  it('requests auth with the infer:completions scope, distinct from infer:provide', async () => {
+    await POST(makeReq());
+    expect(mockResolveInferenceAuth).toHaveBeenCalledWith(expect.anything(), 'infer:completions');
+  });
+
+  it('returns 400 on invalid JSON', async () => {
+    const res = await POST(makeReq({ invalidJson: true }));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when messages is missing or empty', async () => {
+    const res1 = await POST(makeReq({ body: {} }));
+    expect(res1.status).toBe(400);
+
+    const res2 = await POST(makeReq({ body: { messages: [] } }));
+    expect(res2.status).toBe(400);
+  });
+});
+
+describe('POST /infer/v1/chat/completions — dispatch', () => {
+  it('resolves the brain onBehalfOf the principal when an appDid is present', async () => {
+    await POST(makeReq());
+    expect(mockResolveBrain).toHaveBeenCalledWith({ ownerDid: OWNER_DID, appDid: APP_DID });
+  });
+
+  it('resolves the brain by ownerDid alone when calling on ones own behalf', async () => {
+    mockResolveInferenceAuth.mockResolvedValueOnce({ ok: true, context: { ownerDid: OWNER_DID } });
+    await POST(makeReq());
+    expect(mockResolveBrain).toHaveBeenCalledWith(OWNER_DID);
+  });
+
+  it('dispatches OpenAI-compatible connectors (xai/gemini/openai) to forwardOpenAiCompatible', async () => {
+    mockResolveBrain.mockResolvedValueOnce(XAI_BRAIN);
+    const body = { messages: [{ role: 'user', content: 'hi' }] };
+
+    await POST(makeReq({ body, headers: { 'x-session-id': 'sess_1', 'x-turn-id': 'turn_1' } }));
+
+    expect(mockForwardOpenAiCompatible).toHaveBeenCalledWith(XAI_BRAIN, body, { sessionId: 'sess_1', turnId: 'turn_1' });
+    expect(mockForwardAnthropic).not.toHaveBeenCalled();
+  });
+
+  it('dispatches the anthropic connector to forwardAnthropic', async () => {
+    mockResolveBrain.mockResolvedValueOnce(ANTHROPIC_BRAIN);
+    const body = { messages: [{ role: 'user', content: 'hi' }] };
+
+    await POST(makeReq({ body }));
+
+    expect(mockForwardAnthropic).toHaveBeenCalledWith(ANTHROPIC_BRAIN, body, { sessionId: undefined, turnId: undefined });
+    expect(mockForwardOpenAiCompatible).not.toHaveBeenCalled();
+  });
+
+  it('attaches CORS headers to the adapter response without altering its body/status', async () => {
+    mockForwardOpenAiCompatible.mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 'chatcmpl-1' }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://agent.example');
+    expect(await res.json()).toEqual({ id: 'chatcmpl-1' });
+  });
+});
+
+describe('POST /infer/v1/chat/completions — pipeline outcomes', () => {
+  it('returns 422 no_brain when no DID has sealed a brain', async () => {
+    mockResolveBrain.mockRejectedValueOnce(new NoBrainSealedError('inference_no_brain: nothing sealed'));
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual(expect.objectContaining({ error: 'no_brain' }));
+  });
+
+  it('returns 422 no_model_selected — never a 500 — when a connected brain has no model chosen (#1769)', async () => {
+    mockResolveBrain.mockRejectedValueOnce(
+      new NoModelSelectedError('xAI is connected but no model is selected'),
+    );
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual(expect.objectContaining({ error: 'no_model_selected' }));
+  });
+
+  it('returns 422 model_deprecated when the selected model was retired upstream', async () => {
+    mockResolveBrain.mockRejectedValueOnce(new ModelDeprecatedError('xai', 'grok-3'));
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual(expect.objectContaining({ error: 'model_deprecated', connector: 'xai', modelId: 'grok-3' }));
+  });
+
+  it('returns 429 rate_limited on an exhausted upstream retry loop', async () => {
+    mockForwardOpenAiCompatible.mockRejectedValueOnce(
+      new RetryError({
+        message: 'Failed after 3 attempts. Last error: Too Many Requests',
+        reason: 'maxRetriesExceeded',
+        errors: [new Error('Too Many Requests')],
+      }),
+    );
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual(expect.objectContaining({ error: 'rate_limited' }));
+  });
+
+  it('returns 503 credential_pending when the sealed credential is awaiting owner approval', async () => {
+    mockResolveBrain.mockRejectedValueOnce(
+      new VaultDelegationError('No active delegation grant', { field: 'xai-api-key:did:imajin:supplier', nodeDid: OWNER_DID }),
+    );
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual(expect.objectContaining({ error: 'credential_pending' }));
+  });
+
+  it('returns 504 upstream_timeout when the upstream call times out', async () => {
+    mockForwardOpenAiCompatible.mockRejectedValueOnce(new UpstreamTimeoutError('xai'));
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(504);
+    expect(await res.json()).toEqual(expect.objectContaining({ error: 'upstream_timeout' }));
+  });
+
+  it('returns 502 upstream_unavailable when the upstream cannot be reached', async () => {
+    mockForwardAnthropic.mockRejectedValueOnce(new UpstreamUnavailableError('anthropic', 'ECONNREFUSED'));
+    mockResolveBrain.mockResolvedValueOnce(ANTHROPIC_BRAIN);
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual(expect.objectContaining({ error: 'upstream_unavailable' }));
+  });
+
+  it('returns 500 completions_failed for an unrecognized crash', async () => {
+    mockResolveBrain.mockRejectedValueOnce(new Error('storage offline'));
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual(expect.objectContaining({ error: 'completions_failed' }));
+  });
+});
