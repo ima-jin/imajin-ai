@@ -26,12 +26,12 @@ import {
   validScopesForConnector,
   requiresConsentRow,
 } from '@/src/lib/kernel/scope-projections';
-import { XAI_CONNECTOR_DID, XAI_CHANNEL, xaiKeySealed, xaiKeyPending } from './connector';
+import { XAI_CONNECTOR_DID, XAI_CHANNEL } from './connector';
 
 // Re-exported so a connector route needs only this module. `export … from`
 // keeps these pure re-exports rather than local bindings that could drift from
 // the grant-aware definitions in ./connector (#1774).
-export { xaiKeySealed, xaiKeyPending };
+export { xaiKeySealed, xaiKeyPending } from './connector';
 
 // ── Scope registry (derived — #1253) ────────────────────────────────────────
 

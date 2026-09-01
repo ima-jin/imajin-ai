@@ -26,19 +26,21 @@
  *   owner-only — never released to a third party; the owner grants it explicitly
  *   never      — structural drop; never materialises (omitted from the UI list)
  */
-import { connectorUiScopes } from './scope-projections';
-import type { ConnectorId } from './scope-projections';
+import {
+  connectorUiScopes,
+  type ConnectorId,
+  type ConnectorScope,
+  type ReleaseClass,
+} from './scope-projections';
 
 /** How the connector ingests credentials. */
 export type IngestionPattern = 'oauth' | 'token-paste' | 'native' | 'static-secret';
 
-// Release class and per-scope shape now live in ./scope-projections alongside
-// the derivation, and are re-exported here so existing importers (the connector
-// card, ConnectorDetail) keep working unchanged. The local import is separate
-// because a re-export alone does not bring the name into this module's scope,
-// and `ConnectorEntry.scopes` below refers to it.
-export type { ReleaseClass, ConnectorScope } from './scope-projections';
-import type { ConnectorScope } from './scope-projections';
+// Release class and per-scope shape live in ./scope-projections alongside the
+// derivation, and are re-exported here (from the single import above, rather
+// than a second `from './scope-projections'` clause) so existing importers
+// (the connector card, ConnectorDetail) keep working unchanged.
+export type { ReleaseClass, ConnectorScope };
 
 /**
  * Per-connector copy for the credential-paste step (#1604).
