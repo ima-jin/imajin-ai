@@ -14,21 +14,18 @@
  *
  * The GET/PUT scaffolding — auth, sealed-key resolution, body validation, and
  * error mapping — lives in `createConnectorModelPickerRoute` (#1928), shared
- * with the Gemini and xAI connectors' model pickers. Only OpenAI's own API
- * shape is declared here:
- *
- *   listModels — lists the models the owner's sealed key can actually see,
- *                straight from OpenAI's `/v1/models`.
- *   probeModel — retrieves the chosen model id from the same API and reports
- *                it servable only when OpenAI confirms it exists. A 404 is
- *                reported as `model_deprecated`, matching the Gemini/xAI
- *                card's contract.
+ * with the Gemini and xAI connectors' model pickers. OpenAI's own API shape
+ * — `listModels`/`probeModel` against `/v1/models` — is the same
+ * OpenAI-compatible shape xAI speaks, so both come from
+ * `createOpenAiCompatibleModelHandlers` (#1927) rather than a second
+ * hand-copy of the fetch/list/probe trio.
  *
  * Security invariant: the API key never leaves the server, in either
  * direction — not in the GET response, and not echoed back on PUT. Upstream
  * response bodies are never surfaced either, only their status code.
  */
-import { createConnectorModelPickerRoute, type ModelListResult, type ModelProbeResult } from '@/src/lib/kernel/connector-model-picker-route';
+import { createConnectorModelPickerRoute } from '@/src/lib/kernel/connector-model-picker-route';
+import { createOpenAiCompatibleModelHandlers } from '@/src/lib/kernel/openai-compatible-model-picker';
 import {
   loadOpenaiSealedCredentials,
   openaiKeyPending,
@@ -37,45 +34,7 @@ import {
   type OpenAICredentials,
 } from '@/src/lib/openai/connector';
 
-/** An entry in OpenAI's `/v1/models` response, narrowed to what is read. */
-interface RawOpenaiModel {
-  id?: string;
-}
-
-/** Call OpenAI's models API with the owner's sealed key. The key only ever rides the header. */
-function fetchOpenaiModels(creds: OpenAICredentials, path = ''): Promise<Response> {
-  const baseUrl = creds.baseUrl ?? OPENAI_BASE_URL;
-  return fetch(`${baseUrl}/models${path}`, {
-    headers: { Authorization: `Bearer ${creds.apiKey}`, Accept: 'application/json' },
-  });
-}
-
-async function listModels(creds: OpenAICredentials): Promise<ModelListResult> {
-  const res = await fetchOpenaiModels(creds);
-  if (!res.ok) {
-    return { ok: false, status: res.status, statusText: res.statusText };
-  }
-  const raw = (await res.json()) as { data?: RawOpenaiModel[] };
-  const models = (raw.data ?? [])
-    .filter((model): model is { id: string } => typeof model.id === 'string' && model.id.length > 0)
-    .map((model) => ({ id: model.id, name: model.id }));
-  return { ok: true, models };
-}
-
-/**
- * Validation is a retrieve of that exact model with the owner's own key: a
- * 404 means the id is not servable for this key (retired, or never existed).
- */
-async function probeModel(creds: OpenAICredentials, modelId: string): Promise<ModelProbeResult> {
-  const res = await fetchOpenaiModels(creds, `/${encodeURIComponent(modelId)}`);
-  if (res.ok) {
-    return { ok: true };
-  }
-  if (res.status === 404) {
-    return { ok: false, deprecated: true };
-  }
-  return { ok: false, deprecated: false, status: res.status, statusText: res.statusText };
-}
+const { listModels, probeModel } = createOpenAiCompatibleModelHandlers<OpenAICredentials>(OPENAI_BASE_URL);
 
 export const { GET, PUT, OPTIONS } = createConnectorModelPickerRoute({
   id: 'openai',

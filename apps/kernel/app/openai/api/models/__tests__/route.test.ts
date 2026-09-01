@@ -1,22 +1,13 @@
 /**
  * Tests for GET/PUT /openai/api/models (#1927).
  *
- * The vault behaviour behind `loadOpenaiSealedCredentials` / `openaiKeyPending` /
- * `setModelId` is covered by the token-paste factory's own tests; what is
- * pinned here is the route contract:
- *   - the sealed key rides the Authorization header and never reaches the
- *     browser, in either direction;
- *   - listing works before the owner has granted `openai:infer` (#1773);
- *   - a model OpenAI will not serve is refused BEFORE it is sealed, so the
- *     card cannot commit a selection that only fails later at inference time;
- *   - upstream failures surface as a status, never as an upstream body.
+ * The route CONTRACT — auth, credential states, GET, PUT — is shared with
+ * every OpenAI-compatible model picker; see `describeModelPickerRouteContract`
+ * in `src/lib/kernel/__tests__/model-picker-route-test-support.ts`. Only the
+ * provider-specific mock wiring lives here.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  makeModelPickerRequest,
-  stubModelPickerFetch,
-  resetModelPickerMocks,
-} from '@/src/lib/kernel/__tests__/model-picker-route-test-support';
+import { vi } from 'vitest';
+import { describeModelPickerRouteContract } from '@/src/lib/kernel/__tests__/model-picker-route-test-support';
 
 const { mockResolveOwnerDid, mockLoadSealed, mockKeyPending, mockSetModelId } = vi.hoisted(() => ({
   mockResolveOwnerDid: vi.fn(),
@@ -47,208 +38,21 @@ vi.mock('@imajin/logger', () => ({
 
 import { GET, PUT, OPTIONS } from '../route';
 
-const OWNER_DID = 'did:imajin:farmer';
-const API_KEY = 'sk-SEALED-KEY';
-
-type RouteRequest = Parameters<typeof PUT>[0];
-
-function makeReq(body?: unknown, opts: { malformed?: boolean } = {}): RouteRequest {
-  return makeModelPickerRequest(body, opts) as unknown as RouteRequest;
-}
-
-function stubFetch(body: unknown, ok = true, status = 200) {
-  return stubModelPickerFetch(body, ok, status);
-}
-
-beforeEach(() => {
-  resetModelPickerMocks({
+describeModelPickerRouteContract({
+  label: 'OpenAI',
+  id: 'openai',
+  baseUrl: 'https://api.openai.com/v1',
+  ownerDid: 'did:imajin:farmer',
+  apiKey: 'sk-SEALED-KEY',
+  sampleModelIds: ['gpt-5.5', 'gpt-5.6-sol'],
+  deprecatedModelId: 'gpt-3',
+  GET,
+  PUT,
+  OPTIONS,
+  mocks: {
     resolveOwnerDid: mockResolveOwnerDid,
-    loadSealedCredentials: mockLoadSealed,
+    loadSealed: mockLoadSealed,
     keyPending: mockKeyPending,
     setModelId: mockSetModelId,
-    ownerDid: OWNER_DID,
-    apiKey: API_KEY,
-  });
-});
-
-// ── Auth ──────────────────────────────────────────────────────────────────────
-
-describe('authentication', () => {
-  it.each([
-    ['GET', GET],
-    ['PUT', PUT],
-  ])('returns the auth failure from %s without touching the vault', async (_verb, handler) => {
-    mockResolveOwnerDid.mockResolvedValueOnce({ ok: false, error: 'Unauthorized', status: 401 });
-
-    const res = await handler(makeReq({ modelId: 'gpt-5.5' }));
-
-    expect(res.status).toBe(401);
-    expect(mockLoadSealed).not.toHaveBeenCalled();
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('answers CORS pre-flight', async () => {
-    expect((await OPTIONS(makeReq())).status).toBe(204);
-  });
-});
-
-// ── Credential states ─────────────────────────────────────────────────────────
-
-describe('credential states', () => {
-  it('reports openai_no_key when nothing is sealed yet', async () => {
-    mockLoadSealed.mockResolvedValue(undefined);
-
-    const res = await GET(makeReq());
-
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/openai_no_key/);
-  });
-
-  it('distinguishes a key awaiting Tier 1 approval from no key at all', async () => {
-    mockLoadSealed.mockResolvedValue(undefined);
-    mockKeyPending.mockResolvedValue(true);
-
-    const res = await GET(makeReq());
-
-    expect(res.status).toBe(409);
-    expect((await res.json()).error).toMatch(/openai_credential_pending/);
-  });
-
-  it('lists models before any openai:infer grant exists (#1773)', async () => {
-    stubFetch({ data: [] });
-
-    const res = await GET(makeReq());
-
-    expect(res.status).toBe(200);
-    // The pending probe is only consulted when nothing resolved.
-    expect(mockKeyPending).not.toHaveBeenCalled();
-  });
-});
-
-// ── GET ───────────────────────────────────────────────────────────────────────
-
-describe('GET', () => {
-  it('sends the key as a bearer token and never returns it', async () => {
-    const fetchMock = stubFetch({ data: [{ id: 'gpt-5.5' }, { id: 'gpt-5.6-sol' }] });
-
-    const res = await GET(makeReq());
-    const body = await res.json() as { models: { id: string; name: string }[]; currentModelId: string | null };
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.openai.com/v1/models',
-      expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: `Bearer ${API_KEY}` }),
-      }),
-    );
-    expect(body.models).toEqual([
-      { id: 'gpt-5.5', name: 'gpt-5.5' },
-      { id: 'gpt-5.6-sol', name: 'gpt-5.6-sol' },
-    ]);
-    expect(JSON.stringify(body)).not.toContain(API_KEY);
-  });
-
-  it('drops malformed entries rather than offering a nameless model', async () => {
-    stubFetch({ data: [{ id: 'gpt-5.5' }, {}, { id: '' }] });
-
-    const body = await (await GET(makeReq())).json() as { models: { id: string }[] };
-
-    expect(body.models).toEqual([{ id: 'gpt-5.5', name: 'gpt-5.5' }]);
-  });
-
-  it('reports the currently sealed model alongside the list', async () => {
-    mockLoadSealed.mockResolvedValue({ apiKey: API_KEY, modelId: 'gpt-5.5' });
-    stubFetch({ data: [] });
-
-    expect((await (await GET(makeReq())).json()).currentModelId).toBe('gpt-5.5');
-  });
-
-  it('honours a sealed baseUrl override instead of the default endpoint', async () => {
-    mockLoadSealed.mockResolvedValue({ apiKey: API_KEY, baseUrl: 'https://proxy.example/v1' });
-    const fetchMock = stubFetch({ data: [] });
-
-    await GET(makeReq());
-
-    expect(fetchMock).toHaveBeenCalledWith('https://proxy.example/v1/models', expect.any(Object));
-  });
-
-  it('maps an upstream error to 502 without forwarding its body', async () => {
-    stubFetch({ error: `bad key ${API_KEY}` }, false, 401);
-
-    const res = await GET(makeReq());
-
-    expect(res.status).toBe(502);
-    expect(JSON.stringify(await res.json())).not.toContain(API_KEY);
-  });
-
-  it('maps a transport failure to 502', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
-
-    expect((await GET(makeReq())).status).toBe(502);
-  });
-});
-
-// ── PUT ───────────────────────────────────────────────────────────────────────
-
-describe('PUT', () => {
-  it.each([
-    ['a malformed body', () => makeReq(undefined, { malformed: true })],
-    ['a missing modelId', () => makeReq({})],
-    ['a blank modelId', () => makeReq({ modelId: '   ' })],
-  ])('rejects %s before reaching the vault', async (_label, req) => {
-    const res = await PUT(req());
-
-    expect(res.status).toBe(400);
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('seals the trimmed model id once OpenAI confirms it', async () => {
-    const fetchMock = stubFetch({ id: 'gpt-5.5' });
-
-    const res = await PUT(makeReq({ modelId: '  gpt-5.5  ' }));
-
-    expect(fetchMock).toHaveBeenCalledWith('https://api.openai.com/v1/models/gpt-5.5', expect.any(Object));
-    expect(mockSetModelId).toHaveBeenCalledWith(OWNER_DID, 'gpt-5.5');
-    expect(await res.json()).toEqual({ modelId: 'gpt-5.5' });
-  });
-
-  /**
-   * The point of validating before sealing: a model that no longer exists must
-   * be refused on the card, not discovered at inference time as an opaque
-   * failure well away from the choice that caused it.
-   */
-  it('refuses a model OpenAI does not serve, and seals nothing', async () => {
-    stubFetch({ error: 'not found' }, false, 404);
-
-    const res = await PUT(makeReq({ modelId: 'gpt-3' }));
-
-    expect(res.status).toBe(422);
-    expect((await res.json()).error).toBe('model_deprecated');
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('does not misreport an unrelated upstream failure as a dead model', async () => {
-    stubFetch({ error: 'rate limited' }, false, 429);
-
-    const res = await PUT(makeReq({ modelId: 'gpt-5.5' }));
-
-    expect(res.status).toBe(502);
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('maps a transport failure during validation to 502', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
-
-    expect((await PUT(makeReq({ modelId: 'gpt-5.5' }))).status).toBe(502);
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('reports a sealing failure as 500 without echoing the key', async () => {
-    stubFetch({ id: 'gpt-5.5' });
-    mockSetModelId.mockRejectedValue(new Error(`vault said ${API_KEY}`));
-
-    const res = await PUT(makeReq({ modelId: 'gpt-5.5' }));
-
-    expect(res.status).toBe(500);
-    expect(JSON.stringify(await res.json())).not.toContain(API_KEY);
-  });
+  },
 });
