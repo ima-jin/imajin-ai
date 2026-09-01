@@ -284,6 +284,14 @@ export const SCOPE_VOCABULARY = [
   { scope: 'availability:read', connector: null, label: 'View your availability and coordination intents' },
   { scope: 'availability:write', connector: null, label: 'Set and cancel availability intents on your behalf' },
   { scope: 'infer:provide', connector: null, label: 'Provide app-owned inference credentials for delegated inference' },
+  // #1925: gates POST /infer/v1/chat/completions, the OpenAI-compatible
+  // completions passthrough. Distinct from `infer:provide` (which lets an app
+  // supply its OWN credential for delegated inference): this scope lets an
+  // app call the passthrough onBehalfOf a principal whose sealed connector
+  // card (BRAIN_CONNECTORS) supplies the model. Platform scope — the
+  // passthrough is a kernel route, not a connector card, so there is no
+  // owning connector to gate a manifest toggle on.
+  { scope: 'infer:completions', connector: null, label: 'Use the completions passthrough for inference on your behalf' },
 
   // ── QuickBooks connector — invoices are sent to customers, hence write touches others
   { scope: 'quickbooks:read', connector: 'quickbooks', verb: 'read', surface: 'invoices', classification: SELF_ONLY,
