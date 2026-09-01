@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { verifyChainLog } from '@/src/lib/auth/chain-providers';
 import { requireAuth } from '@/src/lib/auth/middleware';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
+import { invalidateAllRecoveryCodes } from '@/src/lib/auth/recovery-codes';
 import type { KeyRoles } from '@/src/db';
 
 export async function OPTIONS(request: NextRequest) {
@@ -88,6 +89,9 @@ export async function POST(
   { params }: { params: Promise<{ did: string }> }
 ) {
   const cors = corsHeaders(request);
+  // Captured before `log` is shadowed below by the request body's own
+  // `log` (chain-update array) field of the same name.
+  const moduleLog = log;
   try {
     const { did } = await params;
     const decodedDid = decodeURIComponent(did);
@@ -184,6 +188,12 @@ export async function POST(
         updatedAt: new Date(),
       })
       .where(eq(identities.id, decodedDid));
+
+    // Any key-role change invalidates the whole recovery-code set (#1250
+    // Phase 1) — non-fatal, must not block the update itself.
+    invalidateAllRecoveryCodes(decodedDid).catch((err) =>
+      moduleLog.error({ err: String(err), did: decodedDid }, '[keys] recovery code invalidation failed (non-fatal)')
+    );
 
     return NextResponse.json({
       did: decodedDid,

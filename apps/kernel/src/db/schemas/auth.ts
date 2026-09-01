@@ -277,6 +277,45 @@ export const mfaMethods = authSchema.table('mfa_methods', {
 }));
 
 /**
+ * Recovery Codes — one-time, one-way-hashed codes authorizing a #401-style
+ * key rotation when the genesis key is lost (#1250 Phase 1). One row per
+ * code (a batch of N is generated together). `codeHash` is a self-
+ * describing scrypt hash of the normalised code — never the plaintext,
+ * which is only ever returned once, at generation time.
+ *
+ * A code is active when both `usedAt` and `invalidatedAt` are null.
+ */
+export const recoveryCodes = authSchema.table('recovery_codes', {
+  id: text('id').primaryKey(),                          // rc_{nanoid}
+  did: text('did').notNull().references(() => identities.id),
+  codeHash: text('code_hash').notNull(),                // scrypt$N$r$p$salt$hash — never plaintext
+  usedAt: timestamp('used_at', { withTimezone: true }),           // single-use: set on redemption
+  invalidatedAt: timestamp('invalidated_at', { withTimezone: true }), // set on regen or any rotation
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  didIdx: index('idx_recovery_codes_did').on(table.did),
+  activeIdx: index('idx_recovery_codes_active').on(table.did)
+    .where(sql`${table.usedAt} IS NULL AND ${table.invalidatedAt} IS NULL`),
+}));
+
+/**
+ * Recovery Attempts — append-only audit trail of every recovery-code
+ * verification attempt, success or failure (#1250 Phase 1 anti-takeover
+ * requirement). No FK to identities: an attempt against an unknown/bad DID
+ * must still produce an auditable row.
+ */
+export const recoveryAttempts = authSchema.table('recovery_attempts', {
+  id: text('id').primaryKey(),                          // ratt_{nanoid}
+  did: text('did').notNull(),
+  ip: text('ip').notNull(),
+  outcome: text('outcome').notNull(),                   // 'success' | 'invalid_code' | 'no_active_codes' | 'not_self_custody' | 'identity_not_found' | 'invalid_public_key' | 'public_key_conflict' | 'rate_limited'
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  didIdx: index('idx_recovery_attempts_did').on(table.did, table.createdAt),
+  ipIdx: index('idx_recovery_attempts_ip').on(table.ip, table.createdAt),
+}));
+
+/**
  * Devices — known devices per identity
  */
 export const devices = authSchema.table('devices', {
@@ -585,6 +624,10 @@ export type StoredKey = typeof storedKeys.$inferSelect;
 export type NewStoredKey = typeof storedKeys.$inferInsert;
 export type MfaMethod = typeof mfaMethods.$inferSelect;
 export type NewMfaMethod = typeof mfaMethods.$inferInsert;
+export type RecoveryCode = typeof recoveryCodes.$inferSelect;
+export type NewRecoveryCode = typeof recoveryCodes.$inferInsert;
+export type RecoveryAttempt = typeof recoveryAttempts.$inferSelect;
+export type NewRecoveryAttempt = typeof recoveryAttempts.$inferInsert;
 export type Device = typeof devices.$inferSelect;
 export type NewDevice = typeof devices.$inferInsert;
 export type IdentityMember = typeof identityMembers.$inferSelect;

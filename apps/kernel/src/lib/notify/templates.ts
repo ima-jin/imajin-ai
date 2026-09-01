@@ -641,6 +641,24 @@ export const templates: NotifyTemplate[] = [
     },
   },
   {
+    scope: 'auth:recovery-code-used',
+    urgency: 'urgent',
+    title: (_data) => 'A recovery code was used on your account',
+    body: (_data) => 'Someone used one of your recovery codes to rotate your account key. If this wasn\u2019t you, secure your account immediately.',
+    email: {
+      subject: (_data) => 'Security alert: a recovery code rotated your account key',
+      html: (data) => {
+        const occurredAt = typeof data.occurredAt === 'string' ? data.occurredAt : new Date().toISOString();
+        return simpleEmailHtml(
+          'Recovery code used',
+          `One of your one-time recovery codes was just used to authorize a key rotation on your account at <strong style="color:#ffffff;">${escapeHtml(occurredAt)}</strong>. ` +
+          'Your old key is now cryptographically dead and every existing session has been signed out. ' +
+          '<br><br>If this was you, no action is needed. If it was not, this recovery path is server-verified rather than trustless (the same trust class as an email magic-link) \u2014 contact support immediately.'
+        );
+      },
+    },
+  },
+  {
     scope: 'broker:consent-request',
     urgency: 'urgent',
     title: (data) => {

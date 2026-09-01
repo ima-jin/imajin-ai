@@ -8,6 +8,7 @@ import { multibaseToHex } from '@imajin/auth';
 const log = createLogger('kernel');
 import { verifyChainLog } from '@/src/lib/auth/chain-providers';
 import { requireAuth } from '@/src/lib/auth/middleware';
+import { invalidateAllRecoveryCodes } from '@/src/lib/auth/recovery-codes';
 import type { KeyRoles } from '@/src/db';
 
 export async function OPTIONS(request: NextRequest) {
@@ -27,6 +28,9 @@ export async function POST(
   { params }: { params: Promise<{ did: string }> }
 ) {
   const cors = corsHeaders(request);
+  // Captured before `log` is shadowed below by the request body's own
+  // `log` (chain-update array) field of the same name.
+  const moduleLog = log;
   try {
     const { did } = await params;
     const decodedDid = decodeURIComponent(did);
@@ -164,6 +168,13 @@ export async function POST(
     // Invalidate all existing tokens for this DID
     await db.delete(tokens)
       .where(eq(tokens.identityId, decodedDid));
+
+    // Any rotation invalidates the whole recovery-code set (#1250 Phase 1) —
+    // never let a stale code authorize a rotation back to a superseded key.
+    // Non-fatal: a failure here must not block the rotation itself.
+    invalidateAllRecoveryCodes(decodedDid).catch((err) =>
+      moduleLog.error({ err: String(err), did: decodedDid }, '[rotate] recovery code invalidation failed (non-fatal)')
+    );
 
     return NextResponse.json({
       did: decodedDid,
