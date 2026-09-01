@@ -80,35 +80,11 @@ vi.mock('@/src/lib/inference/vocabulary', () => ({
 
 // `brain.ts` pulls in `@/src/db` (a real drizzle client) and the Gemini/
 // Anthropic connectors purely to build `NoBrainSealedError`'s message. The
-// route only needs the error TYPE for `instanceof` matching, so the mock
-// re-implements just enough of the shape to avoid dragging in a live DB
-// client at test-import time.
-vi.mock('@/src/lib/inference/brain', () => {
-  class NoBrainSealedError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'NoBrainSealedError';
-    }
-  }
-  class NoModelSelectedError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'NoModelSelectedError';
-    }
-  }
-  // #1818: same reasoning as the other two — the route only needs the error
-  // TYPE (plus its `connector`/`modelId` fields) for `instanceof` matching.
-  class ModelDeprecatedError extends Error {
-    readonly connector: string;
-    readonly modelId: string;
-    constructor(connector: string, modelId: string) {
-      super(`model_deprecated: ${connector} model '${modelId}' was not found upstream`);
-      this.name = 'ModelDeprecatedError';
-      this.connector = connector;
-      this.modelId = modelId;
-    }
-  }
-  return { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError };
+// route only needs the error TYPE for `instanceof` matching — see
+// `brain-errors-test-support.ts` for the shared shape.
+vi.mock('@/src/lib/inference/brain', async () => {
+  const { createFakeBrainErrorClasses } = await import('@/src/lib/inference/__tests__/brain-errors-test-support');
+  return createFakeBrainErrorClasses();
 });
 
 // ─── Subject ────────────────────────────────────

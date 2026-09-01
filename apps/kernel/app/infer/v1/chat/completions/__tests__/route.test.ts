@@ -36,31 +36,11 @@ vi.mock('@imajin/logger', () => ({
 
 // `brain.ts` pulls in a real drizzle client + connector modules purely to
 // build error messages. The route only needs `resolveBrain` plus the error
-// TYPES for `instanceof` matching — same pattern the capture route test uses.
-vi.mock('@/src/lib/inference/brain', () => {
-  class NoBrainSealedError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'NoBrainSealedError';
-    }
-  }
-  class NoModelSelectedError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'NoModelSelectedError';
-    }
-  }
-  class ModelDeprecatedError extends Error {
-    readonly connector: string;
-    readonly modelId: string;
-    constructor(connector: string, modelId: string) {
-      super(`model_deprecated: ${connector} model '${modelId}' was not found upstream`);
-      this.name = 'ModelDeprecatedError';
-      this.connector = connector;
-      this.modelId = modelId;
-    }
-  }
-  return { resolveBrain: mockResolveBrain, NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError };
+// TYPES for `instanceof` matching — see `brain-errors-test-support.ts` for
+// the shared shape used by every route/adapter test that mocks this module.
+vi.mock('@/src/lib/inference/brain', async () => {
+  const { createFakeBrainErrorClasses } = await import('@/src/lib/inference/__tests__/brain-errors-test-support');
+  return { resolveBrain: mockResolveBrain, ...createFakeBrainErrorClasses() };
 });
 
 vi.mock('@/src/lib/inference/completions/anthropic-adapter', () => ({

@@ -3,31 +3,10 @@ import { describe, it, expect, vi } from 'vitest';
 // `brain.ts` pulls in `@/src/db` (a real drizzle client) purely to build error
 // messages. The tests only need the error TYPES for `instanceof` matching, so
 // the mock re-implements just enough shape to avoid a live DB client at
-// test-import time — same pattern the capture route test already uses.
-vi.mock('@/src/lib/inference/brain', () => {
-  class NoBrainSealedError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'NoBrainSealedError';
-    }
-  }
-  class NoModelSelectedError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'NoModelSelectedError';
-    }
-  }
-  class ModelDeprecatedError extends Error {
-    readonly connector: string;
-    readonly modelId: string;
-    constructor(connector: string, modelId: string) {
-      super(`model_deprecated: ${connector} model '${modelId}' was not found upstream`);
-      this.name = 'ModelDeprecatedError';
-      this.connector = connector;
-      this.modelId = modelId;
-    }
-  }
-  return { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError };
+// test-import time — see `brain-errors-test-support.ts` for the shared shape.
+vi.mock('@/src/lib/inference/brain', async () => {
+  const { createFakeBrainErrorClasses } = await import('./brain-errors-test-support');
+  return createFakeBrainErrorClasses();
 });
 
 import { mapBrainErrorToHttp } from '../brain-http-errors';
