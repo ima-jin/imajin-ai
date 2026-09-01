@@ -57,6 +57,10 @@ import {
   revokeVaultDelegationGrantsForConnector,
 } from '@/src/lib/vault';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
+import {
+  recordConnectorRegistration,
+  revokeConnectorRegistration,
+} from '@/src/lib/kernel/connector-registry-store';
 
 const log = createLogger('kernel');
 
@@ -237,6 +241,16 @@ export function createConnectorTokenPaste(
     if (modelId) {
       await sealAndStore(modelIdField(ownerDid), modelId);
     }
+
+    // Mirror the installation into the consolidated registry (#1924). The
+    // FIELD NAME only — the sealed key stays in the vault and the wrapped key
+    // in `vault_delegation_grants`. `recordConnectorRegistration` never throws:
+    // a projection failure must not fail a seal that already succeeded.
+    await recordConnectorRegistration({
+      ownerDid,
+      provider: opts.id,
+      sealedKeyField: keyField(ownerDid),
+    });
   }
 
   async function resolveActiveGrant(ownerDid: string, requiredScope: string): Promise<boolean> {
@@ -376,6 +390,9 @@ export function createConnectorTokenPaste(
   async function revokeApiKey(ownerDid: string): Promise<boolean> {
     const revokedGrants = await revokeVaultDelegationGrantsForConnector(opts.id, ownerDid);
     const revokedLinks = await revokeActiveChannelLinks(ownerDid);
+    // Both authoritative surfaces are already revoked at this point; the
+    // registry is brought into agreement afterwards and never throws (#1924).
+    await revokeConnectorRegistration(ownerDid, opts.id);
     return revokedGrants > 0 || revokedLinks > 0;
   }
 

@@ -25,6 +25,7 @@ import { createAsset } from '@/src/lib/media/create-asset';
 import { updateAssetContent } from '@/src/lib/media/update-asset';
 import { generateId } from '@/src/lib/kernel/id';
 import { addAssetToGrantsFolder } from '@/src/lib/media/folders';
+import { syncConnectorRegistrationScopes } from '@/src/lib/kernel/connector-registry-store';
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -383,6 +384,13 @@ export async function publishConnectorScopeManifest(opts: {
         .where(eq(channelLinks.id, row.id));
     }
   }
+
+  // Refresh the consolidated registry's scope snapshot (#1924). `channel` is
+  // the connector's registry id by convention (pinned by the #1253 projection
+  // test), so it is the provider key. Never throws — the authoritative
+  // channel_links rows above are already written, and a projection failure
+  // must not turn a successful publish into a 500.
+  await syncConnectorRegistrationScopes(ownerDid, channel, scopes);
 
   return assetId;
 }

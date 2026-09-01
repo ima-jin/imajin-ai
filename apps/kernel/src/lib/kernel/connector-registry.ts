@@ -310,6 +310,35 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     modelsRoute: null,
   },
   {
+    id: 'xai',
+    name: 'xAI Grok',
+    description: 'Seal your own xAI API key per-DID so Grok inference runs on your credential, not a shared env var.',
+    icon: '🚀',
+    ingestionPattern: 'token-paste',
+    channel: 'xai',
+    connectorDid: 'did:imajin:xai-connector',
+    scopes: connectorUiScopes('xai'),
+    statusEndpoint: '/xai/api/scope-manifest',
+    backendPending: false,
+    connectRoute: null,
+    configureRoute: null,
+    tokenRoute: '/xai/api/token',
+    // Revokes the sealed key's delegation grant (kernel.vault_delegation_grants)
+    // and sweeps the connector's channel_links rows (#1720/#1733).
+    disconnectRoute: '/xai/api/disconnect',
+    credentialUi: {
+      label: 'API Key',
+      placeholder: 'xAI API Key (xai-...)',
+      hint: 'Key is sealed server-side and never returned. Create one at console.x.ai → API Keys.',
+    },
+    settings: null,
+    // #1924, following #1769: no hardcoded default model. Grok ids turn over
+    // fast enough that a baked-in string would go stale the same way
+    // gemini-2.0-flash did (#1764), so the owner picks a live one here and it
+    // is sealed as `modelId`.
+    modelsRoute: '/xai/api/models',
+  },
+  {
     id: 'gcp',
     name: 'Google Cloud',
     description: 'Connect your GCP service account for Vertex AI inference and cloud operations.',
