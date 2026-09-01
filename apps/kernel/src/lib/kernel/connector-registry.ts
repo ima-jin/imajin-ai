@@ -27,6 +27,7 @@
  *   never      — structural drop; never materialises (omitted from the UI list)
  */
 import { connectorUiScopes } from './scope-projections';
+import type { ConnectorId } from './scope-projections';
 
 /** How the connector ingests credentials. */
 export type IngestionPattern = 'oauth' | 'token-paste' | 'native' | 'static-secret';
@@ -189,6 +190,46 @@ export interface ConnectorEntry {
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
+/**
+ * Shared shape for the token-paste "brain" connectors — the ones whose sealed
+ * API key is spent on inference (Gemini, xAI; #1928). They share every field
+ * except identity, credential-step copy, and whether they have a model
+ * picker: no OAuth step, no settings section, and a disconnect that revokes
+ * the delegation grant (#1720) and sweeps channel_links (#1733). Declaring
+ * that shape once here is what keeps the next brain connector's registry
+ * entry (#1927 OpenAI, #1930 Moonshot, #1931 Z.ai) a same-shape call instead
+ * of a ~30-line clone.
+ */
+function brainConnectorEntry(opts: {
+  id: ConnectorId;
+  name: string;
+  description: string;
+  icon: string;
+  credentialUi: CredentialUiCopy;
+  /** `null` for connectors with no dynamic model picker (#1769). */
+  modelsRoute: string | null;
+}): ConnectorEntry {
+  return {
+    id: opts.id,
+    name: opts.name,
+    description: opts.description,
+    icon: opts.icon,
+    ingestionPattern: 'token-paste',
+    channel: opts.id,
+    connectorDid: `did:imajin:${opts.id}-connector`,
+    scopes: connectorUiScopes(opts.id),
+    statusEndpoint: `/${opts.id}/api/scope-manifest`,
+    backendPending: false,
+    connectRoute: null,
+    configureRoute: null,
+    tokenRoute: `/${opts.id}/api/token`,
+    disconnectRoute: `/${opts.id}/api/disconnect`,
+    credentialUi: opts.credentialUi,
+    settings: null,
+    modelsRoute: opts.modelsRoute,
+  };
+}
+
 export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'mcp',
@@ -258,33 +299,21 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
     modelsRoute: null,
   },
-  {
+  brainConnectorEntry({
     id: 'gemini',
     name: 'Google Gemini',
     description: 'Seal your own Gemini API key per-DID so inference uses your credential instead of the global env var.',
     icon: '✨',
-    ingestionPattern: 'token-paste',
-    channel: 'gemini',
-    connectorDid: 'did:imajin:gemini-connector',
-    scopes: connectorUiScopes('gemini'),
-    statusEndpoint: '/gemini/api/scope-manifest',
-    backendPending: false,
-    connectRoute: null,
-    configureRoute: null,
-    tokenRoute: '/gemini/api/token',
-    // #1720: revokes the sealed key's delegation grant (kernel.vault_delegation_grants).
-    disconnectRoute: '/gemini/api/disconnect',
     credentialUi: {
       label: 'API Key',
       placeholder: 'Gemini API Key',
       hint: 'Key is sealed server-side and never returned. Create one in Google AI Studio → Get API key.',
     },
-    settings: null,
     // #1769: dynamic model picker — GET lists live models for the sealed key,
     // PUT seals the choice. Replaces the hardcoded `defaultModelId` that went
     // stale when Google retired gemini-2.0-flash (#1764).
     modelsRoute: '/gemini/api/models',
-  },
+  }),
   {
     id: 'anthropic',
     name: 'Anthropic Claude',
@@ -309,35 +338,22 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
     modelsRoute: null,
   },
-  {
+  brainConnectorEntry({
     id: 'xai',
     name: 'xAI Grok',
     description: 'Seal your own xAI API key per-DID so Grok inference runs on your credential, not a shared env var.',
     icon: '🚀',
-    ingestionPattern: 'token-paste',
-    channel: 'xai',
-    connectorDid: 'did:imajin:xai-connector',
-    scopes: connectorUiScopes('xai'),
-    statusEndpoint: '/xai/api/scope-manifest',
-    backendPending: false,
-    connectRoute: null,
-    configureRoute: null,
-    tokenRoute: '/xai/api/token',
-    // Revokes the sealed key's delegation grant (kernel.vault_delegation_grants)
-    // and sweeps the connector's channel_links rows (#1720/#1733).
-    disconnectRoute: '/xai/api/disconnect',
     credentialUi: {
       label: 'API Key',
       placeholder: 'xAI API Key (xai-...)',
       hint: 'Key is sealed server-side and never returned. Create one at console.x.ai → API Keys.',
     },
-    settings: null,
     // #1924, following #1769: no hardcoded default model. Grok ids turn over
     // fast enough that a baked-in string would go stale the same way
     // gemini-2.0-flash did (#1764), so the owner picks a live one here and it
     // is sealed as `modelId`.
     modelsRoute: '/xai/api/models',
-  },
+  }),
   {
     id: 'gcp',
     name: 'Google Cloud',
@@ -453,7 +469,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
     modelsRoute: null,
   },
-] as const;
+];
 
 /** Look up a connector entry by its id. Returns undefined for unknown ids. */
 export function getConnector(id: string): ConnectorEntry | undefined {
