@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   rateLimit: vi.fn(),
   getClientIP: vi.fn(),
   getEmitter: vi.fn(),
+  publishUsageIncurred: vi.fn(),
   insertedIds: [] as Array<{ id: string } | undefined>,
   insertValues: [] as Record<string, unknown>[],
 }));
@@ -32,6 +33,10 @@ vi.mock('@/src/lib/usage/emitters-store', () => ({
   callerMatchesEmitter: (emitter: { issuerDid: string; actingFor: string | null }, callerDid: string) =>
     callerDid === emitter.issuerDid || (emitter.actingFor !== null && callerDid === emitter.actingFor),
   isActiveEmitter: (emitter: { status: string } | undefined) => Boolean(emitter) && emitter!.status === 'active',
+}));
+
+vi.mock('@/src/lib/inference/usage-ledger', () => ({
+  publishUsageIncurred: mocks.publishUsageIncurred,
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -89,6 +94,7 @@ beforeEach(() => {
   mocks.insertValues.length = 0;
   mocks.getClientIP.mockReturnValue('127.0.0.1');
   mocks.rateLimit.mockReturnValue({ limited: false, retryAfter: 0 });
+  mocks.publishUsageIncurred.mockResolvedValue(undefined);
   mocks.requireAppAuth.mockResolvedValue({
     appAuth: { appDid: APP_DID, userDid: '', scopes: ['usage:emit'], attestationId: '', isServiceToken: true },
   });
@@ -202,7 +208,7 @@ describe('POST /usage/api/incurred — source/issuer validation', () => {
 });
 
 describe('POST /usage/api/incurred — insert + dedupe', () => {
-  it('reports an inserted row and writes derived provider/model for a model:* resource', async () => {
+  it('reports an inserted row and writes derived provider/model + quantity/unit for a model:* resource', async () => {
     const res = await POST(makeRequest([goodRow()]));
 
     expect(res.status).toBe(202);
@@ -216,7 +222,17 @@ describe('POST /usage/api/incurred — insert + dedupe', () => {
       externalId: 'msg_1',
       tokensIn: 10,
       tokensOut: 5,
+      // #1148: derived from tokens_in + tokens_out when the row sends
+      // neither explicitly, same rule as the completions passthrough.
+      quantity: '15.000000',
+      unit: 'tokens',
     });
+  });
+
+  it('persists an explicit quantity/unit pair instead of deriving one from tokens', async () => {
+    await POST(makeRequest([goodRow({ quantity: 3, unit: 'calls' })]));
+
+    expect(mocks.insertValues[0]).toMatchObject({ quantity: '3.000000', unit: 'calls' });
   });
 
   it('reports skipped (not inserted) when the dedupe conflict target already exists', async () => {
@@ -226,6 +242,39 @@ describe('POST /usage/api/incurred — insert + dedupe', () => {
 
     const body = await res.json();
     expect(body).toEqual({ inserted: 0, skipped: 1, rejected: [] });
+  });
+
+  it('publishes one usage.incurred bus event per newly inserted row via the shared usage-ledger helper', async () => {
+    await POST(makeRequest([goodRow()]));
+
+    expect(mocks.publishUsageIncurred).toHaveBeenCalledTimes(1);
+    expect(mocks.publishUsageIncurred).toHaveBeenCalledWith(
+      expect.objectContaining({
+        principalDid: APP_DID,
+        resource: 'model:anthropic/claude-sonnet-4-5',
+        quantity: 15,
+        unit: 'tokens',
+        source: 'adapter:claude-code',
+      }),
+    );
+  });
+
+  it('does not publish a bus event for a dedupe-skipped row', async () => {
+    mocks.insertedIds.length = 0; // onConflictDoNothing returns no row
+
+    await POST(makeRequest([goodRow()]));
+
+    expect(mocks.publishUsageIncurred).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the request when the bus publish rejects (fire-and-forget, fail-open)', async () => {
+    mocks.publishUsageIncurred.mockRejectedValue(new Error('bus down'));
+
+    const res = await POST(makeRequest([goodRow()]));
+
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body.inserted).toBe(1);
   });
 
   it('handles a batch with a mix of accepted, rejected, and validation-failed rows independently', async () => {

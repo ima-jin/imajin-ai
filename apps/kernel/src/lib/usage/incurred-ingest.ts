@@ -8,11 +8,11 @@
  * envelope is sound, each row is validated independently — one bad row in a
  * batch of fifty does not sink the other forty-nine.
  *
- * `quantity`/`unit` are accepted here (so a caller upgrading to #1148's
- * primitive doesn't get a hard validation error) but the route never
- * persists them: `usage.incurred` has no such columns yet — see this
- * migration's own note in migrations/0121_usage_emitters.sql and the PR's
- * "Decisions for review".
+ * `quantity`/`unit` are #1148's emitter-agnostic primitive
+ * (migrations/0120_usage_incurred_quantity.sql) — an emitter may send them
+ * explicitly; when it sends neither, the route derives them from
+ * `tokens_in`/`tokens_out` the same way the completions passthrough does
+ * (usage-ledger.ts).
  */
 
 /** Hard ceiling on rows per request — batch/periodic reporting, not a streaming firehose. */
@@ -45,6 +45,8 @@ export interface ValidatedIncurredRow {
   tokensIn?: number;
   tokensOut?: number;
   costUsd?: number;
+  quantity?: number;
+  unit?: string;
   externalId: string;
   ts: Date;
   actingFor?: string;
@@ -112,6 +114,8 @@ interface OptionalFields {
   tokensIn?: number;
   tokensOut?: number;
   costUsd?: number;
+  quantity?: number;
+  unit?: string;
   actingFor?: string;
 }
 
@@ -122,6 +126,10 @@ const OPTIONAL_FIELD_RULES = [
   { rawKey: 'tokens_in', outKey: 'tokensIn', check: isFiniteNumber, message: 'tokens_in must be a number when present' },
   { rawKey: 'tokens_out', outKey: 'tokensOut', check: isFiniteNumber, message: 'tokens_out must be a number when present' },
   { rawKey: 'cost_usd', outKey: 'costUsd', check: isFiniteNumber, message: 'cost_usd must be a number when present' },
+  // #1148 emitter-agnostic quantity/unit — an emitter may report these
+  // directly instead of (or alongside) tokens_in/tokens_out.
+  { rawKey: 'quantity', outKey: 'quantity', check: isFiniteNumber, message: 'quantity must be a number when present' },
+  { rawKey: 'unit', outKey: 'unit', check: isNonEmptyString, message: 'unit must be a string when present' },
   { rawKey: 'acting_for', outKey: 'actingFor', check: isNonEmptyString, message: 'acting_for must be a string when present' },
 ] as const satisfies ReadonlyArray<{ rawKey: string; outKey: keyof OptionalFields; check: (v: unknown) => boolean; message: string }>;
 
@@ -214,4 +222,24 @@ export function deriveProviderModel(row: Pick<ValidatedIncurredRow, 'resource' |
     provider: row.provider ?? parsed?.provider ?? kind,
     model: row.model ?? parsed?.model ?? fallbackModel,
   };
+}
+
+/**
+ * Derive #1148's emitter-agnostic `quantity`/`unit` pair. Honors whatever the
+ * row explicitly sent; when it sends neither, falls back to
+ * `tokensIn + tokensOut` / `'tokens'` — the exact rule
+ * `recordInferenceUsage` (usage-ledger.ts) uses for the completions
+ * passthrough — whenever both token counts are known. `undefined`/`undefined`
+ * when none of quantity, unit, or both token counts are present.
+ */
+export function deriveQuantityUnit(
+  row: Pick<ValidatedIncurredRow, 'quantity' | 'unit' | 'tokensIn' | 'tokensOut'>,
+): { quantity: number | undefined; unit: string | undefined } {
+  if (row.quantity !== undefined) {
+    return { quantity: row.quantity, unit: row.unit };
+  }
+  if (row.tokensIn !== undefined && row.tokensOut !== undefined) {
+    return { quantity: row.tokensIn + row.tokensOut, unit: row.unit ?? 'tokens' };
+  }
+  return { quantity: undefined, unit: row.unit };
 }

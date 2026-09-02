@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateIncurredBatch, deriveProviderModel, MAX_INCURRED_BATCH_SIZE } from '../incurred-ingest';
+import { validateIncurredBatch, deriveProviderModel, deriveQuantityUnit, MAX_INCURRED_BATCH_SIZE } from '../incurred-ingest';
 
 function row(overrides: Record<string, unknown> = {}) {
   return {
@@ -56,11 +56,23 @@ describe('validateIncurredBatch — per-row validation', () => {
     ]);
   });
 
-  it('accepts quantity/unit without persisting them onto the normalized row', () => {
+  it('validates and normalizes an explicit quantity/unit pair (#1148)', () => {
     const result = validateIncurredBatch([row({ quantity: 3, unit: 'calls' })]);
     if (!('accepted' in result)) throw new Error('expected accepted batch');
-    expect(result.accepted[0]).not.toHaveProperty('quantity');
-    expect(result.accepted[0]).not.toHaveProperty('unit');
+    expect(result.rejected).toEqual([]);
+    expect(result.accepted[0]).toMatchObject({ quantity: 3, unit: 'calls' });
+  });
+
+  it('rejects a non-numeric quantity', () => {
+    const result = validateIncurredBatch([row({ quantity: 'a lot' })]);
+    if (!('accepted' in result)) throw new Error('expected accepted batch');
+    expect(result.rejected).toEqual([{ index: 0, reason: 'quantity must be a number when present' }]);
+  });
+
+  it('rejects a non-string unit', () => {
+    const result = validateIncurredBatch([row({ unit: 42 })]);
+    if (!('accepted' in result)) throw new Error('expected accepted batch');
+    expect(result.rejected).toEqual([{ index: 0, reason: 'unit must be a string when present' }]);
   });
 
   it('carries an optional acting_for through', () => {
@@ -144,5 +156,39 @@ describe('deriveProviderModel', () => {
 
   it('falls back to the whole resource as model when there is no value segment', () => {
     expect(deriveProviderModel({ resource: 'external:sms:reminder' })).toEqual({ provider: 'external', model: 'sms:reminder' });
+  });
+});
+
+describe('deriveQuantityUnit', () => {
+  it('honors an explicit quantity/unit pair over token counts', () => {
+    expect(deriveQuantityUnit({ quantity: 3, unit: 'calls', tokensIn: 100, tokensOut: 20 })).toEqual({ quantity: 3, unit: 'calls' });
+  });
+
+  it('honors an explicit quantity with no unit, without inventing one', () => {
+    expect(deriveQuantityUnit({ quantity: 3, unit: undefined, tokensIn: undefined, tokensOut: undefined })).toEqual({
+      quantity: 3,
+      unit: undefined,
+    });
+  });
+
+  it('derives quantity/unit from tokensIn + tokensOut when neither is sent explicitly (matches usage-ledger.ts)', () => {
+    expect(deriveQuantityUnit({ quantity: undefined, unit: undefined, tokensIn: 100, tokensOut: 20 })).toEqual({
+      quantity: 120,
+      unit: 'tokens',
+    });
+  });
+
+  it('does not overwrite an explicit unit when deriving quantity from tokens', () => {
+    expect(deriveQuantityUnit({ quantity: undefined, unit: 'requests', tokensIn: 100, tokensOut: 20 })).toEqual({
+      quantity: 120,
+      unit: 'requests',
+    });
+  });
+
+  it('derives nothing when quantity is absent and token counts are incomplete', () => {
+    expect(deriveQuantityUnit({ quantity: undefined, unit: undefined, tokensIn: 100, tokensOut: undefined })).toEqual({
+      quantity: undefined,
+      unit: undefined,
+    });
   });
 });

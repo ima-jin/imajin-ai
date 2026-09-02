@@ -29,8 +29,9 @@ import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { db, usageIncurred } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
-import { validateIncurredBatch, deriveProviderModel, type ValidatedIncurredRow } from '@/src/lib/usage/incurred-ingest';
+import { validateIncurredBatch, deriveProviderModel, deriveQuantityUnit, type ValidatedIncurredRow } from '@/src/lib/usage/incurred-ingest';
 import { getEmitter, callerMatchesEmitter, isActiveEmitter } from '@/src/lib/usage/emitters-store';
+import { publishUsageIncurred } from '@/src/lib/inference/usage-ledger';
 
 const log = createLogger('kernel:usage:incurred-ingest');
 
@@ -138,12 +139,15 @@ async function processRow(
  */
 async function insertIncurredRow(row: ValidatedIncurredRow, emitterActingFor: string | null, callerDid: string): Promise<boolean> {
   const { provider, model } = deriveProviderModel(row);
+  const { quantity, unit } = deriveQuantityUnit(row);
+  const usageId = generateId('usage');
+  const principalDid = row.actingFor ?? emitterActingFor ?? callerDid;
 
   const result = await db
     .insert(usageIncurred)
     .values({
-      id: generateId('usage'),
-      principalDid: row.actingFor ?? emitterActingFor ?? callerDid,
+      id: usageId,
+      principalDid,
       agentDid: callerDid,
       source: row.source,
       resource: row.resource,
@@ -152,6 +156,8 @@ async function insertIncurredRow(row: ValidatedIncurredRow, emitterActingFor: st
       tokensIn: row.tokensIn ?? null,
       tokensOut: row.tokensOut ?? null,
       costUsd: row.costUsd === undefined ? null : row.costUsd.toFixed(8),
+      quantity: quantity === undefined ? null : quantity.toFixed(6),
+      unit: unit ?? null,
       externalId: row.externalId,
       createdAt: row.ts,
     })
@@ -161,10 +167,21 @@ async function insertIncurredRow(row: ValidatedIncurredRow, emitterActingFor: st
     })
     .returning({ id: usageIncurred.id });
 
-  // TODO(#1148): publish a usage.incurred bus event per inserted row once
-  // #1148's chain/publisher helper lands on main. No publisher exists yet
-  // for this event type (packages/bus/src/config.ts) — see #1151's own
-  // scope note; do not invent one here.
+  const wasInserted = result.length > 0;
 
-  return result.length > 0;
+  // #1148's chain/attestation contract, reused rather than re-implemented:
+  // one usage.incurred bus event per NEWLY inserted row (never for a
+  // dedupe-skipped repost). Fire-and-forget, fail-open — same contract
+  // recordInferenceUsage (usage-ledger.ts) uses for the passthrough: the row
+  // is already durably written above, so a slow or failed publish must never
+  // fail (or add latency to) the ingest response.
+  if (wasInserted) {
+    publishUsageIncurred({ usageId, principalDid, resource: row.resource, quantity, unit, costUsd: row.costUsd, source: row.source }).catch(
+      (err: unknown) => {
+        log.error({ err: String(err), usageId, principalDid, resource: row.resource }, 'usage.incurred bus publish failed — row already written');
+      },
+    );
+  }
+
+  return wasInserted;
 }
