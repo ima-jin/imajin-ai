@@ -1337,6 +1337,18 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0))
 
+  packages/usage-emitter-claude-code:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
   packages/vault-core:
     dependencies:
       '@imajin/cid':

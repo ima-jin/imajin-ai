@@ -1,0 +1,20 @@
+{
+  "name": "@imajin/usage-emitter-claude-code",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reference external usage.incurred emitter (#1151): tails Claude Code session JSONL and posts to POST /usage/api/incurred.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "start": "tsx src/index.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0"
+  }
+}
