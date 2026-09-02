@@ -13,6 +13,7 @@
  *   3. `POST /auth/api/login/verify` `{ challengeId, signature }` -> session cookie
  */
 import { crypto } from '@imajin/auth';
+import { stripTrailingSlashes } from '../url-utils.js';
 
 export interface ChallengeResponseConfig {
   kernelBaseUrl: string;
@@ -30,12 +31,8 @@ interface ChallengeResponse {
   challenge: string;
 }
 
-function baseUrl(url: string): string {
-  return url.replace(/\/+$/, '');
-}
-
 async function requestChallenge(config: ChallengeResponseConfig, fetchImpl: typeof fetch): Promise<ChallengeResponse> {
-  const res = await fetchImpl(`${baseUrl(config.kernelBaseUrl)}/auth/api/login/challenge`, {
+  const res = await fetchImpl(`${stripTrailingSlashes(config.kernelBaseUrl)}/auth/api/login/challenge`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ did: config.did }),
@@ -46,16 +43,21 @@ async function requestChallenge(config: ChallengeResponseConfig, fetchImpl: type
   return (await res.json()) as ChallengeResponse;
 }
 
-/** Extract the `name=value` pair from a `Set-Cookie` response header. */
+/**
+ * Extract the `name=value` pair from a `Set-Cookie` response header, without
+ * a regex: split on the first `;` to drop attributes (`Path=`, `HttpOnly`,
+ * ...), then confirm what remains has a `name=value` shape.
+ */
 export function parseSessionCookie(setCookieHeader: string | null): string {
   if (!setCookieHeader) {
     throw new Error('Auth verify: no session cookie in response');
   }
-  const match = setCookieHeader.match(/([^=;\s]+)=([^;]+)/);
-  if (!match) {
+  const firstPair = setCookieHeader.split(';', 1)[0]?.trim() ?? '';
+  const eq = firstPair.indexOf('=');
+  if (eq <= 0) {
     throw new Error('Auth verify: could not parse session cookie');
   }
-  return `${match[1]}=${match[2]}`;
+  return firstPair;
 }
 
 /**
@@ -69,7 +71,7 @@ export async function authenticate(
   const { challengeId, challenge } = await requestChallenge(config, fetchImpl);
   const signature = crypto.signSync(challenge, config.privateKeyHex);
 
-  const verifyRes = await fetchImpl(`${baseUrl(config.kernelBaseUrl)}/auth/api/login/verify`, {
+  const verifyRes = await fetchImpl(`${stripTrailingSlashes(config.kernelBaseUrl)}/auth/api/login/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ challengeId, signature }),

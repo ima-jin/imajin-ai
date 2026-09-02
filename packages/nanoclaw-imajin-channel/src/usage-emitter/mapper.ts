@@ -36,6 +36,15 @@ function numberOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** `message.id` is the real per-call identity; the per-line `uuid` is the fallback (see module header). */
+function resolveExternalId(message: Record<string, unknown>, raw: Record<string, unknown>): string | undefined {
+  return nonEmptyString(message.id) ?? nonEmptyString(raw.uuid);
+}
+
 export function mapAssistantLine(raw: unknown): MappedUsageRow | undefined {
   if (!isRecord(raw) || raw.type !== 'assistant') return undefined;
 
@@ -45,18 +54,13 @@ export function mapAssistantLine(raw: unknown): MappedUsageRow | undefined {
   const usage = message.usage;
   if (!isRecord(usage)) return undefined;
 
-  const model = typeof message.model === 'string' ? message.model : undefined;
+  const model = nonEmptyString(message.model);
   if (!model || model === SYNTHETIC_MODEL) return undefined;
 
-  const externalId =
-    typeof message.id === 'string' && message.id.length > 0
-      ? message.id
-      : typeof raw.uuid === 'string' && raw.uuid.length > 0
-        ? raw.uuid
-        : undefined;
+  const externalId = resolveExternalId(message, raw);
   if (!externalId) return undefined;
 
-  const ts = typeof raw.timestamp === 'string' && raw.timestamp.length > 0 ? raw.timestamp : undefined;
+  const ts = nonEmptyString(raw.timestamp);
   if (!ts) return undefined;
 
   const inputTokens = numberOr(usage.input_tokens, 0);

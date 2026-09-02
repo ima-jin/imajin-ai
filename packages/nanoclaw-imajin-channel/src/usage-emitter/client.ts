@@ -1,8 +1,9 @@
 /**
  * Kernel ingest client (imajin-ai#1932, #1151) — posts batches to
- * `POST /usage/api/incurred`. Same shape as
- * `packages/usage-emitter-claude-code/src/client.ts`; not imported (that
- * package exports only its top-level CLI), re-implemented here.
+ * `POST /usage/api/incurred`. Same CONTRACT as
+ * `packages/usage-emitter-claude-code/src/client.ts` but implemented
+ * independently (that package exports only its top-level CLI, not this
+ * helper).
  *
  * Auth is a bearer app-service token read from the environment
  * (`USAGE_EMIT_TOKEN`) — `usage:emit` is `serviceEligible: true`
@@ -11,6 +12,7 @@
  * is meant to be invoked periodically (cron/systemd timer) rather than run
  * as a long-lived daemon needing its own refresh loop.
  */
+import { stripTrailingSlashes } from '../url-utils.js';
 import type { MappedUsageRow } from './mapper.js';
 
 export const MAX_BATCH_SIZE = 500;
@@ -27,28 +29,31 @@ export interface IngestResponse {
   rejected: Array<{ index: number; reason: string }>;
 }
 
+/** Partition `rows` into batches no larger than `size`. */
 export function chunkRows<T>(rows: readonly T[], size: number = MAX_BATCH_SIZE): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < rows.length; i += size) {
-    chunks.push(rows.slice(i, i + size));
-  }
-  return chunks;
+  const batchCount = Math.ceil(rows.length / size);
+  return Array.from({ length: batchCount }, (_, batchIndex) => rows.slice(batchIndex * size, (batchIndex + 1) * size));
+}
+
+async function parseErrorMessage(response: Response): Promise<string> {
+  const fallback = { error: response.statusText };
+  const body = (await response.json().catch(() => fallback)) as { error?: string };
+  return body.error ?? response.statusText;
 }
 
 export async function postIncurredBatch(config: ClientConfig, rows: readonly MappedUsageRow[]): Promise<IngestResponse> {
-  const fetchImpl = config.fetchImpl ?? fetch;
-  const url = `${config.kernelUrl.replace(/\/$/, '')}/usage/api/incurred`;
+  const doFetch = config.fetchImpl ?? fetch;
+  const endpoint = `${stripTrailingSlashes(config.kernelUrl)}/usage/api/incurred`;
 
-  const res = await fetchImpl(url, {
+  const response = await doFetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.token}` },
     body: JSON.stringify(rows),
   });
 
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-    throw new Error(`usage.incurred ingest failed: ${res.status} ${body.error ?? res.statusText}`);
+  if (!response.ok) {
+    throw new Error(`usage.incurred ingest failed: ${response.status} ${await parseErrorMessage(response)}`);
   }
 
-  return res.json() as Promise<IngestResponse>;
+  return response.json() as Promise<IngestResponse>;
 }

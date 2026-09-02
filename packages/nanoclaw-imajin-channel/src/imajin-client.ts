@@ -6,6 +6,7 @@
  * import).
  */
 import { authenticate, type ChallengeResponseConfig } from './auth/challenge-response.js';
+import { stripTrailingSlashes } from './url-utils.js';
 
 export interface ChatMessageFrame {
   type: 'chat_message';
@@ -89,7 +90,7 @@ export async function sendChatMessage(
   if (replyToMessageId) body.replyToMessageId = replyToMessageId;
 
   const res = await fetchImpl(
-    `${config.kernelBaseUrl.replace(/\/+$/, '')}/chat/api/d/${encodeURIComponent(conversationDid)}/messages`,
+    `${stripTrailingSlashes(config.kernelBaseUrl)}/chat/api/d/${encodeURIComponent(conversationDid)}/messages`,
     {
       method: 'POST',
       headers: {

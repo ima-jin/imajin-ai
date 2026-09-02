@@ -52,6 +52,11 @@ export interface BootstrapResult {
   dryRun: boolean;
 }
 
+/** Strip a single trailing `/`, if present. */
+function stripTrailingSlash(url: string): string {
+  return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
 function validateCapabilities(capabilities: readonly string[]): void {
   const invalid = capabilities.filter((c) => !isKnownGrantScope(c));
   if (invalid.length > 0) {
@@ -62,7 +67,7 @@ function validateCapabilities(capabilities: readonly string[]): void {
 }
 
 async function createAgent(args: BootstrapArgs): Promise<CreatedAgent> {
-  const res = await fetch(`${args.kernelBaseUrl.replace(/\/$/, '')}/auth/api/agents`, {
+  const res = await fetch(`${stripTrailingSlash(args.kernelBaseUrl)}/auth/api/agents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${args.ownerToken}` },
     body: JSON.stringify({ handle: args.handle, displayName: args.displayName }),
@@ -75,7 +80,7 @@ async function createAgent(args: BootstrapArgs): Promise<CreatedAgent> {
 }
 
 async function issueGrant(args: BootstrapArgs, agentDid: string): Promise<IssuedGrant> {
-  const res = await fetch(`${args.kernelBaseUrl.replace(/\/$/, '')}/auth/api/grants`, {
+  const res = await fetch(`${stripTrailingSlash(args.kernelBaseUrl)}/auth/api/grants`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${args.ownerToken}` },
     body: JSON.stringify({
@@ -169,17 +174,24 @@ async function main(): Promise<void> {
     return;
   }
   const result = await bootstrapIdentity(args);
-  console.log(`Registered agent ${result.agent.did} (handle: ${result.agent.handle}).`);
+  console.log(`Registered agent ${sanitizeForLog(result.agent.did)} (handle: ${sanitizeForLog(result.agent.handle)}).`);
   if (result.grant) {
-    console.log(`Issued grant ${result.grant.grantId} with capabilities: ${args.capabilities.join(', ')}`);
+    console.log(`Issued grant ${sanitizeForLog(result.grant.grantId)} with capabilities: ${args.capabilities.join(', ')}`);
   }
   console.log(`Keypair written to ${args.keypairPath} (0600). Never logged.`);
 }
 
+/** Strip CR/LF before interpolating a kernel-returned value into a log line, to prevent log-line forging. */
+function sanitizeForLog(value: string): string {
+  return value.replace(/[\r\n]/g, ' ');
+}
+
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
-  main().catch((err: unknown) => {
+  try {
+    await main();
+  } catch (err: unknown) {
     console.error('bootstrap-identity: fatal error', err instanceof Error ? err.message : err);
     process.exitCode = 1;
-  });
+  }
 }

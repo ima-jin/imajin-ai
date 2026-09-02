@@ -36,7 +36,9 @@ export function groupFolderFor(handle: string): string {
   const slug = handle
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .split('-')
+    .filter(Boolean)
+    .join('-');
   return slug || 'imajin-agent';
 }
 

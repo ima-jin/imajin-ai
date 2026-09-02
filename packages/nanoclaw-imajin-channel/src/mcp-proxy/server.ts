@@ -32,6 +32,25 @@ export interface McpProxyDeps {
 }
 
 /**
+ * Resolve the forwarded target URL, and refuse to forward anywhere outside
+ * the configured MCP server's own origin. `new URL(path, base)` ignores
+ * `base` entirely when `path` itself looks like an absolute or
+ * protocol-relative URL (e.g. `http://evil.example/x` or `//evil.example/x`)
+ * — since `path` here is derived from an inbound request, that would let a
+ * caller redirect this proxy's bearer token to an arbitrary host (SSRF).
+ * Comparing the resolved origin against the configured one closes that gap
+ * regardless of how `path` is crafted.
+ */
+function resolveMcpTargetUrl(path: string, mcpServerUrl: string): URL {
+  const configuredOrigin = new URL(mcpServerUrl).origin;
+  const target = new URL(path, mcpServerUrl);
+  if (target.origin !== configuredOrigin) {
+    throw new Error(`mcp-proxy: refusing to forward outside the configured MCP server origin (${configuredOrigin})`);
+  }
+  return target;
+}
+
+/**
  * Forward one request to the real MCP server with a fresh bearer token.
  * On a 401 from upstream, invalidate the cached token and retry once —
  * mirrors `openclaw-infer-passthrough`'s single-retry-on-401 discipline.
@@ -45,7 +64,7 @@ export async function forwardToMcp(
   attempt = 0,
 ): Promise<{ status: number; headers: Record<string, string>; body: Buffer }> {
   const token = await deps.tokenProvider.getToken();
-  const target = new URL(path, deps.config.mcpServerUrl);
+  const target = resolveMcpTargetUrl(path, deps.config.mcpServerUrl);
   const isHttps = target.protocol === 'https:';
   const transport = isHttps ? httpsRequest : httpRequest;
 

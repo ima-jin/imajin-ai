@@ -1,11 +1,12 @@
 /**
  * App-token mint-and-refresh for the MCP proxy (imajin-ai#1932).
  *
- * Same shape as `packages/openclaw-infer-passthrough/src/token-provider.ts`'s
+ * Same CONSTRAINT as `packages/openclaw-infer-passthrough/src/token-provider.ts`'s
  * `RouteTokenProvider` (imajin-ai#1922 finding 6: the kernel's app-token JWT
  * is short-lived — ~10 minutes — with NO TTL-extension endpoint, so the only
- * way to stay "logged in" is to mint a fresh token, which is exactly what
- * `getToken()` does once the cached one nears expiry).
+ * way to stay "logged in" is to mint a fresh token ahead of expiry) but
+ * implemented independently here, not imported — that package's `exports`
+ * map only publishes its top-level HTTP server entry point.
  *
  * NOTE (harvested-checklist item — see docs/agents/nanoclaw-first-boot.md):
  * this proxy mints via the delegated app-token flow
@@ -19,12 +20,18 @@
  */
 import { randomBytes } from 'node:crypto';
 import { crypto } from '@imajin/auth';
+import { stripTrailingSlashes } from '../url-utils.js';
 
-const APP_TOKEN_SCOPE = 'mcp';
+const DEFAULT_SCOPE = 'mcp';
 
 export interface MintedToken {
   token: string;
   expiresIn: number;
+}
+
+/** Build the proof-of-possession challenge string the kernel's token-mint endpoint verifies against. */
+function buildChallenge(appDid: string, attestationId: string, nonce: string, timestamp: string): string {
+  return [appDid, attestationId, nonce, timestamp].join(':');
 }
 
 export async function mintAppToken(
@@ -32,25 +39,26 @@ export async function mintAppToken(
   appDid: string,
   privateKeyHex: string,
   attestationId: string,
-  scope: string = APP_TOKEN_SCOPE,
+  scope: string = DEFAULT_SCOPE,
   fetchImpl: typeof fetch = fetch,
 ): Promise<MintedToken> {
   const nonce = randomBytes(16).toString('hex');
   const timestamp = new Date().toISOString();
-  const challenge = `${appDid}:${attestationId}:${nonce}:${timestamp}`;
+  const challenge = buildChallenge(appDid, attestationId, nonce, timestamp);
   const signature = crypto.signSync(challenge, privateKeyHex);
 
-  const res = await fetchImpl(`${kernelBaseUrl.replace(/\/+$/, '')}/auth/api/apps/token`, {
+  const endpoint = `${stripTrailingSlashes(kernelBaseUrl)}/auth/api/apps/token`;
+  const response = await fetchImpl(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ appDid, attestationId, scope, nonce, timestamp, signature }),
   });
 
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
-    throw new Error(`Failed to mint app token: ${res.status} ${body.error ?? res.statusText}`);
+  if (!response.ok) {
+    const errorBody = (await response.json().catch(() => ({ error: response.statusText }))) as { error?: string };
+    throw new Error(`Failed to mint app token: ${response.status} ${errorBody.error ?? response.statusText}`);
   }
-  return (await res.json()) as MintedToken;
+  return (await response.json()) as MintedToken;
 }
 
 export interface TokenSource {
@@ -58,9 +66,14 @@ export interface TokenSource {
   invalidate(): void;
 }
 
+interface CachedToken {
+  value: string;
+  expiresAtMs: number;
+}
+
 export class RouteTokenProvider implements TokenSource {
-  private cached: { token: string; expiresAt: number } | null = null;
-  private mintPromise: Promise<string> | null = null;
+  private cache: CachedToken | undefined;
+  private inFlightMint: Promise<string> | undefined;
 
   constructor(
     private readonly kernelBaseUrl: string,
@@ -68,36 +81,43 @@ export class RouteTokenProvider implements TokenSource {
     private readonly privateKeyHex: string,
     private readonly attestationId: string,
     private readonly refreshSkewMs: number = 60_000,
-    private readonly now: () => number = Date.now,
+    private readonly clock: () => number = Date.now,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
   async getToken(): Promise<string> {
-    if (this.cached && this.cached.expiresAt - this.refreshSkewMs > this.now()) {
-      return this.cached.token;
+    if (this.cache && !this.isNearExpiry(this.cache)) {
+      return this.cache.value;
     }
-    if (!this.mintPromise) {
-      this.mintPromise = this.refresh().finally(() => {
-        this.mintPromise = null;
-      });
-    }
-    return this.mintPromise;
+    return this.mintOnce();
   }
 
   invalidate(): void {
-    this.cached = null;
+    this.cache = undefined;
   }
 
-  private async refresh(): Promise<string> {
+  private isNearExpiry(cached: CachedToken): boolean {
+    return this.clock() >= cached.expiresAtMs - this.refreshSkewMs;
+  }
+
+  /** Coalesce concurrent callers onto a single in-flight mint request. */
+  private mintOnce(): Promise<string> {
+    this.inFlightMint ??= this.mintAndCache().finally(() => {
+      this.inFlightMint = undefined;
+    });
+    return this.inFlightMint;
+  }
+
+  private async mintAndCache(): Promise<string> {
     const minted = await mintAppToken(
       this.kernelBaseUrl,
       this.appDid,
       this.privateKeyHex,
       this.attestationId,
-      APP_TOKEN_SCOPE,
+      DEFAULT_SCOPE,
       this.fetchImpl,
     );
-    this.cached = { token: minted.token, expiresAt: this.now() + minted.expiresIn * 1000 };
-    return this.cached.token;
+    this.cache = { value: minted.token, expiresAtMs: this.clock() + minted.expiresIn * 1000 };
+    return this.cache.value;
   }
 }

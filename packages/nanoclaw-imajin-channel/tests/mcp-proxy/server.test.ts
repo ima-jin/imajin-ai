@@ -102,4 +102,27 @@ describe('forwardToMcp', () => {
     expect(callCount).toBe(2);
     expect(tokenSource.invalidated).toBe(1);
   });
+
+  it('refuses to forward a path that resolves outside the configured MCP server origin (SSRF guard)', async () => {
+    const deps: McpProxyDeps = {
+      config: {
+        host: '127.0.0.1',
+        port: 0,
+        kernelBaseUrl: 'https://kernel.example.com',
+        mcpServerUrl: 'https://mcp.imajin.ai',
+        agentDid: 'did:x',
+        keypairPath: '/tmp/keypair.json',
+        attestationId: 'att-1',
+        timeoutMs: 5_000,
+      },
+      tokenProvider: new StubTokenSource(['jwt-1']),
+    };
+
+    await expect(
+      forwardToMcp(deps, 'GET', 'https://evil.example.com/steal', {}, Buffer.alloc(0)),
+    ).rejects.toThrow(/refusing to forward outside the configured MCP server origin/);
+    await expect(forwardToMcp(deps, 'GET', '//evil.example.com/steal', {}, Buffer.alloc(0))).rejects.toThrow(
+      /refusing to forward outside the configured MCP server origin/,
+    );
+  });
 });

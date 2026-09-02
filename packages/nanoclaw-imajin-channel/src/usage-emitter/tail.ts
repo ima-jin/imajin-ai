@@ -1,13 +1,11 @@
 /**
  * Session JSONL tailer (imajin-ai#1932/#1151). Node builtins only.
  *
- * Same algorithm as `packages/usage-emitter-claude-code/src/tail.ts` (that
- * package only exports its top-level CLI entry, not this helper, so it is
- * re-implemented here rather than imported): walks every `.jsonl` file under
- * a directory, reads only the bytes appended since the last recorded
- * offset, and parses complete lines. A trailing line with no newline yet is
- * held back for the next run; a malformed complete line is skipped, never
- * fatal.
+ * Same CONTRACT as `packages/usage-emitter-claude-code/src/tail.ts` — read
+ * only the bytes appended to each `.jsonl` file since the last recorded
+ * offset, hold back an unterminated trailing line, skip malformed complete
+ * lines — but implemented independently (that package only exports its
+ * top-level CLI entry, not this helper, so it can't be imported here).
  *
  * Pointed at a NanoClaw agent group's `.claude-shared/projects/` directory
  * (the host-side bind mount of `/home/node/.claude` — see
@@ -34,18 +32,62 @@ export function saveState(stateFilePath: string, state: TailState): void {
   writeFileSync(stateFilePath, JSON.stringify(state, null, 2), 'utf8');
 }
 
-function walkJsonlFiles(dir: string): string[] {
-  if (!existsSync(dir)) return [];
-  const results: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const fullPath = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...walkJsonlFiles(fullPath));
-    } else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
-      results.push(fullPath);
+/** Depth-first, iterative (no recursion) directory walk collecting every `.jsonl` file path under `root`. */
+function findJsonlFiles(root: string): string[] {
+  const found: string[] = [];
+  const pending: string[] = existsSync(root) ? [root] : [];
+
+  while (pending.length > 0) {
+    const dir = pending.pop()!;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const entryPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(entryPath);
+      } else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+        found.push(entryPath);
+      }
     }
   }
-  return results;
+
+  return found;
+}
+
+/** Read the newly-appended byte range of one file and parse its complete lines. Returns the new offset alongside whatever parsed. */
+function readNewLines(filePath: string, previousOffset: number): { offset: number; parsed: unknown[] } {
+  const size = statSync(filePath).size;
+  if (size <= previousOffset) {
+    // Rotated/truncated below our offset — resync forward, nothing new to read.
+    return { offset: size, parsed: [] };
+  }
+
+  const fd = openSync(filePath, 'r');
+  let text: string;
+  try {
+    const chunk = Buffer.alloc(size - previousOffset);
+    readSync(fd, chunk, 0, chunk.length, previousOffset);
+    text = chunk.toString('utf8');
+  } finally {
+    closeSync(fd);
+  }
+
+  // The final array element after split('\n') is either '' (text ended on a
+  // newline) or a partial line (text ended mid-write) — pop() discards the
+  // right thing either way and its length tells us how many bytes NOT to
+  // count as consumed.
+  const segments = text.split('\n');
+  const heldBack = segments.pop() ?? '';
+  const parsed: unknown[] = [];
+  for (const line of segments) {
+    if (line.trim().length === 0) continue;
+    try {
+      parsed.push(JSON.parse(line));
+    } catch {
+      // A malformed complete line is skipped, not fatal — see module header.
+    }
+  }
+
+  const consumedBytes = Buffer.byteLength(text, 'utf8') - Buffer.byteLength(heldBack, 'utf8');
+  return { offset: previousOffset + consumedBytes, parsed };
 }
 
 export interface TailResult {
@@ -54,41 +96,14 @@ export interface TailResult {
 }
 
 export function tailNewLines(projectsDir: string, previousState: TailState): TailResult {
-  const offsets = { ...previousState.offsets };
+  const nextOffsets: Record<string, number> = { ...previousState.offsets };
   const rawLines: unknown[] = [];
 
-  for (const file of walkJsonlFiles(projectsDir)) {
-    const size = statSync(file).size;
-    const previousOffset = offsets[file] ?? 0;
-    if (size <= previousOffset) {
-      offsets[file] = size;
-      continue;
-    }
-
-    const fd = openSync(file, 'r');
-    try {
-      const length = size - previousOffset;
-      const buffer = Buffer.alloc(length);
-      readSync(fd, buffer, 0, length, previousOffset);
-      const text = buffer.toString('utf8');
-
-      const completeLines = text.split('\n').slice(0, -1);
-      let consumedBytes = 0;
-      for (const line of completeLines) {
-        consumedBytes += Buffer.byteLength(line, 'utf8') + 1;
-        if (!line.trim()) continue;
-        try {
-          rawLines.push(JSON.parse(line));
-        } catch {
-          // Skip malformed lines — see module header.
-        }
-      }
-
-      offsets[file] = previousOffset + consumedBytes;
-    } finally {
-      closeSync(fd);
-    }
+  for (const filePath of findJsonlFiles(projectsDir)) {
+    const { offset, parsed } = readNewLines(filePath, nextOffsets[filePath] ?? 0);
+    nextOffsets[filePath] = offset;
+    rawLines.push(...parsed);
   }
 
-  return { rawLines, state: { offsets } };
+  return { rawLines, state: { offsets: nextOffsets } };
 }

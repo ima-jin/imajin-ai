@@ -13,5 +13,9 @@ COPY packages/nanoclaw-imajin-channel ./packages/nanoclaw-imajin-channel
 
 RUN corepack enable && pnpm install --frozen-lockfile --filter @imajin/nanoclaw-imajin-channel...
 
+# No docker.sock access needed here — unlike the main NanoClaw host
+# container, this sidecar only proxies HTTP, so it can safely run as the
+# image's built-in non-root user.
+USER node
 EXPOSE 8788
 CMD ["pnpm", "--filter", "@imajin/nanoclaw-imajin-channel", "mcp-proxy"]

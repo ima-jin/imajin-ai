@@ -58,10 +58,12 @@ async function main(): Promise<void> {
 
 const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
-  main().catch((err: unknown) => {
+  try {
+    await main();
+  } catch (err: unknown) {
     console.error('usage-emitter: fatal error', err);
     process.exitCode = 1;
-  });
+  }
 }
 
 export { main };

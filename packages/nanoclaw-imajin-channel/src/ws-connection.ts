@@ -10,6 +10,7 @@
  */
 import { authenticate, type ChallengeResponseConfig } from './auth/challenge-response.js';
 import { isAuthFailureFrame, parseFrame } from './imajin-client.js';
+import { toWebSocketUrl } from './url-utils.js';
 
 const RECONNECT_BASE_MS = 2_000;
 const RECONNECT_MAX_MS = 60_000;
@@ -71,7 +72,7 @@ export class ImajinChatConnection {
       const session = this.cookie ? { cookie: this.cookie } : await authenticate(this.config);
       this.cookie = session.cookie;
 
-      const wsUrl = `${this.config.kernelBaseUrl.replace(/\/+$/, '').replace(/^http/, 'ws')}/chat/ws`;
+      const wsUrl = `${toWebSocketUrl(this.config.kernelBaseUrl)}/chat/ws`;
       this.logger.info('connecting', { wsUrl });
 
       // Native WebSocket cannot set a Cookie header on the upgrade request —

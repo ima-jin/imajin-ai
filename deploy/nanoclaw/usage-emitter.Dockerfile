@@ -12,6 +12,11 @@ COPY packages/nanoclaw-imajin-channel ./packages/nanoclaw-imajin-channel
 
 RUN corepack enable && pnpm install --frozen-lockfile --filter @imajin/nanoclaw-imajin-channel...
 
+# No docker.sock access needed here — this sidecar only reads a read-only
+# mounted volume and POSTs over HTTP, so it can safely run as the image's
+# built-in non-root user.
+USER node
+
 # Actual invocation loop lives in docker-compose.yml's `command:` (this is a
 # periodic job, not a daemon — see the package README).
 CMD ["pnpm", "--filter", "@imajin/nanoclaw-imajin-channel", "usage-emitter"]
