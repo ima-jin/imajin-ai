@@ -57,6 +57,8 @@ describeScopeManifestIdentityContract({
   connectorDid: ANTHROPIC_CONNECTOR_DID,
   channel: 'anthropic',
   inferScope: 'anthropic:infer',
+  // #1076 Stage 1: anthropic:billing sits on the same connector card.
+  extraScopes: ['anthropic:billing'],
   filename: 'anthropic-scope-manifest.md',
   core,
   scopeDescriptors: ANTHROPIC_SCOPE_DESCRIPTORS,

@@ -230,6 +230,23 @@ function brainInferScope<C extends ConnectorId>(
   return { scope: `${connector}:infer`, connector, verb: 'infer', surface, classification: SELF_SENSITIVE, label };
 }
 
+/**
+ * Shared shape for the `*:billing` scopes (#1076 Stage 1): a provider's ADMIN
+ * or org-billing API key, distinct from its `*:infer` inference key, sealed
+ * so the daily ingestion job can pull the counterparty's own usage/cost
+ * statement into `usage.billed` for reconciliation against `usage.incurred`.
+ * Never released to a third party — same SELF_SENSITIVE → owner-only
+ * quadrant as `brainInferScope`, and the same duplication-avoidance reason
+ * for extracting the shape once rather than hand-copying it per provider.
+ */
+function connectorBillingScope<C extends ConnectorId>(
+  connector: C,
+  surface: string,
+  label: string,
+): { scope: `${C}:billing`; connector: C; verb: 'billing'; surface: string; classification: ScopeClassification; label: string } {
+  return { scope: `${connector}:billing`, connector, verb: 'billing', surface, classification: SELF_SENSITIVE, label };
+}
+
 // ── The vocabulary ────────────────────────────────────────────────────────
 
 /**
@@ -368,6 +385,14 @@ export const SCOPE_VOCABULARY = [
   brainInferScope('openai', 'openai-api', 'Use your OpenAI API key for inference'),
   brainInferScope('moonshot', 'moonshot-api', 'Use your Moonshot API key for inference'),
   brainInferScope('zai', 'zai-api', 'Use your Z.ai API key for inference'),
+
+  // ── Provider billing/admin keys (#1076 Stage 1) — distinct from the
+  // `*:infer` key above: this is the ADMIN/org-billing credential the daily
+  // reconciliation job uses to pull the provider's own usage/cost statement
+  // into `usage.billed`. Anthropic and OpenAI only for Stage 1; the
+  // remaining brain connectors are left for a later pass.
+  connectorBillingScope('anthropic', 'anthropic-billing-api', 'Use your Anthropic Admin API key for usage/cost reconciliation'),
+  connectorBillingScope('openai', 'openai-billing-api', 'Use your OpenAI org admin API key for usage/cost reconciliation'),
 
   // ── Google Cloud connector (#1317) — a sealed service-account key, not an
   // inference-only brain. The key is the owner's own credential and is consumed

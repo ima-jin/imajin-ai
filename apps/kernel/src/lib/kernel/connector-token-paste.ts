@@ -192,6 +192,15 @@ export interface ConnectorTokenPaste {
    * write, no delegation-grant custody involved.
    */
   setModelId(ownerDid: string, modelId: string): Promise<void>;
+  /**
+   * List every owner DID with an ACTIVE `channel_links` row for this
+   * connector that includes `requiredScope` (#1076 Stage 1 daily ingestion
+   * sweep). The reverse of `resolveActiveGrant`: that checks one DID, this
+   * enumerates all of them so a cron sweep has something to iterate — same
+   * shape as `listActiveGrantOwners` in `quickbooks/connector.ts`, promoted
+   * onto the shared factory since a second token-paste connector now needs it.
+   */
+  listActiveGrantOwners(requiredScope: string): Promise<string[]>;
 }
 
 export function createConnectorTokenPaste(
@@ -419,6 +428,25 @@ export function createConnectorTokenPaste(
     await sealAndStore(modelIdField(ownerDid), modelId);
   }
 
+  async function listActiveGrantOwners(requiredScope: string): Promise<string[]> {
+    const rows = await db
+      .select({ did: channelLinks.did, scopes: channelLinks.scopes })
+      .from(channelLinks)
+      .where(
+        and(
+          eq(channelLinks.channel, opts.channel),
+          eq(channelLinks.appDid, opts.connectorDid),
+          eq(channelLinks.status, 'active'),
+        ),
+      );
+    const owners = new Set<string>();
+    for (const row of rows) {
+      const scopes = Array.isArray(row.scopes) ? (row.scopes as string[]) : [];
+      if (scopes.includes(requiredScope)) owners.add(row.did);
+    }
+    return [...owners];
+  }
+
   return {
     vaultField: keyField,
     sealApiKey,
@@ -431,5 +459,6 @@ export function createConnectorTokenPaste(
       (await vaultFieldStatus(keyField(ownerDid))) === 'pending-grant',
     revokeApiKey,
     setModelId,
+    listActiveGrantOwners,
   };
 }

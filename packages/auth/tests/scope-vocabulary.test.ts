@@ -288,6 +288,39 @@ describe('SCOPES is a faithful projection', () => {
   );
 
   /**
+   * #1076 Stage 1: the ADMIN/org-billing key a provider connector seals
+   * alongside its `*:infer` inference key, spent by the daily reconciliation
+   * job to pull the counterparty's own usage/cost statement into
+   * `usage.billed`. Same SELF_SENSITIVE → owner-only quadrant as the infer
+   * scopes, and it is a DIFFERENT scope from `{id}:infer` on the SAME
+   * connector — not a new connector id.
+   */
+  it.each([
+    ['anthropic:billing', 'anthropic', 'anthropic-billing-api'],
+    ['openai:billing', 'openai', 'openai-billing-api'],
+  ] satisfies Array<[Scope, ConnectorId, string]>)(
+    'includes %s as an owner-only connector scope, distinct from its :infer sibling',
+    (scope, id, surface) => {
+      expect(validateScopes([scope]).invalid).toEqual([]);
+
+      const entry = scopeEntry(scope) as ConnectorScopeEntry;
+      expect(entry.connector).toBe(id);
+      expect(entry.verb).toBe('billing');
+      expect(entry.surface).toBe(surface);
+      expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
+      expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS[id]);
+
+      // Same connector as the inference scope, but a distinct scope string —
+      // the whole point is two separate credentials on one connector card.
+      const inferScope = scopeEntry(`${id}:infer`) as ConnectorScopeEntry;
+      expect(inferScope.connector).toBe(entry.connector);
+      expect(inferScope.scope).not.toBe(entry.scope);
+
+      expect(scopesForSurface('mcp')).not.toContain(scope);
+    },
+  );
+
+  /**
    * #1317: Stage 1 of the Google Cloud connector. A service-account key is broad,
    * so the vocabulary opens exactly three narrow scopes against it rather than a
    * single `gcp:*`. All three sit in the same 2×2 quadrant as `gemini:infer` —

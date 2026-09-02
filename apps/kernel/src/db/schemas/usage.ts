@@ -3,9 +3,13 @@ import {
   text,
   timestamp,
   integer,
+  bigint,
   numeric,
+  jsonb,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const usageSchema = pgSchema('usage');
 
@@ -75,3 +79,43 @@ export const usageIncurred = usageSchema.table(
 
 export type UsageIncurred = typeof usageIncurred.$inferSelect;
 export type NewUsageIncurred = typeof usageIncurred.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// usage.billed (Stage 1 of #1076)
+//
+// The COUNTERPARTY'S STATEMENT — what a provider's own admin/usage/cost API
+// says we were actually charged, kept in its own table and reconciled
+// against `usage.incurred` (OUR meter) at read time, never merged into it.
+// See migrations/0122_usage_billed.sql for the full framing note and the
+// division of responsibility against #1148 (migration 0120) and #1151
+// (migration 0121), neither of which this table touches.
+// ---------------------------------------------------------------------------
+
+export const usageBilled = usageSchema.table(
+  'billed',
+  {
+    id: text('id').primaryKey(),                          // billed_xxx (nanoid)
+    principalDid: text('principal_did').notNull(),        // owner DID whose sealed admin/billing key was used
+    provider: text('provider').notNull(),                 // 'anthropic' | 'openai'
+    periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
+    periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
+    granularity: text('granularity').notNull(),           // 'day' | 'month'
+    model: text('model'),                                 // nullable: providers report per-model where available
+    tokensIn: bigint('tokens_in', { mode: 'number' }),
+    tokensOut: bigint('tokens_out', { mode: 'number' }),
+    billedUsd: numeric('billed_usd', { precision: 20, scale: 8 }),
+    raw: jsonb('raw'),                                    // the provider's line item verbatim, for audit
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // Idempotent upsert target on re-fetch — see the migration's comment on
+    // why COALESCE(model, '') rather than a bare column.
+    periodUniq: uniqueIndex('uniq_usage_billed_period')
+      .on(table.principalDid, table.provider, table.periodStart, table.granularity, sql`COALESCE(${table.model}, '')`),
+    principalIdx: index('idx_usage_billed_principal').on(table.principalDid, table.provider, table.periodStart),
+    fetchedIdx: index('idx_usage_billed_fetched').on(table.fetchedAt),
+  }),
+);
+
+export type UsageBilled = typeof usageBilled.$inferSelect;
+export type NewUsageBilled = typeof usageBilled.$inferInsert;
