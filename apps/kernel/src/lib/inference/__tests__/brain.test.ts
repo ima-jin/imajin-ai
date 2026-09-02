@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-const { mockLoadGemini, mockLoadAnthropic, mockLoadXai, mockLoadOpenai } = vi.hoisted(() => ({
+const { mockLoadGemini, mockLoadAnthropic, mockLoadXai, mockLoadOpenai, mockLoadMoonshot } = vi.hoisted(() => ({
   mockLoadGemini: vi.fn(),
   mockLoadAnthropic: vi.fn(),
   mockLoadXai: vi.fn(),
   mockLoadOpenai: vi.fn(),
+  mockLoadMoonshot: vi.fn(),
 }));
 
 vi.mock('@/src/lib/gemini/connector', () => ({
@@ -25,6 +26,11 @@ vi.mock('@/src/lib/xai/connector', () => ({
 vi.mock('@/src/lib/openai/connector', () => ({
   loadOpenaiCredentials: mockLoadOpenai,
   OPENAI_BASE_URL: 'https://api.openai.com/v1',
+}));
+
+vi.mock('@/src/lib/moonshot/connector', () => ({
+  loadMoonshotCredentials: mockLoadMoonshot,
+  MOONSHOT_BASE_URL: 'https://api.moonshot.ai/v1',
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -64,6 +70,7 @@ const GEMINI_KEY = 'AIzaSy-GEMINI-SEALED';
 const ANTHROPIC_KEY = 'sk-ant-SEALED';
 const XAI_KEY = 'xai-SEALED';
 const OPENAI_KEY = 'sk-SEALED';
+const MOONSHOT_KEY = 'sk-moonshot-SEALED';
 const APP_KEY = 'AIzaSy-APP-SEALED';
 
 beforeEach(() => {
@@ -76,6 +83,7 @@ beforeEach(() => {
   mockLoadAnthropic.mockResolvedValue(undefined);
   mockLoadXai.mockResolvedValue(undefined);
   mockLoadOpenai.mockResolvedValue(undefined);
+  mockLoadMoonshot.mockResolvedValue(undefined);
   // Default: no app registrant found (no parent org DID)
   mockDbSelect.mockResolvedValue([]);
 });
@@ -389,7 +397,7 @@ describe('resolveBrain — fail closed with no env fallback', () => {
   it('carries the available connector ids for programmatic callers', async () => {
     const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
 
-    expect(err.availableConnectors).toEqual(['gemini', 'anthropic', 'xai', 'openai']);
+    expect(err.availableConnectors).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot']);
     expect(err.triedDids).toEqual([OWNER]);
   });
 
@@ -455,6 +463,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
     mockLoadAnthropic.mockRejectedValue(new Error('anthropic boom'));
     mockLoadXai.mockRejectedValue(new Error('xai boom'));
     mockLoadOpenai.mockRejectedValue(new Error('openai boom'));
+    mockLoadMoonshot.mockRejectedValue(new Error('moonshot boom'));
 
     const err = await resolveBrain({ ownerDid: OWNER, appDid: APP })
       .catch((e: unknown) => e as NoBrainSealedError);
@@ -466,10 +475,12 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
       `${OWNER}/anthropic`,
       `${OWNER}/xai`,
       `${OWNER}/openai`,
+      `${OWNER}/moonshot`,
       `${APP}/gemini`,
       `${APP}/anthropic`,
       `${APP}/xai`,
       `${APP}/openai`,
+      `${APP}/moonshot`,
     ]);
   });
 
@@ -496,7 +507,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
 
 describe('listBrainConnectors', () => {
   it('reports the brain connectors in resolution order', () => {
-    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic', 'xai', 'openai']);
+    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot']);
   });
 });
 
@@ -612,5 +623,63 @@ describe('resolveBrain — the OpenAI card (#1927)', () => {
 
     expect(err.message).toContain('openai:infer');
     expect(err.message).toContain('/openai/api/token');
+  });
+});
+
+// ─── Moonshot AI (#1930) ────────────────────────────────────────────────────
+
+describe('resolveBrain — the Moonshot card (#1930)', () => {
+  /**
+   * Moonshot speaks the OpenAI-compatible surface, so the resolved brain must
+   * name the `openai` adapter pointed at api.moonshot.ai — not a new
+   * provider, the same move xAI/OpenAI already make.
+   */
+  it('resolves as an OpenAI-compatible brain pointed at Moonshot', async () => {
+    mockLoadMoonshot.mockResolvedValueOnce({ apiKey: MOONSHOT_KEY, modelId: 'kimi-k2-0905-preview' });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain).toEqual({
+      connector: 'moonshot',
+      credentialDid: OWNER,
+      provider: 'openai',
+      modelId: 'kimi-k2-0905-preview',
+      apiKey: MOONSHOT_KEY,
+      baseURL: 'https://api.moonshot.ai/v1',
+    });
+  });
+
+  /**
+   * The #1769 decision, applied to a fifth provider: no `defaultModelId`, so a
+   * sealed key with no model chosen fails closed with "pick a model" instead
+   * of silently running whichever Kimi id was hardcoded when this shipped.
+   */
+  it('fails closed with NoModelSelectedError when no model is sealed', async () => {
+    mockLoadMoonshot.mockResolvedValueOnce({ apiKey: MOONSHOT_KEY });
+
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoModelSelectedError);
+
+    expect(err).toBeInstanceOf(NoModelSelectedError);
+    expect(err.message).toContain('/moonshot/api/token');
+    expect(err.message).not.toContain(MOONSHOT_KEY);
+  });
+
+  /**
+   * Appended, not inserted: the table's order IS resolution priority, so an
+   * existing dual-sealed DID must keep the brain it already had.
+   */
+  it('does not displace an earlier sealed connector', async () => {
+    mockLoadOpenai.mockResolvedValueOnce({ apiKey: OPENAI_KEY, modelId: 'gpt-5.5' });
+    mockLoadMoonshot.mockResolvedValueOnce({ apiKey: MOONSHOT_KEY, modelId: 'kimi-k2-0905-preview' });
+
+    expect((await resolveBrain(OWNER)).connector).toBe('openai');
+    expect(mockLoadMoonshot).not.toHaveBeenCalled();
+  });
+
+  it('names moonshot:infer and its token route in the fail-closed error', async () => {
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err.message).toContain('moonshot:infer');
+    expect(err.message).toContain('/moonshot/api/token');
   });
 });

@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -48,6 +48,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   anthropic: 'did:imajin:anthropic-connector',
   xai: 'did:imajin:xai-connector',
   openai: 'did:imajin:openai-connector',
+  moonshot: 'did:imajin:moonshot-connector',
   gcp: 'did:imajin:gcp-connector',
   quickbooks: 'did:imajin:quickbooks-connector',
   warp: 'did:imajin:warp-connector',
@@ -63,6 +64,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   anthropic: 'anthropic',
   xai: 'xai',
   openai: 'openai',
+  moonshot: 'moonshot',
   gcp: 'gcp',
   quickbooks: 'quickbooks',
   warp: 'warp',
@@ -202,6 +204,30 @@ const TOUCHES_OTHERS_SENSITIVE: ScopeClassification = { disclosesOthers: true, s
 /** Carried by MCP access tokens (the capability ceiling, not a grant). */
 const MCP_TOKENS: readonly CapabilitySurface[] = ['mcp'];
 
+/**
+ * Shared shape for the `*:infer` "brain" scopes (Gemini, Anthropic, xAI,
+ * OpenAI, Moonshot, …): each lets a DID seal one inference provider's own API
+ * key, spent on every call and never released to a third party → SELF_SENSITIVE
+ * → owner-only under the #1196 2×2. Every one of these entries used to be a
+ * hand-copied object literal differing only in the connector id, surface, and
+ * label — structurally identical enough that SonarCloud's duplication
+ * detector flagged the copies (#1930). Extracting the shape once here is the
+ * `SCOPE_VOCABULARY` counterpart to `brainConnectorEntry()` in
+ * connector-registry.ts: the Nth brain becomes one call, not another entry
+ * for CPD to match against the last four.
+ *
+ * `C extends ConnectorId` keeps `scope` a template-literal type (`` `${C}:infer` ``)
+ * rather than widening to `string`, so `Scope` (derived from
+ * `SCOPE_VOCABULARY[number]['scope']`) still carries each exact scope string.
+ */
+function brainInferScope<C extends ConnectorId>(
+  connector: C,
+  surface: string,
+  label: string,
+): { scope: `${C}:infer`; connector: C; verb: 'infer'; surface: string; classification: ScopeClassification; label: string } {
+  return { scope: `${connector}:infer`, connector, verb: 'infer', surface, classification: SELF_SENSITIVE, label };
+}
+
 // ── The vocabulary ────────────────────────────────────────────────────────
 
 /**
@@ -317,34 +343,22 @@ export const SCOPE_VOCABULARY = [
   { scope: 'discord:read', connector: 'discord', verb: 'read', surface: 'channels', classification: TOUCHES_OTHERS,
     label: 'Read messages from Discord channels on your behalf', manifestLabel: 'Read messages from Discord channels' },
 
-  // ── Gemini connector — was missing from SCOPES entirely before #1253, so
-  // validateScopes() rejected it and the consent screens had no label for it.
-  // Consumes the owner's own sealed API key → SELF_SENSITIVE → owner-only.
-  { scope: 'gemini:infer', connector: 'gemini', verb: 'infer', surface: 'gemini-api', classification: SELF_SENSITIVE,
-    label: 'Use your Gemini API key for inference' },
-
-  // ── Anthropic connector (#1621) — the second brain a DID can seal.
-  // Same shape as gemini:infer: the owner's own key is consumed on every call
-  // and never released to a third party → SELF_SENSITIVE → owner-only.
-  { scope: 'anthropic:infer', connector: 'anthropic', verb: 'infer', surface: 'anthropic-api', classification: SELF_SENSITIVE,
-    label: 'Use your Anthropic API key for inference' },
-
-  // ── xAI connector (#1924) — the third brain a DID can seal, and the
-  // net-new provider the #1922 passthrough is validated on first (Ryan's
-  // 2026-09-01 migration-order call: Grok → OpenAI → Gemini, Anthropic last).
-  // Same quadrant and shape as gemini:infer / anthropic:infer: the owner's own
-  // key is spent on every call and never released → SELF_SENSITIVE → owner-only.
-  { scope: 'xai:infer', connector: 'xai', verb: 'infer', surface: 'xai-api', classification: SELF_SENSITIVE,
-    label: 'Use your xAI API key for inference' },
-
-  // ── OpenAI connector (#1927) — the fourth brain a DID can seal, and the
-  // reference dialect for the OpenAI-compatible passthrough (#1925): validated
-  // second in the #1922 migration order (Grok → OpenAI → Gemini, Anthropic
-  // last). Same quadrant and shape as gemini:infer / anthropic:infer /
-  // xai:infer: the owner's own key is spent on every call and never released
-  // to a third party → SELF_SENSITIVE → owner-only.
-  { scope: 'openai:infer', connector: 'openai', verb: 'infer', surface: 'openai-api', classification: SELF_SENSITIVE,
-    label: 'Use your OpenAI API key for inference' },
+  // ── Brain connectors — sealed inference-provider API keys, one call each
+  // via `brainInferScope` (see its doc comment). Order is the ONLY thing that
+  // still needs stating per entry: Gemini (#1432) was first and is why
+  // gemini:infer predates the #1253 vocabulary; Anthropic (#1621) is second;
+  // xAI (#1924) is third — the net-new provider the #1922 passthrough is
+  // validated on first (Grok → OpenAI → Gemini, Anthropic last); OpenAI
+  // (#1927) is fourth, and the reference dialect for the OpenAI-compatible
+  // passthrough (#1925); Moonshot AI/Kimi (#1930) is fifth, OpenAI-compatible
+  // and pointed at api.moonshot.ai — Kimi is OpenClaw's live coding-agent
+  // workhorse today, the connector this recurring spend moves onto a sealed
+  // credential first.
+  brainInferScope('gemini', 'gemini-api', 'Use your Gemini API key for inference'),
+  brainInferScope('anthropic', 'anthropic-api', 'Use your Anthropic API key for inference'),
+  brainInferScope('xai', 'xai-api', 'Use your xAI API key for inference'),
+  brainInferScope('openai', 'openai-api', 'Use your OpenAI API key for inference'),
+  brainInferScope('moonshot', 'moonshot-api', 'Use your Moonshot API key for inference'),
 
   // ── Google Cloud connector (#1317) — a sealed service-account key, not an
   // inference-only brain. The key is the owner's own credential and is consumed

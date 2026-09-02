@@ -290,6 +290,23 @@ const OPENAI_ENTRY = brainConnectorEntry({
   modelsRoute: '/openai/api/models',
 });
 
+/** Moonshot's registry entry (#1930) — see {@link GEMINI_ENTRY}. */
+const MOONSHOT_ENTRY = brainConnectorEntry({
+  id: 'moonshot',
+  name: 'Moonshot AI',
+  description: 'Seal your own Moonshot (Kimi) API key per-DID so inference runs on your credential, not a shared env var.',
+  icon: '🌙',
+  credentialUi: {
+    label: 'API Key',
+    placeholder: 'Moonshot API Key (sk-...)',
+    hint: 'Key is sealed server-side and never returned. Create one at platform.moonshot.ai → API keys.',
+  },
+  // #1930, following #1769: no hardcoded default model. Kimi model ids turn
+  // over at least as fast as the other providers', so the owner picks a live
+  // one here and it is sealed as `modelId`.
+  modelsRoute: '/moonshot/api/models',
+});
+
 export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'mcp',
@@ -386,6 +403,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   },
   XAI_ENTRY,
   OPENAI_ENTRY,
+  MOONSHOT_ENTRY,
   {
     id: 'gcp',
     name: 'Google Cloud',

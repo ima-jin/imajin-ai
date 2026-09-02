@@ -31,7 +31,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'gcp', 'quickbooks', 'warp', 'stripe'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'gcp', 'quickbooks', 'warp', 'stripe'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -127,55 +127,26 @@ describe('pinned scope sets (change these deliberately)', () => {
     ]);
   });
 
-  it('pins the GitHub connector card toggles', () => {
-    expect(connectorUiScopes('github').map((s) => s.name)).toEqual([
-      'github:read',
-      'github:write',
-      'github:org',
-    ]);
-  });
-
-  it('pins the Discord connector card toggles', () => {
-    expect(connectorUiScopes('discord').map((s) => s.name)).toEqual(['discord:post', 'discord:read']);
-  });
-
-  it('pins the Gemini connector card toggles', () => {
-    expect(connectorUiScopes('gemini').map((s) => s.name)).toEqual(['gemini:infer']);
-  });
-
-  it('pins the Anthropic connector card toggles', () => {
-    expect(connectorUiScopes('anthropic').map((s) => s.name)).toEqual(['anthropic:infer']);
-  });
-
-  it('pins the xAI connector card toggles', () => {
-    expect(connectorUiScopes('xai').map((s) => s.name)).toEqual(['xai:infer']);
-  });
-
-  it('pins the OpenAI connector card toggles', () => {
-    expect(connectorUiScopes('openai').map((s) => s.name)).toEqual(['openai:infer']);
-  });
-
-  it('pins the Google Cloud connector card toggles', () => {
-    expect(connectorUiScopes('gcp').map((s) => s.name)).toEqual([
-      'gcp:iam:read',
-      'gcp:vertex:invoke',
-      'gcp:project:read',
-    ]);
-  });
-
-  it('pins the QuickBooks connector card toggles', () => {
-    expect(connectorUiScopes('quickbooks').map((s) => s.name)).toEqual([
-      'quickbooks:read',
-      'quickbooks:write',
-    ]);
-  });
-
-  it('pins the Warp connector card toggles', () => {
-    expect(connectorUiScopes('warp').map((s) => s.name)).toEqual(['warp:dispatch']);
-  });
-
-  it('pins the Stripe connector card toggles', () => {
-    expect(connectorUiScopes('stripe').map((s) => s.name)).toEqual(['stripe:events']);
+  // Every other connector card pins one flat list of scope names, differing
+  // only in id and expected scopes — hand-copying an `it()` per connector
+  // (as this used to be) is exactly the kind of same-shape-different-literal
+  // block SonarCloud's duplication detector flags once enough connectors pile
+  // up (#1930). One parameterized case, one row per connector, matches the
+  // `it.each` pattern already used below for the #1393/#1298 regressions.
+  it.each([
+    ['GitHub', 'github', ['github:read', 'github:write', 'github:org']],
+    ['Discord', 'discord', ['discord:post', 'discord:read']],
+    ['Gemini', 'gemini', ['gemini:infer']],
+    ['Anthropic', 'anthropic', ['anthropic:infer']],
+    ['xAI', 'xai', ['xai:infer']],
+    ['OpenAI', 'openai', ['openai:infer']],
+    ['Moonshot', 'moonshot', ['moonshot:infer']],
+    ['Google Cloud', 'gcp', ['gcp:iam:read', 'gcp:vertex:invoke', 'gcp:project:read']],
+    ['QuickBooks', 'quickbooks', ['quickbooks:read', 'quickbooks:write']],
+    ['Warp', 'warp', ['warp:dispatch']],
+    ['Stripe', 'stripe', ['stripe:events']],
+  ] satisfies Array<[string, ConnectorId, string[]]>)('pins the %s connector card toggles', (_label, id, expected) => {
+    expect(connectorUiScopes(id).map((s) => s.name)).toEqual(expected);
   });
 
   /**
@@ -312,6 +283,7 @@ const GEMINI_DID = 'did:imajin:gemini-connector';
 const ANTHROPIC_DID = 'did:imajin:anthropic-connector';
 const XAI_DID = 'did:imajin:xai-connector';
 const OPENAI_DID = 'did:imajin:openai-connector';
+const MOONSHOT_DID = 'did:imajin:moonshot-connector';
 const GCP_DID = 'did:imajin:gcp-connector';
 const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
 const WARP_DID = 'did:imajin:warp-connector';
@@ -384,6 +356,16 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('openai', () => {
     expect(connectorScopeDescriptors('openai')).toEqual({
       'openai:infer': { verb: 'infer', surface: 'openai-api', label: 'Use your OpenAI API key for inference', release: { discloses_others: false, sensitive: true, viewer: OPENAI_DID } },
+    });
+  });
+
+  // #1930 — new descriptor, not a migrated literal. Same SELF_SENSITIVE
+  // quadrant as gemini:infer / anthropic:infer / xai:infer / openai:infer:
+  // the owner's own key is spent on every Moonshot call and never released
+  // to a third party.
+  it('moonshot', () => {
+    expect(connectorScopeDescriptors('moonshot')).toEqual({
+      'moonshot:infer': { verb: 'infer', surface: 'moonshot-api', label: 'Use your Moonshot API key for inference', release: { discloses_others: false, sensitive: true, viewer: MOONSHOT_DID } },
     });
   });
 
