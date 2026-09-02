@@ -37,7 +37,7 @@ export interface SpendCap {
   period: SpendCapPeriod;
 }
 
-const VALID_PERIODS: readonly SpendCapPeriod[] = ['daily', 'monthly', 'total'];
+const VALID_PERIODS: ReadonlySet<SpendCapPeriod> = new Set(['daily', 'monthly', 'total']);
 
 /**
  * Parse the JSONB `spend_cap` column into a typed cap, or `undefined` when
@@ -58,7 +58,7 @@ export function parseSpendCap(raw: unknown): SpendCap | undefined {
     log.warn({ raw }, 'spend cap: malformed amountUsd — treating as no cap');
     return undefined;
   }
-  if (typeof period !== 'string' || !VALID_PERIODS.includes(period as SpendCapPeriod)) {
+  if (typeof period !== 'string' || !VALID_PERIODS.has(period as SpendCapPeriod)) {
     log.warn({ raw }, 'spend cap: malformed period — treating as no cap');
     return undefined;
   }

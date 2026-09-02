@@ -26,7 +26,7 @@ const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
 
 /** The only connector ids `inference.usage` can ever name (see `brain.ts`'s `BRAIN_CONNECTORS`). */
-const BRAIN_CONNECTOR_IDS: readonly string[] = ['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai'];
+const BRAIN_CONNECTOR_IDS: ReadonlySet<string> = new Set(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai']);
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -47,7 +47,7 @@ export async function GET(
   const { id } = await params;
 
   const entry = getConnector(id);
-  if (!entry || !BRAIN_CONNECTOR_IDS.includes(id)) {
+  if (!entry || !BRAIN_CONNECTOR_IDS.has(id)) {
     return NextResponse.json({ error: `Unknown inference connector: ${id}` }, { status: 404, headers });
   }
 

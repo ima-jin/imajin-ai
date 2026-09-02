@@ -24,7 +24,7 @@ import { parseSpendCap, serializeSpendCap, type SpendCap, type SpendCapPeriod } 
 
 const log = createLogger('kernel');
 
-const VALID_PERIODS: readonly SpendCapPeriod[] = ['daily', 'monthly', 'total'];
+const VALID_PERIODS: ReadonlySet<SpendCapPeriod> = new Set(['daily', 'monthly', 'total']);
 
 /** Format a cap back into the `"<amountUsd>:<period>"` field value. */
 function formatSpendCap(cap: SpendCap): string {
@@ -36,7 +36,7 @@ function parseSpendCapField(value: string): SpendCap | undefined {
   const [amountRaw, periodRaw] = value.split(':').map((part) => part.trim());
   const amountUsd = Number(amountRaw);
   if (!amountRaw || !Number.isFinite(amountUsd) || amountUsd <= 0) return undefined;
-  if (!periodRaw || !VALID_PERIODS.includes(periodRaw as SpendCapPeriod)) return undefined;
+  if (!periodRaw || !VALID_PERIODS.has(periodRaw as SpendCapPeriod)) return undefined;
   return { amountUsd, period: periodRaw as SpendCapPeriod };
 }
 
@@ -49,6 +49,11 @@ export interface ConnectorSpendCapRouteHandlers {
   OPTIONS: RouteHandler;
 }
 
+/** Identical across every connector — declared once at module scope rather than recreated per factory call. */
+async function OPTIONS(request: NextRequest): Promise<NextResponse> {
+  return corsOptions(request) as NextResponse;
+}
+
 /**
  * Build the four handlers for one connector's spend-cap settings endpoint.
  * Designed to be re-exported straight from the connector's route file:
@@ -58,10 +63,6 @@ export interface ConnectorSpendCapRouteHandlers {
  * ```
  */
 export function createConnectorSpendCapRoute(provider: string): ConnectorSpendCapRouteHandlers {
-  async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-    return corsOptions(request) as NextResponse;
-  }
-
   /** Returns `{ spendCap: "<amountUsd>:<period>" | "" }` for the settings-section GET. */
   async function GET(request: NextRequest): Promise<NextResponse> {
     const cors = corsHeaders(request);
