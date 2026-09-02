@@ -1,0 +1,10 @@
+export { createImajinChatAdapter } from './channel-adapter.js';
+export type { ImajinChatAdapterConfig } from './channel-adapter.js';
+export { adapterConfigFromEnv, loadKeypair } from './config-from-env.js';
+export { toDispatchTarget } from './dispatch.js';
+export type { DispatchTarget } from './dispatch.js';
+export { isAuthFailureFrame, isChatMessageFrame, parseFrame, sendChatMessage } from './imajin-client.js';
+export type { ChatMessageFrame, SentChatMessage } from './imajin-client.js';
+export { authenticate, parseSessionCookie } from './auth/challenge-response.js';
+export type { AuthenticatedSession, ChallengeResponseConfig } from './auth/challenge-response.js';
+export { ImajinChatConnection, computeReconnectDelayMs } from './ws-connection.js';

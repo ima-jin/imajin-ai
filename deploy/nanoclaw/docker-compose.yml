@@ -1,0 +1,80 @@
+# NanoClaw + Imajin sidecars (imajin-ai#1932). Variable NAMES only in
+# .env.example — set real values in a local, untracked .env before `up`.
+#
+# `nanoclaw`: the host process. Needs the Docker socket to spawn its own
+# per-conversation agent containers (docker-outside-of-docker) and a data
+# volume for its central DB + session state.
+#
+# `mcp-proxy` / `usage-emitter`: this repo's sidecars
+# (packages/nanoclaw-imajin-channel). `usage-emitter` is a periodic job, not
+# a daemon (see that package's README) — run here as a sleep loop rather
+# than a one-shot container exiting immediately.
+services:
+  nanoclaw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NANOCLAW_GIT_REF: ${NANOCLAW_GIT_REF}
+    restart: unless-stopped
+    environment:
+      KERNEL_BASE_URL: ${KERNEL_BASE_URL}
+      NANOCLAW_AGENT_DID: ${NANOCLAW_AGENT_DID}
+      NANOCLAW_OWNER_DID: ${NANOCLAW_OWNER_DID}
+      NANOCLAW_AGENT_KEYPAIR_PATH: /secrets/keypair.json
+      # Brain deviation (imajin-ai#1922 follow-up pending) — see
+      # docs/agents/nanoclaw-first-boot.md's brain-path decision.
+      ANTHROPIC_API_KEY: ${DIRECT_BRAIN_API_KEY}
+    volumes:
+      - nanoclaw-data:/app/data
+      - ${NANOCLAW_AGENT_KEYPAIR_PATH_HOST}:/secrets/keypair.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "test", "-S", "/var/run/docker.sock"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  mcp-proxy:
+    build:
+      context: ../..
+      dockerfile: deploy/nanoclaw/mcp-proxy.Dockerfile
+    restart: unless-stopped
+    environment:
+      KERNEL_BASE_URL: ${KERNEL_BASE_URL}
+      MCP_SERVER_URL: ${MCP_SERVER_URL}
+      NANOCLAW_AGENT_DID: ${NANOCLAW_AGENT_DID}
+      NANOCLAW_AGENT_KEYPAIR_PATH: /secrets/keypair.json
+      MCP_PROXY_ATTESTATION_ID: ${MCP_PROXY_ATTESTATION_ID}
+      MCP_PROXY_HOST: 0.0.0.0
+      MCP_PROXY_PORT: ${MCP_PROXY_PORT}
+    volumes:
+      - ${NANOCLAW_AGENT_KEYPAIR_PATH_HOST}:/secrets/keypair.json:ro
+    ports:
+      - '127.0.0.1:${MCP_PROXY_PORT}:${MCP_PROXY_PORT}'
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+process.env.MCP_PROXY_PORT+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  usage-emitter:
+    build:
+      context: ../..
+      dockerfile: deploy/nanoclaw/usage-emitter.Dockerfile
+    restart: unless-stopped
+    environment:
+      KERNEL_URL: ${KERNEL_BASE_URL}
+      USAGE_EMIT_TOKEN: ${USAGE_EMIT_TOKEN}
+      NANOCLAW_PROJECTS_DIR: /nanoclaw-data/v2-sessions
+      USAGE_EMITTER_STATE_FILE: /state/usage-emitter-state.json
+    volumes:
+      - nanoclaw-data:/nanoclaw-data:ro
+      - usage-emitter-state:/state
+    # Periodic job, not a daemon (see package README) — loop with a sleep.
+    command: >
+      sh -c "while true; do pnpm --filter @imajin/nanoclaw-imajin-channel usage-emitter || true; sleep 300; done"
+
+volumes:
+  nanoclaw-data:
+  usage-emitter-state:
