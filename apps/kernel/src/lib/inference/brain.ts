@@ -34,12 +34,13 @@ import { loadGeminiCredentials } from '@/src/lib/gemini/connector';
 import { loadAnthropicCredentials } from '@/src/lib/anthropic/connector';
 import { loadXaiCredentials, XAI_BASE_URL } from '@/src/lib/xai/connector';
 import { loadOpenaiCredentials, OPENAI_BASE_URL } from '@/src/lib/openai/connector';
+import { loadMoonshotCredentials, MOONSHOT_BASE_URL } from '@/src/lib/moonshot/connector';
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 
 const log = createLogger('kernel:inference:brain');
 
 /** Connector ids that can supply a brain, in resolution order. */
-export type BrainConnectorId = 'gemini' | 'anthropic' | 'xai' | 'openai';
+export type BrainConnectorId = 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot';
 
 /**
  * Whose sealed card may supply the model (#1624).
@@ -189,6 +190,32 @@ const BRAIN_CONNECTORS: readonly BrainConnector[] = [
     // fail-closed path when none is chosen yet.
     defaultBaseUrl: OPENAI_BASE_URL,
     load: loadOpenaiCredentials,
+  },
+  {
+    // #1930. Appended rather than slotted in, same reasoning as xAI/OpenAI
+    // above: this table's order IS resolution priority, so inserting
+    // Moonshot earlier would silently move existing dual-sealed DIDs onto a
+    // different brain. Kimi (kimi-k2.x) is the live coding-agent workhorse in
+    // OpenClaw today, joining the pre-Anthropic validation set in the #1922
+    // migration order (Grok → OpenAI → Gemini → +Kimi, Anthropic last) — that
+    // is about passthrough validation order, not about which sealed card
+    // wins here.
+    id: 'moonshot',
+    name: 'Moonshot AI',
+    // Moonshot speaks the OpenAI-compatible surface, so its provider adapter
+    // is `openai` pointed at api.moonshot.ai — the same move xAI/OpenAI make
+    // above, not a separate provider.
+    provider: 'openai',
+    scope: 'moonshot:infer',
+    tokenRoute: '/moonshot/api/token',
+    // No hardcoded default, matching the Gemini/xAI/OpenAI precedent set by
+    // #1769: a baked-in Kimi model id goes stale the way gemini-2.0-flash did
+    // (#1764), and a retired model can answer 429 rather than 404, which is
+    // indistinguishable from a rate limit. The owner picks a live model from
+    // GET /moonshot/api/models and it is sealed as `modelId` — see
+    // `NoModelSelectedError` for the fail-closed path when none is chosen yet.
+    defaultBaseUrl: MOONSHOT_BASE_URL,
+    load: loadMoonshotCredentials,
   },
 ];
 

@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -48,6 +48,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   anthropic: 'did:imajin:anthropic-connector',
   xai: 'did:imajin:xai-connector',
   openai: 'did:imajin:openai-connector',
+  moonshot: 'did:imajin:moonshot-connector',
   gcp: 'did:imajin:gcp-connector',
   quickbooks: 'did:imajin:quickbooks-connector',
   warp: 'did:imajin:warp-connector',
@@ -63,6 +64,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   anthropic: 'anthropic',
   xai: 'xai',
   openai: 'openai',
+  moonshot: 'moonshot',
   gcp: 'gcp',
   quickbooks: 'quickbooks',
   warp: 'warp',
@@ -345,6 +347,18 @@ export const SCOPE_VOCABULARY = [
   // to a third party → SELF_SENSITIVE → owner-only.
   { scope: 'openai:infer', connector: 'openai', verb: 'infer', surface: 'openai-api', classification: SELF_SENSITIVE,
     label: 'Use your OpenAI API key for inference' },
+
+  // ── Moonshot AI (Kimi) connector (#1930) — the fifth brain a DID can seal.
+  // Moonshot is OpenAI-compatible (provider: openai, pointed at
+  // api.moonshot.ai), the same shape xAI/OpenAI already share. Kimi
+  // (kimi-k2.x) is the live coding-agent workhorse in OpenClaw today, so this
+  // is the connector where real recurring spend on a static key moves onto a
+  // per-DID sealed credential first. Same quadrant and shape as
+  // gemini:infer / anthropic:infer / xai:infer / openai:infer: the owner's
+  // own key is spent on every call and never released to a third party →
+  // SELF_SENSITIVE → owner-only.
+  { scope: 'moonshot:infer', connector: 'moonshot', verb: 'infer', surface: 'moonshot-api', classification: SELF_SENSITIVE,
+    label: 'Use your Moonshot API key for inference' },
 
   // ── Google Cloud connector (#1317) — a sealed service-account key, not an
   // inference-only brain. The key is the owner's own credential and is consumed

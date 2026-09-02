@@ -22,7 +22,7 @@ import {
 } from '../src/scope-vocabulary';
 import { SCOPES, validateScopes } from '../src/scopes';
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'gcp', 'quickbooks', 'warp', 'stripe'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'gcp', 'quickbooks', 'warp', 'stripe'];
 
 const connectorEntries = SCOPE_VOCABULARY.filter(isConnectorScope);
 
@@ -299,6 +299,31 @@ describe('SCOPES is a faithful projection', () => {
    */
   it('keeps openai:infer off the MCP capability ceiling', () => {
     expect(scopesForSurface('mcp')).not.toContain('openai:infer');
+  });
+
+  /**
+   * #1930: the fifth brain a DID can seal — Moonshot AI (Kimi), OpenAI-
+   * compatible and pointed at api.moonshot.ai. Same quadrant as gemini:infer,
+   * anthropic:infer, xai:infer, and openai:infer, so it must derive
+   * owner-only and name its own connector as the sole viewer.
+   */
+  it('includes moonshot:infer as an owner-only connector scope', () => {
+    expect(SCOPES['moonshot:infer']).toBe('Use your Moonshot API key for inference');
+    expect(validateScopes(['moonshot:infer']).invalid).toEqual([]);
+
+    const entry = scopeEntry('moonshot:infer') as ConnectorScopeEntry;
+    expect(entry.connector).toBe('moonshot');
+    expect(entry.surface).toBe('moonshot-api');
+    expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
+    expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.moonshot);
+  });
+
+  /**
+   * The passthrough (#1922 Phase 2) is not built yet, so no MCP tool can spend
+   * the sealed Moonshot key either.
+   */
+  it('keeps moonshot:infer off the MCP capability ceiling', () => {
+    expect(scopesForSurface('mcp')).not.toContain('moonshot:infer');
   });
 
   /**
