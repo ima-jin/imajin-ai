@@ -1,12 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   resetAnthropicRouteMocks,
-  mockResolveInferenceAuth,
   mockResolveBrain,
+  makeAnthropicPostRequest,
   OWNER_DID,
   APP_DID,
 } from '../../../__tests__/anthropic-route-test-support';
 
+// Request-gating behavior (CORS pre-flight, rate limit, auth, empty body) is
+// shared with `POST /infer/v1/messages` and tested once via `describe.each`
+// in `../../../__tests__/anthropic-post-routes-gating.test.ts` — this file
+// covers only what is distinctive to `count_tokens` itself.
 const { mockForwardAnthropicCountTokens } = vi.hoisted(() => ({ mockForwardAnthropicCountTokens: vi.fn() }));
 
 vi.mock('@/src/lib/inference/anthropic-messages/forward', async () => {
@@ -16,17 +20,10 @@ vi.mock('@/src/lib/inference/anthropic-messages/forward', async () => {
   return { ...actual, forwardAnthropicCountTokens: mockForwardAnthropicCountTokens };
 });
 
-import { POST, OPTIONS } from '../route';
+import { POST } from '../route';
 import { NoBrainSealedError } from '@/src/lib/inference/brain';
 
-type RouteRequest = Parameters<typeof POST>[0];
-
-function makeReq(opts: { headers?: Record<string, string>; body?: string } = {}): RouteRequest {
-  return {
-    headers: new Headers(opts.headers ?? {}),
-    text: async () => opts.body ?? JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
-  } as unknown as RouteRequest;
-}
+const makeReq = makeAnthropicPostRequest;
 
 beforeEach(() => {
   resetAnthropicRouteMocks();
@@ -36,24 +33,6 @@ beforeEach(() => {
 });
 
 describe('POST /infer/v1/messages/count_tokens', () => {
-  it('answers CORS pre-flight', async () => {
-    const res = await OPTIONS(makeReq());
-    expect(res.status).toBe(204);
-  });
-
-  it('returns 401 without a valid bearer or x-api-key', async () => {
-    mockResolveInferenceAuth.mockResolvedValueOnce({ ok: false, error: 'Invalid app token', status: 401 });
-
-    const res = await POST(makeReq());
-
-    expect(res.status).toBe(401);
-  });
-
-  it('requests auth with the infer:completions scope', async () => {
-    await POST(makeReq());
-    expect(mockResolveInferenceAuth).toHaveBeenCalledWith(expect.anything(), 'infer:completions');
-  });
-
   it('resolves the brain restricted to the anthropic connector and forwards the count_tokens call unmetered', async () => {
     const res = await POST(makeReq());
 
@@ -76,10 +55,5 @@ describe('POST /infer/v1/messages/count_tokens', () => {
     const res = await POST(makeReq());
 
     expect(res.status).toBe(422);
-  });
-
-  it('returns 400 when the body is empty', async () => {
-    const res = await POST(makeReq({ body: '' }));
-    expect(res.status).toBe(400);
   });
 });

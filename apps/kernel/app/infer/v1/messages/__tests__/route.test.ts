@@ -1,15 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   resetAnthropicRouteMocks,
-  mockResolveInferenceAuth,
-  mockRateLimit,
   mockResolveBrain,
   mockReadConnectorRegistration,
   mockEnforceSpendCap,
+  makeAnthropicPostRequest,
   OWNER_DID,
   APP_DID,
 } from '../../__tests__/anthropic-route-test-support';
 
+// Request-gating behavior (CORS pre-flight, rate limit, auth, empty body) is
+// shared with `POST /infer/v1/messages/count_tokens` and tested once via
+// `describe.each` in `../../__tests__/anthropic-post-routes-gating.test.ts` —
+// this file covers only what is distinctive to `/infer/v1/messages` itself.
 const { mockForwardAnthropicMessages } = vi.hoisted(() => ({ mockForwardAnthropicMessages: vi.fn() }));
 
 vi.mock('@/src/lib/inference/anthropic-messages/forward', async () => {
@@ -19,58 +22,16 @@ vi.mock('@/src/lib/inference/anthropic-messages/forward', async () => {
   return { ...actual, forwardAnthropicMessages: mockForwardAnthropicMessages };
 });
 
-import { POST, OPTIONS } from '../route';
+import { POST } from '../route';
 import { NoBrainSealedError, NoModelSelectedError } from '@/src/lib/inference/brain';
 import { UpstreamTimeoutError } from '@/src/lib/inference/completions/errors';
 import { SpendCapExceededError } from '@/src/lib/inference/spend-cap';
 
-type RouteRequest = Parameters<typeof POST>[0];
-
-function makeReq(opts: { headers?: Record<string, string>; body?: string } = {}): RouteRequest {
-  return {
-    headers: new Headers(opts.headers ?? {}),
-    text: async () => opts.body ?? JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
-  } as unknown as RouteRequest;
-}
+const makeReq = makeAnthropicPostRequest;
 
 beforeEach(() => {
   resetAnthropicRouteMocks();
   mockForwardAnthropicMessages.mockResolvedValue(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
-});
-
-describe('POST /infer/v1/messages — request gating', () => {
-  it('answers CORS pre-flight', async () => {
-    const res = await OPTIONS(makeReq());
-    expect(res.status).toBe(204);
-  });
-
-  it('returns 429 when rate limited, before auth is even checked', async () => {
-    mockRateLimit.mockReturnValueOnce({ limited: true, retryAfter: 12 });
-
-    const res = await POST(makeReq());
-
-    expect(res.status).toBe(429);
-    expect(mockResolveInferenceAuth).not.toHaveBeenCalled();
-  });
-
-  it('returns 401 when auth fails (no bearer, no x-api-key)', async () => {
-    mockResolveInferenceAuth.mockResolvedValueOnce({ ok: false, error: 'Invalid app token', status: 401 });
-
-    const res = await POST(makeReq());
-
-    expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: 'Invalid app token' });
-  });
-
-  it('requests auth with the infer:completions scope — the same scope as the OpenAI-compatible route', async () => {
-    await POST(makeReq());
-    expect(mockResolveInferenceAuth).toHaveBeenCalledWith(expect.anything(), 'infer:completions');
-  });
-
-  it('returns 400 when the body is empty', async () => {
-    const res = await POST(makeReq({ body: '' }));
-    expect(res.status).toBe(400);
-  });
 });
 
 describe('POST /infer/v1/messages — dispatch', () => {

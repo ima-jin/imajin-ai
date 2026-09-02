@@ -18,6 +18,7 @@
  * exactly as if it were declared inline in the test file itself.
  */
 import { vi } from 'vitest';
+import type { NextRequest } from 'next/server';
 
 const hoistedMocks = vi.hoisted(() => ({
   mockResolveInferenceAuth: vi.fn(),
@@ -102,4 +103,12 @@ export function resetAnthropicRouteMocks(): void {
   mockResolveBrain.mockResolvedValue(ANTHROPIC_BRAIN);
   mockReadConnectorRegistration.mockResolvedValue(undefined);
   mockEnforceSpendCap.mockResolvedValue(undefined);
+}
+
+/** A fake `NextRequest` for the two POST routes (`/messages`, `.../count_tokens`) — both read the body via `.text()`. */
+export function makeAnthropicPostRequest(opts: { headers?: Record<string, string>; body?: string } = {}): NextRequest {
+  return {
+    headers: new Headers(opts.headers ?? {}),
+    text: async () => opts.body ?? JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+  } as unknown as NextRequest;
 }
