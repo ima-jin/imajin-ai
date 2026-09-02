@@ -131,6 +131,17 @@ export interface PublishUsageIncurredParams {
   costUsd: number | undefined;
   /** Which emitter produced this row, e.g. `'inference-passthrough'` or an external `usage.emitters` `source` (#1151). */
   source: string;
+  /**
+   * Emitter-specific extra context carried alongside the shared primitive
+   * fields (#1956 precedent: the presence-query emitter's `queryId` /
+   * `requesterDid` / `settled` / `settleAmount` / `mode`). Lands in the
+   * signed attestation's `payload.metadata`, never in the `usage.incurred`
+   * row itself (no such column exists, and this issue adds none) — the row
+   * stays exactly the shared primitive shape every emitter writes. Omitted
+   * entirely when not given, so every existing emitter's payload shape is
+   * unchanged. Must never carry secrets or raw prompt/completion text.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -145,7 +156,7 @@ export interface PublishUsageIncurredParams {
  * `publish('usage.incurred', ...)` call.
  */
 export async function publishUsageIncurred(params: PublishUsageIncurredParams): Promise<void> {
-  const { usageId, principalDid, resource, quantity, unit, costUsd, source } = params;
+  const { usageId, principalDid, resource, quantity, unit, costUsd, source, metadata } = params;
   const nodeDid = await getNodeDid();
 
   await publish('usage.incurred', {
@@ -165,6 +176,7 @@ export async function publishUsageIncurred(params: PublishUsageIncurredParams): 
       ts: new Date().toISOString(),
       context_id: usageId,
       context_type: 'usage',
+      ...(metadata ? { metadata } : {}),
     },
   });
 }

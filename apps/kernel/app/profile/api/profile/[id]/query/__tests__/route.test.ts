@@ -6,7 +6,7 @@
  * plus the two new failure modes introduced when the env fallback was removed:
  * no sealed brain (409) and a resolver fault (503).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -80,6 +80,14 @@ vi.mock('@imajin/logger', () => ({
 }));
 vi.mock('@imajin/config', () => ({ buildPublicUrl: () => 'https://imajin.test/profile' }));
 
+const { mockRecordPresenceQueryUsage } = vi.hoisted(() => ({
+  mockRecordPresenceQueryUsage: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('@/src/lib/inference/presence-query-usage', () => ({
+  recordPresenceQueryUsage: mockRecordPresenceQueryUsage,
+  PRESENCE_QUERY_SOURCE: 'presence:query',
+}));
+
 import { POST } from '../route';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -119,8 +127,13 @@ beforeEach(() => {
   });
   mockCalculateCost.mockReturnValue(0);
   mockInsertValues.mockResolvedValue(undefined);
+  mockRecordPresenceQueryUsage.mockResolvedValue(undefined);
   // No presence document — the route falls back to a default system prompt.
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 // ─── Owner-brain resolution ──────────────────────────────────────────────────
@@ -271,5 +284,72 @@ describe('presence query — gates', () => {
 
     expect(res.status).toBe(400);
     expect(mockGenerateText).not.toHaveBeenCalled();
+  });
+});
+
+// ─── usage.incurred emission (#1956) ──────────────────────────────────────────
+
+describe('presence query — usage.incurred emission (#1956)', () => {
+  it('emits exactly one usage.incurred row per served query, with the shared field shape', async () => {
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(200);
+    expect(mockRecordPresenceQueryUsage).toHaveBeenCalledTimes(1);
+    expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith({
+      queryId: 'query_1',
+      mode: 'query',
+      actingForDid: OWNER_DID,
+      requesterDid: REQUESTER_DID,
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4-20250514',
+      promptTokens: 10,
+      completionTokens: 5,
+      costUsd: 0,
+      settled: false,
+      settleAmount: 0,
+    });
+  });
+
+  it('carries the resolved owner brain\'s connector as the resource provider, not the requester\'s', async () => {
+    mockResolveBrain.mockResolvedValueOnce({
+      ...BRAIN,
+      connector: 'gemini',
+      provider: 'openai',
+      modelId: 'gemini-2.0-flash',
+    });
+
+    await POST(makeReq(), params);
+
+    expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'gemini', modelId: 'gemini-2.0-flash' }),
+    );
+  });
+
+  it('reports settled + settleAmount when the query was actually settled', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:someone-else' } });
+    mockCalculateCost.mockReturnValueOnce(0.05);
+    vi.stubEnv('PAY_SERVICE_URL', 'https://pay.test');
+    vi.stubEnv('PAY_SERVICE_API_KEY', 'pay-key');
+    vi.stubEnv('PLATFORM_DID', 'did:imajin:platform');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ connected: true, distance: 1 }) }) // trust
+      .mockResolvedValueOnce({ ok: false, json: async () => ({}) }) // presence doc
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}) }); // settle
+    vi.stubGlobal('fetch', fetchMock);
+
+    await POST(makeReq(), params);
+
+    expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ settled: true, settleAmount: 0.05, costUsd: 0.05 }),
+    );
+  });
+
+  it('never lets a ledger failure change the HTTP response already computed', async () => {
+    mockRecordPresenceQueryUsage.mockRejectedValueOnce(new Error('ledger unavailable'));
+
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ response: 'an answer' });
   });
 });

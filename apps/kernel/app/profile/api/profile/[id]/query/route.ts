@@ -13,6 +13,7 @@ import { requireAuth } from '@imajin/auth';
 import { generateText } from 'ai';
 import { calculateCost, createPresenceTools } from '@imajin/llm';
 import { resolvePresenceBrain } from '@/src/lib/inference/presence-brain';
+import { recordPresenceQueryUsage } from '@/src/lib/inference/presence-query-usage';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 import { buildPublicUrl } from '@imajin/config';
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     log.warn({ targetDid: resolvedTargetDid, cause: brain.cause }, 'presence brain unavailable');
     return NextResponse.json({ error: brain.error }, { status: brain.status });
   }
-  const { model, modelId } = brain;
+  const { model, modelId, connector } = brain;
 
   // 6. Build system prompt from soul.md + context.md
   const soulMd = presenceData.soul ?? '';
@@ -214,6 +215,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   } catch (err) {
     log.error({ err: String(err) }, 'Failed to log query');
   }
+
+  // 12b. Emit usage.incurred (#1956) — joins the metering ledger the
+  // completions passthrough already writes to. Fire-and-forget / fail-open:
+  // a ledger hiccup must never change the response already computed above.
+  recordPresenceQueryUsage({
+    queryId,
+    mode: 'query',
+    actingForDid: resolvedTargetDid,
+    requesterDid,
+    provider: connector,
+    modelId,
+    promptTokens,
+    completionTokens,
+    costUsd: cost,
+    settled,
+    settleAmount: settled ? cost : 0,
+  }).catch((err: unknown) => {
+    log.warn({ err: String(err), queryId }, 'presence usage.incurred failed \u2014 response already computed');
+  });
 
   // 13. Return response
   return NextResponse.json({
