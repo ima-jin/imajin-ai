@@ -116,7 +116,7 @@ describe('resolveBrain — connection-first resolution (#1621)', () => {
   });
 
   it('falls through to Anthropic when no Gemini connection is sealed', async () => {
-    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
 
     const brain = await resolveBrain(OWNER);
 
@@ -124,7 +124,7 @@ describe('resolveBrain — connection-first resolution (#1621)', () => {
       connector: 'anthropic',
       credentialDid: OWNER,
       provider: 'anthropic',
-      modelId: 'claude-sonnet-4-20250514',
+      modelId: 'claude-opus-4-6',
       apiKey: ANTHROPIC_KEY,
     });
     expect(mockLoadGemini).toHaveBeenCalledWith(OWNER);
@@ -193,8 +193,8 @@ describe('resolveBrain — owner then app/org DID', () => {
 
   it('exhausts every connector for the owner before trying the app', async () => {
     mockLoadAnthropic
-      .mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY })
-      .mockResolvedValueOnce({ apiKey: 'app-anthropic-key' });
+      .mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' })
+      .mockResolvedValueOnce({ apiKey: 'app-anthropic-key', modelId: 'claude-opus-4-6' });
 
     const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP });
 
@@ -233,10 +233,11 @@ describe('resolveBrain — owner then app/org DID', () => {
 
 describe('resolveBrain — fails closed when a connected connector has no model selected (#1769)', () => {
   /**
-   * Gemini deliberately carries no `defaultModelId` (unlike Anthropic): Google
-   * retires/renames model ids often enough that a hardcoded fallback goes stale
-   * silently — gemini-2.0-flash was shut down while still hardcoded (#1764).
-   * The owner must pick a live model from GET /gemini/api/models.
+   * Gemini deliberately carries no `defaultModelId`: Google retires/renames
+   * model ids often enough that a hardcoded fallback goes stale silently —
+   * gemini-2.0-flash was shut down while still hardcoded (#1764). The owner
+   * must pick a live model from GET /gemini/api/models. Anthropic joins this
+   * contract too as of #1953 — see below.
    */
   it('throws NoModelSelectedError when the sealed Gemini key has no modelId', async () => {
     mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
@@ -270,12 +271,21 @@ describe('resolveBrain — fails closed when a connected connector has no model 
     expect(brain.modelId).toBe('gemini-3.6-flash');
   });
 
-  it('never blocks Anthropic, which still carries a defaultModelId', async () => {
+  /**
+   * The #1953 decision, applied to Anthropic: no `defaultModelId` (#1769
+   * precedent). Anthropic used to be the one exception — this used to carry
+   * the hardcoded `claude-sonnet-4-20250514` snapshot — and #1953 closes
+   * that gap so a sealed Anthropic key with no model chosen fails closed
+   * the same way every other connector's does.
+   */
+  it('fails closed with NoModelSelectedError when no model is sealed on the Anthropic card (#1953)', async () => {
     mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
 
-    const brain = await resolveBrain(OWNER);
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoModelSelectedError);
 
-    expect(brain.modelId).toBe('claude-sonnet-4-20250514');
+    expect(err).toBeInstanceOf(NoModelSelectedError);
+    expect(err.message).toContain('/anthropic/api/token');
+    expect(err.message).not.toContain(ANTHROPIC_KEY);
   });
 });
 
@@ -356,7 +366,7 @@ describe('resolveBrain — sealing a key is choosing a model', () => {
   });
 
   it('omits baseURL for Anthropic when none is sealed, leaving the SDK default', async () => {
-    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
 
     expect(await resolveBrain(OWNER)).not.toHaveProperty('baseURL');
   });
@@ -447,7 +457,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
    */
   it('falls through to a healthy connector when an earlier one throws', async () => {
     mockLoadGemini.mockRejectedValueOnce(new Error('gemini_credential_pending'));
-    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
 
     const brain = await resolveBrain(OWNER);
 
@@ -565,7 +575,7 @@ describe('resolveBrain — the xAI card (#1924)', () => {
    * existing dual-sealed DID must keep the brain it already had.
    */
   it('does not displace an earlier sealed connector', async () => {
-    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
     mockLoadXai.mockResolvedValueOnce({ apiKey: XAI_KEY, modelId: 'grok-4' });
 
     expect((await resolveBrain(OWNER)).connector).toBe('anthropic');

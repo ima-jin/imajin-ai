@@ -20,6 +20,19 @@ export const ANTHROPIC_CONNECTOR_DID = 'did:imajin:anthropic-connector';
 /** Scope the owner grants to let their key be used for inference. */
 export const ANTHROPIC_INFER_SCOPE = 'anthropic:infer';
 
+/**
+ * Anthropic's public API base.
+ *
+ * Exported so the model-picker route (#1953) has one source for the
+ * endpoint, matching the OpenAI/xAI precedent — two copies of a provider
+ * endpoint is how one of them ends up pointing at a retired host. NOT used
+ * as a `defaultBaseUrl` in `brain.ts`: the Anthropic provider adapter speaks
+ * Anthropic's own wire format, not the OpenAI-compatible surface Gemini/xAI
+ * repoint, so the completions path resolves its own default via
+ * `@imajin/llm`'s `getModel('anthropic', ...)` instead.
+ */
+export const ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
+
 const anthropic = createConnectorTokenPaste({
   id: 'anthropic',
   displayName: 'Anthropic',
@@ -51,6 +64,13 @@ export const anthropicKeyPending = anthropic.keyPending;
  */
 export const revokeApiKey = anthropic.revokeApiKey;
 
+/**
+ * Update just the sealed model id for this DID, without touching the API key
+ * (#1953, following the #1769 precedent) — how `PUT /anthropic/api/models`
+ * commits the owner's model choice.
+ */
+export const setModelId = anthropic.setModelId;
+
 export type AnthropicCredentials = TokenPasteCredentials;
 
 /**
@@ -63,4 +83,20 @@ export type AnthropicCredentials = TokenPasteCredentials;
  */
 export function loadAnthropicCredentials(ownerDid: string): Promise<AnthropicCredentials | undefined> {
   return anthropic.loadCredentials(ownerDid, ANTHROPIC_INFER_SCOPE);
+}
+
+/**
+ * Resolve the sealed Anthropic key (+ optional baseUrl/modelId) for a DID
+ * WITHOUT requiring an active `anthropic:infer` grant (#1773).
+ *
+ * For the model picker only, mirroring the Gemini/xAI/OpenAI precedent:
+ * listing which models the owner's own key can reach — and choosing one — is
+ * the owner configuring their own card before the "grant scopes" step even
+ * exists yet, not spending the credential on anyone's behalf. Anything that
+ * actually generates content still goes through `loadAnthropicCredentials`,
+ * which keeps the grant check. Vault custody is NOT skipped: a key still
+ * pending a Tier 1 grant still reads as `undefined`.
+ */
+export function loadAnthropicSealedCredentials(ownerDid: string): Promise<AnthropicCredentials | undefined> {
+  return anthropic.loadSealedCredentials(ownerDid);
 }

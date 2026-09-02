@@ -269,6 +269,47 @@ const GEMINI_ENTRY = brainConnectorEntry({
   modelsRoute: '/gemini/api/models',
 });
 
+/**
+ * Anthropic's registry entry (#1621), moved into the inference cluster and
+ * given a model picker by #1953 — see {@link GEMINI_ENTRY}.
+ *
+ * Predates `brainConnectorEntry` (#1928): its shape was hand-written before
+ * that factory existed, and folding it in now would also flip `settings`
+ * from `null` to the same spend-cap section every other brain connector
+ * renders — a real product change #1953 does not ask for. Left as its own
+ * literal so this entry's move touches only what the issue scopes:
+ * `modelsRoute` and position.
+ */
+const ANTHROPIC_ENTRY: ConnectorEntry = {
+  id: 'anthropic',
+  name: 'Anthropic Claude',
+  description: 'Seal your own Anthropic API key per-DID so inference runs on your credential, not a shared env var.',
+  icon: '🧠',
+  ingestionPattern: 'token-paste',
+  channel: 'anthropic',
+  connectorDid: 'did:imajin:anthropic-connector',
+  scopes: connectorUiScopes('anthropic'),
+  statusEndpoint: '/anthropic/api/scope-manifest',
+  backendPending: false,
+  connectRoute: null,
+  configureRoute: null,
+  tokenRoute: '/anthropic/api/token',
+  // #1720: revokes the sealed key's delegation grant (kernel.vault_delegation_grants).
+  disconnectRoute: '/anthropic/api/disconnect',
+  credentialUi: {
+    label: 'API Key',
+    placeholder: 'Anthropic API Key',
+    hint: 'Key is sealed server-side and never returned. Create one in the Anthropic Console → API keys.',
+  },
+  settings: null,
+  // #1953, following #1769: no hardcoded default model. Anthropic was the
+  // last inference connector still carrying one (`claude-sonnet-4-20250514`
+  // in brain.ts) — a dated snapshot that goes stale the same way
+  // gemini-2.0-flash did (#1764). The owner picks a live model from GET
+  // /anthropic/api/models and it is sealed as `modelId`.
+  modelsRoute: '/anthropic/api/models',
+};
+
 /** xAI's registry entry (#1928) — see {@link GEMINI_ENTRY}. */
 const XAI_ENTRY = brainConnectorEntry({
   id: 'xai',
@@ -407,31 +448,8 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
     modelsRoute: null,
   },
+  ANTHROPIC_ENTRY,
   GEMINI_ENTRY,
-  {
-    id: 'anthropic',
-    name: 'Anthropic Claude',
-    description: 'Seal your own Anthropic API key per-DID so inference runs on your credential, not a shared env var.',
-    icon: '🧠',
-    ingestionPattern: 'token-paste',
-    channel: 'anthropic',
-    connectorDid: 'did:imajin:anthropic-connector',
-    scopes: connectorUiScopes('anthropic'),
-    statusEndpoint: '/anthropic/api/scope-manifest',
-    backendPending: false,
-    connectRoute: null,
-    configureRoute: null,
-    tokenRoute: '/anthropic/api/token',
-    // #1720: revokes the sealed key's delegation grant (kernel.vault_delegation_grants).
-    disconnectRoute: '/anthropic/api/disconnect',
-    credentialUi: {
-      label: 'API Key',
-      placeholder: 'Anthropic API Key',
-      hint: 'Key is sealed server-side and never returned. Create one in the Anthropic Console → API keys.',
-    },
-    settings: null,
-    modelsRoute: null,
-  },
   XAI_ENTRY,
   OPENAI_ENTRY,
   MOONSHOT_ENTRY,
