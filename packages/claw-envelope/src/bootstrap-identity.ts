@@ -191,7 +191,8 @@ if (isMain) {
   try {
     await main();
   } catch (err: unknown) {
-    console.error('bootstrap-identity: fatal error', err instanceof Error ? err.message : err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('bootstrap-identity: fatal error', sanitizeForLog(message));
     process.exitCode = 1;
   }
 }

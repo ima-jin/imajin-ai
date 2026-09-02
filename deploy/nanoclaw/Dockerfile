@@ -48,14 +48,13 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends docker.io \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app /app
+RUN chown -R node:node /app
 ENV NODE_ENV=production
-# Runs as root (reviewed hotspot, not a default we chose lightly): this
-# process spawns its own agent containers by talking to the host Docker
-# socket (docker-outside-of-docker), and the socket's group ownership is
-# host-specific — pinning a non-root UID/GID here would silently break on
-# any host whose docker group GID differs. The operator may instead run
-# this container with `--group-add "$(stat -c %g /var/run/docker.sock)"`
-# and a non-root USER once the host's docker group GID is known; documented
-# as a follow-up hardening step in docs/agents/nanoclaw-first-boot.md rather
-# than hardcoded here.
+# Non-root. Docker-socket access (this process spawns its own agent
+# containers via docker-outside-of-docker) comes from a SUPPLEMENTARY group
+# added at container-start time, not from running as root: docker-compose.yml
+# sets `group_add: ["${DOCKER_GID}"]`, where DOCKER_GID is the host's actual
+# docker group GID (`stat -c %g /var/run/docker.sock`) — host-specific, so it
+# is supplied via env/compose, never hardcoded here.
+USER node
 CMD ["node", "dist/index.js"]

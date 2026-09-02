@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isAuthFailureFrame, isChatMessageFrame, parseFrame, sendChatMessage } from '../src/imajin-client.js';
+import { mockKernelAuthFetch } from './support/mock-kernel-auth.js';
 
 describe('parseFrame', () => {
   it('returns null for empty and pong frames', () => {
@@ -62,13 +63,7 @@ describe('sendChatMessage', () => {
   });
 
   it('authenticates then posts, and never sends an X-Acting-For header', async () => {
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.endsWith('/auth/api/login/challenge')) {
-        return new Response(JSON.stringify({ challengeId: 'chal-1', challenge: 'deadbeef' }), { status: 200 });
-      }
-      if (url.endsWith('/auth/api/login/verify')) {
-        return new Response(null, { status: 200, headers: { 'set-cookie': 'session=abc123; Path=/; HttpOnly' } });
-      }
+    const fetchMock = mockKernelAuthFetch((url, init) => {
       if (url.includes('/chat/api/d/')) {
         const headers = new Headers(init?.headers);
         expect(headers.has('X-Acting-For')).toBe(false);
@@ -78,7 +73,7 @@ describe('sendChatMessage', () => {
         return new Response(JSON.stringify({ message: { id: 'sent-msg-1' } }), { status: 201 });
       }
       throw new Error(`unexpected fetch: ${url}`);
-    });
+    }, 'session=abc123; Path=/; HttpOnly');
     vi.stubGlobal('fetch', fetchMock);
 
     const sent = await sendChatMessage(
@@ -94,15 +89,7 @@ describe('sendChatMessage', () => {
   it('surfaces the kernel error message on a failed send', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string) => {
-        if (url.endsWith('/auth/api/login/challenge')) {
-          return new Response(JSON.stringify({ challengeId: 'c', challenge: 'x' }), { status: 200 });
-        }
-        if (url.endsWith('/auth/api/login/verify')) {
-          return new Response(null, { status: 200, headers: { 'set-cookie': 'session=abc; Path=/' } });
-        }
-        return new Response(JSON.stringify({ error: 'conversation not found' }), { status: 404 });
-      }),
+      mockKernelAuthFetch(async () => new Response(JSON.stringify({ error: 'conversation not found' }), { status: 404 })),
     );
 
     await expect(

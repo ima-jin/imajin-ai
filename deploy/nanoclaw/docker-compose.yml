@@ -29,6 +29,12 @@ services:
       - nanoclaw-data:/app/data
       - ${NANOCLAW_AGENT_KEYPAIR_PATH_HOST}:/secrets/keypair.json:ro
       - /var/run/docker.sock:/var/run/docker.sock
+    # Grants the non-root `node` user (see Dockerfile) access to the host
+    # Docker socket via supplementary group membership, instead of running
+    # this container as root. Set DOCKER_GID to `stat -c %g /var/run/docker.sock`
+    # on the deploy host — it varies per host/distro.
+    group_add:
+      - '${DOCKER_GID}'
     healthcheck:
       test: ["CMD", "test", "-S", "/var/run/docker.sock"]
       interval: 30s

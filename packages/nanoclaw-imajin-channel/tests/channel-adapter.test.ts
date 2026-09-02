@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createImajinChatAdapter } from '../src/channel-adapter.js';
 import type { NanoClawChannelSetup } from '../src/nanoclaw-types.js';
+import { mockKernelAuthFetch } from './support/mock-kernel-auth.js';
 
 /** Minimal fake WebSocket the test drives directly via emit(). */
 class FakeWebSocket {
@@ -31,13 +32,7 @@ class FakeWebSocket {
 }
 
 function stubAuthFetch(): ReturnType<typeof vi.fn> {
-  const fetchMock = vi.fn(async (url: string) => {
-    if (url.endsWith('/auth/api/login/challenge')) {
-      return new Response(JSON.stringify({ challengeId: 'c1', challenge: 'abcd' }), { status: 200 });
-    }
-    if (url.endsWith('/auth/api/login/verify')) {
-      return new Response(null, { status: 200, headers: { 'set-cookie': 'session=live; Path=/' } });
-    }
+  const fetchMock = mockKernelAuthFetch((url) => {
     throw new Error(`unexpected fetch in this test: ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -141,13 +136,7 @@ describe('createImajinChatAdapter', () => {
   });
 
   it('deliver() sends the reply as the agent itself (no delegation) and returns the sent id', async () => {
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.endsWith('/auth/api/login/challenge')) {
-        return new Response(JSON.stringify({ challengeId: 'c1', challenge: 'abcd' }), { status: 200 });
-      }
-      if (url.endsWith('/auth/api/login/verify')) {
-        return new Response(null, { status: 200, headers: { 'set-cookie': 'session=live; Path=/' } });
-      }
+    const fetchMock = mockKernelAuthFetch((url, init) => {
       if (url.includes('/chat/api/d/')) {
         const headers = new Headers(init?.headers);
         expect(headers.has('X-Acting-For')).toBe(false);

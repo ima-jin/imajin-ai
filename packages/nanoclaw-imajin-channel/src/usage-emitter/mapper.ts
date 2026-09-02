@@ -6,11 +6,12 @@
  *
  * NanoClaw's Claude provider (`container/agent-runner/src/providers/claude.ts`)
  * uses the same `@anthropic-ai/claude-agent-sdk`/Claude Code CLI as Claude
- * Code itself, so its session JSONL has the identical shape
- * `packages/usage-emitter-claude-code/src/mapper.ts` documents — this
- * module mirrors that mapper's logic (message.id dedupe key, cache-read
- * tokens folded into tokens_in, synthetic-model turns excluded), attributed
- * to `harness:nanoclaw` instead of `adapter:claude-code`.
+ * Code itself, so its session JSONL follows the same CONTRACT
+ * `packages/usage-emitter-claude-code/src/mapper.ts` maps (message.id
+ * dedupe key, cache-read tokens folded into tokens_in, synthetic-model
+ * turns excluded) — implemented independently here (that package exports
+ * only its top-level CLI, not this helper), attributed to
+ * `harness:nanoclaw` instead of `adapter:claude-code`.
  */
 
 const SOURCE = 'harness:nanoclaw' as const;
@@ -28,62 +29,86 @@ export interface MappedUsageRow {
   ts: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+/** The pieces of one JSONL line this mapper cares about, once extracted and validated. */
+interface AssistantTurn {
+  model: string;
+  externalId: string;
+  timestamp: string;
+  tokensIn: number;
+  tokensOut: number;
 }
 
-function numberOr(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
 }
 
-function nonEmptyString(value: unknown): string | undefined {
+function asPositiveString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-/** `message.id` is the real per-call identity; the per-line `uuid` is the fallback (see module header). */
-function resolveExternalId(message: Record<string, unknown>, raw: Record<string, unknown>): string | undefined {
-  return nonEmptyString(message.id) ?? nonEmptyString(raw.uuid);
+function asFiniteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
-export function mapAssistantLine(raw: unknown): MappedUsageRow | undefined {
-  if (!isRecord(raw) || raw.type !== 'assistant') return undefined;
+/**
+ * Pull the fields a `usage.incurred` row needs out of one raw JSONL line, or
+ * `undefined` when the line carries nothing billable — a non-assistant line,
+ * one with no `usage` block, or Claude Code's own synthetic/local turns.
+ */
+function extractAssistantTurn(rawLine: unknown): AssistantTurn | undefined {
+  const line = asObject(rawLine);
+  if (!line || line.type !== 'assistant') return undefined;
 
-  const message = raw.message;
-  if (!isRecord(message)) return undefined;
+  const message = asObject(line.message);
+  const usage = message && asObject(message.usage);
+  if (!message || !usage) return undefined;
 
-  const usage = message.usage;
-  if (!isRecord(usage)) return undefined;
-
-  const model = nonEmptyString(message.model);
+  const model = asPositiveString(message.model);
   if (!model || model === SYNTHETIC_MODEL) return undefined;
 
-  const externalId = resolveExternalId(message, raw);
-  if (!externalId) return undefined;
-
-  const ts = nonEmptyString(raw.timestamp);
-  if (!ts) return undefined;
-
-  const inputTokens = numberOr(usage.input_tokens, 0);
-  const cacheReadTokens = numberOr(usage.cache_read_input_tokens, 0);
-  const outputTokens = numberOr(usage.output_tokens, 0);
+  // message.id identifies the whole API call (see module header); the raw
+  // line's own uuid is only a fallback for lines that lack it.
+  const externalId = asPositiveString(message.id) ?? asPositiveString(line.uuid);
+  const timestamp = asPositiveString(line.timestamp);
+  if (!externalId || !timestamp) return undefined;
 
   return {
-    source: SOURCE,
-    resource: `model:${PROVIDER}/${model}`,
-    provider: PROVIDER,
     model,
-    tokens_in: inputTokens + cacheReadTokens,
-    tokens_out: outputTokens,
-    external_id: externalId,
-    ts,
+    externalId,
+    timestamp,
+    tokensIn: asFiniteNumber(usage.input_tokens, 0) + asFiniteNumber(usage.cache_read_input_tokens, 0),
+    tokensOut: asFiniteNumber(usage.output_tokens, 0),
   };
 }
 
+function toUsageRow(turn: AssistantTurn): MappedUsageRow {
+  return {
+    source: SOURCE,
+    resource: `model:${PROVIDER}/${turn.model}`,
+    provider: PROVIDER,
+    model: turn.model,
+    tokens_in: turn.tokensIn,
+    tokens_out: turn.tokensOut,
+    external_id: turn.externalId,
+    ts: turn.timestamp,
+  };
+}
+
+export function mapAssistantLine(rawLine: unknown): MappedUsageRow | undefined {
+  const turn = extractAssistantTurn(rawLine);
+  return turn && toUsageRow(turn);
+}
+
+/**
+ * Map a batch of raw JSONL lines, keeping only the LAST row seen for each
+ * `external_id` (a call spanning several streamed lines repeats the id;
+ * later lines carry the more complete token counts as the stream finishes).
+ */
 export function mapJsonlLines(rawLines: readonly unknown[]): MappedUsageRow[] {
-  const byExternalId = new Map<string, MappedUsageRow>();
-  for (const raw of rawLines) {
-    const mapped = mapAssistantLine(raw);
-    if (mapped) byExternalId.set(mapped.external_id, mapped);
-  }
-  return [...byExternalId.values()];
+  const dedupedByExternalId = new Map<string, MappedUsageRow>();
+  rawLines.forEach((rawLine) => {
+    const row = mapAssistantLine(rawLine);
+    if (row) dedupedByExternalId.set(row.external_id, row);
+  });
+  return Array.from(dedupedByExternalId.values());
 }

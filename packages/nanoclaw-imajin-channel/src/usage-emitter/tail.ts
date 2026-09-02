@@ -18,13 +18,17 @@ export interface TailState {
   offsets: Record<string, number>;
 }
 
+const EMPTY_STATE: TailState = { offsets: {} };
+
+/** Read a persisted `TailState`. A missing or corrupt file starts fresh — safe because ingest dedupes on `external_id`. */
 export function loadState(stateFilePath: string): TailState {
-  if (!existsSync(stateFilePath)) return { offsets: {} };
+  if (!existsSync(stateFilePath)) return EMPTY_STATE;
   try {
-    const parsed = JSON.parse(readFileSync(stateFilePath, 'utf8')) as Partial<TailState>;
-    return { offsets: parsed.offsets ?? {} };
+    const parsed: unknown = JSON.parse(readFileSync(stateFilePath, 'utf8'));
+    const offsets = parsed && typeof parsed === 'object' ? (parsed as Partial<TailState>).offsets : undefined;
+    return { offsets: offsets ?? {} };
   } catch {
-    return { offsets: {} };
+    return EMPTY_STATE;
   }
 }
 
@@ -52,8 +56,13 @@ function findJsonlFiles(root: string): string[] {
   return found;
 }
 
-/** Read the newly-appended byte range of one file and parse its complete lines. Returns the new offset alongside whatever parsed. */
-function readNewLines(filePath: string, previousOffset: number): { offset: number; parsed: unknown[] } {
+interface ReadResult {
+  offset: number;
+  parsed: unknown[];
+}
+
+/** Read the newly-appended byte range of one file and parse its complete lines. */
+function readNewLines(filePath: string, previousOffset: number): ReadResult {
   const size = statSync(filePath).size;
   if (size <= previousOffset) {
     // Rotated/truncated below our offset — resync forward, nothing new to read.
@@ -76,15 +85,15 @@ function readNewLines(filePath: string, previousOffset: number): { offset: numbe
   // count as consumed.
   const segments = text.split('\n');
   const heldBack = segments.pop() ?? '';
-  const parsed: unknown[] = [];
-  for (const line of segments) {
-    if (line.trim().length === 0) continue;
+  const parsed = segments.reduce<unknown[]>((accumulated, line) => {
+    if (line.trim().length === 0) return accumulated;
     try {
-      parsed.push(JSON.parse(line));
+      accumulated.push(JSON.parse(line));
     } catch {
       // A malformed complete line is skipped, not fatal — see module header.
     }
-  }
+    return accumulated;
+  }, []);
 
   const consumedBytes = Buffer.byteLength(text, 'utf8') - Buffer.byteLength(heldBack, 'utf8');
   return { offset: previousOffset + consumedBytes, parsed };
