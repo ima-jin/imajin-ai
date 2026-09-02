@@ -2,12 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-const { mockLoadGemini, mockLoadAnthropic, mockLoadXai, mockLoadOpenai, mockLoadMoonshot } = vi.hoisted(() => ({
+const { mockLoadGemini, mockLoadAnthropic, mockLoadXai, mockLoadOpenai, mockLoadMoonshot, mockLoadZai } = vi.hoisted(() => ({
   mockLoadGemini: vi.fn(),
   mockLoadAnthropic: vi.fn(),
   mockLoadXai: vi.fn(),
   mockLoadOpenai: vi.fn(),
   mockLoadMoonshot: vi.fn(),
+  mockLoadZai: vi.fn(),
 }));
 
 vi.mock('@/src/lib/gemini/connector', () => ({
@@ -31,6 +32,11 @@ vi.mock('@/src/lib/openai/connector', () => ({
 vi.mock('@/src/lib/moonshot/connector', () => ({
   loadMoonshotCredentials: mockLoadMoonshot,
   MOONSHOT_BASE_URL: 'https://api.moonshot.ai/v1',
+}));
+
+vi.mock('@/src/lib/zai/connector', () => ({
+  loadZaiCredentials: mockLoadZai,
+  ZAI_BASE_URL: 'https://api.z.ai/api/paas/v4',
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -71,6 +77,7 @@ const ANTHROPIC_KEY = 'sk-ant-SEALED';
 const XAI_KEY = 'xai-SEALED';
 const OPENAI_KEY = 'sk-SEALED';
 const MOONSHOT_KEY = 'sk-moonshot-SEALED';
+const ZAI_KEY = 'zai-SEALED';
 const APP_KEY = 'AIzaSy-APP-SEALED';
 
 beforeEach(() => {
@@ -84,6 +91,7 @@ beforeEach(() => {
   mockLoadXai.mockResolvedValue(undefined);
   mockLoadOpenai.mockResolvedValue(undefined);
   mockLoadMoonshot.mockResolvedValue(undefined);
+  mockLoadZai.mockResolvedValue(undefined);
   // Default: no app registrant found (no parent org DID)
   mockDbSelect.mockResolvedValue([]);
 });
@@ -397,7 +405,7 @@ describe('resolveBrain — fail closed with no env fallback', () => {
   it('carries the available connector ids for programmatic callers', async () => {
     const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
 
-    expect(err.availableConnectors).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot']);
+    expect(err.availableConnectors).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai']);
     expect(err.triedDids).toEqual([OWNER]);
   });
 
@@ -464,6 +472,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
     mockLoadXai.mockRejectedValue(new Error('xai boom'));
     mockLoadOpenai.mockRejectedValue(new Error('openai boom'));
     mockLoadMoonshot.mockRejectedValue(new Error('moonshot boom'));
+    mockLoadZai.mockRejectedValue(new Error('zai boom'));
 
     const err = await resolveBrain({ ownerDid: OWNER, appDid: APP })
       .catch((e: unknown) => e as NoBrainSealedError);
@@ -476,11 +485,13 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
       `${OWNER}/xai`,
       `${OWNER}/openai`,
       `${OWNER}/moonshot`,
+      `${OWNER}/zai`,
       `${APP}/gemini`,
       `${APP}/anthropic`,
       `${APP}/xai`,
       `${APP}/openai`,
       `${APP}/moonshot`,
+      `${APP}/zai`,
     ]);
   });
 
@@ -507,7 +518,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
 
 describe('listBrainConnectors', () => {
   it('reports the brain connectors in resolution order', () => {
-    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot']);
+    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai']);
   });
 });
 
@@ -681,5 +692,63 @@ describe('resolveBrain — the Moonshot card (#1930)', () => {
 
     expect(err.message).toContain('moonshot:infer');
     expect(err.message).toContain('/moonshot/api/token');
+  });
+});
+
+// ─── Z.ai (#1931) ───────────────────────────────────────────────────────────
+
+describe('resolveBrain — the Z.ai card (#1931)', () => {
+  /**
+   * Z.ai speaks the OpenAI-compatible surface, so the resolved brain must name
+   * the `openai` adapter pointed at api.z.ai — not a new provider, the same
+   * move xAI/OpenAI/Moonshot already make.
+   */
+  it('resolves as an OpenAI-compatible brain pointed at Z.ai', async () => {
+    mockLoadZai.mockResolvedValueOnce({ apiKey: ZAI_KEY, modelId: 'glm-4.7' });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain).toEqual({
+      connector: 'zai',
+      credentialDid: OWNER,
+      provider: 'openai',
+      modelId: 'glm-4.7',
+      apiKey: ZAI_KEY,
+      baseURL: 'https://api.z.ai/api/paas/v4',
+    });
+  });
+
+  /**
+   * The #1769 decision, applied to a sixth provider: no `defaultModelId`, so a
+   * sealed key with no model chosen fails closed with "pick a model" instead
+   * of silently running whichever GLM id was hardcoded when this shipped.
+   */
+  it('fails closed with NoModelSelectedError when no model is sealed', async () => {
+    mockLoadZai.mockResolvedValueOnce({ apiKey: ZAI_KEY });
+
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoModelSelectedError);
+
+    expect(err).toBeInstanceOf(NoModelSelectedError);
+    expect(err.message).toContain('/zai/api/token');
+    expect(err.message).not.toContain(ZAI_KEY);
+  });
+
+  /**
+   * Appended, not inserted: the table's order IS resolution priority, so an
+   * existing dual-sealed DID must keep the brain it already had.
+   */
+  it('does not displace an earlier sealed connector', async () => {
+    mockLoadMoonshot.mockResolvedValueOnce({ apiKey: MOONSHOT_KEY, modelId: 'kimi-k2-0905-preview' });
+    mockLoadZai.mockResolvedValueOnce({ apiKey: ZAI_KEY, modelId: 'glm-4.7' });
+
+    expect((await resolveBrain(OWNER)).connector).toBe('moonshot');
+    expect(mockLoadZai).not.toHaveBeenCalled();
+  });
+
+  it('names zai:infer and its token route in the fail-closed error', async () => {
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err.message).toContain('zai:infer');
+    expect(err.message).toContain('/zai/api/token');
   });
 });

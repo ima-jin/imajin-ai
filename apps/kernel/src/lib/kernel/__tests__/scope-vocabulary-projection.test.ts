@@ -31,7 +31,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'gcp', 'quickbooks', 'warp', 'stripe'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'gcp', 'quickbooks', 'warp', 'stripe'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -141,6 +141,7 @@ describe('pinned scope sets (change these deliberately)', () => {
     ['xAI', 'xai', ['xai:infer']],
     ['OpenAI', 'openai', ['openai:infer']],
     ['Moonshot', 'moonshot', ['moonshot:infer']],
+    ['Z.ai', 'zai', ['zai:infer']],
     ['Google Cloud', 'gcp', ['gcp:iam:read', 'gcp:vertex:invoke', 'gcp:project:read']],
     ['QuickBooks', 'quickbooks', ['quickbooks:read', 'quickbooks:write']],
     ['Warp', 'warp', ['warp:dispatch']],
@@ -284,6 +285,7 @@ const ANTHROPIC_DID = 'did:imajin:anthropic-connector';
 const XAI_DID = 'did:imajin:xai-connector';
 const OPENAI_DID = 'did:imajin:openai-connector';
 const MOONSHOT_DID = 'did:imajin:moonshot-connector';
+const ZAI_DID = 'did:imajin:zai-connector';
 const GCP_DID = 'did:imajin:gcp-connector';
 const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
 const WARP_DID = 'did:imajin:warp-connector';
@@ -366,6 +368,16 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('moonshot', () => {
     expect(connectorScopeDescriptors('moonshot')).toEqual({
       'moonshot:infer': { verb: 'infer', surface: 'moonshot-api', label: 'Use your Moonshot API key for inference', release: { discloses_others: false, sensitive: true, viewer: MOONSHOT_DID } },
+    });
+  });
+
+  // #1931 — new descriptor, not a migrated literal. Same SELF_SENSITIVE
+  // quadrant as gemini:infer / anthropic:infer / xai:infer / openai:infer /
+  // moonshot:infer: the owner's own key is spent on every Z.ai (GLM) call and
+  // never released to a third party.
+  it('zai', () => {
+    expect(connectorScopeDescriptors('zai')).toEqual({
+      'zai:infer': { verb: 'infer', surface: 'zai-api', label: 'Use your Z.ai API key for inference', release: { discloses_others: false, sensitive: true, viewer: ZAI_DID } },
     });
   });
 

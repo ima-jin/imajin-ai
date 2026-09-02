@@ -198,11 +198,12 @@ export interface ConnectorEntry {
  * Shared shape for the token-paste "brain" connectors — the ones whose sealed
  * API key is spent on inference (Gemini, xAI; #1928). They share every field
  * except identity, credential-step copy, and whether they have a model
- * picker: no OAuth step, the identical spend-cap settings section (#1923),
- * and a disconnect that revokes the delegation grant (#1720) and sweeps
- * channel_links (#1733). Declaring that shape once here is what keeps the
+ * picker: no OAuth step, no settings section, the identical spend-cap settings 
+ * section (#1923), and a disconnect that revokes the delegation grant (#1720)
+ * and sweeps channel_links (#1733). Declaring that shape once here is what keeps the
  * next brain connector's registry entry (#1927 OpenAI, #1930 Moonshot, #1931
- * Z.ai) a same-shape call instead of a ~30-line clone.
+ * Z.ai) a same-shape call instead of a ~30-line clone. Z.ai's own entry is
+ * {@link ZAI_ENTRY} below.
  */
 function brainConnectorEntry(opts: {
   id: ConnectorId;
@@ -320,6 +321,23 @@ const MOONSHOT_ENTRY = brainConnectorEntry({
   modelsRoute: '/moonshot/api/models',
 });
 
+/** Z.ai's registry entry (#1931) — see {@link GEMINI_ENTRY}. */
+const ZAI_ENTRY = brainConnectorEntry({
+  id: 'zai',
+  name: 'Z.ai',
+  description: 'Seal your own Z.ai (GLM) API key per-DID so inference runs on your credential, not a shared env var.',
+  icon: '🌐',
+  credentialUi: {
+    label: 'API Key',
+    placeholder: 'Z.ai API Key',
+    hint: 'Key is sealed server-side and never returned. Create one at z.ai → API Keys.',
+  },
+  // #1931, following #1769: no hardcoded default model. GLM model ids turn
+  // over at least as fast as the other providers', so the owner picks a live
+  // one here and it is sealed as `modelId`.
+  modelsRoute: '/zai/api/models',
+});
+
 export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'mcp',
@@ -417,6 +435,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   XAI_ENTRY,
   OPENAI_ENTRY,
   MOONSHOT_ENTRY,
+  ZAI_ENTRY,
   {
     id: 'gcp',
     name: 'Google Cloud',

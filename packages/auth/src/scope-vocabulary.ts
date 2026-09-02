@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -49,6 +49,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   xai: 'did:imajin:xai-connector',
   openai: 'did:imajin:openai-connector',
   moonshot: 'did:imajin:moonshot-connector',
+  zai: 'did:imajin:zai-connector',
   gcp: 'did:imajin:gcp-connector',
   quickbooks: 'did:imajin:quickbooks-connector',
   warp: 'did:imajin:warp-connector',
@@ -65,6 +66,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   xai: 'xai',
   openai: 'openai',
   moonshot: 'moonshot',
+  zai: 'zai',
   gcp: 'gcp',
   quickbooks: 'quickbooks',
   warp: 'warp',
@@ -358,12 +360,14 @@ export const SCOPE_VOCABULARY = [
   // passthrough (#1925); Moonshot AI/Kimi (#1930) is fifth, OpenAI-compatible
   // and pointed at api.moonshot.ai — Kimi is OpenClaw's live coding-agent
   // workhorse today, the connector this recurring spend moves onto a sealed
-  // credential first.
+  // credential first; Z.ai/GLM (#1931) is sixth, capability-completion with
+  // no current spend (lowest priority of the provider entries).
   brainInferScope('gemini', 'gemini-api', 'Use your Gemini API key for inference'),
   brainInferScope('anthropic', 'anthropic-api', 'Use your Anthropic API key for inference'),
   brainInferScope('xai', 'xai-api', 'Use your xAI API key for inference'),
   brainInferScope('openai', 'openai-api', 'Use your OpenAI API key for inference'),
   brainInferScope('moonshot', 'moonshot-api', 'Use your Moonshot API key for inference'),
+  brainInferScope('zai', 'zai-api', 'Use your Z.ai API key for inference'),
 
   // ── Google Cloud connector (#1317) — a sealed service-account key, not an
   // inference-only brain. The key is the owner's own credential and is consumed
