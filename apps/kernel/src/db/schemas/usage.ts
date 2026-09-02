@@ -58,6 +58,12 @@ export const usageIncurred = usageSchema.table(
     tokensIn: integer('tokens_in'),                       // null when the upstream response never reported usage
     tokensOut: integer('tokens_out'),
     costUsd: numeric('cost_usd', { precision: 20, scale: 8 }), // null when tokens are unknown or the model has no pricing entry
+    // #1148: emitter-agnostic quantity/unit pair. This module writes
+    // `quantity = tokensIn + tokensOut`, `unit = 'tokens'` whenever both
+    // token counts are known; null alongside tokensIn/tokensOut otherwise.
+    // Other emitters (#1151) fill these with their own resource's units.
+    quantity: numeric('quantity', { precision: 24, scale: 6 }),
+    unit: text('unit'),
     transactionId: text('transaction_id'),                // pay.transactions.id this call's spend was recorded under
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

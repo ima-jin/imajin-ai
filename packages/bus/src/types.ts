@@ -1377,6 +1377,57 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'stripe';
   };
+  /**
+   * A resource was consumed, by an actor, on behalf of a principal (#1147,
+   * #1148) — the Agent Resource-Accounting Layer's emitter/resource-agnostic
+   * primitive. `issuer`/`subject` on the envelope carry `issuerDid`/
+   * `actingFor`: the agent (this node) is who signs it, the principal is who
+   * it's attributed to. Every record self-declares `attestationClass:
+   * 'system'` (#1149 will formalize this as a first-class field; until then
+   * it rides in the payload, same as every other field here) — a meter
+   * recorded this, it is not an assertion by the agent.
+   */
+  'usage.incurred': {
+    attestationClass: 'system';
+    issuerDid: string;
+    actingFor: string | null;
+    /** Typed discriminator: 'model:*' | 'tool:*' | 'infra:*' | 'external:*'. */
+    resource: string;
+    quantity: number | null;
+    unit: string | null;
+    costEstimateUsd: number | null;
+    /** Which emitter produced this row, e.g. 'inference-passthrough'. */
+    source: string;
+    usageId: string;
+    ts: string;
+    context_id: string;
+    context_type: string;
+  };
+  /**
+   * The daily clock-rollup over `usage.incurred` (#1148): one signed record
+   * per (principal, window), resource-blind at the top level — the cron
+   * that emits this never branches on what any individual `resource`
+   * string means, it only sums what the rows already carry. Same
+   * `attestationClass: 'system'` contract as `usage.incurred` itself.
+   */
+  'usage.rollup': {
+    attestationClass: 'system';
+    issuerDid: string;
+    actingFor: string;
+    windowStart: string;
+    windowEnd: string;
+    totalCostEstimateUsd: number;
+    breakdown: Array<{
+      resource: string;
+      source: string;
+      quantity: number | null;
+      unit: string | null;
+      costEstimateUsd: number;
+    }>;
+    source: string;
+    context_id: string;
+    context_type: string;
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

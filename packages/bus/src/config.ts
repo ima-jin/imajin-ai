@@ -448,6 +448,24 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'approval.decision': [
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #1147/#1148 — Agent Resource-Accounting Layer's `usage.incurred` primitive.
+  // "Bread is free" pattern: `attestation` writes the durable signed record,
+  // `emit` makes it observable, deliberately NO `settle` (metered, not
+  // billed). Kept in sync with migration 0120.
+  'usage.incurred': [
+    { type: 'attestation', config: { attestationType: 'usage.incurred' }, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+  ],
+  // #1148 — the daily clock-rollup's own signed record, one per (principal,
+  // window). `await: true` on `attestation` only here (not on the per-call
+  // usage.incurred above): this fires from an offline cron sweep, not a
+  // live request path, so awaiting the signed write costs nothing and lets
+  // the sweep report accurate published/skipped counts. Still no `settle`.
+  // Kept in sync with migration 0120.
+  'usage.rollup': [
+    { type: 'attestation', config: { attestationType: 'usage.rollup' }, await: true, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------
