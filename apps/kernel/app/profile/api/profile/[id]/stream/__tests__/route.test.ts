@@ -6,98 +6,25 @@
  * for that coverage — #1621). This suite focuses on what is unique to the
  * streaming path: the `onFinish` usage.incurred emission, fired once per
  * served query with the final token counts, fail-open so a ledger hiccup can
- * never block or alter the SSE stream already served to the caller.
+ * never block or alter the SSE stream already served to the caller. Shared
+ * vi.mock boilerplate/fixtures live in `../../__tests__/route-test-support`.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
-const {
+import {
   mockRequireAuth,
-  mockFindFirst,
-  mockInsertValues,
   mockResolveBrain,
-  mockGetModel,
   mockStreamText,
   mockCalculateCost,
-} = vi.hoisted(() => ({
-  mockRequireAuth: vi.fn(),
-  mockFindFirst: vi.fn(),
-  mockInsertValues: vi.fn(),
-  mockResolveBrain: vi.fn(),
-  mockGetModel: vi.fn(),
-  mockStreamText: vi.fn(),
-  mockCalculateCost: vi.fn(),
-}));
-
-vi.mock('@/src/db', () => ({
-  db: {
-    query: { profiles: { findFirst: mockFindFirst } },
-    insert: () => ({ values: mockInsertValues }),
-  },
-  queryLogs: {},
-}));
-
-vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
-
-vi.mock('ai', () => ({ streamText: mockStreamText }));
-
-vi.mock('@imajin/llm', () => ({
-  getModel: mockGetModel,
-  calculateCost: mockCalculateCost,
-  createPresenceTools: () => ({}),
-}));
-
-// See the `/query` route's own test suite for why this must be a real,
-// hoisted class rather than a plain mock object.
-const { NoBrainSealedError } = vi.hoisted(() => {
-  class NoBrainSealedError extends Error {
-    readonly failures: readonly { connector: string; credentialDid: string; cause: string }[];
-    constructor(
-      ownerDid: string,
-      failures: readonly { connector: string; credentialDid: string; cause: string }[] = [],
-    ) {
-      super(`inference_no_brain: DID ${ownerDid} has no model credential sealed`);
-      this.name = 'NoBrainSealedError';
-      this.failures = failures;
-    }
-  }
-  return { NoBrainSealedError };
-});
-
-vi.mock('@/src/lib/inference/brain', () => ({
-  resolveBrain: mockResolveBrain,
-  NoBrainSealedError,
-}));
-
-vi.mock('nanoid', () => ({ nanoid: () => 'query_1' }));
-vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-}));
-vi.mock('@imajin/config', () => ({ buildPublicUrl: () => 'https://imajin.test/profile' }));
-
-const { mockRecordPresenceQueryUsage } = vi.hoisted(() => ({
-  mockRecordPresenceQueryUsage: vi.fn().mockResolvedValue(undefined),
-}));
-vi.mock('@/src/lib/inference/presence-query-usage', () => ({
-  recordPresenceQueryUsage: mockRecordPresenceQueryUsage,
-  PRESENCE_QUERY_SOURCE: 'presence:query',
-}));
+  mockRecordPresenceQueryUsage,
+  OWNER_DID,
+  REQUESTER_DID,
+  BRAIN,
+  resetPresenceRouteMocks,
+  stubSettlementEnv,
+  makeSettledFetchMock,
+} from '../../__tests__/route-test-support';
 
 import { POST } from '../route';
-
-// ─── Fixtures ────────────────────────────────────────────────────────────────
-
-const OWNER_DID = 'did:imajin:presence-owner';
-const REQUESTER_DID = 'did:imajin:presence-owner'; // self-query: skips the trust hop
-const OWNER_KEY = 'sk-ant-OWNER-SEALED';
-
-const BRAIN = {
-  connector: 'anthropic' as const,
-  provider: 'anthropic' as const,
-  modelId: 'claude-sonnet-4-20250514',
-  apiKey: OWNER_KEY,
-};
 
 type RouteArgs = Parameters<typeof POST>;
 
@@ -126,21 +53,8 @@ function captureOnFinish(): (arg: OnFinishArg) => Promise<void> {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  mockRequireAuth.mockResolvedValue({ identity: { id: REQUESTER_DID } });
-  mockFindFirst.mockResolvedValue({
-    did: OWNER_DID,
-    displayName: 'Owner',
-    featureToggles: { inference_enabled: true },
-  });
-  mockResolveBrain.mockResolvedValue(BRAIN);
-  mockGetModel.mockReturnValue({});
+  resetPresenceRouteMocks();
   mockStreamText.mockReturnValue({ fullStream: fakeFullStream() });
-  mockCalculateCost.mockReturnValue(0);
-  mockInsertValues.mockResolvedValue(undefined);
-  mockRecordPresenceQueryUsage.mockResolvedValue(undefined);
-  // No presence document — the route falls back to a default system prompt.
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
 });
 
 afterEach(() => {
@@ -192,25 +106,15 @@ describe('presence stream — usage.incurred emission (#1956)', () => {
   it('reports settled=true with the estimated cost when the query was actually settled', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:someone-else' } });
     mockCalculateCost.mockReturnValueOnce(0.05);
-    vi.stubEnv('PAY_SERVICE_URL', 'https://pay.test');
-    vi.stubEnv('PAY_SERVICE_API_KEY', 'pay-key');
-    vi.stubEnv('PLATFORM_DID', 'did:imajin:platform');
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ connected: true, distance: 1 }) }) // trust
-      .mockResolvedValueOnce({ ok: false, json: async () => ({}) }) // presence doc
-      .mockResolvedValueOnce({ ok: true, json: async () => ({}) }); // settle
-    vi.stubGlobal('fetch', fetchMock);
+    stubSettlementEnv();
+    vi.stubGlobal('fetch', makeSettledFetchMock());
 
     await POST(makeReq(), params);
     const onFinish = captureOnFinish();
     await onFinish({ usage: { promptTokens: 4, completionTokens: 2 }, steps: [] });
 
     expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        settled: true,
-        costUsd: 0.05,
-        requesterDid: 'did:imajin:someone-else',
-      }),
+      expect.objectContaining({ settled: true, costUsd: 0.05, requesterDid: 'did:imajin:someone-else' }),
     );
   });
 
