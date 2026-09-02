@@ -31,7 +31,8 @@
  * numeric-string `amount` instead.
  */
 import { createLogger } from '@imajin/logger';
-import { BillingApiError, type BilledUsageReader, type BilledPeriod, type BilledGranularity, type BilledLine } from './types';
+import type { BilledUsageReader, BilledPeriod, BilledGranularity, BilledLine } from './types';
+import { fetchBillingJson } from './http';
 
 const log = createLogger('kernel:usage:billed:openai');
 
@@ -84,33 +85,21 @@ function toUnixSeconds(date: Date): number {
   return Math.floor(date.getTime() / 1000);
 }
 
-async function openaiGet<T>(
+function openaiGet<T>(
   adminApiKey: string,
   path: string,
   params: Record<string, string | string[]>,
   fetchImpl: typeof fetch,
 ): Promise<T> {
-  const url = new URL(`${API_BASE}${path}`);
-  for (const [key, value] of Object.entries(params)) {
-    if (Array.isArray(value)) {
-      for (const v of value) url.searchParams.append(`${key}[]`, v);
-    } else {
-      url.searchParams.set(key, value);
-    }
-  }
-
-  const response = await fetchImpl(url.toString(), {
+  return fetchBillingJson<T>({
+    providerId: 'openai',
+    providerLabel: 'OpenAI',
+    baseUrl: API_BASE,
+    path,
+    params,
     headers: { Authorization: `Bearer ${adminApiKey}` },
+    fetchImpl,
   });
-
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      throw new BillingApiError('openai', response.status, `OpenAI billing API returned ${response.status} — admin key missing or insufficiently scoped`);
-    }
-    throw new BillingApiError('openai', response.status, `OpenAI billing API returned ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
 }
 
 /** Accumulate token usage per model across every bucket in the window, paginating. */

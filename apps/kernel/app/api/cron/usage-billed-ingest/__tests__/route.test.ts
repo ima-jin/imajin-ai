@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { describeCronSecretAuthContract } from '@/src/lib/kernel/__tests__/cron-route-contract';
 
 const { mockRunBilledUsageIngestion } = vi.hoisted(() => ({
   mockRunBilledUsageIngestion: vi.fn(),
@@ -17,31 +18,9 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 }
 
 describe('GET /api/cron/usage-billed-ingest (#1076 Stage 1)', () => {
-  const originalCronSecret = process.env.CRON_SECRET;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    if (originalCronSecret === undefined) {
-      delete process.env.CRON_SECRET;
-    } else {
-      process.env.CRON_SECRET = originalCronSecret;
-    }
-  });
-
-  it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
-    process.env.CRON_SECRET = 'test-secret';
-    const response = await GET(makeRequest() as never);
-    expect(response.status).toBe(401);
-    expect(mockRunBilledUsageIngestion).not.toHaveBeenCalled();
-  });
-
-  it('returns 401 when CRON_SECRET is set and Authorization header is wrong', async () => {
-    process.env.CRON_SECRET = 'test-secret';
-    const response = await GET(makeRequest({ authorization: 'Bearer wrong-secret' }) as never);
-    expect(response.status).toBe(401);
+  describeCronSecretAuthContract({
+    makeRequest,
+    callRoute: (request) => GET(request as never),
   });
 
   it('runs the sweep and returns its result when auth passes', async () => {

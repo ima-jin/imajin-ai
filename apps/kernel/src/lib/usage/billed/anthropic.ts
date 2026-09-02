@@ -35,7 +35,8 @@
  * Stage 1.
  */
 import { createLogger } from '@imajin/logger';
-import { BillingApiError, type BilledUsageReader, type BilledPeriod, type BilledGranularity, type BilledLine } from './types';
+import type { BilledUsageReader, BilledPeriod, BilledGranularity, BilledLine } from './types';
+import { fetchBillingJson } from './http';
 
 const log = createLogger('kernel:usage:billed:anthropic');
 
@@ -81,36 +82,24 @@ interface AnthropicCostReportResponse {
   next_page: string | null;
 }
 
-async function anthropicGet<T>(
+function anthropicGet<T>(
   adminApiKey: string,
   path: string,
   params: Record<string, string | string[]>,
   fetchImpl: typeof fetch,
 ): Promise<T> {
-  const url = new URL(`${API_BASE}${path}`);
-  for (const [key, value] of Object.entries(params)) {
-    if (Array.isArray(value)) {
-      for (const v of value) url.searchParams.append(`${key}[]`, v);
-    } else {
-      url.searchParams.set(key, value);
-    }
-  }
-
-  const response = await fetchImpl(url.toString(), {
+  return fetchBillingJson<T>({
+    providerId: 'anthropic',
+    providerLabel: 'Anthropic',
+    baseUrl: API_BASE,
+    path,
+    params,
     headers: {
       'anthropic-version': ANTHROPIC_VERSION,
       'x-api-key': adminApiKey,
     },
+    fetchImpl,
   });
-
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      throw new BillingApiError('anthropic', response.status, `Anthropic billing API returned ${response.status} — admin key missing or insufficiently scoped`);
-    }
-    throw new BillingApiError('anthropic', response.status, `Anthropic billing API returned ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
 }
 
 /** Accumulate token usage per model across every bucket in the window, paginating. */
