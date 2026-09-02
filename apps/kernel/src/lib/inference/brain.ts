@@ -35,12 +35,13 @@ import { loadAnthropicCredentials } from '@/src/lib/anthropic/connector';
 import { loadXaiCredentials, XAI_BASE_URL } from '@/src/lib/xai/connector';
 import { loadOpenaiCredentials, OPENAI_BASE_URL } from '@/src/lib/openai/connector';
 import { loadMoonshotCredentials, MOONSHOT_BASE_URL } from '@/src/lib/moonshot/connector';
+import { loadZaiCredentials, ZAI_BASE_URL } from '@/src/lib/zai/connector';
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 
 const log = createLogger('kernel:inference:brain');
 
 /** Connector ids that can supply a brain, in resolution order. */
-export type BrainConnectorId = 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot';
+export type BrainConnectorId = 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai';
 
 /**
  * Whose sealed card may supply the model (#1624).
@@ -216,6 +217,31 @@ const BRAIN_CONNECTORS: readonly BrainConnector[] = [
     // `NoModelSelectedError` for the fail-closed path when none is chosen yet.
     defaultBaseUrl: MOONSHOT_BASE_URL,
     load: loadMoonshotCredentials,
+  },
+  {
+    // #1931. Appended rather than slotted in, same reasoning as xAI/OpenAI/
+    // Moonshot above: this table's order IS resolution priority, so inserting
+    // Z.ai earlier would silently move existing dual-sealed DIDs onto a
+    // different brain. Z.ai (Zhipu AI's GLM-4.x family) is capability-
+    // completion with no current spend (#1922 priority note) — lowest
+    // priority of the provider entries, appended last for that reason too.
+    id: 'zai',
+    name: 'Z.ai',
+    // Z.ai speaks the OpenAI-compatible surface, so its provider adapter is
+    // `openai` pointed at api.z.ai — the same move xAI/OpenAI/Moonshot make
+    // above, not a separate provider.
+    provider: 'openai',
+    scope: 'zai:infer',
+    tokenRoute: '/zai/api/token',
+    // No hardcoded default, matching the Gemini/xAI/OpenAI/Moonshot precedent
+    // set by #1769: a baked-in GLM model id goes stale the way
+    // gemini-2.0-flash did (#1764), and a retired model can answer 429 rather
+    // than 404, which is indistinguishable from a rate limit. The owner picks
+    // a live model from GET /zai/api/models and it is sealed as `modelId` —
+    // see `NoModelSelectedError` for the fail-closed path when none is chosen
+    // yet.
+    defaultBaseUrl: ZAI_BASE_URL,
+    load: loadZaiCredentials,
   },
 ];
 
