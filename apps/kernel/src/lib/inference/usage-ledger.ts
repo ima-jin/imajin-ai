@@ -31,10 +31,12 @@
  */
 import { createLogger } from '@imajin/logger';
 import { sql } from 'drizzle-orm';
+import { publish } from '@imajin/bus';
 import { db, usageIncurred, transactions, balanceRollups } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
 import { connectorRegistryId } from '@/src/lib/kernel/connector-registry-store';
+import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { computeCostUsd } from './pricing';
 import type { BrainConnectorId } from './brain';
 
@@ -62,6 +64,12 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
   const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut } = params;
   const connectorId = connectorRegistryId(principalDid, provider);
   const costUsd = computeCostUsd(provider, model, tokensIn, tokensOut);
+  // #1148 emitter-agnostic quantity/unit: this emitter's resource is tokens,
+  // so quantity is the total of both directions whenever both are known —
+  // null (not 0) when either is unknown, same "don't fabricate a number"
+  // rule tokensIn/tokensOut/costUsd already follow.
+  const quantity = tokensIn !== undefined && tokensOut !== undefined ? tokensIn + tokensOut : undefined;
+  const resource = `model:${provider}/${model}`;
 
   try {
     const usageId = generateId('usage');
@@ -80,14 +88,30 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
       // #1147 emitter/resource discriminators. This module is always the same
       // emitter, writing the same resource shape — no per-call branching.
       source: 'inference-passthrough',
-      resource: `model:${provider}/${model}`,
+      resource,
       provider,
       connectorId,
       model,
       tokensIn: tokensIn ?? null,
       tokensOut: tokensOut ?? null,
       costUsd: costUsd === undefined ? null : costUsd.toFixed(8),
+      quantity: quantity === undefined ? null : quantity.toFixed(6),
+      unit: quantity === undefined ? null : 'tokens',
       transactionId: transactionId ?? null,
+    });
+
+    // #1148: publish the usage.incurred bus event — turns the row into a
+    // signed system-class fact via the `attestation` + `emit` chain
+    // (migrations/0120_usage_incurred_quantity.sql). Deliberately NOT
+    // awaited: this is inside the hot completions-passthrough path and the
+    // row is already durably written above, so a slow or failed bus publish
+    // must never add latency to (or fail) an already-served completion —
+    // same fail-open contract as the rest of this function.
+    publishUsageIncurred({ usageId, principalDid, resource, quantity, costUsd }).catch((err: unknown) => {
+      log.error(
+        { err: String(err), usageId, principalDid, resource },
+        'usage.incurred bus publish failed — row already written',
+      );
     });
   } catch (err) {
     log.error(
@@ -95,6 +119,45 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
       'inference usage ledger write failed — completion already served to the caller',
     );
   }
+}
+
+interface PublishUsageIncurredParams {
+  usageId: string;
+  principalDid: string;
+  resource: string;
+  quantity: number | undefined;
+  costUsd: number | undefined;
+}
+
+/**
+ * Publish the `usage.incurred` bus event for one written row (#1148).
+ * `issuer` is this node's own DID (the meter/agent signing the fact);
+ * `subject` is the principal the usage is attributed to — same
+ * issuer/actingFor shape #1147 specifies for every emitter.
+ */
+async function publishUsageIncurred(params: PublishUsageIncurredParams): Promise<void> {
+  const { usageId, principalDid, resource, quantity, costUsd } = params;
+  const nodeDid = await getNodeDid();
+
+  await publish('usage.incurred', {
+    issuer: nodeDid,
+    subject: principalDid,
+    scope: 'usage',
+    payload: {
+      attestationClass: 'system',
+      issuerDid: nodeDid,
+      actingFor: principalDid,
+      resource,
+      quantity: quantity ?? null,
+      unit: quantity === undefined ? null : 'tokens',
+      costEstimateUsd: costUsd ?? null,
+      source: 'inference-passthrough',
+      usageId,
+      ts: new Date().toISOString(),
+      context_id: usageId,
+      context_type: 'usage',
+    },
+  });
 }
 
 interface RecordSpendParams {

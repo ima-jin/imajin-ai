@@ -87,6 +87,15 @@ export const ATTESTATION_TYPES = [
   // via the existing generic `prev_event_ref` envelope field rather than a
   // funnel-specific one.
   'value_realized',
+
+  // Agent Resource-Accounting Layer (#1147/#1148) — `usage.incurred` is the
+  // per-call/per-row emitter-agnostic metering fact; `usage.rollup` is the
+  // daily clock-rollup's one-per-(principal,window) summary. Both are
+  // system-class (see MECHANICAL_ATTESTATION_TYPES below) — minted by the
+  // node's own key about the agent's own resource consumption, never a
+  // bilateral/human-signed claim.
+  'usage.incurred',
+  'usage.rollup',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -108,7 +117,14 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * explicitly naming the small, known set of mechanical types that must be
  * excluded from any "pending your countersignature" view or query.
  */
-export const MECHANICAL_ATTESTATION_TYPES = ['session.created', 'agent.turn.usage', 'agent.external_identity'] as const;
+export const MECHANICAL_ATTESTATION_TYPES = [
+  'session.created',
+  'agent.turn.usage',
+  'agent.external_identity',
+  // #1147/#1148 attestationClass: 'system' facts — see ATTESTATION_TYPES above.
+  'usage.incurred',
+  'usage.rollup',
+] as const;
 
 /**
  * Claim payload for the `imajin/nostr-key-binding` attestation type.

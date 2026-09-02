@@ -34,6 +34,24 @@ describe('chain config DEFAULTS reconcile (#1873, #1874)', () => {
     expect(types).toEqual(['emit', 'notify-match-delivery']);
     expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
   });
+
+  it('usage.incurred routes to attestation + emit with NO settle reactor (#1147/#1148)', async () => {
+    const cfg = await getChainConfig('usage.incurred', 'default');
+    const types = cfg.reactors.map((r) => r.type);
+
+    expect(types).toEqual(['attestation', 'emit']);
+    expect(types).not.toContain('settle');
+    expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
+  });
+
+  it('usage.rollup routes to attestation (awaited) + emit with NO settle reactor (#1148)', async () => {
+    const cfg = await getChainConfig('usage.rollup', 'default');
+    const types = cfg.reactors.map((r) => r.type);
+
+    expect(types).toEqual(['attestation', 'emit']);
+    expect(types).not.toContain('settle');
+    expect(cfg.reactors[0]?.await).toBe(true);
+  });
 });
 
 describe('broker reactor registry (#1874)', () => {

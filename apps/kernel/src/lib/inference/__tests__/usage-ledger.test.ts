@@ -54,6 +54,13 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
+const { mockPublish } = vi.hoisted(() => ({ mockPublish: vi.fn(() => Promise.resolve()) }));
+vi.mock('@imajin/bus', () => ({ publish: mockPublish }));
+
+vi.mock('@/src/lib/kernel/node-identity', () => ({
+  getNodeDid: vi.fn(async () => 'did:imajin:testnode'),
+}));
+
 import { recordInferenceUsage } from '../usage-ledger';
 
 const OWNER = 'did:imajin:supplier';
@@ -62,7 +69,14 @@ beforeEach(() => {
   insertCalls.length = 0;
   conflictSets.length = 0;
   insertMock.mockClear();
+  mockPublish.mockClear();
+  mockPublish.mockResolvedValue(undefined);
 });
+
+/** Flush the microtask queue so the fire-and-forget publish().catch() chain settles. */
+function flushMicrotasks(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 
 describe('recordInferenceUsage', () => {
   it('writes a usage.incurred row with computed cost, tokens, a linked transaction id, and the #1147 emitter/resource discriminators', async () => {
@@ -94,6 +108,51 @@ describe('recordInferenceUsage', () => {
     });
     expect(usageInsert?.values.costUsd).toBe('18.00000000');
     expect(usageInsert?.values.transactionId).toBe('tx_test');
+    // #1148 emitter-agnostic quantity/unit — sum of both token directions.
+    expect(usageInsert?.values.quantity).toBe('2000000.000000');
+    expect(usageInsert?.values.unit).toBe('tokens');
+  });
+
+  it('publishes usage.incurred on the bus after the row is written (#1148)', async () => {
+    await recordInferenceUsage({
+      principalDid: OWNER,
+      provider: 'xai',
+      model: 'grok-4',
+      tokensIn: 1_000_000,
+      tokensOut: 1_000_000,
+    });
+    await flushMicrotasks();
+
+    expect(mockPublish).toHaveBeenCalledWith(
+      'usage.incurred',
+      expect.objectContaining({
+        issuer: 'did:imajin:testnode',
+        subject: OWNER,
+        scope: 'usage',
+        payload: expect.objectContaining({
+          attestationClass: 'system',
+          issuerDid: 'did:imajin:testnode',
+          actingFor: OWNER,
+          resource: 'model:xai/grok-4',
+          quantity: 2_000_000,
+          unit: 'tokens',
+          costEstimateUsd: 18,
+          source: 'inference-passthrough',
+          usageId: 'usage_test',
+          context_id: 'usage_test',
+          context_type: 'usage',
+        }),
+      }),
+    );
+  });
+
+  it('never throws when the bus publish fails \u2014 the row is already written', async () => {
+    mockPublish.mockRejectedValueOnce(new Error('bus unavailable'));
+
+    await expect(
+      recordInferenceUsage({ principalDid: OWNER, provider: 'xai', model: 'grok-4', tokensIn: 1, tokensOut: 1 }),
+    ).resolves.toBeUndefined();
+    await flushMicrotasks();
   });
 
   it('writes pay.transactions with service=inference and the connector DID as toDid', async () => {
@@ -145,6 +204,8 @@ describe('recordInferenceUsage', () => {
     expect(usageInsert.values.costUsd).toBeNull();
     expect(usageInsert.values.tokensIn).toBeNull();
     expect(usageInsert.values.transactionId).toBeNull();
+    expect(usageInsert.values.quantity).toBeNull();
+    expect(usageInsert.values.unit).toBeNull();
   });
 
   it('never throws when the DB write fails \u2014 a metering failure must not fail an already-served completion', async () => {
