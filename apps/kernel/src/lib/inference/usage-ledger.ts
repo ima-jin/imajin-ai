@@ -4,7 +4,7 @@
  * Called once per completions-passthrough call (`POST /infer/v1/chat/completions`,
  * #1925), regardless of adapter (Anthropic via the AI SDK, or the
  * OpenAI-compatible raw passthrough). Writes to three places, each owning a
- * distinct slice of the same event — see migrations/0118_inference_usage.sql
+ * distinct slice of the same event — see migrations/0119_inference_usage.sql
  * for the full division-of-responsibility note:
  *
  *   inference.usage    — the granular, token-level record. Always written,

@@ -114,7 +114,7 @@ export type NewInferenceAttestation = typeof inferenceAttestations.$inferInsert;
 // (`POST /infer/v1/chat/completions`, #1925). Granular token-level records
 // live here; the money lives in `pay.transactions` (`service = 'inference'`)
 // and the daily aggregate in `pay.balance_rollups` — see
-// migrations/0118_inference_usage.sql for the full division-of-responsibility
+// migrations/0119_inference_usage.sql for the full division-of-responsibility
 // note. Not a place to store cost/spend totals — those are derived by
 // summing this table (spend-cap enforcement) or read from the pay schema
 // (dashboard burn-down).

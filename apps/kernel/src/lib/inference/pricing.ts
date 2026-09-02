@@ -50,6 +50,9 @@ const MODEL_RATES: Partial<Record<BrainConnectorId, Record<string, TokenRateUsd>
   moonshot: {
     'kimi-k2-0711-preview': { inputPer1M: 0.6, outputPer1M: 2.5 },
   },
+  zai: {
+    'glm-4.6': { inputPer1M: 0.6, outputPer1M: 2.2 },
+  },
 };
 
 /**
@@ -65,6 +68,7 @@ const DEFAULT_RATE: Record<BrainConnectorId, TokenRateUsd> = {
   gemini: { inputPer1M: 1.25, outputPer1M: 10 },
   xai: { inputPer1M: 3, outputPer1M: 15 },
   moonshot: { inputPer1M: 0.6, outputPer1M: 2.5 },
+  zai: { inputPer1M: 0.6, outputPer1M: 2.2 },
 };
 
 /**

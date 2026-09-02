@@ -198,9 +198,9 @@ export interface ConnectorEntry {
  * Shared shape for the token-paste "brain" connectors — the ones whose sealed
  * API key is spent on inference (Gemini, xAI; #1928). They share every field
  * except identity, credential-step copy, and whether they have a model
- * picker: no OAuth step, no settings section, the identical spend-cap settings 
- * section (#1923), and a disconnect that revokes the delegation grant (#1720)
- * and sweeps channel_links (#1733). Declaring that shape once here is what keeps the
+ * picker: no OAuth step, the identical spend-cap settings section (#1923),
+ * and a disconnect that revokes the delegation grant (#1720) and sweeps
+ * channel_links (#1733). Declaring that shape once here is what keeps the
  * next brain connector's registry entry (#1927 OpenAI, #1930 Moonshot, #1931
  * Z.ai) a same-shape call instead of a ~30-line clone. Z.ai's own entry is
  * {@link ZAI_ENTRY} below.

@@ -1,4 +1,4 @@
--- 0118_inference_usage.sql
+-- 0119_inference_usage.sql
 -- Per-turn metering ledger — Phase 3 of the inference connectors epic
 -- (#1922), sub-issue #1923.
 --
