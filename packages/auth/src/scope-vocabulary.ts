@@ -328,6 +328,21 @@ export const SCOPE_VOCABULARY = [
   // this reads token/cost figures out of `inference.usage` instead.
   { scope: 'infer:usage-read', connector: null, label: 'Read your inference spend and usage burn-down' },
 
+  // #1151: gates POST /usage/api/incurred, the emitter-registry ingest door
+  // external adapters (Claude Code, Warp, ...) use to write into the shared
+  // usage.incurred stream (#1147). Platform scope — ingestion is a kernel
+  // route, not a connector card. serviceEligible: true because the reference
+  // Claude Code adapter authenticates as itself via an app-service token
+  // (docs/guide/service-credentials.md), with no delegating human session in
+  // the loop when it tails a local log unattended.
+  { scope: 'usage:emit', connector: null, label: 'Emit usage/spend records on behalf of a registered emitter', serviceEligible: true },
+  // #1151: gates GET/PUT /usage/api/emitters, the emitter registry itself.
+  // Owner-only by construction — the route only ever lets a caller list or
+  // upsert rows whose issuer_did equals their own effective DID — so there is
+  // no classification axis to derive a release tier from (same shape as
+  // infer:usage-read: platform scope, nothing released to a third party).
+  { scope: 'usage:emitters-manage', connector: null, label: 'Register and manage your usage emitters' },
+
   // ── QuickBooks connector — invoices are sent to customers, hence write touches others
   { scope: 'quickbooks:read', connector: 'quickbooks', verb: 'read', surface: 'invoices', classification: SELF_ONLY,
     label: 'Read your QuickBooks invoices as supply-chain settlement signals', manifestLabel: 'Read your QuickBooks invoices' },

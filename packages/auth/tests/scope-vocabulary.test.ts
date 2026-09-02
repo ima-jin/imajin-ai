@@ -404,15 +404,20 @@ describe('SCOPES is a faithful projection', () => {
 // ── serviceEligible fence (#1803, flipped for supply:read by xprize#70) ────────
 
 describe('serviceEligible fence', () => {
-  it('defaults every entry other than supply:read to service-ineligible (fail-closed)', () => {
+  const DELIBERATELY_FLIPPED = ['supply:read', 'usage:emit'];
+
+  it('defaults every entry other than the deliberately-flipped scopes to service-ineligible (fail-closed)', () => {
     // #1803 landed the fence with no scope flipped on. catalyst-power/xprize#70
-    // is the one signed-off flip: `supply:read` is now service-eligible because
-    // the per-lot channel_links gate (#1806) makes every app-token lot read
-    // consent-backed regardless of token shape. Every other scope nobody has
+    // flipped `supply:read` because the per-lot channel_links gate (#1806)
+    // makes every app-token lot read consent-backed regardless of token shape.
+    // #1151 flips `usage:emit` because its reference caller (the Claude Code
+    // adapter) authenticates as itself via an app-service token with no
+    // delegating human session, by design — see
+    // docs/guide/service-credentials.md. Every other scope nobody has
     // explicitly signed off on must stay out of a session-less service token.
-    expect(serviceEligibleScopes()).toEqual(['supply:read']);
+    expect(serviceEligibleScopes()).toEqual(DELIBERATELY_FLIPPED);
     for (const entry of SCOPE_VOCABULARY) {
-      if (entry.scope === 'supply:read') continue;
+      if (DELIBERATELY_FLIPPED.includes(entry.scope)) continue;
       expect(isServiceEligibleScope(entry)).toBe(false);
     }
   });
@@ -424,5 +429,16 @@ describe('serviceEligible fence', () => {
     expect(isServiceEligibleScope(scopeEntry('supply:write')!)).toBe(false);
     expect(serviceEligibleScopes()).toContain('supply:read');
     expect(serviceEligibleScopes()).not.toContain('supply:write');
+  });
+
+  it('flips usage:emit service-eligible (#1151) while keeping usage:emitters-manage ineligible', () => {
+    // #1151: usage:emit is the ingest scope an unattended adapter carries via
+    // an app-service token; usage:emitters-manage (registry read/write) stays
+    // ineligible — registering an emitter is an owner action, not something a
+    // session-less caller should be able to do.
+    expect(isServiceEligibleScope(scopeEntry('usage:emit')!)).toBe(true);
+    expect(isServiceEligibleScope(scopeEntry('usage:emitters-manage')!)).toBe(false);
+    expect(serviceEligibleScopes()).toContain('usage:emit');
+    expect(serviceEligibleScopes()).not.toContain('usage:emitters-manage');
   });
 });
