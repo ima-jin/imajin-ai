@@ -137,9 +137,11 @@ describe('pinned scope sets (change these deliberately)', () => {
     ['GitHub', 'github', ['github:read', 'github:write', 'github:org']],
     ['Discord', 'discord', ['discord:post', 'discord:read']],
     ['Gemini', 'gemini', ['gemini:infer']],
-    ['Anthropic', 'anthropic', ['anthropic:infer']],
+    // #1076 Stage 1: the billing/admin key sits on the SAME connector card,
+    // alongside the inference key — two credentials, two toggles.
+    ['Anthropic', 'anthropic', ['anthropic:infer', 'anthropic:billing']],
     ['xAI', 'xai', ['xai:infer']],
-    ['OpenAI', 'openai', ['openai:infer']],
+    ['OpenAI', 'openai', ['openai:infer', 'openai:billing']],
     ['Moonshot', 'moonshot', ['moonshot:infer']],
     ['Z.ai', 'zai', ['zai:infer']],
     ['Google Cloud', 'gcp', ['gcp:iam:read', 'gcp:vertex:invoke', 'gcp:project:read']],
@@ -337,9 +339,12 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
 
   // #1621 — new descriptor, not a migrated literal. Mirrors Gemini's shape
   // because it is the same kind of credential under the same 2×2 quadrant.
+  // #1076 Stage 1 adds `anthropic:billing` alongside it — the ADMIN key, a
+  // second credential on the same connector card, same quadrant.
   it('anthropic', () => {
     expect(connectorScopeDescriptors('anthropic')).toEqual({
       'anthropic:infer': { verb: 'infer', surface: 'anthropic-api', label: 'Use your Anthropic API key for inference', release: { discloses_others: false, sensitive: true, viewer: ANTHROPIC_DID } },
+      'anthropic:billing': { verb: 'billing', surface: 'anthropic-billing-api', label: 'Use your Anthropic Admin API key for usage/cost reconciliation', release: { discloses_others: false, sensitive: true, viewer: ANTHROPIC_DID } },
     });
   });
 
@@ -355,9 +360,12 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
   // #1927 — new descriptor, not a migrated literal. Same SELF_SENSITIVE
   // quadrant as gemini:infer / anthropic:infer / xai:infer: the owner's own
   // key is spent on every OpenAI call and never released to a third party.
+  // #1076 Stage 1 adds `openai:billing` alongside it — the org admin key, a
+  // second credential on the same connector card, same quadrant.
   it('openai', () => {
     expect(connectorScopeDescriptors('openai')).toEqual({
       'openai:infer': { verb: 'infer', surface: 'openai-api', label: 'Use your OpenAI API key for inference', release: { discloses_others: false, sensitive: true, viewer: OPENAI_DID } },
+      'openai:billing': { verb: 'billing', surface: 'openai-billing-api', label: 'Use your OpenAI org admin API key for usage/cost reconciliation', release: { discloses_others: false, sensitive: true, viewer: OPENAI_DID } },
     });
   });
 

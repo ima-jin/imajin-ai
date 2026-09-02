@@ -191,6 +191,13 @@ export interface ScopeManifestContractFixture {
   connectorDid: string;
   channel: string;
   inferScope: string;
+  /**
+   * Additional scopes this connector owns beyond `inferScope` (#1076 Stage
+   * 1: a `{id}:billing` admin-key scope sitting on the same connector card).
+   * Defaults to none — every brain connector before #1076 owns exactly one
+   * scope.
+   */
+  extraScopes?: readonly string[];
   filename: string;
   core: {
     buildConnectorManifestContent: Mock;
@@ -223,7 +230,9 @@ export function describeScopeManifestIdentityContract(fixture: ScopeManifestCont
   const {
     label, id, connectorDid, channel, inferScope, filename, core, scopeDescriptors, validScopes,
     buildManifestContent, findManifestAsset, readActiveScopes, syncConsentGrants, publishScopeManifest,
+    extraScopes = [],
   } = fixture;
+  const ownedScopes = [inferScope, ...extraScopes];
 
   beforeEach(() => {
     for (const fn of Object.values(core)) fn.mockClear();
@@ -231,8 +240,8 @@ export function describeScopeManifestIdentityContract(fixture: ScopeManifestCont
 
   describe('derived scope registry', () => {
     it('accepts exactly the scopes the vocabulary gives this connector', () => {
-      expect(validScopes).toEqual([inferScope]);
-      expect(Object.keys(scopeDescriptors)).toEqual([inferScope]);
+      expect(validScopes).toEqual(ownedScopes);
+      expect(Object.keys(scopeDescriptors)).toEqual(ownedScopes);
     });
   });
 

@@ -489,3 +489,51 @@ describe('revokeApiKey channel_links cleanup (#1733)', () => {
     expect(await connector.revokeApiKey(OWNER_DID)).toBe(false);
   });
 });
+
+// ── listActiveGrantOwners (#1076 Stage 1) ─────────────────────────────────────────
+//
+// Promoted onto the shared factory from `quickbooks/connector.ts`'s own copy
+// so the #1076 Stage 1 billing-ingestion sweep has something to iterate for
+// ANY token-paste connector, not just QuickBooks.
+
+describe('listActiveGrantOwners', () => {
+  const CONNECTOR_DID = 'did:imajin:testprov-connector';
+  const CHANNEL = 'testprov';
+  const OTHER_DID = 'did:imajin:connector-token-paste-other';
+
+  function seedLink(id: string, did: string, scopes: string[], status = 'active', appDid = CONNECTOR_DID, channel = CHANNEL) {
+    channelLinksStore.set(id, { id, channel, did, appDid, scopes, status, revokedAt: null });
+  }
+
+  it('lists every DID with an active row carrying the required scope', async () => {
+    seedLink('clink_1', OWNER_DID, ['testprov:billing']);
+    seedLink('clink_2', OTHER_DID, ['testprov:infer']);
+
+    expect(await connector.listActiveGrantOwners('testprov:billing')).toEqual([OWNER_DID]);
+  });
+
+  it('excludes a revoked row, even if it once carried the scope', async () => {
+    seedLink('clink_1', OWNER_DID, ['testprov:billing'], 'revoked');
+
+    expect(await connector.listActiveGrantOwners('testprov:billing')).toEqual([]);
+  });
+
+  it('excludes rows for a different connector or channel', async () => {
+    seedLink('clink_1', OWNER_DID, ['testprov:billing'], 'active', 'did:imajin:other-connector', 'other');
+
+    expect(await connector.listActiveGrantOwners('testprov:billing')).toEqual([]);
+  });
+
+  it('de-duplicates an owner with more than one active row', async () => {
+    seedLink('clink_1', OWNER_DID, ['testprov:billing']);
+    seedLink('clink_2', OWNER_DID, ['testprov:billing']);
+
+    expect(await connector.listActiveGrantOwners('testprov:billing')).toEqual([OWNER_DID]);
+  });
+
+  it('returns an empty list when nothing carries the scope', async () => {
+    seedLink('clink_1', OWNER_DID, ['testprov:infer']);
+
+    expect(await connector.listActiveGrantOwners('testprov:billing')).toEqual([]);
+  });
+});
