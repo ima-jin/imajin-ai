@@ -11,6 +11,7 @@ import { requireAuth } from '@imajin/auth';
 import { streamText } from 'ai';
 import { calculateCost, createPresenceTools } from '@imajin/llm';
 import { resolvePresenceBrain } from '@/src/lib/inference/presence-brain';
+import { recordPresenceQueryUsage } from '@/src/lib/inference/presence-query-usage';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 import { buildPublicUrl } from '@imajin/config';
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  const { model, modelId } = brain;
+  const { model, modelId, connector } = brain;
 
   // 6. Tools (resolved before system prompt so bootstrap can be generated from them)
   const tools = createPresenceTools({
@@ -234,6 +235,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           settled,
         });
       } catch { /* non-fatal */ }
+
+      // Emit usage.incurred (#1956) — joins the metering ledger the
+      // completions passthrough already writes to. Fire-and-forget /
+      // fail-open (recordPresenceQueryUsage never throws): a ledger hiccup
+      // must never hold up (or reopen) the SSE stream already served.
+      recordPresenceQueryUsage({
+        queryId, mode: 'stream', actingForDid: resolvedTargetDid, requesterDid,
+        provider: connector, modelId, promptTokens, completionTokens, costUsd: cost, settled,
+      }).catch(() => {});
     },
   });
 

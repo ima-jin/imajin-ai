@@ -61,7 +61,7 @@ vi.mock('@/src/lib/kernel/node-identity', () => ({
   getNodeDid: vi.fn(async () => 'did:imajin:testnode'),
 }));
 
-import { recordInferenceUsage } from '../usage-ledger';
+import { recordInferenceUsage, publishUsageIncurred } from '../usage-ledger';
 
 const OWNER = 'did:imajin:supplier';
 
@@ -229,5 +229,44 @@ describe('recordInferenceUsage', () => {
 
     const txInsert = insertCalls.find((c) => c.table === 'transactions');
     expect(txInsert?.values.toDid).toBe('did:imajin:openai-connector');
+  });
+});
+
+describe('publishUsageIncurred — optional metadata passthrough (#1956)', () => {
+  it('carries emitter-specific metadata in the published payload when given', async () => {
+    await publishUsageIncurred({
+      usageId: 'usage_1',
+      principalDid: OWNER,
+      resource: 'model:anthropic/claude-sonnet-4-20250514',
+      quantity: 15,
+      unit: 'tokens',
+      costUsd: 0.05,
+      source: 'presence:query',
+      metadata: { queryId: 'q1', requesterDid: 'did:imajin:requester', settled: true, settleAmount: 0.05, mode: 'query' },
+    });
+
+    expect(mockPublish).toHaveBeenCalledWith(
+      'usage.incurred',
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          source: 'presence:query',
+          metadata: { queryId: 'q1', requesterDid: 'did:imajin:requester', settled: true, settleAmount: 0.05, mode: 'query' },
+        }),
+      }),
+    );
+  });
+
+  it('omits metadata entirely from the payload when not given — existing emitters unaffected', async () => {
+    await publishUsageIncurred({
+      usageId: 'usage_2',
+      principalDid: OWNER,
+      resource: 'model:xai/grok-4',
+      quantity: 10,
+      costUsd: 1,
+      source: 'inference-passthrough',
+    });
+
+    const call = mockPublish.mock.calls.find(([, event]) => (event as { payload: { usageId: string } }).payload.usageId === 'usage_2');
+    expect(call?.[1].payload).not.toHaveProperty('metadata');
   });
 });

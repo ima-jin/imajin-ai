@@ -1,99 +1,33 @@
 /**
- * Tests for POST /profile/api/profile/:id/query (#1621).
+ * Tests for POST /profile/api/profile/:id/query (#1621, #1956).
  *
  * A presence speaks on its owner's behalf, so it must run on the OWNER's sealed
  * brain — not the requester's, and not a shared node env key. These pin that,
  * plus the two new failure modes introduced when the env fallback was removed:
- * no sealed brain (409) and a resolver fault (503).
+ * no sealed brain (409) and a resolver fault (503) — and the #1956
+ * usage.incurred emission. Shared vi.mock boilerplate/fixtures with the
+ * sibling `/stream` suite live in `../../__tests__/route-test-support`.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
-const {
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
   mockRequireAuth,
   mockFindFirst,
-  mockInsertValues,
   mockResolveBrain,
   mockGetModel,
   mockGenerateText,
   mockCalculateCost,
-} = vi.hoisted(() => ({
-  mockRequireAuth: vi.fn(),
-  mockFindFirst: vi.fn(),
-  mockInsertValues: vi.fn(),
-  mockResolveBrain: vi.fn(),
-  mockGetModel: vi.fn(),
-  mockGenerateText: vi.fn(),
-  mockCalculateCost: vi.fn(),
-}));
-
-vi.mock('@/src/db', () => ({
-  db: {
-    query: { profiles: { findFirst: mockFindFirst } },
-    insert: () => ({ values: mockInsertValues }),
-  },
-  queryLogs: {},
-}));
-
-vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
-
-vi.mock('ai', () => ({ generateText: mockGenerateText }));
-
-vi.mock('@imajin/llm', () => ({
-  getModel: mockGetModel,
-  calculateCost: mockCalculateCost,
-  createPresenceTools: () => ({}),
-}));
-
-// NoBrainSealedError must be a real class so the route's `instanceof` branch
-// works, and it must be hoisted: vi.mock factories run before module-level
-// declarations are initialised.
-//
-// `failures` mirrors the real shape (#1637): empty means "the owner genuinely
-// connected nothing", which is the 409 the tests below assert. A non-empty
-// `failures` means the walk was degraded by a throwing connector and maps to 503
-// instead.
-const { NoBrainSealedError } = vi.hoisted(() => {
-  class NoBrainSealedError extends Error {
-    readonly failures: readonly { connector: string; credentialDid: string; cause: string }[];
-    constructor(
-      ownerDid: string,
-      failures: readonly { connector: string; credentialDid: string; cause: string }[] = [],
-    ) {
-      super(`inference_no_brain: DID ${ownerDid} has no model credential sealed`);
-      this.name = 'NoBrainSealedError';
-      this.failures = failures;
-    }
-  }
-  return { NoBrainSealedError };
-});
-
-vi.mock('@/src/lib/inference/brain', () => ({
-  resolveBrain: mockResolveBrain,
+  mockRecordPresenceQueryUsage,
   NoBrainSealedError,
-}));
-
-vi.mock('nanoid', () => ({ nanoid: () => 'query_1' }));
-vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-}));
-vi.mock('@imajin/config', () => ({ buildPublicUrl: () => 'https://imajin.test/profile' }));
+  OWNER_DID,
+  REQUESTER_DID,
+  OWNER_KEY,
+  BRAIN,
+  resetPresenceRouteMocks,
+  stubSettlementEnv,
+  makeSettledFetchMock,
+} from '../../__tests__/route-test-support';
 
 import { POST } from '../route';
-
-// ─── Fixtures ────────────────────────────────────────────────────────────────
-
-const OWNER_DID = 'did:imajin:presence-owner';
-const REQUESTER_DID = 'did:imajin:presence-owner'; // self-query: skips the trust hop
-const OWNER_KEY = 'sk-ant-OWNER-SEALED';
-
-const BRAIN = {
-  connector: 'anthropic' as const,
-  provider: 'anthropic' as const,
-  modelId: 'claude-sonnet-4-20250514',
-  apiKey: OWNER_KEY,
-};
 
 type RouteArgs = Parameters<typeof POST>;
 
@@ -104,23 +38,15 @@ function makeReq(body: unknown = { message: 'hello' }): RouteArgs[0] {
 const params = { params: Promise.resolve({ id: OWNER_DID }) } as unknown as RouteArgs[1];
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  mockRequireAuth.mockResolvedValue({ identity: { id: REQUESTER_DID } });
-  mockFindFirst.mockResolvedValue({
-    did: OWNER_DID,
-    displayName: 'Owner',
-    featureToggles: { inference_enabled: true },
-  });
-  mockResolveBrain.mockResolvedValue(BRAIN);
-  mockGetModel.mockReturnValue({});
+  resetPresenceRouteMocks();
   mockGenerateText.mockResolvedValue({
     text: 'an answer',
     usage: { promptTokens: 10, completionTokens: 5 },
   });
-  mockCalculateCost.mockReturnValue(0);
-  mockInsertValues.mockResolvedValue(undefined);
-  // No presence document — the route falls back to a default system prompt.
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 // ─── Owner-brain resolution ──────────────────────────────────────────────────
@@ -271,5 +197,65 @@ describe('presence query — gates', () => {
 
     expect(res.status).toBe(400);
     expect(mockGenerateText).not.toHaveBeenCalled();
+  });
+});
+
+// ─── usage.incurred emission (#1956) ──────────────────────────────────────────
+
+describe('presence query — usage.incurred emission (#1956)', () => {
+  it('emits exactly one usage.incurred row per served query, with the shared field shape', async () => {
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(200);
+    expect(mockRecordPresenceQueryUsage).toHaveBeenCalledTimes(1);
+    expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith({
+      queryId: 'query_1',
+      mode: 'query',
+      actingForDid: OWNER_DID,
+      requesterDid: REQUESTER_DID,
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4-20250514',
+      promptTokens: 10,
+      completionTokens: 5,
+      costUsd: 0,
+      settled: false,
+    });
+  });
+
+  it('carries the resolved owner brain\'s connector as the resource provider, not the requester\'s', async () => {
+    mockResolveBrain.mockResolvedValueOnce({
+      ...BRAIN,
+      connector: 'gemini',
+      provider: 'openai',
+      modelId: 'gemini-2.0-flash',
+    });
+
+    await POST(makeReq(), params);
+
+    expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'gemini', modelId: 'gemini-2.0-flash' }),
+    );
+  });
+
+  it('reports settled=true with the estimated cost when the query was actually settled', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:someone-else' } });
+    mockCalculateCost.mockReturnValueOnce(0.05);
+    stubSettlementEnv();
+    vi.stubGlobal('fetch', makeSettledFetchMock());
+
+    await POST(makeReq(), params);
+
+    expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ settled: true, costUsd: 0.05 }),
+    );
+  });
+
+  it('never lets a ledger failure change the HTTP response already computed', async () => {
+    mockRecordPresenceQueryUsage.mockRejectedValueOnce(new Error('ledger unavailable'));
+
+    const res = await POST(makeReq(), params);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ response: 'an answer' });
   });
 });
