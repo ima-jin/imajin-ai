@@ -25,7 +25,7 @@ const { mockSelect, queue } = vi.hoisted(() => {
 
 vi.mock('@/src/db', () => ({
   db: { select: mockSelect },
-  inferenceUsage: {
+  usageIncurred: {
     connectorId: 'connector_id',
     sessionId: 'session_id',
     turnId: 'turn_id',

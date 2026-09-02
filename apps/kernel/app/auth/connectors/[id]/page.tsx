@@ -61,7 +61,7 @@ export default function ConnectorDetailPage(props: Readonly<{ params: Promise<{ 
       <ConnectorUsage entry={entry} />
 
       {/* Inference spend burn-down (#1923) — only the brain connectors write
-          inference.usage rows. `modelsRoute` is exactly the signal already
+          usage.incurred rows. `modelsRoute` is exactly the signal already
           used to gate the model picker section, so this reuses it rather than
           hand-listing the five brain connector ids a second time. */}
       {entry.modelsRoute && <ConnectorSpendBurnDown entry={entry} />}

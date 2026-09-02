@@ -21,7 +21,7 @@ const { insertCalls, conflictSets, insertMock } = vi.hoisted(() => {
 
 vi.mock('@/src/db', () => ({
   db: { insert: insertMock },
-  inferenceUsage: { __name: 'inferenceUsage' },
+  usageIncurred: { __name: 'usageIncurred' },
   transactions: { __name: 'transactions' },
   balanceRollups: {
     __name: 'balanceRollups',
@@ -65,7 +65,7 @@ beforeEach(() => {
 });
 
 describe('recordInferenceUsage', () => {
-  it('writes an inference.usage row with computed cost, tokens, and a linked transaction id', async () => {
+  it('writes a usage.incurred row with computed cost, tokens, a linked transaction id, and the #1147 emitter/resource discriminators', async () => {
     await recordInferenceUsage({
       sessionId: 'sess_1',
       turnId: 'turn_1',
@@ -77,13 +77,15 @@ describe('recordInferenceUsage', () => {
       tokensOut: 1_000_000,
     });
 
-    const usageInsert = insertCalls.find((c) => c.table === 'inferenceUsage');
+    const usageInsert = insertCalls.find((c) => c.table === 'usageIncurred');
     expect(usageInsert?.values).toMatchObject({
       id: 'usage_test',
       sessionId: 'sess_1',
       turnId: 'turn_1',
       principalDid: OWNER,
       agentDid: 'did:imajin:openclaw-app',
+      source: 'inference-passthrough',
+      resource: 'model:xai/grok-4',
       provider: 'xai',
       connectorId: `conn_${OWNER}_xai`,
       model: 'grok-4',
@@ -138,7 +140,7 @@ describe('recordInferenceUsage', () => {
       model: 'grok-4',
     });
 
-    expect(insertCalls.map((c) => c.table)).toEqual(['inferenceUsage']);
+    expect(insertCalls.map((c) => c.table)).toEqual(['usageIncurred']);
     const usageInsert = insertCalls[0];
     expect(usageInsert.values.costUsd).toBeNull();
     expect(usageInsert.values.tokensIn).toBeNull();
@@ -147,7 +149,7 @@ describe('recordInferenceUsage', () => {
 
   it('never throws when the DB write fails \u2014 a metering failure must not fail an already-served completion', async () => {
     insertMock.mockImplementationOnce(() => {
-      throw new Error('relation "inference.usage" does not exist');
+      throw new Error('relation "usage.incurred" does not exist');
     });
 
     await expect(

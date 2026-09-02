@@ -29,11 +29,11 @@ vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
 }));
 
 // `spend-cap.ts` pulls in `@/src/db` (a real drizzle client) purely to sum
-// `inference.usage` rows for `checkSpendCap`/`spentUsd` — neither of which
+// `usage.incurred` rows for `checkSpendCap`/`spentUsd` — neither of which
 // this route calls. The REAL `parseSpendCap`/`serializeSpendCap` are used
 // (not re-implemented) so the route's field-format contract is pinned
 // against the actual parser, with just the DB client construction stubbed.
-vi.mock('@/src/db', () => ({ db: {}, inferenceUsage: {} }));
+vi.mock('@/src/db', () => ({ db: {}, usageIncurred: {} }));
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),

@@ -9,7 +9,7 @@ const { mockWhere, mockFrom, mockSelect } = vi.hoisted(() => {
 
 vi.mock('@/src/db', () => ({
   db: { select: mockSelect },
-  inferenceUsage: { connectorId: 'connector_id', createdAt: 'created_at', costUsd: 'cost_usd' },
+  usageIncurred: { connectorId: 'connector_id', createdAt: 'created_at', costUsd: 'cost_usd' },
 }));
 
 vi.mock('drizzle-orm', () => ({

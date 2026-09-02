@@ -89,7 +89,7 @@ vi.mock('@/src/lib/inference/brain', async () => {
 
 // `brain-http-errors.ts` (used unmocked below, to exercise real error mapping)
 // also imports `spend-cap.ts` (#1923), which pulls in `@/src/db` (a real
-// drizzle client) purely to sum `inference.usage` rows for a check this route
+// drizzle client) purely to sum `usage.incurred` rows for a check this route
 // never performs. Only the error TYPE is needed here — see
 // `createFakeSpendCapClasses` in `brain-errors-test-support.ts`.
 vi.mock('@/src/lib/inference/spend-cap', async () => {

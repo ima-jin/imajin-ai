@@ -10,7 +10,7 @@ vi.mock('@/src/lib/inference/brain', async () => {
 });
 
 // `spend-cap.ts` pulls in `@/src/db` (a real drizzle client) to sum
-// `inference.usage` rows. Only the error TYPE is needed here — see
+// `usage.incurred` rows. Only the error TYPE is needed here — see
 // `createFakeSpendCapClasses` in `brain-errors-test-support.ts`.
 vi.mock('@/src/lib/inference/spend-cap', async () => {
   const { createFakeSpendCapClasses } = await import('./brain-errors-test-support');

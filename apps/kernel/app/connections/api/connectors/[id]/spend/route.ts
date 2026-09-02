@@ -25,7 +25,7 @@ const log = createLogger('kernel');
 
 export const dynamic = 'force-dynamic';
 
-/** The only connector ids `inference.usage` can ever name (see `brain.ts`'s `BRAIN_CONNECTORS`). */
+/** The only connector ids `usage.incurred` can ever name for this emitter (see `brain.ts`'s `BRAIN_CONNECTORS`). */
 const BRAIN_CONNECTOR_IDS: ReadonlySet<string> = new Set(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai']);
 
 export async function OPTIONS(request: NextRequest) {

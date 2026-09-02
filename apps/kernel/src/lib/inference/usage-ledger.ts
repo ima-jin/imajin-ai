@@ -4,13 +4,17 @@
  * Called once per completions-passthrough call (`POST /infer/v1/chat/completions`,
  * #1925), regardless of adapter (Anthropic via the AI SDK, or the
  * OpenAI-compatible raw passthrough). Writes to three places, each owning a
- * distinct slice of the same event — see migrations/0119_inference_usage.sql
+ * distinct slice of the same event — see migrations/0119_usage_incurred.sql
  * for the full division-of-responsibility note:
  *
- *   inference.usage    — the granular, token-level record. Always written,
- *                         even when tokens/cost are unknown (a degraded row
- *                         beats a missing one — some providers omit `usage`
- *                         from their response despite it being requested).
+ *   usage.incurred      — the granular, token-level record. This module is
+ *                         emitter #1 (#1147/#1148/#1151): every row carries
+ *                         `source = 'inference-passthrough'` and
+ *                         `resource = 'model:{provider}/{model}'`. Always
+ *                         written, even when tokens/cost are unknown (a
+ *                         degraded row beats a missing one — some providers
+ *                         omit `usage` from their response despite it being
+ *                         requested).
  *   pay.transactions    — the money, `service = 'inference'`. Only written
  *                         when a cost could be computed; there is no
  *                         meaningful amount to ledger otherwise.
@@ -27,7 +31,7 @@
  */
 import { createLogger } from '@imajin/logger';
 import { sql } from 'drizzle-orm';
-import { db, inferenceUsage, transactions, balanceRollups } from '@/src/db';
+import { db, usageIncurred, transactions, balanceRollups } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
 import { connectorRegistryId } from '@/src/lib/kernel/connector-registry-store';
@@ -67,12 +71,16 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
       transactionId = await recordSpend({ principalDid, provider, model, sessionId, turnId, connectorId, costUsd });
     }
 
-    await db.insert(inferenceUsage).values({
+    await db.insert(usageIncurred).values({
       id: usageId,
       sessionId: sessionId ?? null,
       turnId: turnId ?? null,
       principalDid,
       agentDid: agentDid ?? null,
+      // #1147 emitter/resource discriminators. This module is always the same
+      // emitter, writing the same resource shape — no per-call branching.
+      source: 'inference-passthrough',
+      resource: `model:${provider}/${model}`,
       provider,
       connectorId,
       model,
@@ -102,7 +110,7 @@ interface RecordSpendParams {
 /**
  * Write the money side of one call: a `pay.transactions` row plus the daily
  * `pay.balance_rollups` increment. Returns the transaction id so the caller
- * can link `inference.usage.transaction_id` back to it.
+ * can link `usage.incurred.transaction_id` back to it.
  *
  * `toDid` is the connector's own DID (e.g. `did:imajin:xai-connector`) —
  * every brain connector is BYOK, so there is no real platform-side payee;

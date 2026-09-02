@@ -26,6 +26,7 @@ import * as quickbooksSchema from './schemas/quickbooks';
 import * as consentRequestsSchema from './schemas/consent-requests';
 import * as stripeSchema from './schemas/stripe';
 import * as connectorsSchema from './schemas/connectors';
+import * as usageSchema from './schemas/usage';
 
 const schema = {
   ...authSchema,
@@ -54,6 +55,7 @@ const schema = {
   ...consentRequestsSchema,
   ...stripeSchema,
   ...connectorsSchema,
+  ...usageSchema,
 };
 
 export const db = createDb(schema);
@@ -85,6 +87,7 @@ export * from './schemas/quickbooks';
 export * from './schemas/consent-requests';
 export * from './schemas/stripe';
 export * from './schemas/connectors';
+export * from './schemas/usage';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";

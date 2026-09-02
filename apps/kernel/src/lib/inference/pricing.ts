@@ -4,7 +4,7 @@
  * The kernel never bills through these numbers — every brain connector is
  * BYOK (the owner's own sealed key, billed by the provider directly to the
  * owner's own account with that provider). This table exists only to give
- * `inference.usage.cost_usd` and the burn-down dashboard a number to show,
+ * `usage.incurred.cost_usd` and the burn-down dashboard a number to show,
  * and to give the spend-cap check something to compare against a declared
  * USD ceiling.
  *
@@ -86,6 +86,6 @@ export function computeCostUsd(
 
   const rate = MODEL_RATES[connector]?.[modelId] ?? DEFAULT_RATE[connector];
   const cost = (tokensIn / 1_000_000) * rate.inputPer1M + (tokensOut / 1_000_000) * rate.outputPer1M;
-  // Round to 8 decimal places — matches inference.usage.cost_usd's NUMERIC(20,8).
+  // Round to 8 decimal places — matches usage.incurred.cost_usd's NUMERIC(20,8).
   return Math.round(cost * 1e8) / 1e8;
 }

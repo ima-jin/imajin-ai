@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Per-turn metering context (#1922 target architecture component 3,
-  // #1923): every adapter writes one inference.usage row from this once the
+  // #1923): every adapter writes one usage.incurred row from this once the
   // call resolves.
   const meta: CompletionsRequestMetadata = {
     sessionId: request.headers.get('x-session-id') ?? undefined,

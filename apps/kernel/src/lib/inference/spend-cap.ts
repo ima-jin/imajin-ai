@@ -26,7 +26,7 @@
  */
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { db, inferenceUsage } from '@/src/db';
+import { db, usageIncurred } from '@/src/db';
 
 const log = createLogger('kernel:inference:spend-cap');
 
@@ -85,19 +85,19 @@ function periodStart(period: SpendCapPeriod, now: Date): Date | undefined {
 }
 
 /**
- * Sum `inference.usage.cost_usd` for one connector registration within the
+ * Sum `usage.incurred.cost_usd` for one connector registration within the
  * cap's current window. Rows with a null cost (usage recorded without a
  * computable price) do not contribute — they were never billed against the
  * cap in the first place.
  */
 async function spentUsd(connectorId: string, cap: SpendCap, now: Date): Promise<number> {
   const start = periodStart(cap.period, now);
-  const conditions = [eq(inferenceUsage.connectorId, connectorId)];
-  if (start) conditions.push(gte(inferenceUsage.createdAt, start));
+  const conditions = [eq(usageIncurred.connectorId, connectorId)];
+  if (start) conditions.push(gte(usageIncurred.createdAt, start));
 
   const rows = await db
-    .select({ total: sql<string>`COALESCE(SUM(${inferenceUsage.costUsd}), 0)` })
-    .from(inferenceUsage)
+    .select({ total: sql<string>`COALESCE(SUM(${usageIncurred.costUsd}), 0)` })
+    .from(usageIncurred)
     .where(and(...conditions));
 
   return Number(rows[0]?.total ?? 0);

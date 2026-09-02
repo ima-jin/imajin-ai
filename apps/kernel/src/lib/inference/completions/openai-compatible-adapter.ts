@@ -98,7 +98,7 @@ export async function forwardOpenAiCompatible(
     headers.set('Connection', 'keep-alive');
   }
 
-  // #1923: every call writes one inference.usage row, but HOW usage is read
+  // #1923: every call writes one usage.incurred row, but HOW usage is read
   // off differs by shape so the client-facing bytes stay an untouched
   // passthrough either way:
   //   - non-streaming: the whole body is one JSON blob anyway, so buffering
@@ -128,7 +128,7 @@ interface OpenAiCompatibleUsage {
 
 /**
  * Parse a non-streaming JSON response body for `usage` and write the
- * inference.usage row. Never throws: a body this adapter does not
+ * usage.incurred row. Never throws: a body this adapter does not
  * understand (or a provider that omits `usage` entirely) still gets a
  * degraded row with null tokens rather than none at all. Awaited by the
  * caller before the response is returned — the whole body is already
@@ -160,7 +160,7 @@ async function recordOpenAiCompatibleUsage(rawBody: string, brain: ResolvedBrain
 
 /**
  * Drain a teed copy of the upstream SSE stream looking for the final
- * usage-bearing chunk, then write the inference.usage row. Runs
+ * usage-bearing chunk, then write the usage.incurred row. Runs
  * independently of the client-facing stream — a slow or malformed tap must
  * never affect what the client receives, so every failure here is caught
  * and logged rather than propagated.

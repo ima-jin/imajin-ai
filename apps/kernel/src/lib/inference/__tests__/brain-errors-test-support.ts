@@ -37,7 +37,7 @@ export function createFakeBrainErrorClasses() {
  * Shared test support for mocking `@/src/lib/inference/spend-cap` (#1923).
  *
  * That module pulls in `@/src/db` (a real drizzle client) to sum
- * `inference.usage` rows. Callers only need `SpendCapExceededError`'s TYPE
+ * `usage.incurred` rows. Callers only need `SpendCapExceededError`'s TYPE
  * shape for `instanceof` matching in `brain-http-errors.ts`, so this
  * re-implements it rather than importing the real module at test-import time.
  */
