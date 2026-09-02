@@ -47,7 +47,8 @@ export interface HandleCompletionsDeps {
   log: Logger;
 }
 
-function jsonError(status: number, error: string, message: string): ProxyResponse {
+/** Shared with `anthropic-handler.ts` (imajin-ai#1959) so both wire formats build the same error-response shape. */
+export function jsonError(status: number, error: string, message: string): ProxyResponse {
   return {
     status,
     headers: { 'Content-Type': 'application/json' },
@@ -59,7 +60,8 @@ function toBody(text: string): Response['body'] {
   return new Response(text).body;
 }
 
-function toProxyResponse(res: Response): ProxyResponse {
+/** Shared with `anthropic-handler.ts` (imajin-ai#1959) — both wire formats forward the kernel/direct response's status/content-type/SSE headers identically. */
+export function toProxyResponse(res: Response): ProxyResponse {
   const headers: Record<string, string> = {};
   const contentType = res.headers.get('content-type');
   if (contentType) headers['Content-Type'] = contentType;

@@ -53,6 +53,14 @@ export interface RecordInferenceUsageParams {
   model: string;
   tokensIn?: number;
   tokensOut?: number;
+  /**
+   * Emitter-specific extra context, passed straight through to
+   * {@link PublishUsageIncurredParams.metadata} on the bus event — never
+   * written to the `usage.incurred` row itself (#1959: the Anthropic
+   * Messages passthrough's `format: 'anthropic-messages'` + cache-token
+   * fields; every other emitter continues to omit this and is unaffected).
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -61,7 +69,7 @@ export interface RecordInferenceUsageParams {
  * failed request.
  */
 export async function recordInferenceUsage(params: RecordInferenceUsageParams): Promise<void> {
-  const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut } = params;
+  const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut, metadata } = params;
   const connectorId = connectorRegistryId(principalDid, provider);
   const costUsd = computeCostUsd(provider, model, tokensIn, tokensOut);
   // #1148 emitter-agnostic quantity/unit: this emitter's resource is tokens,
@@ -107,7 +115,7 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
     // row is already durably written above, so a slow or failed bus publish
     // must never add latency to (or fail) an already-served completion —
     // same fail-open contract as the rest of this function.
-    publishUsageIncurred({ usageId, principalDid, resource, quantity, costUsd, source: 'inference-passthrough' }).catch((err: unknown) => {
+    publishUsageIncurred({ usageId, principalDid, resource, quantity, costUsd, source: 'inference-passthrough', metadata }).catch((err: unknown) => {
       log.error(
         { err: String(err), usageId, principalDid, resource },
         'usage.incurred bus publish failed — row already written',
