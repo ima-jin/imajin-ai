@@ -4,20 +4,15 @@
  * `loadAnthropicSealedCredentials` / `anthropicKeyPending` / `setModelId` are
  * mocked — their vault behaviour is covered in
  * `src/lib/kernel/__tests__/connector-token-paste.test.ts` and the Anthropic
- * connector's own tests. What this pins is the route contract: the sealed API
- * key never reaches the browser (in either direction, and never as an
- * upstream-echoed body), listing does not require an active
- * `anthropic:infer` grant (#1773), pagination (`has_more`/`last_id`) is
- * walked to completion, and upstream/credential failures map to sane
- * statuses.
- *
- * Anthropic authenticates with `x-api-key` + `anthropic-version` headers
- * rather than a bearer token and its list/retrieve shape differs from the
- * OpenAI-compatible providers, so — like Gemini's own models route test —
- * this does NOT use `describeModelPickerRouteContract`; only the
- * connector-agnostic mock scaffolding (auth, CORS, logger) is shared, via
- * `mockModelPickerRouteDeps` in
- * `src/lib/kernel/__tests__/model-picker-route-test-support.ts`.
+ * connector's own tests. The auth/CORS/credential-state/PUT-validation slice
+ * of the route contract — everything upstream of actually calling
+ * Anthropic — is shared with every other bespoke-shape model picker (Gemini)
+ * via `describeModelPickerAuthAndValidationContract` in
+ * `src/lib/kernel/__tests__/model-picker-route-test-support.ts` (#1953).
+ * What is declared here is what makes Anthropic's OWN shape distinct: the
+ * `x-api-key`/`anthropic-version` headers (not a bearer token), the
+ * `has_more`/`last_id` pagination walk, and the `id`/`display_name`
+ * response mapping.
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import {
@@ -25,6 +20,7 @@ import {
   stubModelPickerFetch,
   resetModelPickerMocks,
   mockModelPickerRouteDeps,
+  describeModelPickerAuthAndValidationContract,
 } from '@/src/lib/kernel/__tests__/model-picker-route-test-support';
 
 const mockLoadAnthropicSealedCredentials = vi.fn();
@@ -66,50 +62,25 @@ beforeEach(() => {
   });
 });
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
-
-describe('every verb is authenticated', () => {
-  it.each([
-    ['GET', GET],
-    ['PUT', PUT],
-  ])('returns the auth failure from %s without touching credentials', async (_verb, handler) => {
-    mockResolveConnectorOwnerDid.mockResolvedValueOnce({ ok: false, error: 'Unauthorized', status: 401 });
-
-    const res = await handler(makeReq({ modelId: 'claude-opus-4-6' }));
-
-    expect(res.status).toBe(401);
-    expect(mockLoadAnthropicSealedCredentials).not.toHaveBeenCalled();
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('answers CORS pre-flight', async () => {
-    const res = await OPTIONS(makeReq());
-    expect(res.status).toBe(204);
-  });
+describeModelPickerAuthAndValidationContract({
+  id: 'anthropic',
+  GET,
+  PUT,
+  OPTIONS,
+  makeReq,
+  sampleModelId: 'claude-opus-4-6',
+  apiKey: API_KEY,
+  mocks: {
+    resolveOwnerDid: mockResolveConnectorOwnerDid,
+    loadSealedCredentials: mockLoadAnthropicSealedCredentials,
+    keyPending: mockAnthropicKeyPending,
+    setModelId: mockSetModelId,
+  },
 });
 
-// ── GET ───────────────────────────────────────────────────────────────────────
+// ── Anthropic's own shape: headers, pagination, id/display_name ────────────
 
 describe('GET', () => {
-  it('returns 400 when no Anthropic key is sealed for this identity', async () => {
-    mockLoadAnthropicSealedCredentials.mockResolvedValue(undefined);
-
-    const res = await GET(makeReq());
-
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/anthropic_no_key/);
-  });
-
-  it('returns 409 with anthropic_credential_pending when the key is sealed but awaiting owner grant approval (#1773)', async () => {
-    mockLoadAnthropicSealedCredentials.mockResolvedValue(undefined);
-    mockAnthropicKeyPending.mockResolvedValue(true);
-
-    const res = await GET(makeReq());
-
-    expect(res.status).toBe(409);
-    expect((await res.json()).error).toMatch(/anthropic_credential_pending/);
-  });
-
   it('lists models from a sealed key even with no active anthropic:infer grant yet (#1773)', async () => {
     mockLoadAnthropicSealedCredentials.mockResolvedValue({ apiKey: API_KEY });
     stubFetch({ data: [], has_more: false });
@@ -237,8 +208,6 @@ describe('GET', () => {
   });
 });
 
-// ── PUT ───────────────────────────────────────────────────────────────────────
-
 describe('PUT (validates against GET /v1/models/{model_id} before persisting)', () => {
   it('probes the model with the sealed key, then seals the chosen modelId for the acting DID', async () => {
     const fetchMock = stubFetch({ id: 'claude-opus-4-6' }, true, 200);
@@ -266,80 +235,6 @@ describe('PUT (validates against GET /v1/models/{model_id} before persisting)', 
       expect.any(Object),
     );
     expect(mockSetModelId).toHaveBeenCalledWith(OWNER_DID, 'claude-opus-4-6');
-  });
-
-  it('returns 400 on malformed JSON', async () => {
-    const res = await PUT(makeReq(undefined, { malformed: true }));
-
-    expect(res.status).toBe(400);
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['missing', {}],
-    ['blank', { modelId: '   ' }],
-    ['non-string', { modelId: 42 }],
-  ])('returns 400 when modelId is %s', async (_label, body) => {
-    const res = await PUT(makeReq(body));
-
-    expect(res.status).toBe(400);
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 anthropic_no_key when no key is sealed, without probing', async () => {
-    mockLoadAnthropicSealedCredentials.mockResolvedValue(undefined);
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-
-    const res = await PUT(makeReq({ modelId: 'claude-opus-4-6' }));
-
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/anthropic_no_key/);
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('returns 409 anthropic_credential_pending when the key is sealed but awaiting grant approval', async () => {
-    mockLoadAnthropicSealedCredentials.mockResolvedValue(undefined);
-    mockAnthropicKeyPending.mockResolvedValue(true);
-
-    const res = await PUT(makeReq({ modelId: 'claude-opus-4-6' }));
-
-    expect(res.status).toBe(409);
-    expect((await res.json()).error).toMatch(/anthropic_credential_pending/);
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('rejects a retired model with 422 model_deprecated when the probe 404s, without sealing it', async () => {
-    stubFetch({ error: { message: 'not found' } }, false, 404);
-
-    const res = await PUT(makeReq({ modelId: 'claude-1' }));
-    const body = await res.json() as { error: string; modelId: string };
-
-    expect(res.status).toBe(422);
-    expect(body.error).toBe('model_deprecated');
-    expect(body.modelId).toBe('claude-1');
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('maps a non-404 probe failure to 502 and never leaks the key', async () => {
-    const fetchMock = stubFetch({ error: { message: 'rate limited' } }, false, 429);
-
-    const res = await PUT(makeReq({ modelId: 'claude-opus-4-6' }));
-
-    expect(fetchMock).toHaveBeenCalledWith(expect.any(String), expect.any(Object));
-    expect(res.status).toBe(502);
-    expect(JSON.stringify(await res.json())).not.toContain(API_KEY);
-    expect(mockSetModelId).not.toHaveBeenCalled();
-  });
-
-  it('maps a network failure during the probe to 502, without sealing the model', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
-
-    const res = await PUT(makeReq({ modelId: 'claude-opus-4-6' }));
-
-    expect(res.status).toBe(502);
-    expect(mockSetModelId).not.toHaveBeenCalled();
   });
 
   it('returns 500 when sealing fails after a successful probe, without echoing the key', async () => {

@@ -145,6 +145,178 @@ export interface ModelPickerRouteContractFixture<Req = ModelPickerRouteRequest> 
   };
 }
 
+export interface ModelPickerAuthAndValidationMocks {
+  resolveOwnerDid: Mock;
+  loadSealedCredentials: Mock;
+  keyPending: Mock;
+  setModelId: Mock;
+}
+
+export interface ModelPickerAuthAndValidationFixture<Req = ModelPickerRouteRequest> {
+  /** Lowercase connector id — drives the `${id}_no_key` / `${id}_credential_pending` error regexes. */
+  id: string;
+  GET: (request: Req) => Promise<Response>;
+  PUT: (request: Req) => Promise<Response>;
+  OPTIONS: (request: Req) => Promise<Response>;
+  makeReq: (body?: unknown, opts?: { malformed?: boolean }) => Req;
+  mocks: ModelPickerAuthAndValidationMocks;
+  /** A believable model id, used only to exercise auth/validation paths — never asserted on its own. */
+  sampleModelId: string;
+  /**
+   * When supplied, the two upstream-failure PUT cases additionally assert the
+   * sealed key never appears in the response body. Omit for a route whose
+   * own tests already cover this (e.g. via a GET-side key-leak assertion).
+   */
+  apiKey?: string;
+}
+
+/**
+ * Pins the auth/credential-state/validation contract every model-picker
+ * route shares regardless of the upstream provider's own list/probe shape
+ * (#1953): the auth failure short-circuit, CORS pre-flight, the GET
+ * `${id}_no_key`/`${id}_credential_pending` states, PUT body validation
+ * (malformed JSON, missing/blank/non-string `modelId`), PUT's own
+ * `${id}_no_key`/`${id}_credential_pending` states, the 404→`model_deprecated`
+ * (422) mapping, and the non-404/network-failure→502 mappings.
+ *
+ * Gemini (#1769) and Anthropic (#1953) both hand-declare `listModels`/
+ * `probeModel` because their upstream shapes are not OpenAI-compatible, but
+ * this SLICE of their route contract — everything upstream of actually
+ * calling the provider — is identical to every other model picker, and had
+ * been hand-copied between their two test files down to the assertion prose
+ * (#1953 flagged 93 duplicated lines between them). Declaring it once here,
+ * parameterized on the route's own handlers/mocks, is the OpenAI-compatible
+ * providers' `describeModelPickerRouteContract` treatment applied to the
+ * bespoke-shape providers' shared slice instead of their whole contract.
+ */
+export function describeModelPickerAuthAndValidationContract<Req>(
+  fixture: ModelPickerAuthAndValidationFixture<Req>,
+): void {
+  const { id, GET, PUT, OPTIONS, makeReq, mocks, sampleModelId, apiKey } = fixture;
+
+  function expectNoLeak(body: unknown): void {
+    if (apiKey !== undefined) {
+      expect(JSON.stringify(body)).not.toContain(apiKey);
+    }
+  }
+
+  describe('every verb is authenticated', () => {
+    it.each([
+      ['GET', GET],
+      ['PUT', PUT],
+    ])('returns the auth failure from %s without touching credentials', async (_verb, handler) => {
+      mocks.resolveOwnerDid.mockResolvedValueOnce({ ok: false, error: 'Unauthorized', status: 401 });
+
+      const res = await handler(makeReq({ modelId: sampleModelId }));
+
+      expect(res.status).toBe(401);
+      expect(mocks.loadSealedCredentials).not.toHaveBeenCalled();
+      expect(mocks.setModelId).not.toHaveBeenCalled();
+    });
+
+    it('answers CORS pre-flight', async () => {
+      const res = await OPTIONS(makeReq());
+      expect(res.status).toBe(204);
+    });
+  });
+
+  describe('credential states', () => {
+    it(`returns 400 ${id}_no_key when no key is sealed for this identity`, async () => {
+      mocks.loadSealedCredentials.mockResolvedValue(undefined);
+
+      const res = await GET(makeReq());
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(new RegExp(`${id}_no_key`));
+    });
+
+    it(`returns 409 ${id}_credential_pending when the key is sealed but awaiting owner grant approval (#1773)`, async () => {
+      mocks.loadSealedCredentials.mockResolvedValue(undefined);
+      mocks.keyPending.mockResolvedValue(true);
+
+      const res = await GET(makeReq());
+
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toMatch(new RegExp(`${id}_credential_pending`));
+    });
+  });
+
+  describe('PUT validation and credential states', () => {
+    it('returns 400 on malformed JSON', async () => {
+      const res = await PUT(makeReq(undefined, { malformed: true }));
+
+      expect(res.status).toBe(400);
+      expect(mocks.setModelId).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['missing', {}],
+      ['blank', { modelId: '   ' }],
+      ['non-string', { modelId: 42 }],
+    ])('returns 400 when modelId is %s', async (_label, body) => {
+      const res = await PUT(makeReq(body));
+
+      expect(res.status).toBe(400);
+      expect(mocks.setModelId).not.toHaveBeenCalled();
+    });
+
+    it(`returns 400 ${id}_no_key when no key is sealed, without probing`, async () => {
+      mocks.loadSealedCredentials.mockResolvedValue(undefined);
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const res = await PUT(makeReq({ modelId: sampleModelId }));
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toMatch(new RegExp(`${id}_no_key`));
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mocks.setModelId).not.toHaveBeenCalled();
+    });
+
+    it(`returns 409 ${id}_credential_pending when the key is sealed but awaiting grant approval`, async () => {
+      mocks.loadSealedCredentials.mockResolvedValue(undefined);
+      mocks.keyPending.mockResolvedValue(true);
+
+      const res = await PUT(makeReq({ modelId: sampleModelId }));
+
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toMatch(new RegExp(`${id}_credential_pending`));
+      expect(mocks.setModelId).not.toHaveBeenCalled();
+    });
+
+    it('rejects a retired model with 422 model_deprecated when the probe 404s, without sealing it', async () => {
+      stubModelPickerFetch({ error: 'not found' }, false, 404);
+
+      const res = await PUT(makeReq({ modelId: sampleModelId }));
+      const body = await res.json() as { error: string; modelId: string };
+
+      expect(res.status).toBe(422);
+      expect(body.error).toBe('model_deprecated');
+      expect(body.modelId).toBe(sampleModelId);
+      expect(mocks.setModelId).not.toHaveBeenCalled();
+    });
+
+    it('maps a non-404 probe failure to 502, without sealing the model', async () => {
+      stubModelPickerFetch({ error: 'rate limited' }, false, 429);
+
+      const res = await PUT(makeReq({ modelId: sampleModelId }));
+
+      expect(res.status).toBe(502);
+      expectNoLeak(await res.json());
+      expect(mocks.setModelId).not.toHaveBeenCalled();
+    });
+
+    it('maps a network failure during the probe to 502, without sealing the model', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+
+      const res = await PUT(makeReq({ modelId: sampleModelId }));
+
+      expect(res.status).toBe(502);
+      expect(mocks.setModelId).not.toHaveBeenCalled();
+    });
+  });
+}
+
 /**
  * Pins the route CONTRACT for a connector's GET/PUT `/api/models` model
  * picker (#1927):
