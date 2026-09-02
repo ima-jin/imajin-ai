@@ -146,7 +146,14 @@ const BRAIN_CONNECTORS: readonly BrainConnector[] = [
     provider: 'anthropic',
     scope: 'anthropic:infer',
     tokenRoute: '/anthropic/api/token',
-    defaultModelId: 'claude-sonnet-4-20250514',
+    // #1953, following the #1769 precedent: no hardcoded default. Anthropic
+    // was the last inference connector still carrying one
+    // (`claude-sonnet-4-20250514`) — a dated snapshot that goes stale the
+    // same way gemini-2.0-flash did (#1764), and a retired model can come
+    // back as something other than a clean 404. The owner picks a live
+    // model from GET /anthropic/api/models and it is sealed as `modelId` —
+    // see `NoModelSelectedError` for the fail-closed path when none is
+    // chosen yet.
     load: loadAnthropicCredentials,
   },
   {

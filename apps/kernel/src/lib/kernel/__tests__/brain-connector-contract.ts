@@ -81,9 +81,11 @@ export interface ConnectorIdentityContractFixture {
   inferScope: string;
   /**
    * The connector's exported base-URL constant, when it has one. Gemini and
-   * Anthropic do not export a shared endpoint constant the way the
-   * OpenAI-compatible providers (OpenAI, xAI) do, so this — and
-   * `expectedBaseUrl` — are omitted for them and the endpoint test is skipped.
+   * Anthropic do not exercise this identity-contract style test (they use
+   * `describeConnectorCredentialLifecycleContract` instead, since both
+   * predate `createConnectorTokenPaste`), so this — and `expectedBaseUrl` —
+   * are simply unused by their fixtures rather than proving they lack a
+   * shared endpoint constant.
    */
   baseUrl?: string;
   /** The literal endpoint that constant is expected to hold. */
@@ -92,9 +94,11 @@ export interface ConnectorIdentityContractFixture {
   capturedOpts: { current: Record<string, unknown> | null };
   loadCredentials: Mock;
   /**
-   * Only providers with a model picker (#1773) have a grant-skipping read.
-   * Anthropic has none, so this — and `loadProviderSealedCredentials` — are
-   * omitted for it and that test is skipped.
+   * Only providers exercising this identity-contract fixture and carrying a
+   * model picker (#1773) supply this. Gemini and Anthropic have one too
+   * (#1769, #1953) but are tested via
+   * `describeConnectorCredentialLifecycleContract` instead, so this — and
+   * `loadProviderSealedCredentials` — are simply unused by their fixtures.
    */
   loadSealedCredentials?: Mock;
   loadProviderCredentials: (ownerDid: string) => Promise<unknown>;
@@ -143,9 +147,9 @@ export function describeConnectorIdentityContract(fixture: ConnectorIdentityCont
     /**
      * The brain entry's `defaultBaseUrl` and the model-picker route both read
      * this. Two copies of a provider endpoint is how one of them ends up
-     * pointing somewhere retired. Only OpenAI-compatible providers (OpenAI,
-     * xAI) export this constant — Gemini and Anthropic omit `baseUrl`, so
-     * this test is skipped for them.
+     * pointing somewhere retired. Gemini and Anthropic omit `baseUrl` here
+     * only because they use `describeConnectorCredentialLifecycleContract`
+     * instead of this fixture, not because they lack the constant.
      */
     if (baseUrl !== undefined) {
       it(`exports one ${label} endpoint for every caller to share`, () => {
@@ -167,8 +171,8 @@ export function describeConnectorIdentityContract(fixture: ConnectorIdentityCont
      * #1773: the picker asks "what can the owner's own key do?", which the
      * owner asks before the grant step exists. It must NOT be reachable
      * through the grant-checked path, and the grant-checked path must not
-     * quietly become this one. Only providers with a model picker have this
-     * read — Anthropic has none, so this test is skipped for it.
+     * quietly become this one. Skipped for connectors that do not populate
+     * this fixture field, not because they lack the read.
      */
     if (loadSealedCredentials !== undefined && loadProviderSealedCredentials !== undefined) {
       it('reserves the grant-skipping read for the model picker', async () => {
