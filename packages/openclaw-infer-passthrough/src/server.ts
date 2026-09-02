@@ -1,19 +1,23 @@
 /**
- * HTTP adapter (imajin-ai#1926). Binds `127.0.0.1` by default — this proxy is
- * meant to be reachable only from OpenClaw on the same gateway host, never
- * exposed on a public interface, since a leaked bearer to it would let a
- * caller mint on this app's behalf.
+ * HTTP adapter (imajin-ai#1926, extended by imajin-ai#1959). Binds
+ * `127.0.0.1` by default — this proxy is meant to be reachable only from
+ * OpenClaw/NanoClaw on the same gateway host, never exposed on a public
+ * interface, since a leaked bearer to it would let a caller mint on this
+ * app's behalf.
  *
  * Routes:
- *   POST /:providerId/v1/chat/completions  — explicit route selection
- *   POST /v1/chat/completions              — route selection via body.model
- *   GET  /healthz                          — break-glass observability (imajin-ai#1922 guardrail)
+ *   POST /:providerId/v1/chat/completions      — OpenAI-compatible, explicit route selection
+ *   POST /v1/chat/completions                  — OpenAI-compatible, route selection via body.model
+ *   POST /anthropic/v1/messages                — Anthropic-format raw passthrough (imajin-ai#1959)
+ *   POST /anthropic/v1/messages/count_tokens   — Anthropic-format token counting (imajin-ai#1959)
+ *   GET  /healthz                              — break-glass observability (imajin-ai#1922 guardrail), shared by both formats
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { loadConfig, resolveDirectApiKey } from './config.js';
 import { HealthTracker } from './health.js';
 import { handleCompletions } from './handle-completions.js';
+import { handleAnthropicRequest, type AnthropicEndpoint } from './anthropic-handler.js';
 import { createLogger } from './logger.js';
 import { RouteTokenProvider } from './token-provider.js';
 import type { ProxyConfig } from './types.js';
@@ -21,6 +25,12 @@ import type { ProxyConfig } from './types.js';
 const log = createLogger('openclaw-infer-passthrough');
 
 const COMPLETIONS_PATH_RE = /^\/(?:([a-zA-Z0-9_-]+)\/)?v1\/chat\/completions\/?$/;
+
+/** `/anthropic/v1/messages` or `/anthropic/v1/messages/count_tokens` — the fixed prefix a container points `ANTHROPIC_BASE_URL` at (imajin-ai#1959). */
+const ANTHROPIC_PATH_RE = /^\/anthropic\/v1\/messages(\/count_tokens)?\/?$/;
+
+/** The single well-known route id every Anthropic-format request resolves against — see `anthropic-handler.ts`'s header. */
+const ANTHROPIC_ROUTE_ID = 'anthropic';
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -71,9 +81,14 @@ export function createProxyServer(config: ProxyConfig) {
     health,
     log,
   };
+  // Anthropic-format deps share every field with `deps` above except `route`,
+  // which is resolved once here rather than per-request — there is exactly
+  // one Anthropic route (see the module header), unlike the OpenAI-compatible
+  // path's per-request lookup by path segment or `model` prefix.
+  const anthropicDeps = { ...deps, route: config.routes.find((r) => r.id === ANTHROPIC_ROUTE_ID) };
 
   return createServer((req, res) => {
-    void routeRequest(req, res, deps, health).catch((err: unknown) => {
+    void routeRequest(req, res, deps, anthropicDeps, health).catch((err: unknown) => {
       log.error({ err: err instanceof Error ? err.message : String(err) }, 'unhandled request error');
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -87,6 +102,7 @@ async function routeRequest(
   req: IncomingMessage,
   res: ServerResponse,
   deps: Parameters<typeof handleCompletions>[0],
+  anthropicDeps: Parameters<typeof handleAnthropicRequest>[0],
   health: HealthTracker,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -95,6 +111,22 @@ async function routeRequest(
     const body = JSON.stringify(health.snapshot());
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(body);
+    return;
+  }
+
+  const anthropicMatch = req.method === 'POST' ? ANTHROPIC_PATH_RE.exec(url.pathname) : null;
+  if (anthropicMatch) {
+    const endpoint: AnthropicEndpoint = anthropicMatch[1] ? 'count_tokens' : 'messages';
+    const bodyText = await readBody(req);
+    const result = await handleAnthropicRequest(anthropicDeps, {
+      endpoint,
+      bodyText,
+      sessionId: req.headers['x-session-id'] as string | undefined,
+      turnId: req.headers['x-turn-id'] as string | undefined,
+      anthropicVersion: req.headers['anthropic-version'] as string | undefined,
+      anthropicBeta: req.headers['anthropic-beta'] as string | undefined,
+    });
+    await writeProxyResponse(res, result.status, result.headers, result.body);
     return;
   }
 

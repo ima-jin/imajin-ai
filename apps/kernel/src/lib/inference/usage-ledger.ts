@@ -53,6 +53,14 @@ export interface RecordInferenceUsageParams {
   model: string;
   tokensIn?: number;
   tokensOut?: number;
+  /**
+   * Emitter-specific extra context, passed straight through to
+   * {@link PublishUsageIncurredParams.metadata} on the bus event — never
+   * written to the `usage.incurred` row itself (#1959: the Anthropic
+   * Messages passthrough's `format: 'anthropic-messages'` + cache-token
+   * fields; every other emitter continues to omit this and is unaffected).
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -61,7 +69,7 @@ export interface RecordInferenceUsageParams {
  * failed request.
  */
 export async function recordInferenceUsage(params: RecordInferenceUsageParams): Promise<void> {
-  const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut } = params;
+  const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut, metadata } = params;
   const connectorId = connectorRegistryId(principalDid, provider);
   const costUsd = computeCostUsd(provider, model, tokensIn, tokensOut);
   // #1148 emitter-agnostic quantity/unit: this emitter's resource is tokens,
@@ -107,7 +115,7 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
     // row is already durably written above, so a slow or failed bus publish
     // must never add latency to (or fail) an already-served completion —
     // same fail-open contract as the rest of this function.
-    publishUsageIncurred({ usageId, principalDid, resource, quantity, costUsd, source: 'inference-passthrough' }).catch((err: unknown) => {
+    publishUsageIncurred({ usageId, principalDid, resource, quantity, costUsd, source: 'inference-passthrough', metadata }).catch((err: unknown) => {
       log.error(
         { err: String(err), usageId, principalDid, resource },
         'usage.incurred bus publish failed — row already written',
@@ -131,6 +139,17 @@ export interface PublishUsageIncurredParams {
   costUsd: number | undefined;
   /** Which emitter produced this row, e.g. `'inference-passthrough'` or an external `usage.emitters` `source` (#1151). */
   source: string;
+  /**
+   * Emitter-specific extra context carried alongside the shared primitive
+   * fields (#1956 precedent: the presence-query emitter's `queryId` /
+   * `requesterDid` / `settled` / `settleAmount` / `mode`). Lands in the
+   * signed attestation's `payload.metadata`, never in the `usage.incurred`
+   * row itself (no such column exists, and this issue adds none) — the row
+   * stays exactly the shared primitive shape every emitter writes. Omitted
+   * entirely when not given, so every existing emitter's payload shape is
+   * unchanged. Must never carry secrets or raw prompt/completion text.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -145,7 +164,7 @@ export interface PublishUsageIncurredParams {
  * `publish('usage.incurred', ...)` call.
  */
 export async function publishUsageIncurred(params: PublishUsageIncurredParams): Promise<void> {
-  const { usageId, principalDid, resource, quantity, unit, costUsd, source } = params;
+  const { usageId, principalDid, resource, quantity, unit, costUsd, source, metadata } = params;
   const nodeDid = await getNodeDid();
 
   await publish('usage.incurred', {
@@ -165,6 +184,7 @@ export async function publishUsageIncurred(params: PublishUsageIncurredParams): 
       ts: new Date().toISOString(),
       context_id: usageId,
       context_type: 'usage',
+      ...(metadata ? { metadata } : {}),
     },
   });
 }

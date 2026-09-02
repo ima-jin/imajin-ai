@@ -1,12 +1,22 @@
 # @imajin/openclaw-infer-passthrough
 
-Local OpenAI-compatible HTTP proxy implementing [imajin-ai#1926](https://github.com/ima-jin/imajin-ai/issues/1926)
+Local HTTP proxy implementing [imajin-ai#1926](https://github.com/ima-jin/imajin-ai/issues/1926)
 (Phase 4 of the [#1922](https://github.com/ima-jin/imajin-ai/issues/1922) inference
-connectors epic): it sits between OpenClaw and the kernel's completions passthrough
-(`POST /infer/v1/chat/completions`, [#1925](https://github.com/ima-jin/imajin-ai/issues/1925),
-PR [#1936](https://github.com/ima-jin/imajin-ai/pull/1936)) so OpenClaw's custom-provider
-model can move off static gateway-config keys without OpenClaw itself needing to speak
-the kernel's short-lived app-token auth.
+connectors epic): it sits between OpenClaw/NanoClaw and the kernel's completions
+passthroughs so a custom-provider model (OpenAI-compatible) or an `ANTHROPIC_BASE_URL`
+harness (Anthropic Messages format) can move off static gateway-config keys without the
+harness itself needing to speak the kernel's short-lived app-token auth. Two wire
+formats, one shim — see [imajin-ai#1959](https://github.com/ima-jin/imajin-ai/issues/1959):
+
+- **OpenAI-compatible** (`POST /v1/chat/completions`, `POST /:providerId/v1/chat/completions`)
+  — forwards to `POST /infer/v1/chat/completions` ([#1925](https://github.com/ima-jin/imajin-ai/issues/1925),
+  PR [#1936](https://github.com/ima-jin/imajin-ai/pull/1936)).
+- **Anthropic-format** (`POST /anthropic/v1/messages`, `POST /anthropic/v1/messages/count_tokens`)
+  — forwards to `POST /infer/v1/messages` and its `count_tokens` sibling
+  ([#1959](https://github.com/ima-jin/imajin-ai/issues/1959)) for harnesses that speak the
+  Anthropic Messages API natively via `ANTHROPIC_BASE_URL` — today NanoClaw
+  ([#1932](https://github.com/ima-jin/imajin-ai/issues/1932)), via the Claude Agent SDK /
+  Claude Code CLI.
 
 > **Scope note.** This package ships **code + the runbook below**. It does not touch any
 > live gateway config — the gateway host is operated separately. The prod acceptance
@@ -37,6 +47,8 @@ this proxy becomes unnecessary — but as of this writing, it's the only path.
 
 ## How it works
 
+### OpenAI-compatible path
+
 1. OpenClaw sends an OpenAI-compatible `POST /v1/chat/completions` (or
    `POST /{providerId}/v1/chat/completions`) to this proxy.
 2. The proxy resolves which **route** (provider) the request is for — either from the
@@ -64,6 +76,48 @@ flowchart LR
   Proxy -.->|"5xx / timeout only"| Direct["Direct provider API\n(break-glass)"]
   Kernel --> Ledger["usage.incurred (#1925/#1923)"]
 ```
+
+### Anthropic-format path (NanoClaw / Claude Code) — #1959
+
+1. A container sets `ANTHROPIC_BASE_URL` to this shim's `/anthropic` prefix
+   (`http://127.0.0.1:PORT/anthropic`) and `ANTHROPIC_API_KEY` to any placeholder value —
+   the Claude Agent SDK / Claude Code CLI send that value as `x-api-key`, which this shim
+   never actually checks (same "unused placeholder" contract the OpenAI-compatible path's
+   `apiKey` field already has).
+2. The SDK/CLI's `POST /v1/messages` and `POST /v1/messages/count_tokens` calls land on
+   this shim at `POST /anthropic/v1/messages` and `POST /anthropic/v1/messages/count_tokens`.
+   There is exactly one Anthropic route in the config table (`id: "anthropic"`) — unlike
+   the OpenAI-compatible path, there is no per-model routing to do, since every
+   `ANTHROPIC_BASE_URL` request speaks for the one sealed Anthropic connector.
+3. The shim mints (or reuses) the SAME kind of kernel app-token JWT as the OpenAI-compatible
+   path — same `infer:completions` scope, same mint-and-refresh discipline — but rides it
+   as `x-api-key`, not `Authorization: Bearer`: the kernel's `POST /infer/v1/messages` (and
+   its `count_tokens` sibling) accepts the app-token JWT in either header for exactly this
+   reason (`resolveInferenceAuth`, #1959).
+4. It forwards the exact request body — plus the caller's `anthropic-version`/`anthropic-beta`
+   headers, unchanged — to `POST {KERNEL_BASE_URL}/infer/v1/messages` (or `.../count_tokens`),
+   streaming the response back byte for byte.
+5. Break-glass follows the identical rule as the OpenAI-compatible path, reusing the SAME
+   `directBaseUrl`/`directApiKeyEnvVar` config fields on the `"anthropic"` route entry —
+   there is no separate config surface for this wire format: a kernel `5xx`/timeout falls
+   back to `{directBaseUrl}/messages` (or `.../messages/count_tokens`) with `x-api-key`
+   auth; a kernel `4xx` is always forwarded verbatim.
+6. `GET /healthz` reports the same shared snapshot — fallbacks from either wire format
+   count toward the same `fallbackCount`/`fallbackRate`.
+
+```mermaid
+flowchart LR
+  NanoClaw -->|"ANTHROPIC_BASE_URL"| Proxy["openclaw-infer-passthrough\n127.0.0.1:PORT/anthropic"]
+  Proxy -->|"mint app-token JWT"| AuthToken["POST /auth/api/apps/token"]
+  Proxy -->|"x-api-key: app-token"| Kernel["POST /infer/v1/messages"]
+  Proxy -.->|"5xx / timeout only"| Direct["api.anthropic.com\n(break-glass, x-api-key)"]
+  Kernel --> Ledger["usage.incurred (#1959)"]
+```
+
+This closes the #1932 hand-build's documented deviation (`docs/agents/nanoclaw-first-boot.md`):
+NanoClaw's Claude provider needs zero code changes to move off its scoped direct Anthropic
+key — point `ANTHROPIC_BASE_URL` at this shim and `ANTHROPIC_API_KEY` at a placeholder,
+using the same wiring the OpenAI-compatible path already established.
 
 ## Why the delegated app-token flow, not the service-token flow
 
@@ -138,6 +192,29 @@ proxy — real auth happens kernel-side via the minted app-token, not via anythi
 OpenClaw sends. Keep it a clearly-fake placeholder, not a real secret, in gateway
 config.
 
+### Anthropic-format (NanoClaw / Claude Code) — #1959
+
+No new environment variables: a NanoClaw/Claude Code container reuses the SAME
+`KERNEL_BASE_URL`, `OPENCLAW_APP_DID`, `OPENCLAW_APP_PRIVATE_KEY`, and
+`INFER_PROXY_ROUTES_CONFIG` this shim already requires, plus the routes config's
+existing `"anthropic"` entry (`directBaseUrl`/`directApiKeyEnvVar` for break-glass).
+Set these two container env vars to point the harness at this shim instead of Anthropic
+directly:
+
+| Variable | Value shape |
+|---|---|
+| `ANTHROPIC_BASE_URL` | `http://127.0.0.1:{INFER_PROXY_PORT}/anthropic` — the shim's fixed Anthropic-format prefix. The Claude Agent SDK / Claude Code CLI append `/v1/messages` and `/v1/messages/count_tokens` themselves. |
+| `ANTHROPIC_API_KEY` | Any non-empty placeholder (e.g. `unused-placeholder`) — never checked by this shim, same contract as the OpenAI-compatible path's `apiKey` field above. Real auth happens kernel-side via the minted app-token, sent as `x-api-key`. |
+
+```env
+ANTHROPIC_BASE_URL=http://127.0.0.1:8787/anthropic
+ANTHROPIC_API_KEY=unused-placeholder
+```
+
+This is the exact follow-up #1932's `docs/agents/nanoclaw-first-boot.md` deviation
+calls for: swap those two lines in for the scoped direct Anthropic key, no other
+container or code change, and the deployment is off the direct-key deviation.
+
 ## Migration runbook
 
 > **Order correction.** #1926's original body said "Anthropic first among hosted
@@ -191,11 +268,14 @@ finally purged from OpenClaw's own config/.env — **not** part of this ticket.
 
 Every successful passthrough call writes one row via `recordInferenceUsage` (see
 `apps/kernel/src/lib/inference/completions/openai-compatible-adapter.ts` and
-`anthropic-adapter.ts`, landed in #1925/PR #1936) into the per-turn `inference.usage`
-ledger (naming finalized in #1923), keyed by principal DID, agent DID, session/turn id
-(forwarded from this proxy's `X-Session-Id`/`X-Turn-Id` request headers when OpenClaw
-sends them), provider, model, and token counts. To confirm a specific flipped route is
-actually being metered:
+`anthropic-adapter.ts`, landed in #1925/PR #1936 — plus `anthropic-messages/forward.ts`
+for the `/anthropic/*` path, #1959) into the per-turn `inference.usage` ledger (naming
+finalized in #1923), keyed by principal DID, agent DID, session/turn id (forwarded from
+this proxy's `X-Session-Id`/`X-Turn-Id` request headers when OpenClaw/NanoClaw send
+them), provider, model, and token counts. The Anthropic-format path additionally carries
+`cache_creation_input_tokens`/`cache_read_input_tokens` in the row's metadata, and never
+meters `POST /anthropic/v1/messages/count_tokens` calls — token counting is not a billed
+Anthropic call. To confirm a specific flipped route is actually being metered:
 
 - Query the per-connector spend burn-down
   (`GET /connections/api/connectors/:id/spend`, gated by `infer:usage-read`) for the
