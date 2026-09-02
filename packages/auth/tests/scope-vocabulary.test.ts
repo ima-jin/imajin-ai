@@ -19,6 +19,7 @@ import {
   allScopes,
   type ConnectorId,
   type ConnectorScopeEntry,
+  type Scope,
 } from '../src/scope-vocabulary';
 import { SCOPES, validateScopes } from '../src/scopes';
 
@@ -251,80 +252,38 @@ describe('SCOPES is a faithful projection', () => {
   });
 
   /**
-   * #1924: the third brain a DID can seal, and the net-new provider the #1922
-   * passthrough is validated on first. Same quadrant as gemini:infer and
-   * anthropic:infer, so it must derive owner-only and name its own connector as
-   * the sole viewer.
+   * #1924/#1927/#1930: the third, fourth, and fifth brains a DID can seal —
+   * xAI, OpenAI, and Moonshot AI (Kimi) — net-new providers the #1922
+   * passthrough validates in that order (Grok → OpenAI → Gemini → +Kimi,
+   * Anthropic last). All three are OpenAI-compatible and sit in the same
+   * quadrant as gemini:infer/anthropic:infer, so each must derive owner-only
+   * and name its own connector as the sole viewer. Collapsed into one
+   * parameterized case (rather than a hand-copied `it()` pair per provider,
+   * which is exactly the same-shape-different-literal block SonarCloud's
+   * duplication detector flagged once a third provider joined — #1930) since
+   * the assertions are identical across all three. None is on the MCP
+   * capability ceiling yet: the passthrough (#1922 Phase 2) is not built, so
+   * no MCP tool can spend any of these keys.
    */
-  it('includes xai:infer as an owner-only connector scope', () => {
-    expect(SCOPES['xai:infer']).toBe('Use your xAI API key for inference');
-    expect(validateScopes(['xai:infer']).invalid).toEqual([]);
+  it.each([
+    ['xai:infer', 'xai', 'xAI', 'xai-api'],
+    ['openai:infer', 'openai', 'OpenAI', 'openai-api'],
+    ['moonshot:infer', 'moonshot', 'Moonshot', 'moonshot-api'],
+  ] satisfies Array<[Scope, ConnectorId, string, string]>)(
+    'includes %s as an owner-only connector scope, off the MCP ceiling',
+    (scope, id, label, surface) => {
+      expect(SCOPES[scope]).toBe(`Use your ${label} API key for inference`);
+      expect(validateScopes([scope]).invalid).toEqual([]);
 
-    const entry = scopeEntry('xai:infer') as ConnectorScopeEntry;
-    expect(entry.connector).toBe('xai');
-    expect(entry.surface).toBe('xai-api');
-    expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
-    expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.xai);
-  });
+      const entry = scopeEntry(scope) as ConnectorScopeEntry;
+      expect(entry.connector).toBe(id);
+      expect(entry.surface).toBe(surface);
+      expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
+      expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS[id]);
 
-  /**
-   * The passthrough (#1922 Phase 2) is not built yet, so no MCP tool can spend
-   * the sealed Grok key. Keeping it off the ceiling until then mirrors how the
-   * GCP scopes were staged below.
-   */
-  it('keeps xai:infer off the MCP capability ceiling', () => {
-    expect(scopesForSurface('mcp')).not.toContain('xai:infer');
-  });
-
-  /**
-   * #1927: the fourth brain a DID can seal, and the reference dialect for the
-   * OpenAI-compatible passthrough (#1925). Same quadrant as gemini:infer,
-   * anthropic:infer, and xai:infer, so it must derive owner-only and name its
-   * own connector as the sole viewer.
-   */
-  it('includes openai:infer as an owner-only connector scope', () => {
-    expect(SCOPES['openai:infer']).toBe('Use your OpenAI API key for inference');
-    expect(validateScopes(['openai:infer']).invalid).toEqual([]);
-
-    const entry = scopeEntry('openai:infer') as ConnectorScopeEntry;
-    expect(entry.connector).toBe('openai');
-    expect(entry.surface).toBe('openai-api');
-    expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
-    expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.openai);
-  });
-
-  /**
-   * The passthrough (#1922 Phase 2) is not built yet, so no MCP tool can spend
-   * the sealed OpenAI key either.
-   */
-  it('keeps openai:infer off the MCP capability ceiling', () => {
-    expect(scopesForSurface('mcp')).not.toContain('openai:infer');
-  });
-
-  /**
-   * #1930: the fifth brain a DID can seal — Moonshot AI (Kimi), OpenAI-
-   * compatible and pointed at api.moonshot.ai. Same quadrant as gemini:infer,
-   * anthropic:infer, xai:infer, and openai:infer, so it must derive
-   * owner-only and name its own connector as the sole viewer.
-   */
-  it('includes moonshot:infer as an owner-only connector scope', () => {
-    expect(SCOPES['moonshot:infer']).toBe('Use your Moonshot API key for inference');
-    expect(validateScopes(['moonshot:infer']).invalid).toEqual([]);
-
-    const entry = scopeEntry('moonshot:infer') as ConnectorScopeEntry;
-    expect(entry.connector).toBe('moonshot');
-    expect(entry.surface).toBe('moonshot-api');
-    expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
-    expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.moonshot);
-  });
-
-  /**
-   * The passthrough (#1922 Phase 2) is not built yet, so no MCP tool can spend
-   * the sealed Moonshot key either.
-   */
-  it('keeps moonshot:infer off the MCP capability ceiling', () => {
-    expect(scopesForSurface('mcp')).not.toContain('moonshot:infer');
-  });
+      expect(scopesForSurface('mcp')).not.toContain(scope);
+    },
+  );
 
   /**
    * #1317: Stage 1 of the Google Cloud connector. A service-account key is broad,

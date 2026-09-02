@@ -127,59 +127,26 @@ describe('pinned scope sets (change these deliberately)', () => {
     ]);
   });
 
-  it('pins the GitHub connector card toggles', () => {
-    expect(connectorUiScopes('github').map((s) => s.name)).toEqual([
-      'github:read',
-      'github:write',
-      'github:org',
-    ]);
-  });
-
-  it('pins the Discord connector card toggles', () => {
-    expect(connectorUiScopes('discord').map((s) => s.name)).toEqual(['discord:post', 'discord:read']);
-  });
-
-  it('pins the Gemini connector card toggles', () => {
-    expect(connectorUiScopes('gemini').map((s) => s.name)).toEqual(['gemini:infer']);
-  });
-
-  it('pins the Anthropic connector card toggles', () => {
-    expect(connectorUiScopes('anthropic').map((s) => s.name)).toEqual(['anthropic:infer']);
-  });
-
-  it('pins the xAI connector card toggles', () => {
-    expect(connectorUiScopes('xai').map((s) => s.name)).toEqual(['xai:infer']);
-  });
-
-  it('pins the OpenAI connector card toggles', () => {
-    expect(connectorUiScopes('openai').map((s) => s.name)).toEqual(['openai:infer']);
-  });
-
-  it('pins the Moonshot connector card toggles', () => {
-    expect(connectorUiScopes('moonshot').map((s) => s.name)).toEqual(['moonshot:infer']);
-  });
-
-  it('pins the Google Cloud connector card toggles', () => {
-    expect(connectorUiScopes('gcp').map((s) => s.name)).toEqual([
-      'gcp:iam:read',
-      'gcp:vertex:invoke',
-      'gcp:project:read',
-    ]);
-  });
-
-  it('pins the QuickBooks connector card toggles', () => {
-    expect(connectorUiScopes('quickbooks').map((s) => s.name)).toEqual([
-      'quickbooks:read',
-      'quickbooks:write',
-    ]);
-  });
-
-  it('pins the Warp connector card toggles', () => {
-    expect(connectorUiScopes('warp').map((s) => s.name)).toEqual(['warp:dispatch']);
-  });
-
-  it('pins the Stripe connector card toggles', () => {
-    expect(connectorUiScopes('stripe').map((s) => s.name)).toEqual(['stripe:events']);
+  // Every other connector card pins one flat list of scope names, differing
+  // only in id and expected scopes — hand-copying an `it()` per connector
+  // (as this used to be) is exactly the kind of same-shape-different-literal
+  // block SonarCloud's duplication detector flags once enough connectors pile
+  // up (#1930). One parameterized case, one row per connector, matches the
+  // `it.each` pattern already used below for the #1393/#1298 regressions.
+  it.each([
+    ['GitHub', 'github', ['github:read', 'github:write', 'github:org']],
+    ['Discord', 'discord', ['discord:post', 'discord:read']],
+    ['Gemini', 'gemini', ['gemini:infer']],
+    ['Anthropic', 'anthropic', ['anthropic:infer']],
+    ['xAI', 'xai', ['xai:infer']],
+    ['OpenAI', 'openai', ['openai:infer']],
+    ['Moonshot', 'moonshot', ['moonshot:infer']],
+    ['Google Cloud', 'gcp', ['gcp:iam:read', 'gcp:vertex:invoke', 'gcp:project:read']],
+    ['QuickBooks', 'quickbooks', ['quickbooks:read', 'quickbooks:write']],
+    ['Warp', 'warp', ['warp:dispatch']],
+    ['Stripe', 'stripe', ['stripe:events']],
+  ] satisfies Array<[string, ConnectorId, string[]]>)('pins the %s connector card toggles', (_label, id, expected) => {
+    expect(connectorUiScopes(id).map((s) => s.name)).toEqual(expected);
   });
 
   /**
