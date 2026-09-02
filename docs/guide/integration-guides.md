@@ -39,6 +39,16 @@ The OpenClaw Imajin plugin (`extensions/imajin/`) acts as a bridge:
 - Signed audit trail of every action
 - Workspace persistence in `.jin/openclaw/`
 
+### Migrating OpenClaw's model providers to the kernel passthrough
+
+OpenClaw's own inference calls (its custom-provider model config, separate from the
+chat-as-channel bridge above) can also be routed through the kernel's completions
+passthrough instead of static per-provider keys in gateway config — see
+[`packages/openclaw-infer-passthrough`](../../packages/openclaw-infer-passthrough/README.md)
+for the local proxy shim and the step-by-step migration/rollback runbook
+(imajin-ai#1926, Phase 4 of the [#1922](https://github.com/ima-jin/imajin-ai/issues/1922)
+inference connectors epic).
+
 ---
 
 ## Flue + Imajin
