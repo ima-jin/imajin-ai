@@ -65,6 +65,10 @@ export const usageIncurred = usageSchema.table(
     quantity: numeric('quantity', { precision: 24, scale: 6 }),
     unit: text('unit'),
     transactionId: text('transaction_id'),                // pay.transactions.id this call's spend was recorded under
+    // #1151 dedupe key: an external emitter's own idempotency key for the
+    // underlying event (e.g. a Claude Code session-JSONL message uuid). Null
+    // for the passthrough emitter, whose calls are already exactly-once.
+    externalId: text('external_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -74,11 +78,50 @@ export const usageIncurred = usageSchema.table(
     turnIdx: index('idx_usage_incurred_turn').on(table.turnId),
     connectorIdx: index('idx_usage_incurred_connector').on(table.connectorId, table.createdAt),
     createdIdx: index('idx_usage_incurred_created').on(table.createdAt),
+    // #1151 dedupe: partial unique index (see migrations/0121_usage_emitters.sql)
+    // so re-tailing/re-polling an external emitter can never double-count.
+    sourceExternalIdUniq: uniqueIndex('uniq_usage_incurred_source_external_id')
+      .on(table.source, table.externalId)
+      .where(sql`${table.externalId} IS NOT NULL`),
   }),
 );
 
 export type UsageIncurred = typeof usageIncurred.$inferSelect;
 export type NewUsageIncurred = typeof usageIncurred.$inferInsert;
+
+// usage.emitters (#1151)
+//
+// Registry of every source allowed to write into usage.incurred, other than
+// the completions passthrough (which is seeded as a row here too, in
+// migrations/0121_usage_emitters.sql, even though it writes usage.incurred
+// directly rather than through POST /usage/api/incurred). See that
+// migration's header for the full column-by-column rationale.
+// ---------------------------------------------------------------------------
+
+export const usageEmitters = usageSchema.table(
+  'emitters',
+  {
+    source: text('source').primaryKey(),           // usage.incurred.source this row governs, e.g. 'adapter:claude-code'
+    reader: text('reader').notNull(),               // 'tail-jsonl' | 'push' | 'internal' | ...
+    issuerDid: text('issuer_did').notNull(),         // DID this emitter is registered by; checked against the ingest caller
+    actingFor: text('acting_for'),                   // DID this emitter reports spend on behalf of, when it differs from issuerDid
+    keyField: text('key_field'),                     // vault FIELD NAME the reader needs, if any — a reference, never a credential
+    cadence: text('cadence'),                        // free-text cadence hint for polling/batch readers
+    config: jsonb('config').notNull().default(sql`'{}'::jsonb`),
+    status: text('status').notNull().default('active'), // 'active' | 'revoked'
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    issuerIdx: index('idx_usage_emitters_issuer').on(table.issuerDid, table.status),
+    keyFieldIdx: index('idx_usage_emitters_key_field')
+      .on(table.keyField)
+      .where(sql`${table.keyField} IS NOT NULL`),
+  }),
+);
+
+export type UsageEmitter = typeof usageEmitters.$inferSelect;
+export type NewUsageEmitter = typeof usageEmitters.$inferInsert;
 
 // ---------------------------------------------------------------------------
 // usage.billed (Stage 1 of #1076)

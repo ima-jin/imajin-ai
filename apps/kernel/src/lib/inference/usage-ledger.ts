@@ -107,7 +107,7 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
     // row is already durably written above, so a slow or failed bus publish
     // must never add latency to (or fail) an already-served completion —
     // same fail-open contract as the rest of this function.
-    publishUsageIncurred({ usageId, principalDid, resource, quantity, costUsd }).catch((err: unknown) => {
+    publishUsageIncurred({ usageId, principalDid, resource, quantity, costUsd, source: 'inference-passthrough' }).catch((err: unknown) => {
       log.error(
         { err: String(err), usageId, principalDid, resource },
         'usage.incurred bus publish failed — row already written',
@@ -121,12 +121,16 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
   }
 }
 
-interface PublishUsageIncurredParams {
+export interface PublishUsageIncurredParams {
   usageId: string;
   principalDid: string;
   resource: string;
   quantity: number | undefined;
+  /** `null` when `quantity` is a raw count with no natural unit (e.g. inferred token sums default to `'tokens'` at the call site); explicit for every other emitter. */
+  unit?: string;
   costUsd: number | undefined;
+  /** Which emitter produced this row, e.g. `'inference-passthrough'` or an external `usage.emitters` `source` (#1151). */
+  source: string;
 }
 
 /**
@@ -134,9 +138,14 @@ interface PublishUsageIncurredParams {
  * `issuer` is this node's own DID (the meter/agent signing the fact);
  * `subject` is the principal the usage is attributed to — same
  * issuer/actingFor shape #1147 specifies for every emitter.
+ *
+ * Exported (#1151) so every emitter that writes a `usage.incurred` row — not
+ * just this module's own completions passthrough — publishes through the
+ * same chain/attestation contract rather than each hand-rolling its own
+ * `publish('usage.incurred', ...)` call.
  */
-async function publishUsageIncurred(params: PublishUsageIncurredParams): Promise<void> {
-  const { usageId, principalDid, resource, quantity, costUsd } = params;
+export async function publishUsageIncurred(params: PublishUsageIncurredParams): Promise<void> {
+  const { usageId, principalDid, resource, quantity, unit, costUsd, source } = params;
   const nodeDid = await getNodeDid();
 
   await publish('usage.incurred', {
@@ -149,9 +158,9 @@ async function publishUsageIncurred(params: PublishUsageIncurredParams): Promise
       actingFor: principalDid,
       resource,
       quantity: quantity ?? null,
-      unit: quantity === undefined ? null : 'tokens',
+      unit: unit ?? (quantity === undefined ? null : 'tokens'),
       costEstimateUsd: costUsd ?? null,
-      source: 'inference-passthrough',
+      source,
       usageId,
       ts: new Date().toISOString(),
       context_id: usageId,
