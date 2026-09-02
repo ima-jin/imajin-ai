@@ -2,8 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { handleCompletions, type HandleCompletionsDeps } from '../src/handle-completions.js';
 import { HealthTracker } from '../src/health.js';
 import { createLogger } from '../src/logger.js';
-import type { TokenSource } from '../src/token-provider.js';
 import type { ProviderRouteConfig } from '../src/types.js';
+import { bodyToText, fakeTokenSource, onAbortRejection } from './dispatch-test-support.js';
 
 const ROUTE_NO_FALLBACK: ProviderRouteConfig = {
   id: 'xai',
@@ -21,20 +21,6 @@ const ROUTE_WITH_FALLBACK: ProviderRouteConfig = {
   directApiKeyEnvVar: 'ANTHROPIC_DIRECT_API_KEY',
 };
 
-function fakeTokenSource(tokens: string[]): TokenSource & { calls: number } {
-  let i = 0;
-  return {
-    calls: 0,
-    async getToken() {
-      this.calls += 1;
-      return tokens[Math.min(i, tokens.length - 1)];
-    },
-    invalidate() {
-      i += 1;
-    },
-  };
-}
-
 function baseDeps(overrides: Partial<HandleCompletionsDeps> = {}): HandleCompletionsDeps {
   return {
     routes: [ROUTE_NO_FALLBACK, ROUTE_WITH_FALLBACK],
@@ -47,21 +33,6 @@ function baseDeps(overrides: Partial<HandleCompletionsDeps> = {}): HandleComplet
     log: createLogger('test'),
     ...overrides,
   };
-}
-
-async function bodyToText(body: ReadableStream<Uint8Array> | null): Promise<string> {
-  if (!body) return '';
-  return new Response(body).text();
-}
-
-function onAbortRejection(signal: AbortSignal): Promise<never> {
-  return new Promise((_resolve, reject) => {
-    signal.addEventListener('abort', () => {
-      const err = new Error('The operation was aborted');
-      err.name = 'TimeoutError';
-      reject(err);
-    });
-  });
 }
 
 describe('handleCompletions — happy path', () => {

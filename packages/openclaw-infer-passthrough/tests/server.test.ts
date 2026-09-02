@@ -11,7 +11,10 @@ const CONFIG: ProxyConfig = {
   directTimeoutMs: 5_000,
   appDid: 'did:imajin:app',
   appPrivateKey: 'ab'.repeat(32),
-  routes: [{ id: 'xai', principalDid: 'did:imajin:ryan', attestationId: 'att-xai', modelPrefixes: ['grok-'] }],
+  routes: [
+    { id: 'xai', principalDid: 'did:imajin:ryan', attestationId: 'att-xai', modelPrefixes: ['grok-'] },
+    { id: 'anthropic', principalDid: 'did:imajin:ryan', attestationId: 'att-anthropic', modelPrefixes: ['claude-'] },
+  ],
 };
 
 let server: ReturnType<typeof createProxyServer>;
@@ -87,5 +90,74 @@ describe('proxy server (integration)', () => {
       body: '{}',
     });
     expect(res.status).toBe(422);
+  });
+
+  it('mints a token and forwards an Anthropic-format /anthropic/v1/messages request end to end (#1959)', async () => {
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === 'https://kernel.test/auth/api/apps/token') {
+          return new Response(JSON.stringify({ token: 'tok-e2e', expiresIn: 600, scopes: ['infer:completions'] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url === 'https://kernel.test/infer/v1/messages') {
+          expect((init?.headers as Record<string, string>)['x-api-key']).toBe('tok-e2e');
+          return new Response(JSON.stringify({ id: 'msg-e2e' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.startsWith(baseUrl)) {
+          return realFetch(url, init);
+        }
+        throw new Error(`unexpected fetch to ${url}`);
+      }),
+    );
+
+    const res = await fetch(`${baseUrl}/anthropic/v1/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-opus-4-6', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 'msg-e2e' });
+  });
+
+  it('forwards an Anthropic-format /anthropic/v1/messages/count_tokens request to the kernel count_tokens route', async () => {
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === 'https://kernel.test/auth/api/apps/token') {
+          return new Response(JSON.stringify({ token: 'tok-e2e', expiresIn: 600, scopes: ['infer:completions'] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url === 'https://kernel.test/infer/v1/messages/count_tokens') {
+          return new Response(JSON.stringify({ input_tokens: 5 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.startsWith(baseUrl)) {
+          return realFetch(url, init);
+        }
+        throw new Error(`unexpected fetch to ${url}`);
+      }),
+    );
+
+    const res = await fetch(`${baseUrl}/anthropic/v1/messages/count_tokens`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-opus-4-6', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ input_tokens: 5 });
   });
 });

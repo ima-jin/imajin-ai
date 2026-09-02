@@ -418,10 +418,31 @@ function buildResolvedBrain(
 }
 
 /**
+ * Restricts which brains a caller may resolve into (#1959).
+ *
+ * A bare `resolveBrain(context)` call walks every table entry, because the
+ * OpenAI-compatible passthrough (#1925) is provider-agnostic — whichever
+ * brain resolves is fine, since its own two adapters cover the whole table.
+ * A route that speaks exactly one provider's wire format (the Anthropic
+ * Messages raw passthrough, #1959) is not provider-agnostic: resolving, say,
+ * xAI there would forward Anthropic-shaped bytes to an OpenAI-compatible
+ * upstream that cannot parse them. `connectors` narrows the walk to the ids
+ * a caller can actually forward to, so a principal whose only sealed brain
+ * is the wrong shape fails closed with `NoBrainSealedError` naming just the
+ * connector(s) that would have worked, rather than silently resolving one
+ * that can't serve the request.
+ */
+export interface ResolveBrainOptions {
+  /** When set, only these connector ids are walked — in BRAIN_CONNECTORS order, not the order given here. */
+  connectors?: readonly BrainConnectorId[];
+}
+
+/**
  * Resolve a brain from the candidate DIDs' sealed connector cards.
  *
- * Walks DIDs owner-first, and each DID's connectors in BRAIN_CONNECTORS order,
- * returning the first connection that is both granted and sealed. Throws
+ * Walks DIDs owner-first, and each DID's connectors in BRAIN_CONNECTORS order
+ * (optionally narrowed by {@link ResolveBrainOptions.connectors}), returning
+ * the first connection that is both granted and sealed. Throws
  * `NoBrainSealedError` when none is — there is no env-var fallback and no
  * node-level default credential.
  *
@@ -438,8 +459,12 @@ function buildResolvedBrain(
  */
 export async function resolveBrain(
   context: string | BrainCredentialContext,
+  options?: ResolveBrainOptions,
 ): Promise<ResolvedBrain> {
   const dids = credentialDids(context);
+  const candidateConnectors = options?.connectors
+    ? BRAIN_CONNECTORS.filter((c) => options.connectors!.includes(c.id))
+    : BRAIN_CONNECTORS;
 
   // Walk up to the app's registrant org DID — the identity where org-level
   // keys (e.g. Gemini) are sealed. The UI seals keys to org/business/person
@@ -461,7 +486,7 @@ export async function resolveBrain(
   const failures: BrainConnectorFailure[] = [];
 
   for (const did of dids) {
-    for (const connector of BRAIN_CONNECTORS) {
+    for (const connector of candidateConnectors) {
       let creds: SealedCredentials | undefined;
       try {
         creds = await connector.load(did);
@@ -505,5 +530,5 @@ export async function resolveBrain(
     }
   }
 
-  throw new NoBrainSealedError(dids, BRAIN_CONNECTORS, failures);
+  throw new NoBrainSealedError(dids, candidateConnectors, failures);
 }

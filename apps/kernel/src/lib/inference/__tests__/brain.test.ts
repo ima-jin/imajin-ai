@@ -524,6 +524,56 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
   });
 });
 
+// ─── Restricting the walk to specific connectors (#1959) ────────────────────
+
+describe('resolveBrain — connectors option restricts the walk (#1959)', () => {
+  /**
+   * The Anthropic Messages raw passthrough (#1959) speaks exactly one wire
+   * format, so it must never resolve a brain it cannot forward to.
+   */
+  it('only walks the named connector, skipping an earlier-sealed one', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY, modelId: 'gemini-3.6-flash' });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
+
+    const brain = await resolveBrain(OWNER, { connectors: ['anthropic'] });
+
+    expect(brain.connector).toBe('anthropic');
+    expect(mockLoadGemini).not.toHaveBeenCalled();
+  });
+
+  it('fails closed with NoBrainSealedError naming only the restricted connector, even when a different connector is sealed', async () => {
+    mockLoadXai.mockResolvedValueOnce({ apiKey: XAI_KEY, modelId: 'grok-4' });
+
+    const err = await resolveBrain(OWNER, { connectors: ['anthropic'] }).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err).toBeInstanceOf(NoBrainSealedError);
+    expect(err.availableConnectors).toEqual(['anthropic']);
+    expect(err.message).toContain('anthropic:infer');
+    expect(err.message).not.toContain('xai:infer');
+    expect(mockLoadXai).not.toHaveBeenCalled();
+  });
+
+  it('still walks owner then app/org DIDs, narrowed to the restricted connector', async () => {
+    mockLoadAnthropic
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ apiKey: 'app-anthropic-key', modelId: 'claude-opus-4-6' });
+
+    const brain = await resolveBrain({ ownerDid: OWNER, appDid: APP }, { connectors: ['anthropic'] });
+
+    expect(brain.credentialDid).toBe(APP);
+    expect(mockLoadGemini).not.toHaveBeenCalled();
+  });
+
+  it('walks every connector when no restriction is given, unchanged from before #1959', async () => {
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain.connector).toBe('anthropic');
+    expect(mockLoadGemini).toHaveBeenCalledWith(OWNER);
+  });
+});
+
 // ─── The table is the source of truth ───────────────────────────────────────
 
 describe('listBrainConnectors', () => {
