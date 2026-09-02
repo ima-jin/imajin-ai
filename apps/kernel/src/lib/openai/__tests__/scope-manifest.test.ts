@@ -43,6 +43,8 @@ describeScopeManifestIdentityContract({
   connectorDid: 'did:imajin:openai-connector',
   channel: 'openai',
   inferScope: 'openai:infer',
+  // #1076 Stage 1: openai:billing sits on the same connector card.
+  extraScopes: ['openai:billing'],
   filename: 'openai-scope-manifest.md',
   core,
   scopeDescriptors: OPENAI_SCOPE_DESCRIPTORS,

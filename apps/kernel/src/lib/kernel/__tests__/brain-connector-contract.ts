@@ -191,6 +191,13 @@ export interface ScopeManifestContractFixture {
   connectorDid: string;
   channel: string;
   inferScope: string;
+  /**
+   * Additional scopes this connector owns beyond `inferScope` (#1076 Stage
+   * 1: a `{id}:billing` admin-key scope sitting on the same connector card).
+   * Defaults to none — every brain connector before #1076 owns exactly one
+   * scope.
+   */
+  extraScopes?: readonly string[];
   filename: string;
   core: {
     buildConnectorManifestContent: Mock;
@@ -223,7 +230,9 @@ export function describeScopeManifestIdentityContract(fixture: ScopeManifestCont
   const {
     label, id, connectorDid, channel, inferScope, filename, core, scopeDescriptors, validScopes,
     buildManifestContent, findManifestAsset, readActiveScopes, syncConsentGrants, publishScopeManifest,
+    extraScopes = [],
   } = fixture;
+  const ownedScopes = [inferScope, ...extraScopes];
 
   beforeEach(() => {
     for (const fn of Object.values(core)) fn.mockClear();
@@ -231,8 +240,8 @@ export function describeScopeManifestIdentityContract(fixture: ScopeManifestCont
 
   describe('derived scope registry', () => {
     it('accepts exactly the scopes the vocabulary gives this connector', () => {
-      expect(validScopes).toEqual([inferScope]);
-      expect(Object.keys(scopeDescriptors)).toEqual([inferScope]);
+      expect(validScopes).toEqual(ownedScopes);
+      expect(Object.keys(scopeDescriptors)).toEqual(ownedScopes);
     });
   });
 
@@ -422,7 +431,64 @@ export function describeRouteWiringContract(fixture: RouteWiringContractFixture)
   });
 }
 
-// ── Vault/DB-backed credential lifecycle (pre-#1621 style connectors) ──────
+// ── Billing-key route wiring (#1076 Stage 1 — app/{id}/api/billing-key/route.ts) ──
+//
+// A narrower sibling of `describeRouteWiringContract` above: the billing-key
+// routes are token-paste only (no disconnect/manifest routes in Stage 1), and
+// the Anthropic/OpenAI instances were byte-identical apart from which
+// connector module they mock and the display label — exactly the
+// same-shape-different-literal duplication `describeRouteWiringContract`
+// itself exists to avoid for the full three-route case.
+
+/**
+ * Mock the provider's billing connector module (`sealBillingKey` /
+ * `billingKeySealed`) via `vi.doMock`, returning distinct symbols so
+ * `describeBillingKeyRouteWiringContract` can assert the route wired to
+ * exactly those exports. Call this BEFORE dynamically importing the route
+ * module under test, same as `mockRouteWiringFactories`.
+ */
+export function mockBillingKeyConnector(connectorModulePath: string): { sealBillingKey: symbol; billingKeySealed: symbol } {
+  const sealBillingKey = Symbol('sealBillingKey');
+  const billingKeySealed = Symbol('billingKeySealed');
+
+  vi.doMock(connectorModulePath, () => ({ sealBillingKey, billingKeySealed }));
+
+  return { sealBillingKey, billingKeySealed };
+}
+
+export interface BillingKeyRouteWiringFixture {
+  /** Display name asserted in `createConnectorTokenRoutes({ name })`, e.g. `'Anthropic Billing'`. */
+  label: string;
+  tokenOpts: { current: Record<string, unknown> | null };
+  /** The already dynamically-imported `../route` module. */
+  route: Record<string, unknown>;
+  sealBillingKey: symbol;
+  billingKeySealed: symbol;
+}
+
+/**
+ * Pins that a provider's billing-key route wires `createConnectorTokenRoutes`
+ * to that provider's OWN billing connector, and exposes only the token-paste
+ * lifecycle — no disconnect/manifest routes exist for this credential in
+ * Stage 1.
+ */
+export function describeBillingKeyRouteWiringContract(fixture: BillingKeyRouteWiringFixture): void {
+  const { label, tokenOpts, route, sealBillingKey, billingKeySealed } = fixture;
+
+  it(`seals through the ${label} connector, and nothing else`, () => {
+    expect(tokenOpts.current).toMatchObject({ name: label });
+    expect(tokenOpts.current?.sealApiKey).toBe(sealBillingKey);
+    expect(tokenOpts.current?.keySealed).toBe(billingKeySealed);
+  });
+
+  it('exports the full credential lifecycle (no disconnect/manifest routes for Stage 1)', () => {
+    expect(route.GET).toBeDefined();
+    expect(route.POST).toBeDefined();
+    expect(route.OPTIONS).toBeDefined();
+  });
+}
+
+// ── Vault/DB-backed credential lifecycle (pre-#1621 style connectors) ───────
 //
 // Gemini (#1432) and Anthropic (#1621) predate `createConnectorTokenPaste`
 // being extracted into its own factory — their `connector.test.ts` files

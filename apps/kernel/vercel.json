@@ -23,6 +23,14 @@
     {
       "path": "/api/cron/warp-run-watch",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/usage-rollup",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/usage-billed-ingest",
+      "schedule": "0 2 * * *"
     }
   ]
 }
