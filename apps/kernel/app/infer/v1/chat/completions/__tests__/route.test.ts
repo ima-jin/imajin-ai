@@ -8,12 +8,16 @@ const {
   mockResolveBrain,
   mockForwardAnthropic,
   mockForwardOpenAiCompatible,
+  mockReadConnectorRegistration,
+  mockEnforceSpendCap,
 } = vi.hoisted(() => ({
   mockResolveInferenceAuth: vi.fn(),
   mockRateLimit: vi.fn(),
   mockResolveBrain: vi.fn(),
   mockForwardAnthropic: vi.fn(),
   mockForwardOpenAiCompatible: vi.fn(),
+  mockReadConnectorRegistration: vi.fn(),
+  mockEnforceSpendCap: vi.fn(),
 }));
 
 vi.mock('@/src/lib/inference/auth', () => ({
@@ -51,11 +55,26 @@ vi.mock('@/src/lib/inference/completions/openai-compatible-adapter', () => ({
   forwardOpenAiCompatible: mockForwardOpenAiCompatible,
 }));
 
+vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
+  connectorRegistryId: (ownerDid: string, provider: string) => `conn_${ownerDid}_${provider}`,
+  readConnectorRegistration: mockReadConnectorRegistration,
+}));
+
+// Fully replaced (no `importActual`) — the real module imports `@/src/db`,
+// which throws at import time without a live DATABASE_URL. Reuses the same
+// fake `SpendCapExceededError` shape `brain-http-errors.test.ts` mocks with,
+// declared once in `brain-errors-test-support.ts`.
+vi.mock('@/src/lib/inference/spend-cap', async () => {
+  const { createFakeSpendCapClasses } = await import('@/src/lib/inference/__tests__/brain-errors-test-support');
+  return { ...createFakeSpendCapClasses(), enforceSpendCap: mockEnforceSpendCap };
+});
+
 // ─── Subject ────────────────────────────────────────────────────────────────
 
 import { POST, OPTIONS } from '../route';
 import { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError } from '@/src/lib/inference/brain';
 import { UpstreamTimeoutError, UpstreamUnavailableError } from '@/src/lib/inference/completions/errors';
+import { SpendCapExceededError } from '@/src/lib/inference/spend-cap';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { RetryError } from 'ai';
 
@@ -104,6 +123,8 @@ beforeEach(() => {
   mockResolveBrain.mockResolvedValue(XAI_BRAIN);
   mockForwardOpenAiCompatible.mockResolvedValue(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
   mockForwardAnthropic.mockResolvedValue(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
+  mockReadConnectorRegistration.mockResolvedValue(undefined);
+  mockEnforceSpendCap.mockResolvedValue(undefined);
 });
 
 describe('POST /infer/v1/chat/completions — request gating', () => {
@@ -168,7 +189,7 @@ describe('POST /infer/v1/chat/completions — dispatch', () => {
 
     await POST(makeReq({ body, headers: { 'x-session-id': 'sess_1', 'x-turn-id': 'turn_1' } }));
 
-    expect(mockForwardOpenAiCompatible).toHaveBeenCalledWith(XAI_BRAIN, body, { sessionId: 'sess_1', turnId: 'turn_1' });
+    expect(mockForwardOpenAiCompatible).toHaveBeenCalledWith(XAI_BRAIN, body, { sessionId: 'sess_1', turnId: 'turn_1', agentDid: APP_DID });
     expect(mockForwardAnthropic).not.toHaveBeenCalled();
   });
 
@@ -178,8 +199,25 @@ describe('POST /infer/v1/chat/completions — dispatch', () => {
 
     await POST(makeReq({ body }));
 
-    expect(mockForwardAnthropic).toHaveBeenCalledWith(ANTHROPIC_BRAIN, body, { sessionId: undefined, turnId: undefined });
+    expect(mockForwardAnthropic).toHaveBeenCalledWith(ANTHROPIC_BRAIN, body, { sessionId: undefined, turnId: undefined, agentDid: APP_DID });
     expect(mockForwardOpenAiCompatible).not.toHaveBeenCalled();
+  });
+
+  it('checks the spend cap on the credential-supplying connector before forwarding', async () => {
+    mockReadConnectorRegistration.mockResolvedValueOnce({ id: 'conn_real_row', spendCap: { amountUsd: 10, period: 'daily' } });
+
+    await POST(makeReq());
+
+    expect(mockReadConnectorRegistration).toHaveBeenCalledWith(OWNER_DID, 'xai');
+    expect(mockEnforceSpendCap).toHaveBeenCalledWith('conn_real_row', { amountUsd: 10, period: 'daily' });
+  });
+
+  it('falls back to a computed connector id when no registration row exists yet', async () => {
+    mockReadConnectorRegistration.mockResolvedValueOnce(undefined);
+
+    await POST(makeReq());
+
+    expect(mockEnforceSpendCap).toHaveBeenCalledWith(`conn_${OWNER_DID}_xai`, undefined);
   });
 
   it('attaches CORS headers to the adapter response without altering its body/status', async () => {
@@ -277,5 +315,20 @@ describe('POST /infer/v1/chat/completions — pipeline outcomes', () => {
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual(expect.objectContaining({ error: 'completions_failed' }));
+  });
+
+  it('returns 402 spend_cap_exceeded and never forwards when the connector cap is already reached (#1923)', async () => {
+    mockEnforceSpendCap.mockRejectedValueOnce(
+      new SpendCapExceededError('conn_real_row', { amountUsd: 10, period: 'daily' }, 12.5),
+    );
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(402);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({ error: 'spend_cap_exceeded', spentUsd: 12.5, capUsd: 10, period: 'daily' }),
+    );
+    expect(mockForwardOpenAiCompatible).not.toHaveBeenCalled();
+    expect(mockForwardAnthropic).not.toHaveBeenCalled();
   });
 });

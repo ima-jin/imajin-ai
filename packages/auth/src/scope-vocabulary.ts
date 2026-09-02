@@ -322,6 +322,11 @@ export const SCOPE_VOCABULARY = [
   // passthrough is a kernel route, not a connector card, so there is no
   // owning connector to gate a manifest toggle on.
   { scope: 'infer:completions', connector: null, label: 'Use the completions passthrough for inference on your behalf' },
+  // #1923: gates the per-connector spend burn-down dashboard read
+  // (`GET /connections/api/connectors/:id/spend`) — distinct from
+  // `connectors:read-telemetry` (attestation/signed-action counts), since
+  // this reads token/cost figures out of `inference.usage` instead.
+  { scope: 'infer:usage-read', connector: null, label: 'Read your inference spend and usage burn-down' },
 
   // ── QuickBooks connector — invoices are sent to customers, hence write touches others
   { scope: 'quickbooks:read', connector: 'quickbooks', verb: 'read', surface: 'invoices', classification: SELF_ONLY,

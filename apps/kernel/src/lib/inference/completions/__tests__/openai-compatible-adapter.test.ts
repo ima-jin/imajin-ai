@@ -4,6 +4,9 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
+const { mockRecordInferenceUsage } = vi.hoisted(() => ({ mockRecordInferenceUsage: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../../usage-ledger', () => ({ recordInferenceUsage: mockRecordInferenceUsage }));
+
 import { forwardOpenAiCompatible } from '../openai-compatible-adapter';
 import { UpstreamTimeoutError, UpstreamUnavailableError } from '../errors';
 import type { ResolvedBrain } from '../../brain';

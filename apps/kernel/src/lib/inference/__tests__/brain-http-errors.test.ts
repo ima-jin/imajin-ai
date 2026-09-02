@@ -9,8 +9,17 @@ vi.mock('@/src/lib/inference/brain', async () => {
   return createFakeBrainErrorClasses();
 });
 
+// `spend-cap.ts` pulls in `@/src/db` (a real drizzle client) to sum
+// `usage.incurred` rows. Only the error TYPE is needed here — see
+// `createFakeSpendCapClasses` in `brain-errors-test-support.ts`.
+vi.mock('@/src/lib/inference/spend-cap', async () => {
+  const { createFakeSpendCapClasses } = await import('./brain-errors-test-support');
+  return createFakeSpendCapClasses();
+});
+
 import { mapBrainErrorToHttp } from '../brain-http-errors';
 import { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError } from '@/src/lib/inference/brain';
+import { SpendCapExceededError } from '@/src/lib/inference/spend-cap';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { RetryError } from 'ai';
 
@@ -77,5 +86,14 @@ describe('mapBrainErrorToHttp', () => {
   it('returns undefined for an unrecognized error', () => {
     expect(mapBrainErrorToHttp(new Error('storage offline'))).toBeUndefined();
     expect(mapBrainErrorToHttp('not even an error')).toBeUndefined();
+  });
+
+  it('maps SpendCapExceededError to a 402 spend_cap_exceeded response naming the cap and spend (#1923)', () => {
+    const err = new SpendCapExceededError('conn_x', { amountUsd: 25, period: 'monthly' }, 30);
+    const mapped = mapBrainErrorToHttp(err);
+    expect(mapped).toEqual({
+      status: 402,
+      body: expect.objectContaining({ error: 'spend_cap_exceeded', spentUsd: 30, capUsd: 25, period: 'monthly' }),
+    });
   });
 });

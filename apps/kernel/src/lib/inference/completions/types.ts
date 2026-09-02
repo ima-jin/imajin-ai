@@ -113,12 +113,15 @@ export interface OpenAIChatCompletionChunk {
 }
 
 /**
- * Per-turn metering seam (#1922 target architecture component 3, built out in
- * #1923). OpenClaw passes these as `X-Session-Id` / `X-Turn-Id` request
- * headers; this route only threads them through logging today so the actual
- * ledger write in #1923 is additive rather than a request-path rework.
+ * Per-turn metering context (#1922 target architecture component 3, built
+ * out in #1923). `sessionId`/`turnId` are OpenClaw's `X-Session-Id` /
+ * `X-Turn-Id` request headers; `agentDid` is the invoking app DID resolved by
+ * auth (distinct from `brain.credentialDid`, whose sealed card actually paid
+ * for the call). Every adapter threads this straight into
+ * `recordInferenceUsage` once the call resolves.
  */
 export interface CompletionsRequestMetadata {
   sessionId?: string;
   turnId?: string;
+  agentDid?: string;
 }
