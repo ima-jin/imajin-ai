@@ -23,7 +23,7 @@ import {
 } from '../src/scope-vocabulary';
 import { SCOPES, validateScopes } from '../src/scopes';
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'gcp', 'quickbooks', 'warp', 'stripe'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'gcp', 'quickbooks', 'warp', 'stripe'];
 
 const connectorEntries = SCOPE_VOCABULARY.filter(isConnectorScope);
 
@@ -252,23 +252,25 @@ describe('SCOPES is a faithful projection', () => {
   });
 
   /**
-   * #1924/#1927/#1930: the third, fourth, and fifth brains a DID can seal —
-   * xAI, OpenAI, and Moonshot AI (Kimi) — net-new providers the #1922
-   * passthrough validates in that order (Grok → OpenAI → Gemini → +Kimi,
-   * Anthropic last). All three are OpenAI-compatible and sit in the same
-   * quadrant as gemini:infer/anthropic:infer, so each must derive owner-only
-   * and name its own connector as the sole viewer. Collapsed into one
-   * parameterized case (rather than a hand-copied `it()` pair per provider,
-   * which is exactly the same-shape-different-literal block SonarCloud's
-   * duplication detector flagged once a third provider joined — #1930) since
-   * the assertions are identical across all three. None is on the MCP
-   * capability ceiling yet: the passthrough (#1922 Phase 2) is not built, so
-   * no MCP tool can spend any of these keys.
+   * #1924/#1927/#1930/#1931: the third through sixth brains a DID can seal —
+   * xAI, OpenAI, Moonshot AI (Kimi), and Z.ai (GLM) — net-new providers the
+   * #1922 passthrough validates in that order (Grok → OpenAI → Gemini →
+   * +Kimi, Anthropic last; Z.ai is capability-completion, no current spend).
+   * All four are OpenAI-compatible and sit in the same quadrant as
+   * gemini:infer/anthropic:infer, so each must derive owner-only and name its
+   * own connector as the sole viewer. Collapsed into one parameterized case
+   * (rather than a hand-copied `it()` pair per provider, which is exactly the
+   * same-shape-different-literal block SonarCloud's duplication detector
+   * flagged once a third provider joined — #1930) since the assertions are
+   * identical across all four. None is on the MCP capability ceiling yet: the
+   * passthrough (#1922 Phase 2) is not built, so no MCP tool can spend any of
+   * these keys.
    */
   it.each([
     ['xai:infer', 'xai', 'xAI', 'xai-api'],
     ['openai:infer', 'openai', 'OpenAI', 'openai-api'],
     ['moonshot:infer', 'moonshot', 'Moonshot', 'moonshot-api'],
+    ['zai:infer', 'zai', 'Z.ai', 'zai-api'],
   ] satisfies Array<[Scope, ConnectorId, string, string]>)(
     'includes %s as an owner-only connector scope, off the MCP ceiling',
     (scope, id, label, surface) => {
