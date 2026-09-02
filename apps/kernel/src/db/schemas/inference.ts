@@ -4,6 +4,8 @@ import {
   timestamp,
   jsonb,
   real,
+  integer,
+  numeric,
   index,
 } from 'drizzle-orm/pg-core';
 
@@ -104,3 +106,46 @@ export const inferenceAttestations = inferenceSchema.table(
 
 export type InferenceAttestation = typeof inferenceAttestations.$inferSelect;
 export type NewInferenceAttestation = typeof inferenceAttestations.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// inference_usage (#1923, Phase 3 of #1922)
+//
+// Per-turn metering ledger: ONE row per completions-passthrough call
+// (`POST /infer/v1/chat/completions`, #1925). Granular token-level records
+// live here; the money lives in `pay.transactions` (`service = 'inference'`)
+// and the daily aggregate in `pay.balance_rollups` — see
+// migrations/0118_inference_usage.sql for the full division-of-responsibility
+// note. Not a place to store cost/spend totals — those are derived by
+// summing this table (spend-cap enforcement) or read from the pay schema
+// (dashboard burn-down).
+// ---------------------------------------------------------------------------
+
+export const inferenceUsage = inferenceSchema.table(
+  'usage',
+  {
+    id: text('id').primaryKey(),                          // usage_xxx (nanoid)
+    sessionId: text('session_id'),                        // X-Session-Id header (OpenClaw); null when absent
+    turnId: text('turn_id'),                              // X-Turn-Id header; null when absent
+    principalDid: text('principal_did').notNull(),        // owner DID whose sealed card supplied the credential
+    agentDid: text('agent_did'),                          // invoking app DID (onBehalfOf); null when the owner called directly
+    provider: text('provider').notNull(),                 // BRAIN_CONNECTORS id, e.g. 'xai'
+    connectorId: text('connector_id'),                    // kernel.connectors.id this call resolved credentials from
+    model: text('model').notNull(),
+    tokensIn: integer('tokens_in'),                       // null when the upstream response never reported usage
+    tokensOut: integer('tokens_out'),
+    costUsd: numeric('cost_usd', { precision: 20, scale: 8 }), // null when tokens are unknown or the model has no pricing entry
+    transactionId: text('transaction_id'),                // pay.transactions.id this call's spend was recorded under
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    principalIdx: index('idx_inference_usage_principal').on(table.principalDid, table.createdAt),
+    agentIdx: index('idx_inference_usage_agent').on(table.agentDid, table.createdAt),
+    sessionIdx: index('idx_inference_usage_session').on(table.sessionId),
+    turnIdx: index('idx_inference_usage_turn').on(table.turnId),
+    connectorIdx: index('idx_inference_usage_connector').on(table.connectorId, table.createdAt),
+    createdIdx: index('idx_inference_usage_created').on(table.createdAt),
+  }),
+);
+
+export type InferenceUsage = typeof inferenceUsage.$inferSelect;
+export type NewInferenceUsage = typeof inferenceUsage.$inferInsert;

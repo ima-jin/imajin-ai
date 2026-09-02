@@ -198,11 +198,11 @@ export interface ConnectorEntry {
  * Shared shape for the token-paste "brain" connectors — the ones whose sealed
  * API key is spent on inference (Gemini, xAI; #1928). They share every field
  * except identity, credential-step copy, and whether they have a model
- * picker: no OAuth step, no settings section, and a disconnect that revokes
- * the delegation grant (#1720) and sweeps channel_links (#1733). Declaring
- * that shape once here is what keeps the next brain connector's registry
- * entry (#1927 OpenAI, #1930 Moonshot, #1931 Z.ai) a same-shape call instead
- * of a ~30-line clone.
+ * picker: no OAuth step, the identical spend-cap settings section (#1923),
+ * and a disconnect that revokes the delegation grant (#1720) and sweeps
+ * channel_links (#1733). Declaring that shape once here is what keeps the
+ * next brain connector's registry entry (#1927 OpenAI, #1930 Moonshot, #1931
+ * Z.ai) a same-shape call instead of a ~30-line clone.
  */
 function brainConnectorEntry(opts: {
   id: ConnectorId;
@@ -229,7 +229,20 @@ function brainConnectorEntry(opts: {
     tokenRoute: `/${opts.id}/api/token`,
     disconnectRoute: `/${opts.id}/api/disconnect`,
     credentialUi: opts.credentialUi,
-    settings: null,
+    // #1923: declared spend ceiling, enforced kernel-side at passthrough
+    // time. Every brain connector gets the identical shared settings route
+    // (`createConnectorSpendCapRoute`) — see its header for the field format.
+    settings: {
+      route: `/${opts.id}/api/spend-cap`,
+      fields: [
+        {
+          key: 'spendCap',
+          label: 'Spend cap',
+          placeholder: '50:daily',
+          hint: 'Format: amount:period — period is one of daily, monthly, total. The kernel refuses further calls once this connector\u2019s spend reaches the cap. Leave blank for no limit.',
+        },
+      ],
+    },
     modelsRoute: opts.modelsRoute,
   };
 }

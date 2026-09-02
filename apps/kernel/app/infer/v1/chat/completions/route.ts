@@ -33,6 +33,8 @@ import { mapUpstreamErrorToHttp } from '@/src/lib/inference/completions/errors';
 import { forwardAnthropic } from '@/src/lib/inference/completions/anthropic-adapter';
 import { forwardOpenAiCompatible } from '@/src/lib/inference/completions/openai-compatible-adapter';
 import type { ChatCompletionsRequestBody, CompletionsRequestMetadata } from '@/src/lib/inference/completions/types';
+import { enforceSpendCap } from '@/src/lib/inference/spend-cap';
+import { connectorRegistryId, readConnectorRegistration } from '@/src/lib/kernel/connector-registry-store';
 
 const log = createLogger('kernel:inference:completions-route');
 
@@ -68,12 +70,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: body.error }, { status: 400, headers: cors });
   }
 
-  // Per-turn metering seam (#1922 target architecture component 3, built out
-  // in #1923): threaded through logging today so the ledger write lands
-  // additively rather than reworking this request path.
+  // Per-turn metering context (#1922 target architecture component 3,
+  // #1923): every adapter writes one inference.usage row from this once the
+  // call resolves.
   const meta: CompletionsRequestMetadata = {
     sessionId: request.headers.get('x-session-id') ?? undefined,
     turnId: request.headers.get('x-turn-id') ?? undefined,
+    agentDid: appDid,
   };
 
   try {
@@ -91,6 +94,15 @@ export async function POST(request: NextRequest) {
       },
       'completions passthrough: dispatching',
     );
+
+    // #1923 (Phase 3 of #1922): kernel-side spend-cap check, BEFORE
+    // forwarding — never trusted to the client. `credentialDid` (not
+    // `ownerDid`) is whose card the cap actually lives on: `resolveBrain`
+    // can hand back the app/org registrant's credential (#1624), and the cap
+    // belongs to whoever's connector registration is being spent against.
+    const registration = await readConnectorRegistration(brain.credentialDid, brain.connector);
+    const connectorId = registration?.id ?? connectorRegistryId(brain.credentialDid, brain.connector);
+    await enforceSpendCap(connectorId, registration?.spendCap);
 
     const upstreamResponse = brain.provider === 'anthropic'
       ? await forwardAnthropic(brain, body.value, meta)

@@ -218,3 +218,45 @@ export async function readConnectorRegistration(
     .limit(1);
   return rows[0];
 }
+
+/**
+ * Set (or clear, with `cap: null`) the declared spend ceiling on one
+ * connector installation (#1923, Phase 3 of #1922) — the field
+ * `migrations/0114_connectors_registry.sql` reserved for exactly this.
+ *
+ * Unlike the shadow-registry writes above, this is FAIL-CLOSED: `spend_cap`
+ * has no other authoritative home, so a swallowed write failure would leave
+ * the owner believing a cap is in effect when it is not. Upserts (rather
+ * than requiring a pre-existing row) so an owner can declare a cap before or
+ * after sealing the credential, matching {@link syncConnectorRegistrationScopes}'s
+ * reasoning for the same choice.
+ */
+export async function setConnectorSpendCap(
+  ownerDid: string,
+  provider: string,
+  cap: Record<string, unknown> | null,
+): Promise<void> {
+  const identity = connectorIdentity(provider);
+  if (!identity) {
+    throw new Error(`connector registry: unknown provider '${provider}'`);
+  }
+
+  const now = new Date();
+  await db
+    .insert(connectors)
+    .values({
+      id: connectorRegistryId(ownerDid, provider),
+      ownerDid,
+      provider,
+      channel: identity.channel,
+      connectorDid: identity.connectorDid,
+      spendCap: cap,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [connectors.ownerDid, connectors.provider],
+      set: { spendCap: cap, updatedAt: now },
+    });
+}

@@ -19,6 +19,9 @@ vi.mock('ai', async () => {
   return { ...actual, generateText: mockGenerateText, streamText: mockStreamText };
 });
 
+const { mockRecordInferenceUsage } = vi.hoisted(() => ({ mockRecordInferenceUsage: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../../usage-ledger', () => ({ recordInferenceUsage: mockRecordInferenceUsage }));
+
 import { forwardAnthropic } from '../anthropic-adapter';
 import { UpstreamTimeoutError } from '../errors';
 import type { ResolvedBrain } from '../../brain';

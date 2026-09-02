@@ -20,6 +20,7 @@
 import { RetryError } from 'ai';
 import { NoBrainSealedError, NoModelSelectedError, ModelDeprecatedError } from './brain';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
+import { SpendCapExceededError } from './spend-cap';
 
 export interface MappedHttpError {
   status: number;
@@ -88,6 +89,24 @@ export function mapBrainErrorToHttp(err: unknown): MappedHttpError | undefined {
       body: {
         error: 'rate_limited',
         message: 'Model rate limit hit — try again shortly',
+        detail: err.message,
+      },
+    };
+  }
+
+  // #1923: the connector's declared spend cap has already been reached this
+  // window — a refusal, not a crash. 402 Payment Required is the one status
+  // in the mapping that names "you must pay/raise your budget to proceed"
+  // rather than "something about the request or credential is wrong".
+  if (err instanceof SpendCapExceededError) {
+    return {
+      status: 402,
+      body: {
+        error: 'spend_cap_exceeded',
+        message: 'Spend cap reached for this connector — raise the cap or wait for the window to reset',
+        spentUsd: err.spentUsd,
+        capUsd: err.cap.amountUsd,
+        period: err.cap.period,
         detail: err.message,
       },
     };

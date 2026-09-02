@@ -26,6 +26,7 @@ import {
 } from './response-mapping';
 import { UpstreamTimeoutError } from './errors';
 import type { ChatCompletionsRequestBody, CompletionsRequestMetadata } from './types';
+import { recordInferenceUsage } from '../usage-ledger';
 
 const log = createLogger('kernel:inference:completions:anthropic');
 
@@ -110,6 +111,17 @@ async function generateAnthropic(
       'completions passthrough: anthropic completion finished',
     );
 
+    await recordInferenceUsage({
+      sessionId: meta.sessionId,
+      turnId: meta.turnId,
+      principalDid: brain.credentialDid,
+      agentDid: meta.agentDid,
+      provider: brain.connector,
+      model: brain.modelId,
+      tokensIn: result.usage.promptTokens,
+      tokensOut: result.usage.completionTokens,
+    });
+
     const completion = buildChatCompletion(brain.modelId, result);
     return new Response(JSON.stringify(completion), {
       status: 200,
@@ -152,6 +164,19 @@ function streamAnthropic(
         },
         'completions passthrough: anthropic stream finished',
       );
+
+      recordInferenceUsage({
+        sessionId: meta.sessionId,
+        turnId: meta.turnId,
+        principalDid: brain.credentialDid,
+        agentDid: meta.agentDid,
+        provider: brain.connector,
+        model: brain.modelId,
+        tokensIn: usage.promptTokens,
+        tokensOut: usage.completionTokens,
+      }).catch((err: unknown) => {
+        log.error({ err: String(err), connector: brain.connector }, 'completions passthrough: usage ledger write failed');
+      });
     },
   });
 

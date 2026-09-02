@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
 import { ConnectorDetail } from '../components/ConnectorDetail';
 import { ConnectorUsage } from '../components/ConnectorUsage';
+import { ConnectorSpendBurnDown } from '../components/ConnectorSpendBurnDown';
 
 export default function ConnectorDetailPage(props: Readonly<{ params: Promise<{ id: string }> }>) {
   const params = use(props.params);
@@ -58,6 +59,12 @@ export default function ConnectorDetailPage(props: Readonly<{ params: Promise<{ 
           fetch resolves, and nothing at all on error, so it never blocks or
           clutters the connect/scope/disconnect flow above. */}
       <ConnectorUsage entry={entry} />
+
+      {/* Inference spend burn-down (#1923) — only the brain connectors write
+          inference.usage rows. `modelsRoute` is exactly the signal already
+          used to gate the model picker section, so this reuses it rather than
+          hand-listing the five brain connector ids a second time. */}
+      {entry.modelsRoute && <ConnectorSpendBurnDown entry={entry} />}
 
       {/* Consent note — grant-by-edit applies to on-consent scopes below. */}
       <p className="text-center text-xs text-gray-700 mt-8">

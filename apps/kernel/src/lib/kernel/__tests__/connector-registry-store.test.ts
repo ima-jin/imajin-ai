@@ -53,6 +53,7 @@ import {
   recordConnectorRegistration,
   revokeConnectorRegistration,
   syncConnectorRegistrationScopes,
+  setConnectorSpendCap,
 } from '../connector-registry-store';
 
 const OWNER = 'did:imajin:farmer';
@@ -179,5 +180,40 @@ describe('syncConnectorRegistrationScopes', () => {
     await syncConnectorRegistrationScopes(OWNER, 'not-a-connector', ['nope:nope']);
 
     expect(insertMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── setConnectorSpendCap (#1923) ────────────────────────────────────────────
+
+describe('setConnectorSpendCap', () => {
+  it('upserts the declared cap for an (owner, provider) pair', async () => {
+    await setConnectorSpendCap(OWNER, 'xai', { amountUsd: 50, period: 'daily' });
+
+    expect(insertValues[0]).toMatchObject({
+      id: connectorRegistryId(OWNER, 'xai'),
+      ownerDid: OWNER,
+      provider: 'xai',
+      spendCap: { amountUsd: 50, period: 'daily' },
+      status: 'active',
+    });
+    expect(conflictSets[0]).toMatchObject({ spendCap: { amountUsd: 50, period: 'daily' } });
+  });
+
+  it('clears the cap with a null value', async () => {
+    await setConnectorSpendCap(OWNER, 'xai', null);
+
+    expect(insertValues[0].spendCap).toBeNull();
+    expect(conflictSets[0]).toMatchObject({ spendCap: null });
+  });
+
+  it('throws — fails CLOSED — for a provider the static registry does not know', async () => {
+    await expect(setConnectorSpendCap(OWNER, 'not-a-connector', { amountUsd: 10, period: 'daily' })).rejects.toThrow();
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('propagates a write failure — unlike the shadow-registry writes, this must not fail open', async () => {
+    insertMock.mockImplementationOnce(() => { throw new Error('connection reset'); });
+
+    await expect(setConnectorSpendCap(OWNER, 'xai', { amountUsd: 10, period: 'daily' })).rejects.toThrow('connection reset');
   });
 });
