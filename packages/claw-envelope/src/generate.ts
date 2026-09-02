@@ -60,7 +60,8 @@ ${routeList}
 ## Brain
 - Placement: \`${input.intent.brain.placement}\`
 - Provider: \`${input.intent.brain.provider}\`
-${input.intent.brain.deviation ? `- **Deviation**: ${input.intent.brain.deviation}\n` : ''}
+- Via: \`${input.intent.brain.via ?? 'kernel-passthrough'}\`
+${input.intent.brain.via === 'direct' && input.intent.brain.deviation ? `- **Deviation**: ${input.intent.brain.deviation}\n` : ''}
 ## Tools
 MCP tools are reached through \`${MCP_SERVER_URL}\` under the grants above.
 Tool access is enforced kernel-side — this file is documentation, not policy.
@@ -93,14 +94,22 @@ export function generateEnvelope(input: ContextEnvelopeInput): ContextEnvelope {
     note: 'Issued via POST /auth/api/grants at bootstrap time — grantId is filled in after issuance.',
   }));
 
+  const via = input.intent.brain.via ?? 'kernel-passthrough';
+
   const secrets: SecretRef[] = [
     { kind: 'env-var', name: 'NANOCLAW_AGENT_KEYPAIR_PATH', purpose: "Path to this agent's Ed25519 keypair file (never the key material itself)." },
   ];
-  if (input.intent.brain.deviation) {
+  // 'kernel-passthrough' (the default) never puts a provider key on the
+  // harness container at all — only 'direct' (an explicit, non-default
+  // break-glass choice) does, and only then is it a deviation worth a secret
+  // entry and a loud note.
+  if (via === 'direct') {
     secrets.push({
       kind: 'env-var',
       name: 'DIRECT_BRAIN_API_KEY',
-      purpose: `Documented deviation: ${input.intent.brain.deviation}`,
+      purpose: input.intent.brain.deviation
+        ? `Documented deviation: ${input.intent.brain.deviation}`
+        : "brain.via: 'direct' break-glass — bypasses the kernel's sealed connector entirely.",
     });
   }
 
@@ -117,6 +126,7 @@ export function generateEnvelope(input: ContextEnvelopeInput): ContextEnvelope {
       model: {
         placement: input.intent.brain.placement,
         provider: input.intent.brain.provider,
+        via,
         deviation: input.intent.brain.deviation,
       },
       execPolicy: { allowWrite: false },

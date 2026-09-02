@@ -56,10 +56,13 @@ Verified against a clone of `qwibitai/nanoclaw` (pushed 2026-09-02), not assumed
   is forwarded into the `@anthropic-ai/claude-agent-sdk` `query()` call, which spawns
   the Claude Code CLI. The CLI honors the standard Anthropic env vars
   (`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`) with zero NanoClaw code changes needed.
-- **The wire-format gap**: the kernel's completions passthrough (#1925,
-  `POST /infer/v1/chat/completions`) is OpenAI-compatible. `ANTHROPIC_BASE_URL`
-  expects the Anthropic Messages API (`/v1/messages`) wire format. These do not
-  interoperate — see §4.
+- **The wire-format gap (closed, #1959/#1961)**: the kernel's original completions
+  passthrough (#1925, `POST /infer/v1/chat/completions`) was OpenAI-compatible only;
+  `ANTHROPIC_BASE_URL` expects the Anthropic Messages API (`/v1/messages`) wire
+  format, so the two did not interoperate at hand-build time. #1959 added a raw
+  Anthropic Messages passthrough (`POST /infer/v1/messages` + `.../count_tokens`,
+  app-token JWT accepted as `x-api-key`) and PR #1961 gave
+  `packages/openclaw-infer-passthrough` a matching `/anthropic` shim route — see §4.
 - **Identity**: the kernel already has a working agent-registration primitive,
   `POST /auth/api/agents` (`apps/kernel/app/auth/api/agents/route.ts`) — mints an
   Ed25519 keypair server-side, creates the `identities` row
@@ -99,7 +102,9 @@ flowchart LR
   NanoClaw -->|spawns| AgentContainer["Per-conversation agent container\n(Claude Agent SDK)"]
   AgentContainer -->|MCP over loopback| McpProxy["mcp-proxy sidecar\n(token mint/refresh)"]
   McpProxy -->|Bearer app-token| MCP["mcp.imajin.ai"]
-  AgentContainer -.->|direct Anthropic key\n(deviation, see #4)| Anthropic["Anthropic API"]
+  AgentContainer -->|ANTHROPIC_BASE_URL| InferPassthrough["infer-passthrough shim\n(packages/openclaw-infer-passthrough,\n/anthropic route)"]
+  InferPassthrough -->|x-api-key: app-token\nPOST /infer/v1/messages| Kernel
+  InferPassthrough -.->|5xx/timeout only\nbreak-glass| Anthropic["Anthropic API (direct)"]
   AgentContainer -->|writes| SessionJsonl[".claude-shared/projects/*.jsonl"]
   UsageEmitter["usage-emitter sidecar\n(periodic)"] -->|tails| SessionJsonl
   UsageEmitter -->|POST /usage/api/incurred\nsource=harness:nanoclaw| Kernel
@@ -109,81 +114,114 @@ flowchart LR
 The envelope generator (`packages/claw-envelope`) produces the NanoClaw-side
 config/workspace files and an `APPLY.md` directive doc; the identity bootstrap CLI
 (same package) registers the agent DID and its minimal grant; the bridge package
-(`packages/nanoclaw-imajin-channel`) is the channel adapter plus the two sidecars;
-`deploy/nanoclaw/` wires it all into one Compose stack.
+(`packages/nanoclaw-imajin-channel`) is the channel adapter plus the mcp-proxy/
+usage-emitter sidecars; `packages/openclaw-infer-passthrough` (an existing,
+unmodified sibling package) supplies the brain-path shim; `deploy/nanoclaw/` wires
+all four containers into one Compose stack.
 
-## 4. Brain-path decision
+## 4. Brain-path decision (closed — #1959/#1961)
 
-NanoClaw's Claude provider already honors `ANTHROPIC_BASE_URL`/`ANTHROPIC_API_KEY`
-via plain container env — no code change needed to point it somewhere other than
-`api.anthropic.com`. But the kernel's only completions passthrough today (#1925) is
-OpenAI-compatible (`/infer/v1/chat/completions`); the Anthropic Messages API
-(`/v1/messages`) that `ANTHROPIC_BASE_URL` expects is a different wire format
-entirely. Pointing NanoClaw at the kernel passthrough today would send
-Anthropic-shaped requests to an OpenAI-shaped endpoint and fail outright.
+> **Historical note.** This section originally documented a scoped-direct-key
+> deviation, because at hand-build time the kernel's only completions passthrough
+> (#1925) was OpenAI-compatible while NanoClaw's Claude Agent SDK/CLI speak the
+> Anthropic Messages API. [#1959](https://github.com/ima-jin/imajin-ai/issues/1959)
+> added a raw Anthropic Messages passthrough (`POST /infer/v1/messages` +
+> `.../count_tokens`) and PR #1961 gave `packages/openclaw-infer-passthrough` a
+> matching `/anthropic` shim route, closing the gap. **The deviation is closed** —
+> this instance no longer runs on a direct Anthropic key by default.
 
-**Decision**: file a follow-up issue under #1922 proposing an Anthropic-format
-passthrough (`/infer/v1/messages`, mirroring #1925's own auth/metering contract) —
-filed as [#1959](https://github.com/ima-jin/imajin-ai/issues/1959). **For this POC**, run on a scoped **direct**
-Anthropic API key supplied via container env (`DIRECT_BRAIN_API_KEY` /
-`ANTHROPIC_API_KEY`), never committed. This is an explicit, documented deviation from
-the kernel's sealed-connector path, closed by that follow-up — not a silent
-workaround.
+**Current state**: NanoClaw's Claude Agent SDK/CLI reach Anthropic through the
+`infer-passthrough` shim (`deploy/nanoclaw/infer-passthrough.Dockerfile`,
+containerizing `packages/openclaw-infer-passthrough`'s own existing entry point
+verbatim — no shim code was written or modified for this). The agent container's
+`ANTHROPIC_BASE_URL` points at the shim's fixed `/anthropic` prefix and
+`ANTHROPIC_API_KEY` is a non-secret placeholder the shim never checks; the shim
+mints a kernel app-token (same `infer:completions` scope, same mint-and-refresh
+discipline as the OpenAI-compatible path) and sends it as `x-api-key`. No Anthropic
+key ever reaches the NanoClaw container. `packages/claw-envelope`'s
+`BrainChoice.via` defaults to `'kernel-passthrough'` for exactly this reason.
 
-Placement: hosted (the direct key lives on the deploy host's container env). Local
-placement (Ollama/vLLM via the #1957 local-inference connector) is a valid future
-swap this same envelope shape supports without a code change — only the
-`model.placement`/`model.provider`/`model.deviation` fields in
+The old direct-key path still exists, but only as an explicit, non-default
+break-glass escape hatch (`brain.via: 'direct'`) for a deployment that deliberately
+does not want to run the shim sidecar — see `deploy/nanoclaw/README.md`'s "Brain
+path" section. Separately, the shim's OWN internal break-glass (kernel 5xx/timeout,
+never a 4xx) falls back to a direct Anthropic key configured on the shim itself
+(`ANTHROPIC_DIRECT_API_KEY`, the `"anthropic"` route's `directApiKeyEnvVar`) — that
+key is never on the NanoClaw container either way.
+
+Placement: hosted, via the kernel. Local placement (Ollama/vLLM via the #1957
+local-inference connector) is a valid future swap this same envelope shape supports
+without a code change — only `model.placement`/`model.provider`/`model.via` in
 `packages/claw-envelope`'s `EnvelopeConfig` change.
 
 ## 5. Harvested checklist (for #1933)
 
-Every manual step taken end-to-end to get from "nothing" to "bootable instance",
-in order. This is the primary artifact #1933's provisioner needs.
+Every step taken end-to-end to get from "nothing" to "bootable instance", in order.
+This is the primary artifact #1933's provisioner needs — each step names its
+classification and the exact kernel endpoint or CLI it maps to.
 
-1. **Clone NanoClaw at a pinned commit.** — *Automatable* (Dockerfile `ARG
-   NANOCLAW_GIT_REF`; the provisioner would pin and record the commit).
-2. **Register the agent DID.** — *Automatable*: `packages/claw-envelope`'s
-   `bootstrap-identity.ts` calls the kernel's existing `POST /auth/api/agents`.
-3. **Issue the minimal delegation grant.** — *Automatable*: same script, `POST
-   /auth/api/grants` with capabilities from the closed registry.
-4. **Store the returned keypair securely (0600, never logged).** — *Automatable*:
-   done by the same script.
-5. **Render the envelope (persona, `container.json`, env template, `APPLY.md`).** —
-   *Automatable*: `packages/claw-envelope`'s `render` CLI.
+1. **Clone NanoClaw at a pinned commit.**
+   Classification: automatable. Maps to: Dockerfile `ARG NANOCLAW_GIT_REF`; the
+   provisioner pins and records the commit.
+2. **Register the agent DID.**
+   Classification: automatable. Maps to: `packages/claw-envelope`'s
+   `bootstrap-identity.ts` → `POST /auth/api/agents` (existing endpoint, reused —
+   mints the keypair, wires `identity_members`).
+3. **Issue the minimal delegation grant.**
+   Classification: automatable. Maps to: same script → `POST /auth/api/grants`
+   with capabilities from `@imajin/auth`'s closed `GRANT_SCOPE_REGISTRY`.
+4. **Store the returned keypair securely (0600, never logged).**
+   Classification: automatable. Maps to: same script, no endpoint (local file write).
+5. **Render the envelope (persona, `container.json`, env template, `APPLY.md`).**
+   Classification: automatable. Maps to: `packages/claw-envelope`'s `render` CLI.
 6. **Copy the channel adapter into a NanoClaw checkout + append the barrel import.**
-   — *Automatable*: scripted in `deploy/nanoclaw/Dockerfile`'s build stage today;
-   #1933's provisioner should do this as a templated step rather than a Dockerfile
-   `COPY`, once more than one harness needs it.
-7. **Mint the `app.authorized` attestation granting the mcp-proxy app DID MCP
-   scope.** — **Manual, and likely to stay manual**: this is an owner-consent step
-   (the human approving "this app may act for me on MCP") — the same class of step
-   #1922's own design treats as a deliberate, separately-reviewed decision, not an
-   automation target.
-8. **Register the usage emitter (`PUT /usage/api/emitters`, source
-   `harness:nanoclaw`).** — *Automatable in principle*, but deliberately left as an
-   **owner** action here (mirrors `packages/usage-emitter-claude-code`'s own README):
-   the emitter registry is owner-only by construction, so a provisioner acting *as*
-   the agent could never do this step even if it wanted to — it has to be either the
-   owner directly, or a future provisioner explicitly granted that authority.
-9. **Set the direct Anthropic key as a deviation (§4).** — **Manual, and a deviation
-   to close, not to automate**: the correct long-term state is the kernel's sealed
-   connector once the Anthropic-format passthrough follow-up
-   ([#1959](https://github.com/ima-jin/imajin-ai/issues/1959)) lands; automating the
-   deviation would entrench it.
-10. **Build and start the containers; verify the DM round trip.** — *Automatable*
-    (`docker compose build && up`); verification itself is necessarily manual for a
-    first boot (see §6) but is exactly the kind of check a provisioner's health
-    surface should encode going forward.
-11. **Verify `usage.incurred` rows land with `source: 'harness:nanoclaw'`.** —
-    *Automatable* as a scripted check once the emitter has run at least once;
-    treated as manual verification here since this task does not touch live infra.
+   Classification: automatable (scripted today in `deploy/nanoclaw/Dockerfile`'s
+   build stage). Maps to: no kernel endpoint — a NanoClaw-side file operation;
+   #1933's provisioner should templatize this once more than one harness needs it.
+7. **Mint the `app.authorized` attestation granting the mcp-proxy app DID the mcp
+   scope.**
+   Classification: needs-owner-consent, likely permanently. Maps to: the kernel's
+   connectors/apps consent flow (no CLI shortcut exists by design — the human
+   approving "this app may act for me on MCP" cannot be automated away, the same
+   class of step #1922's design treats as deliberately non-automatable).
+8. **Mint the `app.authorized` attestation granting the infer-passthrough shim's
+   app DID (the same NanoClaw agent DID) `infer:completions` scope.** — *new step
+   introduced by closing the brain-path deviation (§4).*
+   Classification: needs-owner-consent, likely permanently. Maps to: the same
+   connectors/apps consent flow as step 7 — a second, distinct attestation (one
+   per principal/route combination, per `packages/openclaw-infer-passthrough`'s
+   README) because it grants a different scope for a different purpose.
+9. **Set the `"anthropic"` route's `attestationId`/`principalDid` in
+   `infer-proxy-routes.json` from step 8, and its `directApiKeyEnvVar` break-glass
+   key.** — *new step introduced by closing the brain-path deviation (§4).*
+   Classification: needs-operator. Maps to: no kernel endpoint — a local,
+   non-secret JSON config file (`deploy/nanoclaw/infer-proxy-routes.example.json`
+   is the template) plus one break-glass secret env var
+   (`ANTHROPIC_DIRECT_API_KEY`) on the shim container only.
+10. **Register the usage emitter (`PUT /usage/api/emitters`, source
+    `harness:nanoclaw`).**
+    Classification: needs-owner-consent (deliberately — the emitter registry is
+    owner-only by construction; a provisioner acting *as* the agent could never do
+    this even if it wanted to). Maps to: `PUT /usage/api/emitters` on the kernel.
+11. **Build and start the containers (`nanoclaw`, `infer-passthrough`, `mcp-proxy`,
+    `usage-emitter`); verify the DM round trip.**
+    Classification: automatable (`docker compose build && up`); the DM-round-trip
+    verification itself is necessarily manual for a first boot (see §6), but is
+    exactly the kind of check a provisioner's health surface should encode.
+12. **Verify `usage.incurred` rows land from BOTH emitters** — `source:
+    'inference-passthrough'` (kernel-metered, per turn) and `source:
+    'harness:nanoclaw'` (the harness-side emitter, per §6's explanation of why two
+    rows per turn is correct, not double-billing).
+    Classification: automatable as a scripted check once both have run at least
+    once; treated as manual verification here since this task does not touch live
+    infra. Maps to: `GET /usage/api/rollups` (or direct `usage.incurred` row query).
 
-**Summary for #1933**: steps 1–6, 10 (build), and 11 (once scripted) are ready to
-fold into the provisioner as-is. Steps 7 and 9 are owner-consent/deviation steps that
-should stay explicit gates in the provisioner's flow, not disappear into automation.
-Step 8 is a policy choice (owner vs. provisioner-delegated) the provisioner needs to
-make deliberately, not default silently.
+**Summary for #1933**: steps 1–6, 9, 11 (build), and 12 (once scripted) are ready to
+fold into the provisioner as-is. Steps 7, 8, and 10 are owner-consent gates that must
+stay explicit in the provisioner's flow — closing the brain-path deviation *added* an
+attestation step (8), it did not remove one. Step 9 is a policy/config step, not a
+consent step, but still needs-operator until #1933 gives the provisioner a way to
+write the shim's routes file itself.
 
 ## 6. Runbook (operator-executed — NOT run by this task)
 
@@ -214,14 +252,29 @@ pnpm --filter @imajin/claw-envelope bootstrap-identity -- \
 ```
 
 Re-run the envelope render with the real agent DID; stage its output into
-`deploy/nanoclaw/rendered/` per that directory's README.
+`deploy/nanoclaw/rendered/` per that directory's README. Extract the keypair's
+`privateKey` hex value into `NANOCLAW_AGENT_PRIVATE_KEY_HEX` in `.env` (the
+infer-passthrough shim's own pre-existing config contract requires a raw env var,
+not a file path — see `docker-compose.yml`'s comment on that line).
 
-### Mint the MCP attestation (owner action, step 7 above)
+### Mint the MCP attestation (owner action, checklist step 7)
 
 Via the connectors/apps consent flow on the kernel's own UI — no CLI shortcut exists
 by design (owner-consent step).
 
-### Register the usage emitter (owner action, step 8 above)
+### Mint the infer:completions attestation and configure the shim's route (owner action + operator config, checklist steps 8–9)
+
+1. Mint a SECOND `app.authorized` attestation (same UI flow as above) granting this
+   agent's app DID `infer:completions` scope — distinct from the MCP attestation,
+   since it grants a different scope for a different purpose.
+2. `cp deploy/nanoclaw/infer-proxy-routes.example.json deploy/nanoclaw/infer-proxy-routes.json`
+   and fill in that attestation's id and the owner's principal DID on the
+   `"anthropic"` entry.
+3. Optionally set `DIRECT_BRAIN_API_KEY` in `.env` if the shim's own break-glass
+   fallback should be live from first boot (recommended, so a kernel outage
+   degrades to direct-Anthropic rather than dark).
+
+### Register the usage emitter (owner action, checklist step 10)
 
 ```bash
 curl -X PUT "$KERNEL_BASE_URL/usage/api/emitters" \
@@ -237,30 +290,62 @@ docker compose build
 docker compose up -d
 ```
 
+Starts all four containers: `nanoclaw`, `infer-passthrough`, `mcp-proxy`,
+`usage-emitter`.
+
 ### Verify DM round trip in jin.imajin.ai
 
 1. Open `jin.imajin.ai`, start a DM with the agent's DID.
 2. Send a message; confirm a reply arrives signed by the agent DID (not the owner).
 3. Check `mcp-proxy`'s `/healthz` returns `{ ok: true }`.
+4. Check `infer-passthrough`'s `/healthz` returns `{ kernelOk: true, fallbackCount: 0,
+   ... }` — a nonzero `fallbackCount` means traffic is currently on the shim's own
+   direct-Anthropic break-glass, not the kernel.
 
-### Verify usage.incurred rows
+### Verify usage.incurred rows (two rows per turn — read this before concluding something is wrong)
+
+A single DM turn produces **two** `usage.incurred` rows, from two independent
+emitters, and that is correct:
+
+- `source: 'inference-passthrough'`, `resource: 'model:anthropic/<modelId>'` —
+  written by the KERNEL itself (`recordInferenceUsage`,
+  `apps/kernel/src/lib/inference/usage-ledger.ts`) the moment the infer-passthrough
+  shim's `POST /infer/v1/messages` call lands. This is the kernel-metered,
+  authoritative row — it is what actually gates spend caps and billing.
+- `source: 'harness:nanoclaw'` — written by the `usage-emitter` sidecar tailing the
+  agent container's own session JSONL (imajin-ai#1151 external-emitter pattern).
+  This is a harness-side attribution row, independent of the kernel's own
+  accounting — it exists so NanoClaw's own turn record is legible in the same
+  ledger even for a placement (e.g. local/#1957) where the kernel never sees the
+  call at all.
+
+These are NOT double-billing: only the `inference-passthrough` row ever produces a
+`pay.transactions`/`pay.balance_rollups` entry (see `usage-ledger.ts`'s division of
+responsibility) — the `harness:nanoclaw` row carries no cost computation of its own
+for a kernel-passthrough turn and exists purely for harness-side legibility.
 
 ```bash
+curl -H "Authorization: Bearer $OWNER_SESSION_TOKEN" \
+  "$KERNEL_BASE_URL/usage/api/rollups?source=inference-passthrough"
 curl -H "Authorization: Bearer $OWNER_SESSION_TOKEN" \
   "$KERNEL_BASE_URL/usage/api/rollups?source=harness:nanoclaw"
 ```
 
-Confirm rows appear after a test turn, including a $0 turn (attribution is the
-point, not billing — imajin-ai#1932).
+Confirm a row appears in BOTH after a test turn, including a $0 turn (attribution is
+the point, not billing — imajin-ai#1932).
 
 ### Rollback
 
-1. `docker compose down` — stops all three containers; NanoClaw's own agent
+1. `docker compose down` — stops all four containers; NanoClaw's own agent
    containers are separate and unaffected by this instance's identity.
 2. Revoke the delegation grant issued in step 3 (`POST /auth/api/grants` — see the
    kernel's grants API for the revoke path) if the instance is being decommissioned,
    not just paused.
-3. Set the usage emitter's `status` to `revoked` via `PUT /usage/api/emitters` if
+3. Revoke both `app.authorized` attestations (MCP and `infer:completions`) if
+   decommissioning — leaving them in place is harmless if only pausing.
+4. Set the usage emitter's `status` to `revoked` via `PUT /usage/api/emitters` if
    decommissioning.
-4. The agent DID and its keypair are otherwise inert once the container is stopped —
-   no further cleanup is required to "pause" the instance.
+5. The agent DID and its keypair are otherwise inert once the containers are stopped
+   — no further cleanup is required to "pause" the instance. Falling back to the
+   `'direct'` brain-path escape hatch (rather than decommissioning) requires no
+   kernel-side change at all — see `deploy/nanoclaw/README.md`.

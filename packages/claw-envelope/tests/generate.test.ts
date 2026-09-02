@@ -9,7 +9,7 @@ const baseInput: ContextEnvelopeInput = {
   intent: {
     scopes: ['messages:read', 'messages:write'],
     busRoutes: [{ eventType: 'chat.message.received', description: 'Inbound DM dispatch.' }],
-    brain: { placement: 'hosted', provider: 'anthropic:claude', deviation: 'direct key POC' },
+    brain: { placement: 'hosted', provider: 'anthropic:claude' },
     purpose: 'First hand-built NanoClaw instance.',
   },
 };
@@ -50,10 +50,26 @@ describe('generateEnvelope', () => {
     }
   });
 
-  it('surfaces a brain deviation in both config and a dedicated secret entry', () => {
+  it("defaults brain.via to 'kernel-passthrough' and never adds a direct-key secret", () => {
     const envelope = generateEnvelope(baseInput);
+    expect(envelope.config.model.via).toBe('kernel-passthrough');
+    expect(envelope.config.model.deviation).toBeUndefined();
+    expect(envelope.secrets.some((s) => s.name === 'DIRECT_BRAIN_API_KEY')).toBe(false);
+  });
+
+  it("surfaces a brain deviation in both config and a dedicated secret entry when via: 'direct'", () => {
+    const directInput: ContextEnvelopeInput = {
+      ...baseInput,
+      intent: {
+        ...baseInput.intent,
+        brain: { placement: 'hosted', provider: 'anthropic:claude', via: 'direct', deviation: 'direct key POC' },
+      },
+    };
+    const envelope = generateEnvelope(directInput);
+    expect(envelope.config.model.via).toBe('direct');
     expect(envelope.config.model.deviation).toBe('direct key POC');
     expect(envelope.secrets.some((s) => s.name === 'DIRECT_BRAIN_API_KEY')).toBe(true);
+    expect(envelope.workspace['AGENTS.md']).toContain('**Deviation**: direct key POC');
   });
 
   it('throws on an unknown grant capability rather than silently dropping it', () => {

@@ -9,6 +9,17 @@
 # (packages/nanoclaw-imajin-channel). `usage-emitter` is a periodic job, not
 # a daemon (see that package's README) — run here as a sleep loop rather
 # than a one-shot container exiting immediately.
+#
+# `infer-passthrough`: packages/openclaw-infer-passthrough's OWN existing
+# container/entry (imajin-ai#1959/#1961) — closes the #1932 direct-Anthropic-
+# key deviation. NanoClaw's agent containers reach it as `ANTHROPIC_BASE_URL`
+# by this COMPOSE SERVICE NAME (`infer-passthrough`), not `127.0.0.1`: they do
+# not share a network namespace with any compose service (NanoClaw spawns them
+# itself via the host Docker socket — docker-outside-of-docker — as sibling
+# containers on the host daemon, not as children of this compose project). The
+# named `nanoclaw-net` network below is what makes the service name resolve;
+# see README.md for the operator step this implies for NanoClaw's own spawned
+# agent containers.
 services:
   nanoclaw:
     build:
@@ -17,14 +28,24 @@ services:
       args:
         NANOCLAW_GIT_REF: ${NANOCLAW_GIT_REF}
     restart: unless-stopped
+    depends_on:
+      - infer-passthrough
+    networks:
+      - nanoclaw-net
     environment:
       KERNEL_BASE_URL: ${KERNEL_BASE_URL}
       NANOCLAW_AGENT_DID: ${NANOCLAW_AGENT_DID}
       NANOCLAW_OWNER_DID: ${NANOCLAW_OWNER_DID}
       NANOCLAW_AGENT_KEYPAIR_PATH: /secrets/keypair.json
-      # Brain deviation (imajin-ai#1922 follow-up pending) — see
-      # docs/agents/nanoclaw-first-boot.md's brain-path decision.
-      ANTHROPIC_API_KEY: ${DIRECT_BRAIN_API_KEY}
+      # Brain (imajin-ai#1959/#1961, default path): the Claude Agent SDK /
+      # Claude Code CLI speak the Anthropic Messages API natively via these
+      # two vars — reached through the infer-passthrough shim, never a real
+      # provider key on this container. See README.md's brain-path section
+      # for the 'direct' break-glass alternative (ANTHROPIC_API_KEY set to
+      # DIRECT_BRAIN_API_KEY, no ANTHROPIC_BASE_URL override) if the shim
+      # sidecar is intentionally not run.
+      ANTHROPIC_BASE_URL: http://infer-passthrough:${INFER_PROXY_PORT}/anthropic
+      ANTHROPIC_API_KEY: unused-placeholder
     volumes:
       - nanoclaw-data:/app/data
       - ${NANOCLAW_AGENT_KEYPAIR_PATH_HOST}:/secrets/keypair.json:ro
@@ -41,11 +62,43 @@ services:
       timeout: 5s
       retries: 3
 
+  infer-passthrough:
+    build:
+      context: ../..
+      dockerfile: deploy/nanoclaw/infer-passthrough.Dockerfile
+    restart: unless-stopped
+    networks:
+      - nanoclaw-net
+    environment:
+      INFER_PROXY_HOST: 0.0.0.0
+      INFER_PROXY_PORT: ${INFER_PROXY_PORT}
+      KERNEL_BASE_URL: ${KERNEL_BASE_URL}
+      OPENCLAW_APP_DID: ${NANOCLAW_AGENT_DID}
+      # Raw hex private key, per this shim's OWN pre-existing config contract
+      # (packages/openclaw-infer-passthrough/src/config.ts — not something
+      # this PR introduces or can change). Extract from the keypair file at
+      # NANOCLAW_AGENT_KEYPAIR_PATH_HOST when populating .env. Never logged.
+      OPENCLAW_APP_PRIVATE_KEY: ${NANOCLAW_AGENT_PRIVATE_KEY_HEX}
+      INFER_PROXY_ROUTES_CONFIG: /config/infer-proxy-routes.json
+      # Break-glass ONLY (kernel 5xx/timeout, never on a kernel 4xx) — see
+      # the "anthropic" route's directApiKeyEnvVar in infer-proxy-routes.json.
+      # No longer a live credential on the NanoClaw container itself.
+      ANTHROPIC_DIRECT_API_KEY: ${DIRECT_BRAIN_API_KEY}
+    volumes:
+      - ./infer-proxy-routes.json:/config/infer-proxy-routes.json:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:'+process.env.INFER_PROXY_PORT+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   mcp-proxy:
     build:
       context: ../..
       dockerfile: deploy/nanoclaw/mcp-proxy.Dockerfile
     restart: unless-stopped
+    networks:
+      - nanoclaw-net
     environment:
       KERNEL_BASE_URL: ${KERNEL_BASE_URL}
       MCP_SERVER_URL: ${MCP_SERVER_URL}
@@ -84,3 +137,12 @@ services:
 volumes:
   nanoclaw-data:
   usage-emitter-state:
+
+networks:
+  # Shared by every service here so they resolve each other by service name.
+  # NanoClaw's own spawned agent containers (docker-outside-of-docker, sibling
+  # containers on the host daemon rather than children of this compose
+  # project) must ALSO be attached to this network for ANTHROPIC_BASE_URL's
+  # `infer-passthrough` hostname to resolve from inside them — see README.md.
+  nanoclaw-net:
+    name: nanoclaw-net

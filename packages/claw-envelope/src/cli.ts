@@ -65,8 +65,7 @@ export function render(args: ParsedArgs): RenderedTree {
       brain: {
         placement: 'hosted',
         provider: 'anthropic:claude',
-        deviation:
-          'Kernel completions passthrough (imajin-ai#1925) is OpenAI-compatible; NanoClaw\'s Claude Agent SDK speaks the Anthropic Messages API. Running on a scoped direct Anthropic key via container env until the imajin-ai#1922 follow-up (Anthropic-format /infer/v1/messages passthrough) lands.',
+        via: 'kernel-passthrough',
       },
       purpose: args.purpose,
     },

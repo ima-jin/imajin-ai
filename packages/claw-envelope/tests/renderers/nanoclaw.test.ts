@@ -10,7 +10,7 @@ const input: ContextEnvelopeInput = {
   intent: {
     scopes: ['messages:read', 'messages:write'],
     busRoutes: [{ eventType: 'chat.message.received', description: 'Inbound DM dispatch.' }],
-    brain: { placement: 'hosted', provider: 'anthropic:claude', deviation: 'direct key POC' },
+    brain: { placement: 'hosted', provider: 'anthropic:claude' },
     purpose: 'First hand-built NanoClaw instance inside an Imajin context.',
   },
 };
@@ -69,7 +69,37 @@ describe('renderNanoClaw', () => {
       expect(value ?? '').not.toMatch(/^[A-Za-z0-9+/]{20,}={0,2}$/); // not base64-secret-shaped
     }
     expect(envFile!.content).toContain('NANOCLAW_AGENT_KEYPAIR_PATH=');
-    expect(envFile!.content).toContain('DIRECT_BRAIN_API_KEY=');
+  });
+
+  it("defaults the brain env to the kernel-passthrough shim, never a real provider key (imajin-ai#1959/#1961)", () => {
+    const envFile = tree.files.find((f) => f.relativePath.endsWith('.env.example'));
+    expect(envFile?.content).toContain('ANTHROPIC_BASE_URL=http://infer-passthrough:8787/anthropic');
+    expect(envFile?.content).toContain('ANTHROPIC_API_KEY=unused-placeholder');
+    expect(envFile?.content).not.toContain('DIRECT_BRAIN_API_KEY=');
+  });
+
+  it("honors custom inferProxyHost/inferProxyPort options for the kernel-passthrough URL", () => {
+    const envelope = generateEnvelope(input);
+    const customTree = renderNanoClaw(envelope, { mcpProxyPort: 8788, inferProxyHost: 'custom-shim', inferProxyPort: 9999 });
+    const envFile = customTree.files.find((f) => f.relativePath.endsWith('.env.example'));
+    expect(envFile?.content).toContain('ANTHROPIC_BASE_URL=http://custom-shim:9999/anthropic');
+  });
+
+  it("renders the direct break-glass env instead when brain.via is 'direct'", () => {
+    const directInput: ContextEnvelopeInput = {
+      ...input,
+      intent: {
+        ...input.intent,
+        brain: { placement: 'hosted', provider: 'anthropic:claude', via: 'direct', deviation: 'shim sidecar intentionally not run' },
+      },
+    };
+    const directEnvelope = generateEnvelope(directInput);
+    const directTree = renderNanoClaw(directEnvelope, { mcpProxyPort: 8788 });
+    const envFile = directTree.files.find((f) => f.relativePath.endsWith('.env.example'));
+    expect(envFile?.content).toContain('DIRECT_BRAIN_API_KEY=');
+    expect(envFile?.content).toContain('shim sidecar intentionally not run');
+    expect(envFile?.content).not.toContain('ANTHROPIC_BASE_URL=');
+    expect(directTree.manualSteps.some((s) => s.includes('DIRECT_BRAIN_API_KEY'))).toBe(true);
   });
 
   it('documents the channel-copy step as a manual/apply step rather than duplicating adapter source', () => {
@@ -79,7 +109,7 @@ describe('renderNanoClaw', () => {
     expect(tree.manualSteps.some((s) => s.toLowerCase().includes('channel'))).toBe(true);
   });
 
-  it('surfaces the brain deviation as a manual step', () => {
-    expect(tree.manualSteps.some((s) => s.includes('DIRECT_BRAIN_API_KEY'))).toBe(true);
+  it("surfaces the infer:completions attestation as a manual step for the default kernel-passthrough path", () => {
+    expect(tree.manualSteps.some((s) => s.includes('infer:completions'))).toBe(true);
   });
 });

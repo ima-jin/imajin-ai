@@ -58,6 +58,12 @@ function memoryReadmeMd(envelope: ContextEnvelope): string {
  * headers, and `mcp.imajin.ai` access requires a short-lived (10-minute),
  * caller-refreshed app-token JWT (imajin-ai#1922 finding 6). The proxy is the
  * "smallest possible sidecar" for that missing extension point.
+ *
+ * The model/brain itself is NOT part of `container.json` — the underlying
+ * Claude Code CLI picks up `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL` from the
+ * container env (`env: { ...process.env }` in
+ * `container/agent-runner/src/index.ts`); see `envExample()` below for how
+ * those two vars are set for each `brain.via` choice.
  */
 function containerJson(envelope: ContextEnvelope, mcpProxyPort: number): string {
   const config = {
@@ -69,16 +75,42 @@ function containerJson(envelope: ContextEnvelope, mcpProxyPort: number): string 
         url: `http://127.0.0.1:${mcpProxyPort}/mcp`,
       },
     },
-    // Model left unset when placement is 'hosted' with a deviation: the
-    // underlying Claude Code CLI picks up ANTHROPIC_API_KEY / (optionally)
-    // ANTHROPIC_BASE_URL from the container env (`env: { ...process.env }`
-    // in `container/agent-runner/src/index.ts`) — see AGENTS.md / the design
-    // doc for the brain-path decision and its documented deviation.
   };
   return JSON.stringify(config, null, 2) + '\n';
 }
 
-function envExample(envelope: ContextEnvelope): string {
+/**
+ * Brain env for the two `brain.via` choices (imajin-ai#1959/#1961):
+ *   'kernel-passthrough' (default) — point at the openclaw-infer-passthrough
+ *     shim's fixed `/anthropic` prefix; `ANTHROPIC_API_KEY` is a placeholder
+ *     the shim never checks (real auth is kernel-side, via a minted
+ *     app-token sent as `x-api-key`). No provider key on this container.
+ *   'direct' — explicit break-glass: bypass the shim, talk to the provider
+ *     directly with a real, scoped key (`DIRECT_BRAIN_API_KEY`).
+ */
+function brainEnvLines(envelope: ContextEnvelope, inferProxyHost: string, inferProxyPort: number): string[] {
+  if (envelope.config.model.via === 'direct') {
+    const deviation = envelope.config.model.deviation ?? "brain.via: 'direct' break-glass";
+    return [
+      '',
+      `# Deviation: ${deviation}`,
+      '# DIRECT_BRAIN_API_KEY is this container\'s real ANTHROPIC_API_KEY value —',
+      '# named distinctly here so it is never confused with the kernel-passthrough',
+      "# path's non-secret 'unused-placeholder'.",
+      'DIRECT_BRAIN_API_KEY=',
+    ];
+  }
+  return [
+    '',
+    '# Brain: reached via the kernel Anthropic-format completions passthrough',
+    '# (imajin-ai#1959/#1961) through the openclaw-infer-passthrough shim.',
+    '# No provider key on this container — see deploy/nanoclaw/docker-compose.yml.',
+    `ANTHROPIC_BASE_URL=http://${inferProxyHost}:${inferProxyPort}/anthropic`,
+    'ANTHROPIC_API_KEY=unused-placeholder',
+  ];
+}
+
+function envExample(envelope: ContextEnvelope, inferProxyHost: string, inferProxyPort: number): string {
   const lines = [
     '# Variable NAMES only — set real values on the deploy host, never commit them.',
     '',
@@ -87,10 +119,8 @@ function envExample(envelope: ContextEnvelope): string {
     `NANOCLAW_OWNER_DID=${envelope.ownerDid}`,
     'NANOCLAW_AGENT_KEYPAIR_PATH=',
     'MCP_PROXY_PORT=8788',
+    ...brainEnvLines(envelope, inferProxyHost, inferProxyPort),
   ];
-  if (envelope.config.model.deviation) {
-    lines.push('', `# Deviation: ${envelope.config.model.deviation}`, 'DIRECT_BRAIN_API_KEY=');
-  }
   for (const secret of envelope.secrets) {
     if (secret.kind === 'env-var' && !lines.some((l) => l.startsWith(`${secret.name}=`))) {
       lines.push(secret.purpose ? `# ${secret.purpose}` : '', `${secret.name}=`);
@@ -131,7 +161,10 @@ groups/${folder}/container.json
 ## 4. Start the sidecars
 
 Run \`packages/nanoclaw-imajin-channel\`'s \`mcp-proxy\` and \`usage-emitter\` (see that package's
-README and \`deploy/nanoclaw/docker-compose.yml\`) alongside the NanoClaw container.
+README and \`deploy/nanoclaw/docker-compose.yml\`) alongside the NanoClaw container. When the
+brain is reached via the kernel passthrough (the default — see \`.env.example\`), also run
+the \`infer-passthrough\` shim (\`packages/openclaw-infer-passthrough\`, its own existing
+container/entry — not a new proxy) so \`ANTHROPIC_BASE_URL\` has something to point at.
 
 ## 5. Build and validate
 
@@ -143,9 +176,18 @@ See \`docs/agents/nanoclaw-first-boot.md\` for the full harvested checklist.
 `;
 }
 
+export interface RenderNanoClawOptions {
+  mcpProxyPort?: number;
+  /** Compose service name (or host) the openclaw-infer-passthrough shim is reachable at. Default matches deploy/nanoclaw/docker-compose.yml's service name. */
+  inferProxyHost?: string;
+  inferProxyPort?: number;
+}
+
 /** Render a `ContextEnvelope` onto NanoClaw's real layout. */
-export function renderNanoClaw(envelope: ContextEnvelope, opts: { mcpProxyPort?: number } = {}): RenderedTree {
+export function renderNanoClaw(envelope: ContextEnvelope, opts: RenderNanoClawOptions = {}): RenderedTree {
   const mcpProxyPort = opts.mcpProxyPort ?? 8788;
+  const inferProxyHost = opts.inferProxyHost ?? 'infer-passthrough';
+  const inferProxyPort = opts.inferProxyPort ?? 8787;
   const folder = groupFolderFor(envelope.handle);
 
   const files: RenderedFile[] = [
@@ -155,16 +197,16 @@ export function renderNanoClaw(envelope: ContextEnvelope, opts: { mcpProxyPort?:
     { relativePath: `nanoclaw/groups/${folder}/instructions.prepend.md`, content: instructionsPrependMd(envelope) + '\n' },
     { relativePath: `nanoclaw/groups/${folder}/memory/README.md`, content: memoryReadmeMd(envelope) },
     { relativePath: `nanoclaw/groups/${folder}/container.json`, content: containerJson(envelope, mcpProxyPort) },
-    { relativePath: 'nanoclaw/.env.example', content: envExample(envelope) },
+    { relativePath: 'nanoclaw/.env.example', content: envExample(envelope, inferProxyHost, inferProxyPort) },
     { relativePath: 'nanoclaw/APPLY.md', content: applyMd(envelope, folder) },
   ];
 
   const manualSteps = [
     'Copy the imajin-chat channel adapter into the NanoClaw checkout and append the barrel import (nanoclaw/APPLY.md, steps 1-2) — scriptable in the deploy Dockerfile build stage, not yet scripted here.',
-    'Mint the app.authorized attestation granting the mcp-proxy app DID MCP scope (owner consent step — cannot be automated away).',
-    envelope.config.model.deviation
-      ? `Brain deviation: ${envelope.config.model.deviation} — set DIRECT_BRAIN_API_KEY on the deploy host.`
-      : 'Confirm the kernel completions passthrough route for the chosen brain provider.',
+    'Mint the app.authorized attestation granting the mcp-proxy app DID the mcp scope (owner consent step — cannot be automated away).',
+    envelope.config.model.via === 'direct'
+      ? `Brain deviation: ${envelope.config.model.deviation ?? "brain.via: 'direct'"} — set DIRECT_BRAIN_API_KEY on the deploy host.`
+      : "Mint the app.authorized attestation granting this agent's app DID infer:completions scope, and set its attestationId/principalDid on the infer-passthrough shim's \"anthropic\" route entry (owner consent step — cannot be automated away).",
   ];
 
   return { harness: HARNESS, files, manualSteps };

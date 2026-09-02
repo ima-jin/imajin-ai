@@ -16,6 +16,21 @@
 /** A brain choice is a build decision (imajin-ai#1932), not a premise. */
 export type BrainPlacement = 'local' | 'hosted';
 
+/**
+ * How a 'hosted' brain reaches its provider (imajin-ai#1959/#1961 closed the
+ * gap this axis used to paper over with a deviation):
+ *   'kernel-passthrough' — DEFAULT. Reaches the provider through the kernel's
+ *     sealed connector via a wire-format shim (e.g.
+ *     `packages/openclaw-infer-passthrough`'s `/anthropic` route forwarding
+ *     to `POST /infer/v1/messages`). No provider key ever reaches the harness
+ *     container.
+ *   'direct' — explicit, non-default break-glass escape hatch: the harness
+ *     container holds its own scoped provider key and talks to the provider
+ *     directly, bypassing the kernel and the shim entirely. Always a
+ *     documented deviation (`deviation` below), never silently chosen.
+ */
+export type BrainVia = 'kernel-passthrough' | 'direct';
+
 export interface BrainChoice {
   placement: BrainPlacement;
   /**
@@ -25,11 +40,15 @@ export interface BrainChoice {
    */
   provider: string;
   /**
-   * True when this brain choice is a documented deviation from the kernel's
-   * sealed-connector path (imajin-ai#1922) — e.g. a scoped direct provider key
-   * supplied via container env because no kernel passthrough exists yet for
-   * this harness's wire format. Renderers surface this prominently so it is
-   * never silently normalized away.
+   * How a 'hosted' brain reaches its provider. Omit to get the default,
+   * `'kernel-passthrough'` — a caller must opt IN to `'direct'` explicitly.
+   * Meaningless (ignored) for `placement: 'local'`.
+   */
+  via?: BrainVia;
+  /**
+   * Required (by convention — not type-enforced) when `via: 'direct'`: why
+   * this instance bypasses the kernel's sealed-connector path. Renderers
+   * surface this prominently so it is never silently normalized away.
    */
   deviation?: string;
 }
@@ -93,6 +112,8 @@ export interface EnvelopeConfig {
   model: {
     placement: BrainPlacement;
     provider: string;
+    /** Always resolved by the generator — defaults to 'kernel-passthrough' when the input omits it. */
+    via: BrainVia;
     deviation?: string;
   };
   execPolicy: {

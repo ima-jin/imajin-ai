@@ -1,6 +1,7 @@
 export type {
   BrainChoice,
   BrainPlacement,
+  BrainVia,
   BusRoute,
   ContextEnvelope,
   ContextEnvelopeInput,
@@ -14,3 +15,4 @@ export type {
 } from './types.js';
 export { generateEnvelope, validateIntentScopes } from './generate.js';
 export { renderNanoClaw, groupFolderFor } from './renderers/nanoclaw.js';
+export type { RenderNanoClawOptions } from './renderers/nanoclaw.js';
