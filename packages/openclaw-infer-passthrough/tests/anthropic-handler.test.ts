@@ -2,8 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { handleAnthropicRequest, type HandleAnthropicDeps } from '../src/anthropic-handler.js';
 import { HealthTracker } from '../src/health.js';
 import { createLogger } from '../src/logger.js';
-import type { TokenSource } from '../src/token-provider.js';
 import type { ProviderRouteConfig } from '../src/types.js';
+import { bodyToText, fakeTokenSource, onAbortRejection } from './dispatch-test-support.js';
 
 const ANTHROPIC_ROUTE: ProviderRouteConfig = {
   id: 'anthropic',
@@ -20,20 +20,6 @@ const ANTHROPIC_ROUTE_NO_FALLBACK: ProviderRouteConfig = {
   attestationId: 'att-anthropic',
 };
 
-function fakeTokenSource(tokens: string[]): TokenSource & { calls: number } {
-  let i = 0;
-  return {
-    calls: 0,
-    async getToken() {
-      this.calls += 1;
-      return tokens[Math.min(i, tokens.length - 1)];
-    },
-    invalidate() {
-      i += 1;
-    },
-  };
-}
-
 function baseDeps(overrides: Partial<HandleAnthropicDeps> = {}): HandleAnthropicDeps {
   return {
     route: ANTHROPIC_ROUTE,
@@ -46,21 +32,6 @@ function baseDeps(overrides: Partial<HandleAnthropicDeps> = {}): HandleAnthropic
     log: createLogger('test'),
     ...overrides,
   };
-}
-
-async function bodyToText(body: ReadableStream<Uint8Array> | null): Promise<string> {
-  if (!body) return '';
-  return new Response(body).text();
-}
-
-function onAbortRejection(signal: AbortSignal): Promise<never> {
-  return new Promise((_resolve, reject) => {
-    signal.addEventListener('abort', () => {
-      const err = new Error('The operation was aborted');
-      err.name = 'TimeoutError';
-      reject(err);
-    });
-  });
 }
 
 describe('handleAnthropicRequest — happy path', () => {

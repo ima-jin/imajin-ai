@@ -1,51 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-const {
+import {
+  resetAnthropicRouteMocks,
   mockResolveInferenceAuth,
   mockRateLimit,
   mockResolveBrain,
-  mockForwardAnthropicMessages,
   mockReadConnectorRegistration,
   mockEnforceSpendCap,
-} = vi.hoisted(() => ({
-  mockResolveInferenceAuth: vi.fn(),
-  mockRateLimit: vi.fn(),
-  mockResolveBrain: vi.fn(),
-  mockForwardAnthropicMessages: vi.fn(),
-  mockReadConnectorRegistration: vi.fn(),
-  mockEnforceSpendCap: vi.fn(),
-}));
+  OWNER_DID,
+  APP_DID,
+} from '../../__tests__/anthropic-route-test-support';
 
-vi.mock('@/src/lib/inference/auth', () => ({
-  resolveInferenceAuth: mockResolveInferenceAuth,
-}));
-
-vi.mock('@/src/lib/kernel/cors', () => ({
-  corsHeaders: () => ({ 'Access-Control-Allow-Origin': 'https://agent.example' }),
-  corsOptions: () => new Response(null, { status: 204 }),
-}));
-
-vi.mock('@imajin/config', () => ({
-  rateLimit: mockRateLimit,
-  getClientIP: () => '203.0.113.7',
-}));
-
-vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
-}));
-
-vi.mock('@/src/lib/inference/brain', async () => {
-  const { createFakeBrainErrorClasses } = await import('@/src/lib/inference/__tests__/brain-errors-test-support');
-  return { resolveBrain: mockResolveBrain, ...createFakeBrainErrorClasses() };
-});
-
-// `forward.ts` imports `usage-ledger.ts`, which imports the real `@/src/db`
-// drizzle client. Mocked here so `vi.importActual` below can load the rest of
-// `forward.ts` (including the real `applySealedModel`) without a live
-// DATABASE_URL — the route test only needs `forwardAnthropicMessages` mocked.
-vi.mock('@/src/lib/inference/usage-ledger', () => ({
-  recordInferenceUsage: vi.fn().mockResolvedValue(undefined),
-}));
+const { mockForwardAnthropicMessages } = vi.hoisted(() => ({ mockForwardAnthropicMessages: vi.fn() }));
 
 vi.mock('@/src/lib/inference/anthropic-messages/forward', async () => {
   const actual = await vi.importActual<typeof import('@/src/lib/inference/anthropic-messages/forward')>(
@@ -54,23 +19,10 @@ vi.mock('@/src/lib/inference/anthropic-messages/forward', async () => {
   return { ...actual, forwardAnthropicMessages: mockForwardAnthropicMessages };
 });
 
-vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
-  connectorRegistryId: (ownerDid: string, provider: string) => `conn_${ownerDid}_${provider}`,
-  readConnectorRegistration: mockReadConnectorRegistration,
-}));
-
-vi.mock('@/src/lib/inference/spend-cap', async () => {
-  const { createFakeSpendCapClasses } = await import('@/src/lib/inference/__tests__/brain-errors-test-support');
-  return { ...createFakeSpendCapClasses(), enforceSpendCap: mockEnforceSpendCap };
-});
-
 import { POST, OPTIONS } from '../route';
 import { NoBrainSealedError, NoModelSelectedError } from '@/src/lib/inference/brain';
 import { UpstreamTimeoutError } from '@/src/lib/inference/completions/errors';
 import { SpendCapExceededError } from '@/src/lib/inference/spend-cap';
-
-const OWNER_DID = 'did:imajin:supplier';
-const APP_DID = 'did:imajin:nanoclaw-app';
 
 type RouteRequest = Parameters<typeof POST>[0];
 
@@ -81,22 +33,9 @@ function makeReq(opts: { headers?: Record<string, string>; body?: string } = {})
   } as unknown as RouteRequest;
 }
 
-const ANTHROPIC_BRAIN = {
-  connector: 'anthropic',
-  credentialDid: OWNER_DID,
-  provider: 'anthropic' as const,
-  modelId: 'claude-opus-4-6',
-  apiKey: 'sk-ant-sealed-secret',
-};
-
 beforeEach(() => {
-  vi.clearAllMocks();
-  mockRateLimit.mockReturnValue({ limited: false });
-  mockResolveInferenceAuth.mockResolvedValue({ ok: true, context: { ownerDid: OWNER_DID, appDid: APP_DID } });
-  mockResolveBrain.mockResolvedValue(ANTHROPIC_BRAIN);
+  resetAnthropicRouteMocks();
   mockForwardAnthropicMessages.mockResolvedValue(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
-  mockReadConnectorRegistration.mockResolvedValue(undefined);
-  mockEnforceSpendCap.mockResolvedValue(undefined);
 });
 
 describe('POST /infer/v1/messages — request gating', () => {

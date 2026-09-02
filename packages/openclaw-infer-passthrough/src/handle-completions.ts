@@ -1,33 +1,24 @@
 /**
- * Core request orchestration for `POST /v1/chat/completions` and
+ * Request orchestration for `POST /v1/chat/completions` and
  * `POST /:providerId/v1/chat/completions` (imajin-ai#1926).
  *
  * Deliberately decoupled from `node:http` so it can be exercised directly in
  * tests without a real socket (see `tests/handle-completions.test.ts`) — the
- * HTTP adapter lives in `server.ts`.
- *
- * Decision rules (from the issue):
- *   - 4xx from the kernel (auth/scope/422 NoModelSelected/...) is a client
- *     error — forwarded verbatim, never triggers fallback. The one exception
- *     is a 401, which is retried once with a freshly-minted token before
- *     being treated as a final 4xx (a persistent 401 after retry means the
- *     grant itself is bad, not that the token merely expired early).
- *   - 5xx from the kernel, or a time-to-first-byte timeout / network failure,
- *     triggers break-glass fallback to the route's direct endpoint — if one
- *     is configured. If not, the kernel's own error is surfaced.
+ * HTTP adapter lives in `server.ts`. The kernel-then-break-glass decision
+ * flow itself (401 retry, 5xx/timeout fallback, 4xx verbatim) lives in
+ * `dispatch.ts`, shared with `anthropic-handler.ts` (imajin-ai#1959) — this
+ * module only builds the OpenAI-compatible-specific request/response pieces:
+ * route resolution by path segment or `model`, and the two upstream calls.
  */
+import { dispatchWithBreakGlass, jsonError, type ProxyResponse } from './dispatch.js';
 import type { HealthTracker } from './health.js';
 import type { Logger } from './logger.js';
 import { resolveRoute } from './router.js';
 import type { TokenSource } from './token-provider.js';
-import { forwardDirect, forwardToKernel, UpstreamTimeoutError, UpstreamUnavailableError } from './upstream.js';
+import { forwardDirect, forwardToKernel } from './upstream.js';
 import type { ProviderRouteConfig } from './types.js';
 
-export interface ProxyResponse {
-  status: number;
-  headers: Record<string, string>;
-  body: Response['body'];
-}
+export type { ProxyResponse } from './dispatch.js';
 
 export interface IncomingCompletionsRequest {
   providerIdFromPath?: string;
@@ -45,31 +36,6 @@ export interface HandleCompletionsDeps {
   resolveDirectApiKey(route: ProviderRouteConfig): string | undefined;
   health: HealthTracker;
   log: Logger;
-}
-
-/** Shared with `anthropic-handler.ts` (imajin-ai#1959) so both wire formats build the same error-response shape. */
-export function jsonError(status: number, error: string, message: string): ProxyResponse {
-  return {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-    body: toBody(JSON.stringify({ error, message })),
-  };
-}
-
-function toBody(text: string): Response['body'] {
-  return new Response(text).body;
-}
-
-/** Shared with `anthropic-handler.ts` (imajin-ai#1959) — both wire formats forward the kernel/direct response's status/content-type/SSE headers identically. */
-export function toProxyResponse(res: Response): ProxyResponse {
-  const headers: Record<string, string> = {};
-  const contentType = res.headers.get('content-type');
-  if (contentType) headers['Content-Type'] = contentType;
-  if ((res.headers.get('content-type') ?? '').includes('text/event-stream')) {
-    headers['Cache-Control'] = 'no-cache';
-    headers['Connection'] = 'keep-alive';
-  }
-  return { status: res.status, headers, body: res.body };
 }
 
 function extractModel(bodyText: string): string | undefined {
@@ -97,68 +63,13 @@ export async function handleCompletions(
     );
   }
 
-  const tokenProvider = deps.getTokenProvider(route.id);
-
-  try {
-    const kernelResponse = await attemptKernelCall(deps, route, tokenProvider, req);
-    if (kernelResponse.status >= 500) {
-      return await attemptFallback(deps, route, req, `kernel returned ${kernelResponse.status}`);
-    }
-    deps.health.recordKernelSuccess();
-    return toProxyResponse(kernelResponse);
-  } catch (err) {
-    if (err instanceof UpstreamTimeoutError || err instanceof UpstreamUnavailableError) {
-      return await attemptFallback(deps, route, req, err.message);
-    }
-    throw err;
-  }
-}
-
-/** Call the kernel, retrying once with a freshly-minted token on a 401. */
-async function attemptKernelCall(
-  deps: HandleCompletionsDeps,
-  route: ProviderRouteConfig,
-  tokenProvider: TokenSource,
-  req: IncomingCompletionsRequest,
-): Promise<Response> {
-  const token = await tokenProvider.getToken();
-  const first = await forwardToKernel(deps.kernelBaseUrl, token, req.bodyText, deps.kernelTimeoutMs, {
-    sessionId: req.sessionId,
-    turnId: req.turnId,
-  });
-  if (first.status !== 401) return first;
-
-  deps.log.warn({ route: route.id }, 'kernel rejected app token with 401 — reminting and retrying once');
-  tokenProvider.invalidate();
-  const freshToken = await tokenProvider.getToken();
-  return forwardToKernel(deps.kernelBaseUrl, freshToken, req.bodyText, deps.kernelTimeoutMs, {
-    sessionId: req.sessionId,
-    turnId: req.turnId,
-  });
-}
-
-/** Break-glass: try the route's direct endpoint, or surface the original kernel failure. */
-async function attemptFallback(
-  deps: HandleCompletionsDeps,
-  route: ProviderRouteConfig,
-  req: IncomingCompletionsRequest,
-  reason: string,
-): Promise<ProxyResponse> {
-  const directApiKey = deps.resolveDirectApiKey(route);
-  if (!route.directBaseUrl || !directApiKey) {
-    deps.log.error({ route: route.id, reason }, 'kernel unavailable and no break-glass direct endpoint configured');
-    return jsonError(502, 'kernel_unavailable', `Kernel passthrough failed (${reason}) and no break-glass fallback is configured for '${route.id}'`);
-  }
-
-  try {
-    const direct = await forwardDirect(route, directApiKey, req.bodyText, deps.directTimeoutMs);
-    deps.health.recordFallback();
-    deps.log.warn({ route: route.id, reason, status: direct.status }, 'break-glass: fell back to direct provider endpoint');
-    return toProxyResponse(direct);
-  } catch (err) {
-    deps.health.recordFallback();
-    const detail = err instanceof Error ? err.message : String(err);
-    deps.log.error({ route: route.id, reason, detail }, 'break-glass fallback itself failed');
-    return jsonError(502, 'fallback_failed', `Kernel passthrough failed (${reason}) and the break-glass fallback also failed: ${detail}`);
-  }
+  return dispatchWithBreakGlass(
+    { route, getTokenProvider: deps.getTokenProvider, resolveDirectApiKey: deps.resolveDirectApiKey, health: deps.health, log: deps.log },
+    (token) =>
+      forwardToKernel(deps.kernelBaseUrl, token, req.bodyText, deps.kernelTimeoutMs, {
+        sessionId: req.sessionId,
+        turnId: req.turnId,
+      }),
+    (directApiKey) => forwardDirect(route, directApiKey, req.bodyText, deps.directTimeoutMs),
+  );
 }
