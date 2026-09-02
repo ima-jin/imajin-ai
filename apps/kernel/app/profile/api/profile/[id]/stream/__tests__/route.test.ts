@@ -169,7 +169,6 @@ describe('presence stream — usage.incurred emission (#1956)', () => {
       completionTokens: 8,
       costUsd: 0,
       settled: false,
-      settleAmount: 0,
     });
   });
 
@@ -190,7 +189,7 @@ describe('presence stream — usage.incurred emission (#1956)', () => {
     );
   });
 
-  it('reports settled + settleAmount when the query was actually settled', async () => {
+  it('reports settled=true with the estimated cost when the query was actually settled', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:someone-else' } });
     mockCalculateCost.mockReturnValueOnce(0.05);
     vi.stubEnv('PAY_SERVICE_URL', 'https://pay.test');
@@ -209,7 +208,6 @@ describe('presence stream — usage.incurred emission (#1956)', () => {
     expect(mockRecordPresenceQueryUsage).toHaveBeenCalledWith(
       expect.objectContaining({
         settled: true,
-        settleAmount: 0.05,
         costUsd: 0.05,
         requesterDid: 'did:imajin:someone-else',
       }),

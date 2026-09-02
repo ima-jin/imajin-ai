@@ -50,8 +50,6 @@ export interface RecordPresenceQueryUsageParams {
   /** Estimated USD cost of this call (`calculateCost`), independent of whether it was actually settled. */
   costUsd: number;
   settled: boolean;
-  /** The amount actually moved through pay for this query; `0` when `settled` is false. */
-  settleAmount: number;
 }
 
 /**
@@ -70,13 +68,15 @@ export async function recordPresenceQueryUsage(params: RecordPresenceQueryUsageP
     completionTokens,
     costUsd,
     settled,
-    settleAmount,
   } = params;
 
   // #1147 typed discriminator, same 'model:{provider}/{model}' shape the
   // completions passthrough writes (usage-ledger.ts).
   const resource = `model:${provider}/${modelId}`;
   const quantity = promptTokens + completionTokens;
+  // The amount actually moved through pay for this query; 0 when it wasn't
+  // settled (self-query, zero cost, or the settle call itself failed).
+  const settleAmount = settled ? costUsd : 0;
 
   try {
     const usageId = generateId('usage');

@@ -217,23 +217,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   // 12b. Emit usage.incurred (#1956) — joins the metering ledger the
-  // completions passthrough already writes to. Fire-and-forget / fail-open:
-  // a ledger hiccup must never change the response already computed above.
+  // completions passthrough already writes to. Fire-and-forget / fail-open
+  // (recordPresenceQueryUsage never throws): a ledger hiccup must never
+  // change the response already computed above.
   recordPresenceQueryUsage({
-    queryId,
-    mode: 'query',
-    actingForDid: resolvedTargetDid,
-    requesterDid,
-    provider: connector,
-    modelId,
-    promptTokens,
-    completionTokens,
-    costUsd: cost,
-    settled,
-    settleAmount: settled ? cost : 0,
-  }).catch((err: unknown) => {
-    log.warn({ err: String(err), queryId }, 'presence usage.incurred failed \u2014 response already computed');
-  });
+    queryId, mode: 'query', actingForDid: resolvedTargetDid, requesterDid,
+    provider: connector, modelId, promptTokens, completionTokens, costUsd: cost, settled,
+  }).catch(() => {});
 
   // 13. Return response
   return NextResponse.json({

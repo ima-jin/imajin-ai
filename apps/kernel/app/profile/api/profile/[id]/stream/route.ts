@@ -238,23 +238,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
       // Emit usage.incurred (#1956) — joins the metering ledger the
       // completions passthrough already writes to. Fire-and-forget /
-      // fail-open: a ledger hiccup must never hold up (or reopen) the SSE
-      // stream already served to the caller.
+      // fail-open (recordPresenceQueryUsage never throws): a ledger hiccup
+      // must never hold up (or reopen) the SSE stream already served.
       recordPresenceQueryUsage({
-        queryId,
-        mode: 'stream',
-        actingForDid: resolvedTargetDid,
-        requesterDid,
-        provider: connector,
-        modelId,
-        promptTokens,
-        completionTokens,
-        costUsd: cost,
-        settled,
-        settleAmount: settled ? cost : 0,
-      }).catch((err: unknown) => {
-        log.warn({ err: String(err), queryId }, '[stream] presence usage.incurred failed \u2014 stream already served');
-      });
+        queryId, mode: 'stream', actingForDid: resolvedTargetDid, requesterDid,
+        provider: connector, modelId, promptTokens, completionTokens, costUsd: cost, settled,
+      }).catch(() => {});
     },
   });
 

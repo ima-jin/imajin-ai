@@ -64,7 +64,6 @@ describe('recordPresenceQueryUsage', () => {
     completionTokens: 5,
     costUsd: 0.001,
     settled: true,
-    settleAmount: 0.001,
   };
 
   it('writes a usage.incurred row with the #1147 emitter/resource discriminators', async () => {
@@ -108,6 +107,15 @@ describe('recordPresenceQueryUsage', () => {
         mode: 'query',
       },
     });
+  });
+
+  it('derives settleAmount as 0 when the query was not settled, even with a nonzero cost estimate', async () => {
+    await recordPresenceQueryUsage({ ...baseParams, settled: false });
+    await flushMicrotasks();
+
+    expect(mockPublishUsageIncurred).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ settled: false, settleAmount: 0 }) }),
+    );
   });
 
   it('sets metadata.mode to "stream" for the streaming route', async () => {
