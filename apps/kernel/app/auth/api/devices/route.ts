@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, devices } from '@/src/db';
-import { eq, desc } from 'drizzle-orm';
-import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
+import { and, eq, desc } from 'drizzle-orm';
+import { requireAuth, unauthorizedResponse } from '@/src/lib/auth/middleware';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
@@ -11,26 +11,21 @@ export async function OPTIONS(request: NextRequest) {
 
 /**
  * GET /api/devices
- * List known devices for the authenticated user.
+ * List known, non-revoked devices for the authenticated user (#306).
  */
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
   try {
-    const cookieConfig = getSessionCookieOptions();
-    const token = request.cookies.get(cookieConfig.name)?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
-    }
-    const session = await verifySessionToken(token);
+    const session = await requireAuth(request);
     if (!session) {
-      return NextResponse.json({ error: 'Invalid or expired session' }, { status: 401, headers: cors });
+      return unauthorizedResponse();
     }
 
     const rows = await db
       .select()
       .from(devices)
-      .where(eq(devices.did, session.sub))
+      .where(and(eq(devices.did, session.sub), eq(devices.revoked, false)))
       .orderBy(desc(devices.lastSeenAt));
 
     return NextResponse.json({ devices: rows }, { headers: cors });

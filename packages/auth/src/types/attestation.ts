@@ -96,6 +96,13 @@ export const ATTESTATION_TYPES = [
   // bilateral/human-signed claim.
   'usage.incurred',
   'usage.rollup',
+
+  // Device tracking & new-device login alerts (#306) — minted by the
+  // platform node identity whenever a session records a device fingerprint
+  // it has not seen before for that DID (including the very first device).
+  // Proof-of-history for the login itself, not a gate — see
+  // apps/kernel/src/lib/auth/emit-device-attestation.ts.
+  'session.device.new',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -124,6 +131,8 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #1147/#1148 attestationClass: 'system' facts — see ATTESTATION_TYPES above.
   'usage.incurred',
   'usage.rollup',
+  // #306 — see ATTESTATION_TYPES above.
+  'session.device.new',
 ] as const;
 
 /**

@@ -12,12 +12,10 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 /**
- * DELETE /api/devices/[id]
- * Revoke a device (#306). Revocation is a soft-delete: the row (and its
- * first_seen_at/last_seen_at history) is kept, only hidden from
- * GET /api/devices. Only the device's own DID may revoke it.
+ * POST /api/devices/[id]/trust
+ * Mark a device as trusted (#306). Only the device's own DID may trust it.
  */
-export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const cors = corsHeaders(request);
 
@@ -37,14 +35,14 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
 
     const [updated] = await db
       .update(devices)
-      .set({ revoked: true })
+      .set({ trusted: true })
       .where(eq(devices.id, params.id))
       .returning();
 
-    return NextResponse.json({ revoked: true, device: updated }, { headers: cors });
+    return NextResponse.json({ device: updated }, { headers: cors });
 
   } catch (error) {
-    log.error({ err: String(error) }, '[devices/[id]] DELETE error');
-    return NextResponse.json({ error: 'Failed to revoke device' }, { status: 500, headers: cors });
+    log.error({ err: String(error) }, '[devices/[id]/trust] POST error');
+    return NextResponse.json({ error: 'Failed to trust device' }, { status: 500, headers: cors });
   }
 }

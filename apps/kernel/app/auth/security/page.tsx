@@ -21,6 +21,8 @@ interface Device {
   name: string | null;
   ip: string | null;
   userAgent: string | null;
+  platform: string | null;
+  browser: string | null;
   trusted: boolean;
   firstSeenAt: string;
   lastSeenAt: string;
@@ -30,6 +32,11 @@ function truncateUserAgent(ua: string | null): string {
   if (!ua) return 'Unknown device';
   if (ua.length <= 60) return ua;
   return ua.slice(0, 57) + '…';
+}
+
+function describeDevice(device: Device): string {
+  if (device.browser && device.platform) return `${device.browser} on ${device.platform}`;
+  return truncateUserAgent(device.userAgent);
 }
 
 async function encryptPrivateKey(privateKeyJson: string, password: string): Promise<{ encryptedKey: string; salt: string }> {
@@ -463,10 +470,8 @@ export default function SecuritySettingsPage() {
   async function handleTrustDevice(deviceId: string) {
     setActionLoading(`trust-${deviceId}`);
     try {
-      const res = await fetch(`/auth/api/devices/trust`, {
+      const res = await fetch(`/auth/api/devices/${deviceId}/trust`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId }),
         credentials: 'include',
       });
       if (res.ok) {
@@ -925,7 +930,7 @@ export default function SecuritySettingsPage() {
                 <div key={device.id} className="flex items-start justify-between p-3 bg-gray-900 rounded-lg border border-gray-800">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm text-white truncate">{truncateUserAgent(device.userAgent)}</p>
+                      <p className="text-sm text-white truncate">{describeDevice(device)}</p>
                       {device.trusted && (
                         <span className="px-1.5 py-0.5 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap">Trusted</span>
                       )}
