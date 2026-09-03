@@ -76,10 +76,13 @@ async function fetchProvision(kernelBaseUrl: string, provisionId: string, operat
   return body.provision;
 }
 
-/** Mirrors the kernel's own `envelopeInputFromRow` (apps/kernel/src/lib/auth/agent-provisioner.ts) - deterministic from the provision's stored, non-secret fields. */
+/**
+ * Mirrors the kernel's own `envelopeInputFromRow` (apps/kernel/src/lib/auth/agent-provisioner.ts) - deterministic from the provision's stored, non-secret fields.
+ * The guard below intentionally omits `provision.id`/`provision.status` from the thrown message: those are kernel-response fields, and interpolating them into an Error that may propagate to a console sink would make this function part of a log-injection taint path (SonarCloud tssecurity:S5145) for no real diagnostic benefit — the caller already knows which provision it asked for.
+ */
 function envelopeInputFor(provision: ProvisionRecord): ContextEnvelopeInput {
   if (!provision.agentDid) {
-    throw new Error(`Provision ${provision.id} has no agent identity yet (status=${provision.status})`);
+    throw new Error('Provision has no agent identity yet');
   }
   return {
     agentDid: provision.agentDid,
@@ -108,7 +111,8 @@ export async function runProvision(opts: RunProvisionOptions): Promise<RunProvis
   const provision = await fetchProvision(opts.kernelBaseUrl, opts.provisionId, opts.operatorToken, fetchImpl);
 
   if (provision.harness !== 'nanoclaw') {
-    throw new Error(`harness '${provision.harness}' is not yet implemented by the runner - stub only (#1933 deliverable 4)`);
+    // Deliberately doesn't interpolate provision.harness (kernel-response data) into the message - see envelopeInputFor's comment above.
+    throw new Error("harness is not yet implemented by the runner - stub only (#1933 deliverable 4); only 'nanoclaw' is supported");
   }
 
   const envelope = generateEnvelope(envelopeInputFor(provision));

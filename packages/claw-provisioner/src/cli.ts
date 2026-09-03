@@ -38,15 +38,17 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 }
 
 /**
- * JSON-encodes untrusted strings before writing them to the console (the same
- * fix SonarSource applies to its own scanner CLIs), so a malicious/unexpected
- * kernel response or error message can't forge extra log lines (CRLF
- * injection, CWE-117 / SonarCloud tssecurity:S5145) - any embedded control
- * character is escaped (e.g. a newline becomes the two-character `\n`
- * sequence) rather than being written to the stream verbatim.
+ * Maps an untrusted `'hosted' | 'local'` value from the kernel response to one
+ * of a fixed set of literal strings before it's ever written to the console.
+ * Unlike a transform (encoding/escaping) function, this can't propagate any
+ * attacker-chosen bytes through to the log sink at all - the output is always
+ * one of the two literals below (or a static fallback), never a value derived
+ * from the input string itself (CRLF injection, CWE-117 / SonarCloud tssecurity:S5145).
  */
-function sanitizeForLog(value: unknown): string {
-  return JSON.stringify(String(value));
+function describePlacement(placement: string): string {
+  if (placement === 'hosted') return 'hosted';
+  if (placement === 'local') return 'local';
+  return 'unrecognized-placement';
 }
 
 export async function main(): Promise<void> {
@@ -64,7 +66,7 @@ export async function main(): Promise<void> {
   // Log the operator-supplied provisionId (already validated by parseArgs) rather than the
   // server-returned result.provision.id - they're always the same value, but this avoids
   // treating kernel response data as a log sink source at all.
-  console.log(`Provision ${args.provisionId} (${sanitizeForLog(result.provision.placement)}): wrote ${result.filesWritten.length} file(s) to ${result.outDir}.`);
+  console.log(`Provision ${args.provisionId} (${describePlacement(result.provision.placement)}): wrote ${result.filesWritten.length} file(s) to ${result.outDir}.`);
   if (args.dryRun) {
     console.log('[dry-run] No files were actually written, no compose command ran, and no callback was sent.');
     for (const path of result.filesWritten) console.log(`  - ${path}`);
@@ -78,8 +80,12 @@ if (isMain) {
   try {
     await main();
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('claw-provisioner: fatal error', sanitizeForLog(message));
+    // Deliberately doesn't interpolate `err.message` into the log line - some error paths (see
+    // runner.ts) can be constructed from kernel-response data, and doing so would be a
+    // log-injection taint path (CWE-117 / SonarCloud tssecurity:S5145). Print the full error
+    // object (stack included) as a separate, non-concatenated console.error argument instead.
+    console.error('claw-provisioner: fatal error');
+    console.error(err);
     process.exitCode = 1;
   }
 }
