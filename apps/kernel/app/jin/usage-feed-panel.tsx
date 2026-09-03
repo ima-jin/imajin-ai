@@ -25,16 +25,17 @@ import {
   deltaTone,
   truncateId,
   formatCost,
+  isTurnUsageRowArray,
   type TurnUsageRow,
   type SessionGroup,
   type DeltaTone,
 } from './usage-feed-grouping';
 
-// Jin's prod DID (#1864's default subject) — overridable via
-// NEXT_PUBLIC_JIN_DID or a `?subject_did=` query param so the panel works
-// for any principal the endpoint authorizes (it is anonymous-callable —
-// see attestations/usage/route.ts — so no session/auth constraint applies).
-const DEFAULT_JIN_DID = 'did:imajin:ADEKFWc2pbTKzfgzA3q6yrc1rEPNeMEP71mkBbCan54k';
+// Subject DID resolves from `?subject_did=` then `NEXT_PUBLIC_JIN_DID` only
+// — deliberately NO hardcoded DID literal here. Dev and prod use different
+// DIDs, so a missing env var must surface as an explicit "not configured"
+// state (see renderNoSubjectState below), never silently fall through to a
+// baked-in production subject.
 const FEED_LIMIT = 50;
 // Live refresh is a 10s poll for v1, per the issue's explicit scope — an
 // SSE/WebSocket push from the attestation write path would remove the
@@ -56,6 +57,11 @@ function deltaLabel(tone: DeltaTone, tokenDelta: number): string {
 function relativeTime(issuedAt: string): string {
   const date = new Date(issuedAt);
   return Number.isNaN(date.getTime()) ? '—' : formatDistanceToNow(date, { addSuffix: true });
+}
+
+/** `fetch`'s own abort rejection — never a real load failure worth surfacing as an error. */
+function isAbortError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError';
 }
 
 function ModelBadge({ model }: Readonly<{ model: string | null }>) {
@@ -93,6 +99,7 @@ function SessionSection({ group }: Readonly<{ group: SessionGroup }>) {
     <div className="rounded-lg border border-gray-800 overflow-hidden">
       <button
         type="button"
+        aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
         className="w-full flex items-center justify-between gap-3 px-4 py-2 bg-gray-900/60 hover:bg-gray-900 transition-colors text-left"
       >
@@ -154,8 +161,18 @@ function renderFeedBody(loading: boolean, groups: SessionGroup[]) {
   );
 }
 
-function resolveSubjectDid(searchParams: URLSearchParams): string {
-  return searchParams.get('subject_did') || process.env.NEXT_PUBLIC_JIN_DID || DEFAULT_JIN_DID;
+function resolveSubjectDid(searchParams: URLSearchParams): string | null {
+  return searchParams.get('subject_did') || process.env.NEXT_PUBLIC_JIN_DID || null;
+}
+
+function renderNoSubjectState() {
+  return (
+    <div className="text-center py-12 rounded-lg border border-gray-800">
+      <p className="text-gray-500 text-sm">
+        No subject DID configured. Set NEXT_PUBLIC_JIN_DID or pass ?subject_did= to view a usage feed.
+      </p>
+    </div>
+  );
 }
 
 function UsageFeedPanelInner() {
@@ -163,38 +180,57 @@ function UsageFeedPanelInner() {
   const subjectDid = resolveSubjectDid(searchParams);
 
   const [rows, setRows] = useState<TurnUsageRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(subjectDid !== null);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Guards against overlapping fetches: a new tick (or manual refresh)
+  // aborts whatever request is still in flight, and unmount aborts
+  // whatever is pending — so a slow response can never win a race against a
+  // newer one, or call setState after the panel is gone.
+  const abortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async (silent = false) => {
+    if (!subjectDid) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     if (!silent) setLoading(true);
     try {
       const res = await fetch(
         `/auth/api/attestations/usage?subject_did=${encodeURIComponent(subjectDid)}&limit=${FEED_LIMIT}`,
-        { credentials: 'include' },
+        { credentials: 'include', signal: controller.signal },
       );
+      if (controller.signal.aborted) return;
       if (!res.ok) {
         setError(`Failed to load usage feed (${res.status})`);
         return;
       }
-      const data = await res.json() as TurnUsageRow[];
-      setRows(Array.isArray(data) ? data : []);
+      const data: unknown = await res.json();
+      if (controller.signal.aborted) return;
+      if (!isTurnUsageRowArray(data)) {
+        setError('Usage feed returned an unexpected response shape');
+        return;
+      }
+      setRows(data);
       setError(null);
-    } catch {
+    } catch (err) {
+      if (controller.signal.aborted || isAbortError(err)) return;
       if (!silent) setError('Network error loading usage feed');
     } finally {
-      if (!silent) setLoading(false);
+      if (!controller.signal.aborted && !silent) setLoading(false);
     }
   }, [subjectDid]);
 
   useEffect(() => {
+    if (!subjectDid) return undefined;
     load();
     pollRef.current = setInterval(() => load(true), POLL_INTERVAL_MS);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      abortRef.current?.abort();
     };
-  }, [load]);
+  }, [subjectDid, load]);
 
   const groups = groupBySession(rows);
 
@@ -205,20 +241,22 @@ function UsageFeedPanelInner() {
           <h2 className="text-base font-semibold text-gray-100">Agent usage feed</h2>
           <p className="text-xs text-gray-500">Per-turn token usage, grouped by session · polls every 10s</p>
         </div>
-        <button
-          type="button"
-          onClick={() => load()}
-          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-        >
-          ↺ refresh
-        </button>
+        {subjectDid && (
+          <button
+            type="button"
+            onClick={() => load()}
+            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+          >
+            ↺ refresh
+          </button>
+        )}
       </div>
 
       {error && (
         <div className="mb-3 px-3 py-2 rounded text-xs font-medium bg-red-900/40 text-red-300">{error}</div>
       )}
 
-      {renderFeedBody(loading, groups)}
+      {subjectDid ? renderFeedBody(loading, groups) : renderNoSubjectState()}
     </section>
   );
 }

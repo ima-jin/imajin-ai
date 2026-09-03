@@ -5,23 +5,12 @@
  * DOM — mirrors the split `GET /auth/api/attestations/usage` (#1863) itself
  * already uses between its route handler and `usage-rollup.ts`.
  */
+import type { TurnUsageRow } from '@/app/auth/api/attestations/usage/usage-rollup';
 
-/** One row of `GET /auth/api/attestations/usage`'s response (#1863). */
-export interface TurnUsageRow {
-  id: string;
-  issuedAt: string;
-  sessionKey: string | null;
-  model: string | null;
-  tokensIn: number;
-  tokensOut: number;
-  tokenDelta: number;
-  sessionTokensIn: number;
-  sessionTokensOut: number;
-  cost: { input: number; output: number; total: number };
-  sessionCostTotal: number;
-  channel: string | null;
-  durationMs: number | null;
-}
+// Re-exported rather than re-declared: the endpoint (#1863) owns this shape,
+// so this is the single source of truth every consumer (this panel, its
+// tests) imports rather than a hand-copied duplicate that can drift.
+export type { TurnUsageRow };
 
 export interface SessionGroup {
   /** Stable React key — the session key, or a synthetic one for session-less turns. */
@@ -93,4 +82,45 @@ export function truncateId(value: string, headLength = 10, tailLength = 6): stri
 /** "$0.2400" — usage costs are frequently sub-cent, so keep 4 decimals rather than 2. */
 export function formatCost(usd: number): string {
   return `$${usd.toFixed(4)}`;
+}
+
+function isNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isStringOrNull(value: unknown): value is string | null {
+  return typeof value === 'string' || value === null;
+}
+
+/**
+ * Runtime shape guard for one `GET /auth/api/attestations/usage` row.
+ * `as TurnUsageRow[]` on a raw fetch response is a cast, not a check — this
+ * gives the panel a real validation step so an endpoint schema drift (#1863)
+ * surfaces as a handled error instead of silently rendering `undefined`s.
+ */
+function isTurnUsageRow(value: unknown): value is TurnUsageRow {
+  if (typeof value !== 'object' || value === null) return false;
+  const row = value as Record<string, unknown>;
+  const cost = row.cost as Record<string, unknown> | null | undefined;
+  return (
+    typeof row.id === 'string' &&
+    typeof row.issuedAt === 'string' &&
+    isStringOrNull(row.sessionKey) &&
+    isStringOrNull(row.model) &&
+    isNumber(row.tokensIn) &&
+    isNumber(row.tokensOut) &&
+    isNumber(row.tokenDelta) &&
+    isNumber(row.sessionTokensIn) &&
+    isNumber(row.sessionTokensOut) &&
+    isNumber(row.sessionCostTotal) &&
+    typeof cost === 'object' && cost !== null &&
+    isNumber(cost.input) && isNumber(cost.output) && isNumber(cost.total) &&
+    isStringOrNull(row.channel) &&
+    (isNumber(row.durationMs) || row.durationMs === null)
+  );
+}
+
+/** Runtime shape guard for the endpoint's full response array. */
+export function isTurnUsageRowArray(value: unknown): value is TurnUsageRow[] {
+  return Array.isArray(value) && value.every(isTurnUsageRow);
 }

@@ -3,7 +3,7 @@
  * grouping, delta-tone classification, id truncation, and cost formatting.
  */
 import { describe, it, expect } from 'vitest';
-import { groupBySession, deltaTone, truncateId, formatCost, type TurnUsageRow } from '../usage-feed-grouping';
+import { groupBySession, deltaTone, truncateId, formatCost, isTurnUsageRowArray, type TurnUsageRow } from '../usage-feed-grouping';
 
 function row(overrides: Partial<TurnUsageRow> = {}): TurnUsageRow {
   return {
@@ -117,5 +117,45 @@ describe('formatCost', () => {
 
   it('formats zero cost', () => {
     expect(formatCost(0)).toBe('$0.0000');
+  });
+});
+
+describe('isTurnUsageRowArray', () => {
+  it('accepts a well-formed array of rows', () => {
+    expect(isTurnUsageRowArray([row()])).toBe(true);
+  });
+
+  it('accepts an empty array', () => {
+    expect(isTurnUsageRowArray([])).toBe(true);
+  });
+
+  it('accepts null sessionKey/model/channel/durationMs (the endpoint\'s own optionality)', () => {
+    expect(isTurnUsageRowArray([row({ sessionKey: null, model: null, channel: null, durationMs: null })])).toBe(true);
+  });
+
+  it('rejects a non-array response', () => {
+    expect(isTurnUsageRowArray({ rows: [row()] })).toBe(false);
+    expect(isTurnUsageRowArray(null)).toBe(false);
+    expect(isTurnUsageRowArray(undefined)).toBe(false);
+  });
+
+  it('rejects an array containing a null or non-object element', () => {
+    expect(isTurnUsageRowArray([null])).toBe(false);
+    expect(isTurnUsageRowArray(['not-a-row'])).toBe(false);
+  });
+
+  it('rejects a row missing a required numeric field', () => {
+    const malformed = { ...row(), tokensIn: undefined };
+    expect(isTurnUsageRowArray([malformed])).toBe(false);
+  });
+
+  it('rejects a row whose cost is not an object', () => {
+    const malformed = { ...row(), cost: 0.15 };
+    expect(isTurnUsageRowArray([malformed])).toBe(false);
+  });
+
+  it('rejects a row with a non-finite numeric field', () => {
+    const malformed = { ...row(), tokensIn: Number.NaN };
+    expect(isTurnUsageRowArray([malformed])).toBe(false);
   });
 });

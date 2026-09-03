@@ -50,6 +50,27 @@ function installFetch(rows: TurnUsageRow[]) {
   return spy;
 }
 
+/**
+ * A `fetch` stub whose responses are resolved manually by the test, so
+ * overlapping-fetch / abort behavior can be exercised deterministically:
+ * request N+1 can be started (and its abort effect on request N observed)
+ * before request N's response ever arrives.
+ */
+function installControllableFetch() {
+  const pending: Array<{ resolve: (response: unknown) => void; signal: AbortSignal | undefined }> = [];
+  const spy = vi.fn((_url: string, init?: RequestInit) => {
+    return new Promise((resolve) => {
+      pending.push({ resolve: resolve as (response: unknown) => void, signal: init?.signal ?? undefined });
+    });
+  });
+  vi.stubGlobal('fetch', spy);
+  return { spy, pending };
+}
+
+function jsonResponse(rows: TurnUsageRow[]) {
+  return { ok: true, status: 200, json: async () => rows };
+}
+
 async function renderPanel(rows: TurnUsageRow[]) {
   const spy = installFetch(rows);
   render(<UsageFeedPanel />);
@@ -74,13 +95,18 @@ function installIntervalSpy(): Array<() => void> {
 }
 
 beforeEach(() => {
-  searchParamsMock.current = new URLSearchParams();
+  // A subject is configured by default (via the query param) so tests that
+  // are not specifically about DID resolution don't have to think about it.
+  // The "subject DID resolution" and "no subject configured" suites below
+  // override this per-test.
+  searchParamsMock.current = new URLSearchParams(`subject_did=${encodeURIComponent(JIN_DID)}`);
 });
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  delete process.env.NEXT_PUBLIC_JIN_DID;
 });
 
 describe('empty state', () => {
@@ -127,6 +153,17 @@ describe('session grouping', () => {
     fireEvent.click(screen.getByRole('button', { name: /s1/ }));
 
     expect(screen.queryByText('anthropic/claude-opus-4-6')).toBeNull();
+  });
+
+  it('exposes expanded/collapsed state to assistive tech via aria-expanded', async () => {
+    await renderPanel([turn({ id: 'row1', sessionKey: 's1' })]);
+
+    const toggle = screen.getByRole('button', { name: /s1/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
 });
 
@@ -177,7 +214,19 @@ describe('poll refresh', () => {
 });
 
 describe('subject DID resolution', () => {
-  it('defaults to querying with Jin\'s prod DID', async () => {
+  it('never falls back to a hardcoded DID — fetches nothing when neither the query param nor the env var is set', async () => {
+    searchParamsMock.current = new URLSearchParams();
+    const spy = installFetch([]);
+    render(<UsageFeedPanel />);
+
+    expect(await screen.findByText(/No subject DID configured/)).toBeDefined();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('queries with NEXT_PUBLIC_JIN_DID when no query param is present', async () => {
+    searchParamsMock.current = new URLSearchParams();
+    process.env.NEXT_PUBLIC_JIN_DID = JIN_DID;
+
     const spy = await renderPanel([]);
 
     expect(spy).toHaveBeenCalledWith(
@@ -186,14 +235,116 @@ describe('subject DID resolution', () => {
     );
   });
 
-  it('queries with the subject_did query param when present, overriding the default', async () => {
+  it('queries with the subject_did query param when present, overriding the env var', async () => {
+    process.env.NEXT_PUBLIC_JIN_DID = JIN_DID;
     searchParamsMock.current = new URLSearchParams('subject_did=did:imajin:someone-else');
+
     const spy = await renderPanel([]);
 
     expect(spy).toHaveBeenCalledWith(
       expect.stringContaining(`subject_did=${encodeURIComponent('did:imajin:someone-else')}`),
       expect.anything(),
     );
+  });
+});
+
+describe('no subject configured', () => {
+  it('renders a distinct empty state (not the "no turns yet" copy) and never calls fetch', async () => {
+    searchParamsMock.current = new URLSearchParams();
+    const spy = installFetch([]);
+    render(<UsageFeedPanel />);
+
+    expect(await screen.findByText(/No subject DID configured/)).toBeDefined();
+    expect(screen.queryByText(/No turns recorded yet/)).toBeNull();
+    expect(screen.queryByText('Loading…')).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('hides the refresh control when no subject is configured', async () => {
+    searchParamsMock.current = new URLSearchParams();
+    installFetch([]);
+    render(<UsageFeedPanel />);
+
+    await screen.findByText(/No subject DID configured/);
+    expect(screen.queryByRole('button', { name: '↺ refresh' })).toBeNull();
+  });
+});
+
+describe('overlapping-fetch guard', () => {
+  it('aborts the in-flight request when a new fetch starts before it resolves', async () => {
+    const { spy, pending } = installControllableFetch();
+    render(<UsageFeedPanel />);
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    const first = pending[0];
+    expect(first.signal?.aborted).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: '↺ refresh' }));
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+
+    expect(first.signal?.aborted).toBe(true);
+  });
+
+  it('ignores a stale response that resolves after a newer request has already completed', async () => {
+    const { spy, pending } = installControllableFetch();
+    render(<UsageFeedPanel />);
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: '↺ refresh' }));
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+
+    // Newer request resolves first with the current data...
+    pending[1].resolve(jsonResponse([turn({ id: 'fresh' })]));
+    await waitFor(() => expect(screen.getByText('anthropic/claude-opus-4-6')).toBeDefined());
+
+    // ...then the stale first request finally resolves with different data.
+    // It must be ignored (its controller was aborted), not overwrite the feed.
+    pending[0].resolve(jsonResponse([turn({ id: 'stale', sessionKey: 'stale-session' })]));
+
+    await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+    expect(screen.queryByText('stale-session')).toBeNull();
+  });
+});
+
+describe('unmount cleanup', () => {
+  it('clears the poll interval on unmount', async () => {
+    installIntervalSpy();
+    const { unmount } = render(<UsageFeedPanel />);
+    await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+
+    unmount();
+
+    expect(globalThis.clearInterval).toHaveBeenCalled();
+  });
+
+  it('aborts an in-flight request on unmount so a late response can never call setState after unmount', async () => {
+    const { spy, pending } = installControllableFetch();
+    const { unmount } = render(<UsageFeedPanel />);
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+
+    unmount();
+
+    expect(pending[0].signal?.aborted).toBe(true);
+
+    // Resolving after unmount must not throw (React would warn/error on a
+    // setState call against an unmounted component if the abort guard were
+    // missing).
+    expect(() => pending[0].resolve(jsonResponse([turn({ id: 'late' })]))).not.toThrow();
+  });
+});
+
+describe('response error handling', () => {
+  it('shows an error banner when the endpoint responds with a non-2xx status', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) } as unknown as Response)));
+    render(<UsageFeedPanel />);
+
+    expect(await screen.findByText('Failed to load usage feed (500)')).toBeDefined();
+  });
+
+  it('shows an error banner when the response body does not match the expected shape', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ not: 'an array' }) } as unknown as Response)));
+    render(<UsageFeedPanel />);
+
+    expect(await screen.findByText('Usage feed returned an unexpected response shape')).toBeDefined();
   });
 });
 
