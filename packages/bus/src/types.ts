@@ -69,6 +69,15 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  /** Envelope provisioner (#1933): fired once a provision reaches 'envelope_rendered' or later. */
+  'agent.provisioned': {
+    provisionId: string;
+    agentDid: string;
+    servingDid: string;
+    harness: string;
+    placement: 'hosted' | 'local';
+    status: string;
+  };
   'connection.accepted': {
     invite_code?: string;
     context_id: string;

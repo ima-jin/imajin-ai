@@ -19,6 +19,7 @@
     "@imajin/bus": "workspace:*",
     "@imajin/chat": "workspace:*",
     "@imajin/cid": "workspace:*",
+    "@imajin/claw-envelope": "workspace:*",
     "@imajin/config": "workspace:*",
     "@imajin/db": "workspace:*",
     "@imajin/dfos": "workspace:*",
