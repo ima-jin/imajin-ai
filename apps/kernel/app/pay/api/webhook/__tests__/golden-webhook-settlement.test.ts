@@ -8,14 +8,15 @@
  * multi-party split with rounding, zero-fee, fee rebate, fee surcharge)
  * before the #1073 refactor adds a manifest-signature-verification gate.
  *
- * IMPORTANT baseline fact this suite documents: as of writing, this path
- * performs **no signature check at all** on `tx.fairManifest` — there isn't
- * even a `signature` field in the share-based manifest shape it consumes.
- * An unsigned (or, after the refactor, an unverifiable) manifest settles
- * exactly the same way today. The #1073 refactor's one authorized delta is
- * adding a non-blocking verification attempt that emits
- * `settlement.manifest.unverified` without changing any of the ledger
- * writes asserted below.
+ * Baseline fact this suite documents: before #1073, this path performed
+ * **no signature check at all** on `tx.fairManifest` — there isn't even a
+ * `signature` field in the share-based manifest shape it consumes. After
+ * #1073, it attempts verification via the same `verifySettlementSignature`
+ * the canonical `/api/settle` route uses, but — unlike that route — never
+ * blocks on an absent/invalid signature. It only emits
+ * `settlement.manifest.unverified` (this suite's one asserted delta); every
+ * ledger write (`feeLedger`, `balances`, `balanceRollups`) stays identical
+ * to the pre-refactor baseline.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -52,23 +53,20 @@ vi.mock('@/src/db', () => {
     return (t as { __table?: string } | undefined)?.__table ?? 'unknown';
   }
 
+  function limitResultFor(table: unknown) {
+    if (tableName(table) === 'transactions') {
+      return Promise.resolve(state.txRow ? [state.txRow] : []);
+    }
+    return Promise.resolve([]);
+  }
+  function whereClauseFor(table: unknown) {
+    return { limit: (_n: number) => limitResultFor(table) };
+  }
+  function fromClauseFor() {
+    return (table: unknown) => ({ where: (_cond?: unknown) => whereClauseFor(table) });
+  }
   function select(_proj?: unknown) {
-    return {
-      from(table: unknown) {
-        return {
-          where(_cond?: unknown) {
-            return {
-              limit(_n: number) {
-                if (tableName(table) === 'transactions') {
-                  return Promise.resolve(state.txRow ? [state.txRow] : []);
-                }
-                return Promise.resolve([]);
-              },
-            };
-          },
-        };
-      },
-    };
+    return { from: fromClauseFor() };
   }
 
   function update(table: unknown) {
@@ -127,6 +125,11 @@ vi.mock('@/src/lib/pay/stripe', () => ({
   }),
 }));
 
+// #1073: settle-core.ts's verifySettlementSignature is unmocked (real module,
+// same as the rest of this black-box suite) and always resolves
+// `{ signatureVerified: false }` for these fixtures, since none carry a
+// `fair_manifest.signature`. That is expected — see the suite docblock.
+
 import { POST } from '../route';
 
 type NextRequestLike = Parameters<typeof POST>[0];
@@ -184,8 +187,14 @@ describe('Webhook checkout.session.completed — golden characterization (#1073)
     expect(state.insertCalls.filter((c) => c.table === 'balances')).toHaveLength(0);
     expect(state.insertCalls.filter((c) => c.table === 'balanceRollups')).toHaveLength(0);
 
-    // Today: zero attempt at manifest verification, no unverified-manifest event.
-    expect(publishMock).not.toHaveBeenCalledWith('settlement.manifest.unverified', expect.anything());
+    // #1073 delta: the webhook now attempts verification and, since this
+    // fixture's manifest is unsigned (as essentially all are today), emits
+    // settlement.manifest.unverified — but never blocks; every ledger write
+    // above is unchanged from the pre-refactor baseline.
+    expect(publishMock).toHaveBeenCalledWith(
+      'settlement.manifest.unverified',
+      expect.objectContaining({ subject: 'unknown', payload: expect.objectContaining({ service: 'market' }) }),
+    );
   });
 
   it('multi-party split with rounding: seller + node + buyer_credit shares', async () => {

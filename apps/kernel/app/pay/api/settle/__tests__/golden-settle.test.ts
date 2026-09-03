@@ -40,27 +40,24 @@ vi.mock('@/src/db', () => {
     return (t as { __table?: string } | undefined)?.__table ?? 'unknown';
   }
 
+  function limitResultFor(table: unknown) {
+    const t = tableName(table);
+    if (t === 'balances') {
+      return Promise.resolve(state.senderBalanceRow ? [state.senderBalanceRow] : []);
+    }
+    if (t === 'identityChains') {
+      return Promise.resolve(state.chainVerified ? [{ did: 'chain-row' }] : []);
+    }
+    return Promise.resolve([]);
+  }
+  function whereClauseFor(table: unknown) {
+    return { limit: (_n: number) => limitResultFor(table) };
+  }
+  function fromClauseFor() {
+    return (table: unknown) => ({ where: (_cond?: unknown) => whereClauseFor(table) });
+  }
   function select(_proj?: unknown) {
-    return {
-      from(table: unknown) {
-        return {
-          where(_cond?: unknown) {
-            return {
-              limit(_n: number) {
-                const t = tableName(table);
-                if (t === 'balances') {
-                  return Promise.resolve(state.senderBalanceRow ? [state.senderBalanceRow] : []);
-                }
-                if (t === 'identityChains') {
-                  return Promise.resolve(state.chainVerified ? [{ did: 'chain-row' }] : []);
-                }
-                return Promise.resolve([]);
-              },
-            };
-          },
-        };
-      },
-    };
+    return { from: fromClauseFor() };
   }
 
   function update(table: unknown) {

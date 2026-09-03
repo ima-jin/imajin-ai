@@ -173,6 +173,13 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'transaction.settled': [
     { type: 'attestation', config: { attestationType: 'transaction.settled' }, enabled: true },
   ],
+  // #1073 — non-blocking manifest-verification gap on the webhook settlement
+  // path. `attestation` makes it a durable, queryable record instead of a
+  // log line only; deliberately no `settle`/`notify` — this is a coherence
+  // signal, not an action trigger.
+  'settlement.manifest.unverified': [
+    { type: 'attestation', config: { attestationType: 'settlement.manifest.unverified' }, enabled: true },
+  ],
   'handle.claimed': [
     { type: 'attestation', config: { attestationType: 'handle.claimed' }, enabled: true },
     { type: 'mjn', config: { attestationType: 'handle.claimed' }, enabled: true },

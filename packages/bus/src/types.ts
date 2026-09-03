@@ -305,6 +305,21 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  /**
+   * The Stripe webhook's inline `.fair` manifest chain-distribution path
+   * (#1073) attempted to verify the settling manifest's signature and it
+   * was absent or invalid. This does NOT block settlement — the webhook
+   * proceeds exactly as it always has — it only makes the gap loud and
+   * durable (attestation) instead of silent, which is the one behavior
+   * delta #1073 introduces on that path.
+   */
+  'settlement.manifest.unverified': {
+    from_did: string;
+    service: string;
+    reason: string;
+    context_id: string;
+    context_type: string;
+  };
   'handle.claimed': {
     handle: string;
     context_id: string;
