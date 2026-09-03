@@ -1,0 +1,10 @@
+[
+  {
+    "id": "anthropic",
+    "principalDid": "did:imajin:REPLACE_WITH_OWNER_DID",
+    "attestationId": "REPLACE_WITH_APP_AUTHORIZED_ATTESTATION_ID",
+    "modelPrefixes": ["claude-"],
+    "directBaseUrl": "https://api.anthropic.com/v1",
+    "directApiKeyEnvVar": "ANTHROPIC_DIRECT_API_KEY"
+  }
+]
