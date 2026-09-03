@@ -38,14 +38,15 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 }
 
 /**
- * Percent-encodes untrusted strings before writing them to the console, so a
- * malicious/unexpected kernel response or error message can't forge extra
- * log lines (CRLF injection, CWE-117 / SonarCloud tssecurity:S5145).
- * `encodeURIComponent` leaves ordinary ids/messages unchanged and only
- * escapes control characters and other special characters.
+ * JSON-encodes untrusted strings before writing them to the console (the same
+ * fix SonarSource applies to its own scanner CLIs), so a malicious/unexpected
+ * kernel response or error message can't forge extra log lines (CRLF
+ * injection, CWE-117 / SonarCloud tssecurity:S5145) - any embedded control
+ * character is escaped (e.g. a newline becomes the two-character `\n`
+ * sequence) rather than being written to the stream verbatim.
  */
 function sanitizeForLog(value: unknown): string {
-  return encodeURIComponent(String(value));
+  return JSON.stringify(String(value));
 }
 
 export async function main(): Promise<void> {
@@ -60,7 +61,10 @@ export async function main(): Promise<void> {
     dryRun: args.dryRun,
   });
 
-  console.log(`Provision ${sanitizeForLog(result.provision.id)} (${sanitizeForLog(result.provision.placement)}): wrote ${result.filesWritten.length} file(s) to ${result.outDir}.`);
+  // Log the operator-supplied provisionId (already validated by parseArgs) rather than the
+  // server-returned result.provision.id - they're always the same value, but this avoids
+  // treating kernel response data as a log sink source at all.
+  console.log(`Provision ${args.provisionId} (${sanitizeForLog(result.provision.placement)}): wrote ${result.filesWritten.length} file(s) to ${result.outDir}.`);
   if (args.dryRun) {
     console.log('[dry-run] No files were actually written, no compose command ran, and no callback was sent.');
     for (const path of result.filesWritten) console.log(`  - ${path}`);
