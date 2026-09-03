@@ -66,7 +66,7 @@ function stripTrailingSlash(url: string): string {
 }
 
 async function fetchProvision(kernelBaseUrl: string, provisionId: string, operatorToken: string, fetchImpl: typeof fetch): Promise<ProvisionRecord> {
-  const res = await fetchImpl(`${stripTrailingSlash(kernelBaseUrl)}/auth/api/agents/provision/${provisionId}`, {
+  const res = await fetchImpl(`${stripTrailingSlash(kernelBaseUrl)}/auth/api/agents/provision/${encodeURIComponent(provisionId)}`, {
     headers: { Authorization: `Bearer ${operatorToken}` },
   });
   if (!res.ok) {
@@ -136,7 +136,10 @@ export async function runProvision(opts: RunProvisionOptions): Promise<RunProvis
 
   let callbackSent = false;
   if (provision.placement === 'hosted' && !dryRun && opts.runnerToken) {
-    await fetchImpl(`${stripTrailingSlash(opts.kernelBaseUrl)}/auth/api/agents/provision/${provision.id}/callback`, {
+    // Use the operator-supplied `opts.provisionId` (already validated by the CLI, and the same
+    // id the GET above was scoped to) rather than the server-returned `provision.id`, so the
+    // callback URL is never built from unsanitized/tainted response data (SonarCloud tssecurity:S7044/S8476).
+    await fetchImpl(`${stripTrailingSlash(opts.kernelBaseUrl)}/auth/api/agents/provision/${encodeURIComponent(opts.provisionId)}/callback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-provisioner-runner-token': opts.runnerToken },
       body: JSON.stringify({ status: 'booted' }),

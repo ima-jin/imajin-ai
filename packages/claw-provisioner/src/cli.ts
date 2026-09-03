@@ -37,6 +37,12 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   return { provisionId, kernelBaseUrl, operatorToken, runnerToken, outDir, composeDir, dryRun };
 }
 
+/** Strips control characters (CR/LF and friends) before writing untrusted strings to the console, so a malicious/unexpected kernel response or error message can't forge extra log lines. */
+function sanitizeForLog(value: unknown): string {
+  // eslint-disable-next-line no-control-regex -- deliberately stripping control chars to prevent log injection (SonarCloud tssecurity:S5145)
+  return String(value).replace(/[\x00-\x1f\x7f]/g, ' ');
+}
+
 export async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const result = await runProvision({
@@ -49,7 +55,7 @@ export async function main(): Promise<void> {
     dryRun: args.dryRun,
   });
 
-  console.log(`Provision ${result.provision.id} (${result.provision.placement}): wrote ${result.filesWritten.length} file(s) to ${result.outDir}.`);
+  console.log(`Provision ${sanitizeForLog(result.provision.id)} (${sanitizeForLog(result.provision.placement)}): wrote ${result.filesWritten.length} file(s) to ${result.outDir}.`);
   if (args.dryRun) {
     console.log('[dry-run] No files were actually written, no compose command ran, and no callback was sent.');
     for (const path of result.filesWritten) console.log(`  - ${path}`);
@@ -64,7 +70,7 @@ if (isMain) {
     await main();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('claw-provisioner: fatal error', message);
+    console.error('claw-provisioner: fatal error', sanitizeForLog(message));
     process.exitCode = 1;
   }
 }
