@@ -379,6 +379,58 @@ const ZAI_ENTRY = brainConnectorEntry({
   modelsRoute: '/zai/api/models',
 });
 
+/**
+ * The local inference connector's registry entry (#1957) — the ONE brain
+ * connector with no required credential, so it does NOT go through
+ * `brainConnectorEntry()` above (that shape assumes a mandatory API key and
+ * the identical spend-cap settings section every hosted-provider connector
+ * shares; `local` has neither — costUsd is always 0, see `pricing.ts`).
+ *
+ * `settings` carries the one thing this connector actually needs — the
+ * owner-configured `baseUrl` — through the same `ConnectorSettingsUi`
+ * mechanism the Warp connector's `environmentId` already uses: a plain,
+ * safe-to-echo text field, distinct from `credentialUi`'s write-only bearer
+ * token. `settings` renders on the card regardless of whether a bearer
+ * token has ever been sealed, so the owner can configure `baseUrl` with no
+ * credential step at all.
+ */
+const LOCAL_ENTRY: ConnectorEntry = {
+  id: 'local',
+  name: 'Local Inference',
+  description: 'Point the kernel at your own OpenAI-compatible endpoint (Ollama, vLLM) on your LAN — no sealed key required.',
+  icon: '🏠',
+  ingestionPattern: 'token-paste',
+  channel: 'local',
+  connectorDid: 'did:imajin:local-connector',
+  scopes: connectorUiScopes('local'),
+  statusEndpoint: '/local/api/scope-manifest',
+  backendPending: false,
+  connectRoute: null,
+  configureRoute: null,
+  tokenRoute: '/local/api/token',
+  disconnectRoute: '/local/api/disconnect',
+  credentialUi: {
+    label: 'Bearer Token (optional)',
+    placeholder: 'Leave blank if your endpoint requires no auth',
+    hint: 'Only needed if your endpoint is configured to require one. Sealed server-side and never returned. ' +
+      'Configure the endpoint URL itself below — no token is required to use this connector.',
+  },
+  settings: {
+    route: '/local/api/settings',
+    fields: [
+      {
+        key: 'baseUrl',
+        label: 'Endpoint URL',
+        placeholder: 'http://ollama.lan:11434',
+        hint: 'Your OpenAI-compatible endpoint (Ollama, vLLM). Validated and pinned to the address it resolves to ' +
+          'on save — re-save to point it at a different host. LAN (RFC1918) addresses are allowed by design; ' +
+          'loopback, link-local, and cloud-metadata addresses are refused.',
+      },
+    ],
+  },
+  modelsRoute: '/local/api/models',
+};
+
 export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'mcp',
@@ -454,6 +506,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   OPENAI_ENTRY,
   MOONSHOT_ENTRY,
   ZAI_ENTRY,
+  LOCAL_ENTRY,
   {
     id: 'gcp',
     name: 'Google Cloud',

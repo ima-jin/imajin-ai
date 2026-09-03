@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'local' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -50,6 +50,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   openai: 'did:imajin:openai-connector',
   moonshot: 'did:imajin:moonshot-connector',
   zai: 'did:imajin:zai-connector',
+  local: 'did:imajin:local-connector',
   gcp: 'did:imajin:gcp-connector',
   quickbooks: 'did:imajin:quickbooks-connector',
   warp: 'did:imajin:warp-connector',
@@ -67,6 +68,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   openai: 'openai',
   moonshot: 'moonshot',
   zai: 'zai',
+  local: 'local',
   gcp: 'gcp',
   quickbooks: 'quickbooks',
   warp: 'warp',
@@ -400,6 +402,14 @@ export const SCOPE_VOCABULARY = [
   brainInferScope('openai', 'openai-api', 'Use your OpenAI API key for inference'),
   brainInferScope('moonshot', 'moonshot-api', 'Use your Moonshot API key for inference'),
   brainInferScope('zai', 'zai-api', 'Use your Z.ai API key for inference'),
+  // #1957. Appended rather than slotted in, same reasoning as every other
+  // brain connector above: this table's order IS resolution priority.
+  // Unlike its siblings, `local` needs no sealed key at all (an optional
+  // bearer token) — the classification is unchanged (SELF_SENSITIVE →
+  // owner-only) because the owner-configured `baseUrl` is itself the
+  // resource being spent and must never be released to a third party,
+  // whether or not a bearer token backs it.
+  brainInferScope('local', 'local-api', 'Use your local inference endpoint for inference'),
 
   // ── Provider billing/admin keys (#1076 Stage 1) — distinct from the
   // `*:infer` key above: this is the ADMIN/org-billing credential the daily

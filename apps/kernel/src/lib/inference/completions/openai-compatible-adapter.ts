@@ -18,6 +18,7 @@
 import { createLogger } from '@imajin/logger';
 import type { ResolvedBrain } from '../brain';
 import { fetchUpstream } from './errors';
+import { egressSafeFetch } from '@/src/lib/kernel/egress-fetch';
 import type { ChatCompletionsRequestBody, CompletionsRequestMetadata } from './types';
 import { recordInferenceUsage } from '../usage-ledger';
 
@@ -68,20 +69,38 @@ export async function forwardOpenAiCompatible(
     'completions passthrough: forwarding to OpenAI-compatible upstream',
   );
 
-  const upstream = await fetchUpstream(
-    brain.connector,
-    upstreamUrl,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${brain.apiKey}`,
-        Accept: stream ? 'text/event-stream' : 'application/json',
-      },
-      body: JSON.stringify(upstreamBody),
-    },
-    UPSTREAM_TIMEOUT_MS,
-  );
+  // #1957: `local`'s `baseURL` is owner-supplied, not a hardcoded trusted
+  // provider host like every other entry in this table — it goes through
+  // the egress-safe fetch (resolve-then-connect, pinned to the address
+  // validated when `baseUrl` was saved) instead of a bare `fetchUpstream`.
+  const upstream = brain.connector === 'local'
+    ? await egressSafeFetch(
+        upstreamUrl,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(brain.apiKey ? { Authorization: `Bearer ${brain.apiKey}` } : {}),
+            Accept: stream ? 'text/event-stream' : 'application/json',
+          },
+          body: JSON.stringify(upstreamBody),
+        },
+        { connector: brain.connector, timeoutMs: UPSTREAM_TIMEOUT_MS, pinnedIp: brain.pinnedIp },
+      )
+    : await fetchUpstream(
+        brain.connector,
+        upstreamUrl,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${brain.apiKey}`,
+            Accept: stream ? 'text/event-stream' : 'application/json',
+          },
+          body: JSON.stringify(upstreamBody),
+        },
+        UPSTREAM_TIMEOUT_MS,
+      );
 
   if (!upstream.ok) {
     log.warn(

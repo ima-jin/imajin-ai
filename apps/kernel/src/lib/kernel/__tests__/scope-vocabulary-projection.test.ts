@@ -31,7 +31,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'gcp', 'quickbooks', 'warp', 'stripe'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'gcp', 'quickbooks', 'warp', 'stripe'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -144,6 +144,7 @@ describe('pinned scope sets (change these deliberately)', () => {
     ['OpenAI', 'openai', ['openai:infer', 'openai:billing']],
     ['Moonshot', 'moonshot', ['moonshot:infer']],
     ['Z.ai', 'zai', ['zai:infer']],
+    ['Local Inference', 'local', ['local:infer']],
     ['Google Cloud', 'gcp', ['gcp:iam:read', 'gcp:vertex:invoke', 'gcp:project:read']],
     ['QuickBooks', 'quickbooks', ['quickbooks:read', 'quickbooks:write']],
     ['Warp', 'warp', ['warp:dispatch']],
@@ -288,6 +289,7 @@ const XAI_DID = 'did:imajin:xai-connector';
 const OPENAI_DID = 'did:imajin:openai-connector';
 const MOONSHOT_DID = 'did:imajin:moonshot-connector';
 const ZAI_DID = 'did:imajin:zai-connector';
+const LOCAL_DID = 'did:imajin:local-connector';
 const GCP_DID = 'did:imajin:gcp-connector';
 const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
 const WARP_DID = 'did:imajin:warp-connector';
@@ -386,6 +388,16 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('zai', () => {
     expect(connectorScopeDescriptors('zai')).toEqual({
       'zai:infer': { verb: 'infer', surface: 'zai-api', label: 'Use your Z.ai API key for inference', release: { discloses_others: false, sensitive: true, viewer: ZAI_DID } },
+    });
+  });
+
+  // #1957 — new descriptor, not a migrated literal. Same SELF_SENSITIVE
+  // quadrant as every other `*:infer` scope even though `local` needs no
+  // sealed key: the owner-configured baseUrl is the resource being spent and
+  // is never released to a third party.
+  it('local', () => {
+    expect(connectorScopeDescriptors('local')).toEqual({
+      'local:infer': { verb: 'infer', surface: 'local-api', label: 'Use your local inference endpoint for inference', release: { discloses_others: false, sensitive: true, viewer: LOCAL_DID } },
     });
   });
 

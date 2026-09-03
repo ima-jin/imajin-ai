@@ -192,6 +192,31 @@ describe('recordInferenceUsage', () => {
     expect(rollupInsert?.values).toMatchObject({ did: OWNER, service: 'inference', spent: '18.00000000', txCount: 1 });
   });
 
+  it('writes a local (#1957) usage.incurred row with resource=model:local/<id> and costUsd exactly 0, and no transaction row', async () => {
+    await recordInferenceUsage({
+      principalDid: OWNER,
+      provider: 'local',
+      model: 'llama3',
+      tokensIn: 500,
+      tokensOut: 500,
+    });
+
+    const usageInsert = insertCalls.find((c) => c.table === 'usageIncurred');
+    expect(usageInsert?.values).toMatchObject({
+      source: 'inference-passthrough',
+      resource: 'model:local/llama3',
+      provider: 'local',
+      model: 'llama3',
+      tokensIn: 500,
+      tokensOut: 500,
+    });
+    // costUsd is exactly 0 (a real, computed number) — not null/undefined,
+    // and not billed: local inference has no provider invoice behind it.
+    expect(usageInsert?.values.costUsd).toBe('0.00000000');
+    expect(usageInsert?.values.transactionId).toBeNull();
+    expect(insertCalls.find((c) => c.table === 'transactions')).toBeUndefined();
+  });
+
   it('writes only the usage row (null cost, no transaction) when tokens are unknown', async () => {
     await recordInferenceUsage({
       principalDid: OWNER,

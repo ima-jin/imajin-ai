@@ -29,4 +29,12 @@ describe('computeCostUsd', () => {
     expect(cost).toBeCloseTo(0.0000031, 8);
     expect(Number.isFinite(cost)).toBe(true);
   });
+
+  it('local inference always costs exactly 0 (#1957) — attribution, not billing', () => {
+    expect(computeCostUsd('local', 'llama3', 1_000_000, 1_000_000)).toBe(0);
+    expect(computeCostUsd('local', 'any-model-id', 1, 1)).toBe(0);
+    // Still undefined (not a fabricated $0) when token counts are unknown —
+    // the same rule every other connector follows.
+    expect(computeCostUsd('local', 'llama3', undefined, undefined)).toBeUndefined();
+  });
 });

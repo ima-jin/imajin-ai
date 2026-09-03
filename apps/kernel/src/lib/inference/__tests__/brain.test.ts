@@ -2,13 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-const { mockLoadGemini, mockLoadAnthropic, mockLoadXai, mockLoadOpenai, mockLoadMoonshot, mockLoadZai } = vi.hoisted(() => ({
+const { mockLoadGemini, mockLoadAnthropic, mockLoadXai, mockLoadOpenai, mockLoadMoonshot, mockLoadZai, mockLoadLocal } = vi.hoisted(() => ({
   mockLoadGemini: vi.fn(),
   mockLoadAnthropic: vi.fn(),
   mockLoadXai: vi.fn(),
   mockLoadOpenai: vi.fn(),
   mockLoadMoonshot: vi.fn(),
   mockLoadZai: vi.fn(),
+  mockLoadLocal: vi.fn(),
 }));
 
 vi.mock('@/src/lib/gemini/connector', () => ({
@@ -37,6 +38,10 @@ vi.mock('@/src/lib/moonshot/connector', () => ({
 vi.mock('@/src/lib/zai/connector', () => ({
   loadZaiCredentials: mockLoadZai,
   ZAI_BASE_URL: 'https://api.z.ai/api/paas/v4',
+}));
+
+vi.mock('@/src/lib/local/connector', () => ({
+  loadLocalCredentials: mockLoadLocal,
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -92,6 +97,7 @@ beforeEach(() => {
   mockLoadOpenai.mockResolvedValue(undefined);
   mockLoadMoonshot.mockResolvedValue(undefined);
   mockLoadZai.mockResolvedValue(undefined);
+  mockLoadLocal.mockResolvedValue(undefined);
   // Default: no app registrant found (no parent org DID)
   mockDbSelect.mockResolvedValue([]);
 });
@@ -415,7 +421,7 @@ describe('resolveBrain — fail closed with no env fallback', () => {
   it('carries the available connector ids for programmatic callers', async () => {
     const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
 
-    expect(err.availableConnectors).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai']);
+    expect(err.availableConnectors).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local']);
     expect(err.triedDids).toEqual([OWNER]);
   });
 
@@ -483,6 +489,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
     mockLoadOpenai.mockRejectedValue(new Error('openai boom'));
     mockLoadMoonshot.mockRejectedValue(new Error('moonshot boom'));
     mockLoadZai.mockRejectedValue(new Error('zai boom'));
+    mockLoadLocal.mockRejectedValue(new Error('local boom'));
 
     const err = await resolveBrain({ ownerDid: OWNER, appDid: APP })
       .catch((e: unknown) => e as NoBrainSealedError);
@@ -496,12 +503,14 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
       `${OWNER}/openai`,
       `${OWNER}/moonshot`,
       `${OWNER}/zai`,
+      `${OWNER}/local`,
       `${APP}/gemini`,
       `${APP}/anthropic`,
       `${APP}/xai`,
       `${APP}/openai`,
       `${APP}/moonshot`,
       `${APP}/zai`,
+      `${APP}/local`,
     ]);
   });
 
@@ -578,7 +587,7 @@ describe('resolveBrain — connectors option restricts the walk (#1959)', () => 
 
 describe('listBrainConnectors', () => {
   it('reports the brain connectors in resolution order', () => {
-    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai']);
+    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local']);
   });
 });
 
