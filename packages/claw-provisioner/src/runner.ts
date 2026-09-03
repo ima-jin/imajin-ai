@@ -65,6 +65,24 @@ function stripTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
+/** Matches the slug shape the kernel's own `deriveHandle` always produces (apps/kernel/src/lib/auth/agent-provisioner.ts): lowercase alphanumerics, dashes, and underscores only. */
+const SAFE_HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,78}$/;
+
+/**
+ * Validates that a kernel-provided `handle` is safe to use as a path segment
+ * before it's joined into a filesystem path, guarding against both path
+ * traversal (CWE-22, e.g. a handle containing `../`) and log injection
+ * (CWE-117 / SonarCloud tssecurity:S5145) once that path is reported back to
+ * the operator. Unlike a transform (escaping) function, this validate-or-throw
+ * check never lets a value that fails the allow-list reach any sink at all.
+ */
+function assertSafeHandle(handle: string): string {
+  if (!SAFE_HANDLE_PATTERN.test(handle)) {
+    throw new Error('Provision handle received from the kernel contains unexpected characters');
+  }
+  return handle;
+}
+
 async function fetchProvision(kernelBaseUrl: string, provisionId: string, operatorToken: string, fetchImpl: typeof fetch): Promise<ProvisionRecord> {
   const res = await fetchImpl(`${stripTrailingSlash(kernelBaseUrl)}/auth/api/agents/provision/${encodeURIComponent(provisionId)}`, {
     headers: { Authorization: `Bearer ${operatorToken}` },
@@ -117,7 +135,7 @@ export async function runProvision(opts: RunProvisionOptions): Promise<RunProvis
 
   const envelope = generateEnvelope(envelopeInputFor(provision));
   const rendered = renderNanoClaw(envelope);
-  const outDir = opts.outDir ?? join('deploy', 'nanoclaw', 'rendered', provision.handle);
+  const outDir = opts.outDir ?? join('deploy', 'nanoclaw', 'rendered', assertSafeHandle(provision.handle));
 
   const filesWritten: string[] = [];
   for (const file of rendered.files) {

@@ -185,4 +185,13 @@ describe('runProvision — validation', () => {
       runProvision({ kernelBaseUrl: 'https://kernel.test', provisionId: 'prov_missing', operatorToken: 'x', dryRun: true, fetchImpl: impl as unknown as typeof fetch }),
     ).rejects.toThrow(/Failed to fetch provision/);
   });
+
+  it('rejects a provision handle that fails the safe-path-segment allow-list (e.g. path traversal)', async () => {
+    const provision = makeProvision({ handle: '../../etc/passwd' });
+    const { impl } = fakeFetch(provision);
+
+    await expect(
+      runProvision({ kernelBaseUrl: 'https://kernel.test', provisionId: 'prov_1', operatorToken: 'x', dryRun: true, fetchImpl: impl }),
+    ).rejects.toThrow(/unexpected characters/);
+  });
 });
