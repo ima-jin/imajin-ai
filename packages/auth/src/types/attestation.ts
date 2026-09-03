@@ -96,6 +96,17 @@ export const ATTESTATION_TYPES = [
   // bilateral/human-signed claim.
   'usage.incurred',
   'usage.rollup',
+
+  // Key recovery (#1250 Phase 1 — the self-custody recovery-code floor).
+  // Both are system-class (see MECHANICAL_ATTESTATION_TYPES below): minted
+  // by the platform node identity as a mechanical audit record, never a
+  // bilateral/human-signed claim. `recovery.codes.generated` carries only a
+  // count, never the codes themselves. `recovery.redeemed` records that a
+  // recovery-authorized rotation happened — the honesty disclosure (this
+  // path is server-verified, not trustless) lives in the API response, not
+  // in the attestation payload.
+  'recovery.codes.generated',
+  'recovery.redeemed',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -124,6 +135,9 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #1147/#1148 attestationClass: 'system' facts — see ATTESTATION_TYPES above.
   'usage.incurred',
   'usage.rollup',
+  // #1250 Phase 1 — see ATTESTATION_TYPES above.
+  'recovery.codes.generated',
+  'recovery.redeemed',
 ] as const;
 
 /**

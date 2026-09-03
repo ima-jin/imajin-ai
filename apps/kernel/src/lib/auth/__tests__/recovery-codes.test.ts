@@ -9,6 +9,7 @@ type Predicate = (row: Row) => boolean;
 
 const {
   identitiesStore, chainsStore, tokensStore, codesStore, attemptsStore, sendMock,
+  emitGeneratedMock, emitRedeemedMock,
   IDENTITIES_TABLE, CHAINS_TABLE, TOKENS_TABLE, CODES_TABLE, ATTEMPTS_TABLE,
 } = vi.hoisted(() => ({
   identitiesStore: new Map<string, Row>(),
@@ -17,6 +18,8 @@ const {
   codesStore: new Map<string, Row>(),
   attemptsStore: new Map<string, Row>(),
   sendMock: vi.fn(async () => undefined),
+  emitGeneratedMock: vi.fn(async () => undefined),
+  emitRedeemedMock: vi.fn(async () => undefined),
   IDENTITIES_TABLE: { __table: 'identities', id: 'id', tier: 'tier', publicKey: 'publicKey', keyRoles: 'keyRoles', updatedAt: 'updatedAt' },
   CHAINS_TABLE: { __table: 'chains', did: 'did', isDeleted: 'isDeleted', updatedAt: 'updatedAt' },
   TOKENS_TABLE: { __table: 'tokens', id: 'id', identityId: 'identityId' },
@@ -112,6 +115,10 @@ vi.mock('@/src/db', () => ({
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
 vi.mock('@imajin/notify', () => ({ send: sendMock }));
+vi.mock('../emit-recovery-attestation', () => ({
+  emitRecoveryCodesGeneratedAttestation: emitGeneratedMock,
+  emitRecoveryRedeemedAttestation: emitRedeemedMock,
+}));
 
 import {
   generateRecoveryCodePlaintext,
@@ -121,6 +128,7 @@ import {
   generateRecoveryCodes,
   invalidateAllRecoveryCodes,
   redeemRecoveryCode,
+  getRecoveryCodeStatus,
   RECOVERY_DISCLOSURE,
 } from '../recovery-codes';
 
@@ -229,6 +237,11 @@ describe('generateRecoveryCodes', () => {
     }
   });
 
+  it('emits a recovery.codes.generated attestation carrying only the count', async () => {
+    await generateRecoveryCodes(DID, 6);
+    expect(emitGeneratedMock).toHaveBeenCalledWith({ did: DID, count: 6 });
+  });
+
   it('respects a requested count, clamped to [4, 20]', async () => {
     await expect(generateRecoveryCodes(DID, 3)).resolves.toHaveLength(4);
     await expect(generateRecoveryCodes(DID, 50)).resolves.toHaveLength(20);
@@ -246,6 +259,29 @@ describe('generateRecoveryCodes', () => {
     }
     const activeNow = [...codesStore.values()].filter((r) => !r.usedAt && !r.invalidatedAt);
     expect(activeNow).toHaveLength(4);
+  });
+});
+
+// ── Status ────────────────────────────────────────────────────────────────
+
+describe('getRecoveryCodeStatus', () => {
+  it('reports zero remaining and a null generatedAt when no codes have ever been generated', async () => {
+    await expect(getRecoveryCodeStatus(DID)).resolves.toEqual({ remaining: 0, generatedAt: null });
+  });
+
+  it('reports the active count and generation time, never the codes themselves', async () => {
+    await generateRecoveryCodes(DID, 5);
+    const status = await getRecoveryCodeStatus(DID);
+    expect(status.remaining).toBe(5);
+    expect(status.generatedAt).not.toBeNull();
+    expect(JSON.stringify(status)).not.toMatch(/[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}/);
+  });
+
+  it('excludes used/invalidated codes from the remaining count', async () => {
+    seedIdentity();
+    const codes = await generateRecoveryCodes(DID, 4);
+    await redeemRecoveryCode({ did: DID, code: codes[0], newPublicKeyHex: NEW_PUBLIC_KEY, ip: IP });
+    await expect(getRecoveryCodeStatus(DID)).resolves.toEqual({ remaining: 0, generatedAt: null });
   });
 });
 
@@ -297,6 +333,7 @@ describe('redeemRecoveryCode', () => {
     expect(sendMock).toHaveBeenCalledWith(
       expect.objectContaining({ to: DID, scope: 'auth:recovery-code-used' }),
     );
+    expect(emitRedeemedMock).toHaveBeenCalledWith({ did: DID });
   });
 
   it('wrong code: rejects and audits invalid_code without mutating identity or tokens', async () => {

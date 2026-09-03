@@ -28,6 +28,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { db, identities, identityChains, tokens, recoveryCodes, recoveryAttempts, type RecoveryCode } from '@/src/db';
 import { createLogger } from '@imajin/logger';
 import { send } from '@imajin/notify';
+import { emitRecoveryCodesGeneratedAttestation, emitRecoveryRedeemedAttestation } from './emit-recovery-attestation';
 
 const log = createLogger('kernel');
 
@@ -146,7 +147,40 @@ export async function generateRecoveryCodes(did: string, requestedCount?: number
   }
 
   await db.insert(recoveryCodes).values(rows);
+
+  emitRecoveryCodesGeneratedAttestation({ did, count: plaintextCodes.length }).catch((err) =>
+    log.error({ err: String(err), did }, '[recovery-codes] recovery.codes.generated attestation failed (non-fatal)'),
+  );
+
   return plaintextCodes;
+}
+
+/**
+ * Status for the authenticated owner: how many codes are currently active,
+ * and when the active batch was generated. Never returns codes or hashes.
+ */
+export async function getRecoveryCodeStatus(did: string): Promise<{ remaining: number; generatedAt: string | null }> {
+  const activeCodes = await db
+    .select()
+    .from(recoveryCodes)
+    .where(
+      and(
+        eq(recoveryCodes.did, did),
+        isNull(recoveryCodes.usedAt),
+        isNull(recoveryCodes.invalidatedAt),
+      ),
+    );
+
+  if (activeCodes.length === 0) {
+    return { remaining: 0, generatedAt: null };
+  }
+
+  const generatedAt = activeCodes.reduce((latest: Date, row: RecoveryCode) => {
+    const createdAt = row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt as unknown as string);
+    return createdAt > latest ? createdAt : latest;
+  }, new Date(0));
+
+  return { remaining: activeCodes.length, generatedAt: generatedAt.toISOString() };
 }
 
 /** Bulk-invalidate every currently-active recovery code for a DID. */
@@ -173,7 +207,14 @@ export type RecoveryAttemptOutcome =
   | 'identity_not_found'
   | 'invalid_public_key'
   | 'public_key_conflict'
-  | 'rate_limited';
+  | 'rate_limited'
+  // Proof-of-new-key challenge/response (added alongside the challenge
+  // endpoint) — the caller must prove possession of `newPublicKeyHex`'s
+  // private key by signing a server-issued challenge before a code is even
+  // checked. Both logged from the route layer, which owns the challenge
+  // lookup and signature verification (see recovery-codes/verify/route.ts).
+  | 'invalid_challenge'
+  | 'invalid_proof';
 
 export async function logRecoveryAttempt(params: {
   did: string;
@@ -302,6 +343,10 @@ export async function redeemRecoveryCode(params: {
   }).catch((err) => {
     log.error({ err: String(err), did }, '[recovery-codes] recovery-used notification failed (non-fatal)');
   });
+
+  emitRecoveryRedeemedAttestation({ did }).catch((err) =>
+    log.error({ err: String(err), did }, '[recovery-codes] recovery.redeemed attestation failed (non-fatal)'),
+  );
 
   return { ok: true, sessionsInvalidated: true, chainDeprecated, disclosure: RECOVERY_DISCLOSURE };
 }
