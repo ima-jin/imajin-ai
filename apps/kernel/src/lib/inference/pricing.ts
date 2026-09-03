@@ -69,6 +69,11 @@ const DEFAULT_RATE: Record<BrainConnectorId, TokenRateUsd> = {
   xai: { inputPer1M: 3, outputPer1M: 15 },
   moonshot: { inputPer1M: 0.6, outputPer1M: 2.5 },
   zai: { inputPer1M: 0.6, outputPer1M: 2.2 },
+  // #1957: local inference is BYO-hardware, not BYOK — there is no provider
+  // invoice behind it at all, so the rate is exactly 0 rather than an
+  // estimate. Attribution (the token counts themselves) is still what
+  // usage.incurred records; only the dollar figure is zero.
+  local: { inputPer1M: 0, outputPer1M: 0 },
 };
 
 /**

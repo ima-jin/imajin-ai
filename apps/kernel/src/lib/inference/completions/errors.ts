@@ -49,6 +49,16 @@ export function mapUpstreamErrorToHttp(err: unknown): { status: number; body: Re
       body: { error: 'upstream_unavailable', message: 'The model provider could not be reached', detail: err.message },
     };
   }
+  // #1957: only reachable if a sealed `local` connection somehow lost its
+  // pinned address between resolution and forwarding (e.g. a corrupted
+  // vault field) — `EgressDeniedError` re-validates and is denied. Treated
+  // as an upstream fault, not a client error: the caller did nothing wrong.
+  if (err instanceof Error && err.name === 'EgressDeniedError') {
+    return {
+      status: 502,
+      body: { error: 'upstream_unavailable', message: 'The local endpoint could not be safely reached', detail: err.message },
+    };
+  }
   return undefined;
 }
 

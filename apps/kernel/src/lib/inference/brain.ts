@@ -36,12 +36,13 @@ import { loadXaiCredentials, XAI_BASE_URL } from '@/src/lib/xai/connector';
 import { loadOpenaiCredentials, OPENAI_BASE_URL } from '@/src/lib/openai/connector';
 import { loadMoonshotCredentials, MOONSHOT_BASE_URL } from '@/src/lib/moonshot/connector';
 import { loadZaiCredentials, ZAI_BASE_URL } from '@/src/lib/zai/connector';
+import { loadLocalCredentials } from '@/src/lib/local/connector';
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 
 const log = createLogger('kernel:inference:brain');
 
 /** Connector ids that can supply a brain, in resolution order. */
-export type BrainConnectorId = 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai';
+export type BrainConnectorId = 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'local';
 
 /**
  * Whose sealed card may supply the model (#1624).
@@ -75,10 +76,17 @@ export interface ResolvedBrain {
   provider: ProviderName;
   /** Model the credential owner sealed, or this connector's default. */
   modelId: string;
-  /** The sealed key. Never log this. */
+  /** The sealed key. Never log this. Empty string for `local` (#1957) — an optional bearer, not a required credential. */
   apiKey: string;
   /** Endpoint override — set for OpenAI-compatible providers such as Gemini. */
   baseURL?: string;
+  /**
+   * The address `local`'s `baseURL` was resolved and pinned to at save time
+   * (#1957) — undefined for every other connector. The completions
+   * passthrough uses this to connect via the egress-safe fetch without a
+   * fresh (and reboundable) DNS resolution on every call.
+   */
+  pinnedIp?: string;
 }
 
 /** Credentials as returned by a connector's `load*Credentials` helper. */
@@ -86,6 +94,7 @@ interface SealedCredentials {
   apiKey: string;
   baseUrl?: string;
   modelId?: string;
+  pinnedIp?: string;
 }
 
 interface BrainConnector {
@@ -249,6 +258,26 @@ const BRAIN_CONNECTORS: readonly BrainConnector[] = [
     // yet.
     defaultBaseUrl: ZAI_BASE_URL,
     load: loadZaiCredentials,
+  },
+  {
+    // #1957. Appended rather than slotted in, same reasoning as every other
+    // brain connector above. This is the ONE entry in this table with no
+    // sealed key required at all — `load` resolves whenever the owner has
+    // configured a `baseUrl` and granted `local:infer`, with or without a
+    // bearer token. No `defaultBaseUrl`: unlike a hosted provider, there is
+    // no platform-wide default endpoint to fall back to — the owner's
+    // sealed `baseUrl` IS the connector, and `buildResolvedBrain` already
+    // fails closed (`NoModelSelectedError`) when no model is chosen, the
+    // same #1769 precedent covers the missing endpoint case: an owner with
+    // a granted scope but no saved `baseUrl` never resolves via this
+    // connector at all (`loadLocalCredentials` returns `undefined`).
+    id: 'local',
+    name: 'Local Inference',
+    // Ollama and vLLM both speak the OpenAI-compatible surface.
+    provider: 'openai',
+    scope: 'local:infer',
+    tokenRoute: '/local/api/token',
+    load: loadLocalCredentials,
   },
 ];
 
@@ -414,6 +443,7 @@ function buildResolvedBrain(
     modelId,
     apiKey: creds.apiKey,
     ...(baseURL === undefined ? {} : { baseURL }),
+    ...(creds.pinnedIp === undefined ? {} : { pinnedIp: creds.pinnedIp }),
   };
 }
 
