@@ -37,10 +37,15 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   return { provisionId, kernelBaseUrl, operatorToken, runnerToken, outDir, composeDir, dryRun };
 }
 
-/** Strips control characters (CR/LF and friends) before writing untrusted strings to the console, so a malicious/unexpected kernel response or error message can't forge extra log lines. */
+/**
+ * Percent-encodes untrusted strings before writing them to the console, so a
+ * malicious/unexpected kernel response or error message can't forge extra
+ * log lines (CRLF injection, CWE-117 / SonarCloud tssecurity:S5145).
+ * `encodeURIComponent` leaves ordinary ids/messages unchanged and only
+ * escapes control characters and other special characters.
+ */
 function sanitizeForLog(value: unknown): string {
-  // eslint-disable-next-line no-control-regex -- deliberately stripping control chars to prevent log injection (SonarCloud tssecurity:S5145)
-  return String(value).replace(/[\x00-\x1f\x7f]/g, ' ');
+  return encodeURIComponent(String(value));
 }
 
 export async function main(): Promise<void> {
