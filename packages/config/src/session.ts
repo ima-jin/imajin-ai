@@ -27,15 +27,42 @@ function isLocalhost(): boolean {
   return prefix.includes("localhost");
 }
 
+/**
+ * Cookie domain scope (#1069 Phase 1).
+ *
+ * `SESSION_COOKIE_SCOPE` controls whether the deployed session cookie is a
+ * shared parent-domain cookie or a host-only cookie:
+ *   - unset / "domain" (default): current behavior — `domain: ".imajin.ai"`,
+ *     readable by every `*.imajin.ai` subdomain. Nothing changes unless this
+ *     is explicitly set.
+ *   - "host": omit the `domain` attribute entirely, so the cookie is scoped
+ *     to the exact host that set it and is NOT sent to other subdomains.
+ *     Apps that relied on reading the shared cookie must adopt scoped app
+ *     tokens first (see `requireSessionOrAppToken` in `@imajin/auth` and
+ *     `docs/security/cookie-isolation.md`) before this is flipped for real.
+ *
+ * This flag is a primitive for the staged rollout described in
+ * `docs/security/cookie-isolation.md` — flipping it is a separate, later
+ * phase, not part of shipping the primitive itself.
+ */
+function isHostScoped(): boolean {
+  if (typeof process === "undefined") return false;
+  return process.env.SESSION_COOKIE_SCOPE === "host";
+}
+
 /** Cookie options for cross-subdomain sessions.
  *  When called with no argument, auto-detects from IMAJIN_ENV (same logic as getSessionCookieName).
  *  Accepts optional "dev" | "prod" override for explicit control.
  *
  *  Localhost-aware: when SERVICE_PREFIX contains "localhost", uses
  *  settings compatible with HTTP on localhost (no domain, not secure, lax sameSite).
+ *
+ *  See {@link isHostScoped} for the `SESSION_COOKIE_SCOPE=host` opt-in that
+ *  narrows the deployed cookie to host-only instead of `.imajin.ai`.
  */
 export function getSessionCookieOptions(env?: "dev" | "prod") {
   const local = isLocalhost();
+  const omitDomain = local || isHostScoped();
   return {
     name: getSessionCookieName(env),
     options: {
@@ -43,7 +70,7 @@ export function getSessionCookieOptions(env?: "dev" | "prod") {
       secure: !local,
       sameSite: local ? ("lax" as const) : ("none" as const),
       path: "/",
-      ...(local ? {} : { domain: ".imajin.ai" }),
+      ...(omitDomain ? {} : { domain: ".imajin.ai" }),
       maxAge: 60 * 60 * 24, // 24 hours
     },
   };
