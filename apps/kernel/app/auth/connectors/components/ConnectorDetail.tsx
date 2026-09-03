@@ -340,10 +340,17 @@ function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantE
  * whole reason this is separate from the credential step: a setting is a
  * preference the owner needs to *see* to change confidently, while a credential
  * must stay write-only.
+ *
+ * `onSaved` (#1969) fires after a *successful* save or clear so the parent
+ * connector card can re-fetch its own status — without it, a card's model
+ * picker / scope toggles that gate on a setting (e.g. the `local` connector's
+ * `baseUrl`, #1957) only unlocked after a manual reload. Never called on a
+ * failed save: `error` above is the only signal for that case.
  */
-function ConnectorSettingsSection({ settings, stepNumber }: Readonly<{
+function ConnectorSettingsSection({ settings, stepNumber, onSaved }: Readonly<{
   settings: ConnectorSettingsUi;
   stepNumber: string | number;
+  onSaved?: () => void;
 }>) {
   // Draft values keyed by field key. Empty string means "no value set".
   const [values, setValues] = useState<Record<string, string>>({});
@@ -398,6 +405,7 @@ function ConnectorSettingsSection({ settings, stepNumber }: Readonly<{
       }
       setValues((prev) => ({ ...prev, [key]: value }));
       setSaved((prev) => ({ ...prev, [key]: value }));
+      onSaved?.();
     } catch (err: unknown) {
       setError(String(err));
     } finally {
@@ -1459,7 +1467,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
             shifts scope grants to step 3 for those and leaves it at 2 otherwise.
           */}
           {entry.settings && (
-            <ConnectorSettingsSection settings={entry.settings} stepNumber={2} />
+            <ConnectorSettingsSection settings={entry.settings} stepNumber={2} onSaved={refreshStatus} />
           )}
 
           {/*
