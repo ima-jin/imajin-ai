@@ -1,6 +1,9 @@
 # RFC-12: RFC: MJN Token Economics — reserve-backed utility token with fiat bridge
 
-**Status:** Draft
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Settlement
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/269
 
 ---

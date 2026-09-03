@@ -1,6 +1,6 @@
 # RFC-43: The Receipt Grammar — Verb Normalization Across Goods and Services, and the Kernel Shedding Its Verticals
 
-**Status:** Draft — grammar confirmed by three independent implementations; extraction sequencing open
+**Status:** Current — Draft — grammar confirmed by three independent implementations; extraction sequencing open
 **Authors:** Ryan Veteze, Jin
 **Created:** August 12, 2026
 **Related:** RFC-25 (App Runtime), RFC-41 (The Composable Gate), RFC-39 (Verifiable Skills), RFC-42 (MyTerms Conformance Profile)

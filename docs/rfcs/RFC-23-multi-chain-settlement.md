@@ -1,6 +1,9 @@
 # RFC-23: Multi-Chain Settlement — Chain-Agnostic Payment Rails with Privacy Selection
 
-**Status:** Draft
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Settlement
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Authors:** Ryan Veteze, Jin
 **Created:** April 1, 2026
 **Discussion:** TBD

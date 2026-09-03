@@ -1,6 +1,9 @@
 # RFC-01: .fair Attribution from Commit History
 
-**Status:** Open for discussion
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Attribution (manual Part III)
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Authors:** TBD
 **Created:** TBD
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/15

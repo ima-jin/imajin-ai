@@ -1,6 +1,9 @@
 # RFC-14: RFC: Community Issuance Network — trusted institutions as identity entry points
 
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Identity
+**Tombstoned:** 2026-09-03
+**Reason:** Issuance model not part of current six-primitive canon.
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/272
 
 ---

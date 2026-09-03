@@ -1,6 +1,9 @@
 # RFC-04: Settlement Protocol
 
-**Status:** Stub — referenced in RFC-05 but not yet written
+**Status:** Superseded
+**Superseded-by:** Settlement
+**Tombstoned:** 2026-09-03
+**Reason:** Stub, never written; superseded by receipt grammar (RFC-43) and live settlement impl.
 **Authors:** TBD
 **Created:** TBD
 **Discussion:** none

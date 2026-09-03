@@ -1,6 +1,9 @@
 # RFC-02: Programmable Distribution Contracts
 
-**Status:** Open for discussion
+**Status:** Superseded
+**Superseded-by:** Attribution / Settlement
+**Tombstoned:** 2026-09-03
+**Reason:** Personal distribution-contract concept superseded by `.fair` waterfall / settlement split mechanics.
 **Authors:** TBD
 **Created:** TBD
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/16

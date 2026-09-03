@@ -1,6 +1,9 @@
 # RFC-17: Governance Primitive
 
-**Status:** Draft  
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Discovery / Governance
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Author:** Ryan Veteze, Jin  
 **Date:** 2026-03-21  
 **Related:** RFC-13 (Progressive Trust), RFC-14 (Community Issuance), RFC-15 (Trust Accountability), RFC-07 (Cultural DID), RFC-08 (Org DID)

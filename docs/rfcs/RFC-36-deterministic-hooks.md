@@ -1,6 +1,9 @@
 # RFC-36: Deterministic Hooks — Bridging the Human Out of the Agent Approval Loop
 
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Superseded — see INDEX.md
+**Tombstoned:** 2026-09-03
+**Reason:** Operational hook mechanism, not a primitive.
 **Authors:** Ryan Veteze, Jin, Oz
 **Created:** June 30, 2026
 **Related:** RFC-33 (Agent CI Pipeline), RFC-27 (Multi-Agent Coordination), RFC-31 (Agent Execution Sandbox), RFC-13 (Progressive Trust Model), RFC-30 (The Judgment Token Thesis)

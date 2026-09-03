@@ -1,6 +1,6 @@
 # RFC-40: `did:imajin` Resolution — Chain-Verified, Transport-Agnostic
 
-**Status:** Draft
+**Status:** Current — Draft
 **Authors:** Ryan Veteze, Jin
 **Created:** July 24, 2026
 **Discussion:** TBD

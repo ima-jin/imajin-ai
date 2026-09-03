@@ -1,6 +1,6 @@
 # RFC-35: Context-Bound Connection — Relationship as the Boundary
 
-**Status:** Draft
+**Status:** Current — Draft
 **Author:** Ryan Veteze, Jin
 **Date:** 2026-06-21
 **Related:** RFC-13 (Progressive Trust Model), RFC-17 (Governance Primitive), RFC-29 (Biometric Trust Escalation), RFC-34 (Community Needs Brokerage), RFC-27 (Multi-Agent Coordination), RFC-10 (Sovereign User Data), RFC-01 (.fair Attribution)

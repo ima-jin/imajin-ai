@@ -1,6 +1,6 @@
 # RFC-41: The Composable Gate — A Signed-Predicate Reactor Primitive
 
-**Status:** Draft — **pattern confirmed (5 instances), abstraction deferred by priority, not doubt**
+**Status:** Current — Draft — **pattern confirmed (5 instances), abstraction deferred by priority, not doubt**
 **Authors:** Ryan Veteze, Jin
 **Created:** July 24, 2026
 **Discussion:** TBD

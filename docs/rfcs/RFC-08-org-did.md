@@ -1,6 +1,9 @@
 # RFC-08: Org DID — Businesses and Legal Entities
 
-**Status:** Discussion
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Discovery / Identity
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Authors:** TBD
 **Created:** TBD
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/253
