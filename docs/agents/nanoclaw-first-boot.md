@@ -223,6 +223,11 @@ attestation step (8), it did not remove one. Step 9 is a policy/config step, not
 consent step, but still needs-operator until #1933 gives the provisioner a way to
 write the shim's routes file itself.
 
+**Implemented in #1933**: see [`envelope-provisioner.md`](./envelope-provisioner.md)
+for the resulting kernel route, data model, operator-executed runner, and the
+full per-step automated-vs-consent-gate mapping (§6 of that doc supersedes the
+summary above with what actually shipped).
+
 ## 6. Runbook (operator-executed — NOT run by this task)
 
 This task does not deploy anything or touch live infrastructure/config. The

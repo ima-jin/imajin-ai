@@ -8,9 +8,9 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { generateEnvelope } from './generate.js';
-import { renderNanoClaw } from './renderers/nanoclaw.js';
-import type { ContextEnvelopeInput, RenderedTree } from './types.js';
+import { generateEnvelope } from './generate';
+import { renderNanoClaw } from './renderers/nanoclaw';
+import type { ContextEnvelopeInput, RenderedTree } from './types';
 
 type HarnessRenderer = (input: ContextEnvelopeInput) => RenderedTree;
 

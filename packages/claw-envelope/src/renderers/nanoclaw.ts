@@ -27,7 +27,7 @@
  *     source-tree fork.
  *   - Env: only variable NAMES are ever rendered — no secret values.
  */
-import type { ContextEnvelope, RenderedFile, RenderedTree } from '../types.js';
+import type { ContextEnvelope, RenderedFile, RenderedTree } from '../types';
 
 const HARNESS = 'nanoclaw';
 

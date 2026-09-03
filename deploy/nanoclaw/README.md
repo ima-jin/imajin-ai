@@ -75,3 +75,24 @@ The same caveat applies to `mcp-proxy`'s `127.0.0.1`-based URL baked into the re
 
 Then `docker compose build && docker compose up -d`. Full runbook (identity bootstrap,
 verification, rollback) is in `docs/agents/nanoclaw-first-boot.md`.
+
+## Provisioner runner (imajin-ai#1933)
+
+Steps 1-4 above are automated by the envelope provisioner's kernel route
+(`POST /auth/api/agents/provision`) plus `packages/claw-provisioner`'s
+operator-executed runner, which consumes a provision record, re-renders its
+envelope, materializes it under `deploy/nanoclaw/rendered/<handle>/`, and
+(for `placement: 'hosted'`) runs `docker compose build && up -d` here before
+reporting boot status back to the kernel:
+
+```bash
+pnpm --filter @imajin/claw-provisioner run -- \
+  --provision-id <id> --kernel-url "$KERNEL_BASE_URL" \
+  --operator-token "$OWNER_SESSION_TOKEN" --runner-token "$PROVISIONER_RUNNER_TOKEN"
+```
+
+This is still operator-executed only — the runner never runs in CI and this
+repo's own tests never shell out to `docker` (see `packages/claw-provisioner/tests/runner.test.ts`).
+Steps 7-10 (the MCP and `infer:completions` attestations, the usage-emitter
+registration) remain owner-consent gates outside the provisioner's scope by
+design — see `docs/agents/envelope-provisioner.md`.

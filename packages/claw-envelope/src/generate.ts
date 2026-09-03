@@ -10,7 +10,7 @@ import type {
   ContextEnvelopeInput,
   DelegationGrantRef,
   SecretRef,
-} from './types.js';
+} from './types';
 
 const MCP_SERVER_URL = 'https://mcp.imajin.ai';
 

@@ -195,6 +195,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'app.register': [
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #1933 envelope provisioner — signed provisioning event, emit-only for now
+  // (no attestation reactor yet; the provision record itself is the durable
+  // record, kept in auth.agent_provisions).
+  'agent.provisioned': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
   'market.sale': [
     { type: 'notify', config: { scope: 'market:sale' }, enabled: true },
   ],

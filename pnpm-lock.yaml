@@ -412,6 +412,9 @@ importers:
       '@imajin/cid':
         specifier: workspace:*
         version: link:../../packages/cid
+      '@imajin/claw-envelope':
+        specifier: workspace:*
+        version: link:../../packages/claw-envelope
       '@imajin/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -964,6 +967,25 @@ importers:
       '@imajin/auth':
         specifier: workspace:*
         version: link:../auth
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.19.17)(jsdom@30.0.1(@noble/hashes@2.2.0))
+
+  packages/claw-provisioner:
+    dependencies:
+      '@imajin/claw-envelope':
+        specifier: workspace:*
+        version: link:../claw-envelope
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, identityMembers, attestations, agentKnocks } from '@/src/db';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
-import { requireAuth, authErrorResponse, generateKeypair, resolveActingDid } from '@imajin/auth';
-import { didFromPublicKey } from '@/src/lib/auth/crypto';
+import { requireAuth, authErrorResponse, resolveActingDid } from '@imajin/auth';
 import { listGrantDetailsForDelegator, type DelegationGrantDetail } from '@/src/lib/auth/grants';
+import { mintAgentIdentity, MintAgentIdentityError } from '@/src/lib/auth/agent-identity';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-
-const HANDLE_REGEX = /^[a-z0-9_-]+$/;
 
 interface AgentResponse {
   did: string;
@@ -232,99 +230,28 @@ export async function POST(request: NextRequest) {
     bio?: string;
   };
 
-  // Validate handle
-  if (!handle || typeof handle !== 'string') {
-    return NextResponse.json({ error: 'handle is required' }, { status: 400 });
-  }
-  if (handle.length < 3 || handle.length > 64) {
-    return NextResponse.json({ error: 'Handle must be 3-64 characters' }, { status: 400 });
-  }
-  if (!HANDLE_REGEX.test(handle)) {
-    return NextResponse.json(
-      { error: 'Handle must be lowercase letters, numbers, underscores, or hyphens' },
-      { status: 400 }
-    );
-  }
-
-  // Validate display name
-  const trimmedDisplayName = displayName?.trim().slice(0, 100) || null;
-
   try {
-    // Check handle uniqueness
-    const existing = await db
-      .select({ id: identities.id })
-      .from(identities)
-      .where(eq(identities.handle, handle))
-      .limit(1);
-
-    if (existing.length > 0) {
-      return NextResponse.json({ error: 'Handle already taken' }, { status: 409 });
-    }
-
-    // Generate Ed25519 keypair server-side
-    const { privateKey, publicKey } = generateKeypair();
-    const agentDid = didFromPublicKey(publicKey);
-
-    // Build metadata
-    const metadata: Record<string, unknown> = {};
-    if (bio && typeof bio === 'string') {
-      metadata.bio = bio.trim().slice(0, 500);
-    }
-
-    // Insert the identity row and both membership links atomically (#1717):
-    // if any step fails partway through, the whole creation rolls back rather
-    // than leaving an orphaned identity row with no owning membership link.
-    await db.transaction(async (tx) => {
-      // Insert identity
-      await tx.insert(identities).values({
-        id: agentDid,
-        scope: 'actor',
-        subtype: 'agent',
-        publicKey,
-        handle,
-        name: trimmedDisplayName,
-        tier: 'preliminary',
-        metadata: Object.keys(metadata).length > 0 ? metadata : {},
-      });
-
-      // Link agent to owner
-      await tx.insert(identityMembers).values({
-        identityDid: agentDid,
-        memberDid: actingDid,
-        role: 'owner',
-        addedBy: actingDid,
-        addedVia: 'direct',
-      });
-
-      // Reverse membership: agent is delegated to the acting DID
-      await tx.insert(identityMembers).values({
-        identityDid: actingDid,
-        memberDid: agentDid,
-        role: 'agent',
-        addedBy: actingDid,
-        addedVia: 'agent',
-      });
-    });
+    const agent = await mintAgentIdentity({ handle: handle ?? '', displayName, bio, actingDid });
 
     return NextResponse.json(
       {
-        did: agentDid,
-        handle,
-        displayName: trimmedDisplayName,
-        name: trimmedDisplayName,
+        did: agent.did,
+        handle: agent.handle,
+        displayName: agent.displayName,
+        name: agent.displayName,
         scope: 'actor',
         subtype: 'agent',
         tier: 'preliminary',
-        publicKey,
-        keypair: {
-          privateKey,
-          publicKey,
-        },
-        createdAt: new Date().toISOString(),
+        publicKey: agent.keypair.publicKey,
+        keypair: agent.keypair,
+        createdAt: agent.createdAt,
       },
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof MintAgentIdentityError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     log.error({ err: String(error) }, '[agents] Create error');
     return NextResponse.json({ error: 'Failed to create agent' }, { status: 500 });
   }

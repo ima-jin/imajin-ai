@@ -518,6 +518,54 @@ export type NewDelegationGrantCapabilityRow = typeof delegationGrantCapabilities
 export type DelegationGrantEventRow = typeof delegationGrantEvents.$inferSelect;
 export type NewDelegationGrantEventRow = typeof delegationGrantEvents.$inferInsert;
 
+/** One step of a provisioning attempt's legibility log (#1933). */
+export interface AgentProvisionStep {
+  step: string;
+  status: 'ok' | 'error';
+  at: string;
+  error?: string;
+}
+
+/** The rendered envelope's file-name manifest (#1933) — never file contents. */
+export interface AgentProvisionEnvelopeManifest {
+  files: { relativePath: string }[];
+  manualSteps: string[];
+}
+
+/**
+ * Envelope provisioner (#1933, RFC-31 v2): one row per provisioning attempt.
+ * Turns the hand-built NanoClaw first boot (#1932) into a repeatable flow —
+ * see `apps/kernel/src/lib/auth/agent-provisioner.ts` for the orchestration
+ * and `migrations/0123_agent_provisions.sql` for the full column reference.
+ */
+export const agentProvisions = authSchema.table('agent_provisions', {
+  id: text('id').primaryKey(),                                  // prov_{nanoid}
+  servingDid: text('serving_did').notNull(),
+  delegatorDid: text('delegator_did').notNull(),
+  agentDid: text('agent_did'),
+  handle: text('handle').notNull(),
+  displayName: text('display_name'),
+  harness: text('harness').notNull(),                           // 'nanoclaw' | 'openclaw'
+  placement: text('placement').notNull(),                       // 'hosted' | 'local'
+  model: jsonb('model').notNull().default({}).$type<{ provider: string; via: string }>(),
+  scopes: jsonb('scopes').notNull().default([]).$type<string[]>(),
+  status: text('status').notNull().default('pending'),
+  steps: jsonb('steps').notNull().default([]).$type<AgentProvisionStep[]>(),
+  envelopeManifest: jsonb('envelope_manifest').$type<AgentProvisionEnvelopeManifest | null>(),
+  grantId: text('grant_id'),
+  idempotencyKey: text('idempotency_key'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => ({
+  servingDidIdx: index('idx_agent_provisions_serving_did').on(table.servingDid, table.status),
+  agentDidIdx: index('idx_agent_provisions_agent_did').on(table.agentDid).where(sql`${table.agentDid} IS NOT NULL`),
+  delegatorIdempotencyUniq: uniqueIndex('uniq_agent_provisions_delegator_idempotency').on(table.delegatorDid, table.idempotencyKey).where(sql`${table.idempotencyKey} IS NOT NULL`),
+}));
+
+export type AgentProvisionRow = typeof agentProvisions.$inferSelect;
+export type NewAgentProvisionRow = typeof agentProvisions.$inferInsert;
+
 /**
  * External-agent knocks (#1883) — pending contact requests from an
  * external agent to a declared target principal, settled at the #1881

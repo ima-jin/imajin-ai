@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { buildPublicUrlAbsolute } from '@imajin/config';
+import { GRANT_SCOPE_REGISTRY } from '@imajin/auth/grant-scopes';
 
 const NODE_URL = buildPublicUrlAbsolute('kernel');
+const CHAT_BASE_URL = buildPublicUrlAbsolute('chat');
 
 interface GrantCapability {
   capability: string;
@@ -76,6 +78,56 @@ interface PendingKnock {
   externalDidVerification: ExternalDidVerification;
   expiresAt: string;
   createdAt: string;
+}
+
+// ─── Envelope provisioner (#1933) ──────────────────────────────────────────
+
+type ProvisionHarness = 'nanoclaw' | 'openclaw';
+type ProvisionPlacement = 'hosted' | 'local';
+
+interface ProvisionStep {
+  step: string;
+  status: 'ok' | 'error';
+  at: string;
+  error?: string;
+}
+
+interface EnvelopeManifest {
+  files: { relativePath: string }[];
+  manualSteps: string[];
+}
+
+interface Provision {
+  id: string;
+  servingDid: string;
+  agentDid: string | null;
+  handle: string;
+  displayName: string | null;
+  harness: ProvisionHarness;
+  placement: ProvisionPlacement;
+  model: { provider: string; via: string };
+  scopes: string[];
+  status: string;
+  steps: ProvisionStep[];
+  envelopeManifest: EnvelopeManifest | null;
+  grantId: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+const PROVISION_STATUS_STYLES: Record<string, string> = {
+  pending: 'border-gray-700 text-gray-400 bg-gray-800',
+  identity_minted: 'border-sky-800 text-sky-300 bg-sky-950/30',
+  grants_issued: 'border-sky-800 text-sky-300 bg-sky-950/30',
+  envelope_rendered: 'border-green-700 text-green-400 bg-green-900/20',
+  awaiting_boot: 'border-amber-600 text-amber-400 bg-amber-900/20',
+  booted: 'border-green-700 text-green-400 bg-green-900/20',
+  failed: 'border-red-800 text-red-400 bg-red-900/20',
+  revoked: 'border-gray-800 text-gray-600 bg-gray-900/20',
+};
+
+function provisionStatusLabel(status: string): string {
+  return status.replace(/_/g, ' ');
 }
 
 /**
@@ -293,6 +345,256 @@ function GrantCard({
   );
 }
 
+/** Per-agent provision detail: envelope manifest, revoke, Open in chat, local bundle download (#1933 deliverable 3). */
+function ProvisionPanel({
+  provision,
+  actionLoading,
+  onRevoke,
+  onDownloadBundle,
+}: Readonly<{
+  provision: Provision;
+  actionLoading: string;
+  onRevoke: (id: string) => void;
+  onDownloadBundle: (id: string) => void;
+}>) {
+  const [expanded, setExpanded] = useState(false);
+  const isRevoked = provision.status === 'revoked';
+  const isFailed = provision.status === 'failed';
+
+  return (
+    <div className="rounded-lg border border-gray-800 bg-gray-950 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`px-1.5 py-0.5 text-xs rounded border capitalize ${PROVISION_STATUS_STYLES[provision.status] ?? PROVISION_STATUS_STYLES.pending}`}>
+            {provisionStatusLabel(provision.status)}
+          </span>
+          <span className="px-1.5 py-0.5 text-xs rounded border border-gray-700 text-gray-400">{provision.harness}</span>
+          <span className="px-1.5 py-0.5 text-xs rounded border border-gray-700 text-gray-400">{provision.placement}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {provision.agentDid && !isRevoked && (
+            <a
+              href={`${CHAT_BASE_URL}/start?did=${encodeURIComponent(provision.agentDid)}`}
+              className="text-xs px-2 py-1 border border-gray-700 text-gray-300 rounded hover:border-amber-600 hover:text-amber-400 transition"
+            >
+              Open in chat
+            </a>
+          )}
+          {provision.placement === 'local' && !isRevoked && (
+            <button
+              type="button"
+              onClick={() => onDownloadBundle(provision.id)}
+              disabled={actionLoading === `bundle-${provision.id}`}
+              className="text-xs px-2 py-1 border border-gray-700 text-gray-300 rounded hover:border-amber-600 hover:text-amber-400 transition disabled:opacity-40"
+            >
+              {actionLoading === `bundle-${provision.id}` ? '…' : 'Download bundle'}
+            </button>
+          )}
+          {!isRevoked && (
+            <button
+              type="button"
+              onClick={() => onRevoke(provision.id)}
+              disabled={actionLoading === `revoke-provision-${provision.id}`}
+              className="text-xs px-2 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition disabled:opacity-40"
+            >
+              {actionLoading === `revoke-provision-${provision.id}` ? '…' : 'Revoke'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs px-2 py-1 text-gray-500 hover:text-gray-300 transition"
+          >
+            {expanded ? 'Hide detail' : 'Show detail'}
+          </button>
+        </div>
+      </div>
+
+      {isFailed && provision.steps.some((s) => s.status === 'error') && (
+        <p className="text-xs text-red-400">
+          {provision.steps.filter((s) => s.status === 'error').map((s) => `${s.step}: ${s.error}`).join('; ')}
+        </p>
+      )}
+
+      {expanded && (
+        <div className="pt-2 border-t border-gray-900 space-y-2 text-xs text-gray-500">
+          <p>
+            Model: <span className="text-gray-300">{provision.model.provider}</span>{' '}
+            via <span className="text-gray-300">{provision.model.via}</span>
+          </p>
+          <p>
+            Scopes:{' '}
+            <span className="text-gray-300">{provision.scopes.length > 0 ? provision.scopes.join(', ') : '(none)'}</span>
+          </p>
+          <p>
+            Created: <span className="text-gray-300">{formatDateTime(provision.createdAt)}</span>
+          </p>
+          {provision.revokedAt && (
+            <p>
+              Revoked: <span className="text-red-400">{formatDateTime(provision.revokedAt)}</span>
+            </p>
+          )}
+          {provision.envelopeManifest && (
+            <div>
+              <p className="text-gray-600 mb-1">Envelope files</p>
+              <ul className="space-y-0.5 font-mono">
+                {provision.envelopeManifest.files.map((f) => (
+                  <li key={f.relativePath}>{f.relativePath}</li>
+                ))}
+              </ul>
+              {provision.envelopeManifest.manualSteps.length > 0 && (
+                <>
+                  <p className="text-gray-600 mt-2 mb-1">Manual steps remaining</p>
+                  <ul className="space-y-0.5 list-disc list-inside">
+                    {provision.envelopeManifest.manualSteps.map((step, i) => (
+                      <li key={`${i}-${step.slice(0, 24)}`}>{step}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+          <div>
+            <p className="text-gray-600 mb-1">Steps</p>
+            <ul className="space-y-0.5">
+              {provision.steps.map((s, i) => (
+                <li key={`${s.step}-${s.at}-${i}`} className={s.status === 'error' ? 'text-red-400' : undefined}>
+                  {s.step} — {s.status}{s.error ? `: ${s.error}` : ''} — {formatDateTime(s.at)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const SCOPE_OPTIONS = GRANT_SCOPE_REGISTRY.map((entry) => entry.scope);
+
+/** New agent provisioning flow (#1933 deliverable 3): name -> harness -> placement -> scopes -> model/route -> review. */
+function ProvisionWizard({
+  onSubmit,
+  onCancel,
+  submitting,
+}: Readonly<{
+  onSubmit: (input: { name: string; harness: ProvisionHarness; placement: ProvisionPlacement; scopes: string[]; provider: string }) => void;
+  onCancel: () => void;
+  submitting: boolean;
+}>) {
+  const [name, setName] = useState('');
+  const [harness, setHarness] = useState<ProvisionHarness>('nanoclaw');
+  const [placement, setPlacement] = useState<ProvisionPlacement>('hosted');
+  const [scopes, setScopes] = useState<string[]>([]);
+  const [provider, setProvider] = useState('anthropic:claude');
+
+  function toggleScope(scope: string) {
+    setScopes((prev) => (prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]));
+  }
+
+  return (
+    <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8 space-y-5">
+      <h2 className="text-lg font-semibold text-white">Provision new agent</h2>
+      <p className="text-gray-400 text-sm">
+        Mints an agent DID, issues minimal grants, and assembles an RFC-31 envelope (imajin-ai#1933).
+      </p>
+
+      <div>
+        <label htmlFor="provision-name" className="block text-sm text-gray-400 mb-1">Name</label>
+        <input
+          id="provision-name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Travel Agent"
+          autoFocus
+          className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+        />
+      </div>
+
+      <div>
+        <p className="block text-sm text-gray-400 mb-1">Harness</p>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setHarness('nanoclaw')}
+            className={`px-3 py-1.5 rounded-lg text-sm border transition ${harness === 'nanoclaw' ? 'border-amber-500 text-amber-400 bg-amber-900/10' : 'border-gray-700 text-gray-400'}`}>
+            NanoClaw
+          </button>
+          <button type="button" onClick={() => setHarness('openclaw')} disabled
+            title="OpenClaw support is a documented stub (imajin-ai#1933 deliverable 4) — not yet implemented"
+            className="px-3 py-1.5 rounded-lg text-sm border border-gray-800 text-gray-600 cursor-not-allowed">
+            OpenClaw (coming soon)
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <p className="block text-sm text-gray-400 mb-1">Placement</p>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setPlacement('hosted')}
+            className={`px-3 py-1.5 rounded-lg text-sm border transition ${placement === 'hosted' ? 'border-amber-500 text-amber-400 bg-amber-900/10' : 'border-gray-700 text-gray-400'}`}>
+            Hosted
+          </button>
+          <button type="button" onClick={() => setPlacement('local')}
+            className={`px-3 py-1.5 rounded-lg text-sm border transition ${placement === 'local' ? 'border-amber-500 text-amber-400 bg-amber-900/10' : 'border-gray-700 text-gray-400'}`}>
+            Local (download bundle)
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <p className="block text-sm text-gray-400 mb-1">Scopes (minimal grants)</p>
+        <div className="flex flex-wrap gap-1.5">
+          {SCOPE_OPTIONS.map((scope) => (
+            <button
+              key={scope}
+              type="button"
+              onClick={() => toggleScope(scope)}
+              className={`px-2 py-1 rounded text-xs border transition ${
+                scopes.includes(scope)
+                  ? 'border-violet-700 text-violet-300 bg-violet-950/30'
+                  : 'border-gray-700 text-gray-500'
+              }`}
+            >
+              {scope}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor="provision-provider" className="block text-sm text-gray-400 mb-1">Model / route</label>
+        <input
+          id="provision-provider"
+          type="text"
+          value={provider}
+          onChange={(e) => setProvider(e.target.value)}
+          placeholder="anthropic:claude"
+          className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+        />
+        <p className="text-xs text-gray-600 mt-1">Reaches the provider via the kernel's sealed inference passthrough by default.</p>
+      </div>
+
+      <div className="flex gap-3 pt-2">
+        <button
+          type="button"
+          onClick={() => onSubmit({ name, harness, placement, scopes, provider })}
+          disabled={!name.trim() || submitting}
+          className="px-6 py-2 bg-amber-500 hover:bg-amber-400 text-black font-medium rounded-lg transition disabled:opacity-50"
+        >
+          {submitting ? 'Provisioning…' : 'Provision'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-6 py-2 border border-gray-700 text-gray-400 hover:text-white rounded-lg transition"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [pendingKnocks, setPendingKnocks] = useState<PendingKnock[]>([]);
@@ -307,6 +609,10 @@ export default function AgentsPage() {
   // at zero grants indefinitely with no other UI path to issue one, so the
   // agent card itself carries a minimal capabilities input per agent DID.
   const [grantCapabilitiesInput, setGrantCapabilitiesInput] = useState<Record<string, string>>({});
+
+  // Envelope provisioner (#1933)
+  const [provisions, setProvisions] = useState<Provision[]>([]);
+  const [showProvisionWizard, setShowProvisionWizard] = useState(false);
 
   // Form state
   const [handle, setHandle] = useState('');
@@ -323,10 +629,11 @@ export default function AgentsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [agentsRes, sessionRes, knocksRes] = await Promise.all([
+      const [agentsRes, sessionRes, knocksRes, provisionsRes] = await Promise.all([
         fetch('/auth/api/agents', { credentials: 'include' }),
         fetch('/auth/api/session', { credentials: 'include' }),
         fetch('/auth/api/knock/pending', { credentials: 'include' }),
+        fetch('/auth/api/agents/provision', { credentials: 'include' }),
       ]);
 
       if (agentsRes.ok) {
@@ -337,6 +644,11 @@ export default function AgentsPage() {
       if (knocksRes.ok) {
         const data = await knocksRes.json();
         setPendingKnocks(data.knocks || []);
+      }
+
+      if (provisionsRes.ok) {
+        const data = await provisionsRes.json();
+        setProvisions(data.provisions || []);
       }
 
       if (sessionRes.ok) {
@@ -551,6 +863,94 @@ export default function AgentsPage() {
     }
   }
 
+  /** Provision a new agent via the envelope provisioner (#1933): identity + minimal grants + RFC-31 envelope in one call. */
+  async function handleCreateProvision(input: { name: string; harness: ProvisionHarness; placement: ProvisionPlacement; scopes: string[]; provider: string }) {
+    if (!session) return;
+    setActionLoading('provision');
+    try {
+      const res = await fetch('/auth/api/agents/provision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          servingDid: session.did,
+          name: input.name,
+          harness: input.harness,
+          placement: input.placement,
+          scopes: input.scopes,
+          model: { provider: input.provider },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showStatus(
+          data.provision?.status === 'failed' ? 'error' : 'success',
+          data.provision?.status === 'failed' ? 'Provisioning failed — see step detail below.' : 'Agent provisioned.',
+        );
+        setShowProvisionWizard(false);
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to provision agent');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleRevokeProvision(provisionId: string) {
+    const key = `revoke-provision-${provisionId}`;
+    setActionLoading(key);
+    try {
+      const res = await fetch(`/auth/api/agents/provision/${encodeURIComponent(provisionId)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        showStatus('success', 'Provision revoked.');
+        await loadData();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to revoke provision');
+      }
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleDownloadBundle(provisionId: string) {
+    const key = `bundle-${provisionId}`;
+    setActionLoading(key);
+    try {
+      const res = await fetch(`/auth/api/agents/provision/${encodeURIComponent(provisionId)}/bundle`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        showStatus('error', body.error || 'Failed to build bundle');
+        return;
+      }
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${provisionId}-bundle.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      showStatus('error', 'Network error. Please try again.');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
   function downloadKeypair() {
     if (!createdAgent) return;
     const blob = new Blob(
@@ -607,13 +1007,30 @@ export default function AgentsPage() {
             <h1 className="text-2xl font-bold text-white mb-1">Agents</h1>
             <p className="text-gray-400 text-sm">Scoped delegation grants for agents that act on your behalf.</p>
           </div>
-          <button type="button"
-            onClick={() => { setShowCreateForm(true); resetForm(); }}
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-sm font-semibold rounded-lg transition-colors"
-          >
-            + Create Agent
-          </button>
+          <div className="flex gap-2">
+            <button type="button"
+              onClick={() => setShowProvisionWizard(true)}
+              className="px-4 py-2 border border-amber-600 text-amber-400 hover:bg-amber-900/20 text-sm font-semibold rounded-lg transition-colors"
+            >
+              + Provision Agent
+            </button>
+            <button type="button"
+              onClick={() => { setShowCreateForm(true); resetForm(); }}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-sm font-semibold rounded-lg transition-colors"
+            >
+              + Create Agent
+            </button>
+          </div>
         </div>
+
+        {/* Envelope provisioner (#1933): new agent flow */}
+        {showProvisionWizard && (
+          <ProvisionWizard
+            submitting={actionLoading === 'provision'}
+            onSubmit={handleCreateProvision}
+            onCancel={() => setShowProvisionWizard(false)}
+          />
+        )}
 
         {/* Status message */}
         {statusMessage && (
@@ -815,7 +1232,9 @@ export default function AgentsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {agents.map((agent) => (
+              {agents.map((agent) => {
+                const agentProvisions = provisions.filter((p) => p.agentDid === agent.did);
+                return (
                 <div
                   key={agent.did}
                   className="p-4 bg-gray-900 rounded-xl border border-gray-800 space-y-3"
@@ -850,6 +1269,15 @@ export default function AgentsPage() {
                             connected — no capabilities granted
                           </span>
                         )}
+                        {agentProvisions.map((p) => (
+                          <span
+                            key={p.id}
+                            className={`px-1.5 py-0.5 text-xs rounded border capitalize ${PROVISION_STATUS_STYLES[p.status] ?? PROVISION_STATUS_STYLES.pending}`}
+                            title={`Provisioned via imajin-ai#1933 — ${p.harness}, ${p.placement}`}
+                          >
+                            {p.harness} · {p.placement} · {provisionStatusLabel(p.status)}
+                          </span>
+                        ))}
                       </div>
                       {agent.handle && <p className="text-xs text-gray-500">@{agent.handle}</p>}
                       <p className="text-xs text-gray-600 font-mono mt-0.5 truncate">{agent.did}</p>
@@ -937,8 +1365,23 @@ export default function AgentsPage() {
                       ))}
                     </div>
                   )}
+
+                  {agentProvisions.length > 0 && (
+                    <div className="space-y-2">
+                      {agentProvisions.map((provision) => (
+                        <ProvisionPanel
+                          key={provision.id}
+                          provision={provision}
+                          actionLoading={actionLoading}
+                          onRevoke={handleRevokeProvision}
+                          onDownloadBundle={handleDownloadBundle}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
