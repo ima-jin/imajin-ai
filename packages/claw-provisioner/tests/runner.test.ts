@@ -11,6 +11,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runProvision, type ProvisionRecord } from '../src/runner';
+import * as publicApi from '../src/index';
 
 function makeProvision(overrides: Partial<ProvisionRecord> = {}): ProvisionRecord {
   return {
@@ -54,6 +55,12 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+describe('package barrel export (src/index.ts)', () => {
+  it('re-exports runProvision', () => {
+    expect(publicApi.runProvision).toBe(runProvision);
+  });
 });
 
 describe('runProvision — dry-run safety', () => {

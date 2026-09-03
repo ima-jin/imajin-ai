@@ -5,7 +5,7 @@
  * Operator-executed entry point for the envelope provisioner runner
  * (imajin-ai#1933). See `runner.ts` for the full behavior and v0 scope.
  */
-import { runProvision } from './runner.js';
+import { runProvision } from './runner';
 
 interface ParsedArgs {
   provisionId: string;
@@ -17,7 +17,7 @@ interface ParsedArgs {
   dryRun: boolean;
 }
 
-function parseArgs(argv: readonly string[]): ParsedArgs {
+export function parseArgs(argv: readonly string[]): ParsedArgs {
   const get = (flag: string): string | undefined => {
     const idx = argv.indexOf(flag);
     return idx === -1 ? undefined : argv[idx + 1];
@@ -37,7 +37,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   return { provisionId, kernelBaseUrl, operatorToken, runnerToken, outDir, composeDir, dryRun };
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const result = await runProvision({
     kernelBaseUrl: args.kernelBaseUrl,

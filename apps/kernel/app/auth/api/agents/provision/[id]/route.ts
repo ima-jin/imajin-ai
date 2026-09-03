@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, authErrorResponse } from '@imajin/auth';
 import { getProvision, revokeProvision } from '@/src/lib/auth/agent-provisioner';
+import { resolveCallerIdentity, isCallerIdentityError } from '@/src/lib/auth/require-caller-did';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -13,12 +13,11 @@ const log = createLogger('kernel');
  * secrets — see `[id]/bundle` for the full local-placement bundle).
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return authErrorResponse(authResult);
+  const auth = await resolveCallerIdentity(request);
+  if (isCallerIdentityError(auth)) {
+    return auth.errorResponse;
   }
-  const { identity } = authResult;
-  const callerDid = identity.actingAs ?? identity.id;
+  const { callerDid } = auth;
   const { id } = await params;
 
   try {
@@ -44,12 +43,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
  * silent delete; the row and its step history remain visible.
  */
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return authErrorResponse(authResult);
+  const auth = await resolveCallerIdentity(request);
+  if (isCallerIdentityError(auth)) {
+    return auth.errorResponse;
   }
-  const { identity } = authResult;
-  const callerDid = identity.actingAs ?? identity.id;
+  const { callerDid } = auth;
   const { id } = await params;
 
   try {

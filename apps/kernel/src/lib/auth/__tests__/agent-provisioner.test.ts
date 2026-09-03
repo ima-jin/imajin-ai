@@ -118,7 +118,7 @@ vi.mock('@/src/lib/auth/grants', () => ({
 
 vi.mock('@imajin/bus', () => ({ publish: (...args: unknown[]) => publishMock(...args) }));
 
-import { createProvision, getProvision, revokeProvision } from '../agent-provisioner';
+import { createProvision, getProvision, revokeProvision, listProvisions, recordBootStatus, renderEnvelopeForRow } from '../agent-provisioner';
 
 const SERVING_DID = 'did:imajin:ryan';
 const AGENT_DID = 'did:imajin:new-agent';
@@ -185,6 +185,36 @@ describe('createProvision — happy path', () => {
     ).rejects.toThrow(/harness must be one of/);
     expect(store.size).toBe(0);
   });
+
+  it('rejects an unsupported placement before creating any row', async () => {
+    await expect(
+      createProvision({ servingDid: SERVING_DID, name: 'X', harness: 'nanoclaw', placement: 'unsupported' as never, scopes: [] }),
+    ).rejects.toThrow(/placement must be one of/);
+    expect(store.size).toBe(0);
+  });
+
+  it('rejects a missing or blank name before creating any row', async () => {
+    await expect(
+      createProvision({ servingDid: SERVING_DID, name: '', harness: 'nanoclaw', placement: 'local', scopes: [] }),
+    ).rejects.toThrow('name is required');
+    await expect(
+      createProvision({ servingDid: SERVING_DID, name: '   ', harness: 'nanoclaw', placement: 'local', scopes: [] }),
+    ).rejects.toThrow('name is required');
+    expect(store.size).toBe(0);
+  });
+});
+
+describe('listProvisions', () => {
+  it('returns only the requesting servingDid\'s provisions, newest first', async () => {
+    await createProvision({ servingDid: SERVING_DID, name: 'Mine 1', harness: 'nanoclaw', placement: 'local', scopes: [] });
+    await createProvision({ servingDid: SERVING_DID, name: 'Mine 2', harness: 'nanoclaw', placement: 'local', scopes: [] });
+    await createProvision({ servingDid: 'did:imajin:someone-else', name: 'Not Mine', harness: 'nanoclaw', placement: 'local', scopes: [] });
+
+    const rows = await listProvisions(SERVING_DID);
+
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.servingDid === SERVING_DID)).toBe(true);
+  });
 });
 
 describe('createProvision — idempotent retry', () => {
@@ -231,6 +261,26 @@ describe('createProvision — partial-failure legibility', () => {
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({ step: 'mint_identity', status: 'error', error: 'Handle already taken' });
     expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('records a generic (non-MintAgentIdentityError) mint failure using its plain message', async () => {
+    mintAgentIdentityMock.mockRejectedValueOnce(new Error('db unreachable'));
+
+    const provision = await createProvision({
+      servingDid: SERVING_DID, name: 'Generic Failure', harness: 'nanoclaw', placement: 'hosted', scopes: [],
+    });
+
+    expect(provision.status).toBe('failed');
+    const steps = provision.steps as { step: string; status: string; error?: string }[];
+    expect(steps[0]).toMatchObject({ step: 'mint_identity', status: 'error', error: 'db unreachable' });
+  });
+
+  it('derives a fallback "agent" slug when the name has no slug-safe characters', async () => {
+    const provision = await createProvision({
+      servingDid: SERVING_DID, name: '!!!', harness: 'nanoclaw', placement: 'local', scopes: [],
+    });
+
+    expect(provision.handle).toMatch(/^agent-/);
   });
 
   it('leaves a legible failed row when grant issuance fails after identity mint succeeds, and does not re-mint on a later call with the same key', async () => {
@@ -297,5 +347,102 @@ describe('revokeProvision', () => {
   it('returns 404 for an unknown provision id', async () => {
     const result = await revokeProvision('prov_does_not_exist', SERVING_DID);
     expect(result).toEqual({ error: 'Provision not found', status: 404 });
+  });
+
+  it('short-circuits with revoked: true when the provision is already revoked, without re-revoking the grant', async () => {
+    const provision = await createProvision({
+      servingDid: SERVING_DID, name: 'Already Revoked', harness: 'nanoclaw', placement: 'hosted', scopes: ['messages:write'],
+    });
+    revokeGrantMock.mockResolvedValue({ revoked: true });
+    await revokeProvision(provision.id, SERVING_DID);
+    revokeGrantMock.mockClear();
+
+    const result = await revokeProvision(provision.id, SERVING_DID);
+
+    expect(result).toEqual({ revoked: true });
+    expect(revokeGrantMock).not.toHaveBeenCalled();
+  });
+
+  it('still marks the provision revoked (and logs) when the underlying grant revoke itself fails', async () => {
+    const provision = await createProvision({
+      servingDid: SERVING_DID, name: 'Grant Revoke Fails', harness: 'nanoclaw', placement: 'hosted', scopes: ['messages:write'],
+    });
+    revokeGrantMock.mockResolvedValue({ error: 'Grant already revoked', status: 409 });
+
+    const result = await revokeProvision(provision.id, SERVING_DID);
+
+    expect(result).toEqual({ revoked: true });
+    const reloaded = await getProvision(provision.id);
+    expect(reloaded?.status).toBe('revoked');
+  });
+
+  it('revokes a provision that never had a grant issued (zero scopes) without calling revokeGrant', async () => {
+    const provision = await createProvision({
+      servingDid: SERVING_DID, name: 'No Grant', harness: 'nanoclaw', placement: 'local', scopes: [],
+    });
+
+    const result = await revokeProvision(provision.id, SERVING_DID);
+
+    expect(result).toEqual({ revoked: true });
+    expect(revokeGrantMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('recordBootStatus', () => {
+  it('returns null for an unknown provision id', async () => {
+    const result = await recordBootStatus('prov_does_not_exist', 'booted');
+    expect(result).toBeNull();
+  });
+
+  it('appends an ok boot step and sets status to booted', async () => {
+    const provision = await createProvision({
+      servingDid: SERVING_DID, name: 'Boots Fine', harness: 'nanoclaw', placement: 'hosted', scopes: [],
+    });
+
+    const updated = await recordBootStatus(provision.id, 'booted');
+
+    expect(updated?.status).toBe('booted');
+    const steps = updated?.steps as { step: string; status: string }[];
+    expect(steps[steps.length - 1]).toMatchObject({ step: 'boot', status: 'ok' });
+  });
+
+  it('appends an error boot step with detail and sets status to failed', async () => {
+    const provision = await createProvision({
+      servingDid: SERVING_DID, name: 'Boot Fails', harness: 'nanoclaw', placement: 'hosted', scopes: [],
+    });
+
+    const updated = await recordBootStatus(provision.id, 'failed', 'container crashed');
+
+    expect(updated?.status).toBe('failed');
+    const steps = updated?.steps as { step: string; status: string; error?: string }[];
+    expect(steps[steps.length - 1]).toMatchObject({ step: 'boot', status: 'error', error: 'container crashed' });
+  });
+});
+
+describe('renderEnvelopeForRow', () => {
+  it('throws a 409 ProvisionError when the row has no agent identity yet', () => {
+    expect(() =>
+      renderEnvelopeForRow({
+        harness: 'nanoclaw',
+        agentDid: null,
+        servingDid: SERVING_DID,
+        handle: 'no-agent-yet',
+        scopes: [],
+        model: { provider: 'anthropic:claude', via: 'kernel-passthrough' },
+      } as never),
+    ).toThrow('Provision has no agent identity yet');
+  });
+
+  it('throws a 501 ProvisionError for a non-nanoclaw harness', () => {
+    expect(() =>
+      renderEnvelopeForRow({
+        harness: 'openclaw',
+        agentDid: AGENT_DID,
+        servingDid: SERVING_DID,
+        handle: 'stub-harness',
+        scopes: [],
+        model: { provider: 'anthropic:claude', via: 'kernel-passthrough' },
+      } as never),
+    ).toThrow(/not yet implemented/);
   });
 });

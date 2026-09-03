@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, authErrorResponse, agentCardUrl } from '@imajin/auth';
+import { agentCardUrl } from '@imajin/auth';
 import { createProvision, listProvisions, ProvisionError, type ProvisionHarness, type ProvisionPlacement } from '@/src/lib/auth/agent-provisioner';
+import { resolveCallerIdentity, isCallerIdentityError } from '@/src/lib/auth/require-caller-did';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -18,11 +19,11 @@ const log = createLogger('kernel');
  * equal the caller's own effective DID.
  */
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return authErrorResponse(authResult);
+  const auth = await resolveCallerIdentity(request);
+  if (isCallerIdentityError(auth)) {
+    return auth.errorResponse;
   }
-  const { identity } = authResult;
+  const { identity, callerDid } = auth;
 
   if (identity.actingFor) {
     return NextResponse.json(
@@ -30,7 +31,6 @@ export async function POST(request: NextRequest) {
       { status: 403 },
     );
   }
-  const callerDid = identity.actingAs ?? identity.id;
 
   let body: Record<string, unknown>;
   try {
@@ -85,12 +85,11 @@ export async function POST(request: NextRequest) {
  * List the caller's own provisions (Agent View pane, #1933 deliverable 3).
  */
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return authErrorResponse(authResult);
+  const auth = await resolveCallerIdentity(request);
+  if (isCallerIdentityError(auth)) {
+    return auth.errorResponse;
   }
-  const { identity } = authResult;
-  const servingDid = identity.actingAs ?? identity.id;
+  const { callerDid: servingDid } = auth;
 
   try {
     const provisions = await listProvisions(servingDid);

@@ -82,4 +82,31 @@ describe('POST /auth/api/agents/provision/[id]/callback', () => {
     const res = await POST(makeRequest({ status: 'failed', detail: 'compose up failed' }, 'test-runner-secret'), ctx());
     expect(res.status).toBe(404);
   });
+
+  it('records a failed status with a detail message', async () => {
+    recordBootStatusMock.mockResolvedValue({ id: 'prov_1', status: 'failed' });
+
+    const res = await POST(makeRequest({ status: 'failed', detail: 'compose up failed' }, 'test-runner-secret'), ctx());
+    expect(res.status).toBe(200);
+    expect(recordBootStatusMock).toHaveBeenCalledWith('prov_1', 'failed', 'compose up failed');
+  });
+
+  it('rejects an invalid JSON body', async () => {
+    const req = new Request(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-provisioner-runner-token': 'test-runner-secret' },
+      body: '{not json',
+    }) as unknown as RouteRequest;
+
+    const res = await POST(req, ctx());
+    expect(res.status).toBe(400);
+    expect(recordBootStatusMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 for an unexpected error', async () => {
+    recordBootStatusMock.mockRejectedValue(new Error('db exploded'));
+
+    const res = await POST(makeRequest({ status: 'booted' }, 'test-runner-secret'), ctx());
+    expect(res.status).toBe(500);
+  });
 });

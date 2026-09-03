@@ -40,6 +40,22 @@ beforeEach(() => {
 });
 
 describe('GET /auth/api/agents/provision/[id]', () => {
+  it('propagates an unauthenticated caller', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'Not authenticated', status: 401 });
+
+    const res = await GET(makeRequest('GET'), ctx());
+    expect(res.status).toBe(401);
+    expect(getProvisionMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 for an unexpected error', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: OWNER } });
+    getProvisionMock.mockRejectedValue(new Error('db exploded'));
+
+    const res = await GET(makeRequest('GET'), ctx());
+    expect(res.status).toBe(500);
+  });
+
   it('returns 404 for an unknown provision', async () => {
     requireAuthMock.mockResolvedValue({ identity: { id: OWNER } });
     getProvisionMock.mockResolvedValue(null);
@@ -75,6 +91,22 @@ describe('GET /auth/api/agents/provision/[id]', () => {
 });
 
 describe('DELETE /auth/api/agents/provision/[id]', () => {
+  it('propagates an unauthenticated caller', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'Not authenticated', status: 401 });
+
+    const res = await DELETE(makeRequest('DELETE'), ctx());
+    expect(res.status).toBe(401);
+    expect(revokeProvisionMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 for an unexpected error', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: OWNER } });
+    revokeProvisionMock.mockRejectedValue(new Error('db exploded'));
+
+    const res = await DELETE(makeRequest('DELETE'), ctx());
+    expect(res.status).toBe(500);
+  });
+
   it('propagates a lib-level error status', async () => {
     requireAuthMock.mockResolvedValue({ identity: { id: OWNER } });
     revokeProvisionMock.mockResolvedValue({ error: 'Only the owning DID may revoke this provision', status: 403 });

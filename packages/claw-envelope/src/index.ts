@@ -12,7 +12,7 @@ export type {
   RenderedTree,
   SecretRef,
   WorkspaceFiles,
-} from './types.js';
-export { generateEnvelope, validateIntentScopes } from './generate.js';
-export { renderNanoClaw, groupFolderFor } from './renderers/nanoclaw.js';
-export type { RenderNanoClawOptions } from './renderers/nanoclaw.js';
+} from './types';
+export { generateEnvelope, validateIntentScopes } from './generate';
+export { renderNanoClaw, groupFolderFor } from './renderers/nanoclaw';
+export type { RenderNanoClawOptions } from './renderers/nanoclaw';

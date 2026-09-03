@@ -120,6 +120,24 @@ describe('POST /auth/api/agents/provision', () => {
 
     expect(res.status).toBe(400);
   });
+
+  it('rejects an invalid JSON body', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: OWNER } });
+
+    const res = await POST(new Request(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not json' }) as unknown as RouteRequest);
+
+    expect(res.status).toBe(400);
+    expect(createProvisionMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 for an unexpected (non-ProvisionError) failure', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: OWNER } });
+    createProvisionMock.mockRejectedValue(new Error('db exploded'));
+
+    const res = await POST(makeRequest('POST', { servingDid: OWNER, name: 'Travel', harness: 'nanoclaw', placement: 'local', scopes: [] }));
+
+    expect(res.status).toBe(500);
+  });
 });
 
 describe('GET /auth/api/agents/provision', () => {
@@ -131,5 +149,23 @@ describe('GET /auth/api/agents/provision', () => {
 
     expect(listProvisionsMock).toHaveBeenCalledWith(OWNER);
     expect(await res.json()).toEqual({ provisions: [{ id: 'prov_1' }] });
+  });
+
+  it('propagates an unauthenticated caller', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'Not authenticated', status: 401 });
+
+    const res = await GET(makeRequest('GET'));
+
+    expect(res.status).toBe(401);
+    expect(listProvisionsMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when listing fails unexpectedly', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: OWNER } });
+    listProvisionsMock.mockRejectedValue(new Error('db exploded'));
+
+    const res = await GET(makeRequest('GET'));
+
+    expect(res.status).toBe(500);
   });
 });
