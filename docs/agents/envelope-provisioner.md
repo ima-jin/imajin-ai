@@ -173,7 +173,26 @@ verified-against-a-real-checkout approach) and orchestrator-tier scopes in
 from NanoClaw's — both open questions for a follow-up issue, not resolved
 here.
 
-## 9. Open questions / deferred (see the PR body for the authoritative list)
+## 9. Model on your own LAN? That's local placement, not a connector URL.
+
+The hosted kernel cannot and will not reach private-range hosts behind a
+user's NAT — the egress guard denying RFC1918 destinations by default
+([#1966](https://github.com/ima-jin/imajin-ai/issues/1966)) is by design,
+not a gap to route around, and a user-side relay minted under the user's own
+DID would just be a LAN tunnel wearing a DID, which is excluded for the same
+reason ([#1968](https://github.com/ima-jin/imajin-ai/issues/1968), closed as
+documented-by-design; see also
+[#1957](https://github.com/ima-jin/imajin-ai/issues/1957)). The answer is
+`placement: 'local'`: the harness runs on the user's own node with
+`brain.via: 'direct'` against their own Ollama/vLLM instance, so zero sealed
+provider keys ever leave the user's machine — only identity/grants/attribution
+calls touch the hosted kernel.
+
+- Pick **Local (download bundle)** in the provisioning wizard (§5 above).
+- Point `model.via` at `'direct'` with your own endpoint, then follow §7's
+  runner flow to materialize and boot the bundle on your own node.
+
+## 10. Open questions / deferred (see the PR body for the authoritative list)
 
 - The callback route's shared-secret auth is a v0 simplification (§4) —
   replacing it with app-token/attestation auth is future work.

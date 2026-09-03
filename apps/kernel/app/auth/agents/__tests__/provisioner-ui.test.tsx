@@ -198,6 +198,18 @@ describe('per-agent provision detail panel', () => {
     expect(screen.queryByRole('button', { name: 'Download bundle' })).toBeNull();
   });
 
+  it('offers a Retrace action that pre-fills and runs the Retrace pane (#1962)', async () => {
+    await renderAgentsPage([agent()], [provision()], {
+      '/auth/api/retrace': async () =>
+        ({ ok: true, status: 200, json: async () => ({ hops: [], terminal: { reached: true, ref: null, reason: 'origin' }, truncated: false }) } as unknown as Response),
+    });
+
+    fireEvent.click(screen.getByTitle(/Walk this provision's record backwards/));
+
+    await waitFor(() => expect((screen.getByLabelText('Artifact id to retrace') as HTMLInputElement).value).toBe('prov_1'));
+    await waitFor(() => expect(screen.getByText(/Reached the origin of this chain/)).toBeDefined());
+  });
+
   it('hides Revoke/Open-in-chat/Download-bundle controls once the provision is revoked', async () => {
     await renderAgentsPage([agent()], [provision({ status: 'revoked', revokedAt: '2026-08-02T00:00:00.000Z', placement: 'local' })]);
 
