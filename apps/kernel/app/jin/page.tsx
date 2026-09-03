@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { UsageFeedPanel } from './usage-feed-panel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -369,6 +370,10 @@ export default function JinPage() {
       {/* Body — S3358: avoid nested ternary by extracting render logic */}
       <main className="px-6 py-4">
         {renderBody(loading, visible, showDone, handleAction, actionLoading)}
+
+        {/* Live per-turn agent usage feed (#1864) — a second panel on this
+            kernel ops page, alongside the confirm-rail proposals above. */}
+        <UsageFeedPanel />
       </main>
     </div>
   );
