@@ -3,9 +3,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
-import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
-import { isFairManifestV1_1 } from "@imajin/fair";
+import type { FairManifest } from "@imajin/fair";
+import { isFairManifestV1_1, validateManifest } from "@imajin/fair";
 import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
+import {
+  applyProtectedFairFields,
+  checkProtectedFairFields,
+  deriveProtectedFairFields,
+} from "@/src/lib/kernel/fair-fee-guard";
 import { createLogger } from "@imajin/logger";
 import { renderFairHtml } from "@/src/lib/media/render-fair-html";
 import { getAccessType } from "@/src/lib/media/read-access";
@@ -173,12 +178,44 @@ export async function PUT(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // The protocol/node/platform fee split (`chain`), payout `distributions`,
+  // and processor `fees` schedule are NEVER owner-editable, on v1.0 or v1.1
+  // manifests alike (#1937 / A08). They are re-derived server-side from the
+  // asset + config, and any owner-submitted value that conflicts with the
+  // derived value is rejected outright — naming the offending field — rather
+  // than silently corrected. See fair-fee-guard.ts for why v1.0 is in scope
+  // too (POST /upgrade-fair reads chain/fees straight from the stored
+  // manifest).
+  const expectedFees = deriveProtectedFairFields({
+    id: asset.id,
+    ownerDid: asset.ownerDid,
+    mimeType: asset.mimeType,
+  });
+  const mismatch = checkProtectedFairFields(manifest, expectedFees);
+  if (mismatch) {
+    return NextResponse.json(
+      { error: mismatch.message, field: mismatch.field },
+      { status: 400 },
+    );
+  }
+  const merged = applyProtectedFairFields(manifest, expectedFees);
+
+  const validation = validateManifest(merged);
+  if (!validation.ok) {
+    return NextResponse.json(
+      { error: "Invalid .fair manifest", details: validation.errors },
+      { status: 400 },
+    );
+  }
+
   // v1.1 manifests are always node-signed. If the owner edited the content,
   // the existing signature is over stale data — re-sign with the node key
-  // before persisting. v1.0 manifests are written through as-is for now.
-  let toPersist: FairManifest = manifest;
-  if (isFairManifestV1_1(manifest)) {
-    const result = await signFairAsNode(manifest as FairManifestV1_1);
+  // before persisting, now that the fee-split fields are known-good. v1.0
+  // manifests are written through as-is for now (they are never node-signed
+  // by this route).
+  let toPersist: FairManifest = merged;
+  if (isFairManifestV1_1(merged)) {
+    const result = await signFairAsNode(merged);
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
