@@ -24,8 +24,15 @@ function authHeaders(creds: LocalCredentials): Record<string, string> {
   return creds.apiKey ? { Authorization: `Bearer ${creds.apiKey}` } : {};
 }
 
+/** Trim trailing slashes without a regex — avoids a backtracking-sensitive `/+$/` pattern for a one-line job. */
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end--;
+  return value.slice(0, end);
+}
+
 async function fetchModels(creds: LocalCredentials, path = ''): Promise<Response> {
-  const baseUrl = (creds.baseUrl ?? '').replace(/\/+$/, '');
+  const baseUrl = trimTrailingSlashes(creds.baseUrl ?? '');
   return egressSafeFetch(
     `${baseUrl}/v1/models${path}`,
     { method: 'GET', headers: { ...authHeaders(creds), Accept: 'application/json' } },

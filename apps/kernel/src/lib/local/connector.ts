@@ -31,6 +31,14 @@
  * every other connector reports "nothing sealed". A missing bearer token is
  * NOT that condition — `apiKey` resolves to `''` (never `undefined`) so a
  * `local` connection with no token is a normal, successful resolution.
+ *
+ * `baseUrl` is validated by `checkEgressTarget` (`../kernel/egress-guard.ts`)
+ * before it is ever sealed: private/RFC1918 addresses are DENIED unless the
+ * operator has opted them in via `LOCAL_INFER_PRIVATE_ALLOWLIST` — on a
+ * hosted kernel, any DID that can grant itself `local:infer` and save a
+ * `baseUrl` would otherwise get a read-SSRF primitive into the platform's
+ * own LAN. See that module's header for the full threat model and the
+ * allowlist's `host[:port]`/CIDR/`*` syntax.
  */
 import { and, eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';

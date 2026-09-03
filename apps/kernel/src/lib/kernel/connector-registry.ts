@@ -421,10 +421,14 @@ const LOCAL_ENTRY: ConnectorEntry = {
       {
         key: 'baseUrl',
         label: 'Endpoint URL',
-        placeholder: 'http://ollama.lan:11434',
+        // http is the correct, expected scheme for a LAN inference box
+        // (Ollama/vLLM's own defaults); this is an example placeholder, not
+        // a URL the kernel itself calls.
+        placeholder: 'http://ollama.lan:11434', // NOSONAR(typescript:S5332)
         hint: 'Your OpenAI-compatible endpoint (Ollama, vLLM). Validated and pinned to the address it resolves to ' +
-          'on save — re-save to point it at a different host. LAN (RFC1918) addresses are allowed by design; ' +
-          'loopback, link-local, and cloud-metadata addresses are refused.',
+          'on save — re-save to point it at a different host. LAN (RFC1918/fc00::/7) addresses require this node’s ' +
+          'operator to allowlist them (LOCAL_INFER_PRIVATE_ALLOWLIST); loopback, link-local, cloud-metadata, and ' +
+          'other reserved addresses are always refused.',
       },
     ],
   },

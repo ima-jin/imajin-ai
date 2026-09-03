@@ -137,6 +137,8 @@ function performPinnedRequest(
     const isHttps = url.protocol === 'https:';
     const requestFn = isHttps ? httpsRequest : httpRequest;
     const hostname = stripBrackets(url.hostname);
+    const defaultPort = isHttps ? 443 : 80;
+    const port = url.port ? Number(url.port) : defaultPort;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
     let settled = false;
@@ -144,7 +146,7 @@ function performPinnedRequest(
     const req = requestFn(
       {
         hostname,
-        port: url.port ? Number(url.port) : isHttps ? 443 : 80,
+        port,
         path: `${url.pathname}${url.search}`,
         method: init.method ?? 'GET',
         headers: normalizeHeaders(init.headers),

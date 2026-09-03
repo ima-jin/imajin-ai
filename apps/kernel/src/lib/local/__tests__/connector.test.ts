@@ -43,6 +43,8 @@ vi.mock('@/src/db', () => ({
   channelLinks: {},
 }));
 
+const loadAndUnsealMock = vi.fn(async (field: string) => vaultStore.get(field));
+
 vi.mock('@/src/lib/vault', () => ({
   sealAndStore: vi.fn(async (field: string, value: string) => {
     vaultStore.set(field, value);
@@ -51,7 +53,7 @@ vi.mock('@/src/lib/vault', () => ({
     vaultStore.set(field, value);
     return { entry: {}, grantId: 'grant_1', requestId: null };
   }),
-  loadAndUnseal: vi.fn(async (field: string) => vaultStore.get(field)),
+  loadAndUnseal: loadAndUnsealMock,
   deleteFromVault: vi.fn(async (field: string) => {
     const had = vaultStore.has(field);
     vaultStore.delete(field);
@@ -61,8 +63,10 @@ vi.mock('@/src/lib/vault', () => ({
   revokeVaultDelegationGrantsForConnector: grantRevokeMock,
 }));
 
+class VaultDelegationErrorDouble extends Error {}
+
 vi.mock('@/src/lib/vault/errors', () => ({
-  VaultDelegationError: class VaultDelegationError extends Error {},
+  VaultDelegationError: VaultDelegationErrorDouble,
 }));
 
 vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
@@ -83,6 +87,7 @@ const {
   setModelId,
   sealBearerToken,
   bearerTokenSealed,
+  bearerTokenPending,
   loadLocalCredentials,
   loadLocalSealedCredentials,
   disconnect,
@@ -97,6 +102,8 @@ describe('local connector', () => {
     activeGrant = false;
     checkEgressTargetMock.mockReset();
     grantRevokeMock.mockClear();
+    loadAndUnsealMock.mockClear();
+    loadAndUnsealMock.mockImplementation(async (field: string) => vaultStore.get(field));
   });
 
   it('rejects an unsafe baseUrl and seals nothing', async () => {
@@ -187,5 +194,52 @@ describe('local connector', () => {
 
   it('disconnect is a safe no-op (returns false) when nothing was ever configured', async () => {
     expect(await disconnect(DID)).toBe(false);
+  });
+
+  it('bearerTokenPending reports true only while a sealed token awaits owner approval', async () => {
+    expect(await bearerTokenPending(DID)).toBe(false);
+    await sealBearerToken(DID, 'secret-token');
+    expect(await bearerTokenPending(DID)).toBe(false);
+  });
+
+  it('degrades an unreadable model id to "no override" instead of failing (loadOptionalConfig)', async () => {
+    checkEgressTargetMock.mockResolvedValueOnce({ ok: true, url: new URL('http://ollama.lan:11434'), ip: '192.168.1.50', family: 4 });
+    await saveBaseUrl(DID, 'http://ollama.lan:11434');
+    activeGrant = true;
+    loadAndUnsealMock.mockImplementation(async (field: string) => {
+      if (field.startsWith('local-model-id:')) throw new Error('corrupt entry');
+      return vaultStore.get(field);
+    });
+
+    const creds = await loadLocalCredentials(DID);
+
+    expect(creds).toEqual({ apiKey: '', baseUrl: 'http://ollama.lan:11434', pinnedIp: '192.168.1.50' });
+  });
+
+  it('treats a bearer token pending owner approval (VaultDelegationError) as "no token", not a blocking failure', async () => {
+    checkEgressTargetMock.mockResolvedValueOnce({ ok: true, url: new URL('http://ollama.lan:11434'), ip: '192.168.1.50', family: 4 });
+    await saveBaseUrl(DID, 'http://ollama.lan:11434');
+    await sealBearerToken(DID, 'secret-token');
+    activeGrant = true;
+    loadAndUnsealMock.mockImplementation(async (field: string) => {
+      if (field.startsWith('local-api-key:')) throw new VaultDelegationErrorDouble('pending');
+      return vaultStore.get(field);
+    });
+
+    const creds = await loadLocalCredentials(DID);
+
+    expect(creds).toEqual({ apiKey: '', baseUrl: 'http://ollama.lan:11434', pinnedIp: '192.168.1.50' });
+  });
+
+  it('propagates a non-delegation vault failure when reading the bearer token', async () => {
+    checkEgressTargetMock.mockResolvedValueOnce({ ok: true, url: new URL('http://ollama.lan:11434'), ip: '192.168.1.50', family: 4 });
+    await saveBaseUrl(DID, 'http://ollama.lan:11434');
+    activeGrant = true;
+    loadAndUnsealMock.mockImplementation(async (field: string) => {
+      if (field.startsWith('local-api-key:')) throw new Error('vault integrity failure');
+      return vaultStore.get(field);
+    });
+
+    await expect(loadLocalCredentials(DID)).rejects.toThrow('vault integrity failure');
   });
 });

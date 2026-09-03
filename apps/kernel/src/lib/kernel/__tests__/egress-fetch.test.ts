@@ -1,8 +1,14 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
-import { egressSafeFetch } from '../egress-fetch';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UpstreamTimeoutError, UpstreamUnavailableError } from '@/src/lib/inference/completions/errors';
+
+const checkEgressTargetMock = vi.fn();
+vi.mock('../egress-guard', () => ({
+  checkEgressTarget: (...args: unknown[]) => checkEgressTargetMock(...args),
+}));
+
+const { egressSafeFetch, EgressDeniedError } = await import('../egress-fetch');
 
 let server: Server | undefined;
 
@@ -119,5 +125,62 @@ describe('egressSafeFetch', () => {
         { connector: 'local', timeoutMs: 2000, pinnedIp: '127.0.0.1' },
       ),
     ).rejects.toBeInstanceOf(UpstreamUnavailableError);
+  });
+
+  it('accepts a Headers instance for init.headers', async () => {
+    const port = await listen((req, res) => {
+      res.end(JSON.stringify({ auth: req.headers.authorization }));
+    });
+
+    const res = await egressSafeFetch(
+      `http://headers-instance.example:${port}/`,
+      { method: 'GET', headers: new Headers({ Authorization: 'Bearer via-headers-object' }) },
+      { connector: 'local', timeoutMs: 5000, pinnedIp: '127.0.0.1' },
+    );
+
+    expect(await res.json()).toEqual({ auth: 'Bearer via-headers-object' });
+  });
+
+  it('accepts an array-of-pairs for init.headers', async () => {
+    const port = await listen((req, res) => {
+      res.end(JSON.stringify({ auth: req.headers.authorization }));
+    });
+
+    const res = await egressSafeFetch(
+      `http://headers-array.example:${port}/`,
+      { method: 'GET', headers: [['Authorization', 'Bearer via-array']] },
+      { connector: 'local', timeoutMs: 5000, pinnedIp: '127.0.0.1' },
+    );
+
+    expect(await res.json()).toEqual({ auth: 'Bearer via-array' });
+  });
+
+  describe('fallback validation (no pinnedIp)', () => {
+    it('validates via checkEgressTarget and connects to the address it returns', async () => {
+      const port = await listen((_req, res) => res.end('ok'));
+      checkEgressTargetMock.mockResolvedValueOnce({
+        ok: true,
+        url: new URL(`http://ollama.example:${port}/`),
+        ip: '127.0.0.1',
+        family: 4,
+      });
+
+      const res = await egressSafeFetch(
+        `http://ollama.example:${port}/`,
+        { method: 'GET' },
+        { connector: 'local', timeoutMs: 5000 },
+      );
+
+      expect(checkEgressTargetMock).toHaveBeenCalledWith(`http://ollama.example:${port}/`);
+      expect(await res.text()).toBe('ok');
+    });
+
+    it('throws EgressDeniedError without connecting when the fallback validation denies the URL', async () => {
+      checkEgressTargetMock.mockResolvedValueOnce({ ok: false, reason: 'private', message: "'ollama.lan' resolves to 10.0.0.5, which is denied (private)" });
+
+      await expect(
+        egressSafeFetch('http://ollama.lan:11434/', { method: 'GET' }, { connector: 'local', timeoutMs: 5000 }),
+      ).rejects.toBeInstanceOf(EgressDeniedError);
+    });
   });
 });
