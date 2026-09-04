@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, devices } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { requireAuth, unauthorizedResponse } from '@/src/lib/auth/middleware';
+import { resolveOwnedDevice, isOwnedDeviceError } from '@/src/lib/auth/load-owned-device';
 import { corsHeaders } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 
@@ -20,17 +20,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   const cors = corsHeaders(request);
 
   try {
-    const session = await requireAuth(request);
-    if (!session) {
-      return unauthorizedResponse();
-    }
-
-    const [device] = await db.select().from(devices).where(eq(devices.id, params.id)).limit(1);
-    if (!device) {
-      return NextResponse.json({ error: 'Device not found' }, { status: 404, headers: cors });
-    }
-    if (device.did !== session.sub) {
-      return NextResponse.json({ error: 'Not authorized to modify this device' }, { status: 403, headers: cors });
+    const result = await resolveOwnedDevice(request, params.id, cors);
+    if (isOwnedDeviceError(result)) {
+      return result.errorResponse;
     }
 
     const [updated] = await db

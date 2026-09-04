@@ -1,44 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const h = vi.hoisted(() => ({
-  requireAuth: vi.fn(),
-  foundDevice: undefined as Record<string, unknown> | undefined,
-  updatedDevice: undefined as Record<string, unknown> | undefined,
-}));
+// 401/404/403 auth+ownership behavior is covered once in
+// src/lib/auth/__tests__/load-owned-device.test.ts — this route now just
+// delegates to that helper, so it only needs to verify the error response
+// passes through unchanged, plus its own success-path DB update.
+const h = vi.hoisted(() => ({ resolveOwnedDevice: vi.fn() }));
 
-vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
-}));
+vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }) }));
+vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
 
-vi.mock('@imajin/config', () => ({
-  corsHeaders: () => ({}),
-}));
-
-vi.mock('@/src/lib/auth/middleware', () => ({
-  requireAuth: h.requireAuth,
-  unauthorizedResponse: () => new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 }),
+vi.mock('@/src/lib/auth/load-owned-device', () => ({
+  resolveOwnedDevice: h.resolveOwnedDevice,
+  isOwnedDeviceError: (result: unknown) => !!result && typeof result === 'object' && 'errorResponse' in result,
 }));
 
 const db = vi.hoisted(() => {
-  const selectLimitMock = vi.fn(() => (h.foundDevice ? [h.foundDevice] : []));
-  const selectWhereMock = vi.fn(() => ({ limit: selectLimitMock }));
-  const selectFromMock = vi.fn(() => ({ where: selectWhereMock }));
-  const selectMock = vi.fn(() => ({ from: selectFromMock }));
-
-  const updateReturningMock = vi.fn(() => (h.updatedDevice ? [h.updatedDevice] : []));
+  const updateReturningMock = vi.fn();
   const updateWhereMock = vi.fn(() => ({ returning: updateReturningMock }));
   const updateSetMock = vi.fn(() => ({ where: updateWhereMock }));
   const updateMock = vi.fn(() => ({ set: updateSetMock }));
-
-  return { selectLimitMock, selectWhereMock, selectFromMock, selectMock, updateReturningMock, updateWhereMock, updateSetMock, updateMock };
+  return { updateReturningMock, updateWhereMock, updateSetMock, updateMock };
 });
 
-vi.mock('@/src/db', () => ({
-  db: { select: db.selectMock, update: db.updateMock },
-  devices: { id: 'id', did: 'did' },
-}));
-
+vi.mock('@/src/db', () => ({ db: { update: db.updateMock }, devices: { id: 'id' } }));
 vi.mock('drizzle-orm', () => ({ eq: (...args: unknown[]) => args }));
 
 import { DELETE } from '../route';
@@ -51,49 +36,24 @@ function makeProps(id: string) {
   return { params: Promise.resolve({ id }) };
 }
 
-const OWNER_DID = 'did:imajin:device-owner';
-const OTHER_DID = 'did:imajin:someone-else';
-
 beforeEach(() => {
   vi.clearAllMocks();
-  h.foundDevice = undefined;
-  h.updatedDevice = undefined;
 });
 
 describe('DELETE /auth/api/devices/[id] (#306)', () => {
-  it('requires authentication', async () => {
-    h.requireAuth.mockResolvedValue(null);
+  it('returns the ownership-check error response unchanged', async () => {
+    const errorResponse = new Response(JSON.stringify({ error: 'nope' }), { status: 403 });
+    h.resolveOwnedDevice.mockResolvedValue({ errorResponse });
 
     const res = await DELETE(makeReq(), makeProps('dev_1'));
 
-    expect(res.status).toBe(401);
-    expect(db.updateMock).not.toHaveBeenCalled();
-  });
-
-  it('returns 404 for an unknown device id', async () => {
-    h.requireAuth.mockResolvedValue({ sub: OWNER_DID });
-    h.foundDevice = undefined;
-
-    const res = await DELETE(makeReq(), makeProps('dev_missing'));
-
-    expect(res.status).toBe(404);
-    expect(db.updateMock).not.toHaveBeenCalled();
-  });
-
-  it('returns 403 when the device belongs to a different DID', async () => {
-    h.requireAuth.mockResolvedValue({ sub: OTHER_DID });
-    h.foundDevice = { id: 'dev_1', did: OWNER_DID, revoked: false };
-
-    const res = await DELETE(makeReq(), makeProps('dev_1'));
-
-    expect(res.status).toBe(403);
+    expect(res).toBe(errorResponse);
     expect(db.updateMock).not.toHaveBeenCalled();
   });
 
   it('revokes (soft-deletes) the device for its own DID and hides it from the list', async () => {
-    h.requireAuth.mockResolvedValue({ sub: OWNER_DID });
-    h.foundDevice = { id: 'dev_1', did: OWNER_DID, revoked: false };
-    h.updatedDevice = { id: 'dev_1', did: OWNER_DID, revoked: true };
+    h.resolveOwnedDevice.mockResolvedValue({ session: { sub: 'did:imajin:device-owner' }, device: { id: 'dev_1' } });
+    db.updateReturningMock.mockReturnValue([{ id: 'dev_1', revoked: true }]);
 
     const res = await DELETE(makeReq(), makeProps('dev_1'));
     const body = await res.json();

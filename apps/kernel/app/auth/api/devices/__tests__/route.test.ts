@@ -13,9 +13,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
-vi.mock('@imajin/config', () => ({
-  corsHeaders: () => ({}),
-}));
+vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
 
 vi.mock('@/src/lib/auth/middleware', () => ({
   requireAuth: h.requireAuth,
@@ -23,7 +21,7 @@ vi.mock('@/src/lib/auth/middleware', () => ({
 }));
 
 const db = vi.hoisted(() => {
-  const orderByMock = vi.fn(() => (globalThis as { __selectResult?: unknown[] }).__selectResult ?? []);
+  const orderByMock = vi.fn(() => h.selectResult);
   const whereMock = vi.fn(() => ({ orderBy: orderByMock }));
   const fromMock = vi.fn(() => ({ where: whereMock }));
   const selectMock = vi.fn(() => ({ from: fromMock }));
@@ -47,11 +45,11 @@ function makeReq(): NextRequest {
   return { headers: new Headers(), cookies: { get: () => undefined } } as unknown as NextRequest;
 }
 
-const DID = 'did:imajin:device-owner';
+const OWNER_DID = 'did:imajin:device-owner';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  (globalThis as { __selectResult?: unknown[] }).__selectResult = [];
+  h.selectResult = [];
 });
 
 describe('GET /auth/api/devices (#306)', () => {
@@ -65,9 +63,9 @@ describe('GET /auth/api/devices (#306)', () => {
   });
 
   it('lists only the caller\'s own devices, excluding revoked ones', async () => {
-    h.requireAuth.mockResolvedValue({ sub: DID });
-    const rows = [{ id: 'dev_1', did: DID, revoked: false }];
-    (globalThis as { __selectResult?: unknown[] }).__selectResult = rows;
+    h.requireAuth.mockResolvedValue({ sub: OWNER_DID });
+    const rows = [{ id: 'dev_1', did: OWNER_DID, revoked: false }];
+    h.selectResult = rows;
 
     const res = await GET(makeReq());
     const body = await res.json();
