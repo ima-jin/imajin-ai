@@ -30,18 +30,19 @@ function resetState() {
   state.idCounter = 0;
 }
 
-vi.mock('@/src/db', () => {
+vi.mock('@/src/db', async () => {
+  // Dynamic import (not a static one) so this shared helper is resolved at
+  // mock-factory invocation time, independent of vi.mock's hoisting of this
+  // call above the file's own imports (#1073 dedup fix).
+  const { createMockDb, tableTag } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+
   const balances = { __table: 'balances', did: 'did', cashAmount: 'cashAmount', creditAmount: 'creditAmount' };
   const transactions = { __table: 'transactions', id: 'id' };
   const identities = { __table: 'identities' };
   const identityChains = { __table: 'identityChains', did: 'did' };
 
-  function tableName(t: unknown): string {
-    return (t as { __table?: string } | undefined)?.__table ?? 'unknown';
-  }
-
   function limitResultFor(table: unknown) {
-    const t = tableName(table);
+    const t = tableTag(table);
     if (t === 'balances') {
       return Promise.resolve(state.senderBalanceRow ? [state.senderBalanceRow] : []);
     }
@@ -50,44 +51,8 @@ vi.mock('@/src/db', () => {
     }
     return Promise.resolve([]);
   }
-  function whereClauseFor(table: unknown) {
-    return { limit: (_n: number) => limitResultFor(table) };
-  }
-  function fromClauseFor() {
-    return (table: unknown) => ({ where: (_cond?: unknown) => whereClauseFor(table) });
-  }
-  function select(_proj?: unknown) {
-    return { from: fromClauseFor() };
-  }
 
-  function update(table: unknown) {
-    return {
-      set(values: Record<string, unknown>) {
-        return {
-          where(_cond?: unknown) {
-            state.updateCalls.push({ table: tableName(table), values });
-            return Promise.resolve(undefined);
-          },
-        };
-      },
-    };
-  }
-
-  function insert(table: unknown) {
-    return {
-      values(values: Record<string, unknown>) {
-        const record = { table: tableName(table), values } as { table: string; values: Record<string, unknown>; conflict?: unknown };
-        state.insertCalls.push(record);
-        const promise = Promise.resolve(undefined);
-        return Object.assign(promise, {
-          onConflictDoUpdate(conflict: unknown) {
-            record.conflict = conflict;
-            return Promise.resolve(undefined);
-          },
-        });
-      },
-    };
-  }
+  const { select, update, insert } = createMockDb(state, limitResultFor);
 
   async function transaction(cb: (tx: { update: typeof update; insert: typeof insert }) => Promise<void>) {
     return cb({ update, insert });

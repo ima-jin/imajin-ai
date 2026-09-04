@@ -179,16 +179,19 @@ async function resolveInternalSettlementSource(params: {
   return { source: sourceFromBurn(creditBurn, cashBurn), creditBurn, cashBurn, settleCurrency };
 }
 
-async function emitAttestations(
-  from_did: string,
-  fair_manifest: { chain: Array<{ did: string; amount: number; role: string }> },
-  batchId: string,
-  txIds: string[],
-  total_amount: number,
-  source: string,
-  payerChainVerified: boolean,
-  payeeChainVerified: boolean,
-) {
+interface EmitAttestationsParams {
+  from_did: string;
+  fair_manifest: { chain: Array<{ did: string; amount: number; role: string }> };
+  batchId: string;
+  txIds: string[];
+  total_amount: number;
+  source: string;
+  payerChainVerified: boolean;
+  payeeChainVerified: boolean;
+}
+
+async function emitAttestations(params: EmitAttestationsParams) {
+  const { from_did, fair_manifest, batchId, txIds, total_amount, source, payerChainVerified, payeeChainVerified } = params;
   const attestationCalls: Promise<void>[] = [];
 
   // One "customer" attestation per recipient
@@ -382,7 +385,7 @@ export async function settlePayment(params: SettlePaymentParams): Promise<Settle
   });
 
   // Fire attestations asynchronously — don't block settlement response
-  emitAttestations(from_did, fair_manifest, batchId, txIds, total_amount, source, payerChainVerified, payeeChainVerified).catch((err) => {
+  emitAttestations({ from_did, fair_manifest, batchId, txIds, total_amount, source, payerChainVerified, payeeChainVerified }).catch((err) => {
     log.error({ err: String(err) }, 'Attestation emission error');
   });
 
