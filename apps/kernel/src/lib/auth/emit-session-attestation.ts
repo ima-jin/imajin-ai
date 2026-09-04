@@ -1,89 +1,30 @@
-import { db, attestations } from "@/src/db";
-import { canonicalize, crypto as authCrypto } from "@imajin/auth";
 import type { AttestationType } from "@imajin/auth";
-import { computeCid } from "@imajin/cid";
-import { getNodeDid } from "@/src/lib/kernel/node-identity";
-import { createLogger } from '@imajin/logger';
-import { randomUUID } from 'node:crypto';
+import { emitMechanicalAttestation } from "./emit-mechanical-attestation";
 
-const log = createLogger('kernel');
+const ATTESTATION_TYPE: AttestationType = "session.created";
 
-function genId(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
-}
-
+/**
+ * Emit a signed `session.created` attestation (#1822) on every session
+ * start. Delegates the signing/insert mechanics to
+ * `emitMechanicalAttestation`, shared with `emitDeviceAttestation` (#306).
+ */
 export async function emitSessionAttestation(params: {
   did: string;
   method: "keypair" | "magic_link" | "email_soft" | "email_onboard";
   tier: string;
   userAgent?: string | null;
 }): Promise<void> {
-  const privateKey = process.env.AUTH_PRIVATE_KEY;
-  if (!privateKey) {
-    log.warn({}, 'session attestation skipped: AUTH_PRIVATE_KEY not set');
-    return;
-  }
-
-  const platformDid = await getNodeDid();
-  if (!platformDid) {
-    log.warn({}, 'session attestation skipped: node DID not set');
-    return;
-  }
-
-  const issuedAtMs = Date.now();
-  const payload = {
-    method: params.method,
-    tier: params.tier,
-    user_agent_class: classifyUserAgent(params.userAgent),
-  };
-
-  const canonicalPayload = canonicalize({
-    subject_did: params.did,
-    type: "session.created",
-    context_id: null,
-    context_type: "auth",
-    payload,
-    issued_at: issuedAtMs,
+  await emitMechanicalAttestation({
+    subjectDid: params.did,
+    type: ATTESTATION_TYPE,
+    contextId: null,
+    contextType: "auth",
+    payload: {
+      method: params.method,
+      tier: params.tier,
+      user_agent_class: classifyUserAgent(params.userAgent),
+    },
   });
-
-  try {
-    const signature = authCrypto.signSync(canonicalPayload, privateKey);
-
-    let cid: string | null = null;
-    try {
-      cid = await computeCid({
-        issuerDid: platformDid,
-        subjectDid: params.did,
-        type: "session.created",
-        contextId: null,
-        contextType: "auth",
-        payload,
-        issuedAt: issuedAtMs,
-      });
-    } catch { /* non-fatal */ }
-
-    await db.insert(attestations).values({
-      id: genId("att"),
-      issuerDid: platformDid,
-      subjectDid: params.did,
-      type: "session.created" as AttestationType,
-      contextId: null,
-      contextType: "auth",
-      payload,
-      signature,
-      cid,
-      // #1822: `attestation_status` defaults to 'pending' at the column level
-      // (the correct default for the bilateral author_jws/witnessJws flow).
-      // session.created is a mechanical audit record with no author_jws and
-      // no countersignature step, so it must be explicitly nulled out here —
-      // otherwise every session start silently queues up as "pending your
-      // countersignature" in any view/query built on attestation_status.
-      attestationStatus: null,
-      issuedAt: new Date(issuedAtMs),
-    });
-  } catch (err) {
-    log.error({ err: String(err) }, 'session attestation error');
-  }
 }
 
 function classifyUserAgent(ua?: string | null): string {

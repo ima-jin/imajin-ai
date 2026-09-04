@@ -316,21 +316,38 @@ export const recoveryAttempts = authSchema.table('recovery_attempts', {
 }));
 
 /**
- * Devices — known devices per identity
+ * Devices — known devices per identity (#306). Device tracking & new-device
+ * login alerts: `logDevice()` (apps/kernel/src/lib/auth/log-device.ts)
+ * upserts a row on every successful auth; a fingerprint unseen before for
+ * the DID — except the DID's very first device — triggers a
+ * "New login to your Imajin account" email and a signed
+ * `session.device.new` attestation (see emit-device-attestation.ts).
+ *
+ * fingerprint is SHA-256(platform + browser + userAgent) — deliberately
+ * excludes IP, so a device is not treated as "new" every time its network
+ * changes. See migrations/0124_device_tracking_alerts.sql for why `ip`
+ * stays TEXT rather than INET, and why revoked is a soft-delete flag
+ * (DELETE /api/devices/:id) rather than a row removal.
  */
 export const devices = authSchema.table('devices', {
   id: text('id').primaryKey(),                          // dev_{nanoid}
   did: text('did').notNull().references(() => identities.id),
-  fingerprint: text('fingerprint').notNull(),           // SHA-256(ip + userAgent)
+  fingerprint: text('fingerprint').notNull(),           // SHA-256(platform + browser + userAgent)
   name: text('name'),
   ip: text('ip'),
   userAgent: text('user_agent'),
+  platform: text('platform'),                           // parsed from user_agent, e.g. "macOS"
+  browser: text('browser'),                             // parsed from user_agent, e.g. "Chrome"
+  city: text('city'),                                   // IP-derived, nullable — no geo-IP source yet
+  country: text('country'),                             // IP-derived, nullable — no geo-IP source yet
   trusted: boolean('trusted').notNull().default(false),
+  revoked: boolean('revoked').notNull().default(false),
   firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).defaultNow(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   didFingerprintUniq: uniqueIndex('idx_devices_did_fingerprint').on(table.did, table.fingerprint),
   didIdx: index('idx_devices_did').on(table.did),
+  didActiveIdx: index('idx_devices_did_active').on(table.did, table.lastSeenAt).where(sql`${table.revoked} = false`),
 }));
 
 /**

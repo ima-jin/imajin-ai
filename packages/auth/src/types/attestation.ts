@@ -97,6 +97,13 @@ export const ATTESTATION_TYPES = [
   'usage.incurred',
   'usage.rollup',
 
+  // Device tracking & new-device login alerts (#306) — minted by the
+  // platform node identity whenever a session records a device fingerprint
+  // it has not seen before for that DID (including the very first device).
+  // Proof-of-history for the login itself, not a gate — see
+  // apps/kernel/src/lib/auth/emit-device-attestation.ts.
+  'session.device.new',
+  
   // Key recovery (#1250 Phase 1 — the self-custody recovery-code floor).
   // Both are system-class (see MECHANICAL_ATTESTATION_TYPES below): minted
   // by the platform node identity as a mechanical audit record, never a
@@ -135,6 +142,8 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #1147/#1148 attestationClass: 'system' facts — see ATTESTATION_TYPES above.
   'usage.incurred',
   'usage.rollup',
+  // #306 — see ATTESTATION_TYPES above.
+  'session.device.new',
   // #1250 Phase 1 — see ATTESTATION_TYPES above.
   'recovery.codes.generated',
   'recovery.redeemed',
