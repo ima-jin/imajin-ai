@@ -819,6 +819,72 @@ describe('dispatch by ingestion pattern', () => {
   });
 });
 
+// ── Settings save refresh (#1969) ────────────────────────────────────────────
+//
+// Before this fix, saving a value in `ConnectorSettingsSection` (e.g. Warp's
+// `environmentId`, or the `local` connector's `baseUrl`, #1957) never
+// re-fetched the parent card's own status, so a model picker / scope toggle
+// gated on that setting only unlocked after a manual reload. Exercised here
+// through the real `warp` registry entry — the same generic component also
+// backs every other connector with `settings` (local, future ones).
+
+describe('settings save refreshes the connector card status (#1969)', () => {
+  const STATUS = '/warp/api/scope-manifest';
+  const SETTINGS = '/warp/api/environment';
+
+  function warpStatus(overrides: StatusBody = {}): StatusBody {
+    return {
+      manifestAssetId: null,
+      activeScopes: [],
+      validScopes: ['warp:dispatch'],
+      secretSealed: false,
+      ...overrides,
+    };
+  }
+
+  it('re-fetches the status endpoint after a successful settings save', async () => {
+    const spy = installFetch({ [STATUS]: warpStatus(), [SETTINGS]: {} });
+
+    render(<ConnectorDetail entry={entryFor('warp')} />);
+    const settingsInput = await screen.findByLabelText('Default Environment');
+
+    const statusCallsBeforeSave = spy.mock.calls.filter(([call]) => String(call) === STATUS).length;
+    expect(statusCallsBeforeSave).toBeGreaterThan(0); // the initial status fetch on mount
+
+    fireEvent.change(settingsInput, { target: { value: 'env-123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      const statusCallsAfterSave = spy.mock.calls.filter(([call]) => String(call) === STATUS).length;
+      expect(statusCallsAfterSave).toBeGreaterThan(statusCallsBeforeSave);
+    });
+  });
+
+  it('does not re-fetch the status endpoint when the settings save fails', async () => {
+    const spy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === SETTINGS && init?.method === 'PUT') {
+        return jsonResponse({ error: 'environmentId is not a valid environment' }, false);
+      }
+      if (String(input) === SETTINGS) return jsonResponse({});
+      return jsonResponse(warpStatus());
+    });
+    vi.stubGlobal('fetch', spy);
+
+    render(<ConnectorDetail entry={entryFor('warp')} />);
+    const settingsInput = await screen.findByLabelText('Default Environment');
+
+    const statusCallsBeforeSave = spy.mock.calls.filter(([call]) => String(call) === STATUS).length;
+
+    fireEvent.change(settingsInput, { target: { value: 'not-a-real-env' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText(/environmentId is not a valid environment/)).toBeDefined();
+
+    const statusCallsAfterSave = spy.mock.calls.filter(([call]) => String(call) === STATUS).length;
+    expect(statusCallsAfterSave).toBe(statusCallsBeforeSave);
+  });
+});
+
 // ── GitHub device flow (#1391) ────────────────────────────────────────────
 
 describe('GitHub auth-mode selector (#1391)', () => {
