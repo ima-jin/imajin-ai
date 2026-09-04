@@ -107,6 +107,21 @@ module.exports = {
       },
       "max_restarts": 10,
       "min_uptime": "20s"
+    },
+    {
+      // See ecosystem.prod.config.js's prod-corpus comment: corpus is an
+      // internal-only daemon, not on the 3xxx/7xxx web-app port convention,
+      // so dev and prod share the same canonical port (8003).
+      "name": "dev-corpus",
+      "cwd": "/home/jin/dev/imajin-ai/apps/corpus",
+      "script": "npm",
+      "args": "start",
+      "env": {
+        "PORT": 8003,
+        "NODE_ENV": "production"
+      },
+      "max_restarts": 10,
+      "min_uptime": "20s"
     }
   ]
 };
