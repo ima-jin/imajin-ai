@@ -1,6 +1,9 @@
 # RFC-06: Identity Portability & Backup Nodes
 
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Discovery / Identity
+**Tombstoned:** 2026-09-03
+**Reason:** Portability is now covered by identity primitives and DID resolution (RFC-40).
 **Author:** Ryan Veteze, Jin
 **Date:** 2026-03-05
 **Discussion:** none

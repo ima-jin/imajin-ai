@@ -2,7 +2,10 @@
 
 **Author:** Ryan Veteze + Jin
 **Date:** March 15, 2026
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Superseded — see INDEX.md
+**Tombstoned:** 2026-09-03
+**Reason:** Workspace agent architecture is operational, not a primitive; current agent model has evolved.
 **Discussion:** none
 **Scope:** Presence system, workspace UI, agent runtime, memory, identity
 

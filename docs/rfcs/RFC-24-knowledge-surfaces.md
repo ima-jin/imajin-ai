@@ -1,6 +1,9 @@
 # RFC-24: Knowledge Surfaces — Learn, MCP, and the Queryable Profile
 
-**Status:** Draft  
+**Status:** Superseded
+**Superseded-by:** Discovery
+**Tombstoned:** 2026-09-03
+**Reason:** Vertical-specific feature (Learn/knowledge), not an identity primitive.
 **Created:** 2026-04-03  
 **Author:** Ryan Veteze  
 **Discussion:** TBD

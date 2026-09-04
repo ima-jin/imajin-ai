@@ -1,6 +1,9 @@
 # RFC-37: Corroboration Escrow — Disclosure That Nobody Has to Make Alone
 
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Communication / Trust
+**Tombstoned:** 2026-09-03
+**Reason:** Escrow concept not part of current six-primitive canon.
 **Author:** Ryan Veteze, Jin
 **Date:** 2026-07-11
 **Related:** RFC-34 (Community Needs Brokerage), RFC-35 (Context-Bound Connection), RFC-13 (Progressive Trust Model), RFC-17 (Governance Primitive), RFC-15 (Trust & Accountability Framework), RFC-18 (Media Revocation & Attribution), RFC-10 (Sovereign User Data)

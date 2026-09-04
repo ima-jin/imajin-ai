@@ -1,6 +1,9 @@
 /**
- * Tests for GET /auth/api/attestations/usage (#1863) — the turn-usage query
- * endpoint with computed token deltas and session rollups.
+ * Tests for GET /auth/api/attestations/usage (#1863 read contract; #1967
+ * auth). #1967 closed an anonymous-read hole: the route now requires a
+ * session and only serves the subject itself or an active identity_members
+ * member of the subject — every other caller, including one naming a
+ * subject_did that doesn't exist, gets an identical 403.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
@@ -12,16 +15,24 @@ interface Op {
 
 const mocks = vi.hoisted(() => {
   const rows: Record<string, unknown>[] = [];
+  const membershipRows: Record<string, unknown>[] = [];
   const orderByMock = vi.fn(() => Promise.resolve(rows));
-  const whereMock = vi.fn(() => ({ orderBy: orderByMock }));
-  const fromMock = vi.fn(() => ({ where: whereMock }));
-  const selectMock = vi.fn(() => ({ from: fromMock }));
-
-  return { rows, orderByMock, whereMock, fromMock, selectMock };
+  const limitMock = vi.fn(() => Promise.resolve(membershipRows));
+  const requireAuth = vi.fn();
+  return { rows, membershipRows, orderByMock, limitMock, requireAuth };
 });
 
 vi.mock('@/src/db', () => ({
-  db: { select: mocks.selectMock },
+  db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          orderBy: mocks.orderByMock,
+          limit: mocks.limitMock,
+        }),
+      }),
+    }),
+  },
   attestations: {
     id: 'attestations.id',
     issuedAt: 'attestations.issuedAt',
@@ -29,6 +40,11 @@ vi.mock('@/src/db', () => ({
     subjectDid: 'attestations.subjectDid',
     revokedAt: 'attestations.revokedAt',
     type: 'attestations.type',
+  },
+  identityMembers: {
+    identityDid: 'identity_members.identity_did',
+    memberDid: 'identity_members.member_did',
+    removedAt: 'identity_members.removed_at',
   },
 }));
 
@@ -46,9 +62,13 @@ vi.mock('@imajin/logger', () => ({
     (req: unknown) => handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }),
 }));
 
+vi.mock('@/src/lib/auth/middleware', () => ({ requireAuth: mocks.requireAuth }));
+
 import { GET } from '../route';
 
 const SUBJECT = 'did:imajin:ADEKFWc2pbTKzfgzA3q6yrc1rEPNeMEP71mkBbCan54k';
+const MEMBER = 'did:imajin:owner-of-subject';
+const STRANGER = 'did:imajin:mallory';
 
 function makeGetReq(url: string): NextRequest {
   return {
@@ -84,26 +104,97 @@ function dbRow(overrides: {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.rows.length = 0;
+  mocks.membershipRows.length = 0;
   mocks.orderByMock.mockImplementation(() => Promise.resolve(mocks.rows));
+  mocks.limitMock.mockImplementation(() => Promise.resolve(mocks.membershipRows));
+  // Default: an authenticated caller who is the subject itself — the
+  // simplest passing case. Individual tests override as needed.
+  mocks.requireAuth.mockResolvedValue({ sub: SUBJECT });
 });
 
-describe('GET /auth/api/attestations/usage (#1863)', () => {
+describe('GET /auth/api/attestations/usage — auth (#1967)', () => {
+  it('returns 401 when there is no session', async () => {
+    mocks.requireAuth.mockResolvedValue(null);
+
+    const res = await GET(makeGetReq(`https://kernel.test/auth/api/attestations/usage?subject_did=${SUBJECT}`));
+
+    expect(res.status).toBe(401);
+  });
+
+  it('allows the subject itself', async () => {
+    mocks.requireAuth.mockResolvedValue({ sub: SUBJECT });
+    mocks.rows.push(dbRow({ id: 'att_1', issuedAt: '2026-08-18T22:55:00.000Z', session: 's1' }));
+
+    const res = await GET(makeGetReq(`https://kernel.test/auth/api/attestations/usage?subject_did=${SUBJECT}`));
+
+    expect(res.status).toBe(200);
+  });
+
+  it('allows an active identity_members member of the subject', async () => {
+    mocks.requireAuth.mockResolvedValue({ sub: MEMBER });
+    mocks.membershipRows.push({ memberDid: MEMBER });
+    mocks.rows.push(dbRow({ id: 'att_1', issuedAt: '2026-08-18T22:55:00.000Z', session: 's1' }));
+
+    const res = await GET(makeGetReq(`https://kernel.test/auth/api/attestations/usage?subject_did=${SUBJECT}`));
+
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects a stranger with 403', async () => {
+    mocks.requireAuth.mockResolvedValue({ sub: STRANGER });
+    mocks.membershipRows.length = 0; // no active membership row
+
+    const res = await GET(makeGetReq(`https://kernel.test/auth/api/attestations/usage?subject_did=${SUBJECT}`));
+
+    expect(res.status).toBe(403);
+  });
+
+  it('returns the identical 403 body for a stranger and for a non-existent subject_did (no existence leak)', async () => {
+    mocks.requireAuth.mockResolvedValue({ sub: STRANGER });
+    mocks.membershipRows.length = 0;
+
+    const strangerRes = await GET(makeGetReq(`https://kernel.test/auth/api/attestations/usage?subject_did=${SUBJECT}`));
+    const strangerBody = await strangerRes.json();
+
+    const missingRes = await GET(
+      makeGetReq(`https://kernel.test/auth/api/attestations/usage?subject_did=did:imajin:does-not-exist`),
+    );
+    const missingBody = await missingRes.json();
+
+    expect(strangerRes.status).toBe(403);
+    expect(missingRes.status).toBe(403);
+    expect(missingBody).toEqual(strangerBody);
+  });
+
+  it('does not query attestation rows at all when unauthorized', async () => {
+    mocks.requireAuth.mockResolvedValue({ sub: STRANGER });
+    mocks.membershipRows.length = 0;
+
+    await GET(makeGetReq(`https://kernel.test/auth/api/attestations/usage?subject_did=${SUBJECT}`));
+
+    expect(mocks.orderByMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a removed (former) member', async () => {
+    // A removed member's row is excluded by the DB-level isNull(removedAt)
+    // filter, so from this route's perspective it looks identical to "no
+    // active membership row" — hence an empty membershipRows result here.
+    mocks.requireAuth.mockResolvedValue({ sub: MEMBER });
+    mocks.membershipRows.length = 0;
+
+    const res = await GET(makeGetReq(`https://kernel.test/auth/api/attestations/usage?subject_did=${SUBJECT}`));
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /auth/api/attestations/usage (#1863) — read contract', () => {
   it('requires subject_did', async () => {
     const res = await GET(makeGetReq('https://kernel.test/auth/api/attestations/usage'));
 
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toMatch(/subject_did/);
-  });
-
-  it('is callable without any auth header or cookie (matches GET /auth/api/attestations for this hardcoded type)', async () => {
-    mocks.rows.push(dbRow({ id: 'att_1', issuedAt: '2026-08-18T22:55:00.000Z', session: 's1', total: 17800, costTotal: 0.24 }));
-
-    const res = await GET(makeGetReq(`https://kernel.test/auth/api/attestations/usage?subject_did=${SUBJECT}`));
-
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toHaveLength(1);
   });
 
   it('returns rows newest first with computed tokenDelta and session rollups', async () => {

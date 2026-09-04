@@ -119,6 +119,17 @@ describe('empty state', () => {
   });
 });
 
+describe('credentialed fetch (#1967)', () => {
+  it('sends credentials with the usage feed fetch, so the now-authenticated endpoint keeps working', async () => {
+    const spy = await renderPanel([turn({ id: 'row1' })]);
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/api/attestations/usage'),
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+});
+
 describe('session grouping', () => {
   it('groups turns under one collapsible session header with running totals', async () => {
     await renderPanel([

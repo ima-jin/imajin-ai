@@ -1,6 +1,9 @@
 # RFC-19: Kernel/Userspace Architecture — Sovereign App Federation
 
-**Status:** Draft
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Architecture
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Authors:** Ryan Veteze, Jin
 **Created:** 2026-03-25
 **Related:** #274, #244, RFC-09, Essay 34

@@ -1,6 +1,9 @@
 # RFC-32: Agent Protocol Interoperability — The Node Speaks Everything
 
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Communication
+**Tombstoned:** 2026-09-03
+**Reason:** Protocol interop is not a current primitive focus.
 **Authors:** Ryan Veteze, Jin
 **Created:** May 14, 2026
 **Updated:** July 24, 2026 — KYA-OS (DIF) actor model, corrected AP2 mandate vocabulary, and the credential field-mapping (§4.7)

@@ -5,49 +5,10 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { normalizeHandleInput, buildPublicUrl, APP_DISPLAY_NAME } from '@imajin/config';
 import Link from 'next/link';
+import { generateKeypair, sign } from '@/src/lib/auth/browser-keys';
 
 
 const CONNECTIONS_URL = buildPublicUrl('connections');
-
-// Ed25519 utilities - using noble/ed25519 via script
-async function generateKeypair(): Promise<{ publicKey: string; privateKey: string }> {
-  const privateKeyBytes = new Uint8Array(32);
-  crypto.getRandomValues(privateKeyBytes);
-  
-  const ed = await import('@noble/ed25519');
-  const { sha512 } = await import('@noble/hashes/sha2.js');
-  (ed.etc as { sha512Sync?: (...m: Uint8Array[]) => Uint8Array }).sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
-  
-  const publicKeyBytes = await ed.getPublicKeyAsync(privateKeyBytes);
-  
-  return {
-    privateKey: bytesToHex(privateKeyBytes),
-    publicKey: bytesToHex(publicKeyBytes),
-  };
-}
-
-async function sign(message: string, privateKeyHex: string): Promise<string> {
-  const ed = await import('@noble/ed25519');
-  const { sha512 } = await import('@noble/hashes/sha2.js');
-  (ed.etc as { sha512Sync?: (...m: Uint8Array[]) => Uint8Array }).sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
-  
-  const messageBytes = new TextEncoder().encode(message);
-  const privateKeyBytes = hexToBytes(privateKeyHex);
-  const signature = await ed.signAsync(messageBytes, privateKeyBytes);
-  return bytesToHex(signature);
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Number.parseInt(hex.substr(i * 2, 2), 16);
-  }
-  return bytes;
-}
 
 interface InviteInfo {
   fromHandle?: string;

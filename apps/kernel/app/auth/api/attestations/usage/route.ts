@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, attestations } from '@/src/db';
+import { db, attestations, identityMembers } from '@/src/db';
 import { eq, and, isNull, lt } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
+import { requireAuth } from '@/src/lib/auth/middleware';
 import { computeTurnUsageRollups, type RawTurnUsageRow } from './usage-rollup';
 
 const USAGE_LIMIT_DEFAULT = 50;
@@ -14,8 +15,58 @@ interface UsageSelectRow {
   payload: unknown;
 }
 
+/**
+ * Identical body for "caller is not authorized" and "subject_did doesn't
+ * exist" (#1967) — this route never branches on whether the subject row
+ * exists, so the two cases are indistinguishable by construction, not just
+ * by convention.
+ */
+const FORBIDDEN_BODY = { error: 'Forbidden' };
+
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+}
+
+/**
+ * Does `memberDid` hold an active (not-removed) `identity_members` row on
+ * `subjectDid`, regardless of role (#1967)?
+ *
+ * Deliberately broader than the two other identity_members checks already in
+ * this codebase: `isActiveGroupMember` (group-membership.ts) only authorizes
+ * business/community/family-scope owners, and `hasActiveMembership`
+ * (agent-authority.ts) only matches role='agent'. Neither covers this route's
+ * requirement — a human *owner* of a personal agent identity (the
+ * `identityDid: agentDid, memberDid: ownerDid, role: 'owner'` row
+ * `mintAgentIdentity` writes) must also be able to read that agent's own
+ * usage. Same table and shape as those two checks; no new auth primitive.
+ */
+async function isActiveIdentityMember(subjectDid: string, memberDid: string): Promise<boolean> {
+  const [row] = await db
+    .select({ memberDid: identityMembers.memberDid })
+    .from(identityMembers)
+    .where(
+      and(
+        eq(identityMembers.identityDid, subjectDid),
+        eq(identityMembers.memberDid, memberDid),
+        isNull(identityMembers.removedAt),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
+}
+
+/**
+ * Authorization for reading a subject's turn usage (#1967): the subject
+ * itself, or an active `identity_members` member of the subject (any role —
+ * see `isActiveIdentityMember`). A `usage:read` delegation-grant capability
+ * would be the natural third path, but no such scope exists yet in the
+ * closed grant registry (`packages/auth/src/grant-scopes.ts`) — adding one is
+ * out of scope here, so subject-or-member is the full authorization surface
+ * for this issue.
+ */
+async function canReadUsage(callerDid: string, subjectDid: string): Promise<boolean> {
+  if (callerDid === subjectDid) return true;
+  return isActiveIdentityMember(subjectDid, callerDid);
 }
 
 /**
@@ -28,10 +79,14 @@ export async function OPTIONS(request: NextRequest) {
  * re-deriving the same math client-side from the raw
  * `GET /auth/api/attestations` history.
  *
- * `agent.turn.usage` is a hardcoded (non-registry) attestation type, so —
- * mirroring `GET /auth/api/attestations`'s behavior for legacy/mechanical
- * types — this endpoint is anonymous-callable; disclosure-scope gating only
- * applies to types registered via `/auth/api/attestations/types`.
+ * Per-turn spend is a behavioural fingerprint of the subject (#1967) — unlike
+ * `GET /auth/api/attestations`'s legacy/mechanical-type anonymous-read
+ * carve-out, this route requires a session (`requireAuth`, cookie-based —
+ * matching its `/auth/api/attestations/*` siblings, e.g. `decline/route.ts`)
+ * and gates the read to the subject itself or an active `identity_members`
+ * member of the subject (`canReadUsage`). Every other caller — including one
+ * passing a `subject_did` that doesn't exist — gets the identical 403
+ * `FORBIDDEN_BODY`, so the response never leaks whether a DID exists.
  *
  * Deltas/rollups need the full session history up to (and including) each
  * returned row, so a page is computed from every non-revoked
@@ -41,11 +96,22 @@ export async function OPTIONS(request: NextRequest) {
  */
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
+
+  const session = await requireAuth(request);
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
+  }
+
   const { searchParams } = new URL(request.url);
 
   const subjectDid = searchParams.get('subject_did');
   if (!subjectDid) {
     return NextResponse.json({ error: 'subject_did required' }, { status: 400, headers: cors });
+  }
+
+  const authorized = await canReadUsage(session.sub, subjectDid);
+  if (!authorized) {
+    return NextResponse.json(FORBIDDEN_BODY, { status: 403, headers: cors });
   }
 
   const sessionFilter = searchParams.get('session');

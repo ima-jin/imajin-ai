@@ -2,7 +2,10 @@
 
 **Author:** Ryan Veteze, Jin
 **Date:** May 3, 2026 (original), August 9, 2026 (v2 rewrite)
-**Status:** Draft (v2)
+**Status:** Superseded
+**Superseded-by:** Superseded — see INDEX.md
+**Tombstoned:** 2026-09-03
+**Reason:** Agent runtime is operational/feature-specific, not a primitive.
 **Supersedes:** Original RFC-31 (Agent Execution Sandbox — Flue-informed runtime)
 **Related:** RFC-27 (MCC), RFC-25 (App Runtime), RFC-19 (Kernel/Userspace), RFC-39 (Verifiable Skills), RFC-40 (did:imajin)
 

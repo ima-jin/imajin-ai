@@ -1,6 +1,9 @@
 # RFC-22: Federated Authentication
 
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Identity
+**Tombstoned:** 2026-09-03
+**Reason:** Auth is now DID-based sessions; this spec predates current identity auth model.
 **Author:** Ryan Veteze
 **Date:** 2026-03-30
 

@@ -1,6 +1,9 @@
 # RFC-05: Intent-Bearing Transactions and Contribution Pools
 
-**Status:** Draft
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Settlement
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Authors:** Ryan Veteze, Jin
 **Created:** 2026-03-03
 **Discussion:** none

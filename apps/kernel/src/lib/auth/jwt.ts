@@ -237,6 +237,82 @@ export async function verifyAppToken(token: string): Promise<AppTokenPayload | n
   }
 }
 
+// ============================================================================
+// Session-scoped app tokens (#1069 Phase 1) — minted directly from a caller's
+// first-party session via POST /auth/api/tokens/app, NOT from an app DID +
+// attestation. This is the other half of the #1069 app-token model:
+//   - /auth/api/apps/token       -> third-party app presents appDid + a
+//     user's app.authorized attestation (see createAppToken above).
+//   - /auth/api/tokens/app       -> first-party caller with a valid session
+//     mints a token scoped to the app host they're about to visit, so that
+//     app can stop reading the shared session cookie directly.
+//
+// Deliberately a distinct `typ` (no `azp` / `attestationId` claims): there is
+// no third-party app DID or consent attestation in this flow, so a token
+// minted here must never be accepted by a verifier expecting those claims,
+// and vice versa.
+// ============================================================================
+
+const SESSION_APP_TOKEN_EXPIRY_SECONDS = 600; // 10 minutes — matches the design sketch's <=10min bound
+
+export interface SessionAppTokenPayload {
+  sub: string;      // caller's DID, from their verified session
+  aud: string;      // target app host this token is scoped to
+  scopes: string[]; // requested scopes, already clamped to the SCOPES vocabulary by the caller
+}
+
+/**
+ * Mint a short-lived (10min) session-scoped app token. Caller MUST have
+ * already verified the requester's session (see /auth/api/tokens/app).
+ */
+export async function createSessionAppToken(payload: SessionAppTokenPayload): Promise<string> {
+  const { privateKey } = await getKeyPair();
+
+  return new jose.SignJWT({ scope: payload.scopes.join(' ') })
+    .setProtectedHeader({ alg: 'EdDSA', typ: 'session-app+jwt' })
+    .setSubject(payload.sub)
+    .setIssuer(JWT_ISSUER)
+    .setIssuedAt()
+    .setExpirationTime(`${SESSION_APP_TOKEN_EXPIRY_SECONDS}s`)
+    .setAudience(payload.aud)
+    .sign(privateKey);
+}
+
+export interface SessionAppTokenClaims {
+  sub: string;
+  aud: string;
+  scopes: string[];
+}
+
+/**
+ * Verify a session-app token locally (EdDSA signature + expiry + `typ`).
+ * When `expectedAud` is supplied, the token's `aud` claim must match exactly
+ * — a token minted for one app must never verify for another.
+ */
+export async function verifySessionAppTokenLocal(
+  token: string,
+  expectedAud?: string,
+): Promise<SessionAppTokenClaims | null> {
+  try {
+    const { publicKey } = await getKeyPair();
+    const { payload, protectedHeader } = await jose.jwtVerify(token, publicKey, {
+      issuer: JWT_ISSUER,
+      ...(expectedAud ? { audience: expectedAud } : {}),
+    });
+    if (protectedHeader.typ !== 'session-app+jwt') return null;
+    const aud = Array.isArray(payload.aud) ? payload.aud[0] : payload.aud;
+    if (!aud) return null;
+    return {
+      sub: payload.sub as string,
+      aud,
+      scopes: payload.scope ? (payload.scope as string).split(' ').filter(Boolean) : [],
+    };
+  } catch (error) {
+    log.error({ err: String(error) }, 'Session app token verification failed');
+    return null;
+  }
+}
+
 // Re-export from @imajin/config — auth's own callers can keep importing from here
 export { getSessionCookieOptions } from '@imajin/config';
 

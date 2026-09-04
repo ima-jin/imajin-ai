@@ -1,6 +1,6 @@
 # RFC-39: Verifiable Skills & the Invokable Agent — Capabilities as Signed Artifacts, Jin as a DID + Verified Manifest
 
-**Status:** Draft
+**Status:** Current — Draft
 **Author:** Ryan Veteze, Jin
 **Date:** 2026-07-23
 **Scope:** Agent runtime, skill loading, capability attestation, agent-to-agent invocation

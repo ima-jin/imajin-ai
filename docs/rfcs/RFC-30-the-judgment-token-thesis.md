@@ -1,5 +1,10 @@
 # The Judgment Token
 
+**Status:** Superseded
+**Superseded-by:** Governance
+**Tombstoned:** 2026-09-03
+**Reason:** Governance-token thesis, not part of current primitive canon.
+
 ---
 
 I didn't set out to make a governance protocol. I don't know what I set out to make. Something that lets people own their own stuff, I think. That was the shape in my head — a thing where you're not renting your identity from Google or your audience from Instagram or your payment processing from a platform that takes 15% and tells you to be grateful.

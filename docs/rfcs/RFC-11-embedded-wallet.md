@@ -1,6 +1,9 @@
 # RFC-11: RFC: Embedded Wallet — DID keypair as MJN-scoped Solana wallet with hierarchical key derivation
 
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Settlement
+**Tombstoned:** 2026-09-03
+**Reason:** Wallet architecture has evolved; current settlement uses MJNx/MJN rails not tied to this spec.
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/268
 
 ---

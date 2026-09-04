@@ -1,6 +1,9 @@
 # RFC-09: Application Plugin Architecture — Third-Party Apps, Launcher Dock, and Dev Bounties
 
-**Status:** Discussion
+**Status:** Superseded
+**Superseded-by:** Superseded — see INDEX.md
+**Tombstoned:** 2026-09-03
+**Reason:** Third-party app model superseded by kernel-shedding-verticals trajectory (RFC-19, RFC-43) and app-runtime (RFC-25).
 **Authors:** TBD
 **Created:** TBD
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/254

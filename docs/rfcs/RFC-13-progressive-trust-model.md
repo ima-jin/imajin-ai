@@ -1,6 +1,9 @@
 # RFC-13: RFC: Progressive Trust Model — graduated permissions on hard DIDs
 
-**Status:** Draft
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Identity / Revocation
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/271
 
 ---
