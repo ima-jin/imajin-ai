@@ -197,6 +197,12 @@ function LoginForm() {
         <div className="mt-4 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
           <p className="text-xs text-[#F59E0B]">Your private key never leaves your device.</p>
         </div>
+
+        <p className="mt-4 text-center text-sm text-gray-500">
+          <a href="/auth/recover" className="text-gray-400 hover:text-[#F59E0B] transition">
+            Lost your key?
+          </a>
+        </p>
       </div>
     </div>
   );

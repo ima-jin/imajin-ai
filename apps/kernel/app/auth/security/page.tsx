@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import RecoveryCodesSection from './components/RecoveryCodesSection';
 
 interface AccountMethods {
   did: string;
@@ -708,6 +709,9 @@ export default function SecuritySettingsPage() {
             )}
           </div>
         </div>
+
+        {/* Recovery codes */}
+        <RecoveryCodesSection />
 
         {/* MFA methods */}
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">

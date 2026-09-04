@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { db, challenges } from '@/src/db';
+import { eq, and, isNull, gt } from 'drizzle-orm';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
+import { verifySignature } from '@/src/lib/auth/crypto';
 import { redeemRecoveryCode, logRecoveryAttempt } from '@/src/lib/auth/recovery-codes';
 
 export async function OPTIONS(request: NextRequest) {
@@ -16,17 +19,18 @@ const GENERIC_ERROR = 'Invalid recovery code';
  * POST /auth/api/recovery-codes/verify
  *
  * The recovery ceremony (#1250 Phase 1): a user with NO working key submits
- * a one-time recovery code plus a fresh, locally-generated public key.
- * On success, this authorizes a #401-style rotation to that new key —
- * the user is never handed key material, and neither is the server ever
- * given any.
+ * a one-time recovery code, a fresh, locally-generated public key, and
+ * `proofOfNewKey` — a signature by that new key's private half over a
+ * challenge obtained from GET /auth/api/recovery-codes/challenge. On
+ * success, this authorizes a #401-style rotation to the new key — the user
+ * is never handed key material, and neither is the server ever given any.
  *
  * Deliberately NOT session-authenticated: that's the entire point of
  * recovery. Protected instead by per-DID and per-IP rate limiting,
- * constant-time code comparison, and an append-only audit trail of every
- * attempt (see src/lib/auth/recovery-codes.ts).
+ * constant-time code comparison, proof of possession of the new key, and an
+ * append-only audit trail of every attempt (see src/lib/auth/recovery-codes.ts).
  *
- * Body: { did: string, code: string, newPublicKey: string (hex) }
+ * Body: { did: string, code: string, newPublicKey: string (hex), challengeId: string, proofOfNewKey: string (hex signature) }
  * Returns: { did, rotated: true, sessionsInvalidated: true, chainDeprecated, disclosure }
  */
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
@@ -35,11 +39,19 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
   try {
     const body = await request.json().catch(() => ({}));
-    const { did, code, newPublicKey } = body as { did?: string; code?: string; newPublicKey?: string };
+    const { did, code, newPublicKey, challengeId, proofOfNewKey } = body as {
+      did?: string; code?: string; newPublicKey?: string; challengeId?: string; proofOfNewKey?: string;
+    };
 
-    if (!did || typeof did !== 'string' || !code || typeof code !== 'string' || !newPublicKey || typeof newPublicKey !== 'string') {
+    if (
+      !did || typeof did !== 'string' ||
+      !code || typeof code !== 'string' ||
+      !newPublicKey || typeof newPublicKey !== 'string' ||
+      !challengeId || typeof challengeId !== 'string' ||
+      !proofOfNewKey || typeof proofOfNewKey !== 'string'
+    ) {
       return NextResponse.json(
-        { error: 'did, code, and newPublicKey are all required' },
+        { error: 'did, code, newPublicKey, challengeId, and proofOfNewKey are all required' },
         { status: 400, headers: cors },
       );
     }
@@ -57,6 +69,35 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         { status: 429, headers: { ...cors, 'Retry-After': String(retryAfter) } },
       );
     }
+
+    // Proof of possession of the new key: the challenge must exist, be
+    // unused, unexpired, and issued for this exact DID.
+    const [challenge] = await db
+      .select()
+      .from(challenges)
+      .where(
+        and(
+          eq(challenges.id, challengeId),
+          eq(challenges.identityId, did),
+          isNull(challenges.usedAt),
+          gt(challenges.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
+
+    if (!challenge) {
+      await logRecoveryAttempt({ did, ip, outcome: 'invalid_challenge' });
+      return NextResponse.json({ error: GENERIC_ERROR }, { status: 401, headers: cors });
+    }
+
+    const proofValid = await verifySignature(challenge.challenge, proofOfNewKey, newPublicKey);
+    if (!proofValid) {
+      await logRecoveryAttempt({ did, ip, outcome: 'invalid_proof' });
+      return NextResponse.json({ error: GENERIC_ERROR }, { status: 401, headers: cors });
+    }
+
+    // Single-use, same as any other challenge in this codebase.
+    await db.update(challenges).set({ usedAt: new Date() }).where(eq(challenges.id, challengeId));
 
     const result = await redeemRecoveryCode({ did, code, newPublicKeyHex: newPublicKey, ip });
 
