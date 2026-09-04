@@ -30,6 +30,7 @@ import {
   processChainDistribution,
   handleTopupCheckout,
   notifyCheckoutServices,
+  verifyWebhookManifestSignature,
 } from '@/src/lib/pay/webhook-handlers';
 
 const log = createLogger('kernel');
@@ -233,6 +234,18 @@ async function processFairManifest(
   if (!manifest.chain || totalAmountCents <= 0) return;
 
   const currency = (session.currency || 'usd').toUpperCase();
+  const buyerDid = session.metadata?.buyerDid || session.metadata?.identity_id || null;
+
+  // #1073: attempt manifest signature verification before distributing the
+  // chain. Never blocks — Stripe has already collected the money — it only
+  // makes an absent/invalid signature loud (settlement.manifest.unverified)
+  // instead of the prior silent no-check-at-all behavior.
+  await verifyWebhookManifestSignature({
+    fair_manifest: manifest as unknown as Record<string, unknown>,
+    from_did: buyerDid || 'unknown',
+    service: tx.service || 'unknown',
+  });
+
   const actualFeeCents = await fetchActualStripeFee(session, tx.id);
   const estimatedFeeCents = calculateEstimatedFee(manifest, totalAmountCents);
   const processingFeeCents = actualFeeCents ?? estimatedFeeCents;
@@ -247,7 +260,7 @@ async function processFairManifest(
     tx,
     totalAmountCents,
     currency,
-    buyerDid: session.metadata?.buyerDid || session.metadata?.identity_id || null,
+    buyerDid,
     chain: manifest.chain,
   });
 }

@@ -1,5 +1,14 @@
 import type { ReactorConfig, ChainConfig } from './types';
 
+/**
+ * Shorthand for the single-`attestation`-reactor chain shape used by many
+ * DEFAULTS entries below (#1073 — keeps the new `settlement.manifest.unverified`
+ * entry from being a literal copy of `transaction.settled` et al.).
+ */
+function attestationOnly(attestationType: string): ReactorConfig[] {
+  return [{ type: 'attestation', config: { attestationType }, enabled: true }];
+}
+
 // Hardcoded defaults for Phase 1
 // DB-backed config is Phase 2 (future work order)
 const DEFAULTS: Record<string, ReactorConfig[]> = {
@@ -173,6 +182,11 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'transaction.settled': [
     { type: 'attestation', config: { attestationType: 'transaction.settled' }, enabled: true },
   ],
+  // #1073 — non-blocking manifest-verification gap on the webhook settlement
+  // path. `attestation` makes it a durable, queryable record instead of a
+  // log line only; deliberately no `settle`/`notify` — this is a coherence
+  // signal, not an action trigger.
+  'settlement.manifest.unverified': attestationOnly('settlement.manifest.unverified'),
   'handle.claimed': [
     { type: 'attestation', config: { attestationType: 'handle.claimed' }, enabled: true },
     { type: 'mjn', config: { attestationType: 'handle.claimed' }, enabled: true },

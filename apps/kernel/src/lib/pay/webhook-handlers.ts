@@ -16,6 +16,7 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
 import { getStripe } from './stripe';
+import { verifySettlementSignature } from './settle-core';
 
 const log = createLogger('kernel');
 
@@ -204,6 +205,54 @@ async function applyFeeSurcharge({
     scope: 'pay',
     payload: { transactionId: tx.id, sellerDid, amountCents: diffCents, currency },
   }).catch((err) => log.error({ err: String(err) }, 'fee.surcharge publish error'));
+}
+
+// ---------------------------------------------------------------------------
+// Manifest signature verification (non-blocking) — #1073
+// ---------------------------------------------------------------------------
+
+export interface VerifyWebhookManifestSignatureParams {
+  fair_manifest: Record<string, unknown>;
+  from_did: string;
+  service: string;
+}
+
+/**
+ * Non-blocking manifest-signature gate for the webhook's chain-distribution
+ * path (#1073). Reuses `verifySettlementSignature` from the canonical
+ * settlement core (`settle-core.ts`) so both paths verify identically, but
+ * — unlike the canonical route, which rejects an invalid signature — this
+ * NEVER blocks settlement: Stripe has already collected the money by the
+ * time this runs, and this webhook previously performed no verification at
+ * all. On an absent or invalid signature it emits
+ * `settlement.manifest.unverified` so the gap is loud and durable instead
+ * of silent (the one #1073 behavior delta on this path), then always lets
+ * `processChainDistribution` proceed exactly as before.
+ */
+export async function verifyWebhookManifestSignature(params: VerifyWebhookManifestSignatureParams): Promise<void> {
+  const { fair_manifest, from_did, service } = params;
+  let reason: string | null = null;
+
+  try {
+    const result = await verifySettlementSignature({ fair_manifest, from_did, service });
+    if ('error' in result) {
+      reason = result.error;
+    } else if (!result.signatureVerified) {
+      reason = 'fair_manifest has no verifiable signature';
+    }
+  } catch (err) {
+    reason = `signature verification threw: ${String(err)}`;
+  }
+
+  if (!reason) return;
+
+  log.warn({ fromDid: from_did, service, reason }, '[webhook] Settlement manifest unverified — proceeding without blocking');
+  await publish('settlement.manifest.unverified', {
+    issuer: process.env.PLATFORM_DID || 'system',
+    subject: from_did,
+    scope: 'pay',
+    payload: { from_did, service, reason, context_id: from_did, context_type: 'pay' },
+  }).catch((err) => log.error({ err: String(err) }, 'settlement.manifest.unverified publish error'));
 }
 
 // ---------------------------------------------------------------------------
