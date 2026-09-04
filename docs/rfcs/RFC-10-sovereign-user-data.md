@@ -1,6 +1,9 @@
 # RFC-10: Sovereign User Data — Portable Identity Bundles and Federated User Operations
 
-**Status:** Discussion
+**Status:** Superseded
+**Superseded-by:** Communication / Identity
+**Tombstoned:** 2026-09-03
+**Reason:** Concept absorbed into identity primitives and sovereign data model.
 **Authors:** TBD
 **Created:** TBD
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/255

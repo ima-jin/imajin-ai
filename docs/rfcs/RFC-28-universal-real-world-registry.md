@@ -2,7 +2,10 @@
 
 **Author:** Ryan Veteze
 **Date:** April 21, 2026
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Discovery
+**Tombstoned:** 2026-09-03
+**Reason:** Registry concept not part of current six-primitive canon; discovery is now handled by identity primitives.
 **Related:** RFC-27 (MCC), #653 (stub identities), #581 (Mooi), #737 (branded sites)
 **Pilot:** Muskoka (Bracebridge + Gravenhurst)
 

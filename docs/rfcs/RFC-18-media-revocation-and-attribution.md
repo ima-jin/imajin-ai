@@ -2,7 +2,10 @@
 
 **Author:** Jin + Ryan  
 **Date:** March 22, 2026  
-**Status:** Draft  
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Revocation / Attribution
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Relates to:** RFC-01 (.fair attribution), P27 (Unified Identity Substrate), #418 (.fair portable attribution)
 
 ---

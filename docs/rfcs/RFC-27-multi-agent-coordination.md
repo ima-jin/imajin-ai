@@ -2,7 +2,10 @@
 
 **Author:** Ryan Veteze, Jin
 **Date:** April 20, 2026 (original), August 9, 2026 (v2 refresh)
-**Status:** Draft (v2)
+**Status:** Superseded
+**Superseded-by:** Communication
+**Tombstoned:** 2026-09-03
+**Reason:** Coordination architecture not part of current six-primitive canon.
 **Internal codename:** MCC (coocoo)
 **External framing:** The Agentic Coordination Layer / Version Control for Agency
 **Related:** RFC-31 (Agent Runtime), RFC-19 (Kernel/Userspace), RFC-39 (Verifiable Skills), RFC-40 (did:imajin), #1758 (Agent Runtime Epic)

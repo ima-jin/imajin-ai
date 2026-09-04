@@ -1,6 +1,6 @@
 # RFC-42: MyTerms (IEEE 7012) as an Imajin Conformance Profile
 
-**Status:** Draft — alignment/research, build deferred
+**Status:** Current — Draft — alignment/research, build deferred
 **Authors:** Ryan Veteze, Jin
 **Created:** August 4, 2026
 **Related:** RFC-41 (The Composable Gate), RFC-32 (Agent Protocol Interop), RFC-35 (Context-Bound Connection)

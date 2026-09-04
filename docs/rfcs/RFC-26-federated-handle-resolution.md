@@ -1,6 +1,9 @@
 # RFC-26: Federated Handle Resolution
 
-**Status:** Draft  
+**Status:** Superseded
+**Superseded-by:** Identity / Discovery
+**Tombstoned:** 2026-09-03
+**Reason:** Handle resolution absorbed into `did:imajin` resolution (RFC-40).
 **Author:** Ryan Veteze, Jin  
 **Created:** 2026-04-13  
 **Related:** RFC-19 (Kernel/Userspace), RFC-20 (Chain Types), RFC-22 (Federated Auth)

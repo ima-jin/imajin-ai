@@ -2,7 +2,10 @@
 
 **Author:** Ryan Veteze
 **Date:** April 23, 2026
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Identity / Trust
+**Tombstoned:** 2026-09-03
+**Reason:** Biometric escalation not part of current primitive set; trust model has evolved (RFC-13, tiered revocation).
 **Related:** RFC-13 (Progressive Trust), RFC-22 (Federated Authentication), RFC-27 (MCC), RFC-06 (Identity Portability)
 **Standards:** KERI (Key Event Receipt Infrastructure), ACDC (Authentic Chained Data Containers), CESR, Trust over IP, W3C Verifiable Credentials
 

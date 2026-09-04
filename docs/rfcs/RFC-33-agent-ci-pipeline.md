@@ -1,6 +1,9 @@
 # RFC-33: Agent CI Pipeline — Automated Quality Gates
 
-**Status:** Draft
+**Status:** Superseded
+**Superseded-by:** Superseded — see INDEX.md
+**Tombstoned:** 2026-09-03
+**Reason:** CI/operational concern, not a primitive.
 **Authors:** Ryan Veteze, Jin
 **Created:** May 23, 2026
 **Related:** RFC-27 (Multi-Agent Coordination), RFC-31 (Agent Execution Sandbox), RFC-32 (Agent Protocol Interoperability)

@@ -1,6 +1,9 @@
 # RFC-25: App Runtime — Sandboxed Execution for Third-Party Applications
 
-**Status:** Draft  
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Architecture
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Author:** Ryan Veteze, Jin  
 **Created:** 2026-04-12  
 **Related:** RFC-19 (Kernel/Userspace), #465 (Agent Sandbox), #685 (Market .fair)

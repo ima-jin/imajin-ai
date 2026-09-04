@@ -1,6 +1,9 @@
 # RFC-07: Cultural DID — Identity Primitive for Collectives, Scenes, and Communities of Practice
 
-**Status:** Discussion
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Discovery / Identity
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Authors:** Greg ([@anonymous_observer](https://github.com/anonymous_observer))
 **Created:** 2026-03-09
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/252

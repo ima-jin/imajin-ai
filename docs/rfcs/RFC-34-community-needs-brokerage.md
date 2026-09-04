@@ -1,6 +1,9 @@
 # RFC-34: Community Needs Brokerage
 
-**Status:** Draft  
+**Status:** Superseded
+**Superseded-by:** Discovery
+**Tombstoned:** 2026-09-03
+**Reason:** Community feature, not a primitive.
 **Author:** Ryan Veteze, Jin  
 **Date:** 2026-05-25  
 **Related:** RFC-04 (Settlement Protocol), RFC-13 (Progressive Trust), RFC-17 (Governance Primitive), RFC-01 (.fair Attribution), RFC-09 (Application Plugin Architecture), RFC-29 (Biometric Trust Escalation)

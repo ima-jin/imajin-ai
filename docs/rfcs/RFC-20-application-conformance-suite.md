@@ -1,6 +1,9 @@
 # RFC-20: Application Conformance Suite
 
-**Status:** Draft
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Conformance
+**Tracked-in:** #1289
+**Reviewed:** 2026-09-03
 **Author:** Ryan Veteze
 **Date:** 2026-03-29
 

@@ -1,6 +1,9 @@
 # RFC-15: RFC: Trust Accountability Framework — bad actor detection, consequences, and vouch chain responsibility
 
-**Status:** Draft
+**Status:** Stale — load-bearing, revision pending
+**Canon:** Revocation / Trust
+**Tracked-in:** #1852
+**Reviewed:** 2026-09-03
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/273
 
 ---

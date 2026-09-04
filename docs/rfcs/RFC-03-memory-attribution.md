@@ -1,6 +1,9 @@
 # RFC-03: Memory Attribution (HRPOS)
 
-**Status:** Stub — referenced in RFC-05 but not yet written
+**Status:** Superseded
+**Superseded-by:** Attribution
+**Tombstoned:** 2026-09-03
+**Reason:** Stub, never written.
 **Authors:** TBD
 **Created:** TBD
 **Discussion:** none
