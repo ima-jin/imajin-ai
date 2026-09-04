@@ -21,6 +21,7 @@
  */
 import type { McpTool } from '../types';
 import { str, num, json } from './utils';
+import { corpusAccessClaimHeader, type CorpusAccessScope } from '../../kernel/corpus-access-claim';
 
 // ── HTTP proxy ─────────────────────────────────────────────────────────────
 
@@ -31,20 +32,26 @@ function corpusServiceUrl(): string {
 
 /**
  * Call `/corpus/:did/<path>` on the corpus service and return the parsed JSON
- * body. Throws on a non-2xx response so the MCP dispatch's try/catch in
- * server.ts turns it into an in-band `isError` result, same as every other
- * tool's failure path.
+ * body. Every call carries a fresh, kernel-signed `CorpusAccessClaim` (#1772)
+ * scoped to `did`/`scope`, so the corpus service can verify the caller may
+ * act as `did` without a per-request callback to the kernel. Throws on a
+ * non-2xx response so the MCP dispatch's try/catch in server.ts turns it into
+ * an in-band `isError` result, same as every other tool's failure path.
  */
 async function corpusRequest(
   method: 'GET' | 'POST',
   did: string,
+  scope: CorpusAccessScope,
   path: string,
   body?: unknown,
 ): Promise<unknown> {
   const url = `${corpusServiceUrl()}/corpus/${encodeURIComponent(did)}${path}`;
   const response = await fetch(url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: await corpusAccessClaimHeader(did, scope),
+    },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
@@ -129,7 +136,7 @@ const searchTool: McpTool = {
     const limit = num(args, 'limit');
     const budget = num(args, 'budget');
 
-    const result = await corpusRequest('POST', ctx.did, '/search', {
+    const result = await corpusRequest('POST', ctx.did, 'corpus:read', '/search', {
       query,
       ...(sourceType === undefined ? {} : { sourceType }),
       ...(source === undefined ? {} : { source }),
@@ -171,7 +178,7 @@ const loadTool: McpTool = {
     const documents = args.documents;
     if (!Array.isArray(documents)) throw new Error('documents must be an array of ThreadDocument');
 
-    const result = await corpusRequest('POST', ctx.did, '/ingest', documents);
+    const result = await corpusRequest('POST', ctx.did, 'corpus:write', '/ingest', documents);
     return json(result);
   },
 };
@@ -191,7 +198,7 @@ const syncTool: McpTool = {
   },
   async handler(args, ctx) {
     const source = str(args, 'source');
-    const result = await corpusRequest('POST', ctx.did, '/sync', source === undefined ? {} : { source });
+    const result = await corpusRequest('POST', ctx.did, 'corpus:write', '/sync', source === undefined ? {} : { source });
     return json(result);
   },
 };
@@ -205,7 +212,7 @@ const statusTool: McpTool = {
     "Show what's indexed in your corpus — sources, thread counts, freshness. Requires an active corpus:read grant.",
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   async handler(_args, ctx) {
-    const result = await corpusRequest('GET', ctx.did, '/status');
+    const result = await corpusRequest('GET', ctx.did, 'corpus:read', '/status');
     return json(result);
   },
 };

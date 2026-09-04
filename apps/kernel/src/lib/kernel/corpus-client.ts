@@ -12,6 +12,8 @@
  * that. The kernel does not depend on apps/corpus; the two talk HTTP.
  */
 
+import { corpusAccessClaimHeader, type CorpusAccessScope } from './corpus-access-claim';
+
 export interface CorpusSourceFreshness {
   source: string;
   lastSync: string;
@@ -42,19 +44,25 @@ export class CorpusServiceError extends Error {
 
 /**
  * Call `/corpus/:did/<path>` on the corpus service and return the parsed JSON
- * body. Throws `CorpusServiceError` on a non-2xx response so route handlers
- * can map it to an appropriate HTTP status instead of a blanket 500.
+ * body. Every call carries a fresh, kernel-signed `CorpusAccessClaim` (#1772)
+ * scoped to `did`/`scope`, mirroring the MCP corpus tools' proxy. Throws
+ * `CorpusServiceError` on a non-2xx response so route handlers can map it to
+ * an appropriate HTTP status instead of a blanket 500.
  */
 async function corpusRequest(
   method: 'GET' | 'POST' | 'DELETE',
   did: string,
+  scope: CorpusAccessScope,
   path: string,
   body?: unknown,
 ): Promise<unknown> {
   const url = `${corpusServiceUrl()}/corpus/${encodeURIComponent(did)}${path}`;
   const response = await fetch(url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: await corpusAccessClaimHeader(did, scope),
+    },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
@@ -79,20 +87,20 @@ async function corpusRequest(
 
 /** `GET /corpus/:did/status` — sources, per-source thread counts, freshness. */
 export function fetchCorpusStatus(did: string): Promise<CorpusStatus> {
-  return corpusRequest('GET', did, '/status') as Promise<CorpusStatus>;
+  return corpusRequest('GET', did, 'corpus:read', '/status') as Promise<CorpusStatus>;
 }
 
 /** `POST /corpus/:did/ingest` — load a new source into the corpus. */
 export function loadCorpusSource(did: string, body: unknown): Promise<unknown> {
-  return corpusRequest('POST', did, '/ingest', body);
+  return corpusRequest('POST', did, 'corpus:write', '/ingest', body);
 }
 
 /** `POST /corpus/:did/sync` — trigger an incremental refresh of a source. */
 export function syncCorpusSource(did: string, body: unknown): Promise<unknown> {
-  return corpusRequest('POST', did, '/sync', body);
+  return corpusRequest('POST', did, 'corpus:write', '/sync', body);
 }
 
 /** `DELETE /corpus/:did/source` — remove a source from the corpus. */
 export function deleteCorpusSource(did: string, body: unknown): Promise<unknown> {
-  return corpusRequest('DELETE', did, '/source', body);
+  return corpusRequest('DELETE', did, 'corpus:write', '/source', body);
 }
