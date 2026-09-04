@@ -133,6 +133,14 @@ export type {
 } from "./broker-consent-vocabulary";
 export { requireAppAuth } from "./require-app-auth";
 export type { AppAuthContext, AppAuthResult } from "./require-app-auth";
+export { verifyAppToken } from "./app-token";
+export type { AppTokenVerification } from "./app-token";
+export { requireSessionOrAppToken } from "./require-session-or-app-token";
+export type {
+  SessionOrTokenAuth,
+  SessionOrTokenAuthResult,
+  SessionOrTokenAuthOptions,
+} from "./require-session-or-app-token";
 export { resolveEffectiveDid } from "./resolve-effective-did";
 export type { EffectiveDidResult } from "./resolve-effective-did";
 export { resolveActingDid, resolveComposedBy } from "./acting-did";
