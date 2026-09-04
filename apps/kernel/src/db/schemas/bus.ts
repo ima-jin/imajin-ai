@@ -91,3 +91,29 @@ export const eventSubscriptionLog = busSchema.table('event_subscription_log', {
 
 export type EventSubscriptionLogRow = typeof eventSubscriptionLog.$inferSelect;
 export type NewEventSubscriptionLogRow = typeof eventSubscriptionLog.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// #1140 — generic bus audit trail (kernel.audit_log), written from
+// packages/bus's `audit-log` reactor via raw SQL (see packages/bus/AGENTS.md
+// — bus must not import apps/kernel). Mirrored here — same convention as
+// `eventSubscriptionLog` above — purely for kernel-side reads: the retrace
+// view (#1962) resolves a `bus_event` hop's parent by walking `correlationId`
+// and payload-embedded artifact ids backward through this table. See
+// migrations/0077_audit_log.sql for the physical table this maps onto; this
+// is a read mapping only, no migration accompanies it.
+// ---------------------------------------------------------------------------
+
+export const auditLog = busSchema.table('audit_log', {
+  id: text('id').primaryKey(),
+  eventType: text('event_type').notNull(),
+  scope: text('scope').notNull(),
+  issuer: text('issuer').notNull(),
+  subject: text('subject').notNull(),
+  correlationId: text('correlation_id'),
+  payload: jsonb('payload'),
+  reactorConfig: jsonb('reactor_config'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type AuditLogRow = typeof auditLog.$inferSelect;
+export type NewAuditLogRow = typeof auditLog.$inferInsert;

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 import { GRANT_SCOPE_REGISTRY } from '@imajin/auth/grant-scopes';
+import RetracePane from './retrace-panel';
 
 const NODE_URL = buildPublicUrlAbsolute('kernel');
 const CHAT_BASE_URL = buildPublicUrlAbsolute('chat');
@@ -351,11 +352,13 @@ function ProvisionPanel({
   actionLoading,
   onRevoke,
   onDownloadBundle,
+  onRetrace,
 }: Readonly<{
   provision: Provision;
   actionLoading: string;
   onRevoke: (id: string) => void;
   onDownloadBundle: (id: string) => void;
+  onRetrace: (id: string) => void;
 }>) {
   const [expanded, setExpanded] = useState(false);
   const isRevoked = provision.status === 'revoked';
@@ -400,6 +403,14 @@ function ProvisionPanel({
               {actionLoading === `revoke-provision-${provision.id}` ? '…' : 'Revoke'}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => onRetrace(provision.id)}
+            title="Walk this provision's record backwards to the originating signed intent (imajin-ai#1962)"
+            className="text-xs px-2 py-1 border border-gray-700 text-gray-300 rounded hover:border-amber-600 hover:text-amber-400 transition"
+          >
+            Retrace
+          </button>
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
@@ -613,6 +624,16 @@ export default function AgentsPage() {
   // Envelope provisioner (#1933)
   const [provisions, setProvisions] = useState<Provision[]>([]);
   const [showProvisionWizard, setShowProvisionWizard] = useState(false);
+
+  // Retrace (#1962): the pane keys off this so a fresh "Retrace" click from a
+  // provision row (or a manually incremented counter) always re-runs the walk.
+  const [retraceArtifact, setRetraceArtifact] = useState('');
+  const [retraceRequestId, setRetraceRequestId] = useState(0);
+
+  function handleRetrace(artifactId: string) {
+    setRetraceArtifact(artifactId);
+    setRetraceRequestId((n) => n + 1);
+  }
 
   // Form state
   const [handle, setHandle] = useState('');
@@ -1375,6 +1396,7 @@ export default function AgentsPage() {
                           actionLoading={actionLoading}
                           onRevoke={handleRevokeProvision}
                           onDownloadBundle={handleDownloadBundle}
+                          onRetrace={handleRetrace}
                         />
                       ))}
                     </div>
@@ -1385,6 +1407,9 @@ export default function AgentsPage() {
             </div>
           )}
         </div>
+
+        {/* Retrace (#1962): read-only causal walk from any outcome back to the originating wish. */}
+        <RetracePane key={retraceRequestId} initialArtifact={retraceArtifact} />
       </div>
     </div>
   );
