@@ -68,7 +68,7 @@ vi.mock('@/src/db', () => ({
   challenges: h.CHALLENGES_TABLE,
 }));
 
-import { POST } from '../route';
+import { POST, OPTIONS } from '../route';
 
 function makeReq(body?: unknown): NextRequest {
   return { headers: new Headers(), json: async () => body } as unknown as NextRequest;
@@ -198,5 +198,21 @@ describe('POST /auth/api/recovery-codes/verify', () => {
     expect(h.logRecoveryAttempt).toHaveBeenCalledWith(
       expect.objectContaining({ did, outcome: 'rate_limited' }),
     );
+  });
+
+  it('returns a 500 when redemption throws unexpectedly', async () => {
+    const did = 'did:imajin:boom';
+    const challengeId = seedChallenge(did);
+    h.redeemRecoveryCode.mockRejectedValue(new Error('db unavailable'));
+
+    const res = await POST(makeReq({ did, code: 'ZZZZ-0000', newPublicKey: VALID_KEY, challengeId, proofOfNewKey: 'sig'.repeat(32) }));
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('OPTIONS /auth/api/recovery-codes/verify', () => {
+  it('responds with 204 for CORS preflight', async () => {
+    const res = await OPTIONS(makeReq());
+    expect(res.status).toBe(204);
   });
 });

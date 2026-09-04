@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   identitiesStore: new Map<string, Row>(),
   insertedChallenges: [] as Row[],
   IDENTITIES_TABLE: { __table: 'identities', id: 'id', tier: 'tier' },
+  selectShouldThrow: false,
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -40,7 +41,10 @@ vi.mock('@/src/db', () => ({
     select: () => ({
       from: () => ({
         where: (predicate: (row: Row) => boolean) => ({
-          limit: (n: number) => Promise.resolve([...h.identitiesStore.values()].filter(predicate).slice(0, n)),
+          limit: (n: number) => {
+            if (h.selectShouldThrow) throw new Error('db unavailable');
+            return Promise.resolve([...h.identitiesStore.values()].filter(predicate).slice(0, n));
+          },
         }),
       }),
     }),
@@ -55,7 +59,7 @@ vi.mock('@/src/db', () => ({
   challenges: { __table: 'challenges' },
 }));
 
-import { GET } from '../route';
+import { GET, OPTIONS } from '../route';
 
 function makeReq(url: string): NextRequest {
   return { headers: new Headers(), url } as unknown as NextRequest;
@@ -65,6 +69,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.identitiesStore.clear();
   h.insertedChallenges.length = 0;
+  h.selectShouldThrow = false;
 });
 
 const URL_BASE = 'https://kernel.example.com/auth/api/recovery-codes/challenge';
@@ -107,5 +112,18 @@ describe('GET /auth/api/recovery-codes/challenge', () => {
     }
 
     expect(lastRes!.status).toBe(429);
+  });
+
+  it('returns a 500 when the identity lookup throws', async () => {
+    h.selectShouldThrow = true;
+    const res = await GET(makeReq(`${URL_BASE}?did=did:imajin:boom`));
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('OPTIONS /auth/api/recovery-codes/challenge', () => {
+  it('responds with 204 for CORS preflight', async () => {
+    const res = await OPTIONS(makeReq(URL_BASE));
+    expect(res.status).toBe(204);
   });
 });

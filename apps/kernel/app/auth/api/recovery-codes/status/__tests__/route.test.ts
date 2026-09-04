@@ -25,7 +25,7 @@ vi.mock('@/src/lib/auth/recovery-codes', () => ({
   getRecoveryCodeStatus: h.getRecoveryCodeStatus,
 }));
 
-import { GET } from '../route';
+import { GET, OPTIONS } from '../route';
 
 function makeReq(): NextRequest {
   return { headers: new Headers() } as unknown as NextRequest;
@@ -65,5 +65,20 @@ describe('GET /auth/api/recovery-codes/status', () => {
     const body = await res.json();
 
     expect(body).toEqual({ did: DID, remaining: 0, generatedAt: null });
+  });
+
+  it('returns a 500 when the status lookup throws', async () => {
+    h.requireAuth.mockResolvedValue({ sub: DID });
+    h.getRecoveryCodeStatus.mockRejectedValue(new Error('db unavailable'));
+
+    const res = await GET(makeReq());
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('OPTIONS /auth/api/recovery-codes/status', () => {
+  it('responds with 204 for CORS preflight', async () => {
+    const res = await OPTIONS(makeReq());
+    expect(res.status).toBe(204);
   });
 });

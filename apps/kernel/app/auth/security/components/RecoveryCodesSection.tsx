@@ -89,6 +89,19 @@ export default function RecoveryCodesSection() {
 
   if (loading) return null;
 
+  const remaining = status?.remaining ?? 0;
+  const hasActiveCodes = remaining > 0;
+
+  let statusLabel = 'No active recovery codes';
+  if (hasActiveCodes) {
+    statusLabel = `${remaining} unused code${remaining === 1 ? '' : 's'} remaining`;
+  }
+
+  let generateButtonLabel = hasActiveCodes ? 'Regenerate codes' : 'Generate codes';
+  if (generating) {
+    generateButtonLabel = 'Generating…';
+  }
+
   return (
     <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
       <h2 className="text-lg font-semibold text-white mb-2">Recovery codes</h2>
@@ -106,11 +119,7 @@ export default function RecoveryCodesSection() {
 
           <div className="flex items-start justify-between py-2">
             <div>
-              <p className="text-white font-medium">
-                {status && status.remaining > 0
-                  ? `${status.remaining} unused code${status.remaining === 1 ? '' : 's'} remaining`
-                  : 'No active recovery codes'}
-              </p>
+              <p className="text-white font-medium">{statusLabel}</p>
               {status?.generatedAt && (
                 <p className="text-sm text-gray-400 mt-1">
                   Generated {new Date(status.generatedAt).toLocaleDateString()}
@@ -122,7 +131,7 @@ export default function RecoveryCodesSection() {
               disabled={generating}
               className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition disabled:opacity-50 whitespace-nowrap ml-4"
             >
-              {generating ? 'Generating…' : status && status.remaining > 0 ? 'Regenerate codes' : 'Generate codes'}
+              {generateButtonLabel}
             </button>
           </div>
 

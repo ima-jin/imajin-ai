@@ -2,50 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-
-// Ed25519 utilities — same inline pattern used by app/auth/register/page.tsx
-// and app/auth/login/components/KeyAuthTab.tsx (this codebase does not yet
-// have a shared client-crypto module; kept consistent with that convention).
-async function generateKeypair(): Promise<{ publicKey: string; privateKey: string }> {
-  const privateKeyBytes = new Uint8Array(32);
-  crypto.getRandomValues(privateKeyBytes);
-
-  const ed = await import('@noble/ed25519');
-  const { sha512 } = await import('@noble/hashes/sha2.js');
-  (ed.etc as { sha512Sync?: (...m: Uint8Array[]) => Uint8Array }).sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
-
-  const publicKeyBytes = await ed.getPublicKeyAsync(privateKeyBytes);
-
-  return {
-    privateKey: bytesToHex(privateKeyBytes),
-    publicKey: bytesToHex(publicKeyBytes),
-  };
-}
-
-async function signHex(messageHex: string, privateKeyHex: string): Promise<string> {
-  const ed = await import('@noble/ed25519');
-  const { sha512 } = await import('@noble/hashes/sha2.js');
-  (ed.etc as { sha512Sync?: (...m: Uint8Array[]) => Uint8Array }).sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
-
-  // Matches verifySignature in src/lib/auth/crypto.ts: the challenge string
-  // is signed as UTF-8 bytes, not decoded as hex.
-  const messageBytes = new TextEncoder().encode(messageHex);
-  const privateKeyBytes = hexToBytes(privateKeyHex);
-  const signature = await ed.signAsync(messageBytes, privateKeyBytes);
-  return bytesToHex(signature);
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Number.parseInt(hex.substr(i * 2, 2), 16);
-  }
-  return bytes;
-}
+import { generateKeypair, sign } from '@/src/lib/auth/browser-keys';
 
 type Step = 'form' | 'backup' | 'done';
 
@@ -89,7 +46,7 @@ export default function RecoverPage() {
       const { challengeId, challenge } = challengeBody as { challengeId: string; challenge: string };
 
       // 3. Prove possession of the new key by signing that challenge.
-      const proofOfNewKey = await signHex(challenge, newKeypair.privateKey);
+      const proofOfNewKey = await sign(challenge, newKeypair.privateKey);
 
       // 4. Redeem the code — authorizes rotation to the new key.
       const verifyRes = await fetch('/auth/api/recovery-codes/verify', {
