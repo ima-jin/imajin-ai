@@ -1,5 +1,5 @@
 /**
- * GET /api/usage/summary?did=&window= (#2030)
+ * GET /usage/api/summary?did=&window= (#2030)
  *
  * Read model over the existing ledger — no new tables: `usage.incurred`
  * (our meter), `usage.billed` (the counterparty's statement), the drift

@@ -1,12 +1,22 @@
 /**
- * GET /api/usage/rollup/{did}/latest (#2030)
+ * GET /usage/api/rollup/{did}/latest (#2030)
  *
  * PUBLIC, unauthenticated — the README's link target (#2028). Returns the
- * most recent signed `usage.rollup` attestation for the DID exactly as
- * stored (id, window, totals, signature, issuer, signed-at); never
- * recomputed. Optional `?window=YYYY-MM-DD` fetches the rollup for that
- * specific UTC day (matching `lib/usage/rollup.ts`'s own `contextIdFor`
- * idempotency key) instead of the newest one.
+ * most recent signed `usage.rollup` attestation for the DID as a
+ * self-verifiable envelope: every field the signature actually covers
+ * (`type`, `contextId`, `contextType`, `payload` verbatim, `issuedAtMs`),
+ * plus `issuerDid`/`subjectDid`/`id`/`cid`, unmodified from storage — never
+ * recomputed. A holder of this response can rebuild the exact canonical
+ * bytes `emitMechanicalAttestation` signed
+ * (`canonicalize({ subject_did, type, context_id, context_type, payload,
+ * issued_at })`, see `emit-mechanical-attestation.ts`) and verify
+ * `signature` against the issuer's public key without any other lookup
+ * against this node (#2030 acceptance: "the signature must verify against
+ * the node DID").
+ *
+ * Optional `?window=YYYY-MM-DD` fetches the rollup for that specific UTC
+ * day (matching `lib/usage/rollup.ts`'s own `contextIdFor` idempotency key)
+ * instead of the newest one.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { and, desc, eq, isNull } from 'drizzle-orm';
@@ -55,18 +65,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'No usage.rollup attestation found for this DID' }, { status: 404, headers: cors });
     }
 
-    const payload = (row.payload ?? {}) as Record<string, unknown>;
     return NextResponse.json(
       {
         id: row.id,
+        type: row.type,
         issuerDid: row.issuerDid,
         subjectDid: row.subjectDid,
-        windowStart: payload.windowStart ?? null,
-        windowEnd: payload.windowEnd ?? null,
-        totalCostEstimateUsd: payload.totalCostEstimateUsd ?? null,
-        breakdown: payload.breakdown ?? [],
+        contextId: row.contextId,
+        contextType: row.contextType,
+        // Verbatim — this, together with type/contextId/contextType/issuedAtMs,
+        // is exactly what the signature covers. Never re-derive a subset.
+        payload: row.payload ?? {},
+        issuedAt: row.issuedAt?.toISOString() ?? null,
+        issuedAtMs: row.issuedAt?.getTime() ?? null,
         signature: row.signature,
-        signedAt: row.issuedAt?.toISOString() ?? null,
+        cid: row.cid,
       },
       { headers: { ...cors, 'Cache-Control': 'no-store' } },
     );

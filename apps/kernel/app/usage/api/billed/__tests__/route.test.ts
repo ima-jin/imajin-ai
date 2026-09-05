@@ -27,7 +27,7 @@ import { POST, OPTIONS } from '../route';
 const OWNER_DID = 'did:imajin:owner';
 
 function makeReq(body: unknown): NextRequest {
-  return new NextRequest('https://kernel.test/api/usage/billed', {
+  return new NextRequest('https://kernel.test/usage/api/billed', {
     method: 'POST',
     body: JSON.stringify(body),
     headers: { 'content-type': 'application/json' },
@@ -66,7 +66,7 @@ beforeEach(() => {
   });
 });
 
-describe('POST /api/usage/billed — auth', () => {
+describe('POST /usage/api/billed — auth', () => {
   it('fails closed on auth failure', async () => {
     mocks.requireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
 
@@ -85,9 +85,9 @@ describe('POST /api/usage/billed — auth', () => {
   });
 });
 
-describe('POST /api/usage/billed — body validation', () => {
+describe('POST /usage/api/billed — body validation', () => {
   it('rejects invalid JSON', async () => {
-    const req = new NextRequest('https://kernel.test/api/usage/billed', { method: 'POST', body: '{not json', headers: { 'content-type': 'application/json' } });
+    const req = new NextRequest('https://kernel.test/usage/api/billed', { method: 'POST', body: '{not json', headers: { 'content-type': 'application/json' } });
     const res = await POST(req);
     expect(res.status).toBe(400);
   });
@@ -97,9 +97,38 @@ describe('POST /api/usage/billed — body validation', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects a vendor over 128 characters', async () => {
+    const res = await POST(makeReq(goodBody({ vendor: 'x'.repeat(129) })));
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a vendor at exactly the 128-character cap', async () => {
+    const res = await POST(makeReq(goodBody({ vendor: 'x'.repeat(128) })));
+    expect(res.status).toBe(201);
+  });
+
   it('rejects a missing currency', async () => {
     const res = await POST(makeReq(goodBody({ currency: '' })));
     expect(res.status).toBe(400);
+  });
+
+  it('rejects a lowercase currency code', async () => {
+    const res = await POST(makeReq(goodBody({ currency: 'usd' })));
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a currency code that is not 3 letters', async () => {
+    const res = await POST(makeReq(goodBody({ currency: 'DOLLARS' })));
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a well-formed but non-USD currency until #1950 lands', async () => {
+    const res = await POST(makeReq(goodBody({ currency: 'CAD' })));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/USD/);
+    expect(mocks.insertManualBilledLine).not.toHaveBeenCalled();
   });
 
   it('rejects a non-integer amountMinor', async () => {
@@ -107,9 +136,37 @@ describe('POST /api/usage/billed — body validation', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects a negative amountMinor', async () => {
+    const res = await POST(makeReq(goodBody({ amountMinor: -1 })));
+
+    expect(res.status).toBe(400);
+    expect(mocks.insertManualBilledLine).not.toHaveBeenCalled();
+  });
+
+  it('accepts amountMinor of exactly zero', async () => {
+    const res = await POST(makeReq(goodBody({ amountMinor: 0 })));
+    expect(res.status).toBe(201);
+  });
+
   it("rejects a source other than 'manual' or 'document'", async () => {
     const res = await POST(makeReq(goodBody({ source: 'api' })));
     expect(res.status).toBe(400);
+  });
+
+  it("rejects source='document' without an evidenceAssetId", async () => {
+    const res = await POST(makeReq(goodBody({ source: 'document' })));
+
+    expect(res.status).toBe(400);
+    expect(mocks.insertManualBilledLine).not.toHaveBeenCalled();
+  });
+
+  it("accepts source='document' when evidenceAssetId is present", async () => {
+    const res = await POST(makeReq(goodBody({ source: 'document', evidenceAssetId: 'asset_1' })));
+
+    expect(res.status).toBe(201);
+    expect(mocks.insertManualBilledLine).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'document', evidenceAssetId: 'asset_1' }),
+    );
   });
 
   it('rejects an invalid periodStart/periodEnd', async () => {
@@ -127,6 +184,16 @@ describe('POST /api/usage/billed — body validation', () => {
     expect(res.status).toBe(201);
   });
 
+  it('rejects a category over 64 characters', async () => {
+    const res = await POST(makeReq(goodBody({ category: 'x'.repeat(65) })));
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a description over 1024 characters', async () => {
+    const res = await POST(makeReq(goodBody({ description: 'x'.repeat(1025) })));
+    expect(res.status).toBe(400);
+  });
+
   it('accepts optional category/description/evidenceAssetId when present', async () => {
     const res = await POST(makeReq(goodBody({ category: 'infra', description: 'note', evidenceAssetId: 'asset_1' })));
 
@@ -137,7 +204,7 @@ describe('POST /api/usage/billed — body validation', () => {
   });
 });
 
-describe('POST /api/usage/billed — write outcomes', () => {
+describe('POST /usage/api/billed — write outcomes', () => {
   it('never writes to usage.incurred (route only ever calls the manual billed writer)', async () => {
     await POST(makeReq(goodBody()));
     expect(mocks.insertManualBilledLine).toHaveBeenCalledOnce();

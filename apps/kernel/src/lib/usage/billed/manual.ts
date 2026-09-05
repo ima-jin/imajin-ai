@@ -85,10 +85,11 @@ export async function insertManualBilledLine(
   if (isManualBilledLineError(evidence)) return evidence;
 
   const id = generateId('billed');
-  // Best-effort USD dollar projection so this row participates in the same
-  // `billed_usd` sums `reconciliation.ts` and `summary.ts` already read —
-  // exact for USD cents, approximate for any other currency (#1950 FX is
-  // out of scope; `currency` itself is still stored verbatim below).
+  // `amountMinor` cents -> `billed_usd` dollars. Exact only because the
+  // caller (POST /usage/api/billed's validateBilledBody) has already
+  // rejected every `currency` other than 'USD' — writing a non-USD amount
+  // in here at face value would be silently wrong by the FX rate (#1950 FX
+  // is out of scope, so non-USD is rejected rather than mis-recorded).
   const billedUsd = (input.amountMinor / 100).toFixed(8);
 
   await db.insert(usageBilled).values({

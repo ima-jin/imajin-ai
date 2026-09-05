@@ -43,18 +43,18 @@ beforeEach(() => {
   });
 });
 
-describe('GET /api/usage/summary', () => {
+describe('GET /usage/api/summary', () => {
   it('fails closed on auth failure', async () => {
     mocks.requireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
 
-    const res = await GET(makeReq('https://kernel.test/api/usage/summary'));
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary'));
 
     expect(res.status).toBe(401);
     expect(mocks.readUsageSummary).not.toHaveBeenCalled();
   });
 
   it("defaults did to the caller's own effective DID", async () => {
-    await GET(makeReq('https://kernel.test/api/usage/summary'));
+    await GET(makeReq('https://kernel.test/usage/api/summary'));
 
     expect(mocks.readUsageSummary).toHaveBeenCalledWith(expect.objectContaining({ principalDid: OWNER_DID }));
   });
@@ -62,28 +62,28 @@ describe('GET /api/usage/summary', () => {
   it('allows a registered agent (actingFor) to read its principal\'s summary', async () => {
     mocks.requireAuth.mockResolvedValueOnce({ identity: { id: AGENT_DID, actingFor: OWNER_DID } });
 
-    const res = await GET(makeReq(`https://kernel.test/api/usage/summary?did=${OWNER_DID}`));
+    const res = await GET(makeReq(`https://kernel.test/usage/api/summary?did=${OWNER_DID}`));
 
     expect(res.status).toBe(200);
     expect(mocks.readUsageSummary).toHaveBeenCalledWith(expect.objectContaining({ principalDid: OWNER_DID }));
   });
 
   it('returns 403 for a did that does not match the effective DID', async () => {
-    const res = await GET(makeReq('https://kernel.test/api/usage/summary?did=did:imajin:someone-else'));
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary?did=did:imajin:someone-else'));
 
     expect(res.status).toBe(403);
     expect(mocks.readUsageSummary).not.toHaveBeenCalled();
   });
 
   it('defaults window to the current month when absent', async () => {
-    await GET(makeReq('https://kernel.test/api/usage/summary'));
+    await GET(makeReq('https://kernel.test/usage/api/summary'));
 
     const call = mocks.readUsageSummary.mock.calls[0][0];
     expect(call.windowLabel).toMatch(/^\d{4}-\d{2}$/);
   });
 
   it('parses an explicit YYYY-MM window', async () => {
-    await GET(makeReq('https://kernel.test/api/usage/summary?window=2026-08'));
+    await GET(makeReq('https://kernel.test/usage/api/summary?window=2026-08'));
 
     expect(mocks.readUsageSummary).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -95,7 +95,7 @@ describe('GET /api/usage/summary', () => {
   });
 
   it('parses an explicit date-range window', async () => {
-    await GET(makeReq('https://kernel.test/api/usage/summary?window=2026-08-01..2026-08-15'));
+    await GET(makeReq('https://kernel.test/usage/api/summary?window=2026-08-01..2026-08-15'));
 
     expect(mocks.readUsageSummary).toHaveBeenCalledWith(
       expect.objectContaining({ from: new Date('2026-08-01T00:00:00.000Z'), to: new Date('2026-08-16T00:00:00.000Z') }),
@@ -103,14 +103,14 @@ describe('GET /api/usage/summary', () => {
   });
 
   it('rejects a malformed window', async () => {
-    const res = await GET(makeReq('https://kernel.test/api/usage/summary?window=not-a-window'));
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary?window=not-a-window'));
 
     expect(res.status).toBe(400);
     expect(mocks.readUsageSummary).not.toHaveBeenCalled();
   });
 
   it('returns the summary body with a no-store cache header', async () => {
-    const res = await GET(makeReq('https://kernel.test/api/usage/summary'));
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary'));
 
     expect(res.status).toBe(200);
     expect(res.headers.get('Cache-Control')).toBe('no-store');
@@ -121,14 +121,14 @@ describe('GET /api/usage/summary', () => {
   it('returns 500 without leaking the underlying failure when the query throws', async () => {
     mocks.readUsageSummary.mockRejectedValueOnce(new Error('db down'));
 
-    const res = await GET(makeReq('https://kernel.test/api/usage/summary'));
+    const res = await GET(makeReq('https://kernel.test/usage/api/summary'));
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: 'Usage summary unavailable' });
   });
 
   it('answers CORS pre-flight', async () => {
-    const res = await OPTIONS(makeReq('https://kernel.test/api/usage/summary'));
+    const res = await OPTIONS(makeReq('https://kernel.test/usage/api/summary'));
     expect(res.status).toBe(204);
   });
 });

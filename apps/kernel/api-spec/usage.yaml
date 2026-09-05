@@ -16,8 +16,8 @@ servers:
       node:
         default: jin
       service:
-        default: api/usage
-  - url: http://localhost:3000/api/usage
+        default: usage
+  - url: http://localhost:3000/{service}
     description: local development
 
 tags:
@@ -67,25 +67,28 @@ components:
         currency: { type: string, default: USD }
     UsageRollupAttestation:
       type: object
+      description: |
+        The stored attestation as a self-verifiable envelope: every field
+        the signature covers, unmodified. To verify, canonicalize
+        `{ subject_did: subjectDid, type, context_id: contextId,
+        context_type: contextType, payload, issued_at: issuedAtMs }` (the
+        same deterministic-key-order canonicalization
+        `emitMechanicalAttestation` signed with) and check `signature`
+        against the issuer's Ed25519 public key.
       properties:
         id: { type: string, description: "att_xxx" }
+        type: { type: string, description: "always 'usage.rollup'" }
         issuerDid: { type: string, description: "the signing node's own DID" }
         subjectDid: { type: string, description: "the principal DID the rollup is about" }
-        windowStart: { type: string, format: date-time }
-        windowEnd: { type: string, format: date-time }
-        totalCostEstimateUsd: { type: number }
-        breakdown:
-          type: array
-          items:
-            type: object
-            properties:
-              resource: { type: string }
-              source: { type: string }
-              quantity: { type: number, nullable: true }
-              unit: { type: string, nullable: true }
-              costEstimateUsd: { type: number }
-        signature: { type: string, description: "Ed25519 hex, verifiable against issuerDid" }
-        signedAt: { type: string, format: date-time }
+        contextId: { type: string, nullable: true }
+        contextType: { type: string, nullable: true }
+        payload:
+          type: object
+          description: "The stored payload verbatim (windowStart, windowEnd, totalCostEstimateUsd, breakdown, ...) — see lib/usage/rollup.ts."
+        issuedAt: { type: string, format: date-time, description: "ISO 8601, for humans" }
+        issuedAtMs: { type: integer, description: "epoch milliseconds — the exact issued_at value the signature covers" }
+        signature: { type: string, description: "Ed25519 hex, verifiable against issuerDid's public key" }
+        cid: { type: string, nullable: true, description: "dag-cbor CID of the canonical attestation, when computed" }
     BilledLineItem:
       type: object
       properties:
@@ -104,7 +107,7 @@ components:
         attestationId: { type: string, nullable: true, description: "the usage.billed attestation binding this line item" }
 
 paths:
-  /summary:
+  /api/summary:
     get:
       tags: [usage]
       operationId: getUsageSummary
@@ -147,7 +150,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
-  /rollup/{did}/latest:
+  /api/rollup/{did}/latest:
     get:
       tags: [usage]
       operationId: getLatestUsageRollup
@@ -183,7 +186,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
-  /billed:
+  /api/billed:
     post:
       tags: [usage]
       operationId: recordManualBilledLine
@@ -206,15 +209,15 @@ paths:
               type: object
               required: [vendor, periodStart, periodEnd, amountMinor, currency, source]
               properties:
-                vendor: { type: string }
-                periodStart: { type: string, format: date-time }
+                vendor: { type: string, maxLength: 128 }
+                periodStart: { type: string, format: date-time, description: "must be <= periodEnd" }
                 periodEnd: { type: string, format: date-time }
-                amountMinor: { type: integer, description: "minor units (e.g. cents)" }
-                currency: { type: string, description: "stored verbatim" }
-                category: { type: string }
-                description: { type: string }
+                amountMinor: { type: integer, minimum: 0, description: "minor units (e.g. cents); must be >= 0" }
+                currency: { type: string, pattern: "^[A-Z]{3}$", description: "ISO 4217-shaped; only 'USD' is accepted until #1950 lands" }
+                category: { type: string, maxLength: 64 }
+                description: { type: string, maxLength: 1024 }
                 source: { type: string, enum: [manual, document] }
-                evidenceAssetId: { type: string, description: "media.assets.id — required evidence for source=document; optional otherwise" }
+                evidenceAssetId: { type: string, description: "media.assets.id — REQUIRED when source=document; optional (and ignored if absent) for source=manual" }
       responses:
         "201":
           description: Line item recorded
@@ -247,7 +250,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
-  /spec:
+  /api/spec:
     get:
       tags: [usage]
       operationId: getSpec
