@@ -52,6 +52,10 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 - `x000-x099` — **Core platform** (kernel, events)
 - `x100-x199` — **Imajin apps** (coffee, dykil, links, learn — account-based, DID-linked)
 - `x400-x499` — **Client apps** (fixready, karaoke — standalone repos, own databases)
+- Internal daemons (e.g. corpus) are not subdomain-routed and don't follow this
+  convention — see their own row for the (different) fixed ports they use.
+  dev and prod still can't share a port, since dev-* and prod-* pm2
+  processes run side by side on the same host.
 
 | Tier | Service | Dev | Prod | Domain |
 |------|---------|-----|------|--------|
@@ -64,6 +68,11 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Imajin | market | 3104 | 7104 | jin.imajin.ai/market |
 | Client | fixready | 3400 | 7400 | fixready.imajin.ai |
 | Client | karaoke | 3401 | 7401 | karaoke.imajin.ai |
+| Infra | corpus | 8013 | 8003 | internal only — no subdomain (#1726) |
+
+The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
+(`apps/kernel/.env.example`) — its `localhost` default is only correct when
+kernel and corpus are colocated on the same host; point it elsewhere if not.
 
 ### pm2 Naming
 
