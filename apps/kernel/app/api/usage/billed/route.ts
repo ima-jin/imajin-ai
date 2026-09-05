@@ -21,7 +21,7 @@ const log = createLogger('kernel');
 
 export const dynamic = 'force-dynamic';
 
-const VALID_SOURCES: readonly ManualBilledSource[] = ['manual', 'document'];
+const VALID_SOURCES: ReadonlySet<ManualBilledSource> = new Set(['manual', 'document']);
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -63,7 +63,7 @@ function validateBilledBody(body: BilledRequestBody): { value: ValidatedBilledBo
   if (typeof body.amountMinor !== 'number' || !Number.isInteger(body.amountMinor)) {
     return { error: 'amountMinor must be an integer (minor units)' };
   }
-  if (typeof body.source !== 'string' || !VALID_SOURCES.includes(body.source as ManualBilledSource)) {
+  if (typeof body.source !== 'string' || !VALID_SOURCES.has(body.source as ManualBilledSource)) {
     return { error: "source must be 'manual' or 'document'" };
   }
   if (typeof body.periodStart !== 'string' || typeof body.periodEnd !== 'string') {
