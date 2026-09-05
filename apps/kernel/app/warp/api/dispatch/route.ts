@@ -18,12 +18,25 @@
  *     "skillSpec"?: "owner/repo:skill",    // versioned SKILL.md as the payload
  *     "mcpServers"?: { name: { url, headers? } },
  *     "attachImajinMcp"?: boolean,         // attach mcp.imajin.ai (Wire B)
- *     "computerUseEnabled"?: boolean
+ *     "computerUseEnabled"?: boolean,
+ *     "corpusContext"?: {                  // retrieve from the principal's own corpus (#2021)
+ *       "source": "…",                     // required, e.g. "github:ima-jin/imajin-ai"
+ *       "query": "…",                      // required
+ *       "ref"?: "…",                       // pin to a previously-ingested git sha (#1921)
+ *       "limit"?: 8,                       // 1-20, defaults to 8
+ *       "maxChars"?: 6000                  // defaults to 6000
+ *     }
  *   }
  *
  * Fails closed with 403 when the caller has no active `warp:dispatch` grant and
  * 409 when no key is sealed (or its grant was revoked). The key is never logged,
  * echoed, or included in any error body.
+ *
+ * When `corpusContext` is given, its DID is always the acting principal —
+ * never a caller-supplied value — and a search failure (corpus unreachable,
+ * an unknown `ref`, an access-claim rejection) fails the dispatch itself
+ * with `corpus_context_failed` rather than silently proceeding without the
+ * requested context (#2021).
  *
  * On success the run is also watched to completion in the background (#1639), so
  * `warp.run.completed` lands on the bus without the caller polling for it. The
@@ -35,6 +48,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { CORPUS_CONTEXT_MAX_LIMIT, type CorpusContextInput } from '@/src/lib/warp/corpus-context';
 import {
   dispatchAgentRun,
   watchRun,
@@ -42,6 +56,9 @@ import {
   type WarpMcpServerConfig,
 } from '@/src/lib/warp/dispatch';
 import { warpErrorResponse } from '@/src/lib/warp/route-errors';
+
+/** Upper bound on `corpusContext.maxChars` accepted from a caller before it is treated as malformed. */
+const CORPUS_CONTEXT_MAX_CHARS_CEILING = 100_000;
 
 const log = createLogger('kernel');
 
@@ -73,32 +90,59 @@ function optionalMcpServers(value: unknown): Record<string, WarpMcpServerConfig>
   return value as Record<string, WarpMcpServerConfig>;
 }
 
-export async function POST(request: NextRequest) {
-  const cors = corsHeaders(request);
+/** A finite number within `[min, max]`, or undefined when the raw value was absent. */
+function optionalBoundedNumber(value: unknown, min: number, max: number): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
 
-  const auth = await requireAuth(request);
-  if ('error' in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
-  }
-  const principalDid = resolveActingDid(auth.identity);
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
-  }
-
-  const prompt = optionalString(body.prompt);
-  if (!prompt) {
-    return NextResponse.json(
-      { error: 'prompt must be a non-empty string' },
-      { status: 400, headers: cors },
-    );
+/**
+ * Parse the optional `corpusContext` body field.
+ *
+ * Rejected outright rather than silently dropped when malformed: a caller who
+ * asked for retrieval context and got a typo-silenced no-op would see a run
+ * dispatched without the context they thought they required — the same
+ * fail-closed reasoning `corpus-context.ts` applies to a corpus-side failure.
+ * The corpus DID is deliberately never read from this body — `dispatchAgentRun`
+ * always searches the acting principal's own corpus (#2021).
+ */
+function parseCorpusContext(value: unknown): { corpusContext?: CorpusContextInput; error?: string } {
+  if (value === undefined) return {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { error: 'corpusContext must be an object' };
   }
 
-  const input: DispatchAgentRunInput = {
+  const body = value as Record<string, unknown>;
+  const source = optionalString(body.source);
+  const query = optionalString(body.query);
+  if (source === undefined || query === undefined) {
+    return { error: 'corpusContext.source and corpusContext.query must be non-empty strings' };
+  }
+
+  const ref = optionalString(body.ref);
+  const limit = optionalBoundedNumber(body.limit, 1, CORPUS_CONTEXT_MAX_LIMIT);
+  const maxChars = optionalBoundedNumber(body.maxChars, 1, CORPUS_CONTEXT_MAX_CHARS_CEILING);
+
+  return {
+    corpusContext: {
+      source,
+      query,
+      ...(ref === undefined ? {} : { ref }),
+      ...(limit === undefined ? {} : { limit }),
+      ...(maxChars === undefined ? {} : { maxChars }),
+    },
+  };
+}
+
+/** Build the `DispatchAgentRunInput` from a validated `prompt`/`corpusContext` and the raw body. */
+function buildDispatchInput(
+  prompt: string,
+  corpusContext: CorpusContextInput | undefined,
+  body: Record<string, unknown>,
+): DispatchAgentRunInput {
+  return {
     prompt,
+    ...(corpusContext === undefined ? {} : { corpusContext }),
     ...(optionalString(body.title) === undefined ? {} : { title: optionalString(body.title) }),
     ...(optionalString(body.name) === undefined ? {} : { name: optionalString(body.name) }),
     ...(optionalString(body.modelId) === undefined ? {} : { modelId: optionalString(body.modelId) }),
@@ -127,6 +171,38 @@ export async function POST(request: NextRequest) {
       ? {}
       : { computerUseEnabled: optionalBoolean(body.computerUseEnabled) }),
   };
+}
+
+export async function POST(request: NextRequest) {
+  const cors = corsHeaders(request);
+
+  const auth = await requireAuth(request);
+  if ('error' in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
+  }
+  const principalDid = resolveActingDid(auth.identity);
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
+  }
+
+  const prompt = optionalString(body.prompt);
+  if (!prompt) {
+    return NextResponse.json(
+      { error: 'prompt must be a non-empty string' },
+      { status: 400, headers: cors },
+    );
+  }
+
+  const { corpusContext, error: corpusContextError } = parseCorpusContext(body.corpusContext);
+  if (corpusContextError !== undefined) {
+    return NextResponse.json({ error: corpusContextError }, { status: 400, headers: cors });
+  }
+
+  const input = buildDispatchInput(prompt, corpusContext, body);
 
   try {
     const run = await dispatchAgentRun(principalDid, input);

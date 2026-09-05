@@ -733,6 +733,22 @@ export interface BusEventMap {
      * reflects what Warp actually accepted.
      */
     parentRunId: string | null;
+    /**
+     * What was retrieved from the principal's own corpus and prepended to the
+     * prompt, when the dispatch named a `corpusContext` (#2021's "one real
+     * consumer" checklist item). Null when the dispatch named none.
+     *
+     * Deliberately carries NO snippet text — only enough for a later reader to
+     * see exactly what the agent was shown: which source/ref was searched, how
+     * many hits, their content hashes (for a ref-pinned query, #1921), and when.
+     */
+    corpusContext: {
+      source: string;
+      ref?: string;
+      hits: number;
+      contentHashes: string[];
+      retrievedAt: string;
+    } | null;
     context_id: string;
     context_type: 'warp.agent';
   };

@@ -75,8 +75,19 @@ import { lookupIdentity } from '@/src/lib/kernel/lookup';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { getMcpResource } from '@/src/lib/mcp/oauth-config';
 import { requireAgentKey } from './connector';
+import {
+  CORPUS_CONTEXT_SEPARATOR,
+  fetchCorpusContext,
+  type CorpusContextInput,
+  type CorpusContextMetadata,
+} from './corpus-context';
 import { readEnvironmentId } from './environment';
 import { WarpApiError } from './errors';
+
+// Re-exported for callers that need to catch it without importing
+// corpus-context.ts directly (mirroring the WarpApiError re-export below).
+export { CorpusContextError } from './corpus-context';
+export type { CorpusContextInput } from './corpus-context';
 
 // Re-exported so callers of the client get the error type from one import; the
 // class itself lives in ./errors so the route mapping can import it without
@@ -235,6 +246,16 @@ export interface DispatchAgentRunInput {
    */
   attachImajinMcp?: boolean;
   computerUseEnabled?: boolean;
+  /**
+   * Retrieval context pulled from the acting principal's own corpus and
+   * prepended to the prompt before dispatch (#2021's "one real consumer"
+   * checklist item). The corpus DID is always `principalDid` — this has no
+   * DID field of its own — so a dispatch can only ever be shown its own
+   * corpus. See `corpus-context.ts` for the fail-closed contract: a lookup
+   * failure here fails the whole dispatch rather than silently proceeding
+   * without the requested context.
+   */
+  corpusContext?: CorpusContextInput;
 }
 
 /** Warp `RunStatusMessage` — why a run is in the state it is in. */
@@ -844,6 +865,33 @@ function buildConfig(
 }
 
 /**
+ * Resolve the prompt Warp actually receives (#2021's "one real consumer"
+ * checklist item).
+ *
+ * When `corpusContext` is set, `did`'s own corpus is searched (never a
+ * caller-named DID) and the retrieved, provenance-stamped block is prepended
+ * ahead of `prompt`, unchanged. A lookup failure propagates as
+ * {@link CorpusContextError} rather than falling back to `prompt` alone — see
+ * that class's docs for why a silent fallback would make the run's
+ * provenance dishonest.
+ */
+async function resolvePrompt(
+  did: string,
+  prompt: string,
+  corpusContext: CorpusContextInput | undefined,
+): Promise<{ prompt: string; corpusContextMetadata: CorpusContextMetadata | undefined }> {
+  if (corpusContext === undefined) {
+    return { prompt, corpusContextMetadata: undefined };
+  }
+
+  const context = await fetchCorpusContext(did, corpusContext);
+  return {
+    prompt: `${context.promptPrefix}${CORPUS_CONTEXT_SEPARATOR}${prompt}`,
+    corpusContextMetadata: context.metadata,
+  };
+}
+
+/**
  * Dispatch a Warp cloud agent as `principalDid`.
  *
  * Fails closed before any network call when the caller lacks an active
@@ -853,15 +901,22 @@ function buildConfig(
  * When the caller names no `environmentId`, their stored default is used, then
  * the node's (#1632).
  *
+ * When `input.corpusContext` is set, retrieval context from the principal's
+ * own corpus is prepended to the prompt before it ever reaches Warp — see
+ * {@link resolvePrompt}. A corpus lookup failure fails the whole dispatch
+ * (#2021): no run is created without the context the caller asked for.
+ *
  * Emits `warp.agent.dispatched` fire-and-forget for the audit trail. The event
- * carries the run's identity and configuration, never the prompt or the key.
+ * carries the run's identity and configuration, and — when corpus context was
+ * used — what was retrieved (source, ref, hit count, content hashes), but
+ * never the prompt, the retrieved snippet text, or the key.
  */
 export async function dispatchAgentRun(
   principalDid: string,
   input: DispatchAgentRunInput,
 ): Promise<WarpAgentRun> {
-  const prompt = input.prompt.trim();
-  if (prompt.length === 0) {
+  const trimmedPrompt = input.prompt.trim();
+  if (trimmedPrompt.length === 0) {
     throw new Error('warp_invalid_prompt: prompt must be a non-empty string');
   }
 
@@ -876,6 +931,12 @@ export async function dispatchAgentRun(
     resolveEnvironmentId(principalDid, input.environmentId),
   ]);
   const config = buildConfig(input, jinName, environmentId);
+
+  const { prompt, corpusContextMetadata } = await resolvePrompt(
+    principalDid,
+    trimmedPrompt,
+    input.corpusContext,
+  );
 
   const payload = await warpFetch(agentKey, '/agent/run', {
     method: 'POST',
@@ -898,6 +959,7 @@ export async function dispatchAgentRun(
       configName: config.name,
       skillSpec: config.skill_spec,
       environmentId: config.environment_id,
+      corpusContextSource: corpusContextMetadata?.source ?? null,
     },
     'Warp cloud agent dispatched',
   );
@@ -917,6 +979,9 @@ export async function dispatchAgentRun(
       // `warp.agent.dispatched` in packages/bus/src/types.ts (#1939).
       conversationId: run.conversationId,
       parentRunId: run.parentRunId,
+      // Retrieval provenance only (#2021) — never the retrieved snippet text,
+      // the same invariant the rest of this event follows for the prompt.
+      corpusContext: corpusContextMetadata ?? null,
       context_id: run.runId,
       context_type: 'warp.agent',
     },

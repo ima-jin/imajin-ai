@@ -30,6 +30,7 @@
 import type { McpTool } from '../types';
 import { str, num, json } from './utils';
 import { sealWarpAgentKey, WARP_DISPATCH_SCOPE } from '@/src/lib/warp/connector';
+import { CORPUS_CONTEXT_MAX_LIMIT, type CorpusContextInput } from '@/src/lib/warp/corpus-context';
 import {
   cancelAgentRun,
   dispatchAgentRun,
@@ -99,6 +100,36 @@ function mcpServersArg(args: Record<string, unknown>): Record<string, WarpMcpSer
   return value as Record<string, WarpMcpServerConfig>;
 }
 
+/**
+ * Read the optional `corpus_context` object, ignoring a non-object argument.
+ *
+ * No DID field is read here (or accepted at all): `dispatchAgentRun` always
+ * searches `ctx.did`'s own corpus (#2021), so a caller has no way to name a
+ * different one through this tool.
+ */
+function corpusContextArg(args: Record<string, unknown>): CorpusContextInput | undefined {
+  const value = args.corpus_context;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+
+  const body = value as Record<string, unknown>;
+  const source = str(body, 'source');
+  const query = str(body, 'query');
+  if (source === undefined || query === undefined) return undefined;
+
+  const ref = str(body, 'ref');
+  const rawLimit = num(body, 'limit');
+  const limit = rawLimit === undefined ? undefined : Math.min(CORPUS_CONTEXT_MAX_LIMIT, Math.max(1, Math.trunc(rawLimit)));
+  const maxChars = num(body, 'max_chars');
+
+  return {
+    source,
+    query,
+    ...(ref === undefined ? {} : { ref }),
+    ...(limit === undefined ? {} : { limit }),
+    ...(maxChars === undefined ? {} : { maxChars }),
+  };
+}
+
 const dispatchTool: McpTool = {
   name: 'warp_dispatch_agent',
   requiredScope: WARP_DISPATCH_SCOPE,
@@ -160,6 +191,25 @@ const dispatchTool: McpTool = {
           'Optional map of MCP server name to config, e.g. ' +
           '{ "imajin": { "url": "https://mcp.imajin.ai/mcp", "headers": { … } } }',
       },
+      corpus_context: {
+        type: 'object',
+        description:
+          'Retrieve evidence from your own corpus and prepend it to the prompt before dispatch ' +
+          '(#2021). Always searches your own corpus — there is no way to name a different DID here. ' +
+          'A search failure (corpus unreachable, unknown ref, access-claim rejection) fails the ' +
+          'whole dispatch rather than silently proceeding without the requested context.',
+        properties: {
+          source: { type: 'string', description: 'Required, e.g. "github:ima-jin/imajin-ai".' },
+          query: { type: 'string', description: 'Required search query text.' },
+          ref: {
+            type: 'string',
+            description: 'Optional: pin to a previously-ingested git sha for source (#1921).',
+          },
+          limit: { type: 'number', description: 'Optional, 1–20. Defaults to 8.' },
+          max_chars: { type: 'number', description: 'Optional cap on the retrieved block. Defaults to 6000.' },
+        },
+        required: ['source', 'query'],
+      },
     },
     required: ['prompt'],
     additionalProperties: false,
@@ -176,6 +226,7 @@ const dispatchTool: McpTool = {
     const modelId = str(args, 'model_id');
     const basePrompt = str(args, 'base_prompt');
     const mcpServers = mcpServersArg(args);
+    const corpusContext = corpusContextArg(args);
 
     const run = await dispatchAgentRun(ctx.did, {
       prompt,
@@ -187,6 +238,7 @@ const dispatchTool: McpTool = {
       ...(modelId === undefined ? {} : { modelId }),
       ...(basePrompt === undefined ? {} : { basePrompt }),
       ...(mcpServers === undefined ? {} : { mcpServers }),
+      ...(corpusContext === undefined ? {} : { corpusContext }),
       ...(typeof args.attach_imajin_mcp === 'boolean'
         ? { attachImajinMcp: args.attach_imajin_mcp }
         : {}),

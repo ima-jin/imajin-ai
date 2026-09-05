@@ -27,6 +27,44 @@ export interface CorpusStatus {
   threadCount: number;
 }
 
+/** Request body for `POST /corpus/:did/search` — mirrors `CorpusSearchRequest` (apps/corpus/src/engine/types.ts). */
+export interface CorpusSearchParams {
+  query: string;
+  source?: string;
+  /** Pin the query to a previously-ingested git sha for `source` (#1921). Requires `source`. */
+  ref?: string;
+  limit?: number;
+}
+
+/** One scored evidence hit — mirrors `CorpusSearchHit` (apps/corpus/src/engine/types.ts). */
+export interface CorpusSearchHit {
+  source: string;
+  id: string;
+  type: string;
+  title: string;
+  state: string;
+  score: number;
+  evidence: string[];
+  url?: string;
+  updated: string;
+  /** Present only for `ref`-pinned queries once the corpus service supports #1921. */
+  contentHash?: string;
+}
+
+/** Present only when the request was pinned to a `ref` — mirrors `CorpusSearchProvenance` (#1921). */
+export interface CorpusSearchProvenance {
+  ref: string;
+  source: string;
+  chunks: Array<{ docId: string; contentHash: string }>;
+}
+
+export interface CorpusSearchResult {
+  results: CorpusSearchHit[];
+  totalHits: number;
+  tokensUsed: number;
+  provenance?: CorpusSearchProvenance;
+}
+
 /** Thrown when the corpus service answers with a non-2xx status. */
 export class CorpusServiceError extends Error {
   readonly status: number;
@@ -62,6 +100,17 @@ async function corpusRequest(
 /** `GET /corpus/:did/status` — sources, per-source thread counts, freshness. */
 export function fetchCorpusStatus(did: string): Promise<CorpusStatus> {
   return corpusRequest('GET', did, 'corpus:read', '/status') as Promise<CorpusStatus>;
+}
+
+/**
+ * `POST /corpus/:did/search` — scored evidence excerpts for `params.query`.
+ *
+ * Used by the Warp dispatch corpus-context feature (#2021's first-consumer
+ * checklist item): `did` is always the dispatch's acting principal, never a
+ * caller-supplied value, so a dispatch can only ever read its own corpus.
+ */
+export function searchCorpus(did: string, params: CorpusSearchParams): Promise<CorpusSearchResult> {
+  return corpusRequest('POST', did, 'corpus:read', '/search', params) as Promise<CorpusSearchResult>;
 }
 
 /** `POST /corpus/:did/ingest` — load a new source into the corpus. */

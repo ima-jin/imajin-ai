@@ -14,17 +14,37 @@ const {
   logMock,
   readEnvironmentIdMock,
   getNodeDidMock,
-} = vi.hoisted(() => ({
-  requireAgentKeyMock: vi.fn(),
-  lookupIdentityMock: vi.fn(),
-  publishMock: vi.fn(),
-  logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  readEnvironmentIdMock: vi.fn(),
-  getNodeDidMock: vi.fn(),
-}));
+  searchCorpusMock,
+  MockCorpusServiceError,
+} = vi.hoisted(() => {
+  class MockCorpusServiceError extends Error {
+    readonly status: number;
+    constructor(status: number, message: string) {
+      super(message);
+      this.name = 'CorpusServiceError';
+      this.status = status;
+    }
+  }
+
+  return {
+    requireAgentKeyMock: vi.fn(),
+    lookupIdentityMock: vi.fn(),
+    publishMock: vi.fn(),
+    logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    readEnvironmentIdMock: vi.fn(),
+    getNodeDidMock: vi.fn(),
+    searchCorpusMock: vi.fn(),
+    MockCorpusServiceError,
+  };
+});
 
 vi.mock('../connector', () => ({
   requireAgentKey: requireAgentKeyMock,
+}));
+
+vi.mock('../../kernel/corpus-client', () => ({
+  searchCorpus: searchCorpusMock,
+  CorpusServiceError: MockCorpusServiceError,
 }));
 
 vi.mock('../environment', () => ({
@@ -58,6 +78,7 @@ import {
   sendFollowup,
   WarpApiError,
 } from '../dispatch';
+import { CorpusContextError } from '../corpus-context';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -180,6 +201,7 @@ beforeEach(() => {
   readEnvironmentIdMock.mockReset();
   storeEnvironments({});
   getNodeDidMock.mockReset().mockResolvedValue(NODE_DID);
+  searchCorpusMock.mockReset();
 
   vi.stubGlobal('fetch', vi.fn());
 });
@@ -494,6 +516,175 @@ describe('dispatch fails closed', () => {
       /warp_invalid_prompt/,
     );
     expect(requireAgentKeyMock).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+});
+
+// ── Corpus context (#2021's "one real consumer" checklist item) ──────────────
+
+const CORPUS_HIT = {
+  source: 'github:ima-jin/imajin-ai',
+  id: '123',
+  type: 'issue',
+  title: 'Fix the login error',
+  state: 'open',
+  score: 0.834,
+  evidence: ['a prior quote about the login error'],
+  updated: '2026-08-01T00:00:00Z',
+};
+
+function lastSearchCorpusCall(): [string, Record<string, unknown>] {
+  return searchCorpusMock.mock.calls.at(-1) as [string, Record<string, unknown>];
+}
+
+describe('dispatch corpusContext', () => {
+  it('never searches corpus when corpusContext is omitted', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    expect(searchCorpusMock).not.toHaveBeenCalled();
+    expect(lastRequestBody().prompt).toBe('go');
+  });
+
+  it('prepends a provenance-stamped context block ahead of the unchanged prompt', async () => {
+    searchCorpusMock.mockResolvedValue({ results: [CORPUS_HIT], totalHits: 1, tokensUsed: 10 });
+    respondJson(QUEUED_RUN);
+
+    await dispatchAgentRun(PRINCIPAL, {
+      prompt: 'Fix it',
+      corpusContext: { source: 'github:ima-jin/imajin-ai', query: 'login error' },
+    });
+
+    const prompt = lastRequestBody().prompt as string;
+    expect(prompt).toContain('## Retrieved context (corpus)');
+    expect(prompt).toContain('source=github:ima-jin/imajin-ai ref=unpinned hits=1');
+    expect(prompt).toContain('Fix the login error');
+    expect(prompt.endsWith('---\n\nFix it')).toBe(true);
+  });
+
+  it('always searches the acting principal\'s own DID, never one implied by corpusContext', async () => {
+    searchCorpusMock.mockResolvedValue({ results: [], totalHits: 0, tokensUsed: 0 });
+    respondJson(QUEUED_RUN);
+
+    await dispatchAgentRun(PRINCIPAL, {
+      prompt: 'go',
+      // corpusContext has no `did` field in the type at all; this simulates a
+      // caller trying to smuggle one in anyway via an untyped body.
+      corpusContext: { source: 's', query: 'q', did: 'did:imajin:someone-else' } as never,
+    });
+
+    const [did, params] = lastSearchCorpusCall();
+    expect(did).toBe(PRINCIPAL);
+    expect(params).not.toHaveProperty('did');
+  });
+
+  it('defaults limit to 8 and clamps an out-of-range limit to 20', async () => {
+    searchCorpusMock.mockResolvedValue({ results: [], totalHits: 0, tokensUsed: 0 });
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go', corpusContext: { source: 's', query: 'q' } });
+    expect(lastSearchCorpusCall()[1]).toMatchObject({ limit: 8 });
+
+    searchCorpusMock.mockResolvedValue({ results: [], totalHits: 0, tokensUsed: 0 });
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, {
+      prompt: 'go',
+      corpusContext: { source: 's', query: 'q', limit: 500 },
+    });
+    expect(lastSearchCorpusCall()[1]).toMatchObject({ limit: 20 });
+  });
+
+  it('passes ref through to the corpus search when given', async () => {
+    searchCorpusMock.mockResolvedValue({ results: [], totalHits: 0, tokensUsed: 0 });
+    respondJson(QUEUED_RUN);
+
+    await dispatchAgentRun(PRINCIPAL, {
+      prompt: 'go',
+      corpusContext: { source: 's', query: 'q', ref: 'deadbeef' },
+    });
+
+    expect(lastSearchCorpusCall()[1]).toMatchObject({ ref: 'deadbeef' });
+  });
+
+  it('records source/ref/hits/contentHashes/retrievedAt on warp.agent.dispatched, never the snippet text', async () => {
+    searchCorpusMock.mockResolvedValue({
+      results: [{ ...CORPUS_HIT, contentHash: 'sha256:abc123' }],
+      totalHits: 1,
+      tokensUsed: 10,
+    });
+    respondJson(QUEUED_RUN);
+
+    await dispatchAgentRun(PRINCIPAL, {
+      prompt: 'go',
+      corpusContext: { source: 'github:ima-jin/imajin-ai', query: 'q', ref: 'deadbeef' },
+    });
+
+    const [, envelope] = publishMock.mock.calls[0] as [string, { payload: Record<string, unknown> }];
+    expect(envelope.payload.corpusContext).toMatchObject({
+      source: 'github:ima-jin/imajin-ai',
+      ref: 'deadbeef',
+      hits: 1,
+      contentHashes: ['sha256:abc123'],
+    });
+    expect(JSON.stringify(envelope.payload)).not.toContain('a prior quote about the login error');
+  });
+
+  it('records a null corpusContext on the audit event when none was requested', async () => {
+    respondJson(QUEUED_RUN);
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'go' });
+
+    const [, envelope] = publishMock.mock.calls[0] as [string, { payload: Record<string, unknown> }];
+    expect(envelope.payload.corpusContext).toBeNull();
+  });
+
+  // ── Failure modes: fail closed, no run is ever created ──
+
+  it('fails the whole dispatch when corpus is unreachable, and creates no run', async () => {
+    searchCorpusMock.mockRejectedValue(new Error('fetch failed: connection refused'));
+
+    await expect(
+      dispatchAgentRun(PRINCIPAL, { prompt: 'go', corpusContext: { source: 's', query: 'q' } }),
+    ).rejects.toThrow(/corpus_context_failed/);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('maps a corpus 401 (bad access claim) to a 400-class CorpusContextError, and creates no run', async () => {
+    searchCorpusMock.mockRejectedValue(new MockCorpusServiceError(401, 'invalid claim'));
+
+    const err = (await dispatchAgentRun(PRINCIPAL, {
+      prompt: 'go',
+      corpusContext: { source: 's', query: 'q' },
+    }).catch((e: unknown) => e)) as CorpusContextError;
+
+    expect(err).toBeInstanceOf(CorpusContextError);
+    expect(err.status).toBe(400);
+    expect(err.corpusStatus).toBe(401);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('maps a corpus 404 (unknown ref) to a 400-class CorpusContextError, and creates no run', async () => {
+    searchCorpusMock.mockRejectedValue(new MockCorpusServiceError(404, 'no indexed snapshot for that ref'));
+
+    const err = (await dispatchAgentRun(PRINCIPAL, {
+      prompt: 'go',
+      corpusContext: { source: 's', query: 'q', ref: 'unknown-sha' },
+    }).catch((e: unknown) => e)) as CorpusContextError;
+
+    expect(err.status).toBe(400);
+    expect(err.corpusStatus).toBe(404);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('maps a corpus 500 to a 502-class CorpusContextError, and creates no run', async () => {
+    searchCorpusMock.mockRejectedValue(new MockCorpusServiceError(500, 'internal error'));
+
+    const err = (await dispatchAgentRun(PRINCIPAL, {
+      prompt: 'go',
+      corpusContext: { source: 's', query: 'q' },
+    }).catch((e: unknown) => e)) as CorpusContextError;
+
+    expect(err.status).toBe(502);
+    expect(err.corpusStatus).toBe(500);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

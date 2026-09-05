@@ -10,6 +10,7 @@
  * problem metadata by {@link WarpApiError}.
  */
 import { NextResponse } from 'next/server';
+import { CorpusContextError } from './corpus-context';
 import { WarpApiError } from './errors';
 
 /** Status Warp returned, mapped to what *our* caller should see. */
@@ -30,6 +31,21 @@ function statusForUpstream(upstream: number): number {
  * upstream failure is nothing they can act on.
  */
 export function warpErrorResponse(err: unknown, cors: Record<string, string>): NextResponse {
+  // Corpus retrieval failed for a dispatch that named `corpusContext` (#2021).
+  // Fail-closed: this is deliberately returned instead of falling back to
+  // dispatching without the requested context (which would make the run's
+  // provenance a lie about what the agent was actually shown).
+  if (err instanceof CorpusContextError) {
+    return NextResponse.json(
+      {
+        error: 'corpus_context_failed',
+        corpusStatus: err.corpusStatus,
+        detail: err.message,
+      },
+      { status: err.status, headers: cors },
+    );
+  }
+
   if (err instanceof WarpApiError) {
     return NextResponse.json(
       {
