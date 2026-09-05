@@ -3,24 +3,34 @@
  * `local:workspace` source at git sha A, query `ref=A`, run `/sync` to a
  * second commit sha B, then query `ref=A` again. The two `ref=A` responses
  * must be identical (including chunk content hashes), while `ref=B` must
- * reflect the new content. Run against a real temp git repo with two
- * commits, over the actual HTTP routes, mirroring the issue's own verify
- * script.
+ * reflect the new content. Run against a fabricated `.git` checkout (see
+ * `test-helpers/fake-git.ts` — `resolveGitRef` never inspects commit/tree
+ * objects, only `HEAD`/refs, so no real `git` process is needed) with two
+ * simulated commits, over the actual HTTP routes, mirroring the issue's own
+ * verify script.
  */
-import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { crypto as authCrypto } from '@imajin/auth';
 import { CorpusEngine } from '../engine';
 import { createCorpusApp } from '../routes';
 import { workspaceRootForDid } from '../lib/workspace';
+import { initFakeGitCheckout, setFakeGitHead } from './test-helpers/fake-git';
+import { mintTestClaimHeader, type TestClaimScope } from './support/mint-test-claim';
 
 const did = 'did:example:refcheck';
+const SHA_A = 'a'.repeat(40);
+const SHA_B = 'b'.repeat(40);
 
-function git(cwd: string, args: string[]): string {
-  return execFileSync('git', args, { cwd }).toString('utf8').trim();
+const ORIGINAL_KERNEL_PUBLIC_KEY = process.env.CORPUS_KERNEL_PUBLIC_KEY;
+const KERNEL_KEYPAIR = authCrypto.generateKeypair();
+
+/** Mints a valid `Authorization` header for `did` above, for supertest requests. */
+function authFor(scope: TestClaimScope = 'corpus:write'): string {
+  return mintTestClaimHeader(KERNEL_KEYPAIR.privateKey, { did, scope });
 }
 
 describe('sha-pinned snapshot queries — reproducible retrieval at a ref (#1921)', () => {
@@ -31,6 +41,7 @@ describe('sha-pinned snapshot queries — reproducible retrieval at a ref (#1921
   let workspaceRoot: string;
 
   beforeEach(() => {
+    process.env.CORPUS_KERNEL_PUBLIC_KEY = KERNEL_KEYPAIR.publicKey;
     dataDir = mkdtempSync(join(tmpdir(), 'corpus-ref-integration-data-'));
     workspacesDir = mkdtempSync(join(tmpdir(), 'corpus-ref-integration-workspaces-'));
     engine = new CorpusEngine({ dataDir });
@@ -38,44 +49,48 @@ describe('sha-pinned snapshot queries — reproducible retrieval at a ref (#1921
 
     workspaceRoot = workspaceRootForDid(did, { workspacesDir });
     mkdirSync(workspaceRoot, { recursive: true });
-    git(workspaceRoot, ['init', '-q']);
-    git(workspaceRoot, ['config', 'user.email', 'a@b.c']);
-    git(workspaceRoot, ['config', 'user.name', 'a']);
+    initFakeGitCheckout(workspaceRoot);
   });
 
   afterEach(() => {
     engine.close();
     rmSync(dataDir, { recursive: true, force: true });
     rmSync(workspacesDir, { recursive: true, force: true });
+    if (ORIGINAL_KERNEL_PUBLIC_KEY === undefined) delete process.env.CORPUS_KERNEL_PUBLIC_KEY;
+    else process.env.CORPUS_KERNEL_PUBLIC_KEY = ORIGINAL_KERNEL_PUBLIC_KEY;
   });
 
   it('returns identical results and chunk hashes for ref=A across an intervening sync, and different results for ref=B', async () => {
     writeFileSync(join(workspaceRoot, 'a.md'), '# A\n\nhello', 'utf8');
-    git(workspaceRoot, ['add', '.']);
-    git(workspaceRoot, ['commit', '-q', '-m', 'A']);
-    const shaA = git(workspaceRoot, ['rev-parse', 'HEAD']);
+    setFakeGitHead(workspaceRoot, SHA_A);
 
-    const crawl = await request(app).post(`/corpus/${did}/crawl`).send({ source: 'local:workspace' });
+    const crawl = await request(app)
+      .post(`/corpus/${did}/crawl`)
+      .set('Authorization', authFor())
+      .send({ source: 'local:workspace' });
     expect(crawl.status).toBe(200);
     expect(crawl.body).toEqual({ ingested: 1 });
 
     const searchAtAFirst = await request(app)
       .post(`/corpus/${did}/search`)
-      .send({ query: 'hello', source: 'local:workspace', ref: shaA });
+      .set('Authorization', authFor('corpus:read'))
+      .send({ query: 'hello', source: 'local:workspace', ref: SHA_A });
     expect(searchAtAFirst.status).toBe(200);
     expect(searchAtAFirst.body.totalHits).toBe(1);
 
     writeFileSync(join(workspaceRoot, 'a.md'), '# A\n\nhello world', 'utf8');
-    git(workspaceRoot, ['commit', '-qam', 'B']);
-    const shaB = git(workspaceRoot, ['rev-parse', 'HEAD']);
-    expect(shaB).not.toBe(shaA);
+    setFakeGitHead(workspaceRoot, SHA_B);
 
-    const sync = await request(app).post(`/corpus/${did}/sync`).send({ source: 'local:workspace', cursor: null });
+    const sync = await request(app)
+      .post(`/corpus/${did}/sync`)
+      .set('Authorization', authFor())
+      .send({ source: 'local:workspace', cursor: null });
     expect(sync.status).toBe(200);
 
     const searchAtASecond = await request(app)
       .post(`/corpus/${did}/search`)
-      .send({ query: 'hello', source: 'local:workspace', ref: shaA });
+      .set('Authorization', authFor('corpus:read'))
+      .send({ query: 'hello', source: 'local:workspace', ref: SHA_A });
     expect(searchAtASecond.status).toBe(200);
 
     // Identical result set AND identical chunk hashes, despite the sync in
@@ -88,12 +103,14 @@ describe('sha-pinned snapshot queries — reproducible retrieval at a ref (#1921
     // "world" only exists in the tree at sha B.
     const worldAtA = await request(app)
       .post(`/corpus/${did}/search`)
-      .send({ query: 'world', source: 'local:workspace', ref: shaA });
+      .set('Authorization', authFor('corpus:read'))
+      .send({ query: 'world', source: 'local:workspace', ref: SHA_A });
     expect(worldAtA.body.totalHits).toBe(0);
 
     const worldAtB = await request(app)
       .post(`/corpus/${did}/search`)
-      .send({ query: 'world', source: 'local:workspace', ref: shaB });
+      .set('Authorization', authFor('corpus:read'))
+      .send({ query: 'world', source: 'local:workspace', ref: SHA_B });
     expect(worldAtB.status).toBe(200);
     expect(worldAtB.body.totalHits).toBe(1);
     expect(worldAtB.body.results[0].contentHash).not.toBe(searchAtAFirst.body.results[0].contentHash);
@@ -102,6 +119,7 @@ describe('sha-pinned snapshot queries — reproducible retrieval at a ref (#1921
     const unknownRef = '0'.repeat(40);
     const unknown = await request(app)
       .post(`/corpus/${did}/search`)
+      .set('Authorization', authFor('corpus:read'))
       .send({ query: 'hello', source: 'local:workspace', ref: unknownRef });
     expect(unknown.status).toBe(404);
     expect(unknown.body.hint).toBe('trigger ingest at this ref');

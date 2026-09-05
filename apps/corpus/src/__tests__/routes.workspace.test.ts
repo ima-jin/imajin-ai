@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +8,7 @@ import { createCorpusApp } from '../routes';
 import { CorpusEngine } from '../engine';
 import { workspaceRootForDid } from '../lib/workspace';
 import { mintTestClaimHeader, type TestClaimScope } from './support/mint-test-claim';
+import { initFakeGitCheckout, setFakeGitHead } from './test-helpers/fake-git';
 
 const did = 'did:example:alice';
 
@@ -40,18 +40,12 @@ function writeWorkspaceFile(workspacesDir: string, relPath: string, content: str
   return absolutePath;
 }
 
-function gitCommit(cwd: string, message: string): string {
-  execFileSync('git', ['add', '.'], { cwd });
-  execFileSync('git', ['commit', '-q', '-m', message], { cwd });
-  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd }).toString('utf8').trim();
-}
-
-function initGitWorkspace(workspacesDir: string): string {
+/** Initializes a fake git checkout (no real `git` process) at the DID's workspace root, HEAD pinned at `sha`. */
+function initGitWorkspace(workspacesDir: string, sha: string): string {
   const root = workspaceRootForDid(did, { workspacesDir });
   mkdirSync(root, { recursive: true });
-  execFileSync('git', ['init', '-q'], { cwd: root });
-  execFileSync('git', ['config', 'user.email', 'a@b.c'], { cwd: root });
-  execFileSync('git', ['config', 'user.name', 'a'], { cwd: root });
+  initFakeGitCheckout(root);
+  setFakeGitHead(root, sha);
   return root;
 }
 
@@ -208,14 +202,15 @@ describe('local:workspace routes', () => {
   });
 
   it('serves sha-pinned snapshot queries for a git-backed workspace, and 404s on an unknown ref (#1921)', async () => {
-    const root = initGitWorkspace(workspacesDir);
+    const shaA = 'a'.repeat(40);
+    initGitWorkspace(workspacesDir, shaA);
     writeWorkspaceFile(workspacesDir, 'a.md', '# A\n\nhello');
-    const shaA = gitCommit(root, 'A');
 
-    await request(app).post(`/corpus/${did}/crawl`).send({ source: 'local:workspace' }).expect(200);
+    await crawl(app, 'local:workspace').expect(200);
 
     const searchAtA = await request(app)
       .post(`/corpus/${did}/search`)
+      .set('Authorization', authFor(did, 'corpus:read'))
       .send({ query: 'hello', source: 'local:workspace', ref: shaA });
     expect(searchAtA.status).toBe(200);
     expect(searchAtA.body.totalHits).toBe(1);
@@ -224,6 +219,7 @@ describe('local:workspace routes', () => {
     const unknownRef = '0'.repeat(40);
     const notFound = await request(app)
       .post(`/corpus/${did}/search`)
+      .set('Authorization', authFor(did, 'corpus:read'))
       .send({ query: 'hello', source: 'local:workspace', ref: unknownRef });
     expect(notFound.status).toBe(404);
     expect(notFound.body.error).toMatch(new RegExp(unknownRef));
