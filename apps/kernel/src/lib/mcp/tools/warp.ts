@@ -30,7 +30,7 @@
 import type { McpTool } from '../types';
 import { str, num, json } from './utils';
 import { sealWarpAgentKey, WARP_DISPATCH_SCOPE } from '@/src/lib/warp/connector';
-import type { CorpusContextInput } from '@/src/lib/warp/corpus-context';
+import { CORPUS_CONTEXT_MAX_LIMIT, type CorpusContextInput } from '@/src/lib/warp/corpus-context';
 import {
   cancelAgentRun,
   dispatchAgentRun,
@@ -43,9 +43,6 @@ import {
   type WarpFollowupMode,
   type WarpMcpServerConfig,
 } from '@/src/lib/warp/dispatch';
-
-/** Upper bound `corpus_context.limit` is clamped to (mirrors corpus-context.ts). */
-const CORPUS_CONTEXT_MAX_LIMIT = 20;
 
 /**
  * The `run_id` argument, or a throw naming the field that was missing.

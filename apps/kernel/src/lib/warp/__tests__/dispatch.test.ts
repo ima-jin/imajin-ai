@@ -79,7 +79,6 @@ import {
   WarpApiError,
 } from '../dispatch';
 import { CorpusContextError } from '../corpus-context';
-import { CorpusServiceError } from '../../kernel/corpus-client';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -650,7 +649,7 @@ describe('dispatch corpusContext', () => {
   });
 
   it('maps a corpus 401 (bad access claim) to a 400-class CorpusContextError, and creates no run', async () => {
-    searchCorpusMock.mockRejectedValue(new CorpusServiceError(401, 'invalid claim'));
+    searchCorpusMock.mockRejectedValue(new MockCorpusServiceError(401, 'invalid claim'));
 
     const err = (await dispatchAgentRun(PRINCIPAL, {
       prompt: 'go',
@@ -664,7 +663,7 @@ describe('dispatch corpusContext', () => {
   });
 
   it('maps a corpus 404 (unknown ref) to a 400-class CorpusContextError, and creates no run', async () => {
-    searchCorpusMock.mockRejectedValue(new CorpusServiceError(404, 'no indexed snapshot for that ref'));
+    searchCorpusMock.mockRejectedValue(new MockCorpusServiceError(404, 'no indexed snapshot for that ref'));
 
     const err = (await dispatchAgentRun(PRINCIPAL, {
       prompt: 'go',
@@ -677,7 +676,7 @@ describe('dispatch corpusContext', () => {
   });
 
   it('maps a corpus 500 to a 502-class CorpusContextError, and creates no run', async () => {
-    searchCorpusMock.mockRejectedValue(new CorpusServiceError(500, 'internal error'));
+    searchCorpusMock.mockRejectedValue(new MockCorpusServiceError(500, 'internal error'));
 
     const err = (await dispatchAgentRun(PRINCIPAL, {
       prompt: 'go',

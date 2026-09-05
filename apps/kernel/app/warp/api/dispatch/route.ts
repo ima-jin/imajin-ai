@@ -48,7 +48,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
-import type { CorpusContextInput } from '@/src/lib/warp/corpus-context';
+import { CORPUS_CONTEXT_MAX_LIMIT, type CorpusContextInput } from '@/src/lib/warp/corpus-context';
 import {
   dispatchAgentRun,
   watchRun,
@@ -57,8 +57,6 @@ import {
 } from '@/src/lib/warp/dispatch';
 import { warpErrorResponse } from '@/src/lib/warp/route-errors';
 
-/** Upper bound Warp corpus-context search results are clamped to (mirrors corpus-context.ts). */
-const CORPUS_CONTEXT_MAX_LIMIT = 20;
 /** Upper bound on `corpusContext.maxChars` accepted from a caller before it is treated as malformed. */
 const CORPUS_CONTEXT_MAX_CHARS_CEILING = 100_000;
 
