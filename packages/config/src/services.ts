@@ -46,6 +46,7 @@ export const SERVICES: readonly ServiceDefinition[] = [
   { name: "media",       label: "Media",       icon: "📁", description: "Files, images, and .fair attribution",               devPort: 3000, prodPort: 7000, schema: "media",       tier: "core",   visibility: "authenticated", category: "kernel" },
   { name: "registry",    label: "Registry",    icon: "📡", description: "Service registry and DFOS relay",                    devPort: 3000, prodPort: 7000, schema: "registry",    tier: "core",   visibility: "public",        category: "kernel" },
   { name: "notify",      label: "Notify",      icon: "🔔", description: "Notifications and preferences",                     devPort: 3000, prodPort: 7000, schema: "notify",      tier: "core",   visibility: "internal",      category: "kernel" },
+  { name: "usage",       label: "Usage",       icon: "📊", description: "Inference cost ledger — incurred, billed, drift, signed rollup", devPort: 3000, prodPort: 7000, schema: "usage",       tier: "core",   visibility: "authenticated", category: "kernel" },
 
   // Core apps — separate processes
   { name: "events",      label: "Events",      icon: "🎫", description: "Event creation, ticketing, and management",         devPort: 3006, prodPort: 7006, schema: "events",      tier: "core",   visibility: "public",        category: "core" },

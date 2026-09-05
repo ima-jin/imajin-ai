@@ -34,6 +34,13 @@ describe('usageBilled drizzle schema', () => {
       billedUsd: 'billed_usd',
       raw: 'raw',
       fetchedAt: 'fetched_at',
+      source: 'source',
+      currency: 'currency',
+      amountMinor: 'amount_minor',
+      category: 'category',
+      description: 'description',
+      evidenceAssetId: 'evidence_asset_id',
+      evidenceContentHash: 'evidence_content_hash',
     });
   });
 
@@ -51,6 +58,35 @@ describe('usageBilled drizzle schema', () => {
     expect(columns.tokensOut.notNull).toBe(false);
     expect(columns.billedUsd.notNull).toBe(false);
     expect(columns.raw.notNull).toBe(false);
+  });
+
+  it('#2030: requires source/currency (defaulted) and leaves the manual/backfill fields nullable', () => {
+    const columns = getTableColumns(usageBilled);
+
+    expect(columns.source.notNull).toBe(true);
+    expect(columns.currency.notNull).toBe(true);
+
+    expect(columns.amountMinor.notNull).toBe(false);
+    expect(columns.category.notNull).toBe(false);
+    expect(columns.description.notNull).toBe(false);
+    expect(columns.evidenceAssetId.notNull).toBe(false);
+    expect(columns.evidenceContentHash.notNull).toBe(false);
+  });
+});
+
+describe('migrations/0125_usage_billed_manual.sql (#2030)', () => {
+  const sql = readFileSync(resolve(__dirname, '../../../../../../migrations/0125_usage_billed_manual.sql'), 'utf-8');
+
+  it('adds every manual/backfill column idempotently, defaulting source/currency for existing api rows', () => {
+    expect(sql).toMatch(/ALTER TABLE usage\.billed ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'api'/);
+    expect(sql).toMatch(/ALTER TABLE usage\.billed ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'USD'/);
+    for (const column of ['amount_minor\\s+BIGINT', 'category\\s+TEXT', 'description\\s+TEXT', 'evidence_asset_id\\s+TEXT', 'evidence_content_hash\\s+TEXT']) {
+      expect(sql).toMatch(new RegExp(`ALTER TABLE usage\\.billed ADD COLUMN IF NOT EXISTS ${column}`));
+    }
+  });
+
+  it('never touches usage.incurred or edits migration 0122', () => {
+    expect(sql).not.toMatch(/ALTER TABLE usage\.incurred/);
   });
 });
 

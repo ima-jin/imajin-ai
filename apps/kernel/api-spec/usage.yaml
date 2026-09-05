@@ -1,0 +1,263 @@
+openapi: "3.1.0"
+info:
+  title: imajin usage
+  version: "1.0.0"
+  description: |
+    Read API over the Agent Resource-Accounting Layer ledger (#2030, under
+    the "one signed inference cost to date" goal, #2029): `usage.incurred`
+    (our meter), `usage.billed` (the counterparty's statement, including
+    manual/backfill entries), the drift between them, and the publicly
+    verifiable `usage.rollup` attestation. Runs as a kernel service at
+    /{service}/api/... on a shared node domain.
+servers:
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: usage
+  - url: http://localhost:3000/{service}
+    description: local development
+
+tags:
+  - name: usage
+    description: imajin usage service
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Bearer token (session JWT or app token)"
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+    UsageRollupPointer:
+      type: object
+      nullable: true
+      properties:
+        attestationId: { type: string }
+        signedAt: { type: string, format: date-time }
+    UsageSummary:
+      type: object
+      properties:
+        did: { type: string }
+        window: { type: string, description: "YYYY-MM or YYYY-MM-DD..YYYY-MM-DD (UTC), as resolved" }
+        incurred:
+          type: object
+          properties:
+            total: { type: number, description: "USD" }
+            byProvider: { type: object, additionalProperties: { type: number } }
+        billed:
+          type: object
+          properties:
+            total: { type: number, description: "USD" }
+            byVendor: { type: object, additionalProperties: { type: number } }
+            bySource: { type: object, additionalProperties: { type: number }, description: "keyed by 'api' | 'manual' | 'document'" }
+        drift: { type: number, description: "USD; sum of lib/usage/reconciliation's driftUsd for the same window" }
+        rollup: { $ref: "#/components/schemas/UsageRollupPointer" }
+        currency: { type: string, default: USD }
+    UsageRollupAttestation:
+      type: object
+      description: |
+        The stored attestation as a self-verifiable envelope: every field
+        the signature covers, unmodified. To verify, canonicalize
+        `{ subject_did: subjectDid, type, context_id: contextId,
+        context_type: contextType, payload, issued_at: issuedAtMs }` (the
+        same deterministic-key-order canonicalization
+        `emitMechanicalAttestation` signed with) and check `signature`
+        against the issuer's Ed25519 public key.
+      properties:
+        id: { type: string, description: "att_xxx" }
+        type: { type: string, description: "always 'usage.rollup'" }
+        issuerDid: { type: string, description: "the signing node's own DID" }
+        subjectDid: { type: string, description: "the principal DID the rollup is about" }
+        contextId: { type: string, nullable: true }
+        contextType: { type: string, nullable: true }
+        payload:
+          type: object
+          description: "The stored payload verbatim (windowStart, windowEnd, totalCostEstimateUsd, breakdown, ...) — see lib/usage/rollup.ts."
+        issuedAt: { type: string, format: date-time, description: "ISO 8601, for humans" }
+        issuedAtMs: { type: integer, description: "epoch milliseconds — the exact issued_at value the signature covers" }
+        signature: { type: string, description: "Ed25519 hex, verifiable against issuerDid's public key" }
+        cid: { type: string, nullable: true, description: "dag-cbor CID of the canonical attestation, when computed" }
+    BilledLineItem:
+      type: object
+      properties:
+        id: { type: string, description: "billed_xxx" }
+        principalDid: { type: string }
+        vendor: { type: string }
+        periodStart: { type: string, format: date-time }
+        periodEnd: { type: string, format: date-time }
+        amountMinor: { type: integer, description: "minor units (e.g. cents)" }
+        currency: { type: string, description: "stored verbatim; no FX conversion" }
+        category: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        source: { type: string, enum: [manual, document] }
+        evidenceAssetId: { type: string, nullable: true }
+        evidenceContentHash: { type: string, nullable: true, description: "media.assets.hash snapshot at write time" }
+        attestationId: { type: string, nullable: true, description: "the usage.billed attestation binding this line item" }
+
+paths:
+  /api/summary:
+    get:
+      tags: [usage]
+      operationId: getUsageSummary
+      summary: Read incurred/billed/drift/rollup for one (did, window)
+      description: |
+        Auth: the caller must be the principal or a registered agent already
+        delegated to it via `actingFor` — `did` defaults to the caller's own
+        effective DID; supplying any other DID is Forbidden.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: query
+          schema: { type: string }
+          description: "Defaults to the caller's own effective DID"
+        - name: window
+          in: query
+          schema: { type: string }
+          description: "YYYY-MM or YYYY-MM-DD..YYYY-MM-DD (UTC); defaults to the current UTC month"
+      responses:
+        "200":
+          description: Usage summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageSummary" }
+        "400":
+          description: Malformed window
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Forbidden — can only access your own usage summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/rollup/{did}/latest:
+    get:
+      tags: [usage]
+      operationId: getLatestUsageRollup
+      summary: Public signed usage.rollup attestation for a DID
+      description: |
+        PUBLIC, unauthenticated. Returns the most recent `usage.rollup`
+        attestation for the DID exactly as stored — no recomputation. The
+        signature verifies against `issuerDid` (the signing node's own DID).
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: "URL-encoded DID"
+        - name: window
+          in: query
+          schema: { type: string }
+          description: "YYYY-MM-DD (UTC) — fetch the rollup for that specific day instead of the newest one"
+      responses:
+        "200":
+          description: The stored rollup attestation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageRollupAttestation" }
+        "400":
+          description: Malformed window
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No usage.rollup attestation found for this DID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/billed:
+    post:
+      tags: [usage]
+      operationId: recordManualBilledLine
+      summary: Record a manual/backfill usage.billed line item
+      description: |
+        Widens #1951 D4 "manual entry v1". Auth: requireAuth + actingFor,
+        onBehalfOf the resolved principal DID. `periodStart`/`periodEnd` may
+        be in the past (backfill). Writes ONE `usage.billed` row plus a
+        `usage.billed` attestation on the principal's own DID binding the
+        line item — NEVER writes to `usage.incurred` (D5: never merge, only
+        reconcile).
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vendor, periodStart, periodEnd, amountMinor, currency, source]
+              properties:
+                vendor: { type: string, maxLength: 128 }
+                periodStart: { type: string, format: date-time, description: "must be <= periodEnd" }
+                periodEnd: { type: string, format: date-time }
+                amountMinor: { type: integer, minimum: 0, description: "minor units (e.g. cents); must be >= 0" }
+                currency: { type: string, pattern: "^[A-Z]{3}$", description: "ISO 4217-shaped; only 'USD' is accepted until #1950 lands" }
+                category: { type: string, maxLength: 64 }
+                description: { type: string, maxLength: 1024 }
+                source: { type: string, enum: [manual, document] }
+                evidenceAssetId: { type: string, description: "media.assets.id — REQUIRED when source=document; optional (and ignored if absent) for source=manual" }
+      responses:
+        "201":
+          description: Line item recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BilledLineItem" }
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Forbidden — evidenceAssetId is not owned by the principal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: evidenceAssetId does not reference an active asset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: A usage.billed line item already exists for this vendor and period
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/spec:
+    get:
+      tags: [usage]
+      operationId: getSpec
+      summary: Serve the OpenAPI spec YAML
+      responses:
+        "200":
+          description: OpenAPI YAML
+          content:
+            text/yaml:
+              schema: { type: string }

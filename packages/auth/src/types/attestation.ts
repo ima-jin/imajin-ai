@@ -97,6 +97,14 @@ export const ATTESTATION_TYPES = [
   'usage.incurred',
   'usage.rollup',
 
+  // Manual/backfill `usage.billed` line item (#2030, widening #1951 D4).
+  // Minted by the platform node identity when POST /usage/api/billed writes
+  // a line item on the principal's own DID — binds the vendor/period/amount
+  // (and, when present, the evidence asset's content hash) to a durable
+  // signed record. System-class (see MECHANICAL_ATTESTATION_TYPES below):
+  // this is proof-of-history for the write, never a bilateral claim.
+  'usage.billed',
+
   // Device tracking & new-device login alerts (#306) — minted by the
   // platform node identity whenever a session records a device fingerprint
   // it has not seen before for that DID (including the very first device).
@@ -142,6 +150,8 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #1147/#1148 attestationClass: 'system' facts — see ATTESTATION_TYPES above.
   'usage.incurred',
   'usage.rollup',
+  // #2030 — see ATTESTATION_TYPES above.
+  'usage.billed',
   // #306 — see ATTESTATION_TYPES above.
   'session.device.new',
   // #1250 Phase 1 — see ATTESTATION_TYPES above.
