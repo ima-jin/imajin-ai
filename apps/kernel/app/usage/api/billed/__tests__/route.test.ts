@@ -107,18 +107,12 @@ describe('POST /usage/api/billed — body validation', () => {
     expect(res.status).toBe(201);
   });
 
-  it('rejects a missing currency', async () => {
-    const res = await POST(makeReq(goodBody({ currency: '' })));
-    expect(res.status).toBe(400);
-  });
-
-  it('rejects a lowercase currency code', async () => {
-    const res = await POST(makeReq(goodBody({ currency: 'usd' })));
-    expect(res.status).toBe(400);
-  });
-
-  it('rejects a currency code that is not 3 letters', async () => {
-    const res = await POST(makeReq(goodBody({ currency: 'DOLLARS' })));
+  it.each([
+    ['', 'missing'],
+    ['usd', 'lowercase'],
+    ['DOLLARS', 'not 3 letters'],
+  ])('rejects a malformed currency code %j (%s)', async (currency) => {
+    const res = await POST(makeReq(goodBody({ currency })));
     expect(res.status).toBe(400);
   });
 
