@@ -12,16 +12,24 @@ tags:
 
 components:
   securitySchemes:
-    kernelProxyOnly:
+    ImajinClaim:
       type: apiKey
       in: header
-      name: (none)
+      name: Authorization
       description: >-
-        This service accepts no credential of its own. Every /corpus/:did/*
-        route trusts its :did path parameter as given — auth is enforced one
-        layer up, by the kernel MCP proxy (apps/kernel/src/lib/mcp/tools/corpus.ts),
-        which requires an active corpus:read/corpus:write grant before it
-        forwards a call here over the internal network.
+        `Authorization: Imajin-Claim <base64url-encoded claim>.<ed25519 signature>`.
+        A short-lived (60s, 5-minute hard ceiling) CorpusAccessClaim minted by
+        the kernel (apps/kernel/src/lib/kernel/corpus-access-claim.ts) after its
+        own corpus:read/corpus:write scope gate passes, using the kernel's
+        existing node DID key (AUTH_PRIVATE_KEY) — no new keypair. The claim is
+        scoped to exactly the :did in the request path and carries alg, aud,
+        scope, issuedAt, expiresAt, and a nonce. Corpus verifies the signature
+        against an env-pinned public key (CORPUS_KERNEL_PUBLIC_KEY — corpus
+        never holds or derives the kernel's private key), plus alg, aud,
+        expiry, nonce replay, and that the claim's DID matches :did, before
+        serving any /corpus/:did/* route (apps/corpus/src/middleware/access-claim.ts).
+        Rejects with 401 on missing/invalid/expired/wrong-alg/wrong-aud claims,
+        403 on a DID mismatch.
   schemas:
     Error:
       type: object
@@ -36,6 +44,7 @@ paths:
       operationId: health
       summary: Liveness check for the corpus service.
       description: Public and unauthenticated by design — used for process/container health probes only.
+      security: []
       responses:
         "200":
           description: Service is up
@@ -53,6 +62,7 @@ paths:
       operationId: getSpec
       summary: Serve this OpenAPI spec (YAML) so discovery tooling can enumerate corpus's routes.
       description: Public and unauthenticated by design, matching every sibling service's /spec (or /{service}/api/spec) route.
+      security: []
       responses:
         "200":
           description: OpenAPI YAML spec
@@ -65,8 +75,9 @@ paths:
       tags: [corpus]
       operationId: corpusStatus
       summary: Report indexed sources, thread counts, and freshness for a DID's corpus.
-      description: No auth enforced at this layer — see kernelProxyOnly. Today this route answers for any :did without a scope check.
-      security: []
+      description: Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:read to this :did; minted by the kernel's corpus_status MCP tool / dashboard client.
+      security:
+        - ImajinClaim: []
       parameters:
         - name: did
           in: path
@@ -88,8 +99,9 @@ paths:
       tags: [corpus]
       operationId: corpusSearch
       summary: Search a DID's corpus for threads matching a query, returning scored evidence excerpts.
-      description: No auth enforced at this layer — proxied only via the kernel MCP corpus_search tool, which requires corpus:read.
-      security: []
+      description: Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:read to this :did; minted by the kernel MCP corpus_search tool.
+      security:
+        - ImajinClaim: []
       parameters:
         - name: did
           in: path
@@ -129,8 +141,9 @@ paths:
       tags: [corpus]
       operationId: corpusIngest
       summary: Ingest raw ThreadDocument[] directly, or crawl+ingest a `{ source }` (local:workspace or github:owner/repo).
-      description: No auth enforced at this layer — proxied only via the kernel MCP corpus_load tool, which requires corpus:write.
-      security: []
+      description: Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:write to this :did; minted by the kernel MCP corpus_load tool.
+      security:
+        - ImajinClaim: []
       parameters:
         - name: did
           in: path
@@ -168,8 +181,9 @@ paths:
       tags: [corpus]
       operationId: corpusRegisterSource
       summary: Register a source (`{ source, type }`) and perform its initial full crawl — the GitHub adapter's entry point (#1729).
-      description: No auth enforced at this layer — not yet proxied by a kernel MCP tool; called directly today.
-      security: []
+      description: Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:write to this :did. Not yet proxied by a kernel MCP tool — a caller must mint its own claim directly today.
+      security:
+        - ImajinClaim: []
       parameters:
         - name: did
           in: path
@@ -205,8 +219,9 @@ paths:
       tags: [corpus]
       operationId: corpusSync
       summary: Incrementally sync a previously-registered `{ source, cursor }` (local:workspace or github:owner/repo).
-      description: No auth enforced at this layer — proxied only via the kernel MCP corpus_sync tool, which requires corpus:write.
-      security: []
+      description: Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:write to this :did; minted by the kernel MCP corpus_sync tool.
+      security:
+        - ImajinClaim: []
       parameters:
         - name: did
           in: path
@@ -243,8 +258,9 @@ paths:
       tags: [corpus]
       operationId: corpusCrawl
       summary: Full crawl+ingest of a `{ source }` (local:workspace or github:owner/repo), without registering it.
-      description: No auth enforced at this layer — not yet proxied by a kernel MCP tool; called directly today.
-      security: []
+      description: Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:write to this :did. Not yet proxied by a kernel MCP tool — a caller must mint its own claim directly today.
+      security:
+        - ImajinClaim: []
       parameters:
         - name: did
           in: path
@@ -279,8 +295,9 @@ paths:
       tags: [corpus]
       operationId: corpusDeleteSource
       summary: Delete every indexed thread for a `{ source }` from a DID's corpus.
-      description: No auth enforced at this layer — not yet proxied by a kernel MCP tool; called directly today.
-      security: []
+      description: Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:write to this :did; minted by the kernel's corpus-client.ts (dashboard delete flow).
+      security:
+        - ImajinClaim: []
       parameters:
         - name: did
           in: path

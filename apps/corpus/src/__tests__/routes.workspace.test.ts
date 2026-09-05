@@ -19,6 +19,18 @@ function authFor(subjectDid: string, scope: TestClaimScope = 'corpus:write'): st
   return mintTestClaimHeader(KERNEL_KEYPAIR.privateKey, { did: subjectDid, scope });
 }
 
+type TestApp = ReturnType<typeof createCorpusApp>;
+
+/** `POST /corpus/:did/crawl` with a valid claim, for `did` above. */
+function crawl(app: TestApp, source: string) {
+  return request(app).post(`/corpus/${did}/crawl`).set('Authorization', authFor(did)).send({ source });
+}
+
+/** `POST /corpus/:did/search` with a valid claim, for `did` above. */
+function search(app: TestApp, query: string) {
+  return request(app).post(`/corpus/${did}/search`).set('Authorization', authFor(did, 'corpus:read')).send({ query });
+}
+
 function writeWorkspaceFile(workspacesDir: string, relPath: string, content: string): string {
   const root = workspaceRootForDid(did, { workspacesDir });
   const absolutePath = join(root, relPath);
@@ -52,17 +64,11 @@ describe('local:workspace routes', () => {
   it('POST /corpus/:did/crawl indexes workspace files and search returns them', async () => {
     writeWorkspaceFile(workspacesDir, 'guide.md', '# Setup guide\n\nRun the installer to get started.');
 
-    const crawlResponse = await request(app)
-      .post(`/corpus/${did}/crawl`)
-      .set('Authorization', authFor(did))
-      .send({ source: 'local:workspace' });
+    const crawlResponse = await crawl(app, 'local:workspace');
     expect(crawlResponse.status).toBe(200);
     expect(crawlResponse.body).toEqual({ ingested: 1 });
 
-    const searchResponse = await request(app)
-      .post(`/corpus/${did}/search`)
-      .set('Authorization', authFor(did, 'corpus:read'))
-      .send({ query: 'installer' });
+    const searchResponse = await search(app, 'installer');
     expect(searchResponse.status).toBe(200);
     expect(searchResponse.body.totalHits).toBe(1);
     expect(searchResponse.body.results[0]).toMatchObject({ id: 'guide.md', title: 'Setup guide' });
@@ -89,17 +95,11 @@ describe('local:workspace routes', () => {
   it('supports "local:workspace/<subdir>" sources', async () => {
     writeWorkspaceFile(workspacesDir, 'docs/guide.md', '# Docs guide\n\nSubdirectory content.');
 
-    const crawlResponse = await request(app)
-      .post(`/corpus/${did}/crawl`)
-      .set('Authorization', authFor(did))
-      .send({ source: 'local:workspace/docs' });
+    const crawlResponse = await crawl(app, 'local:workspace/docs');
     expect(crawlResponse.status).toBe(200);
     expect(crawlResponse.body).toEqual({ ingested: 1 });
 
-    const searchResponse = await request(app)
-      .post(`/corpus/${did}/search`)
-      .set('Authorization', authFor(did, 'corpus:read'))
-      .send({ query: 'subdirectory' });
+    const searchResponse = await search(app, 'subdirectory');
     expect(searchResponse.body.results[0].source).toBe('local:workspace/docs');
   });
 

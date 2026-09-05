@@ -35,6 +35,7 @@ describe('mintCorpusAccessClaim', () => {
       did: 'did:imajin:alice',
       scope: 'corpus:read',
       aud: 'corpus',
+      alg: 'Ed25519',
       issuerDid: 'did:imajin:testnode',
     });
     expect(typeof claim.nonce).toBe('string');

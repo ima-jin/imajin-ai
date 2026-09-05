@@ -1,7 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { crypto as authCrypto } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { createAccessClaimMiddleware } from '../access-claim';
 import { mintTestClaimHeader } from '../../__tests__/support/mint-test-claim';
 
@@ -64,6 +64,38 @@ describe('createAccessClaimMiddleware', () => {
   it('rejects a claim with the wrong audience with 401', async () => {
     const app = buildApp();
     const header = mintTestClaimHeader(KERNEL_KEYPAIR.privateKey, { did: 'did:example:alice', aud: 'media' });
+
+    const response = await request(app).get('/corpus/did:example:alice/status').set('Authorization', header);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('rejects a claim with an unsupported alg with 401', async () => {
+    const app = buildApp();
+    const header = mintTestClaimHeader(KERNEL_KEYPAIR.privateKey, { did: 'did:example:alice', alg: 'HS256' });
+
+    const response = await request(app).get('/corpus/did:example:alice/status').set('Authorization', header);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('rejects a claim missing alg entirely with 401', async () => {
+    const app = buildApp();
+    const issuedAt = Date.now();
+    // Built by hand (not via mintTestClaimHeader, which always fills in `alg`)
+    // so the encoded claim genuinely lacks the field, not just an override.
+    const claimWithoutAlg = {
+      did: 'did:example:alice',
+      scope: 'corpus:read',
+      aud: 'corpus',
+      issuerDid: 'did:imajin:test-kernel',
+      issuedAt,
+      expiresAt: issuedAt + 60_000,
+      nonce: 'no-alg-nonce',
+    };
+    const encodedClaim = Buffer.from(canonicalize(claimWithoutAlg), 'utf8').toString('base64url');
+    const signature = authCrypto.signSync(encodedClaim, KERNEL_KEYPAIR.privateKey);
+    const header = `Imajin-Claim ${encodedClaim}.${signature}`;
 
     const response = await request(app).get('/corpus/did:example:alice/status').set('Authorization', header);
 

@@ -139,7 +139,13 @@ describe('CorpusAccessClaim attachment', () => {
 
     const [, init] = fetchMock.mock.calls[0];
     const claim = decodeClaimHeader(init.headers.Authorization);
-    expect(claim).toMatchObject({ did: 'did:imajin:alice', scope: 'corpus:read', aud: 'corpus', issuerDid: 'did:imajin:testnode' });
+    expect(claim).toMatchObject({
+      did: 'did:imajin:alice',
+      scope: 'corpus:read',
+      aud: 'corpus',
+      alg: 'Ed25519',
+      issuerDid: 'did:imajin:testnode',
+    });
     expect(claim.expiresAt as number).toBeGreaterThan(claim.issuedAt as number);
   });
 

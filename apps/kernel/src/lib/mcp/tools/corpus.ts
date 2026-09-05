@@ -21,22 +21,19 @@
  */
 import type { McpTool } from '../types';
 import { str, num, json } from './utils';
-import { corpusAccessClaimHeader, type CorpusAccessScope } from '../../kernel/corpus-access-claim';
+import type { CorpusAccessScope } from '../../kernel/corpus-access-claim';
+import { corpusErrorMessage, corpusHttpRequest } from '../../kernel/corpus-http';
 
 // ── HTTP proxy ─────────────────────────────────────────────────────────────
-
-/** Base URL of the corpus service (internal network only). */
-function corpusServiceUrl(): string {
-  return process.env.CORPUS_SERVICE_URL || 'http://localhost:8003';
-}
 
 /**
  * Call `/corpus/:did/<path>` on the corpus service and return the parsed JSON
  * body. Every call carries a fresh, kernel-signed `CorpusAccessClaim` (#1772)
- * scoped to `did`/`scope`, so the corpus service can verify the caller may
- * act as `did` without a per-request callback to the kernel. Throws on a
- * non-2xx response so the MCP dispatch's try/catch in server.ts turns it into
- * an in-band `isError` result, same as every other tool's failure path.
+ * scoped to `did`/`scope` (see `corpus-http.ts`, shared with the dashboard's
+ * `corpus-client.ts`), so the corpus service can verify the caller may act as
+ * `did` without a per-request callback to the kernel. Throws on a non-2xx
+ * response so the MCP dispatch's try/catch in server.ts turns it into an
+ * in-band `isError` result, same as every other tool's failure path.
  */
 async function corpusRequest(
   method: 'GET' | 'POST',
@@ -45,33 +42,11 @@ async function corpusRequest(
   path: string,
   body?: unknown,
 ): Promise<unknown> {
-  const url = `${corpusServiceUrl()}/corpus/${encodeURIComponent(did)}${path}`;
-  const response = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: await corpusAccessClaimHeader(did, scope),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-
-  let payload: unknown = null;
-  try {
-    payload = await response.json();
-  } catch {
-    // Non-JSON body (e.g. an empty error page from an intermediary). The status
-    // code alone still drives the ok/error branch below.
+  const result = await corpusHttpRequest(method, did, scope, path, body);
+  if (!result.ok) {
+    throw new Error(`corpus_service_error: ${result.status} ${corpusErrorMessage(result)}`);
   }
-
-  if (!response.ok) {
-    const errorMessage =
-      payload !== null && typeof payload === 'object' && typeof (payload as { error?: unknown }).error === 'string'
-        ? (payload as { error: string }).error
-        : response.statusText || 'request failed';
-    throw new Error(`corpus_service_error: ${response.status} ${errorMessage}`);
-  }
-
-  return payload;
+  return result.payload;
 }
 
 // ── Arg helpers ─────────────────────────────────────────────────────────────

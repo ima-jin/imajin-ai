@@ -54,7 +54,7 @@ describe('corpus-client CorpusAccessClaim attachment', () => {
 
     const [, init] = fetchMock.mock.calls[0];
     const claim = decodeClaimHeader(init.headers.Authorization);
-    expect(claim).toMatchObject({ did: 'did:imajin:alice', scope: 'corpus:read', aud: 'corpus' });
+    expect(claim).toMatchObject({ did: 'did:imajin:alice', scope: 'corpus:read', aud: 'corpus', alg: 'Ed25519' });
   });
 
   it('loadCorpusSource, syncCorpusSource, and deleteCorpusSource attach corpus:write claims', async () => {

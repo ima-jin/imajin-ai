@@ -20,10 +20,15 @@ import { crypto as authCrypto } from '@imajin/auth';
 
 export type CorpusAccessScope = 'corpus:read' | 'corpus:write';
 
+/** Crypto-agility rule: every signed envelope in this codebase carries `alg`. */
+const SUPPORTED_ALG = 'Ed25519';
+type SupportedAlg = typeof SUPPORTED_ALG;
+
 interface CorpusAccessClaim {
   did: string;
   scope: CorpusAccessScope;
   aud: 'corpus';
+  alg: SupportedAlg;
   issuerDid: string;
   issuedAt: number;
   expiresAt: number;
@@ -41,13 +46,14 @@ interface EncodedClaim {
 }
 
 function parseClaimHeader(header: string | undefined): EncodedClaim | null {
-  if (!header || !header.startsWith(CLAIM_SCHEME_PREFIX)) return null;
+  if (!header?.startsWith(CLAIM_SCHEME_PREFIX)) return null;
   const token = header.slice(CLAIM_SCHEME_PREFIX.length);
   const separatorIndex = token.lastIndexOf('.');
   if (separatorIndex <= 0 || separatorIndex === token.length - 1) return null;
   return { encodedClaim: token.slice(0, separatorIndex), signature: token.slice(separatorIndex + 1) };
 }
 
+/** Rejects any claim whose `alg` isn't the one algorithm this verifier trusts today. */
 function isCorpusAccessClaimShape(value: unknown): value is CorpusAccessClaim {
   if (typeof value !== 'object' || value === null) return false;
   const claim = value as Record<string, unknown>;
@@ -55,6 +61,7 @@ function isCorpusAccessClaimShape(value: unknown): value is CorpusAccessClaim {
     typeof claim.did === 'string' &&
     (claim.scope === 'corpus:read' || claim.scope === 'corpus:write') &&
     claim.aud === 'corpus' &&
+    claim.alg === SUPPORTED_ALG &&
     typeof claim.issuerDid === 'string' &&
     typeof claim.issuedAt === 'number' &&
     typeof claim.expiresAt === 'number' &&
@@ -76,7 +83,24 @@ function isExpired(claim: CorpusAccessClaim, now: number): boolean {
   return now > claim.expiresAt || ttl <= 0 || ttl > MAX_CLAIM_TTL_MS;
 }
 
-/** Tracks nonces seen within their own claim's validity window; swept lazily. */
+/** Hard cap on tracked nonces, independent of the lazy expiry sweep below. */
+const MAX_TRACKED_NONCES = 10_000;
+
+/**
+ * Tracks nonces seen within their own claim's validity window; swept lazily.
+ *
+ * Single-instance, in-memory only: state lives in process memory and is lost
+ * on restart / not shared across replicas. That's an accepted trade-off given
+ * claims are short-lived (≤5min) and corpus runs as a single process today —
+ * revisit if corpus is ever horizontally scaled behind a load balancer.
+ *
+ * The expiry-based sweep in `isReplay` bounds steady-state size, but a burst
+ * of many distinct (non-repeating) nonces arriving faster than they expire
+ * could otherwise grow the map unbounded before any of them are swept. The
+ * `MAX_TRACKED_NONCES` cap below evicts the oldest entries (Map preserves
+ * insertion order) once that happens, trading replay protection for bounded
+ * memory rather than growing without limit.
+ */
 class NonceReplayGuard {
   private readonly seen = new Map<string, number>();
 
@@ -86,6 +110,12 @@ class NonceReplayGuard {
       if (seenExpiresAt <= now) this.seen.delete(seenNonce);
     }
     if (this.seen.has(nonce)) return true;
+
+    while (this.seen.size >= MAX_TRACKED_NONCES) {
+      const oldestNonce = this.seen.keys().next().value;
+      if (oldestNonce === undefined) break;
+      this.seen.delete(oldestNonce);
+    }
     this.seen.set(nonce, expiresAt);
     return false;
   }
@@ -100,6 +130,13 @@ export function createAccessClaimMiddleware(): RequestHandler {
   const replayGuard = new NonceReplayGuard();
 
   return function verifyAccessClaim(request: Request, response: Response, next: NextFunction): void {
+    // Env-pinned, never fetched or derived at runtime: corpus must never hold
+    // (or be able to derive) the kernel's AUTH_PRIVATE_KEY (apps/kernel/.env.example),
+    // only its public half. The corpus operator sets CORPUS_KERNEL_PUBLIC_KEY
+    // to the hex Ed25519 public key matching that private key (see the module
+    // comment above for why this is env-pinned rather than resolved over the
+    // network). Documented in apps/corpus/.env.example, landing via #2022 —
+    // not added here to avoid clobbering that concurrent change.
     const kernelPublicKey = process.env.CORPUS_KERNEL_PUBLIC_KEY;
     if (!kernelPublicKey) {
       response.status(401).json({ error: 'corpus service misconfigured: no trusted kernel public key' });

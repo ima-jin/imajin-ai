@@ -38,11 +38,20 @@ const CORPUS_ACCESS_CLAIM_TTL_MS = 60_000;
 /** Fixed audience so a claim minted for corpus can never be replayed at another service. */
 const CORPUS_ACCESS_CLAIM_AUDIENCE = 'corpus';
 
+/**
+ * Crypto-agility rule: every signed envelope in this codebase carries `alg`,
+ * so a future key/algorithm rotation has somewhere to branch from instead of
+ * silently reinterpreting old and new claims the same way. Only one value
+ * exists today; the corpus verifier rejects anything else with 401.
+ */
+const CORPUS_ACCESS_CLAIM_ALG = 'Ed25519';
+
 export interface CorpusAccessClaim {
   /** DID this claim authorizes access to — must equal the `:did` path param on corpus. */
   did: string;
   scope: CorpusAccessScope;
   aud: typeof CORPUS_ACCESS_CLAIM_AUDIENCE;
+  alg: typeof CORPUS_ACCESS_CLAIM_ALG;
   /** DID of the claim issuer — the kernel's own node DID. */
   issuerDid: string;
   issuedAt: number;
@@ -75,6 +84,7 @@ export async function mintCorpusAccessClaim(did: string, scope: CorpusAccessScop
     did,
     scope,
     aud: CORPUS_ACCESS_CLAIM_AUDIENCE,
+    alg: CORPUS_ACCESS_CLAIM_ALG,
     issuerDid: await getNodeDid(),
     issuedAt,
     expiresAt: issuedAt + CORPUS_ACCESS_CLAIM_TTL_MS,

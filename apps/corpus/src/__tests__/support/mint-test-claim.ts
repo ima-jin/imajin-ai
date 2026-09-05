@@ -12,6 +12,8 @@ export interface TestClaimOverrides {
   did?: string;
   scope?: TestClaimScope;
   aud?: string;
+  /** Override to mint a claim with an unsupported/missing alg, for negative tests. */
+  alg?: string;
   issuerDid?: string;
   issuedAt?: number;
   expiresAt?: number;
@@ -27,6 +29,7 @@ export function mintTestClaimHeader(privateKey: string, overrides: TestClaimOver
     did: overrides.did ?? 'did:example:alice',
     scope: overrides.scope ?? 'corpus:read',
     aud: overrides.aud ?? 'corpus',
+    alg: overrides.alg ?? 'Ed25519',
     issuerDid: overrides.issuerDid ?? 'did:imajin:test-kernel',
     issuedAt,
     expiresAt: overrides.expiresAt ?? issuedAt + 60_000,
