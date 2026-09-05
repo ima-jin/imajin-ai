@@ -226,7 +226,71 @@ describe('background completion watch', () => {
   });
 });
 
-// ─── Failure mapping ─────────────────────────────────────────────────────────
+// ─── Corpus context body validation (#2021) ────────────────────────────
+
+describe('corpusContext body validation', () => {
+  it('omits corpusContext entirely when the caller names none', async () => {
+    await POST(makeReq({ prompt: 'go' }));
+    expect(dispatchInput()).not.toHaveProperty('corpusContext');
+  });
+
+  it('forwards a well-formed corpusContext', async () => {
+    await POST(
+      makeReq({
+        prompt: 'go',
+        corpusContext: { source: 'github:ima-jin/imajin-ai', query: 'login error', ref: 'deadbeef', limit: 5, maxChars: 2000 },
+      }),
+    );
+
+    expect(dispatchInput().corpusContext).toEqual({
+      source: 'github:ima-jin/imajin-ai',
+      query: 'login error',
+      ref: 'deadbeef',
+      limit: 5,
+      maxChars: 2000,
+    });
+  });
+
+  it('returns 400 without dispatching when corpusContext is not an object', async () => {
+    const res = await POST(makeReq({ prompt: 'go', corpusContext: 'nope' }));
+
+    expect(res.status).toBe(400);
+    expect(dispatchAgentRun).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing source', { query: 'q' }],
+    ['missing query', { source: 's' }],
+    ['blank source', { source: '   ', query: 'q' }],
+  ])('returns 400 without dispatching when corpusContext has %s', async (_label, corpusContext) => {
+    const res = await POST(makeReq({ prompt: 'go', corpusContext }));
+
+    expect(res.status).toBe(400);
+    expect(dispatchAgentRun).not.toHaveBeenCalled();
+  });
+
+  it('clamps an out-of-range limit rather than rejecting the request', async () => {
+    await POST(makeReq({ prompt: 'go', corpusContext: { source: 's', query: 'q', limit: 500 } }));
+    expect((dispatchInput().corpusContext as { limit: number }).limit).toBe(20);
+  });
+
+  it('never lets corpusContext carry a caller-supplied DID through to dispatch (#2021)', async () => {
+    await POST(
+      makeReq({
+        prompt: 'go',
+        corpusContext: { source: 's', query: 'q', did: 'did:imajin:someone-else' },
+      }),
+    );
+
+    expect(dispatchInput().corpusContext).not.toHaveProperty('did');
+    // The route always dispatches as the acting DID regardless (see the
+    // 'authentication' describe block above); this pins that corpusContext
+    // specifically has no back door around that.
+    expect(vi.mocked(dispatchAgentRun).mock.calls[0][0]).toBe(OWNER_DID);
+  });
+});
+
+// ── Failure mapping ────────────────────────────────────────────────────────────────────
 
 describe('failure mapping', () => {
   it('returns 403 when the caller holds no warp:dispatch grant', async () => {
@@ -236,6 +300,18 @@ describe('failure mapping', () => {
 
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({ error: 'warp_no_grant' });
+  });
+
+  it('maps a corpus_context_failed error to its own status and body (#2021)', async () => {
+    const { CorpusContextError } = await import('@/src/lib/warp/corpus-context');
+    vi.mocked(dispatchAgentRun).mockRejectedValueOnce(
+      new CorpusContextError('corpus_context_failed: 401 bad claim', 401, 400),
+    );
+
+    const res = await POST(makeReq({ prompt: 'go', corpusContext: { source: 's', query: 'q' } }));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'corpus_context_failed', corpusStatus: 401 });
   });
 
   it('returns 409 when no key is sealed or the grant was revoked', async () => {
