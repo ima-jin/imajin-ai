@@ -224,10 +224,13 @@ module.exports = {
     {
       // corpus is an internal-only daemon (packages/config/src/services.ts),
       // not a subdomain-routed web app, so it doesn't follow the 3xxx/7xxx
-      // dev/prod port convention. 8003 is its one canonical port — the same
-      // value kernel's CORPUS_SERVICE_URL default already points at
-      // (apps/kernel/.env.example, apps/kernel/src/lib/kernel/corpus-client.ts)
-      // — used identically in both environments (#1748, #1741, #1726).
+      // dev/prod port convention. 8003 is its canonical port — the value
+      // apps/corpus/src/index.ts defaults to and the value kernel's
+      // CORPUS_SERVICE_URL / corpus-client.ts fall back to when unset
+      // (apps/kernel/.env.example, apps/kernel/src/lib/kernel/corpus-client.ts,
+      // apps/kernel/src/lib/mcp/tools/corpus.ts). dev-jin and prod-jin run on
+      // the same host, so dev-corpus can't reuse this port — see
+      // ecosystem.dev.config.js's dev-corpus comment (#1748, #1741, #1726).
       "name": "prod-corpus",
       "cwd": "/home/jin/prod/imajin-ai/apps/corpus",
       "script": "npm",
