@@ -118,6 +118,16 @@ describe('emitMechanicalAttestation', () => {
   it('does not throw when the DB insert rejects', async () => {
     mocks.insertValuesMock.mockRejectedValueOnce(new Error('db down'));
 
-    await expect(emitMechanicalAttestation(BASE_PARAMS)).resolves.toBeUndefined();
+    await expect(emitMechanicalAttestation(BASE_PARAMS)).resolves.toBeNull();
+  });
+
+  it('returns the written attestation id on success', async () => {
+    const id = await emitMechanicalAttestation(BASE_PARAMS);
+    expect(id).toMatch(/^att_/);
+  });
+
+  it('returns null when AUTH_PRIVATE_KEY is unset', async () => {
+    delete process.env.AUTH_PRIVATE_KEY;
+    await expect(emitMechanicalAttestation(BASE_PARAMS)).resolves.toBeNull();
   });
 });

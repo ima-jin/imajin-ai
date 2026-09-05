@@ -139,16 +139,26 @@ export const usageBilled = usageSchema.table(
   {
     id: text('id').primaryKey(),                          // billed_xxx (nanoid)
     principalDid: text('principal_did').notNull(),        // owner DID whose sealed admin/billing key was used
-    provider: text('provider').notNull(),                 // 'anthropic' | 'openai'
+    provider: text('provider').notNull(),                 // 'anthropic' | 'openai' (manual/document rows: the submitted vendor name)
     periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
     periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
-    granularity: text('granularity').notNull(),           // 'day' | 'month'
+    granularity: text('granularity').notNull(),           // 'day' | 'month' | 'manual' (#2030 — see migrations/0125)
     model: text('model'),                                 // nullable: providers report per-model where available
     tokensIn: bigint('tokens_in', { mode: 'number' }),
     tokensOut: bigint('tokens_out', { mode: 'number' }),
     billedUsd: numeric('billed_usd', { precision: 20, scale: 8 }),
     raw: jsonb('raw'),                                    // the provider's line item verbatim, for audit
     fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+    // #2030 (migrations/0125_usage_billed_manual.sql) — manual/backfill write
+    // path (POST /usage/api/billed), widening #1951 D4 "manual entry v1".
+    // See that migration's header for the full column-by-column rationale.
+    source: text('source').notNull().default('api'),      // 'api' | 'manual' | 'document'
+    currency: text('currency').notNull().default('USD'),  // stored verbatim; no FX conversion (#1950 out of scope)
+    amountMinor: bigint('amount_minor', { mode: 'number' }), // submitter's original minor-unit amount (manual/document only)
+    category: text('category'),
+    description: text('description'),
+    evidenceAssetId: text('evidence_asset_id'),           // media.assets.id — optional evidence for a 'document' row
+    evidenceContentHash: text('evidence_content_hash'),   // media.assets.hash snapshot at write time
   },
   (table) => ({
     // Idempotent upsert target on re-fetch — see the migration's comment on
@@ -157,6 +167,7 @@ export const usageBilled = usageSchema.table(
       .on(table.principalDid, table.provider, table.periodStart, table.granularity, sql`COALESCE(${table.model}, '')`),
     principalIdx: index('idx_usage_billed_principal').on(table.principalDid, table.provider, table.periodStart),
     fetchedIdx: index('idx_usage_billed_fetched').on(table.fetchedAt),
+    sourceIdx: index('idx_usage_billed_source').on(table.principalDid, table.source, table.periodStart),
   }),
 );
 

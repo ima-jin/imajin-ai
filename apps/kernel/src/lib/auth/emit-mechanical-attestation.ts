@@ -36,18 +36,24 @@ export interface MechanicalAttestationParams {
  * Non-fatal by design: a missing `AUTH_PRIVATE_KEY`/node DID, a signing
  * error, or a DB failure all just skip/log rather than throw — mechanical
  * attestations are proof-of-history, never a gate the caller must react to.
+ *
+ * Returns the written attestation's id, or `null` when the write was
+ * skipped/failed — a caller that wants to surface the binding (e.g.
+ * `POST /usage/api/billed`, #2030) can report it when present without ever
+ * having to treat its absence as an error. Pre-existing callers
+ * (`emitSessionAttestation`, `emitDeviceAttestation`) simply ignore it.
  */
-export async function emitMechanicalAttestation(params: MechanicalAttestationParams): Promise<void> {
+export async function emitMechanicalAttestation(params: MechanicalAttestationParams): Promise<string | null> {
   const privateKey = process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) {
     log.warn({ type: params.type }, 'mechanical attestation skipped: AUTH_PRIVATE_KEY not set');
-    return;
+    return null;
   }
 
   const platformDid = await getNodeDid();
   if (!platformDid) {
     log.warn({ type: params.type }, 'mechanical attestation skipped: node DID not set');
-    return;
+    return null;
   }
 
   const issuedAtMs = Date.now();
@@ -60,6 +66,7 @@ export async function emitMechanicalAttestation(params: MechanicalAttestationPar
     issued_at: issuedAtMs,
   });
 
+  const id = genId("att");
   try {
     const signature = authCrypto.signSync(canonicalPayload, privateKey);
 
@@ -77,7 +84,7 @@ export async function emitMechanicalAttestation(params: MechanicalAttestationPar
     } catch { /* non-fatal */ }
 
     await db.insert(attestations).values({
-      id: genId("att"),
+      id,
       issuerDid: platformDid,
       subjectDid: params.subjectDid,
       type: params.type,
@@ -89,7 +96,9 @@ export async function emitMechanicalAttestation(params: MechanicalAttestationPar
       attestationStatus: null,
       issuedAt: new Date(issuedAtMs),
     });
+    return id;
   } catch (err) {
     log.error({ err: String(err), type: params.type }, 'mechanical attestation error');
+    return null;
   }
 }
