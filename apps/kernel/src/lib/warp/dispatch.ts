@@ -35,9 +35,24 @@
  *
  * ## Completion watch (#1639, Stage 3)
  * Warp publishes no webhooks, so {@link watchRun} polls a dispatched run until it
- * stops and puts the outcome on the bus as `warp.run.completed` (or
- * `warp.run.timeout`). That is what turns dispatch from "fire and poll by hand"
+ * stops and puts the outcome on the bus as `warp.run.completed` or
+ * `warp.run.failed`. That is what turns dispatch from "fire and poll by hand"
  * into a closed loop.
+ *
+ * ## Timeout vs. still running, and resumed segments (#2032)
+ * The in-request watch's 30-minute budget is a *watch* budget, not a verdict:
+ * when it elapses with Warp still reporting a non-terminal state, that is
+ * `warp.run.still_running`, not `warp.run.timeout` — the run may well still
+ * finish, and the scheduled fallback sweep (`run-watch-sweep.ts`) keeps
+ * checking it afterwards. `warp.run.timeout` is now reserved for the sweep's
+ * own genuinely-unresolved case (`SWEEP_LOOKBACK_MS` elapsed with still no
+ * terminal state). Separately, `send_followup`'s `resume: true` path
+ * (`warp.run.resumed`, #1939) restarts a segment on an already-terminal
+ * run’s `runId`; the sweep tracks “in flight” per-segment (latest
+ * dispatch-or-resume timestamp vs. latest terminal timestamp) rather than
+ * per-`runId` existence, so a resumed segment's own completion is observed
+ * and published — carrying `resumedFrom`/`segment` — instead of being
+ * invisible forever once the run's first segment already has a terminal row.
  *
  * ## Progress watch (#1682)
  * The same poll now also reports the run while it is still going, as
@@ -1257,11 +1272,21 @@ const FOLLOWUP_MODES: readonly WarpFollowupMode[] = ['normal', 'plan', 'orchestr
  * woken back up (#1939). Never throws: a failed audit publish must not cost
  * the resume that already happened upstream, the same invariant every other
  * `warp.*` publish in this module follows.
+ *
+ * `previousSessionId` and `newSessionId` are what let the sweep's
+ * segment-aware in-flight tracking (#2032) attach `resumedFrom` to the
+ * completion this resumed segment eventually produces — see
+ * `run-watch-sweep.ts`. Durably logging this event at all depends on
+ * `warp.run.resumed` being entitled by the `warp:dispatch` grant scope
+ * (packages/auth/src/grant-scopes.ts); without that, `deliverToSubscribers`
+ * never writes the `kernel.event_subscription_log` row the sweep reads.
  */
 async function publishRunResumed(
   principalDid: string,
   runId: string,
   previousState: string | null,
+  previousSessionId: string | null,
+  newSessionId: string | null,
   mode: WarpFollowupMode,
 ): Promise<void> {
   try {
@@ -1273,6 +1298,8 @@ async function publishRunResumed(
         runId,
         principalDid,
         previousState,
+        previousSessionId,
+        newSessionId,
         mode,
         resumedAt: new Date().toISOString(),
         context_id: runId,
@@ -1340,7 +1367,7 @@ export async function sendFollowup(
   }
 
   const mode = input.mode ?? 'normal';
-  await warpFetch(agentKey, runPath(id, '/followups'), {
+  const followupPayload = await warpFetch(agentKey, runPath(id, '/followups'), {
     method: 'POST',
     body: {
       message,
@@ -1354,7 +1381,12 @@ export async function sendFollowup(
   );
 
   if (wasTerminal && resume) {
-    await publishRunResumed(principalDid, id, current.state, mode);
+    // Best-effort only: Warp's `/followups` response for a resume has not been
+    // observed to carry the new segment's session id today, but nothing in the
+    // segment-aware in-flight tracking (#2032) depends on capturing it here —
+    // see `warp.run.resumed`'s doc in packages/bus/src/types.ts.
+    const newSessionId = optionalString(objectOrNull(followupPayload)?.session_id) ?? null;
+    await publishRunResumed(principalDid, id, current.state, current.sessionId, newSessionId, mode);
   }
 
   return { runId: id, accepted: true };
@@ -1875,7 +1907,13 @@ async function notifyIfBlocked(
 /** How a watch ended. */
 type WatchOutcome =
   | { kind: 'terminal'; run: WarpAgentRun; state: WarpRunTerminalState }
-  | { kind: 'timeout'; lastKnownState: string }
+  /**
+   * The watch's own budget elapsed while Warp still reports a non-terminal
+   * state (#2032) — NOT a Warp-side timeout, hence `elapsedMs` rather than
+   * anything implying an ending. The caller ({@link watchRun}) turns this into
+   * `warp.run.still_running`, never `warp.run.timeout`.
+   */
+  | { kind: 'timeout'; lastKnownState: string; elapsedMs: number }
   /** Reads kept failing, or failed in a way retrying cannot fix. */
   | { kind: 'abandoned'; lastKnownState: string };
 
@@ -1902,14 +1940,15 @@ async function pollUntilTerminal(
   const sleep = options.sleep ?? sleepFor;
   const reportsProgress = options.progress !== false;
 
-  const deadline = Date.now() + timeoutMs;
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutMs;
   const tracker = newProgressTracker();
   let lastKnownState = UNKNOWN_STATE;
   let consecutiveErrors = 0;
 
   for (let attempt = 0; ; attempt += 1) {
     const remaining = deadline - Date.now();
-    if (remaining <= 0) return { kind: 'timeout', lastKnownState };
+    if (remaining <= 0) return { kind: 'timeout', lastKnownState, elapsedMs: Date.now() - startedAt };
 
     await sleep(Math.min(intervals[Math.min(attempt, intervals.length - 1)], remaining));
 
@@ -1944,10 +1983,24 @@ async function pollUntilTerminal(
   }
 }
 
+/**
+ * Enrichment for a terminal event that ends a resumed segment (#2032):
+ * `resumedFrom` is the prior segment's `sessionId` and `segment` is the
+ * 1-based count of segments run so far. Supplied only by the sweep
+ * (`run-watch-sweep.ts`), which is the only caller that ever observes a
+ * resumed segment reach terminal — the in-request watch always watches
+ * segment 1, since a resume can only target an already-terminal run.
+ */
+export interface ResumeSegmentContext {
+  resumedFrom: string | null;
+  segment: number;
+}
+
 async function publishRunCompleted(
   principalDid: string,
   run: WarpAgentRun,
   state: 'SUCCEEDED' | 'CANCELLED',
+  resumeContext: ResumeSegmentContext | undefined,
 ): Promise<void> {
   await publish('warp.run.completed', {
     issuer: principalDid,
@@ -1965,6 +2018,9 @@ async function publishRunCompleted(
       sessionLink: run.sessionLink,
       principalDid,
       completedAt: new Date().toISOString(),
+      ...(resumeContext === undefined
+        ? {}
+        : { resumedFrom: resumeContext.resumedFrom, segment: resumeContext.segment }),
       // Same context as `warp.agent.dispatched`, so dispatch and completion are
       // one thread rather than two unrelated rows.
       context_id: run.runId,
@@ -1990,7 +2046,11 @@ function runStatusSummary(statusMessage: WarpRunStatusMessage | null, state: str
  * failures does not have to inspect `state` on the shared event to tell a
  * genuine failure from a clean SUCCEEDED/CANCELLED ending.
  */
-async function publishRunFailed(principalDid: string, run: WarpAgentRun): Promise<void> {
+async function publishRunFailed(
+  principalDid: string,
+  run: WarpAgentRun,
+  resumeContext: ResumeSegmentContext | undefined,
+): Promise<void> {
   await publish('warp.run.failed', {
     issuer: principalDid,
     subject: principalDid,
@@ -2008,6 +2068,9 @@ async function publishRunFailed(principalDid: string, run: WarpAgentRun): Promis
       sessionLink: run.sessionLink,
       principalDid,
       failedAt: new Date().toISOString(),
+      ...(resumeContext === undefined
+        ? {}
+        : { resumedFrom: resumeContext.resumedFrom, segment: resumeContext.segment }),
       context_id: run.runId,
       context_type: 'warp.agent',
     },
@@ -2052,17 +2115,23 @@ async function publishRunBlocked(principalDid: string, run: WarpAgentRun): Promi
  * sweep (`apps/kernel/src/lib/warp/run-watch-sweep.ts`) that picks up a run
  * whose in-request watch never got to report it — see that module's docs for
  * why one is needed at all.
+ *
+ * `resumeContext` is omitted by every single-segment caller (including
+ * {@link watchRun} always) and supplied by the sweep only when the run being
+ * finalised has a resume in its history (#2032) — see
+ * {@link ResumeSegmentContext}.
  */
 export async function publishTerminalRunOutcome(
   principalDid: string,
   run: WarpAgentRun,
   state: WarpRunTerminalState,
+  resumeContext?: ResumeSegmentContext,
 ): Promise<void> {
   if (state === 'FAILED') {
-    await publishRunFailed(principalDid, run);
+    await publishRunFailed(principalDid, run, resumeContext);
     return;
   }
-  await publishRunCompleted(principalDid, run, state);
+  await publishRunCompleted(principalDid, run, state, resumeContext);
 }
 
 /**
@@ -2073,7 +2142,17 @@ export async function publishBlockedRunOutcome(principalDid: string, run: WarpAg
   await publishRunBlocked(principalDid, run);
 }
 
-async function publishRunTimeout(
+/**
+ * Publish `warp.run.timeout` (#1639, Stage 3; narrowed by #2032).
+ *
+ * Reserved for the genuinely unresolved case now: the scheduled sweep's own
+ * `SWEEP_LOOKBACK_MS` has elapsed since the run's latest activity with still
+ * no terminal state observed. The in-request watch's own budget elapsing is
+ * NOT this any more — see {@link publishRunStillRunning} — so this is exported
+ * for `run-watch-sweep.ts` to call and is no longer called from within this
+ * module's own {@link watchRun}.
+ */
+export async function publishTimeoutRunOutcome(
   principalDid: string,
   runId: string,
   lastKnownState: string,
@@ -2094,11 +2173,47 @@ async function publishRunTimeout(
 }
 
 /**
+ * Publish `warp.run.still_running` (#2032).
+ *
+ * What the in-request watch now reports instead of `warp.run.timeout` when
+ * its own 30-minute budget elapses but Warp still reports a non-terminal
+ * state: this is not an ending, so it stays non-terminal and the run stays
+ * in the scheduled sweep's in-flight set (no terminal row is written here).
+ */
+async function publishRunStillRunning(
+  principalDid: string,
+  runId: string,
+  lastKnownState: string,
+  elapsedMs: number,
+  watchBudgetMs: number,
+): Promise<void> {
+  await publish('warp.run.still_running', {
+    issuer: principalDid,
+    subject: principalDid,
+    scope: 'warp',
+    payload: {
+      runId,
+      principalDid,
+      state: lastKnownState,
+      elapsedMs,
+      watchBudgetMs,
+      observedAt: new Date().toISOString(),
+      context_id: runId,
+      context_type: 'warp.agent',
+    },
+  });
+}
+
+/**
  * Watch a dispatched run to its end and put the outcome on the bus (#1639).
  *
- * Publishes `warp.run.completed` on a terminal state and `warp.run.timeout` when
- * the budget runs out, so an orchestrating agent never has to poll `getAgentRun`
- * by hand — which was the whole manual step this stage removes.
+ * Publishes `warp.run.completed` (or `warp.run.failed`) on a terminal state.
+ * When this watch's own 30-minute budget elapses first, it publishes
+ * `warp.run.still_running` — NOT `warp.run.timeout` (#2032) — because Warp
+ * may well still finish the run; the scheduled sweep keeps watching
+ * afterwards and is what eventually reports the true outcome, whether that
+ * is a late completion or (only after its own much longer lookback with
+ * still no terminal state) a genuine `warp.run.timeout`.
  *
  * Along the way it publishes `warp.run.progress` whenever a poll sees the run
  * move (#1682) — a state transition, new conversation messages, cost, an
@@ -2142,11 +2257,18 @@ export async function watchRun(
     }
 
     if (outcome.kind === 'timeout') {
-      log.warn(
-        { principalDid, runId: id, lastKnownState: outcome.lastKnownState },
-        'Warp run watch timed out before the run reached a terminal state',
+      const watchBudgetMs = options.timeoutMs ?? WATCH_TIMEOUT_MS;
+      log.info(
+        {
+          principalDid,
+          runId: id,
+          lastKnownState: outcome.lastKnownState,
+          elapsedMs: outcome.elapsedMs,
+          watchBudgetMs,
+        },
+        'Warp run watch budget elapsed while the run is still going; the sweep will keep watching',
       );
-      await publishRunTimeout(principalDid, id, outcome.lastKnownState);
+      await publishRunStillRunning(principalDid, id, outcome.lastKnownState, outcome.elapsedMs, watchBudgetMs);
       return;
     }
 

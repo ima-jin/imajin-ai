@@ -770,9 +770,56 @@ export interface BusEventMap {
     principalDid: string;
     /** The state the run was in before this resume, e.g. `SUCCEEDED`. */
     previousState: string | null;
+    /**
+     * The prior segment's `sessionId`, when known (#2032). This is what lets a
+     * later terminal event (`warp.run.completed`/`warp.run.failed`) for the
+     * resumed segment carry `resumedFrom` — the sweep reads the latest
+     * `warp.run.resumed` row for a runId back out of the durable log rather
+     * than re-deriving it.
+     */
+    previousSessionId: string | null;
+    /**
+     * The new segment's `sessionId`, when Warp had already rotated it by the
+     * moment this was observed. Often null: Warp may not yet have started the
+     * new segment when the follow-up is merely accepted, and nothing in the
+     * segment-aware in-flight tracking (#2032) depends on this field — that
+     * relies only on this event's own timestamp and `previousSessionId`.
+     */
+    newSessionId: string | null;
     /** The follow-up mode the resume was delivered with. */
     mode: string;
     resumedAt: string;
+    context_id: string;
+    context_type: 'warp.agent';
+  };
+  /**
+   * A dispatched Warp run's in-request watch budget elapsed while Warp still
+   * reports a non-terminal state (#2032).
+   *
+   * Replaces the old, misleading behaviour of publishing `warp.run.timeout`
+   * (a terminal event) purely because the in-request watch's 30-minute
+   * budget ran out — a run that later succeeds is not a timeout, and telling
+   * the owner it was is the false-timeout bug this event exists to fix.
+   *
+   * Deliberately non-terminal and informational only: the run stays in the
+   * sweep's in-flight set (no terminal row is written), so
+   * `run-watch-sweep.ts` keeps checking it on its own schedule until it
+   * actually reaches a terminal state — see `warp.run.completed` /
+   * `warp.run.failed` — or the sweep's own `SWEEP_LOOKBACK_MS` elapses with
+   * still no terminal state, which is what `warp.run.timeout` is now
+   * reserved for.
+   */
+  'warp.run.still_running': {
+    runId: string;
+    /** Who dispatched it — the DID whose sealed key fired and watched the run. */
+    principalDid: string;
+    /** Last known lifecycle state when the watch budget elapsed, e.g. `INPROGRESS`. */
+    state: string | null;
+    /** How long the watch actually ran before giving up, in ms. */
+    elapsedMs: number;
+    /** The watch budget that elapsed (normally `WATCH_TIMEOUT_MS`). */
+    watchBudgetMs: number;
+    observedAt: string;
     context_id: string;
     context_type: 'warp.agent';
   };
@@ -829,6 +876,19 @@ export interface BusEventMap {
     /** Who dispatched it — the DID whose sealed key fired and watched the run. */
     principalDid: string;
     completedAt: string;
+    /**
+     * The prior segment's `sessionId`, present only when this completion is
+     * for a run that was resumed via `send_followup resume: true` (#2032).
+     * Absent for an ordinary single-segment run — existing consumers that
+     * never look at this field see no change.
+     */
+    resumedFrom?: string | null;
+    /**
+     * 1-based count of segments this run has run as, when it has ever been
+     * resumed (#2032): 1 is the original dispatch, 2 is after the first
+     * resume, and so on. Absent for an ordinary single-segment run.
+     */
+    segment?: number;
     context_id: string;
     context_type: 'warp.agent';
   };
@@ -860,6 +920,10 @@ export interface BusEventMap {
     sessionLink: string | null;
     principalDid: string;
     failedAt: string;
+    /** Same resume-segment enrichment as `warp.run.completed` (#2032). */
+    resumedFrom?: string | null;
+    /** Same resume-segment enrichment as `warp.run.completed` (#2032). */
+    segment?: number;
     context_id: string;
     context_type: 'warp.agent';
   };
@@ -966,12 +1030,20 @@ export interface BusEventMap {
     context_type: 'warp.agent';
   };
   /**
-   * A watched Warp run did not reach a terminal state before the watch gave up
-   * (#1639, Stage 3).
+   * A dispatched Warp run never reached a terminal state within the sweep's
+   * own lookback window (#1639, Stage 3; narrowed by #2032).
    *
-   * Published instead of `warp.run.completed` so a silent watch is never mistaken
-   * for a run still in flight: the run may well still be going, but nothing will
-   * report on it again. `lastKnownState` is the final state the watch observed.
+   * Prior to #2032 this was published by the in-request watch purely because
+   * its 30-minute budget elapsed — which produced false timeouts for any run
+   * (build-class runs especially) that was still legitimately going. That
+   * case is now `warp.run.still_running`, which is non-terminal and leaves
+   * the run in the sweep's in-flight set.
+   *
+   * This event is reserved for the genuinely unresolved case: `run-watch-
+   * sweep.ts`'s own `SWEEP_LOOKBACK_MS` has elapsed since the run's latest
+   * activity (dispatch or resume) with still no terminal state observed —
+   * i.e. nothing is ever going to report on this run again. `lastKnownState`
+   * is the last state the sweep observed before giving up.
    */
   'warp.run.timeout': {
     runId: string;

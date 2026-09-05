@@ -1480,7 +1480,7 @@ describe('sendFollowup terminal-run resume', () => {
   });
 
   it('records the resume on the bus as the honest kernel run record', async () => {
-    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED' });
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED', session_id: 'session-a' });
     respondJson({});
 
     await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', mode: 'plan', resume: true });
@@ -1495,9 +1495,42 @@ describe('sendFollowup terminal-run resume', () => {
       runId: RUN_ID,
       principalDid: PRINCIPAL,
       previousState: 'SUCCEEDED',
+      // The prior segment's sessionId, read from the pre-resume state check
+      // (#2032) — this is what lets a later completion carry `resumedFrom`.
+      previousSessionId: 'session-a',
       mode: 'plan',
       context_type: 'warp.agent',
     });
+  });
+
+  it('records null previousSessionId when the run carried none', async () => {
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED' });
+    respondJson({});
+
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true });
+
+    const [, envelope] = publishMock.mock.calls[0] as [string, { payload: Record<string, unknown> }];
+    expect(envelope.payload.previousSessionId).toBeNull();
+  });
+
+  it('records newSessionId from the followups response when Warp returns one, else null (#2032)', async () => {
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED', session_id: 'session-a' });
+    respondJson({ session_id: 'session-b' });
+
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true });
+
+    const [, envelope] = publishMock.mock.calls[0] as [string, { payload: Record<string, unknown> }];
+    expect(envelope.payload.newSessionId).toBe('session-b');
+  });
+
+  it('records a null newSessionId when the followups response carries none', async () => {
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED', session_id: 'session-a' });
+    respondJson({});
+
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true });
+
+    const [, envelope] = publishMock.mock.calls[0] as [string, { payload: Record<string, unknown> }];
+    expect(envelope.payload.newSessionId).toBeNull();
   });
 
   it('defaults the recorded resume mode to normal when none was given', async () => {
