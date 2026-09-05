@@ -313,14 +313,21 @@ function readGhCliToken(): string | undefined {
 
 // ─── Source parsing ──────────────────────────────────────────────────────────
 
+const GITHUB_SOURCE_PATTERN = /^github:([^/]+)\/(.+)$/;
+
 /** Parses `"github:owner/repo"` into its `owner`/`repo` parts. */
 export function parseGitHubSource(source: string): { owner: string; repo: string } {
-  const match = /^github:([^/]+)\/(.+)$/.exec(source);
+  const match = GITHUB_SOURCE_PATTERN.exec(source);
   if (!match) {
     throw new Error(`Invalid GitHub source "${source}". Expected format "github:owner/repo".`);
   }
   const [, owner, repo] = match;
   return { owner, repo };
+}
+
+/** True for a well-formed `"github:owner/repo"` source string. */
+export function isGitHubSource(source: string): boolean {
+  return GITHUB_SOURCE_PATTERN.test(source);
 }
 
 // ─── Small helpers ───────────────────────────────────────────────────────────
