@@ -18,7 +18,13 @@ export const GRANT_SCOPE_REGISTRY = [
   { scope: 'github:write', origin: 'mcp', eventTypes: ['github.issue.created', 'github.comment.created'] },
   { scope: 'github:org', origin: 'mcp', eventTypes: ['action.proposed', 'action.approved', 'action.denied'] },
   { scope: 'github:actions', origin: 'mcp', eventTypes: ['action.proposed', 'action.done'] },
-  { scope: 'warp:dispatch', origin: 'mcp', eventTypes: ['warp.agent.dispatched', 'warp.run.progress', 'warp.run.completed', 'warp.run.failed', 'warp.run.blocked', 'warp.run.timeout'] },
+  // #2032: 'warp.run.resumed' and 'warp.run.still_running' were missing here even
+  // though both are published (see apps/kernel/src/lib/warp/dispatch.ts) — without
+  // an entitling scope, deliverToSubscribers() takes its fast path and never writes
+  // the durable kernel.event_subscription_log row the sweep (run-watch-sweep.ts)
+  // reads to find in-flight runs. That gap is *why* a resumed run's completion was
+  // never observed: the resume event existed on the bus but nowhere durable.
+  { scope: 'warp:dispatch', origin: 'mcp', eventTypes: ['warp.agent.dispatched', 'warp.run.progress', 'warp.run.completed', 'warp.run.failed', 'warp.run.blocked', 'warp.run.timeout', 'warp.run.resumed', 'warp.run.still_running'] },
   { scope: 'discovery:read', origin: 'mcp', eventTypes: [] },
   { scope: 'inference:read', origin: 'mcp', eventTypes: ['attestation.created'] },
   { scope: 'inference:write', origin: 'mcp', eventTypes: ['attestation.created'] },

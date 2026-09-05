@@ -456,23 +456,28 @@ describe('terminal states', () => {
   });
 });
 
-// ── Timeout ───────────────────────────────────────────────────────────────────
+// ── Watch budget elapsed: still running, NOT a timeout (#2032) ──────────────────────────────
 
-describe('timeout', () => {
-  it('gives up after 30 minutes and says so instead of going quiet', async () => {
+describe('watch budget elapsed', () => {
+  it('gives up after 30 minutes and says so as still running, never as a timeout', async () => {
     respondRunAlways(runBody('INPROGRESS'));
 
     await watchRun(PRINCIPAL, RUN_ID, { sleep });
 
-    const event = eventOfType('warp.run.timeout');
+    const event = eventOfType('warp.run.still_running');
     expect(event.payload).toMatchObject({
       runId: RUN_ID,
-      lastKnownState: 'INPROGRESS',
+      state: 'INPROGRESS',
       principalDid: PRINCIPAL,
+      watchBudgetMs: WATCH_TIMEOUT_MS,
       context_id: RUN_ID,
       context_type: 'warp.agent',
     });
-    expect(typeof event.payload.timedOutAt).toBe('string');
+    expect(typeof event.payload.observedAt).toBe('string');
+    expect(typeof event.payload.elapsedMs).toBe('number');
+    // The whole point of #2032: a run that later succeeds must never have been
+    // told it timed out.
+    expect(eventsOfType('warp.run.timeout')).toHaveLength(0);
   });
 
   it('spends exactly the budget, never overshooting the final interval', async () => {
@@ -483,9 +488,11 @@ describe('timeout', () => {
     expect(WATCH_TIMEOUT_MS).toBe(30 * 60 * 1_000);
     expect(slept.reduce((total, ms) => total + ms, 0)).toBe(WATCH_TIMEOUT_MS);
     expect(Math.max(...slept)).toBeLessThanOrEqual(60_000);
-    expect(eventsOfType('warp.run.timeout')).toHaveLength(1);
+    expect(eventsOfType('warp.run.still_running')).toHaveLength(1);
+    expect(eventsOfType('warp.run.timeout')).toHaveLength(0);
     // A run that never moves reports its first sighting and then stays quiet for
-    // the rest of the budget, so the timeout is not competing with poll noise.
+    // the rest of the budget, so the still-running event is not competing with
+    // poll noise.
     expect(progressEvents()).toHaveLength(1);
   });
 
@@ -494,8 +501,24 @@ describe('timeout', () => {
 
     await watchRun(PRINCIPAL, RUN_ID, { sleep, timeoutMs: 0 });
 
-    expect(eventOfType('warp.run.timeout').payload).toMatchObject({ lastKnownState: 'UNKNOWN' });
+    expect(eventOfType('warp.run.still_running').payload).toMatchObject({ state: 'UNKNOWN' });
     expect(readCount()).toBe(0);
+  });
+
+  it('exactly one warp.run.completed and zero warp.run.timeout when the run later succeeds (#2032 acceptance)', async () => {
+    respondRun(runBody('INPROGRESS')); // budget elapses before a read happens (timeoutMs: 0)
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep, timeoutMs: 0 });
+    // The in-request watch only ever gets one shot at its own budget; a second
+    // watch (standing in for the sweep's own later re-check, which uses the
+    // same publish functions — see run-watch-sweep.test.ts for the real sweep
+    // path) is what observes the eventual terminal state.
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    expect(eventsOfType('warp.run.still_running')).toHaveLength(1);
+    expect(eventsOfType('warp.run.completed')).toHaveLength(1);
+    expect(eventsOfType('warp.run.timeout')).toHaveLength(0);
   });
 });
 

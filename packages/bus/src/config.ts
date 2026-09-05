@@ -320,6 +320,33 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
       enabled: true,
     },
   ],
+  // #2032 — a terminal run was resumed via cloud-to-cloud handoff. Previously
+  // had no chain at all (an oversight from #1939): the event published but
+  // nothing durable or human-visible came of it. `notify` mirrors the other
+  // lifecycle transitions above; `emit` puts it on the same live stream.
+  'warp.run.resumed': [
+    { type: 'emit', config: {}, enabled: true },
+    {
+      type: 'notify',
+      config: { title: 'Warp run resumed', body: 'Run {{runId}} resumed from {{previousState}}' },
+      enabled: true,
+    },
+  ],
+  // #2032 — the in-request watch's budget elapsed but Warp still reports a
+  // non-terminal state. Replaces the old (mis-terminal) `warp.run.timeout`
+  // notification for this case with an honest "still going" one; the sweep
+  // keeps watching afterwards and the real terminal event follows later.
+  'warp.run.still_running': [
+    { type: 'emit', config: {}, enabled: true },
+    {
+      type: 'notify',
+      config: {
+        title: 'Warp run still running',
+        body: 'Run {{runId}} still {{state}} after {{elapsedMs}}ms — still watching',
+      },
+      enabled: true,
+    },
+  ],
   // #1838 — FAILED and BLOCKED get their own first-class notify chains rather
   // than sharing warp.run.completed's `state` field. `summary` is the flat
   // scalar the notify reactor's `{{field}}` substitution can read (it never
