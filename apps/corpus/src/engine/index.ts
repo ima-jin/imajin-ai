@@ -2,6 +2,7 @@ import { collectEvidenceText } from './chunker';
 import { CorpusStore, type CorpusStoreOptions, type StoredSearchRow } from './store';
 import type {
   CorpusSearchHit,
+  CorpusSearchProvenance,
   CorpusSearchRequest,
   CorpusSearchResult,
   CorpusStatus,
@@ -27,13 +28,13 @@ export class CorpusEngine {
     this.store.close();
   }
 
-  ingest(did: string, documents: ThreadDocument[]): { ingested: number } {
+  ingest(did: string, documents: ThreadDocument[], ref?: string): { ingested: number } {
     validateDid(did);
     for (const document of documents) {
       validateThreadDocument(document);
     }
 
-    this.store.ingest(did, documents, this.now().toISOString());
+    this.store.ingest(did, documents, this.now().toISOString(), ref);
     return { ingested: documents.length };
   }
 
@@ -43,7 +44,23 @@ export class CorpusEngine {
 
     const limit = clampInteger(request.limit ?? DEFAULT_SEARCH_LIMIT, 1, 100);
     const budget = clampInteger(request.budget ?? DEFAULT_TOKEN_BUDGET, 0, 100_000);
+
+    if (request.ref && request.source) {
+      const rows = this.store.searchAtRef(did, request.source, request.ref, { ...request, limit });
+      return this.buildSearchResult(did, rows, request.query, budget, { ref: request.ref, source: request.source });
+    }
+
     const rows = this.store.search(did, { ...request, limit });
+    return this.buildSearchResult(did, rows, request.query, budget);
+  }
+
+  private buildSearchResult(
+    did: string,
+    rows: StoredSearchRow[],
+    query: string,
+    budget: number,
+    provenanceScope?: { ref: string; source: string },
+  ): CorpusSearchResult {
     const scoredRows = rows
       .map(row => ({ row, score: scoreRow(row) }))
       .sort((left, right) => right.score - left.score);
@@ -53,7 +70,7 @@ export class CorpusEngine {
     let tokensUsed = 0;
 
     for (const scoredRow of scoredRows) {
-      const evidence = buildEvidence(scoredRow.row, request.query, remainingBudget);
+      const evidence = buildEvidence(scoredRow.row, query, remainingBudget);
       const evidenceTokens = evidence.reduce((total, quote) => total + estimateTokens(quote), 0);
       remainingBudget = Math.max(0, remainingBudget - evidenceTokens);
       tokensUsed += evidenceTokens;
@@ -69,6 +86,7 @@ export class CorpusEngine {
         evidence,
         url: scoredRow.row.url,
         updated: scoredRow.row.updated,
+        contentHash: scoredRow.row.contentHash,
       });
     }
 
@@ -77,6 +95,7 @@ export class CorpusEngine {
       totalHits: scoredRows.length,
       freshness: this.freshness(did),
       tokensUsed,
+      provenance: provenanceScope ? buildProvenance(provenanceScope, results) : undefined,
     };
   }
 
@@ -114,6 +133,20 @@ function validateSearchRequest(request: CorpusSearchRequest): void {
   if (!request.query || typeof request.query !== 'string') {
     throw new Error('query is required');
   }
+  if (request.ref && !request.source) {
+    throw new Error('source is required when ref is set');
+  }
+}
+
+/** Builds the `provenance` block for a ref-pinned search result (#1921). */
+function buildProvenance(scope: { ref: string; source: string }, results: CorpusSearchHit[]): CorpusSearchProvenance {
+  return {
+    ref: scope.ref,
+    source: scope.source,
+    chunks: results
+      .filter((hit): hit is CorpusSearchHit & { contentHash: string } => hit.contentHash !== undefined)
+      .map(hit => ({ docId: hit.id, contentHash: hit.contentHash })),
+  };
 }
 
 function validateThreadDocument(document: ThreadDocument): void {

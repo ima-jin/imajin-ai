@@ -94,6 +94,11 @@ const searchTool: McpTool = {
       author: { type: 'string', description: 'Filter by author.' },
       limit: { type: 'number', description: 'Max results to return.' },
       budget: { type: 'number', description: 'Token budget for evidence excerpts.' },
+      ref: {
+        type: 'string',
+        description:
+          'Pin results to a previously-ingested git sha for "source" (#1921), for reproducible retrieval. Requires "source".',
+      },
     },
     required: ['query'],
     additionalProperties: false,
@@ -110,6 +115,7 @@ const searchTool: McpTool = {
     const author = str(args, 'author');
     const limit = num(args, 'limit');
     const budget = num(args, 'budget');
+    const ref = str(args, 'ref');
 
     const result = await corpusRequest('POST', ctx.did, 'corpus:read', '/search', {
       query,
@@ -121,6 +127,7 @@ const searchTool: McpTool = {
       ...(author === undefined ? {} : { author }),
       ...(limit === undefined ? {} : { limit }),
       ...(budget === undefined ? {} : { budget }),
+      ...(ref === undefined ? {} : { ref }),
     });
 
     return json(result);

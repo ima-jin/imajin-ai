@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { GitHubAdapter, isGitHubSource } from './adapters/github';
 import { LocalAdapter } from './adapters/local';
 import { CorpusEngine } from './engine';
+import { UnknownRefError } from './engine/errors';
 import type { CorpusSearchRequest, SourceType, ThreadDocument } from './engine/types';
+import { resolveGitRef } from './lib/git';
 import { isWorkspaceSource, resolveWorkspacePath, validateSourcePath, workspaceRootForDid, type WorkspaceOptions } from './lib/workspace';
 // Service DID + ingestion-attestation signing (#2021 checklist) is not built
 // yet; only claim verification lands here. See middleware/access-claim.ts.
@@ -170,7 +172,7 @@ async function crawlWorkspaceSource(
   const adapter = new LocalAdapter();
   const documents = rewriteSource(await collectDocuments(adapter.fetch(`local:${resolvedPath}`)), source);
 
-  return engine.ingest(did, documents);
+  return engine.ingest(did, documents, resolveGitRef(resolvedPath));
 }
 
 async function syncWorkspaceSource(
@@ -184,7 +186,7 @@ async function syncWorkspaceSource(
   const adapter = new LocalAdapter();
   const result = await adapter.sync(`local:${resolvedPath}`, cursor);
   const documents = rewriteSource(result.documents, source);
-  engine.ingest(did, documents);
+  engine.ingest(did, documents, resolveGitRef(resolvedPath));
 
   return { ingested: documents.length, cursor: result.cursor, hasMore: result.hasMore };
 }
@@ -283,6 +285,10 @@ async function handle<T>(response: Response, fn: () => T | Promise<T>): Promise<
   try {
     response.json(await fn());
   } catch (error) {
+    if (error instanceof UnknownRefError) {
+      response.status(404).json({ error: error.message, hint: 'trigger ingest at this ref' });
+      return;
+    }
     response.status(400).json({ error: error instanceof Error ? error.message : 'request failed' });
   }
 }

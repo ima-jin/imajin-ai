@@ -8,6 +8,7 @@ import { createCorpusApp } from '../routes';
 import { CorpusEngine } from '../engine';
 import { workspaceRootForDid } from '../lib/workspace';
 import { mintTestClaimHeader, type TestClaimScope } from './support/mint-test-claim';
+import { initFakeGitCheckout, setFakeGitHead } from './test-helpers/fake-git';
 
 const did = 'did:example:alice';
 
@@ -37,6 +38,15 @@ function writeWorkspaceFile(workspacesDir: string, relPath: string, content: str
   mkdirSync(join(absolutePath, '..'), { recursive: true });
   writeFileSync(absolutePath, content, 'utf8');
   return absolutePath;
+}
+
+/** Initializes a fake git checkout (no real `git` process) at the DID's workspace root, HEAD pinned at `sha`. */
+function initGitWorkspace(workspacesDir: string, sha: string): string {
+  const root = workspaceRootForDid(did, { workspacesDir });
+  mkdirSync(root, { recursive: true });
+  initFakeGitCheckout(root);
+  setFakeGitHead(root, sha);
+  return root;
 }
 
 describe('local:workspace routes', () => {
@@ -189,5 +199,29 @@ describe('local:workspace routes', () => {
       .send({ source: 'local:workspace' });
     expect(otherCrawl.status).toBe(200);
     expect(otherCrawl.body).toEqual({ ingested: 0 });
+  });
+
+  it('serves sha-pinned snapshot queries for a git-backed workspace, and 404s on an unknown ref (#1921)', async () => {
+    const shaA = 'a'.repeat(40);
+    initGitWorkspace(workspacesDir, shaA);
+    writeWorkspaceFile(workspacesDir, 'a.md', '# A\n\nhello');
+
+    await crawl(app, 'local:workspace').expect(200);
+
+    const searchAtA = await request(app)
+      .post(`/corpus/${did}/search`)
+      .set('Authorization', authFor(did, 'corpus:read'))
+      .send({ query: 'hello', source: 'local:workspace', ref: shaA });
+    expect(searchAtA.status).toBe(200);
+    expect(searchAtA.body.totalHits).toBe(1);
+    expect(searchAtA.body.provenance).toMatchObject({ ref: shaA, source: 'local:workspace' });
+
+    const unknownRef = '0'.repeat(40);
+    const notFound = await request(app)
+      .post(`/corpus/${did}/search`)
+      .set('Authorization', authFor(did, 'corpus:read'))
+      .send({ query: 'hello', source: 'local:workspace', ref: unknownRef });
+    expect(notFound.status).toBe(404);
+    expect(notFound.body.error).toMatch(new RegExp(unknownRef));
   });
 });

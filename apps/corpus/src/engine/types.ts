@@ -116,6 +116,14 @@ export interface CorpusSearchRequest {
   author?: string;
   limit?: number;
   budget?: number;
+  /**
+   * Pin the query to a previously-ingested git sha for `source` (#1921).
+   * Only meaningful for git-backed repo sources ingested via the
+   * `local:workspace` path — `source` is required when `ref` is set, and an
+   * unindexed `(source, ref)` pair throws `UnknownRefError` rather than
+   * silently falling back to the live index.
+   */
+  ref?: string;
 }
 
 export interface CorpusSearchHit {
@@ -129,6 +137,8 @@ export interface CorpusSearchHit {
   evidence: string[];
   url?: string;
   updated: string;
+  /** Content hash of the snapshot version matched, present only for `ref`-pinned queries. */
+  contentHash?: string;
 }
 
 export interface CorpusSourceFreshness {
@@ -138,11 +148,20 @@ export interface CorpusSourceFreshness {
   warning?: string;
 }
 
+/** Provenance of a ref-pinned search result, for reproducibility audits (#1921). */
+export interface CorpusSearchProvenance {
+  ref: string;
+  source: string;
+  chunks: { docId: string; contentHash: string }[];
+}
+
 export interface CorpusSearchResult {
   results: CorpusSearchHit[];
   totalHits: number;
   freshness: CorpusSourceFreshness[];
   tokensUsed: number;
+  /** Present only when the request was pinned to a `ref`. */
+  provenance?: CorpusSearchProvenance;
 }
 
 export interface CorpusStatus {

@@ -2,7 +2,8 @@ import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { chunkThread } from './chunker';
+import { chunkThread, type ThreadChunk } from './chunker';
+import { UnknownRefError } from './errors';
 import type {
   CorpusSearchRequest,
   CorpusSourceFreshness,
@@ -12,6 +13,16 @@ import type {
   ThreadState,
   ThreadType,
 } from './types';
+
+/**
+ * Default retention knobs for ref-pinned snapshots (#1921): keep the most
+ * recent `maxRefsPerSource` refs per source, or any ref ingested within the
+ * last `refRetentionDays` days, whichever keeps more. Mirrors the
+ * `DEFAULT_STALE_AFTER_DAYS` constructor-option pattern in `../lib/freshness.ts`.
+ */
+export const DEFAULT_MAX_REFS_PER_SOURCE = 20;
+export const DEFAULT_REF_RETENTION_DAYS = 30;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export interface StoredSearchRow {
   source: string;
@@ -28,6 +39,8 @@ export interface StoredSearchRow {
   url?: string;
   updated: string;
   rank: number;
+  /** Content hash of the matched snapshot version; set only for ref-pinned queries (#1921). */
+  contentHash?: string;
 }
 
 interface ThreadRow {
@@ -53,16 +66,41 @@ interface SourceRow {
   thread_count: number;
 }
 
+/** Row shape returned by the `blob_fts`/`thread_blobs`/`thread_versions` join in `searchAtRef` (#1921). */
+interface BlobSearchRow {
+  source: string;
+  doc_id: string;
+  title: string;
+  body: string;
+  comments_json: string;
+  state: ThreadState;
+  thread_type: ThreadType;
+  labels_json: string;
+  author: string;
+  url: string | null;
+  updated: string;
+  content_hash: string;
+  rank: number;
+}
+
 export interface CorpusStoreOptions {
   dataDir?: string;
+  /** Keep the most recent N distinct refs per source (#1921 retention). Default 20. */
+  maxRefsPerSource?: number;
+  /** Also keep any ref ingested within this many days, whichever set is larger. Default 30. */
+  refRetentionDays?: number;
 }
 
 export class CorpusStore {
   private readonly rootDir: string;
+  private readonly maxRefsPerSource: number;
+  private readonly refRetentionDays: number;
   private readonly handles = new Map<string, Database.Database>();
 
   constructor(options: CorpusStoreOptions = {}) {
     this.rootDir = options.dataDir ?? join(process.cwd(), 'data', 'corpus');
+    this.maxRefsPerSource = options.maxRefsPerSource ?? DEFAULT_MAX_REFS_PER_SOURCE;
+    this.refRetentionDays = options.refRetentionDays ?? DEFAULT_REF_RETENTION_DAYS;
   }
 
   close(): void {
@@ -72,7 +110,7 @@ export class CorpusStore {
     this.handles.clear();
   }
 
-  ingest(did: string, documents: ThreadDocument[], syncedAt = new Date().toISOString()): void {
+  ingest(did: string, documents: ThreadDocument[], syncedAt = new Date().toISOString(), ref?: string): void {
     const db = this.databaseForDid(did);
     const upsertThread = db.prepare(`
       INSERT INTO threads (
@@ -107,6 +145,7 @@ export class CorpusStore {
     const selectThreadPk = db.prepare('SELECT pk FROM threads WHERE source = ? AND doc_id = ?');
     const deleteFts = db.prepare('DELETE FROM thread_fts WHERE rowid = ?');
     const insertFts = db.prepare('INSERT INTO thread_fts(rowid, title, body, comments) VALUES (?, ?, ?, ?)');
+    const blobStatements = this.prepareBlobStatements(db);
 
     const transaction = db.transaction((batch: ThreadDocument[]) => {
       for (const document of batch) {
@@ -141,11 +180,18 @@ export class CorpusStore {
 
         deleteFts.run(row.pk);
         insertFts.run(row.pk, chunk.title, chunk.body, chunk.comments);
+
+        if (ref) {
+          this.recordBlobVersion(blobStatements, document, chunk, ref, syncedAt);
+        }
       }
 
       const sources = new Set(batch.map(document => document.source));
       for (const source of sources) {
         this.refreshSource(db, source, syncedAt);
+        if (ref) {
+          this.pruneVersions(db, source, syncedAt);
+        }
       }
     });
 
@@ -224,6 +270,64 @@ export class CorpusStore {
       updated: row.updated,
       rank: row.rank,
     }));
+  }
+
+  /**
+   * Ref-pinned search (#1921): resolves hits only from `blob_fts`/`thread_blobs`
+   * rows the `(source, ref)` manifest in `thread_versions` actually points to,
+   * never from the live `threads`/`thread_fts` tables. Throws `UnknownRefError`
+   * when no ingest has ever recorded that `(source, ref)` pair — callers must
+   * map this to a 404, never a silent fallback to HEAD.
+   */
+  searchAtRef(
+    did: string,
+    source: string,
+    ref: string,
+    request: Required<Pick<CorpusSearchRequest, 'limit'>> & CorpusSearchRequest,
+  ): StoredSearchRow[] {
+    const db = this.databaseForDid(did);
+    this.assertRefIndexed(db, source, ref);
+
+    const matchQuery = toFtsQuery(request.query);
+    if (!matchQuery) {
+      return [];
+    }
+
+    const where: string[] = ['blob_fts MATCH @matchQuery', 'tv.source = @source', 'tv.ref = @ref'];
+    const params: Record<string, unknown> = { matchQuery, source, ref, limit: request.limit };
+    appendArrayFilter(where, params, 'state', 'b.state', request.state);
+    appendArrayFilter(where, params, 'type', 'b.thread_type', request.type);
+    if (request.author) {
+      where.push('b.author = @author');
+      params.author = request.author;
+    }
+
+    const rows = db
+      .prepare(`
+        SELECT
+          tv.source AS source,
+          tv.doc_id AS doc_id,
+          b.title,
+          b.body,
+          b.comments_json,
+          b.state,
+          b.thread_type,
+          b.labels_json,
+          b.author,
+          b.url,
+          b.updated,
+          b.content_hash,
+          bm25(blob_fts, 2.0, 1.0, 1.0) AS rank
+        FROM blob_fts
+        JOIN thread_blobs b ON b.rowid = blob_fts.rowid
+        JOIN thread_versions tv ON tv.content_hash = b.content_hash
+        WHERE ${where.join(' AND ')}
+        ORDER BY rank ASC
+        LIMIT @limit
+      `)
+      .all(params) as BlobSearchRow[];
+
+    return rows.map(rowToStoredSearchRow);
   }
 
   status(did: string): CorpusStatus {
@@ -323,6 +427,42 @@ export class CorpusStore {
         last_sync TEXT NOT NULL,
         thread_count INTEGER NOT NULL
       );
+
+      -- Sha-pinned snapshot queries (#1921): thread_blobs/blob_fts are an
+      -- immutable, content-addressed store of every historical version of a
+      -- document ever seen; thread_versions is the manifest recording which
+      -- content_hash was live for (source, doc_id) at a given git ref.
+      -- Purely additive — threads/thread_fts and unpinned search() are untouched.
+      CREATE TABLE IF NOT EXISTS thread_blobs (
+        content_hash TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        doc_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        comments_json TEXT NOT NULL,
+        state TEXT NOT NULL,
+        thread_type TEXT NOT NULL,
+        labels_json TEXT NOT NULL,
+        author TEXT NOT NULL,
+        url TEXT,
+        updated TEXT NOT NULL
+      );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS blob_fts USING fts5(
+        title,
+        body,
+        comments,
+        tokenize = 'unicode61'
+      );
+
+      CREATE TABLE IF NOT EXISTS thread_versions (
+        source TEXT NOT NULL,
+        doc_id TEXT NOT NULL,
+        ref TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        ingested_at TEXT NOT NULL,
+        PRIMARY KEY (source, doc_id, ref)
+      );
     `);
   }
 
@@ -336,6 +476,139 @@ export class CorpusStore {
         thread_count = excluded.thread_count
     `).run(source, syncedAt, threadCount);
   }
+
+  private assertRefIndexed(db: Database.Database, source: string, ref: string): void {
+    const row = db
+      .prepare('SELECT COUNT(*) AS count FROM thread_versions WHERE source = ? AND ref = ?')
+      .get(source, ref) as { count: number };
+    if (row.count === 0) {
+      throw new UnknownRefError(source, ref);
+    }
+  }
+
+  private prepareBlobStatements(db: Database.Database): BlobStatements {
+    return {
+      insertBlob: db.prepare(`
+        INSERT OR IGNORE INTO thread_blobs (
+          content_hash, source, doc_id, title, body, comments_json, state, thread_type, labels_json, author, url, updated
+        ) VALUES (
+          @contentHash, @source, @docId, @title, @body, @commentsJson, @state, @threadType, @labelsJson, @author, @url, @updated
+        )
+      `),
+      selectBlobRowid: db.prepare('SELECT rowid AS rowid FROM thread_blobs WHERE content_hash = ?'),
+      insertBlobFts: db.prepare('INSERT INTO blob_fts(rowid, title, body, comments) VALUES (?, ?, ?, ?)'),
+      upsertVersion: db.prepare(`
+        INSERT INTO thread_versions (source, doc_id, ref, content_hash, ingested_at)
+        VALUES (@source, @docId, @ref, @contentHash, @ingestedAt)
+        ON CONFLICT(source, doc_id, ref) DO UPDATE SET
+          content_hash = excluded.content_hash,
+          ingested_at = excluded.ingested_at
+      `),
+    };
+  }
+
+  /** Content-addresses `document` into `thread_blobs`/`blob_fts` and records it in the `(source, doc_id, ref)` manifest. */
+  private recordBlobVersion(
+    statements: BlobStatements,
+    document: ThreadDocument,
+    chunk: ThreadChunk,
+    ref: string,
+    syncedAt: string,
+  ): void {
+    const contentHash = createHash('sha256').update(document.body).digest('hex');
+    const insertResult = statements.insertBlob.run({
+      contentHash,
+      source: document.source,
+      docId: document.id,
+      title: document.title,
+      body: document.body,
+      commentsJson: JSON.stringify(document.comments),
+      state: document.state,
+      threadType: document.type,
+      labelsJson: JSON.stringify(document.labels),
+      author: document.author,
+      url: document.url ?? null,
+      updated: document.updated,
+    });
+
+    if (insertResult.changes > 0) {
+      const blobRow = statements.selectBlobRowid.get(contentHash) as { rowid: number };
+      statements.insertBlobFts.run(blobRow.rowid, chunk.title, chunk.body, chunk.comments);
+    }
+
+    statements.upsertVersion.run({
+      source: document.source,
+      docId: document.id,
+      ref,
+      contentHash,
+      ingestedAt: syncedAt,
+    });
+  }
+
+  /**
+   * Retention (#1921): keeps the most recent `maxRefsPerSource` distinct refs
+   * for `source`, plus any ref ingested within `refRetentionDays` days,
+   * whichever set is larger; then GCs any `thread_blobs`/`blob_fts` rows no
+   * longer referenced by a surviving manifest row.
+   */
+  private pruneVersions(db: Database.Database, source: string, nowIso: string): void {
+    const cutoffIso = new Date(Date.parse(nowIso) - this.refRetentionDays * MS_PER_DAY).toISOString();
+    const refs = db
+      .prepare('SELECT ref, MAX(ingested_at) AS latest FROM thread_versions WHERE source = ? GROUP BY ref ORDER BY latest DESC')
+      .all(source) as { ref: string; latest: string }[];
+
+    const staleRefs = refs
+      .filter((row, index) => index >= this.maxRefsPerSource && row.latest < cutoffIso)
+      .map(row => row.ref);
+
+    if (staleRefs.length > 0) {
+      const placeholders = staleRefs.map(() => '?').join(', ');
+      db.prepare(`DELETE FROM thread_versions WHERE source = ? AND ref IN (${placeholders})`).run(source, ...staleRefs);
+    }
+
+    this.gcOrphanedBlobs(db);
+  }
+
+  private gcOrphanedBlobs(db: Database.Database): void {
+    const orphaned = db
+      .prepare('SELECT rowid, content_hash FROM thread_blobs WHERE content_hash NOT IN (SELECT content_hash FROM thread_versions)')
+      .all() as { rowid: number; content_hash: string }[];
+
+    const deleteBlobFts = db.prepare('DELETE FROM blob_fts WHERE rowid = ?');
+    const deleteBlob = db.prepare('DELETE FROM thread_blobs WHERE content_hash = ?');
+    for (const row of orphaned) {
+      deleteBlobFts.run(row.rowid);
+      deleteBlob.run(row.content_hash);
+    }
+  }
+}
+
+interface BlobStatements {
+  insertBlob: Database.Statement;
+  selectBlobRowid: Database.Statement;
+  insertBlobFts: Database.Statement;
+  upsertVersion: Database.Statement;
+}
+
+function rowToStoredSearchRow(row: BlobSearchRow): StoredSearchRow {
+  return {
+    source: row.source,
+    docId: row.doc_id,
+    // thread_blobs (#1921) tracks only git-backed local:workspace content, so
+    // sourceType is fixed here rather than stored per-row (unlike `threads`).
+    sourceType: 'local',
+    threadType: row.thread_type,
+    state: row.state,
+    labels: parseJson<string[]>(row.labels_json, []),
+    author: row.author,
+    title: row.title,
+    body: row.body,
+    comments: parseJson<ThreadDocument['comments']>(row.comments_json, []),
+    url: row.url ?? undefined,
+    updated: row.updated,
+    rank: row.rank,
+    contentHash: row.content_hash,
+  };
 }
 
 function appendArrayFilter(
