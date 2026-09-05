@@ -4,11 +4,21 @@ import { join } from 'node:path';
 import request from 'supertest';
 import { parse as parseYaml } from 'yaml';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { crypto as authCrypto } from '@imajin/auth';
 import { createCorpusApp, createCorpusRouter, listRoutes, toOpenApiPath } from '../routes';
 import { CorpusEngine } from '../engine';
+import { mintTestClaimHeader } from './support/mint-test-claim';
 
 const did = 'did:example:alice';
 const EMPTY_CONNECTION = { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } };
+
+const ORIGINAL_KERNEL_PUBLIC_KEY = process.env.CORPUS_KERNEL_PUBLIC_KEY;
+const KERNEL_KEYPAIR = authCrypto.generateKeypair();
+
+/** Mints a valid `Authorization` header for `did`/`scope`, for supertest requests. */
+function authFor(scope: 'corpus:read' | 'corpus:write' = 'corpus:write'): string {
+  return mintTestClaimHeader(KERNEL_KEYPAIR.privateKey, { did, scope });
+}
 
 /**
  * A minimal fetch mock standing in for the GitHub GraphQL API, so these tests
@@ -38,6 +48,7 @@ describe('github source routes', () => {
   let fetchMock: ReturnType<typeof mockGitHubFetch>;
 
   beforeEach(() => {
+    process.env.CORPUS_KERNEL_PUBLIC_KEY = KERNEL_KEYPAIR.publicKey;
     dataDir = mkdtempSync(join(tmpdir(), 'corpus-github-routes-'));
     engine = new CorpusEngine({ dataDir });
     app = createCorpusApp(engine);
@@ -51,11 +62,14 @@ describe('github source routes', () => {
     rmSync(dataDir, { recursive: true, force: true });
     vi.unstubAllGlobals();
     delete process.env.GITHUB_TOKEN;
+    if (ORIGINAL_KERNEL_PUBLIC_KEY === undefined) delete process.env.CORPUS_KERNEL_PUBLIC_KEY;
+    else process.env.CORPUS_KERNEL_PUBLIC_KEY = ORIGINAL_KERNEL_PUBLIC_KEY;
   });
 
   it('POST /corpus/:did/sources with type "github" reaches the GitHub adapter', async () => {
     const response = await request(app)
       .post(`/corpus/${did}/sources`)
+      .set('Authorization', authFor())
       .send({ source: 'github:ima-jin/imajin-ai', type: 'github' });
 
     expect(response.status).toBe(200);
@@ -66,6 +80,7 @@ describe('github source routes', () => {
   it('rejects a "type" that does not match the source prefix', async () => {
     const response = await request(app)
       .post(`/corpus/${did}/sources`)
+      .set('Authorization', authFor())
       .send({ source: 'github:ima-jin/imajin-ai', type: 'local' });
 
     expect(response.status).toBe(400);
@@ -74,13 +89,14 @@ describe('github source routes', () => {
   });
 
   it('rejects registration missing a source', async () => {
-    const response = await request(app).post(`/corpus/${did}/sources`).send({ type: 'github' });
+    const response = await request(app).post(`/corpus/${did}/sources`).set('Authorization', authFor()).send({ type: 'github' });
     expect(response.status).toBe(400);
   });
 
   it('POST /corpus/:did/sync with a "github:" source reaches the GitHub adapter', async () => {
     const response = await request(app)
       .post(`/corpus/${did}/sync`)
+      .set('Authorization', authFor())
       .send({ source: 'github:ima-jin/imajin-ai', cursor: null });
 
     expect(response.status).toBe(200);
@@ -91,6 +107,7 @@ describe('github source routes', () => {
   it('POST /corpus/:did/crawl with a "github:" source reaches the GitHub adapter', async () => {
     const response = await request(app)
       .post(`/corpus/${did}/crawl`)
+      .set('Authorization', authFor())
       .send({ source: 'github:ima-jin/imajin-ai' });
 
     expect(response.status).toBe(200);
@@ -101,6 +118,7 @@ describe('github source routes', () => {
   it('POST /corpus/:did/ingest with { source: "github:..." } reaches the GitHub adapter', async () => {
     const response = await request(app)
       .post(`/corpus/${did}/ingest`)
+      .set('Authorization', authFor())
       .send({ source: 'github:ima-jin/imajin-ai' });
 
     expect(response.status).toBe(200);
@@ -109,7 +127,7 @@ describe('github source routes', () => {
   });
 
   it('still 501s /sync for an unrecognized source, never touching fetch', async () => {
-    const response = await request(app).post(`/corpus/${did}/sync`).send({ source: 'slack:team' });
+    const response = await request(app).post(`/corpus/${did}/sync`).set('Authorization', authFor()).send({ source: 'slack:team' });
 
     expect(response.status).toBe(501);
     expect(fetchMock).not.toHaveBeenCalled();

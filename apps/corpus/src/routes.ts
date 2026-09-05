@@ -7,11 +7,18 @@ import { LocalAdapter } from './adapters/local';
 import { CorpusEngine } from './engine';
 import type { CorpusSearchRequest, SourceType, ThreadDocument } from './engine/types';
 import { isWorkspaceSource, resolveWorkspacePath, validateSourcePath, workspaceRootForDid, type WorkspaceOptions } from './lib/workspace';
+// Service DID + ingestion-attestation signing (#2021 checklist) is not built
+// yet; only claim verification lands here. See middleware/access-claim.ts.
+import { createAccessClaimMiddleware } from './middleware/access-claim';
 
 export type CorpusRouterOptions = WorkspaceOptions;
 
 export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOptions = {}): Router {
   const router = express.Router();
+
+  // Single choke point for every /corpus/:did/* route (#1751). /health and
+  // /spec (#2020) stay outside this prefix and remain public.
+  router.use('/corpus/:did', createAccessClaimMiddleware());
 
   router.post('/corpus/:did/ingest', (request, response) => {
     handle(response, () => {

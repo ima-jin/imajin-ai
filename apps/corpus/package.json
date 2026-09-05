@@ -12,6 +12,7 @@
     "test": "vitest run apps/corpus"
   },
   "dependencies": {
+    "@imajin/auth": "workspace:*",
     "@octokit/graphql": "^9.0.1",
     "better-sqlite3": "^12.10.0",
     "express": "^5.1.0"

@@ -30,10 +30,29 @@ vi.mock('../mcp-grant', () => ({
   resolveActiveMcpGrant: (...args: [string, string]) => mockResolveGrant(...args),
 }));
 
+// Claim minting (#1772) needs the kernel's node DID; avoid a real DB round
+// trip in tests the same way rollup.test.ts / usage-ledger.test.ts do.
+vi.mock('../../kernel/node-identity', () => ({
+  getNodeDid: vi.fn(async () => 'did:imajin:testnode'),
+}));
+
 import { handleMcpRpc } from '../server';
 import { corpusTools } from '../tools/corpus';
+import { crypto as authCrypto } from '@imajin/auth';
 
 const ORIGINAL_ENV = process.env.CORPUS_SERVICE_URL;
+const ORIGINAL_AUTH_PRIVATE_KEY = process.env.AUTH_PRIVATE_KEY;
+const TEST_KERNEL_KEYPAIR = authCrypto.generateKeypair();
+
+/** Decodes an `Imajin-Claim <encoded>.<sig>` header back to its claim object, verifying the signature. */
+function decodeClaimHeader(header: string): Record<string, unknown> {
+  const [, token] = header.split(' ');
+  const separatorIndex = token.lastIndexOf('.');
+  const encodedClaim = token.slice(0, separatorIndex);
+  const signature = token.slice(separatorIndex + 1);
+  expect(authCrypto.verifySync(signature, encodedClaim, TEST_KERNEL_KEYPAIR.publicKey)).toBe(true);
+  return JSON.parse(Buffer.from(encodedClaim, 'base64url').toString('utf8'));
+}
 
 function tool(name: string) {
   const t = corpusTools.find((x) => x.name === name);
@@ -79,12 +98,15 @@ beforeEach(() => {
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
   delete process.env.CORPUS_SERVICE_URL;
+  process.env.AUTH_PRIVATE_KEY = TEST_KERNEL_KEYPAIR.privateKey;
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   if (ORIGINAL_ENV === undefined) delete process.env.CORPUS_SERVICE_URL;
   else process.env.CORPUS_SERVICE_URL = ORIGINAL_ENV;
+  if (ORIGINAL_AUTH_PRIVATE_KEY === undefined) delete process.env.AUTH_PRIVATE_KEY;
+  else process.env.AUTH_PRIVATE_KEY = ORIGINAL_AUTH_PRIVATE_KEY;
 });
 
 // ─── Registration ────────────────────────────────────────────────────────────
@@ -104,6 +126,48 @@ describe('corpus tool registration', () => {
     expect(tool('corpus_status').requiredScope).toBe('corpus:read');
     expect(tool('corpus_load').requiredScope).toBe('corpus:write');
     expect(tool('corpus_sync').requiredScope).toBe('corpus:write');
+  });
+});
+
+// ─── CorpusAccessClaim attachment (#1772) ───────────────────────────────────
+
+describe('CorpusAccessClaim attachment', () => {
+  it('attaches a claim whose sub (did) is the acting DID, scoped and signed by the kernel', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { results: [], totalHits: 0, freshness: [], tokensUsed: 0 }));
+
+    await call('corpus_search', { query: 'x' }, ctxFor('did:imajin:alice', ['corpus:read']));
+
+    const [, init] = fetchMock.mock.calls[0];
+    const claim = decodeClaimHeader(init.headers.Authorization);
+    expect(claim).toMatchObject({
+      did: 'did:imajin:alice',
+      scope: 'corpus:read',
+      aud: 'corpus',
+      alg: 'Ed25519',
+      issuerDid: 'did:imajin:testnode',
+    });
+    expect(claim.expiresAt as number).toBeGreaterThan(claim.issuedAt as number);
+  });
+
+  it('scopes a write-tool claim as corpus:write, never corpus:read', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ingested: 0 }));
+
+    await call('corpus_load', { source: 'x', documents: [] }, ctxFor('did:imajin:alice', ['corpus:write']));
+
+    const [, init] = fetchMock.mock.calls[0];
+    const claim = decodeClaimHeader(init.headers.Authorization);
+    expect(claim.scope).toBe('corpus:write');
+  });
+
+  it('mints a fresh nonce per call, never reusing one across requests', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { results: [], totalHits: 0, freshness: [], tokensUsed: 0 }));
+
+    await call('corpus_search', { query: 'x' }, ctxFor('did:imajin:alice', ['corpus:read']));
+    await call('corpus_search', { query: 'y' }, ctxFor('did:imajin:alice', ['corpus:read']));
+
+    const first = decodeClaimHeader(fetchMock.mock.calls[0][1].headers.Authorization);
+    const second = decodeClaimHeader(fetchMock.mock.calls[1][1].headers.Authorization);
+    expect(first.nonce).not.toBe(second.nonce);
   });
 });
 

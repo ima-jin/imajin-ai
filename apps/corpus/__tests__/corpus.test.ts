@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { crypto as authCrypto } from '@imajin/auth';
 import { CorpusEngine } from '../src/engine';
 import type { ThreadDocument } from '../src/engine/types';
 import { createCorpusApp } from '../src/routes';
+import { mintTestClaimHeader } from '../src/__tests__/support/mint-test-claim';
 
 describe('CorpusEngine', () => {
   let dataDir: string;
@@ -129,7 +131,11 @@ describe('corpus routes', () => {
   let dataDir: string;
   let engine: CorpusEngine;
 
+  const ORIGINAL_KERNEL_PUBLIC_KEY = process.env.CORPUS_KERNEL_PUBLIC_KEY;
+  const kernelKeypair = authCrypto.generateKeypair();
+
   beforeEach(() => {
+    process.env.CORPUS_KERNEL_PUBLIC_KEY = kernelKeypair.publicKey;
     dataDir = mkdtempSync(join(tmpdir(), 'corpus-route-test-'));
     engine = new CorpusEngine({ dataDir, now: () => new Date('2026-08-09T17:00:00.000Z') });
   });
@@ -137,6 +143,8 @@ describe('corpus routes', () => {
   afterEach(() => {
     engine.close();
     rmSync(dataDir, { recursive: true, force: true });
+    if (ORIGINAL_KERNEL_PUBLIC_KEY === undefined) delete process.env.CORPUS_KERNEL_PUBLIC_KEY;
+    else process.env.CORPUS_KERNEL_PUBLIC_KEY = ORIGINAL_KERNEL_PUBLIC_KEY;
   });
 
   it('supports ingest then search over HTTP', async () => {
@@ -145,6 +153,7 @@ describe('corpus routes', () => {
 
     await request(app)
       .post(`/corpus/${did}/ingest`)
+      .set('Authorization', mintTestClaimHeader(kernelKeypair.privateKey, { did: 'did:example:alice', scope: 'corpus:write' }))
       .send([thread({ id: '1', title: 'Corpus service', body: 'BM25 search service' })])
       .expect(200)
       .expect(response => {
@@ -153,6 +162,7 @@ describe('corpus routes', () => {
 
     await request(app)
       .post(`/corpus/${did}/search`)
+      .set('Authorization', mintTestClaimHeader(kernelKeypair.privateKey, { did: 'did:example:alice', scope: 'corpus:read' }))
       .send({ query: 'BM25', limit: 1 })
       .expect(200)
       .expect(response => {
@@ -181,7 +191,11 @@ describe('corpus routes', () => {
     const app = createCorpusApp(engine);
 
     await request(app).get('/health').expect(200, { ok: true, service: 'corpus' });
-    await request(app).post('/corpus/did%3Aexample%3Aalice/sync').send({}).expect(501);
+    await request(app)
+      .post('/corpus/did%3Aexample%3Aalice/sync')
+      .set('Authorization', mintTestClaimHeader(kernelKeypair.privateKey, { did: 'did:example:alice', scope: 'corpus:write' }))
+      .send({})
+      .expect(501);
   });
 });
 

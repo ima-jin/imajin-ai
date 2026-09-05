@@ -21,50 +21,32 @@
  */
 import type { McpTool } from '../types';
 import { str, num, json } from './utils';
+import type { CorpusAccessScope } from '../../kernel/corpus-access-claim';
+import { corpusErrorMessage, corpusHttpRequest } from '../../kernel/corpus-http';
 
 // ── HTTP proxy ─────────────────────────────────────────────────────────────
 
-/** Base URL of the corpus service (internal network only). */
-function corpusServiceUrl(): string {
-  return process.env.CORPUS_SERVICE_URL || 'http://localhost:8003';
-}
-
 /**
  * Call `/corpus/:did/<path>` on the corpus service and return the parsed JSON
- * body. Throws on a non-2xx response so the MCP dispatch's try/catch in
- * server.ts turns it into an in-band `isError` result, same as every other
- * tool's failure path.
+ * body. Every call carries a fresh, kernel-signed `CorpusAccessClaim` (#1772)
+ * scoped to `did`/`scope` (see `corpus-http.ts`, shared with the dashboard's
+ * `corpus-client.ts`), so the corpus service can verify the caller may act as
+ * `did` without a per-request callback to the kernel. Throws on a non-2xx
+ * response so the MCP dispatch's try/catch in server.ts turns it into an
+ * in-band `isError` result, same as every other tool's failure path.
  */
 async function corpusRequest(
   method: 'GET' | 'POST',
   did: string,
+  scope: CorpusAccessScope,
   path: string,
   body?: unknown,
 ): Promise<unknown> {
-  const url = `${corpusServiceUrl()}/corpus/${encodeURIComponent(did)}${path}`;
-  const response = await fetch(url, {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-
-  let payload: unknown = null;
-  try {
-    payload = await response.json();
-  } catch {
-    // Non-JSON body (e.g. an empty error page from an intermediary). The status
-    // code alone still drives the ok/error branch below.
+  const result = await corpusHttpRequest(method, did, scope, path, body);
+  if (!result.ok) {
+    throw new Error(`corpus_service_error: ${result.status} ${corpusErrorMessage(result)}`);
   }
-
-  if (!response.ok) {
-    const errorMessage =
-      payload !== null && typeof payload === 'object' && typeof (payload as { error?: unknown }).error === 'string'
-        ? (payload as { error: string }).error
-        : response.statusText || 'request failed';
-    throw new Error(`corpus_service_error: ${response.status} ${errorMessage}`);
-  }
-
-  return payload;
+  return result.payload;
 }
 
 // ── Arg helpers ─────────────────────────────────────────────────────────────
@@ -129,7 +111,7 @@ const searchTool: McpTool = {
     const limit = num(args, 'limit');
     const budget = num(args, 'budget');
 
-    const result = await corpusRequest('POST', ctx.did, '/search', {
+    const result = await corpusRequest('POST', ctx.did, 'corpus:read', '/search', {
       query,
       ...(sourceType === undefined ? {} : { sourceType }),
       ...(source === undefined ? {} : { source }),
@@ -171,7 +153,7 @@ const loadTool: McpTool = {
     const documents = args.documents;
     if (!Array.isArray(documents)) throw new Error('documents must be an array of ThreadDocument');
 
-    const result = await corpusRequest('POST', ctx.did, '/ingest', documents);
+    const result = await corpusRequest('POST', ctx.did, 'corpus:write', '/ingest', documents);
     return json(result);
   },
 };
@@ -191,7 +173,7 @@ const syncTool: McpTool = {
   },
   async handler(args, ctx) {
     const source = str(args, 'source');
-    const result = await corpusRequest('POST', ctx.did, '/sync', source === undefined ? {} : { source });
+    const result = await corpusRequest('POST', ctx.did, 'corpus:write', '/sync', source === undefined ? {} : { source });
     return json(result);
   },
 };
@@ -205,7 +187,7 @@ const statusTool: McpTool = {
     "Show what's indexed in your corpus — sources, thread counts, freshness. Requires an active corpus:read grant.",
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   async handler(_args, ctx) {
-    const result = await corpusRequest('GET', ctx.did, '/status');
+    const result = await corpusRequest('GET', ctx.did, 'corpus:read', '/status');
     return json(result);
   },
 };
