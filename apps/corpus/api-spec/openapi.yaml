@@ -99,7 +99,10 @@ paths:
       tags: [corpus]
       operationId: corpusSearch
       summary: Search a DID's corpus for threads matching a query, returning scored evidence excerpts.
-      description: Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:read to this :did; minted by the kernel MCP corpus_search tool.
+      description: >-
+        Requires a CorpusAccessClaim (see ImajinClaim) scoped corpus:read to this :did; minted by the kernel MCP corpus_search tool.
+        Set `ref` to pin results to a previously-ingested git sha for a `local:workspace` source (#1921): the response
+        is then filtered to that ref's snapshot manifest and includes a `provenance` block (sha, doc ids, content hashes).
       security:
         - ImajinClaim: []
       parameters:
@@ -117,13 +120,14 @@ paths:
               properties:
                 query: { type: string }
                 sourceType: { type: string }
-                source: { type: string }
+                source: { type: string, description: "Required when ref is set." }
                 state: { type: string }
                 type: { type: string }
                 labels: { type: array, items: { type: string } }
                 author: { type: string }
                 limit: { type: integer }
                 budget: { type: integer }
+                ref: { type: string, description: "Pin the query to a previously-ingested git sha for source (#1921). Requires source." }
       responses:
         "200":
           description: Search results
@@ -132,6 +136,11 @@ paths:
               schema: { type: object }
         "400":
           description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown ref — no snapshot has been indexed for this `(source, ref)` pair. Trigger ingest at this ref, never a silent fallback to HEAD.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
