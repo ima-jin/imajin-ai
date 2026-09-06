@@ -6,44 +6,14 @@
  * the batched resolveIdentitiesForDids client (backed by the profile
  * service's /api/resolve) once for all buyer DIDs.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-const mocks = vi.hoisted(() => {
-  const queue: unknown[][] = [];
-  const sqlMock = Object.assign(
-    (_strings: TemplateStringsArray, ..._values: unknown[]) => Promise.resolve(queue.shift() ?? []),
-    { queue },
-  );
-  return {
-    sqlMock,
-    requireAuthMock: vi.fn(),
-    isEventOrganizerMock: vi.fn(),
-    resolveIdentitiesForDidsMock: vi.fn(),
-  };
-});
-
-function nextSql(rows: unknown[]): void {
-  mocks.sqlMock.queue.push(rows);
-}
-
-vi.mock('@imajin/logger', () => ({
-  createLogger: vi.fn(() => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() })),
-}));
-
-vi.mock('@imajin/db', () => ({
-  getClient: () => mocks.sqlMock,
-}));
-
-vi.mock('@imajin/auth', () => ({
-  requireAuth: mocks.requireAuthMock,
-  resolveIdentitiesForDids: mocks.resolveIdentitiesForDidsMock,
-  resolveActingDid: (identity: { actingFor?: string; actingAs?: string | null; id: string }) =>
-    identity.actingFor ?? identity.actingAs ?? identity.id,
-}));
-
-vi.mock('@/src/lib/organizer', () => ({
-  isEventOrganizer: mocks.isEventOrganizerMock,
-}));
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  nextSql,
+  resetResolveRouteMocks,
+  requireAuthMock,
+  isEventOrganizerMock,
+  resolveIdentitiesForDidsMock,
+} from './support/resolve-route-test-support';
 
 import { GET } from '../../app/api/events/[id]/sales/export/route';
 
@@ -72,20 +42,14 @@ const ORDER_ROW = {
 
 const TICKET_ROW = { id: 'tkt_1', status: 'valid', order_id: 'ord_1' };
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  mocks.sqlMock.queue.length = 0;
-  mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:organizer', actingAs: null } });
-  mocks.isEventOrganizerMock.mockResolvedValue({ authorized: true });
-  mocks.resolveIdentitiesForDidsMock.mockResolvedValue(new Map());
-});
+beforeEach(resetResolveRouteMocks);
 
 describe('GET .../sales/export — batched identity resolution (#1998)', () => {
   it('resolves buyer identities in one batched call and includes them in the CSV', async () => {
     nextSql([EVENT_ROW]);
     nextSql([ORDER_ROW]);
     nextSql([TICKET_ROW]);
-    mocks.resolveIdentitiesForDidsMock.mockResolvedValue(new Map([
+    resolveIdentitiesForDidsMock.mockResolvedValue(new Map([
       ['did:imajin:buyer', { displayName: 'Buyer Name', handle: 'buyer-handle', email: 'buyer@example.com' }],
     ]));
 
@@ -93,7 +57,7 @@ describe('GET .../sales/export — batched identity resolution (#1998)', () => {
     const text = await res.text();
 
     expect(res.status).toBe(200);
-    expect(mocks.resolveIdentitiesForDidsMock).toHaveBeenCalledWith(['did:imajin:buyer']);
+    expect(resolveIdentitiesForDidsMock).toHaveBeenCalledWith(['did:imajin:buyer']);
     expect(text).toContain('Buyer Name');
     expect(text).toContain('buyer-handle');
     expect(text).toContain('buyer@example.com');
@@ -104,7 +68,6 @@ describe('GET .../sales/export — batched identity resolution (#1998)', () => {
     nextSql([EVENT_ROW]);
     nextSql([ORDER_ROW]);
     nextSql([]); // no tickets -> computeOrderStatus 'unknown'
-    mocks.resolveIdentitiesForDidsMock.mockResolvedValue(new Map());
 
     const res = await GET(makeRequest() as any, ROUTE_PARAMS);
     const text = await res.text();
@@ -133,22 +96,22 @@ describe('GET .../sales/export — batched identity resolution (#1998)', () => {
   });
 
   it('returns 403 for a non-organizer', async () => {
-    mocks.isEventOrganizerMock.mockResolvedValue({ authorized: false });
+    isEventOrganizerMock.mockResolvedValue({ authorized: false });
 
     const res = await GET(makeRequest() as any, ROUTE_PARAMS);
     expect(res.status).toBe(403);
-    expect(mocks.resolveIdentitiesForDidsMock).not.toHaveBeenCalled();
+    expect(resolveIdentitiesForDidsMock).not.toHaveBeenCalled();
   });
 
   it('returns 401 when auth fails', async () => {
-    mocks.requireAuthMock.mockResolvedValue({ error: 'Unauthorized', status: 401 });
+    requireAuthMock.mockResolvedValue({ error: 'Unauthorized', status: 401 });
 
     const res = await GET(makeRequest() as any, ROUTE_PARAMS);
     expect(res.status).toBe(401);
   });
 
   it('returns 500 when an unexpected error is thrown', async () => {
-    mocks.isEventOrganizerMock.mockRejectedValue(new Error('boom'));
+    isEventOrganizerMock.mockRejectedValue(new Error('boom'));
 
     const res = await GET(makeRequest() as any, ROUTE_PARAMS);
     expect(res.status).toBe(500);

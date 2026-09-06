@@ -6,44 +6,14 @@
  * SQL query and resolves those DIDs via the batched resolveIdentitiesForDids
  * client (backed by the profile service's /api/resolve).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-const mocks = vi.hoisted(() => {
-  const queue: unknown[][] = [];
-  const sqlMock = Object.assign(
-    (_strings: TemplateStringsArray, ..._values: unknown[]) => Promise.resolve(queue.shift() ?? []),
-    { queue },
-  );
-  return {
-    sqlMock,
-    requireAuthMock: vi.fn(),
-    isEventOrganizerMock: vi.fn(),
-    resolveIdentitiesForDidsMock: vi.fn(),
-  };
-});
-
-function nextSql(rows: unknown[]): void {
-  mocks.sqlMock.queue.push(rows);
-}
-
-vi.mock('@imajin/logger', () => ({
-  createLogger: vi.fn(() => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() })),
-}));
-
-vi.mock('@imajin/db', () => ({
-  getClient: () => mocks.sqlMock,
-}));
-
-vi.mock('@imajin/auth', () => ({
-  requireAuth: mocks.requireAuthMock,
-  resolveIdentitiesForDids: mocks.resolveIdentitiesForDidsMock,
-  resolveActingDid: (identity: { actingFor?: string; actingAs?: string | null; id: string }) =>
-    identity.actingFor ?? identity.actingAs ?? identity.id,
-}));
-
-vi.mock('@/src/lib/organizer', () => ({
-  isEventOrganizer: mocks.isEventOrganizerMock,
-}));
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  nextSql,
+  resetResolveRouteMocks,
+  requireAuthMock,
+  isEventOrganizerMock,
+  resolveIdentitiesForDidsMock,
+} from './support/resolve-route-test-support';
 
 import { GET } from '../../app/api/events/[id]/sales/route';
 
@@ -93,20 +63,14 @@ const ORPHAN_ROW = {
   attendee_email: 'orphan@example.com',
 };
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  mocks.sqlMock.queue.length = 0;
-  mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:organizer', actingAs: null } });
-  mocks.isEventOrganizerMock.mockResolvedValue({ authorized: true, role: 'creator' });
-  mocks.resolveIdentitiesForDidsMock.mockResolvedValue(new Map());
-});
+beforeEach(resetResolveRouteMocks);
 
 describe('GET .../sales — batched identity resolution (#1998)', () => {
   it('resolves buyer and orphan-owner DIDs via resolveIdentitiesForDids and returns JSON', async () => {
     nextSql([EVENT_ROW]);
     nextSql([ORDER_ROW]);
     nextSql([ORPHAN_ROW]);
-    mocks.resolveIdentitiesForDidsMock
+    resolveIdentitiesForDidsMock
       .mockResolvedValueOnce(new Map([['did:imajin:buyer', { displayName: 'Buyer Name', handle: 'buyer-handle', email: 'buyer@example.com' }]]))
       .mockResolvedValueOnce(new Map([['did:imajin:orphan-owner', { displayName: 'Orphan Owner', handle: 'orphan-handle', email: 'owner@example.com' }]]));
 
@@ -114,8 +78,8 @@ describe('GET .../sales — batched identity resolution (#1998)', () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(mocks.resolveIdentitiesForDidsMock).toHaveBeenNthCalledWith(1, ['did:imajin:buyer']);
-    expect(mocks.resolveIdentitiesForDidsMock).toHaveBeenNthCalledWith(2, ['did:imajin:orphan-owner']);
+    expect(resolveIdentitiesForDidsMock).toHaveBeenNthCalledWith(1, ['did:imajin:buyer']);
+    expect(resolveIdentitiesForDidsMock).toHaveBeenNthCalledWith(2, ['did:imajin:orphan-owner']);
 
     const orderSale = json.sales.find((s: any) => s.orderId === 'ord_1');
     expect(orderSale.buyerName).toBe('Buyer Name');
@@ -132,7 +96,6 @@ describe('GET .../sales — batched identity resolution (#1998)', () => {
     nextSql([EVENT_ROW]);
     nextSql([]); // no orders
     nextSql([ORPHAN_ROW]);
-    mocks.resolveIdentitiesForDidsMock.mockResolvedValue(new Map()); // nothing resolved
 
     const res = await GET(makeRequest() as any, ROUTE_PARAMS);
     const json = await res.json();
@@ -147,7 +110,7 @@ describe('GET .../sales — batched identity resolution (#1998)', () => {
     nextSql([EVENT_ROW]);
     nextSql([ORDER_ROW]);
     nextSql([]); // no orphans
-    mocks.resolveIdentitiesForDidsMock
+    resolveIdentitiesForDidsMock
       .mockResolvedValueOnce(new Map([['did:imajin:buyer', { displayName: 'Buyer Name', handle: 'buyer-handle', email: 'buyer@example.com' }]]))
       .mockResolvedValueOnce(new Map());
 
@@ -168,15 +131,15 @@ describe('GET .../sales — batched identity resolution (#1998)', () => {
   });
 
   it('returns 403 for a non-organizer without querying orders', async () => {
-    mocks.isEventOrganizerMock.mockResolvedValue({ authorized: false });
+    isEventOrganizerMock.mockResolvedValue({ authorized: false });
 
     const res = await GET(makeRequest() as any, ROUTE_PARAMS);
     expect(res.status).toBe(403);
-    expect(mocks.resolveIdentitiesForDidsMock).not.toHaveBeenCalled();
+    expect(resolveIdentitiesForDidsMock).not.toHaveBeenCalled();
   });
 
   it('returns 401 when auth fails', async () => {
-    mocks.requireAuthMock.mockResolvedValue({ error: 'Unauthorized', status: 401 });
+    requireAuthMock.mockResolvedValue({ error: 'Unauthorized', status: 401 });
 
     const res = await GET(makeRequest() as any, ROUTE_PARAMS);
     expect(res.status).toBe(401);
