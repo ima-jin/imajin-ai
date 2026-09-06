@@ -8,12 +8,19 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { logMock } = vi.hoisted(() => ({
+const { logMock, mockClaim, mockRelease } = vi.hoisted(() => ({
   logMock: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+  mockClaim: vi.fn(),
+  mockRelease: vi.fn(),
 }));
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => logMock,
+}));
+
+vi.mock('../delivery', () => ({
+  claimNotificationForDelivery: mockClaim,
+  releaseNotificationClaim: mockRelease,
 }));
 
 const RECIPIENT = 'did:imajin:veteze';
@@ -52,6 +59,8 @@ beforeEach(() => {
   logMock.error.mockReset();
   logMock.info.mockReset();
   logMock.warn.mockReset();
+  mockClaim.mockReset().mockResolvedValue(true);
+  mockRelease.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -193,5 +202,115 @@ describe('pushNotificationToDid', () => {
     const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
 
     await expect(pushNotificationToDid(RECIPIENT, FRAME)).resolves.toBe(false);
+  });
+});
+
+// ─── Delivery claim guard (#2044) ───────────────────────────────────────────
+
+describe('pushNotificationToDid — delivery claim guard', () => {
+  const FRAME = {
+    type: 'notification' as const,
+    id: 'ntf_abc123',
+    scope: 'warp.run.completed',
+    title: 'Warp run completed',
+    body: 'Run SUCCEEDED: Nightly',
+    data: { runId: '019f9990' },
+    createdAt: '2026-08-06T05:00:00.000Z',
+  };
+
+  it('claims the row before pushing', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+    await pushNotificationToDid(RECIPIENT, FRAME);
+
+    expect(mockClaim).toHaveBeenCalledWith(FRAME.id);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('does not push when the row was already claimed — e.g. a backlog replay won the race', async () => {
+    mockClaim.mockResolvedValueOnce(false);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+    const delivered = await pushNotificationToDid(RECIPIENT, FRAME);
+
+    expect(delivered).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockRelease).not.toHaveBeenCalled();
+  });
+
+  it('keeps the claim (never releases it) when the push actually delivers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+    await pushNotificationToDid(RECIPIENT, FRAME);
+
+    expect(mockRelease).not.toHaveBeenCalled();
+  });
+
+  it('releases the claim when nobody was connected, so a later backlog replay can still deliver it', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: false }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+    await pushNotificationToDid(RECIPIENT, FRAME);
+
+    expect(mockRelease).toHaveBeenCalledWith(FRAME.id);
+  });
+
+  it('releases the claim on a non-2xx response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'nope' }, 500));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+    await pushNotificationToDid(RECIPIENT, FRAME);
+
+    expect(mockRelease).toHaveBeenCalledWith(FRAME.id);
+  });
+
+  it('releases the claim on a transport failure', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+    await pushNotificationToDid(RECIPIENT, FRAME);
+
+    expect(mockRelease).toHaveBeenCalledWith(FRAME.id);
+  });
+
+  it('fails open — still pushes — when the claim lookup itself throws', async () => {
+    mockClaim.mockRejectedValueOnce(new Error('connection refused'));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+    const delivered = await pushNotificationToDid(RECIPIENT, FRAME);
+
+    expect(delivered).toBe(true);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('does not throw when releasing the claim itself fails', async () => {
+    mockRelease.mockRejectedValueOnce(new Error('connection refused'));
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: false }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+
+    await expect(pushNotificationToDid(RECIPIENT, FRAME)).resolves.toBe(false);
+  });
+
+  it('never claims when no internal key is configured, so a disabled push cannot mark a row delivered', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule();
+    await pushNotificationToDid(RECIPIENT, FRAME);
+
+    expect(mockClaim).not.toHaveBeenCalled();
   });
 });
