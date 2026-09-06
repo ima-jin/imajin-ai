@@ -15,18 +15,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAttestationEntry } from '@/src/lib/auth/dfos';
 import { createLogger } from '@imajin/logger';
+import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 
 const log = createLogger('kernel');
 
 export async function POST(request: NextRequest) {
-  // API key auth — same key as /api/attestations/internal
-  const authHeader = request.headers.get('authorization');
-  const apiKey = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-  const expectedKey = process.env.ATTESTATION_INTERNAL_API_KEY;
-
-  if (!expectedKey || apiKey !== expectedKey) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  // Same key as /api/attestations/internal
+  const authError = requireInternalApiKey(request);
+  if (authError) return authError;
 
   let body: Record<string, unknown>;
   try {

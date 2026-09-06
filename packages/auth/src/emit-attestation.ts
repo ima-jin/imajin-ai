@@ -15,7 +15,7 @@ let forwardFailureCount = 0;
  * per process — not once per call — so a misconfigured deployment shows up
  * without spamming the logs.
  */
-function resolveInternalApiKey(): string | undefined {
+export function resolveInternalApiKey(): string | undefined {
   const canonical = process.env.ATTESTATION_INTERNAL_API_KEY;
   if (canonical) return canonical;
 

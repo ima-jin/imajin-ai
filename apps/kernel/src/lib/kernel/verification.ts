@@ -1,10 +1,24 @@
 import { db, identities, attestations, connections } from '@/src/db';
 import { emitAttestation } from '@imajin/auth';
+import type { IdentityTier } from '@imajin/auth';
 import { eq, or, and, isNull, count } from 'drizzle-orm';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
+
+/**
+ * Result of {@link checkHardEligibility} — also the response shape for
+ * `POST /auth/api/eligibility/evaluate` (#1999).
+ */
+export interface HardEligibilityResult {
+  /** False when `did` doesn't resolve to any identity at all. */
+  found: boolean;
+  /** The identity's tier after this evaluation (null when `found` is false). */
+  tier: IdentityTier | null;
+  /** True only when THIS call performed the tier upgrade (not a prior one). */
+  upgraded: boolean;
+}
 
 /**
  * Checks whether a DID is eligible for preliminary verification.
@@ -73,20 +87,27 @@ export async function checkPreliminaryEligibility(did: string): Promise<void> {
  * - Must have claimed handle ≥4 weeks ago
  *
  * If eligible, emits `identity.verified.hard` and upgrades tier to 'established'.
+ * Idempotent: re-evaluating an identity that isn't (or is no longer) eligible,
+ * or that some other caller already upgraded, is a no-op that just reports
+ * the current tier. The single source of truth for this rule — both the
+ * in-process callers below and `POST /auth/api/eligibility/evaluate` (#1999)
+ * go through this function.
  */
-export async function checkHardEligibility(did: string): Promise<void> {
+export async function checkHardEligibility(did: string): Promise<HardEligibilityResult> {
   const [identity] = await db
     .select({ tier: identities.tier, handleClaimedAt: identities.handleClaimedAt })
     .from(identities)
     .where(eq(identities.id, did))
     .limit(1);
 
-  if (identity?.tier !== 'preliminary') return;
+  if (!identity) return { found: false, tier: null, upgraded: false };
+  const currentTier = identity.tier as IdentityTier;
+  if (identity.tier !== 'preliminary') return { found: true, tier: currentTier, upgraded: false };
 
   // Check handle claimed ≥4 weeks ago
-  if (!identity.handleClaimedAt) return;
+  if (!identity.handleClaimedAt) return { found: true, tier: currentTier, upgraded: false };
   const fourWeeksAgo = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000);
-  if (identity.handleClaimedAt > fourWeeksAgo) return;
+  if (identity.handleClaimedAt > fourWeeksAgo) return { found: true, tier: currentTier, upgraded: false };
 
   // Check ≥25 active person connections (SQL count, not JS)
   const [{ total }] = await db
@@ -101,7 +122,7 @@ export async function checkHardEligibility(did: string): Promise<void> {
     )
     .where(and(isNull(connections.disconnectedAt), eq(identities.scope, 'actor')));
 
-  if (total < 25) return;
+  if (total < 25) return { found: true, tier: currentTier, upgraded: false };
 
   // Check ≥1 event.attendance attestation for this DID
   const [attendanceRow] = await db
@@ -112,7 +133,7 @@ export async function checkHardEligibility(did: string): Promise<void> {
     )
     .limit(1);
 
-  if (!attendanceRow) return;
+  if (!attendanceRow) return { found: true, tier: currentTier, upgraded: false };
 
   // Atomic CAS — only upgrade if still 'preliminary', prevents double emission
   const [upgraded] = await db
@@ -121,7 +142,7 @@ export async function checkHardEligibility(did: string): Promise<void> {
     .where(and(eq(identities.id, did), eq(identities.tier, 'preliminary')))
     .returning({ id: identities.id });
 
-  if (!upgraded) return; // Already upgraded by concurrent event
+  if (!upgraded) return { found: true, tier: 'established', upgraded: false }; // Already upgraded by concurrent event
 
   const nodeDid = await getNodeDid();
   emitAttestation({
@@ -131,4 +152,6 @@ export async function checkHardEligibility(did: string): Promise<void> {
     context_id: did,
     context_type: 'identity',
   }).catch((err) => log.error({ did, err: String(err) }, 'hard emit error'));
+
+  return { found: true, tier: 'established', upgraded: true };
 }
