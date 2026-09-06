@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 
 const log = createLogger('events');
 import { eq, and } from 'drizzle-orm';
-import { requireAuth, getEmailForDid , resolveActingDid } from '@imajin/auth';
+import { requireAuth, resolveEmailForDid , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { db, tickets, events, ticketTypes } from '@/src/db';
 import { getClient } from '@imajin/db';
@@ -87,22 +87,15 @@ export async function POST(
       SELECT answers FROM dykil.survey_responses WHERE ticket_id = ${ticketId} LIMIT 1
     `;
 
-    // Determine email: survey response email > profile.contact_email > auth credential
+    // Determine email: survey response email > resolveEmailForDid precedence
+    // (auth.credentials -> profile.profiles.contact_email -> auth.identities;
+    // #1998 moved this off the raw profile.profiles query this file used to
+    // run for itself, onto the profile service's batched /api/resolve route).
     let customerEmail: string | null = null;
     if (surveyResponse?.answers?.email) {
       customerEmail = surveyResponse.answers.email;
     } else if (ticket.ownerDid) {
-      // Try profile contact email (user's preferred transactional email)
-      const profileSql = getClient();
-      const profileRows = await profileSql`
-        SELECT contact_email FROM profile.profiles WHERE did = ${ticket.ownerDid} LIMIT 1
-      `;
-      if (profileRows.length > 0 && profileRows[0].contact_email) {
-        customerEmail = profileRows[0].contact_email;
-      } else {
-        // Fall back to auth credential (login email)
-        customerEmail = await getEmailForDid(ticket.ownerDid);
-      }
+      customerEmail = await resolveEmailForDid(ticket.ownerDid);
     }
 
     if (!customerEmail) {

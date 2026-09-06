@@ -325,6 +325,59 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/resolve:
+    post:
+      tags: [profile]
+      operationId: resolveIdentities
+      summary: Batched DID resolution to handle/displayName/email (#1998)
+      description: >
+        Resolve up to 200 DIDs at once to their handle and displayName.
+        Replaces hand-rolled cross-schema joins for bulk identity lookups.
+        `email` is included per-entry only when the caller is authorized to
+        see it: a service-scope caller (Bearer PROFILE_INTERNAL_API_KEY) sees
+        every requested DID's email; a session-authenticated caller only
+        ever sees their own; anonymous callers never see email. DIDs with no
+        known profile and no visible email are omitted from the response.
+      security:
+        - {}
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dids]
+              properties:
+                dids:
+                  type: array
+                  maxItems: 200
+                  items: { type: string }
+                  description: "DIDs to resolve (deduplicated server-side; max 200 per request)"
+      responses:
+        "200":
+          description: Resolved identities (omits unknown DIDs)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        did: { type: string }
+                        handle: { type: string, nullable: true }
+                        displayName: { type: string, nullable: true }
+                        email: { type: string, format: email, description: "Present only when the caller is authorized to see it" }
+        "400":
+          description: Invalid dids array or batch too large
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/profile/{id}/counts:
     get:
       tags: [profile]

@@ -1,12 +1,11 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { requireAuth , resolveActingDid } from '@imajin/auth';
+import { requireAuth , resolveActingDid, resolveIdentitiesForDids } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
 const log = createLogger('events');
 const sql = getClient();
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 
 function csvEscape(v: unknown): string {
   if (v == null) return '';
@@ -17,22 +16,6 @@ function csvEscape(v: unknown): string {
 
 function csvRow(values: unknown[]): string {
   return values.map(csvEscape).join(',') + '\r\n';
-}
-
-async function resolveProfile(did: string): Promise<{ name: string | null; handle: string | null; email: string | null }> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(did)}`, { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      const identity = data.identity || data;
-      return {
-        name: identity.name || null,
-        handle: identity.handle || null,
-        email: identity.email || null,
-      };
-    }
-  } catch { /* ignore */ }
-  return { name: null, handle: null, email: null };
 }
 
 function computeOrderStatus(tickets: { status: string }[]): string {
@@ -114,15 +97,11 @@ export async function GET(
       }
     }
 
-    // Resolve buyer profiles
+    // Resolve buyer identities via the profile service's batched
+    // /api/resolve route (#1998) — replaces the per-DID AUTH_SERVICE_URL
+    // /api/lookup internal-route fallback this file used to call.
     const uniqueDids = [...new Set(orderRows.map((o: any) => o.buyer_did).filter(Boolean))] as string[];
-    const profileMap = new Map<string, { name: string | null; handle: string | null; email: string | null }>();
-    await Promise.all(
-      uniqueDids.map(async (buyerDid) => {
-        const profile = await resolveProfile(buyerDid);
-        profileMap.set(buyerDid, profile);
-      })
-    );
+    const profileMap = await resolveIdentitiesForDids(uniqueDids);
 
     const dateStr = new Date().toISOString().split('T')[0];
     const safeTitle = event.title
@@ -146,7 +125,7 @@ export async function GET(
 
       const values = [
         o.order_id,
-        profile?.name || '',
+        profile?.displayName || '',
         profile?.handle || '',
         profile?.email || '',
         o.buyer_did || '',

@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { requireAuth, requireAppAuth , resolveActingDid } from '@imajin/auth';
+import { requireAuth, requireAppAuth , resolveActingDid, resolveIdentitiesForDids } from '@imajin/auth';
 import { corsHeaders } from '@imajin/config';
 
 const log = createLogger('events');
@@ -9,26 +9,6 @@ import { getClient } from '@imajin/db';
 import { resolveAttendee } from '@/src/lib/attendee';
 
 const sql = getClient();
-
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-
-async function resolveProfile(did: string): Promise<{ did: string; name: string | null; handle: string | null; avatar: string | null; email: string | null }> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(did)}`, { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      const identity = data.identity || data;
-      return {
-        did,
-        name: identity.name || null,
-        handle: identity.handle || null,
-        avatar: identity.avatar || identity.avatarUrl || null,
-        email: identity.email || null,
-      };
-    }
-  } catch {}
-  return { did, name: null, handle: null, avatar: null, email: null };
-}
 
 /**
  * GET /api/events/[id]/guests — list all tickets with profile info (owner or cohost)
@@ -73,11 +53,7 @@ export async function GET(
              sr.answers as survey_answers,
              o.fair_settlement, o.amount_total,
              o.buyer_email,
-             o.buyer_did,
-             i.name as identity_name,
-             i.contact_email,
-             cred.value as fallback_email,
-             buyer_i.name as buyer_name
+             o.buyer_did
       FROM events.tickets t
       JOIN events.ticket_types tt ON t.ticket_type_id = tt.id
       LEFT JOIN LATERAL (
@@ -86,42 +62,33 @@ export async function GET(
         ORDER BY created_at DESC LIMIT 1
       ) sr ON true
       LEFT JOIN events.orders o ON t.order_id = o.id
-      LEFT JOIN auth.identities i ON i.id = t.owner_did
-      LEFT JOIN LATERAL (
-        SELECT value FROM auth.credentials
-        WHERE did = t.owner_did AND type = 'email'
-        ORDER BY created_at DESC LIMIT 1
-      ) cred ON true
-      LEFT JOIN auth.identities buyer_i ON buyer_i.id = o.buyer_did
       WHERE t.event_id = ${id}
       ORDER BY t.created_at DESC
     `;
 
-    // Batch-resolve unique DIDs
-    const uniqueDids = [...new Set(ticketRows.map((t: any) => t.owner_did).filter(Boolean))] as string[];
-    const profileMap = new Map<string, { name: string | null; handle: string | null; avatar: string | null; email: string | null }>();
-
-    await Promise.all(
-      uniqueDids.map(async (did) => {
-        const profile = await resolveProfile(did);
-        profileMap.set(did, { name: profile.name, handle: profile.handle, avatar: profile.avatar, email: profile.email });
-      })
-    );
+    // Batch-resolve unique owner/buyer DIDs via the profile service's batched
+    // /api/resolve route (#1998) — replaces the raw auth.identities /
+    // auth.credentials joins this query used to run for itself, plus the
+    // separate per-DID AUTH_SERVICE_URL /api/lookup HTTP call.
+    const uniqueDids = [...new Set(
+      ticketRows.flatMap((t: any) => [t.owner_did, t.buyer_did]).filter(Boolean)
+    )] as string[];
+    const resolvedMap = await resolveIdentitiesForDids(uniqueDids);
 
     const guests = ticketRows.map((t: any) => {
-      const profile = t.owner_did ? profileMap.get(t.owner_did) ?? null : null;
-      const sqlEmail = t.contact_email || t.fallback_email || null;
+      const ownerResolved = t.owner_did ? resolvedMap.get(t.owner_did) : undefined;
+      const buyerResolved = t.buyer_did ? resolvedMap.get(t.buyer_did) : undefined;
 
       const surveyAnswers = t.survey_answers || {};
       const resolved = resolveAttendee({
         surveyName: surveyAnswers.full_name || surveyAnswers.name || null,
         surveyEmail: surveyAnswers.email || null,
-        identityName: t.identity_name || null,
-        identityContactEmail: t.contact_email || null,
-        identityCredentialEmail: t.fallback_email || null,
-        profileName: profile?.name || null,
-        profileEmail: profile?.email || null,
-        buyerName: t.buyer_name || null,
+        identityName: ownerResolved?.displayName || null,
+        identityContactEmail: ownerResolved?.email || null,
+        identityCredentialEmail: null,
+        profileName: null,
+        profileEmail: null,
+        buyerName: buyerResolved?.displayName || null,
         buyerEmail: t.buyer_email || null,
       });
 
@@ -137,11 +104,9 @@ export async function GET(
         paymentMethod: t.payment_method ?? null,
         paymentId: t.payment_id ?? null,
         holdExpiresAt: t.hold_expires_at ?? null,
-        profile: (() => {
-          if (profile) return { ...profile, email: sqlEmail || profile.email || null };
-          if (sqlEmail) return { name: null, handle: null, avatar: null, email: sqlEmail };
-          return null;
-        })(),
+        profile: ownerResolved
+          ? { name: ownerResolved.displayName, handle: ownerResolved.handle, avatar: null, email: ownerResolved.email ?? null }
+          : null,
         registrationStatus: t.registration_status ?? null,
         attendeeName: surveyAnswers.full_name || surveyAnswers.name || null,
         resolvedName: resolved.name || null,

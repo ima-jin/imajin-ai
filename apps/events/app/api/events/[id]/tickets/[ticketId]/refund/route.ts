@@ -4,7 +4,7 @@ import { db, events, ticketTypes } from '@/src/db';
 import { isEventOrganizer } from '@/src/lib/organizer';
 
 const log = createLogger('events');
-import { requireAuth, getEmailForDid , resolveActingDid } from '@imajin/auth';
+import { requireAuth, resolveEmailForDid , resolveActingDid } from '@imajin/auth';
 import { eq, sql } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
@@ -132,14 +132,11 @@ export async function POST(
       if (surveyResponse?.answers?.email) {
         customerEmail = surveyResponse.answers.email;
       } else if (ticket.owner_did) {
-        const profileRows = await sqlClient`
-          SELECT contact_email FROM profile.profiles WHERE did = ${ticket.owner_did} LIMIT 1
-        `;
-        if (profileRows.length > 0 && profileRows[0].contact_email) {
-          customerEmail = profileRows[0].contact_email;
-        } else {
-          customerEmail = await getEmailForDid(ticket.owner_did);
-        }
+        // #1998: resolveEmailForDid now calls the profile service's batched
+        // /api/resolve route (auth.credentials -> profile.profiles ->
+        // auth.identities precedence), replacing the raw profile.profiles
+        // query this file used to run for itself.
+        customerEmail = await resolveEmailForDid(ticket.owner_did);
       }
 
       if (customerEmail) {

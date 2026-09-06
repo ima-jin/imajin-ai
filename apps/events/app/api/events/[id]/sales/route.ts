@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { requireAuth , resolveActingDid } from '@imajin/auth';
+import { requireAuth , resolveActingDid, resolveIdentitiesForDids } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
@@ -42,6 +42,38 @@ function computeOrderStatus(tickets: { status: string }[]): string {
   if (statuses.includes('held')) return 'pending';
   if (statuses.includes('valid') || statuses.includes('used')) return 'partial';
   return 'unknown';
+}
+
+interface ResolvedBuyer {
+  displayName: string | null;
+  handle: string | null;
+  email?: string;
+}
+
+/** Look up a resolved identity for `did` in `resolvedMap`, or undefined when there is no DID to look up. */
+function lookupResolved(did: string | null | undefined, resolvedMap: Map<string, ResolvedBuyer>): ResolvedBuyer | undefined {
+  return did ? resolvedMap.get(did) : undefined;
+}
+
+/** Build the JSON-shaped orphan-ticket sale row (#1998: owner identity now comes from the batched resolve map). */
+function buildOrphanSale(r: any, resolvedMap: Map<string, ResolvedBuyer>, fallbackCurrency: string) {
+  const ownerResolved = lookupResolved(r.owner_did, resolvedMap);
+  return {
+    ticketId: r.ticket_id,
+    status: r.status ?? 'unknown',
+    ownerDid: r.owner_did ?? null,
+    ownerName: ownerResolved?.displayName ?? r.attendee_name ?? null,
+    ownerHandle: ownerResolved?.handle ?? null,
+    ownerEmail: ownerResolved?.email ?? null,
+    pricePaid: r.price_paid ?? null,
+    currency: r.currency ?? fallbackCurrency,
+    purchasedAt: r.purchased_at ? new Date(r.purchased_at).toISOString() : null,
+    ticketType: r.ticket_type_name ?? 'Unknown',
+    paymentMethod: r.payment_method ?? null,
+    paymentId: r.payment_id ?? null,
+    attendeeName: r.attendee_name ?? null,
+    attendeeEmail: r.attendee_email ?? null,
+  };
 }
 
 /* ─── Route handlers ─── */
@@ -90,10 +122,6 @@ export async function GET(
         o.stripe_session_id,
         o.purchased_at,
         o.created_at,
-        i.name AS buyer_name,
-        i.handle AS buyer_handle,
-        i.contact_email AS buyer_contact_email,
-        cred.value AS buyer_fallback_email,
         t.id AS ticket_id,
         t.status AS ticket_status,
         tt.name AS ticket_type_name,
@@ -105,12 +133,6 @@ export async function GET(
         tx.stripe_id AS tx_stripe_id,
         tx.metadata AS tx_metadata
       FROM events.orders o
-      LEFT JOIN auth.identities i ON i.id = o.buyer_did
-      LEFT JOIN LATERAL (
-        SELECT value FROM auth.credentials
-        WHERE did = o.buyer_did AND type = 'email'
-        ORDER BY created_at DESC LIMIT 1
-      ) cred ON true
       LEFT JOIN pay.transactions tx ON tx.stripe_id = o.stripe_session_id
       LEFT JOIN events.tickets t ON t.order_id = o.id
       LEFT JOIN events.ticket_types tt ON tt.id = t.ticket_type_id
@@ -118,6 +140,12 @@ export async function GET(
       WHERE o.event_id = ${eventId}
       ORDER BY o.created_at DESC, t.created_at ASC
     `;
+
+    // Batch-resolve buyer DIDs via the profile service's batched /api/resolve
+    // route (#1998) — replaces the raw auth.identities / auth.credentials
+    // joins this query used to run for itself.
+    const buyerDids = [...new Set(orderRows.map((r: any) => r.buyer_did).filter(Boolean))] as string[];
+    const buyerResolvedMap = await resolveIdentitiesForDids(buyerDids);
 
     // Group rows by order
     type SaleTicket = {
@@ -150,14 +178,15 @@ export async function GET(
     for (const row of orderRows) {
       const orderId = row.order_id;
       if (!saleMap.has(orderId)) {
+        const buyerResolved = lookupResolved(row.buyer_did, buyerResolvedMap);
         saleMap.set(orderId, {
           transactionId: row.transaction_id ?? null,
           orderId,
           buyer: {
             did: row.buyer_did ?? null,
-            name: row.buyer_name ?? null,
-            handle: row.buyer_handle ?? null,
-            email: row.buyer_contact_email || row.buyer_fallback_email || null,
+            name: buyerResolved?.displayName ?? null,
+            handle: buyerResolved?.handle ?? null,
+            email: buyerResolved?.email ?? null,
           },
           tickets: [],
           amount: row.amount_total ? row.amount_total / 100 : 0,
@@ -201,41 +230,20 @@ export async function GET(
         t.payment_id,
         tt.name AS ticket_type_name,
         COALESCE(sr.answers->>'full_name', sr.answers->>'name') AS attendee_name,
-        sr.answers->>'email' AS attendee_email,
-        i.name AS owner_name,
-        i.handle AS owner_handle,
-        i.contact_email AS owner_contact_email,
-        cred.value AS owner_fallback_email
+        sr.answers->>'email' AS attendee_email
       FROM events.tickets t
       LEFT JOIN events.ticket_types tt ON tt.id = t.ticket_type_id
       LEFT JOIN dykil.survey_responses sr ON sr.ticket_id = t.id
-      LEFT JOIN auth.identities i ON i.id = t.owner_did
-      LEFT JOIN LATERAL (
-        SELECT value FROM auth.credentials
-        WHERE did = t.owner_did AND type = 'email'
-        ORDER BY created_at DESC LIMIT 1
-      ) cred ON true
       WHERE t.event_id = ${eventId}
         AND t.order_id IS NULL
       ORDER BY t.purchased_at DESC NULLS LAST, t.created_at DESC
     `;
 
-    const orphans = orphanRows.map((r: any) => ({
-      ticketId: r.ticket_id,
-      status: r.status ?? 'unknown',
-      ownerDid: r.owner_did ?? null,
-      ownerName: r.owner_name ?? r.attendee_name ?? null,
-      ownerHandle: r.owner_handle ?? null,
-      ownerEmail: r.owner_contact_email || r.owner_fallback_email || null,
-      pricePaid: r.price_paid ?? null,
-      currency: r.currency ?? eventRow.currency ?? 'CAD',
-      purchasedAt: r.purchased_at ? new Date(r.purchased_at).toISOString() : null,
-      ticketType: r.ticket_type_name ?? 'Unknown',
-      paymentMethod: r.payment_method ?? null,
-      paymentId: r.payment_id ?? null,
-      attendeeName: r.attendee_name ?? null,
-      attendeeEmail: r.attendee_email ?? null,
-    }));
+    // Batch-resolve orphan ticket owner DIDs the same way as order buyers.
+    const orphanOwnerDids = [...new Set(orphanRows.map((r: any) => r.owner_did).filter(Boolean))] as string[];
+    const orphanOwnerResolvedMap = await resolveIdentitiesForDids(orphanOwnerDids);
+
+    const orphans = orphanRows.map((r: any) => buildOrphanSale(r, orphanOwnerResolvedMap, eventRow.currency ?? 'CAD'));
 
     // Summary — include orphan revenue
     const orphanRevenue = orphans.reduce((sum: number, o: any) => sum + (o.pricePaid ?? 0), 0) / 100;
