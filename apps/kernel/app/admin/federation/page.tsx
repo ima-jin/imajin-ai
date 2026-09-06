@@ -1,27 +1,9 @@
 import { getClient } from '@imajin/db';
 import { formatDistanceToNow } from 'date-fns';
+import { getRelayWellKnown } from '@/src/lib/federation/relay-well-known';
 import PeerManager from './peer-manager';
 
 const sql = getClient();
-
-async function getRelayWellKnown() {
-  try {
-    const baseUrl = process.env.REGISTRY_SERVICE_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const res = await fetch(`${baseUrl}/registry/relay/.well-known/dfos-relay`, {
-      cache: 'no-store',
-    });
-    if (!res.ok) return null;
-    return await res.json() as {
-      did: string;
-      protocol: string;
-      version: string;
-      capabilities: Record<string, boolean>;
-      profile: string;
-    };
-  } catch {
-    return null;
-  }
-}
 
 export default async function AdminFederationPage() {
   const [relayConfigRow] = await sql`
