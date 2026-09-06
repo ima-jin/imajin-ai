@@ -108,14 +108,12 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      # cid, vault-core, db, money, fair, config, ui, and pay resolve via
-      # their built dist/ types (not source), so they must be built before
-      # any consumer's typecheck can resolve them. cid first — vault-core's
-      # declarations reference it. money before fair — fair re-exports
-      # money's Money type.
-      - name: Build workspace type dependencies
-        run: pnpm --filter @imajin/cid --filter @imajin/vault-core --filter @imajin/db --filter @imajin/money --filter @imajin/fair --filter @imajin/config --filter @imajin/ui --filter @imajin/pay build
-
+      # `pnpm typecheck` builds the type-dependency packages (cid, vault-core,
+      # db, money, fair, config, ui, pay — see root package.json's
+      # `build:types` script, the single source of truth for that list) before
+      # running `typecheck:only`, so CI matches a local `pnpm typecheck` run
+      # exactly. cid first — vault-core's declarations reference it. money
+      # before fair — fair re-exports money's Money type.
       - name: Typecheck
         run: pnpm typecheck
 
