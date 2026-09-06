@@ -37,7 +37,7 @@ const mocks = vi.hoisted(() => {
   const updateMock = vi.fn(() => ({ set: setMock }));
 
   const requireAuthMock = vi.fn();
-  const getEmailForDidMock = vi.fn().mockResolvedValue(null);
+  const resolveEmailForDidMock = vi.fn().mockResolvedValue(null);
   const isEventOrganizerMock = vi.fn();
   const publishMock = vi.fn().mockResolvedValue(undefined);
   const fetchMock = vi.fn();
@@ -51,7 +51,7 @@ const mocks = vi.hoisted(() => {
     setMock,
     updateMock,
     requireAuthMock,
-    getEmailForDidMock,
+    resolveEmailForDidMock,
     isEventOrganizerMock,
     publishMock,
     fetchMock,
@@ -77,7 +77,7 @@ vi.mock('@/src/db', () => ({
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: mocks.requireAuthMock,
-  getEmailForDid: mocks.getEmailForDidMock,
+  resolveEmailForDid: mocks.resolveEmailForDidMock,
   resolveActingDid: (identity: { actingFor?: string; actingAs?: string | null; id: string }) =>
     identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
@@ -153,7 +153,7 @@ describe('POST /api/events/[id]/tickets/[ticketId]/refund', () => {
     mocks.sqlMock.mockResolvedValue([]);
     mocks.updateWhereMock.mockResolvedValue(undefined);
     mocks.publishMock.mockResolvedValue(undefined);
-    mocks.getEmailForDidMock.mockResolvedValue('buyer@test.com');
+    mocks.resolveEmailForDidMock.mockResolvedValue('buyer@test.com');
 
     process.env.PAY_SERVICE_URL = 'http://kernel-test';
     process.env.PAY_SERVICE_API_KEY = 'service-key';

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { requireAuth , resolveActingDid } from '@imajin/auth';
+import { requireAuth , resolveActingDid, resolveIdentitiesForDids } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 import { resolveAttendee } from '@/src/lib/attendee';
@@ -12,7 +12,6 @@ import {
 
 const log = createLogger('events');
 const sql = getClient();
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 
 function csvEscape(v: unknown): string {
   if (v == null) return '';
@@ -23,22 +22,6 @@ function csvEscape(v: unknown): string {
 
 function csvRow(values: unknown[]): string {
   return values.map(csvEscape).join(',') + '\r\n';
-}
-
-async function resolveProfile(did: string): Promise<{ name: string | null; handle: string | null; email: string | null }> {
-  try {
-    const res = await fetch(`${AUTH_SERVICE_URL}/api/lookup/${encodeURIComponent(did)}`, { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      const identity = data.identity || data;
-      return {
-        name: identity.name || null,
-        handle: identity.handle || null,
-        email: identity.email || null,
-      };
-    }
-  } catch { /* ignore */ }
-  return { name: null, handle: null, email: null };
 }
 
 function buildProofOfPayment(
@@ -132,27 +115,16 @@ export async function GET(
         o.payment_id AS order_payment_id,
         o.stripe_session_id,
         o.buyer_email,
-        o.buyer_did,
-        i.name AS identity_name,
-        i.contact_email,
-        cred.value AS credential_email,
-        buyer_i.name AS buyer_name
+        o.buyer_did
       FROM events.tickets t
       JOIN events.ticket_types tt ON t.ticket_type_id = tt.id
       LEFT JOIN events.orders o ON t.order_id = o.id
-      LEFT JOIN auth.identities i ON i.id = t.owner_did
-      LEFT JOIN LATERAL (
-        SELECT value FROM auth.credentials
-        WHERE did = t.owner_did AND type = 'email'
-        ORDER BY created_at DESC LIMIT 1
-      ) cred ON true
       LEFT JOIN LATERAL (
         SELECT id, survey_id, answers
         FROM dykil.survey_responses
         WHERE ticket_id = t.id
         ORDER BY created_at DESC LIMIT 1
       ) sr ON true
-      LEFT JOIN auth.identities buyer_i ON buyer_i.id = o.buyer_did
       WHERE t.event_id = ${id}
       ${statusFilter}
       ORDER BY t.created_at DESC
@@ -171,15 +143,14 @@ export async function GET(
       return NextResponse.json({ total, valid, pendingRegistration, completeRegistration, cancelled });
     }
 
-    // Batch-resolve unique owner DIDs for profile name/email
-    const uniqueDids = [...new Set(ticketRows.map((t: any) => t.owner_did).filter(Boolean))] as string[];
-    const profileMap = new Map<string, { name: string | null; handle: string | null; email: string | null }>();
-    await Promise.all(
-      uniqueDids.map(async (ownerDid) => {
-        const profile = await resolveProfile(ownerDid);
-        profileMap.set(ownerDid, profile);
-      })
-    );
+    // Batch-resolve unique owner DIDs for name/handle/email via the profile
+    // service's batched /api/resolve route (#1998) — replaces the raw
+    // auth.identities / auth.credentials joins this query used to run for
+    // itself, plus the separate per-DID AUTH_SERVICE_URL /api/lookup call.
+    const uniqueDids = [...new Set(
+      ticketRows.flatMap((t: any) => [t.owner_did, t.buyer_did]).filter(Boolean)
+    )] as string[];
+    const resolvedMap = await resolveIdentitiesForDids(uniqueDids);
 
     // Find distinct form IDs used by this event's ticket types
     const formIds = [...new Set(ticketRows.map((t: any) => t.registration_form_id).filter(Boolean))] as string[];
@@ -212,7 +183,8 @@ export async function GET(
     let csvBody = csvRow(headers);
 
     for (const t of ticketRows) {
-      const profile = t.owner_did ? (profileMap.get(t.owner_did) ?? null) : null;
+      const ownerResolved = t.owner_did ? resolvedMap.get(t.owner_did) : undefined;
+      const buyerResolved = t.buyer_did ? resolvedMap.get(t.buyer_did) : undefined;
 
       const surveyAnswers = t.survey_answers || {};
       const surveyName = surveyAnswers.full_name || surveyAnswers.name || null;
@@ -221,12 +193,12 @@ export async function GET(
       const resolved = resolveAttendee({
         surveyName,
         surveyEmail,
-        identityName: t.identity_name || null,
-        identityContactEmail: t.contact_email || null,
-        identityCredentialEmail: t.credential_email || null,
-        profileName: profile?.name || null,
-        profileEmail: profile?.email || null,
-        buyerName: t.buyer_name || null,
+        identityName: ownerResolved?.displayName || null,
+        identityContactEmail: ownerResolved?.email || null,
+        identityCredentialEmail: null,
+        profileName: null,
+        profileEmail: null,
+        buyerName: buyerResolved?.displayName || null,
         buyerEmail: t.buyer_email || null,
       });
 

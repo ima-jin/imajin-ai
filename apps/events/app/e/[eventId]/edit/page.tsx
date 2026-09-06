@@ -1,5 +1,5 @@
 ﻿import { notFound, redirect } from 'next/navigation';
-import { getSession , resolveActingDid } from '@imajin/auth';
+import { getSession , resolveActingDid, resolveIdentitiesForDids } from '@imajin/auth';
 import { db, events, ticketTypes } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
@@ -85,24 +85,20 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
 
   const tickets = await getTicketTypes(eventId);
 
-  // Fetch creator profile email for EMT auto-fill
+  // Fetch creator email + display info via the profile service's batched
+  // /api/resolve route (#1998) — replaces the raw profile.profiles /
+  // auth.identities queries this page used to run for itself.
   let creatorEmail: string | null = null;
-  try {
-    const [profile] = await sql`SELECT contact_email FROM profile.profiles WHERE did = ${event.creatorDid}`;
-    creatorEmail = profile?.contact_email || null;
-  } catch (err) {
-    log.warn({ err: String(err) }, '[edit] Failed to fetch creator email');
-  }
-
-  // Fetch creator display info for the payout banner
   let creatorHandle: string | null = null;
   let creatorName: string | null = null;
   try {
-    const [creator] = await sql`SELECT handle, name FROM auth.identities WHERE id = ${event.creatorDid}`;
-    creatorHandle = (creator?.handle as string) || null;
-    creatorName = (creator?.name as string) || null;
+    const resolved = await resolveIdentitiesForDids([event.creatorDid]);
+    const creator = resolved.get(event.creatorDid);
+    creatorEmail = creator?.email ?? null;
+    creatorHandle = creator?.handle ?? null;
+    creatorName = creator?.displayName ?? null;
   } catch (err) {
-    log.warn({ err: String(err) }, '[edit] Failed to fetch creator display info');
+    log.warn({ err: String(err) }, '[edit] Failed to resolve creator identity');
   }
 
   // Gather all organizer DIDs (creator + cohosts) for survey dropdown

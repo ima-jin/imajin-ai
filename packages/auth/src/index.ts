@@ -63,7 +63,8 @@ export {
   EVENT_SUBSCRIPTION_CATCHUP_PAGE_SIZE,
 } from "./constants";
 export type { NodeHeartbeat, NodeRegistration, NodeRegistrationRequest, NodeRegistrationResponse, NodeAttestation } from "./types/node";
-export { getEmailForDid, getDidForEmail, resolveDidForEmail, resolveEmailForDid } from "./credentials";
+export { getEmailForDid, getDidForEmail, resolveDidForEmail, resolveEmailForDid, resolveIdentitiesForDids } from "./credentials";
+export type { ResolvedIdentitySummary } from "./credentials";
 export {
   emitAttestation,
   getAttestationForwardFailureCount,
