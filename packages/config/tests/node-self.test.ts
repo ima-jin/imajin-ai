@@ -37,8 +37,10 @@ describe("getNodeSelf", () => {
     expect(await getNodeSelf()).toEqual(info);
   });
 
-  it("calls the registry's node/self endpoint using REGISTRY_SERVICE_URL when set", async () => {
-    process.env.REGISTRY_SERVICE_URL = "https://registry.example.com";
+  it("calls the registry's node/self endpoint using the prefixed REGISTRY_SERVICE_URL when set (#2046)", async () => {
+    // Like every other *_SERVICE_URL, the env var includes the service's
+    // path prefix (`/registry`) — the fetch must append only `/api/node/self`.
+    process.env.REGISTRY_SERVICE_URL = "https://registry.example.com/registry";
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({ did: "did:imajin:jin", nodeOperatorDid: null, nodeFeeBps: null, buyerCreditBps: null }),
@@ -48,7 +50,20 @@ describe("getNodeSelf", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://registry.example.com/registry/api/node/self");
   });
 
-  it("falls back to the canonical dev port when REGISTRY_SERVICE_URL is unset", async () => {
+  it("does not double-prefix when REGISTRY_SERVICE_URL already includes /registry (#2046 regression)", async () => {
+    process.env.REGISTRY_SERVICE_URL = "http://localhost:7000/registry";
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ did: "did:imajin:jin", nodeOperatorDid: null, nodeFeeBps: null, buyerCreditBps: null }),
+    });
+
+    await getNodeSelf();
+    const calledUrl = fetchMock.mock.calls[0][0] as string;
+    expect(calledUrl).toBe("http://localhost:7000/registry/api/node/self");
+    expect(calledUrl).not.toContain("/registry/registry");
+  });
+
+  it("falls back to the canonical dev port + /registry prefix when REGISTRY_SERVICE_URL is unset", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({ did: "did:imajin:jin", nodeOperatorDid: null, nodeFeeBps: null, buyerCreditBps: null }),
@@ -58,13 +73,26 @@ describe("getNodeSelf", () => {
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:3000/registry/api/node/self");
   });
 
-  it("returns null on a non-2xx response (e.g. 503 not configured)", async () => {
+  it("returns null and warns with the URL hit on a non-2xx response (e.g. 503 not configured)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchMock.mockResolvedValue({ ok: false, status: 503, json: async () => ({ error: "Node identity not configured" }) });
+
     expect(await getNodeSelf()).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain("http://localhost:3000/registry/api/node/self");
+    expect(warnSpy.mock.calls[0][0]).toContain("503");
+
+    warnSpy.mockRestore();
   });
 
-  it("returns null when the fetch throws (network error)", async () => {
+  it("returns null and warns when the fetch throws (network error)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchMock.mockRejectedValue(new Error("connection refused"));
+
     expect(await getNodeSelf()).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain("connection refused");
+
+    warnSpy.mockRestore();
   });
 });

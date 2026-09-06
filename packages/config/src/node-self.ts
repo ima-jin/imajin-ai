@@ -17,9 +17,16 @@ export interface NodeSelfInfo {
 }
 
 function registryBaseUrl(): string {
+  // Like every other `*_SERVICE_URL`, this includes the service's path
+  // prefix (`/registry`) — callers append only the endpoint path
+  // (`/api/node/self`). See #2046: omitting the prefix here caused
+  // `getNodeSelf()` to bake `/registry` into the fetch path instead,
+  // which double-prefixed to `/registry/registry/api/...` for anyone
+  // who set REGISTRY_SERVICE_URL following the established convention.
   if (process.env.REGISTRY_SERVICE_URL) return process.env.REGISTRY_SERVICE_URL;
   const mode = process.env.NODE_ENV === 'production' ? 'prod' : 'dev';
-  return getServiceUrl('registry', mode) ?? 'http://localhost:3000';
+  const base = getServiceUrl('registry', mode) ?? 'http://localhost:3000';
+  return `${base}/registry`;
 }
 
 /**
@@ -30,14 +37,22 @@ function registryBaseUrl(): string {
  * coffee, learn, events, and market (audit item 8 of #1983). Returns null on
  * any failure — network error, non-2xx response (e.g. 503 when the node
  * identity hasn't been bootstrapped yet) — so callers can fall back to
- * defaults exactly as they did when the raw SQL row was missing.
+ * defaults exactly as they did when the raw SQL row was missing. A non-2xx
+ * response is logged with the URL actually hit (no secrets) so a
+ * misconfigured REGISTRY_SERVICE_URL prefix is visible instead of failing
+ * silently (#2046).
  */
 export async function getNodeSelf(): Promise<NodeSelfInfo | null> {
+  const url = `${registryBaseUrl()}/api/node/self`;
   try {
-    const res = await fetch(`${registryBaseUrl()}/registry/api/node/self`);
-    if (!res.ok) return null;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`[config] getNodeSelf: registry returned ${res.status} for ${url} — check REGISTRY_SERVICE_URL`);
+      return null;
+    }
     return (await res.json()) as NodeSelfInfo;
-  } catch {
+  } catch (err) {
+    console.warn(`[config] getNodeSelf: fetch failed for ${url} — ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
