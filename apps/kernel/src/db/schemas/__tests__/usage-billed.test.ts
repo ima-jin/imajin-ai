@@ -41,6 +41,13 @@ describe('usageBilled drizzle schema', () => {
       description: 'description',
       evidenceAssetId: 'evidence_asset_id',
       evidenceContentHash: 'evidence_content_hash',
+      receiptId: 'receipt_id',
+      lineNo: 'line_no',
+      receiptTotalMinor: 'receipt_total_minor',
+      fxRate: 'fx_rate',
+      fxSource: 'fx_source',
+      fxAsOf: 'fx_as_of',
+      fxSignature: 'fx_signature',
     });
   });
 
@@ -72,6 +79,18 @@ describe('usageBilled drizzle schema', () => {
     expect(columns.evidenceAssetId.notNull).toBe(false);
     expect(columns.evidenceContentHash.notNull).toBe(false);
   });
+
+  it('#1951: leaves every receipt/FX-snapshot field nullable (null for non-receipt and USD rows)', () => {
+    const columns = getTableColumns(usageBilled);
+
+    expect(columns.receiptId.notNull).toBe(false);
+    expect(columns.lineNo.notNull).toBe(false);
+    expect(columns.receiptTotalMinor.notNull).toBe(false);
+    expect(columns.fxRate.notNull).toBe(false);
+    expect(columns.fxSource.notNull).toBe(false);
+    expect(columns.fxAsOf.notNull).toBe(false);
+    expect(columns.fxSignature.notNull).toBe(false);
+  });
 });
 
 describe('migrations/0125_usage_billed_manual.sql (#2030)', () => {
@@ -86,6 +105,23 @@ describe('migrations/0125_usage_billed_manual.sql (#2030)', () => {
   });
 
   it('never touches usage.incurred or edits migration 0122', () => {
+    expect(sql).not.toMatch(/ALTER TABLE usage\.incurred/);
+  });
+});
+
+describe('migrations/0127_usage_billed_receipts.sql (#1951)', () => {
+  const sql = readFileSync(resolve(__dirname, '../../../../../../migrations/0127_usage_billed_receipts.sql'), 'utf-8');
+
+  it('adds every receipt/FX-snapshot column idempotently', () => {
+    for (const column of [
+      'receipt_id\\s+TEXT', 'line_no\\s+INTEGER', 'receipt_total_minor\\s+BIGINT',
+      'fx_rate\\s+NUMERIC\\(24, 10\\)', 'fx_source\\s+TEXT', 'fx_as_of\\s+DATE', 'fx_signature\\s+TEXT',
+    ]) {
+      expect(sql).toMatch(new RegExp(`ALTER TABLE usage\\.billed ADD COLUMN IF NOT EXISTS ${column}`));
+    }
+  });
+
+  it('never touches usage.incurred or edits migrations 0122/0125', () => {
     expect(sql).not.toMatch(/ALTER TABLE usage\.incurred/);
   });
 });
