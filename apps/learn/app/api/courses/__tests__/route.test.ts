@@ -17,6 +17,8 @@ import {
   jsonResponseMock,
   errorResponseMock,
   makeJsonRequest,
+  itAppliesForestScopeFee,
+  FOREST_SCOPE_DID,
 } from '../../../../../../packages/fair/src/test-helpers';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
@@ -120,22 +122,15 @@ describe('POST /api/courses (#2000: node config sourced via getNodeSelf())', () 
     expectDefaultShares(body.metadata.fair.chain);
   });
 
-  it('applies the forest group scope fee to the .fair manifest when acting as a scope (#2001)', async () => {
-    mocks.getNodeSelfMock.mockResolvedValue(null);
-    mocks.requireHardDIDMock.mockResolvedValue({
-      identity: { id: 'did:imajin:creator', actingAs: 'did:imajin:forest-group' },
-    });
-    mocks.getForestScopeConfigMock.mockResolvedValue({ scopeFeeBps: 40 });
-
-    const res = await POST(makeRequest(VALID_BODY));
-    expect(res.status).toBe(201);
-    expect(mocks.getForestScopeConfigMock).toHaveBeenCalledWith('did:imajin:forest-group');
-
-    const body = await res.json();
-    const chain = body.metadata.fair.chain as { did: string; role: string; share: number }[];
-    expect(chain.find((entry) => entry.role === 'scope')).toMatchObject({
-      did: 'did:imajin:forest-group',
-      share: 0.004,
-    });
+  itAppliesForestScopeFee({
+    getForestScopeConfigMock: mocks.getForestScopeConfigMock,
+    arrange: () => {
+      mocks.getNodeSelfMock.mockResolvedValue(null);
+      mocks.requireHardDIDMock.mockResolvedValue({
+        identity: { id: 'did:imajin:creator', actingAs: FOREST_SCOPE_DID },
+      });
+    },
+    callRoute: () => POST(makeRequest(VALID_BODY)),
+    getChain: (body) => (body.metadata as { fair: { chain: { did: string; role: string; share: number }[] } }).fair.chain,
   });
 });

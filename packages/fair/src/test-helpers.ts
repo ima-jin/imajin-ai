@@ -43,6 +43,14 @@ export function expectDefaultShares(chain: FairChainEntry[]): void {
   expect(findChainRole(chain, 'node')).toMatchObject({ did: 'NODE_PLACEHOLDER', share: 0.005 });
 }
 
+/** A representative forest-group DID used by every getForestScopeConfig() call-site test (#2001). */
+export const FOREST_SCOPE_DID = 'did:imajin:forest-group';
+
+/** Asserts a `.fair` chain's `scope` entry reflects the given forest group's fee. */
+export function expectForestScopeShare(chain: FairChainEntry[], scopeDid: string, scopeFeeBps: number): void {
+  expect(findChainRole(chain, 'scope')).toMatchObject({ did: scopeDid, share: scopeFeeBps / 10000 });
+}
+
 // ─── Generic route-test mock factories ─────────────────────────────────────
 // These four apps' getNodeSelf() call-site tests otherwise re-declare the
 // exact same mock plumbing (a silent logger, a passthrough media resolver,
@@ -130,5 +138,40 @@ export function itDrivesFairManifestFromNodeSelf(config: {
     expect(res.status).toBe(successStatus);
 
     expectDefaultShares(config.getChain(await res.json()));
+  });
+}
+
+/**
+ * Registers the "applies the forest group scope fee" (#2001) `it(...)` case
+ * shared by every getForestScopeConfig() call-site test (coffee pages, learn
+ * courses, market listings create + patch). Each route resolves/validates
+ * the "acting as a scope" caller differently (requireAuth vs requireHardDID
+ * identity, and market's PATCH additionally requires the existing listing's
+ * sellerDid to match the acting DID) — `arrange()` is where each call site
+ * sets up its own route-specific mocks for that; everything else about the
+ * call + assertion is identical and lives here.
+ */
+export function itAppliesForestScopeFee(config: {
+  getForestScopeConfigMock: MockLike;
+  arrange: () => void;
+  callRoute: () => Promise<Response>;
+  getChain: (body: Record<string, unknown>) => FairChainEntry[];
+  scopeDid?: string;
+  scopeFeeBps?: number;
+  successStatus?: number;
+}): void {
+  const scopeDid = config.scopeDid ?? FOREST_SCOPE_DID;
+  const scopeFeeBps = config.scopeFeeBps ?? 40;
+  const successStatus = config.successStatus ?? 201;
+
+  it('applies the forest group scope fee to the .fair manifest when acting as a scope (#2001)', async () => {
+    config.arrange();
+    config.getForestScopeConfigMock.mockResolvedValue({ scopeFeeBps });
+
+    const res = await config.callRoute();
+    expect(res.status).toBe(successStatus);
+    expect(config.getForestScopeConfigMock).toHaveBeenCalledWith(scopeDid);
+
+    expectForestScopeShare(config.getChain(await res.json()), scopeDid, scopeFeeBps);
   });
 }

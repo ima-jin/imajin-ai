@@ -19,6 +19,8 @@ import {
   jsonResponseMock,
   errorResponseMock,
   makeJsonRequest,
+  itAppliesForestScopeFee,
+  FOREST_SCOPE_DID,
 } from '../../../../../../../packages/fair/src/test-helpers';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
@@ -142,26 +144,20 @@ describe('PATCH /api/listings/:id (#2000: node config sourced via getNodeSelf())
     expect(body.fairManifest).toBeUndefined();
   });
 
-  it('applies the forest group scope fee to the .fair manifest when acting as a scope (#2001)', async () => {
-    mocks.getNodeSelfMock.mockResolvedValue(null);
-    // resolveActingDidMock resolves the caller to actingAs, so the listing's
-    // sellerDid must match it for the route's `sellerDid === currentDid` scope
-    // check (no scope fee if the acting identity doesn't own the listing).
-    mocks.selectWhereMock.mockResolvedValue([{ ...EXISTING_LISTING, sellerDid: 'did:imajin:forest-group' }]);
-    mocks.requireAuthMock.mockResolvedValue({
-      identity: { id: 'did:imajin:seller', actingAs: 'did:imajin:forest-group' },
-    });
-    mocks.getForestScopeConfigMock.mockResolvedValue({ scopeFeeBps: 40 });
-
-    const res = await PATCH(makeRequest({ price: 5000 }), ROUTE_PARAMS);
-    expect(res.status).toBe(200);
-    expect(mocks.getForestScopeConfigMock).toHaveBeenCalledWith('did:imajin:forest-group');
-
-    const body = await res.json();
-    const chain = body.fairManifest.chain as { did: string; role: string; share: number }[];
-    expect(chain.find((entry) => entry.role === 'scope')).toMatchObject({
-      did: 'did:imajin:forest-group',
-      share: 0.004,
-    });
+  itAppliesForestScopeFee({
+    getForestScopeConfigMock: mocks.getForestScopeConfigMock,
+    successStatus: 200,
+    arrange: () => {
+      mocks.getNodeSelfMock.mockResolvedValue(null);
+      // resolveActingDidMock resolves the caller to actingAs, so the listing's
+      // sellerDid must match it for the route's `sellerDid === currentDid` scope
+      // check (no scope fee if the acting identity doesn't own the listing).
+      mocks.selectWhereMock.mockResolvedValue([{ ...EXISTING_LISTING, sellerDid: FOREST_SCOPE_DID }]);
+      mocks.requireAuthMock.mockResolvedValue({
+        identity: { id: 'did:imajin:seller', actingAs: FOREST_SCOPE_DID },
+      });
+    },
+    callRoute: () => PATCH(makeRequest({ price: 5000 }), ROUTE_PARAMS),
+    getChain: (body) => (body.fairManifest as { chain: { did: string; role: string; share: number }[] }).chain,
   });
 });
