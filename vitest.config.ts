@@ -37,6 +37,12 @@ export default defineConfig({
         'apps/*/app/**/*.tsx',
         'packages/*/src/**/*.ts',
         'packages/*/src/**/*.tsx',
+        // Shared test-utility modules (e.g. env/fetch stubbing helpers) that live
+        // alongside *.test.ts under packages/*/tests/ instead of src/. Excluded
+        // again below via the `**/*.test.ts` pattern — without this, SonarCloud
+        // still parses their executable lines but the lcov report has no entry
+        // for them, so they're measured as 0% covered rather than skipped.
+        'packages/*/tests/**/*.ts',
       ],
       exclude: [
         // Tests describe behaviour, they are not behaviour under test.
