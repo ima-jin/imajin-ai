@@ -26,17 +26,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { checkHardEligibility } from '@/src/lib/kernel/verification';
+import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 
 const log = createLogger('kernel');
 
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const apiKey = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-  const expectedKey = process.env.ATTESTATION_INTERNAL_API_KEY;
-
-  if (!expectedKey || apiKey !== expectedKey) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = requireInternalApiKey(request);
+  if (authError) return authError;
 
   let body: Record<string, unknown>;
   try {
