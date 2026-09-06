@@ -21,7 +21,6 @@ import {
   echoLastInsertedValue,
   itDrivesFairManifestFromNodeSelf,
   itAppliesForestScopeFee,
-  FOREST_SCOPE_DID,
   type FairChainEntry,
 } from '../../../../../../packages/fair/src/test-helpers';
 
@@ -91,6 +90,9 @@ const VALID_BODY = {
   paymentMethods: { stripe: { enabled: true } },
 };
 
+const callRoute = () => POST(makeRequest(VALID_BODY));
+const getChain = (body: Record<string, unknown>) => (body.fairManifest as { chain: FairChainEntry[] }).chain;
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('POST /api/pages (#2000: node config sourced via getNodeSelf())', () => {
@@ -106,19 +108,16 @@ describe('POST /api/pages (#2000: node config sourced via getNodeSelf())', () =>
 
   itDrivesFairManifestFromNodeSelf({
     getNodeSelfMock: mocks.getNodeSelfMock,
-    callRoute: () => POST(makeRequest(VALID_BODY)),
-    getChain: (body) => (body.fairManifest as { chain: FairChainEntry[] }).chain,
+    callRoute,
+    getChain,
   });
 
   itAppliesForestScopeFee({
     getForestScopeConfigMock: mocks.getForestScopeConfigMock,
-    arrange: () => {
-      mocks.getNodeSelfMock.mockResolvedValue(null);
-      mocks.requireAuthMock.mockResolvedValue({
-        identity: { id: 'did:imajin:creator', actingAs: FOREST_SCOPE_DID },
-      });
-    },
-    callRoute: () => POST(makeRequest(VALID_BODY)),
-    getChain: (body) => (body.fairManifest as { chain: FairChainEntry[] }).chain,
+    getNodeSelfMock: mocks.getNodeSelfMock,
+    authMock: mocks.requireAuthMock,
+    callerId: 'did:imajin:creator',
+    callRoute,
+    getChain,
   });
 });

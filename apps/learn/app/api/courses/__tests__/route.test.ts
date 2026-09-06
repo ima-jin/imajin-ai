@@ -18,7 +18,6 @@ import {
   errorResponseMock,
   makeJsonRequest,
   itAppliesForestScopeFee,
-  FOREST_SCOPE_DID,
 } from '../../../../../../packages/fair/src/test-helpers';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
@@ -124,12 +123,9 @@ describe('POST /api/courses (#2000: node config sourced via getNodeSelf())', () 
 
   itAppliesForestScopeFee({
     getForestScopeConfigMock: mocks.getForestScopeConfigMock,
-    arrange: () => {
-      mocks.getNodeSelfMock.mockResolvedValue(null);
-      mocks.requireHardDIDMock.mockResolvedValue({
-        identity: { id: 'did:imajin:creator', actingAs: FOREST_SCOPE_DID },
-      });
-    },
+    getNodeSelfMock: mocks.getNodeSelfMock,
+    authMock: mocks.requireHardDIDMock,
+    callerId: 'did:imajin:creator',
     callRoute: () => POST(makeRequest(VALID_BODY)),
     getChain: (body) => (body.metadata as { fair: { chain: { did: string; role: string; share: number }[] } }).fair.chain,
   });

@@ -146,16 +146,15 @@ describe('PATCH /api/listings/:id (#2000: node config sourced via getNodeSelf())
 
   itAppliesForestScopeFee({
     getForestScopeConfigMock: mocks.getForestScopeConfigMock,
+    getNodeSelfMock: mocks.getNodeSelfMock,
+    authMock: mocks.requireAuthMock,
+    callerId: 'did:imajin:seller',
     successStatus: 200,
-    arrange: () => {
-      mocks.getNodeSelfMock.mockResolvedValue(null);
-      // resolveActingDidMock resolves the caller to actingAs, so the listing's
-      // sellerDid must match it for the route's `sellerDid === currentDid` scope
-      // check (no scope fee if the acting identity doesn't own the listing).
+    // resolveActingDidMock resolves the caller to actingAs, so the listing's
+    // sellerDid must match it for the route's `sellerDid === currentDid` scope
+    // check (no scope fee if the acting identity doesn't own the listing).
+    beforeArrange: () => {
       mocks.selectWhereMock.mockResolvedValue([{ ...EXISTING_LISTING, sellerDid: FOREST_SCOPE_DID }]);
-      mocks.requireAuthMock.mockResolvedValue({
-        identity: { id: 'did:imajin:seller', actingAs: FOREST_SCOPE_DID },
-      });
     },
     callRoute: () => PATCH(makeRequest({ price: 5000 }), ROUTE_PARAMS),
     getChain: (body) => (body.fairManifest as { chain: { did: string; role: string; share: number }[] }).chain,

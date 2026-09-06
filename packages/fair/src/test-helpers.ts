@@ -144,16 +144,19 @@ export function itDrivesFairManifestFromNodeSelf(config: {
 /**
  * Registers the "applies the forest group scope fee" (#2001) `it(...)` case
  * shared by every getForestScopeConfig() call-site test (coffee pages, learn
- * courses, market listings create + patch). Each route resolves/validates
- * the "acting as a scope" caller differently (requireAuth vs requireHardDID
- * identity, and market's PATCH additionally requires the existing listing's
- * sellerDid to match the acting DID) — `arrange()` is where each call site
- * sets up its own route-specific mocks for that; everything else about the
- * call + assertion is identical and lives here.
+ * courses, market listings create + patch). `authMock` is whatever
+ * requireAuth/requireHardDID-shaped mock the route uses to resolve the
+ * caller's identity — it's resolved here to `{ identity: { id: callerId,
+ * actingAs: scopeDid } }`. `beforeArrange()` is an escape hatch for routes
+ * that need extra route-specific setup first (e.g. market's PATCH, which
+ * must also make the existing listing's sellerDid match the acting DID).
  */
 export function itAppliesForestScopeFee(config: {
   getForestScopeConfigMock: MockLike;
-  arrange: () => void;
+  getNodeSelfMock?: MockLike;
+  authMock: MockLike;
+  callerId: string;
+  beforeArrange?: () => void;
   callRoute: () => Promise<Response>;
   getChain: (body: Record<string, unknown>) => FairChainEntry[];
   scopeDid?: string;
@@ -165,7 +168,9 @@ export function itAppliesForestScopeFee(config: {
   const successStatus = config.successStatus ?? 201;
 
   it('applies the forest group scope fee to the .fair manifest when acting as a scope (#2001)', async () => {
-    config.arrange();
+    config.getNodeSelfMock?.mockResolvedValue(null);
+    config.beforeArrange?.();
+    config.authMock.mockResolvedValue({ identity: { id: config.callerId, actingAs: scopeDid } });
     config.getForestScopeConfigMock.mockResolvedValue({ scopeFeeBps });
 
     const res = await config.callRoute();
