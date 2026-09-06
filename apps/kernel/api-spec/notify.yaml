@@ -40,6 +40,15 @@ components:
         data: { type: object, description: "Additional payload data" }
         read: { type: boolean }
         createdAt: { type: string, format: date-time }
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When this notification last reached a live WebSocket frame (a
+            live push or a backlog replay on reconnect). Null means it has
+            never been delivered yet. Distinct from `read`, which the
+            recipient controls (#2044).
     NotificationPreference:
       type: object
       properties:

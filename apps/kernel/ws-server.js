@@ -1,5 +1,6 @@
 const { WebSocketServer } = require('ws');
 const { createAlsoRegistry } = require('./src/lib/ws/also-registry');
+const { createNotificationBacklogReplayer } = require('./src/lib/ws/notification-backlog');
 
 /** @type {Map<import('ws').WebSocket, { did: string, alsoDids: Set<string>, subscriptions: Set<string> }>} */
 const socketMeta = new Map();
@@ -232,6 +233,39 @@ const alsoRegistry = createAlsoRegistry({
   log: (message) => console.log('[WS]', message),
 });
 
+/**
+ * Fetch `did`'s undelivered notification backlog from the kernel (#2044).
+ * Each returned frame has already been atomically claimed server-side
+ * (`getNotificationBacklog`'s `delivered_at IS NULL` guard), so ws-server.js
+ * only has to send them — it never touches the database directly, the same
+ * reasoning as `verifyAgentDelegation` above.
+ */
+async function fetchNotificationBacklog(did) {
+  const port = process.env.PORT || '3000';
+  const key = process.env.AUTH_INTERNAL_API_KEY;
+  if (!key) return { frames: [], truncated: false };
+  const res = await fetch(`http://localhost:${port}/notify/api/internal/backlog`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-internal-key': key,
+    },
+    body: JSON.stringify({ did }),
+  });
+  if (!res.ok) return { frames: [], truncated: false };
+  return res.json();
+}
+
+/**
+ * Replays a reconnecting DID's undelivered notification backlog (#2044).
+ * See src/lib/notify/backlog.ts for why replay and a live push racing the
+ * same row can never both deliver it.
+ */
+const notificationBacklog = createNotificationBacklogReplayer({
+  fetchBacklog: fetchNotificationBacklog,
+  log: (message) => console.log('[WS]', message),
+});
+
 function setupWebSocket(server) {
   wss = new WebSocketServer({ noServer: true });
 
@@ -255,6 +289,9 @@ function setupWebSocket(server) {
         if (!didSockets.has(did)) didSockets.set(did, new Set());
         didSockets.get(did).add(ws);
         ws.send(JSON.stringify({ type: 'connected' }));
+        // Fire-and-forget: a missed replay here is retried on the next
+        // reconnect, never a reason to hold up the connection (#2044).
+        notificationBacklog.replay(ws, did);
         if (didSockets.get(did).size === 1) {
           broadcastPresenceChange(did, true);
         }
@@ -276,6 +313,8 @@ function setupWebSocket(server) {
               if (!didSockets.has(authedDid)) didSockets.set(authedDid, new Set());
               didSockets.get(authedDid).add(ws);
               ws.send(JSON.stringify({ type: 'connected' }));
+              // Fire-and-forget, same as the cookie-auth path above (#2044).
+              notificationBacklog.replay(ws, authedDid);
               if (didSockets.get(authedDid).size === 1) {
                 broadcastPresenceChange(authedDid, true);
               }

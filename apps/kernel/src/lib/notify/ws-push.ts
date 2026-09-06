@@ -10,8 +10,19 @@
  * Fire-and-forget by contract: a notification row is already persisted and
  * readable through `GET /notify/api/notifications`, so a failed push is a
  * degraded experience, never a failed send.
+ *
+ * ## Redelivery (#2044)
+ * A push that finds nobody connected used to be a dead end beyond the
+ * persisted row — see `docs/warp-notification-chain.md` Hop 3. `ws-server.js`
+ * now replays a recipient's undelivered backlog immediately on reconnect
+ * (`src/lib/notify/backlog.ts`), so this function claims the row
+ * (`delivery.ts`'s atomic `delivered_at IS NULL` guard) before attempting the
+ * push, and releases the claim again if the push does not actually reach a
+ * socket — the same guard the backlog replay uses, so the two paths can never
+ * both deliver the same notification.
  */
 import { createLogger } from '@imajin/logger';
+import { claimNotificationForDelivery, releaseNotificationClaim } from './delivery';
 
 const log = createLogger('kernel');
 
@@ -36,6 +47,8 @@ export interface NotificationWsFrame {
   data: Record<string, unknown>;
   /** RFC-3339, matching the stored `created_at`. */
   createdAt: string;
+  /** Set on a backlog-replayed frame (#2044) — absent on a live push. */
+  replay?: true;
 }
 
 /** Build the frame for a stored notification. */
@@ -80,12 +93,43 @@ export function buildNotificationFrame(input: {
  * row already written in `/notify/api/send`) so a miss is visible on an
  * existing health surface without grepping logs across instances.
  */
+
+/**
+ * Release `id`'s delivery claim, swallowing any error. This already runs
+ * from inside `pushNotificationToDid`'s "never throws" contract; a failed
+ * release just leaves the row claimed until the next explicit fix, degrading
+ * to "will not be replayed" rather than throwing out of a fire-and-forget push.
+ */
+async function releaseClaimSafely(id: string): Promise<void> {
+  try {
+    await releaseNotificationClaim(id);
+  } catch (err) {
+    log.error({ id, err: String(err) }, 'Notification delivery claim release failed');
+  }
+}
+
 export async function pushNotificationToDid(
   recipientDid: string,
   frame: NotificationWsFrame,
 ): Promise<boolean> {
   if (!INTERNAL_KEY) {
     log.warn({ id: frame.id }, 'AUTH_INTERNAL_API_KEY not set, skipping notification WS push');
+    return false;
+  }
+
+  // Claim this row before attempting delivery (#2044): the same atomic guard
+  // a backlog replay uses (delivery.ts), so a notification created at the
+  // exact instant its recipient reconnects is never delivered by both paths.
+  let claimed = true;
+  try {
+    claimed = await claimNotificationForDelivery(frame.id);
+  } catch (err) {
+    log.error({ id: frame.id, err: String(err) }, 'Notification delivery claim failed');
+    // Fail open: a DB hiccup here must not silently drop a live push. Worst
+    // case is a rare duplicate frame, not a permanently missed one.
+    claimed = true;
+  }
+  if (!claimed) {
     return false;
   }
 
@@ -101,6 +145,7 @@ export async function pushNotificationToDid(
 
     if (!res.ok) {
       log.error({ id: frame.id, status: res.status }, 'Notification WS push failed');
+      await releaseClaimSafely(frame.id);
       return false;
     }
 
@@ -111,10 +156,12 @@ export async function pushNotificationToDid(
         { id: frame.id, recipientDid },
         'Notification WS push found no connected socket for recipient',
       );
+      await releaseClaimSafely(frame.id);
     }
     return delivered;
   } catch (err) {
     log.error({ id: frame.id, err: String(err) }, 'Notification WS push error');
+    await releaseClaimSafely(frame.id);
     return false;
   }
 }

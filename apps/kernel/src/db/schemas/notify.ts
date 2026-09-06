@@ -1,4 +1,5 @@
 import { pgSchema, text, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const notifySchema = pgSchema("notify");
 
@@ -14,10 +15,18 @@ export const notifications = notifySchema.table("notifications", {
   channelsSent: text("channels_sent").array().default([]),
   read: boolean("read").default(false),
   readAt: timestamp("read_at", { withTimezone: true }),
+  // Set once this notification reaches a live WS frame (#2044). Distinct from
+  // `read` -- a notification is routinely delivered without ever being read.
+  // Also the mutual-exclusion guard between a live push and a backlog replay
+  // racing the same row: see apps/kernel/src/lib/notify/delivery.ts.
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (table) => ({
   recipientIdx: index("idx_notifications_recipient").on(table.recipientDid, table.createdAt),
   unreadIdx: index("idx_notifications_unread").on(table.recipientDid),
+  // Backs the backlog-on-reconnect query (getNotificationBacklog, backlog.ts).
+  undeliveredIdx: index("idx_notifications_undelivered").on(table.recipientDid, table.createdAt)
+    .where(sql`${table.deliveredAt} IS NULL AND ${table.read} = false`),
 }));
 
 export const preferences = notifySchema.table("preferences", {

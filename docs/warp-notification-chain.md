@@ -151,20 +151,38 @@ on the other side. `sendToDid` sends to every open socket for the DID plus
 any delegate registered via `register_also` (`ws-server.js:230-233`,
 `also-registry.js`), and reports whether at least one socket was live.
 
-**There is no server-side redelivery/"sweep" of missed WS pushes.** A push
-that finds nobody connected (`sendToDid` returns `false`) is a dead end on
-the kernel side beyond the persisted row: `GET /notify/api/notifications`
-(`apps/kernel/app/notify/api/notifications/route.ts`) and
-`GET /notify/api/notifications/unread` exist for a client to poll, but
-`openclaw-imajin-plugin` never calls either (confirmed by
-`git grep -n "notifications\|/notify/" src` in that repo returning no REST
-call sites) — it is WS-push-or-nothing today. See "Incidents 2026-09-05" (a)
-and (b) below.
+**Server-side redelivery on reconnect (#2044).** A push that finds nobody
+connected (`sendToDid` returns `false`) used to be a dead end on the kernel
+side beyond the persisted row. It no longer is: `notify.notifications` now
+carries a nullable `delivered_at` (migration
+`0129_notify_notifications_delivered_at.sql`) that is distinct from `read`
+and means "reached a live WS frame at least once". `pushNotificationToDid`
+claims a row (an atomic `UPDATE ... WHERE delivered_at IS NULL RETURNING`,
+`apps/kernel/src/lib/notify/delivery.ts`) before attempting the push, and
+releases the claim again if the push does not actually reach a socket.
+`ws-server.js`'s connection handler asks the kernel for that DID's
+undelivered backlog immediately after sending `{type: 'connected'}`
+(`POST /notify/api/internal/backlog` →
+`apps/kernel/src/lib/notify/backlog.ts`'s `getNotificationBacklog`, oldest
+first, capped at 100), claiming each row the same way before replaying it
+as a `NotificationWsFrame` with `replay: true`
+(`apps/kernel/src/lib/ws/notification-backlog.js`). The shared
+`delivered_at IS NULL` claim is what keeps a live push and a backlog replay
+racing the same row from ever delivering it twice — whichever claims it
+first is the only one that pushes.
+
+`GET /notify/api/notifications` and `GET /notify/api/notifications/unread`
+still exist for a client to poll, and `openclaw-imajin-plugin` still never
+calls either (confirmed by `git grep -n "notifications\|/notify/" src` in
+that repo returning no REST call sites) — the kernel-side replay above
+means it no longer needs to, per #2044's kernel-side option. See
+"Incidents 2026-09-05" (a) and (b) below for the state before this fix.
 
 **Grep:** `"Notification WS push failed"` / `"Notification WS push error"`
 (`ws-push.ts:103,116` after this PR's fix — previously `:91,98`); the new
 `"Notification WS push found no connected socket for recipient"`
-(`ws-push.ts:110-113`).
+(`ws-push.ts:110-113`); `"Notification delivery claim failed"` /
+`"Notification delivery claim release failed"` (`ws-push.ts`, #2044).
 
 ## Incidents 2026-09-05
 
@@ -369,10 +387,11 @@ here, per scope.
   dependency design: the claim function is injected into `watchRun` via
   `WatchRunOptions` and wired to the real, DB-backed implementation only at
   the dispatch route's call site.
-- [#2044](https://github.com/ima-jin/imajin-ai/issues/2044) — the plugin has
-  no client-side catch-up read of `GET /notify/api/notifications`/`/unread`
-  at all (Hop 3 above) — a missed live push today is invisible to the agent
-  until a human happens to check the `/notify` page. Whether that catch-up
-  belongs in the plugin (poll on reconnect) or the kernel (push a backlog on
-  `{type: 'connected'}`) is a product decision for that repo/team, filed as
-  a follow-up issue rather than guessed at here.
+- [#2044](https://github.com/ima-jin/imajin-ai/issues/2044) — **fixed,
+  kernel-side.** A missed live push used to be invisible to the agent until
+  a human happened to check the `/notify` page. `ws-server.js` now replays a
+  reconnecting DID's undelivered backlog itself (see the redelivery
+  paragraph in Hop 3 above), so the plugin needs no client-side catch-up
+  read of `GET /notify/api/notifications`/`/unread` to get this guarantee.
+  The shared `delivered_at IS NULL` claim keeps a live push and a backlog
+  replay from ever delivering the same notification twice.
