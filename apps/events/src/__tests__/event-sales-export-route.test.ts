@@ -10,9 +10,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   nextSql,
   resetResolveRouteMocks,
-  requireAuthMock,
-  isEventOrganizerMock,
   resolveIdentitiesForDidsMock,
+  testReturns401WhenAuthFails,
+  testReturns403ForNonOrganizer,
+  testReturns404WhenEventNotFound,
+  testReturns500OnUnexpectedError,
 } from './support/resolve-route-test-support';
 
 import { GET } from '../../app/api/events/[id]/sales/export/route';
@@ -88,32 +90,10 @@ describe('GET .../sales/export — batched identity resolution (#1998)', () => {
     expect(res.headers.get('Content-Disposition')).toContain('.xlsx');
   });
 
-  it('returns 404 when the event is not found', async () => {
-    nextSql([]); // event lookup misses
-
-    const res = await GET(makeRequest() as any, ROUTE_PARAMS);
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 403 for a non-organizer', async () => {
-    isEventOrganizerMock.mockResolvedValue({ authorized: false });
-
-    const res = await GET(makeRequest() as any, ROUTE_PARAMS);
-    expect(res.status).toBe(403);
+  testReturns404WhenEventNotFound(GET, makeRequest, ROUTE_PARAMS);
+  testReturns403ForNonOrganizer(GET, makeRequest, ROUTE_PARAMS, () => {
     expect(resolveIdentitiesForDidsMock).not.toHaveBeenCalled();
   });
-
-  it('returns 401 when auth fails', async () => {
-    requireAuthMock.mockResolvedValue({ error: 'Unauthorized', status: 401 });
-
-    const res = await GET(makeRequest() as any, ROUTE_PARAMS);
-    expect(res.status).toBe(401);
-  });
-
-  it('returns 500 when an unexpected error is thrown', async () => {
-    isEventOrganizerMock.mockRejectedValue(new Error('boom'));
-
-    const res = await GET(makeRequest() as any, ROUTE_PARAMS);
-    expect(res.status).toBe(500);
-  });
+  testReturns401WhenAuthFails(GET, makeRequest, ROUTE_PARAMS);
+  testReturns500OnUnexpectedError(GET, makeRequest, ROUTE_PARAMS);
 });

@@ -15,7 +15,9 @@
  * this module (before the route under test) registers every mock here
  * exactly as if it were declared inline in the test file itself.
  */
-import { vi } from 'vitest';
+import { vi, it, expect } from 'vitest';
+
+type RouteHandler = (request: Request, context: unknown) => Promise<Response>;
 
 const hoisted = vi.hoisted(() => {
   const queue: unknown[][] = [];
@@ -77,6 +79,55 @@ vi.mock('@imajin/auth', () => ({
 vi.mock('@/src/lib/organizer', () => ({
   isEventOrganizer: isEventOrganizerMock,
 }));
+
+/**
+ * Shared "it" blocks for the auth/authorization/not-found/error checks that
+ * are identical across every route in this family — extracted (rather than
+ * copy-pasted per suite) after SonarCloud flagged the copies as new-code
+ * duplication. Each one declares a single `it(...)`; call from inside a
+ * suite's own `describe` block.
+ */
+export function testReturns401WhenAuthFails(GET: RouteHandler, makeRequest: () => Request, routeParams: unknown): void {
+  it('returns 401 when auth fails', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'Unauthorized', status: 401 });
+
+    const res = await GET(makeRequest(), routeParams);
+    expect(res.status).toBe(401);
+  });
+}
+
+export function testReturns403ForNonOrganizer(
+  GET: RouteHandler,
+  makeRequest: () => Request,
+  routeParams: unknown,
+  onForbidden?: () => void,
+): void {
+  it('returns 403 for a non-organizer', async () => {
+    isEventOrganizerMock.mockResolvedValue({ authorized: false });
+
+    const res = await GET(makeRequest(), routeParams);
+    expect(res.status).toBe(403);
+    onForbidden?.();
+  });
+}
+
+export function testReturns404WhenEventNotFound(GET: RouteHandler, makeRequest: () => Request, routeParams: unknown): void {
+  it('returns 404 when the event is not found', async () => {
+    nextSql([]); // event lookup misses
+
+    const res = await GET(makeRequest(), routeParams);
+    expect(res.status).toBe(404);
+  });
+}
+
+export function testReturns500OnUnexpectedError(GET: RouteHandler, makeRequest: () => Request, routeParams: unknown): void {
+  it('returns 500 when an unexpected error is thrown', async () => {
+    isEventOrganizerMock.mockRejectedValue(new Error('boom'));
+
+    const res = await GET(makeRequest(), routeParams);
+    expect(res.status).toBe(500);
+  });
+}
 
 /**
  * The root vitest config's `@/` alias points at apps/kernel, not apps/events,
