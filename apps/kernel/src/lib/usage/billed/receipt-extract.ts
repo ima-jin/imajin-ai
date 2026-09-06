@@ -69,11 +69,27 @@ Each item must be an object with exactly these fields:
 This is a DRAFT for a human to review and correct — extract your best reading even if uncertain. \
 Never invent line items that are not visibly present on the receipt.`;
 
-/** Strip a ```json ... ``` fence a model may add despite instructions not to. */
+const CODE_FENCE = '```';
+
+/**
+ * Strip a ```json ... ``` fence a model may add despite instructions not
+ * to. Plain string slicing rather than a single combined regex: a pattern
+ * like /^```(?:json)?\s*([\s\S]*?)\s*```$/ has overlapping quantifiers
+ * (`\s*` next to a lazy `[\s\S]*?`) that Sonar flags as super-linear/
+ * backtracking-prone (S8786) on adversarial input.
+ */
 function stripCodeFence(text: string): string {
-  const trimmed = text.trim();
-  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed);
-  return fenced ? fenced[1] : trimmed;
+  let trimmed = text.trim();
+  if (!trimmed.startsWith(CODE_FENCE)) return trimmed;
+
+  trimmed = trimmed.slice(CODE_FENCE.length);
+  if (trimmed.toLowerCase().startsWith('json')) trimmed = trimmed.slice(4);
+  trimmed = trimmed.trimStart();
+
+  if (trimmed.endsWith(CODE_FENCE)) {
+    trimmed = trimmed.slice(0, -CODE_FENCE.length).trimEnd();
+  }
+  return trimmed;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
