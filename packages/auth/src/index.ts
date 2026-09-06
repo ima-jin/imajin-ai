@@ -69,6 +69,8 @@ export {
   getAttestationForwardFailureCount,
   _resetAttestationForwardFailureCountForTests,
 } from "./emit-attestation";
+export { evaluateEligibility } from "./evaluate-eligibility";
+export type { EligibilityEvaluation } from "./evaluate-eligibility";
 export { SCOPES, validateScopes } from "./scopes";
 export type { Scope } from "./scopes";
 // Declarative scope vocabulary (#1253) — the single source of truth that SCOPES,

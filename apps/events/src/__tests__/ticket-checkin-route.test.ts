@@ -9,15 +9,16 @@
  *  - Non-organizer → 403
  *  - Unauthenticated → 401
  *
- * Note: triggerHardEligibilityCheck and the optional CHECKIN_WEBHOOK_URL side effect
- * are fire-and-forget. They are exercised by the success test but not asserted on —
- * their internal SQL calls use the default sqlMock return ([]) which causes them to
- * exit early harmlessly.
+ * Hard-eligibility (tier upgrade) is no longer re-derived in this app — the
+ * route just calls the kernel's evaluateEligibility() (#1999), which owns the
+ * rule, the CAS upgrade, and the attestation emission. The optional
+ * CHECKIN_WEBHOOK_URL side effect is fire-and-forget and exercised by the
+ * success test but not asserted on; its SQL calls use the default sqlMock
+ * return ([]) which causes it to exit early harmlessly.
  */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ─── Mocks ──────────────────────────────────────────────────────────────────
+// ─── Mocks ─────────────────────────────────────────────────────────────────────────
 
 const mocks = vi.hoisted(() => {
   // Raw postgres client. The check-in route uses only getClient() — no Drizzle.
@@ -26,10 +27,9 @@ const mocks = vi.hoisted(() => {
   const requireAuthMock = vi.fn();
   const isEventOrganizerMock = vi.fn();
   const publishMock = vi.fn().mockResolvedValue(undefined);
-  // getNodeSelf() (#2000) — replaces the route's old raw relay_config SELECT.
-  const getNodeSelfMock = vi.fn().mockResolvedValue(null);
+  const evaluateEligibilityMock = vi.fn().mockResolvedValue(null);
 
-  return { sqlMock, requireAuthMock, isEventOrganizerMock, publishMock, getNodeSelfMock };
+  return { sqlMock, requireAuthMock, isEventOrganizerMock, publishMock, evaluateEligibilityMock };
 });
 
 vi.mock('@imajin/logger', () => ({
@@ -40,14 +40,11 @@ vi.mock('@imajin/db', () => ({
   getClient: () => mocks.sqlMock,
 }));
 
-vi.mock('@imajin/config', () => ({
-  getNodeSelf: mocks.getNodeSelfMock,
-}));
-
 vi.mock('@imajin/auth', () => ({
   requireAuth: mocks.requireAuthMock,
   resolveActingDid: (identity: { actingFor?: string; actingAs?: string | null; id: string }) =>
     identity.actingFor ?? identity.actingAs ?? identity.id,
+  evaluateEligibility: mocks.evaluateEligibilityMock,
 }));
 
 vi.mock('@/src/lib/organizer', () => ({
@@ -78,11 +75,6 @@ function nextSql(rows: unknown[]): void {
   mocks.sqlMock.mockResolvedValueOnce(rows);
 }
 
-/** Find the `identity.verified.hard` bus event, if published so far. */
-function findPublishedHardVerifiedCall(): unknown[] | undefined {
-  return mocks.publishMock.mock.calls.find((c: unknown[]) => c[0] === 'identity.verified.hard');
-}
-
 const VALID_TICKET = {
   id: 'tkt_1',
   status: 'valid',
@@ -100,10 +92,9 @@ describe('POST /api/events/[id]/tickets/[ticketId]/check-in', () => {
     mocks.sqlMock.mockReset();
     mocks.sqlMock.mockResolvedValue([]);   // default: all extra SQL calls return []
     mocks.publishMock.mockResolvedValue(undefined);
-    mocks.getNodeSelfMock.mockReset();
-    mocks.getNodeSelfMock.mockResolvedValue(null);
+    mocks.evaluateEligibilityMock.mockReset();
+    mocks.evaluateEligibilityMock.mockResolvedValue(null);
     delete process.env.CHECKIN_WEBHOOK_URL;
-    delete process.env.RELAY_DID;
 
     mocks.requireAuthMock.mockResolvedValue({
       identity: { id: 'did:imajin:organizer', actingAs: null },
@@ -169,37 +160,29 @@ describe('POST /api/events/[id]/tickets/[ticketId]/check-in', () => {
       subject: 'did:imajin:attendee',
       payload: expect.objectContaining({ ticketId: 'tkt_1' }),
     });
+
+    // Hard-eligibility is delegated to the kernel (#1999) — no local SQL,
+    // no local bus emission. The route just calls evaluateEligibility() for
+    // the attendee and does not block the response on it.
+    expect(mocks.evaluateEligibilityMock).toHaveBeenCalledWith('did:imajin:attendee');
   });
 
-  // Note: getNodeDid() caches its result in a module-level variable for the
-  // process lifetime (mirrors the pre-#2000 behavior), so only one scenario
-  // in this file can assert on the resolved node DID — a second, differing
-  // scenario would just observe the first one's cached value. The
-  // registry-unavailable / RELAY_DID-fallback branch is covered independently
-  // in packages/config/tests/node-self.test.ts (getNodeSelf() returns null on
-  // failure) and apps/kernel/src/lib/kernel/__tests__/node-identity.test.ts
-  // (RELAY_DID fallback semantics).
-  it('publishes identity.verified.hard with the registry-sourced node DID as issuer (#2000)', async () => {
-    const handleClaimedFiveWeeksAgo = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString();
-    mocks.getNodeSelfMock.mockResolvedValue({
-      did: 'did:imajin:jin',
-      nodeOperatorDid: null,
-      nodeFeeBps: null,
-      buyerCreditBps: null,
-    });
+  it('does not call evaluateEligibility when the ticket has no owner_did', async () => {
+    nextSql([{ ...VALID_TICKET, owner_did: null }]);
+    nextSql([{ id: 'tkt_1', used_at: USED_AT, status: 'used' }]);
 
-    nextSql([VALID_TICKET]);                                     // (1) SELECT ticket
-    nextSql([{ id: 'tkt_1', used_at: USED_AT, status: 'used' }]); // (2) UPDATE RETURNING
-    nextSql([{ tier: 'preliminary', handle_claimed_at: handleClaimedFiveWeeksAgo }]); // (3) identity lookup
-    nextSql([{ count: 30 }]);                                     // (4) connection count
-    nextSql([{ id: 'att_1' }]);                                   // (5) attendance row
-    nextSql([{ id: 'did:imajin:attendee' }]);                     // (6) atomic CAS upgrade
+    const res = await POST(makeRequest() as any, ROUTE_PARAMS);
+    expect(res.status).toBe(200);
+    expect(mocks.evaluateEligibilityMock).not.toHaveBeenCalled();
+  });
 
-    await POST(makeRequest() as Parameters<typeof POST>[0], ROUTE_PARAMS);
-    await vi.waitFor(() => expect(findPublishedHardVerifiedCall()).toBeDefined());
+  it('does not fail check-in when evaluateEligibility rejects', async () => {
+    nextSql([VALID_TICKET]);
+    nextSql([{ id: 'tkt_1', used_at: USED_AT, status: 'used' }]);
+    mocks.evaluateEligibilityMock.mockRejectedValue(new Error('kernel unreachable'));
 
-    const hardCall = findPublishedHardVerifiedCall();
-    expect(hardCall![1]).toMatchObject({ issuer: 'did:imajin:jin', subject: 'did:imajin:attendee' });
-    expect(mocks.getNodeSelfMock).toHaveBeenCalled();
+    const res = await POST(makeRequest() as any, ROUTE_PARAMS);
+    expect(res.status).toBe(200);
+    await vi.waitFor(() => expect(mocks.evaluateEligibilityMock).toHaveBeenCalled());
   });
 });

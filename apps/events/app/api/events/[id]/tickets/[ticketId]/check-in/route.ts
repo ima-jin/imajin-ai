@@ -1,78 +1,12 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { requireAuth , resolveActingDid } from '@imajin/auth';
-import { getNodeSelf } from '@imajin/config';
-
-const log = createLogger('events');
+import { requireAuth, resolveActingDid, evaluateEligibility } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
 
+const log = createLogger('events');
 const sql = getClient();
-
-let _nodeDid: string | undefined;
-async function getNodeDid(): Promise<string> {
-  if (_nodeDid !== undefined) return _nodeDid;
-  // Registry-backed lookup (#2000) — replaces the raw relay.relay_config SQL
-  // this app used to run directly against the kernel's DB.
-  const nodeSelf = await getNodeSelf();
-  _nodeDid = nodeSelf?.did || process.env.RELAY_DID || '';
-  if (!_nodeDid) log.warn({}, '[check-in] No node DID found via registry or RELAY_DID');
-  return _nodeDid;
-}
-
-/**
- * Fire-and-forget hard verification check for a DID.
- * Mirrors checkHardEligibility in apps/kernel — runs in-process via shared DB.
- */
-async function triggerHardEligibilityCheck(did: string): Promise<void> {
-  const [identity] = await sql`
-    SELECT tier, handle_claimed_at FROM auth.identities WHERE id = ${did} LIMIT 1
-  `;
-  if (identity?.tier !== 'preliminary') return;
-  if (!identity.handle_claimed_at) return;
-
-  const fourWeeksAgo = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000);
-  if (new Date(identity.handle_claimed_at) > fourWeeksAgo) return;
-
-  const [{ count: connCount }] = await sql`
-    SELECT COUNT(DISTINCT partner.id) as count
-    FROM connections.connections c
-    JOIN auth.identities partner
-      ON (c.did_a = ${did} AND partner.id = c.did_b)
-      OR (c.did_b = ${did} AND partner.id = c.did_a)
-    WHERE c.disconnected_at IS NULL
-      AND partner.type = 'human'
-  `;
-  if (Number(connCount) < 25) return;
-
-  const [attendanceRow] = await sql`
-    SELECT id FROM auth.attestations
-    WHERE subject_did = ${did} AND type = 'event.attendance'
-    LIMIT 1
-  `;
-  if (!attendanceRow) return;
-
-  // Atomic CAS — only upgrade if still 'preliminary', prevents double emission
-  const [upgraded] = await sql`
-    UPDATE auth.identities SET tier = 'established', updated_at = NOW()
-    WHERE id = ${did} AND tier = 'preliminary'
-    RETURNING id
-  `;
-
-  if (!upgraded) return;
-
-  const nodeDid = await getNodeDid();
-  publish('identity.verified.hard', {
-    issuer: nodeDid,
-    subject: did,
-    scope: 'events',
-    payload: {
-      context_id: did,
-      context_type: 'identity',
-    },
-  }).catch((err) => log.error({ err: String(err) }, '[verification] hard emit error'));
-}
 
 /**
  * POST /api/events/[id]/tickets/[ticketId]/check-in — set used_at timestamp (owner or cohost)
@@ -148,9 +82,12 @@ export async function POST(
         },
       }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
-      // Check hard verification eligibility — fire-and-forget
-      triggerHardEligibilityCheck(attendeeDid)
-        .catch((err) => log.error({ err: String(err) }, '[verification] hard check error'));
+      // Check hard verification eligibility — fire-and-forget. The kernel
+      // (POST /auth/api/eligibility/evaluate, #1999) owns the rule and the
+      // tier upgrade + attestation emission; this app no longer reads or
+      // writes auth.identities directly.
+      evaluateEligibility(attendeeDid)
+        .catch((err) => log.error({ err: String(err) }, '[verification] eligibility evaluation error'));
     }
 
     // Fire-and-forget check-in webhook — do not block check-in on failure

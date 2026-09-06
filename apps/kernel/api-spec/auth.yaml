@@ -1364,6 +1364,69 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/eligibility/evaluate:
+    post:
+      tags: [auth]
+      operationId: evaluateEligibility
+      summary: Internal — (re-)evaluate hard-tier eligibility for a DID (service-to-service)
+      description: |
+        Re-runs the hard (established) verification eligibility rule for `did`
+        — connections ≥25, handle claimed ≥4 weeks ago, ≥1 `event.attendance`
+        attestation — and atomically upgrades the tier + emits
+        `identity.verified.hard` when eligible (#1999). This is the single
+        owner of the rule; apps must call this instead of re-deriving it or
+        reading/writing `auth.identities` directly.
+
+        Requires `ATTESTATION_INTERNAL_API_KEY` as Bearer token. No session
+        cookie — the caller acts on its own service identity, not on behalf
+        of a session belonging to `did`.
+
+        Idempotent: calling this repeatedly for the same DID is safe. Once
+        already at `established` tier (or never eligible), the response
+        reports `upgraded: false` and performs no writes.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did: { type: string, example: "did:imajin:abc123" }
+      responses:
+        "200":
+          description: Evaluation complete (may or may not have upgraded the tier)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  tier:
+                    type: string
+                    enum: [soft, preliminary, established, steward, operator]
+                    description: The identity's tier after this evaluation.
+                  upgraded:
+                    type: boolean
+                    description: True only when this call performed the tier upgrade (not a prior call).
+        "400":
+          description: Invalid request (missing/invalid did)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized (invalid API key)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No identity found for did
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/account/methods:
     get:
       tags: [auth]
