@@ -17,6 +17,7 @@ import {
   makeJsonRequest,
   echoLastInsertedValue,
   itDrivesFairManifestFromNodeSelf,
+  itAppliesForestScopeFee,
   type FairChainEntry,
 } from '../../../../../../packages/fair/src/test-helpers';
 
@@ -34,10 +35,11 @@ const mocks = vi.hoisted(() => {
   const getSessionMock = vi.fn().mockResolvedValue(null);
   const getNodeSelfMock = vi.fn();
   const publishMock = vi.fn().mockResolvedValue(undefined);
-  // Raw postgres client — only reached for the (unrelated) forest_config scope lookup.
-  const sqlMock = vi.fn().mockResolvedValue([]);
+  // Forest scope-fee lookup (#2001, /api/forest/{groupDid}/config/public) —
+  // only reached when actingAs is set, unrelated to the getNodeSelf() chain tests.
+  const getForestScopeConfigMock = vi.fn().mockResolvedValue(null);
 
-  return { returningMock, valuesMock, insertMock, requireAuthMock, getSessionMock, getNodeSelfMock, publishMock, sqlMock };
+  return { returningMock, valuesMock, insertMock, requireAuthMock, getSessionMock, getNodeSelfMock, publishMock, getForestScopeConfigMock };
 });
 
 vi.mock('@/db', () => ({
@@ -53,12 +55,9 @@ vi.mock('@imajin/auth', () => ({
 
 vi.mock('@imajin/media', () => passthroughMediaRefFactory());
 
-vi.mock('@imajin/db', () => ({
-  getClient: () => mocks.sqlMock,
-}));
-
 vi.mock('@imajin/config', () => ({
   getNodeSelf: mocks.getNodeSelfMock,
+  getForestScopeConfig: mocks.getForestScopeConfigMock,
 }));
 
 vi.mock('@imajin/bus', () => ({
@@ -89,12 +88,15 @@ const VALID_BODY = {
   contactInfo: { email: 'seller@example.com' },
 };
 
+const callRoute = () => POST(makeRequest(VALID_BODY));
+const getChain = (body: Record<string, unknown>) => (body.fairManifest as { chain: FairChainEntry[] }).chain;
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('POST /api/listings (#2000: node config sourced via getNodeSelf())', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.sqlMock.mockReset().mockResolvedValue([]);
+    mocks.getForestScopeConfigMock.mockReset().mockResolvedValue(null);
     mocks.publishMock.mockResolvedValue(undefined);
     mocks.returningMock.mockImplementation(echoLastInsertedValue(mocks.valuesMock));
     mocks.requireAuthMock.mockResolvedValue({
@@ -104,7 +106,16 @@ describe('POST /api/listings (#2000: node config sourced via getNodeSelf())', ()
 
   itDrivesFairManifestFromNodeSelf({
     getNodeSelfMock: mocks.getNodeSelfMock,
-    callRoute: () => POST(makeRequest(VALID_BODY)),
-    getChain: (body) => (body.fairManifest as { chain: FairChainEntry[] }).chain,
+    callRoute,
+    getChain,
+  });
+
+  itAppliesForestScopeFee({
+    getForestScopeConfigMock: mocks.getForestScopeConfigMock,
+    getNodeSelfMock: mocks.getNodeSelfMock,
+    authMock: mocks.requireAuthMock,
+    callerId: 'did:imajin:seller',
+    callRoute,
+    getChain,
   });
 });

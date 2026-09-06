@@ -17,6 +17,7 @@ import {
   jsonResponseMock,
   errorResponseMock,
   makeJsonRequest,
+  itAppliesForestScopeFee,
 } from '../../../../../../packages/fair/src/test-helpers';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
@@ -35,10 +36,11 @@ const mocks = vi.hoisted(() => {
 
   const requireHardDIDMock = vi.fn();
   const getNodeSelfMock = vi.fn();
-  // Raw postgres client — only reached for the (unrelated) forest_config scope lookup.
-  const sqlMock = vi.fn().mockResolvedValue([]);
+  // Forest scope-fee lookup (#2001, /api/forest/{groupDid}/config/public) —
+  // only reached when actingAs is set, unrelated to the getNodeSelf() chain tests.
+  const getForestScopeConfigMock = vi.fn().mockResolvedValue(null);
 
-  return { limitMock, whereMock, fromMock, selectMock, insertValuesMock, insertMock, requireHardDIDMock, getNodeSelfMock, sqlMock };
+  return { limitMock, whereMock, fromMock, selectMock, insertValuesMock, insertMock, requireHardDIDMock, getNodeSelfMock, getForestScopeConfigMock };
 });
 
 vi.mock('@/db', () => ({
@@ -59,12 +61,9 @@ vi.mock('@imajin/auth', () => ({
   resolveActingDid: resolveActingDidMock,
 }));
 
-vi.mock('@imajin/db', () => ({
-  getClient: () => mocks.sqlMock,
-}));
-
 vi.mock('@imajin/config', () => ({
   getNodeSelf: mocks.getNodeSelfMock,
+  getForestScopeConfig: mocks.getForestScopeConfigMock,
 }));
 
 vi.mock('@/lib/utils', () => ({
@@ -95,7 +94,7 @@ describe('POST /api/courses (#2000: node config sourced via getNodeSelf())', () 
     vi.clearAllMocks();
     mocks.limitMock.mockReset().mockResolvedValue([]);
     mocks.insertValuesMock.mockReset().mockResolvedValue(undefined);
-    mocks.sqlMock.mockReset().mockResolvedValue([]);
+    mocks.getForestScopeConfigMock.mockReset().mockResolvedValue(null);
     mocks.requireHardDIDMock.mockResolvedValue({
       identity: { id: 'did:imajin:creator', actingAs: null },
     });
@@ -120,5 +119,14 @@ describe('POST /api/courses (#2000: node config sourced via getNodeSelf())', () 
 
     const body = await res.json();
     expectDefaultShares(body.metadata.fair.chain);
+  });
+
+  itAppliesForestScopeFee({
+    getForestScopeConfigMock: mocks.getForestScopeConfigMock,
+    getNodeSelfMock: mocks.getNodeSelfMock,
+    authMock: mocks.requireHardDIDMock,
+    callerId: 'did:imajin:creator',
+    callRoute: () => POST(makeRequest(VALID_BODY)),
+    getChain: (body) => (body.metadata as { fair: { chain: { did: string; role: string; share: number }[] } }).fair.chain,
   });
 });

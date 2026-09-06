@@ -1,29 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { getNodeSelf } from "../src/node-self";
+import { useStubbedServiceEnv } from "./service-url-test-utils";
 
 const ENV_KEYS = ["REGISTRY_SERVICE_URL", "NODE_ENV"] as const;
 
 describe("getNodeSelf", () => {
-  let saved: Record<string, string | undefined>;
-  let fetchMock: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    saved = {};
-    for (const k of ENV_KEYS) {
-      saved[k] = process.env[k];
-      delete process.env[k];
-    }
-    fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-  });
-
-  afterEach(() => {
-    for (const k of ENV_KEYS) {
-      if (saved[k] === undefined) delete process.env[k];
-      else process.env[k] = saved[k];
-    }
-    vi.unstubAllGlobals();
-  });
+  const env = useStubbedServiceEnv(ENV_KEYS);
 
   it("returns the parsed node self info on a 200 response", async () => {
     const info = {
@@ -32,7 +14,7 @@ describe("getNodeSelf", () => {
       nodeFeeBps: 50,
       buyerCreditBps: 25,
     };
-    fetchMock.mockResolvedValue({ ok: true, json: async () => info });
+    env.fetchMock.mockResolvedValue({ ok: true, json: async () => info });
 
     expect(await getNodeSelf()).toEqual(info);
   });
@@ -41,41 +23,41 @@ describe("getNodeSelf", () => {
     // Like every other *_SERVICE_URL, the env var includes the service's
     // path prefix (`/registry`) — the fetch must append only `/api/node/self`.
     process.env.REGISTRY_SERVICE_URL = "https://registry.example.com/registry";
-    fetchMock.mockResolvedValue({
+    env.fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({ did: "did:imajin:jin", nodeOperatorDid: null, nodeFeeBps: null, buyerCreditBps: null }),
     });
 
     await getNodeSelf();
-    expect(fetchMock).toHaveBeenCalledWith("https://registry.example.com/registry/api/node/self");
+    expect(env.fetchMock).toHaveBeenCalledWith("https://registry.example.com/registry/api/node/self");
   });
 
   it("does not double-prefix when REGISTRY_SERVICE_URL already includes /registry (#2046 regression)", async () => {
     process.env.REGISTRY_SERVICE_URL = "http://localhost:7000/registry";
-    fetchMock.mockResolvedValue({
+    env.fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({ did: "did:imajin:jin", nodeOperatorDid: null, nodeFeeBps: null, buyerCreditBps: null }),
     });
 
     await getNodeSelf();
-    const calledUrl = fetchMock.mock.calls[0][0] as string;
+    const calledUrl = env.fetchMock.mock.calls[0][0] as string;
     expect(calledUrl).toBe("http://localhost:7000/registry/api/node/self");
     expect(calledUrl).not.toContain("/registry/registry");
   });
 
   it("falls back to the canonical dev port + /registry prefix when REGISTRY_SERVICE_URL is unset", async () => {
-    fetchMock.mockResolvedValue({
+    env.fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({ did: "did:imajin:jin", nodeOperatorDid: null, nodeFeeBps: null, buyerCreditBps: null }),
     });
 
     await getNodeSelf();
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:3000/registry/api/node/self");
+    expect(env.fetchMock).toHaveBeenCalledWith("http://localhost:3000/registry/api/node/self");
   });
 
   it("returns null and warns with the URL hit on a non-2xx response (e.g. 503 not configured)", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    fetchMock.mockResolvedValue({ ok: false, status: 503, json: async () => ({ error: "Node identity not configured" }) });
+    env.fetchMock.mockResolvedValue({ ok: false, status: 503, json: async () => ({ error: "Node identity not configured" }) });
 
     expect(await getNodeSelf()).toBeNull();
     expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -87,7 +69,7 @@ describe("getNodeSelf", () => {
 
   it("returns null and warns when the fetch throws (network error)", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    fetchMock.mockRejectedValue(new Error("connection refused"));
+    env.fetchMock.mockRejectedValue(new Error("connection refused"));
 
     expect(await getNodeSelf()).toBeNull();
     expect(warnSpy).toHaveBeenCalledTimes(1);

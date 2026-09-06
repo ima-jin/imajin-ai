@@ -19,6 +19,8 @@ import {
   jsonResponseMock,
   errorResponseMock,
   makeJsonRequest,
+  itAppliesForestScopeFee,
+  FOREST_SCOPE_DID,
 } from '../../../../../../../packages/fair/src/test-helpers';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
@@ -38,13 +40,14 @@ const mocks = vi.hoisted(() => {
   const requireAuthMock = vi.fn();
   const getNodeSelfMock = vi.fn();
   const publishMock = vi.fn().mockResolvedValue(undefined);
-  // Raw postgres client — only reached for the (unrelated) forest_config scope lookup.
-  const sqlMock = vi.fn().mockResolvedValue([]);
+  // Forest scope-fee lookup (#2001, /api/forest/{groupDid}/config/public) —
+  // only reached when actingAs is set, unrelated to the getNodeSelf() chain tests.
+  const getForestScopeConfigMock = vi.fn().mockResolvedValue(null);
 
   return {
     selectWhereMock, selectFromMock, selectMock,
     updateReturningMock, updateWhereMock, updateSetMock, updateMock,
-    requireAuthMock, getNodeSelfMock, publishMock, sqlMock,
+    requireAuthMock, getNodeSelfMock, publishMock, getForestScopeConfigMock,
   };
 });
 
@@ -61,12 +64,9 @@ vi.mock('@imajin/auth', () => ({
 
 vi.mock('@imajin/media', () => passthroughMediaRefFactory());
 
-vi.mock('@imajin/db', () => ({
-  getClient: () => mocks.sqlMock,
-}));
-
 vi.mock('@imajin/config', () => ({
   getNodeSelf: mocks.getNodeSelfMock,
+  getForestScopeConfig: mocks.getForestScopeConfigMock,
 }));
 
 vi.mock('@imajin/bus', () => ({
@@ -105,7 +105,7 @@ const EXISTING_LISTING = {
 describe('PATCH /api/listings/:id (#2000: node config sourced via getNodeSelf())', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.sqlMock.mockReset().mockResolvedValue([]);
+    mocks.getForestScopeConfigMock.mockReset().mockResolvedValue(null);
     mocks.publishMock.mockResolvedValue(undefined);
     mocks.selectWhereMock.mockReset().mockResolvedValue([EXISTING_LISTING]);
     mocks.updateReturningMock.mockImplementation(async () => [mocks.updateSetMock.mock.calls.at(-1)?.[0]]);
@@ -142,5 +142,21 @@ describe('PATCH /api/listings/:id (#2000: node config sourced via getNodeSelf())
 
     const body = await res.json();
     expect(body.fairManifest).toBeUndefined();
+  });
+
+  itAppliesForestScopeFee({
+    getForestScopeConfigMock: mocks.getForestScopeConfigMock,
+    getNodeSelfMock: mocks.getNodeSelfMock,
+    authMock: mocks.requireAuthMock,
+    callerId: 'did:imajin:seller',
+    successStatus: 200,
+    // resolveActingDidMock resolves the caller to actingAs, so the listing's
+    // sellerDid must match it for the route's `sellerDid === currentDid` scope
+    // check (no scope fee if the acting identity doesn't own the listing).
+    beforeArrange: () => {
+      mocks.selectWhereMock.mockResolvedValue([{ ...EXISTING_LISTING, sellerDid: FOREST_SCOPE_DID }]);
+    },
+    callRoute: () => PATCH(makeRequest({ price: 5000 }), ROUTE_PARAMS),
+    getChain: (body) => (body.fairManifest as { chain: { did: string; role: string; share: number }[] }).chain,
   });
 });
