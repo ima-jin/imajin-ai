@@ -79,7 +79,7 @@
  * independently publishing moments later for the same segment, because
  * neither's own durable row existed yet for the other to see — is closed
  * by {@link claimTerminalPublish}: a DB-level idempotent claim
- * (`kernel.warp_terminal_publish_claims`, migration 0127) both
+ * (`kernel.warp_terminal_publish_claims`, migration 0128) both
  * {@link checkOneRun} and `watchRun` (via `WatchRunOptions.claimTerminalPublish`,
  * injected at the dispatch route's call site so `dispatch.ts` keeps no DB
  * dependency of its own) must win before publishing. `hasTerminalEventForSegment`
@@ -326,7 +326,7 @@ async function hasTerminalEventForSegment(runId: string, activityAt: Date): Prom
  * {@link hasTerminalEventForSegment}: a DB-level idempotent claim via
  * `INSERT ... ON CONFLICT (run_id, segment) DO NOTHING RETURNING`, backed by
  * the `(run_id, segment)` primary key on `kernel.warp_terminal_publish_claims`
- * (migration 0127). Whichever of this sweep ({@link checkOneRun}) or the
+ * (migration 0128). Whichever of this sweep ({@link checkOneRun}) or the
  * in-request watch (`watchRun`, `dispatch.ts` — injected via
  * `WatchRunOptions.claimTerminalPublish` so that module keeps no DB
  * dependency of its own) inserts first for a given `(runId, segment)` gets

@@ -9,7 +9,7 @@
  * `../dispatch`/`../run-watch-sweep` wholesale to pin each module's own
  * orchestration in isolation), this suite exercises the REAL `watchRun` and
  * the REAL `claimTerminalPublish` together, sharing one in-memory
- * `@imajin/db` double that faithfully models the migration 0127 table's
+ * `@imajin/db` double that faithfully models the migration 0128 table's
  * `INSERT ... ON CONFLICT (run_id, segment) DO NOTHING RETURNING` semantics:
  * only the first insert for a given `(run_id, segment)` key ever returns a
  * row. That is the one property the whole fix depends on, and it is real
@@ -52,7 +52,7 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 /**
- * A faithful double of the migration 0127 claim table: a plain `Map` keyed by
+ * A faithful double of the migration 0128 claim table: a plain `Map` keyed by
  * `${runId}:${segment}`, with "insert if absent, return whether it was
  * absent" as its only operation — exactly what
  * `INSERT ... ON CONFLICT DO NOTHING RETURNING` guarantees atomically in

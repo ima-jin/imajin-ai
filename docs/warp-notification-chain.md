@@ -301,7 +301,7 @@ Regression tests added:
 
 **#2043 update: the reverse direction is now closed too.** Both directions
 of this race are now closed by the same DB-level idempotent claim,
-`kernel.warp_terminal_publish_claims` (migration 0127, one row per
+`kernel.warp_terminal_publish_claims` (migration 0128, one row per
 `(run_id, segment)`), inserted via `INSERT ... ON CONFLICT DO NOTHING
 RETURNING`. `claimTerminalPublish` (`run-watch-sweep.ts`) is the one shared
 helper both `checkOneRun` and `watchRun`'s terminal branch
@@ -363,7 +363,7 @@ here, per scope.
   Closed the remaining (smaller) direction of the (c) race: sweep
   publishing, then the in-request watch independently publishing moments
   later for the same segment. Implemented with a DB-level idempotent claim
-  table (`kernel.warp_terminal_publish_claims`, migration 0127) rather than
+  table (`kernel.warp_terminal_publish_claims`, migration 0128) rather than
   an advisory lock — see the "#2043 update" note under (c) above for the
   full design and the tests that pin it. `dispatch.ts` keeps its no-DB-
   dependency design: the claim function is injected into `watchRun` via

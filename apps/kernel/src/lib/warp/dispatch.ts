@@ -80,7 +80,7 @@
  * closed the sweep-observes-after-watch direction with a durable-log
  * re-check (`hasTerminalEventForSegment`); this closes the remaining
  * reverse direction with a DB-level idempotent claim
- * (`kernel.warp_terminal_publish_claims`, migration 0127): before
+ * (`kernel.warp_terminal_publish_claims`, migration 0128): before
  * publishing a terminal outcome, {@link watchRun} calls the
  * `claimTerminalPublish` function passed in via {@link WatchRunOptions} —
  * when provided — and skips the publish if the claim was not won. This

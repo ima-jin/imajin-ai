@@ -1,4 +1,4 @@
--- 0127_warp_terminal_publish_claims.sql
+-- 0128_warp_terminal_publish_claims.sql
 -- Close the reverse poller/sweep duplicate-publish race (#2043) — the
 -- direction #1838's `hasTerminalEventForSegment` re-check (migration 0111,
 -- run-watch-sweep.ts) did not close: the sweep publishing a terminal
