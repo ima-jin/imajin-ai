@@ -29,6 +29,7 @@
     "@imajin/llm": "workspace:*",
     "@imajin/logger": "workspace:*",
     "@imajin/media": "workspace:*",
+    "@imajin/money": "workspace:*",
     "@imajin/notify": "workspace:*",
     "@imajin/onboard": "workspace:*",
     "@imajin/pay": "workspace:*",
