@@ -72,6 +72,23 @@
  * call them, so there is exactly one place that decides which event a run's
  * state becomes.
  *
+ * ## Duplicate-publish race guard (#2043)
+ * The in-request watch and the sweep both independently poll the same run,
+ * so both can observe the same terminal state within moments of each other
+ * and each try to publish it (see `run-watch-sweep.ts`'s module doc and
+ * docs/warp-notification-chain.md, "Incidents 2026-09-05" (c)). #1838
+ * closed the sweep-observes-after-watch direction with a durable-log
+ * re-check (`hasTerminalEventForSegment`); this closes the remaining
+ * reverse direction with a DB-level idempotent claim
+ * (`kernel.warp_terminal_publish_claims`, migration 0128): before
+ * publishing a terminal outcome, {@link watchRun} calls the
+ * `claimTerminalPublish` function passed in via {@link WatchRunOptions} —
+ * when provided — and skips the publish if the claim was not won. This
+ * module still holds no DB dependency of its own (see the top of this
+ * file): the production implementation
+ * (`claimTerminalPublish`, `run-watch-sweep.ts`) is wired in by the
+ * dispatch route's call site, not imported here.
+ *
  * Webhook ingress was investigated first, per #1838's own preference order:
  * Warp's run object carries `triggerUrl` (see {@link WarpAgentRun}), but that
  * field documents what *triggered* the run — a Slack thread, a Linear issue, a
@@ -1459,6 +1476,19 @@ export interface WatchRunOptions {
    * poll cycle.
    */
   progress?: boolean;
+  /**
+   * Claim the right to publish this run's terminal outcome before doing so
+   * (#2043) — see this module's "Duplicate-publish race guard" doc above.
+   * Should resolve `true` when the caller now owns the publish for
+   * `(runId, segment)` and `false` when another caller (the sweep, or an
+   * overlapping watch) already claimed it. Injected rather than imported
+   * directly, so this module keeps no DB dependency of its own; the
+   * dispatch route wires in the real implementation
+   * (`claimTerminalPublish`, `run-watch-sweep.ts`). Omitted in most tests,
+   * and by any caller that has not opted into the guard, in which case the
+   * watch publishes unconditionally as it always has.
+   */
+  claimTerminalPublish?: (runId: string, segment: number, claimedBy: string) => Promise<boolean>;
 }
 
 /**
@@ -2252,6 +2282,23 @@ export async function watchRun(
         },
         'Warp cloud agent run reached a terminal state',
       );
+
+      // #2043: the in-request watch always watches a run's first, unresumed
+      // segment (see this module's doc), so it always claims segment 1. A
+      // caller that did not pass `claimTerminalPublish` (most tests, and any
+      // caller that has not opted into the guard) publishes unconditionally,
+      // exactly as before this fix.
+      if (options.claimTerminalPublish !== undefined) {
+        const claimed = await options.claimTerminalPublish(id, 1, 'in-request-watch');
+        if (!claimed) {
+          log.info(
+            { principalDid, runId: id, state: outcome.state },
+            'Warp run watch: terminal outcome for this segment already claimed by another publisher; skipping duplicate publish',
+          );
+          return;
+        }
+      }
+
       await publishTerminalRunOutcome(principalDid, outcome.run, outcome.state);
       return;
     }

@@ -23,6 +23,7 @@ const {
   candidateRows,
   blockedNoticeRows,
   raceRows,
+  claimedSegments,
   listingFailure,
   FakeWarpApiErrorHoisted,
 } = vi.hoisted(() => ({
@@ -39,6 +40,10 @@ const {
   }>,
   blockedNoticeRows: new Set<string>(),
   raceRows: new Set<string>(),
+  // Segments already claimed *before* the sweep runs (#2043) — simulates the
+  // in-request watch (or an overlapping sweep tick) having already won
+  // `claimTerminalPublish` for `${runId}:${segment}`.
+  claimedSegments: new Set<string>(),
   listingFailure: { error: null as Error | null },
   FakeWarpApiErrorHoisted: class extends Error {
     status: number;
@@ -68,6 +73,13 @@ vi.mock('@imajin/db', () => {
       const runId = values[0] as string;
       return Promise.resolve(raceRows.has(runId) ? [{ x: 1 }] : []);
     }
+    if (text.includes('warp_terminal_publish_claims')) {
+      const [runId, segment] = values as [string, number];
+      const key = `${runId}:${segment}`;
+      if (claimedSegments.has(key)) return Promise.resolve([]);
+      claimedSegments.add(key);
+      return Promise.resolve([{ run_id: runId }]);
+    }
     return Promise.resolve([]);
   };
   return { getClient: () => sql };
@@ -83,7 +95,7 @@ vi.mock('../dispatch', () => ({
   WarpApiError: FakeWarpApiErrorHoisted,
 }));
 
-import { sweepInFlightWarpRuns, SWEEP_LOOKBACK_MS } from '../run-watch-sweep';
+import { sweepInFlightWarpRuns, SWEEP_LOOKBACK_MS, claimTerminalPublish } from '../run-watch-sweep';
 
 const PRINCIPAL = 'did:imajin:veteze';
 
@@ -114,6 +126,7 @@ beforeEach(() => {
   candidateRows.length = 0;
   blockedNoticeRows.clear();
   raceRows.clear();
+  claimedSegments.clear();
   listingFailure.error = null;
   getAgentRunMock.mockReset();
   publishTerminalRunOutcomeMock.mockReset().mockResolvedValue(undefined);
@@ -429,5 +442,78 @@ describe('sweepInFlightWarpRuns', () => {
       );
       expect(outcome.skippedRace).toBe(0);
     });
+
+    // ── The claim is the authority, not just the durable-log pre-check (#2043) ──
+
+    it('skips a terminal publish when the claim was already won by another publisher, even with no durable row yet', async () => {
+      // hasTerminalEventForSegment (raceRows) sees nothing — no durable
+      // warp.run.completed/.failed/.timeout row exists yet for this segment,
+      // e.g. because the in-request watch won the claim but has not finished
+      // publishing. The claim itself must still be the authority.
+      seedCandidate('run-1', { activityAt: new Date(Date.now() - 5_000) });
+      claimedSegments.add('run-1:1');
+      getAgentRunMock.mockResolvedValue(run('SUCCEEDED', 'run-1'));
+
+      const outcome = await sweepInFlightWarpRuns();
+
+      expect(publishTerminalRunOutcomeMock).not.toHaveBeenCalled();
+      expect(outcome).toMatchObject({ checked: 1, completed: 0, skippedRace: 1 });
+    });
+
+    it('skips a timeout publish when the claim was already won by another publisher', async () => {
+      const staleActivity = new Date(Date.now() - (SWEEP_LOOKBACK_MS + 60_000));
+      seedCandidate('run-1', { activityAt: staleActivity });
+      claimedSegments.add('run-1:1');
+      getAgentRunMock.mockResolvedValue(run('INPROGRESS', 'run-1'));
+
+      const outcome = await sweepInFlightWarpRuns();
+
+      expect(publishTimeoutRunOutcomeMock).not.toHaveBeenCalled();
+      expect(outcome).toMatchObject({ checked: 1, timedOut: 0, skippedRace: 1 });
+    });
+
+    it('claims the resumed segment number, not segment 1, for a resumed run', async () => {
+      seedCandidate('run-1', { resumeCount: 1, previousSessionId: 'session-a' });
+      // Only segment 1 was claimed by someone else — this run's own segment
+      // (2) is still free, so the sweep must still be able to publish it.
+      claimedSegments.add('run-1:1');
+      getAgentRunMock.mockResolvedValue(run('SUCCEEDED', 'run-1'));
+
+      const outcome = await sweepInFlightWarpRuns();
+
+      expect(publishTerminalRunOutcomeMock).toHaveBeenCalledWith(
+        PRINCIPAL,
+        run('SUCCEEDED', 'run-1'),
+        'SUCCEEDED',
+        { resumedFrom: 'session-a', segment: 2 },
+      );
+      expect(outcome.skippedRace).toBe(0);
+    });
+  });
+});
+
+// ── claimTerminalPublish itself (#2043) ────────────────────────────────────
+
+describe('claimTerminalPublish', () => {
+  it('resolves true for the first claim on a (runId, segment) pair', async () => {
+    await expect(claimTerminalPublish('run-9', 1, 'sweep')).resolves.toBe(true);
+  });
+
+  it('resolves false for a second claim on the same (runId, segment) pair', async () => {
+    await claimTerminalPublish('run-9', 1, 'sweep');
+
+    await expect(claimTerminalPublish('run-9', 1, 'in-request-watch')).resolves.toBe(false);
+  });
+
+  it('resolves true independently for a different segment of the same run', async () => {
+    await claimTerminalPublish('run-9', 1, 'sweep');
+
+    await expect(claimTerminalPublish('run-9', 2, 'sweep')).resolves.toBe(true);
+  });
+
+  it('resolves true independently for a different run with the same segment', async () => {
+    await claimTerminalPublish('run-9', 1, 'sweep');
+
+    await expect(claimTerminalPublish('run-10', 1, 'sweep')).resolves.toBe(true);
   });
 });
