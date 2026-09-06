@@ -456,6 +456,58 @@ describe('terminal states', () => {
   });
 });
 
+// ── Duplicate-publish claim guard (#2043) ────────────────────────────────────
+
+describe('terminal publish claim guard', () => {
+  it('publishes unconditionally when no claim function is injected, matching pre-#2043 behaviour', async () => {
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    expect(eventsOfType('warp.run.completed')).toHaveLength(1);
+  });
+
+  it('claims segment 1 for this run before publishing a terminal outcome', async () => {
+    const claim = vi.fn().mockResolvedValue(true);
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep, claimTerminalPublish: claim });
+
+    expect(claim).toHaveBeenCalledWith(RUN_ID, 1, 'in-request-watch');
+    expect(eventsOfType('warp.run.completed')).toHaveLength(1);
+  });
+
+  it('skips publishing when the claim is lost to another publisher (e.g. the sweep)', async () => {
+    const claim = vi.fn().mockResolvedValue(false);
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep, claimTerminalPublish: claim });
+
+    expect(claim).toHaveBeenCalledWith(RUN_ID, 1, 'in-request-watch');
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('does not consult the claim for a non-terminal outcome (still running)', async () => {
+    const claim = vi.fn().mockResolvedValue(true);
+    respondRunAlways(runBody('INPROGRESS'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep, claimTerminalPublish: claim });
+
+    expect(claim).not.toHaveBeenCalled();
+    expect(eventsOfType('warp.run.still_running')).toHaveLength(1);
+  });
+
+  it('claims for a FAILED outcome too, skipping warp.run.failed when the claim is lost', async () => {
+    const claim = vi.fn().mockResolvedValue(false);
+    respondRun(runBody('FAILED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep, claimTerminalPublish: claim });
+
+    expect(claim).toHaveBeenCalledWith(RUN_ID, 1, 'in-request-watch');
+    expect(eventsOfType('warp.run.failed')).toHaveLength(0);
+  });
+});
+
 // ── Watch budget elapsed: still running, NOT a timeout (#2032) ──────────────────────────────
 
 describe('watch budget elapsed', () => {

@@ -32,6 +32,12 @@ vi.mock('@/src/lib/warp/dispatch', () => ({
   watchRun: vi.fn(),
 }));
 
+const { mockClaimTerminalPublish } = vi.hoisted(() => ({ mockClaimTerminalPublish: vi.fn() }));
+
+vi.mock('@/src/lib/warp/run-watch-sweep', () => ({
+  claimTerminalPublish: mockClaimTerminalPublish,
+}));
+
 import { POST, OPTIONS } from '../route';
 import { dispatchAgentRun, watchRun } from '@/src/lib/warp/dispatch';
 import { WarpApiError } from '@/src/lib/warp/errors';
@@ -202,10 +208,12 @@ describe('successful dispatch', () => {
 // ─── Completion watch (#1639) ─────────────────────────────────────────────
 
 describe('background completion watch', () => {
-  it('watches the dispatched run as the acting DID', async () => {
+  it('watches the dispatched run as the acting DID, with the shared claim guard injected (#2043)', async () => {
     await POST(makeReq({ prompt: 'go' }));
 
-    expect(watchRun).toHaveBeenCalledWith(OWNER_DID, RUN.runId);
+    expect(watchRun).toHaveBeenCalledWith(OWNER_DID, RUN.runId, {
+      claimTerminalPublish: mockClaimTerminalPublish,
+    });
   });
 
   it('never blocks the response on the watch, which runs for up to 30 minutes', async () => {

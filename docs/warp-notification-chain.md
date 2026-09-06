@@ -281,14 +281,13 @@ resumed segment's own completion) immediately before the sweep's
 `checkOneRun` calls `publishTerminalRunOutcome` or
 `publishTimeoutRunOutcome`. A skip is counted in the new `SweepOutcome.skippedRace`
 field rather than `completed`/`failed`/`timedOut`, since nothing was
-published. This narrows the race to the (much smaller, and in production
-effectively negligible given the poll cadences involved) reverse window
-where the in-request watch could publish moments after a sweep tick has
-already read but not yet published — closing it fully would need a
-DB-level lock or unique constraint, which is out of scope for a minimal fix
-(see "Follow-ups" below) but the common, most-likely-to-actually-fire
-direction (sweep racing an in-request watch that has been running for
-several minutes) is closed.
+published. This closed the common, most-likely-to-actually-fire direction
+(sweep racing an in-request watch that has been running for several
+minutes), but left the smaller reverse window open — the in-request watch
+publishing moments after a sweep tick has already read but not yet
+published, since neither's durable row exists yet for the other to see via
+a plain re-check. That reverse direction was filed separately as #2043
+rather than folded into this fix.
 
 Regression tests added:
 - `run-watch-sweep.test.ts` → describe block "race with the in-request
@@ -299,6 +298,45 @@ Regression tests added:
 - `watch-run.test.ts`'s existing "(#2032 acceptance)" test already pins
   exactly one `warp.run.completed` and zero `warp.run.timeout` across a
   still-running-then-succeeded sequence.
+
+**#2043 update: the reverse direction is now closed too.** Both directions
+of this race are now closed by the same DB-level idempotent claim,
+`kernel.warp_terminal_publish_claims` (migration 0127, one row per
+`(run_id, segment)`), inserted via `INSERT ... ON CONFLICT DO NOTHING
+RETURNING`. `claimTerminalPublish` (`run-watch-sweep.ts`) is the one shared
+helper both `checkOneRun` and `watchRun`'s terminal branch
+(`dispatch.ts`) call immediately before publishing a terminal outcome — the
+first of the two to insert for a given `(runId, segment)` wins and
+publishes; the other gets zero rows back and skips, counted in
+`SweepOutcome.skippedRace` on the sweep side. This is now the actual
+authority; `hasTerminalEventForSegment` remains in place only as a cheap
+pre-check that avoids a needless claim attempt in the common case.
+`watchRun`'s own DB-free design (see `dispatch.ts`'s module doc) is
+preserved: the claim function is injected via `WatchRunOptions`, with the
+real, DB-backed implementation wired in at the dispatch route's one
+production call site (`apps/kernel/app/warp/api/dispatch/route.ts`) rather
+than imported into `dispatch.ts` directly.
+
+Regression tests added for #2043:
+- `run-watch-sweep.test.ts` → `claimTerminalPublish` describe block: the
+  first claim on a `(runId, segment)` pair resolves `true`, a second claim
+  on the same pair resolves `false`, and different segments/runs claim
+  independently.
+- `run-watch-sweep.test.ts` → "race with the in-request watch": a claim
+  already won by another publisher is skipped even when
+  `hasTerminalEventForSegment` sees no durable row yet, for both the
+  terminal and timeout paths, and a resumed segment claims its own segment
+  number rather than colliding with an earlier one.
+- `watch-run.test.ts` → "terminal publish claim guard" describe block: the
+  watch claims segment 1 before publishing, skips the publish when the
+  claim is lost, and still publishes unconditionally when no claim function
+  is injected (unchanged pre-#2043 behaviour for callers that opt out).
+- `terminal-publish-claim-race.test.ts` (new): the acceptance test — the
+  real `watchRun` and the real `claimTerminalPublish` sharing one in-memory
+  idempotent-claim double, producing exactly one terminal publish for both
+  orderings (sweep claims first vs. watch claims first) and under true
+  concurrency (`Promise.all` of two simultaneous claims for the same
+  segment).
 
 ### (d) 22:24:56 completion tonight — kernel's responsibility ends at the WS frame
 
@@ -319,17 +357,18 @@ turn) is entirely inside `openclaw-imajin-plugin`/openclaw-core's Hop 6/7
 (`schedulePluginSessionTurn`'s tag validation) — not investigated further
 here, per scope.
 
-## Follow-ups filed (out of scope for this PR)
+## Follow-ups filed
 
-- [#2043](https://github.com/ima-jin/imajin-ai/issues/2043) — closing the
-  remaining (smaller) direction of the (c) race: sweep publishing, then the
-  in-request watch independently publishing moments later for the same
-  segment. Needs either a DB-level uniqueness constraint on
-  `(runId, segment)` for terminal `event_subscription_log` rows or an
-  advisory lock around the read-then-publish sequence in both `watchRun` and
-  the sweep. That is a schema/architecture change (`dispatch.ts` currently
-  has no DB dependency at all — see its module doc), so it is filed
-  separately rather than folded into this minimal fix.
+- [#2043](https://github.com/ima-jin/imajin-ai/issues/2043) — **resolved.**
+  Closed the remaining (smaller) direction of the (c) race: sweep
+  publishing, then the in-request watch independently publishing moments
+  later for the same segment. Implemented with a DB-level idempotent claim
+  table (`kernel.warp_terminal_publish_claims`, migration 0127) rather than
+  an advisory lock — see the "#2043 update" note under (c) above for the
+  full design and the tests that pin it. `dispatch.ts` keeps its no-DB-
+  dependency design: the claim function is injected into `watchRun` via
+  `WatchRunOptions` and wired to the real, DB-backed implementation only at
+  the dispatch route's call site.
 - [#2044](https://github.com/ima-jin/imajin-ai/issues/2044) — the plugin has
   no client-side catch-up read of `GET /notify/api/notifications`/`/unread`
   at all (Hop 3 above) — a missed live push today is invisible to the agent

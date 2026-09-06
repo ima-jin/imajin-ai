@@ -70,6 +70,22 @@
  * unresolved" case #2032 asks `warp.run.timeout` to be reserved for,
  * distinct from the in-request watch's own budget elapsing (which is
  * `warp.run.still_running`, not this).
+ *
+ * ## Closing the reverse duplicate-publish race (#2043)
+ * #1838 added {@link hasTerminalEventForSegment}, a durable-log re-check
+ * that closes the sweep-observes-after-the-in-request-watch direction of
+ * the race between this sweep and `watchRun` (`dispatch.ts`). The reverse
+ * direction — this sweep publishing, then the in-request watch
+ * independently publishing moments later for the same segment, because
+ * neither's own durable row existed yet for the other to see — is closed
+ * by {@link claimTerminalPublish}: a DB-level idempotent claim
+ * (`kernel.warp_terminal_publish_claims`, migration 0127) both
+ * {@link checkOneRun} and `watchRun` (via `WatchRunOptions.claimTerminalPublish`,
+ * injected at the dispatch route's call site so `dispatch.ts` keeps no DB
+ * dependency of its own) must win before publishing. `hasTerminalEventForSegment`
+ * stays in place as a cheap pre-check — it is a plain `SELECT` and skips a
+ * needless claim attempt in the common case — but the claim is now the
+ * actual authority.
  */
 import { getClient } from '@imajin/db';
 import { createLogger } from '@imajin/logger';
@@ -124,9 +140,10 @@ export interface SweepOutcome {
   timedOut: number;
   /**
    * A terminal/timeout publish was skipped because the in-request watch (or an
-   * overlapping sweep tick) already published this exact segment's outcome
-   * between this tick listing its candidates and this candidate's own read
-   * completing — see {@link hasTerminalEventForSegment}. Counted separately
+   * overlapping sweep tick) already published — or already won the claim to
+   * publish — this exact segment's outcome, whether that was visible via the
+   * durable-log pre-check ({@link hasTerminalEventForSegment}) or only via
+   * losing the {@link claimTerminalPublish} race (#2043). Counted separately
    * from `completed`/`failed`/`timedOut` because nothing was published here.
    */
   skippedRace: number;
@@ -302,6 +319,57 @@ async function hasTerminalEventForSegment(runId: string, activityAt: Date): Prom
 }
 
 /**
+ * Claim the right to publish a terminal outcome (`warp.run.completed` /
+ * `.failed` / `.timeout`) for `runId`'s segment `segment` (#2043).
+ *
+ * This is the actual race-closing primitive, not merely a pre-check like
+ * {@link hasTerminalEventForSegment}: a DB-level idempotent claim via
+ * `INSERT ... ON CONFLICT (run_id, segment) DO NOTHING RETURNING`, backed by
+ * the `(run_id, segment)` primary key on `kernel.warp_terminal_publish_claims`
+ * (migration 0127). Whichever of this sweep ({@link checkOneRun}) or the
+ * in-request watch (`watchRun`, `dispatch.ts` — injected via
+ * `WatchRunOptions.claimTerminalPublish` so that module keeps no DB
+ * dependency of its own) inserts first for a given `(runId, segment)` gets
+ * `true` back and owns the publish; the other gets `false` and must skip —
+ * even when both observed the same terminal read within moments of each
+ * other and neither's own durable `kernel.event_subscription_log` row exists
+ * yet for the other to have seen via {@link hasTerminalEventForSegment}.
+ *
+ * `segment` is 1-based, mirroring {@link ResumeSegmentContext.segment}: the
+ * in-request watch always claims segment 1 (it can only ever watch a run's
+ * first, unresumed segment — see `dispatch.ts`'s module doc), and
+ * {@link checkOneRun} claims `candidate.resumeCount + 1` for whichever
+ * segment `candidate` represents.
+ */
+export async function claimTerminalPublish(
+  runId: string,
+  segment: number,
+  claimedBy: string,
+): Promise<boolean> {
+  const sql = getClient();
+  const rows = await sql`
+    INSERT INTO kernel.warp_terminal_publish_claims (run_id, segment, claimed_by)
+    VALUES (${runId}, ${segment}, ${claimedBy})
+    ON CONFLICT (run_id, segment) DO NOTHING
+    RETURNING run_id
+  `;
+  return rows.length > 0;
+}
+
+/**
+ * Whether the sweep may publish a terminal/timeout outcome for this segment
+ * right now (#2043): {@link hasTerminalEventForSegment} first, as a cheap
+ * pre-check, then {@link claimTerminalPublish} as the actual authority.
+ * Factored out of {@link checkOneRun} since both of its terminal-shaped
+ * branches (a genuinely terminal read, and a genuinely-timed-out one) need
+ * exactly this same guard before publishing.
+ */
+async function mayPublishTerminalOutcome(runId: string, activityAt: Date, segment: number): Promise<boolean> {
+  if (await hasTerminalEventForSegment(runId, activityAt)) return false;
+  return claimTerminalPublish(runId, segment, 'sweep');
+}
+
+/**
  * Read `candidate` once and publish whatever the read reveals. Never throws.
  *
  * `lookbackMs` governs the genuinely-timed-out decision (#2032): a candidate
@@ -310,16 +378,19 @@ async function hasTerminalEventForSegment(runId: string, activityAt: Date): Prom
  * but if that read is still neither terminal nor BLOCKED, this publishes
  * `warp.run.timeout` instead of silently counting it as in-flight forever.
  *
- * Before either terminal-shaped publish, {@link hasTerminalEventForSegment}
- * re-checks the durable log so a candidate that the in-request watch already
- * finalised while this read was in flight is skipped rather than
- * double-published (see that function's doc for the race this closes).
+ * Before either terminal-shaped publish, {@link mayPublishTerminalOutcome}
+ * re-checks the durable log as a cheap pre-check and then wins (or loses)
+ * the {@link claimTerminalPublish} race (#2043): a candidate that the
+ * in-request watch already finalised, or has already won the claim for, is
+ * skipped rather than double-published (see that function's doc for the
+ * race this closes).
  */
 async function checkOneRun(candidate: InFlightRun, outcome: SweepOutcome, lookbackMs: number): Promise<void> {
   const run = await getAgentRun(candidate.principalDid, candidate.runId);
+  const segment = candidate.resumeCount + 1;
 
   if (isTerminalRunState(run.state)) {
-    if (await hasTerminalEventForSegment(candidate.runId, candidate.activityAt)) {
+    if (!(await mayPublishTerminalOutcome(candidate.runId, candidate.activityAt, segment))) {
       outcome.skippedRace += 1;
       return;
     }
@@ -341,7 +412,7 @@ async function checkOneRun(candidate: InFlightRun, outcome: SweepOutcome, lookba
 
   const ageMs = Date.now() - candidate.activityAt.getTime();
   if (ageMs > lookbackMs) {
-    if (await hasTerminalEventForSegment(candidate.runId, candidate.activityAt)) {
+    if (!(await mayPublishTerminalOutcome(candidate.runId, candidate.activityAt, segment))) {
       outcome.skippedRace += 1;
       return;
     }
