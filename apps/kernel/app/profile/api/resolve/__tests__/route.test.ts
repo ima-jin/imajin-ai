@@ -5,11 +5,17 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockDbSelect, mockGetSessionFromCookies, fakeSql, sqlCalls, queueResult, resetQueue } = vi.hoisted(() => {
+const { mockDbSelect, mockGetSessionFromCookies, fakeSql, sqlCalls, queueResult, resetQueue, fakeSqlThrowOnce } = vi.hoisted(() => {
   const sqlCalls: Array<{ text: string; values: unknown[] }> = [];
   const queue: unknown[][] = [];
+  let throwOnce: Error | null = null;
   const fakeSql = (strings: TemplateStringsArray, ...values: unknown[]) => {
     sqlCalls.push({ text: strings.join(' ? '), values });
+    if (throwOnce) {
+      const err = throwOnce;
+      throwOnce = null;
+      return Promise.reject(err);
+    }
     return Promise.resolve(queue.shift() ?? []);
   };
   return {
@@ -19,6 +25,7 @@ const { mockDbSelect, mockGetSessionFromCookies, fakeSql, sqlCalls, queueResult,
     sqlCalls,
     queueResult: (rows: unknown[]) => queue.push(rows),
     resetQueue: () => queue.splice(0, queue.length),
+    fakeSqlThrowOnce: (err: Error) => { throwOnce = err; },
   };
 });
 
@@ -45,7 +52,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
-import { POST } from '../route';
+import { OPTIONS, POST } from '../route';
 
 const DID_A = 'did:imajin:alice';
 const DID_B = 'did:imajin:bob';
@@ -229,5 +236,67 @@ describe('email gating', () => {
 
     expect(json.results[0].email).toBeUndefined();
     expect(sqlCalls).toHaveLength(0);
+  });
+
+  it('falls through to anonymous when the session lookup itself throws', async () => {
+    mockGetSessionFromCookies.mockRejectedValue(new Error('session store unreachable'));
+    mockDbSelect.mockReturnValueOnce(selectChain([{ did: DID_A, handle: 'alice', displayName: 'Alice' }]));
+
+    const res = await POST(makeReq({ dids: [DID_A] }, { cookie: 'imajin_session=tok' }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.results[0].email).toBeUndefined();
+  });
+
+  it('falls back all the way to auth.identities when neither credentials nor profile.profiles have an email', async () => {
+    mockDbSelect.mockReturnValueOnce(selectChain([{ did: DID_A, handle: 'alice', displayName: 'Alice' }]));
+    queueResult([]); // auth.credentials miss
+    queueResult([]); // profile.profiles miss
+    queueResult([{ did: DID_A, value: 'alice@identity.example.com' }]); // auth.identities hit
+
+    const res = await POST(
+      makeReq({ dids: [DID_A] }, { authorization: `Bearer ${INTERNAL_KEY}` }),
+    );
+    const json = await res.json();
+
+    expect(json.results[0].email).toBe('alice@identity.example.com');
+    expect(sqlCalls).toHaveLength(3);
+    expect(sqlCalls[2].text).toContain('auth.identities');
+  });
+
+  it('fails soft when the email-resolution SQL itself throws (handle/displayName still returned)', async () => {
+    mockDbSelect.mockReturnValueOnce(selectChain([{ did: DID_A, handle: 'alice', displayName: 'Alice' }]));
+    resetQueue();
+    fakeSqlThrowOnce(new Error('db unreachable'));
+
+    const res = await POST(
+      makeReq({ dids: [DID_A] }, { authorization: `Bearer ${INTERNAL_KEY}` }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.results[0]).toEqual({ did: DID_A, handle: 'alice', displayName: 'Alice' });
+  });
+});
+
+describe('unexpected errors', () => {
+  it('returns 500 when the profile lookup throws', async () => {
+    mockDbSelect.mockReturnValueOnce({
+      from: () => ({ where: () => { throw new Error('boom'); } }),
+    });
+
+    const res = await POST(makeReq({ dids: [DID_A] }));
+    const json = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(json.error).toBe('Failed to resolve identities');
+  });
+});
+
+describe('OPTIONS', () => {
+  it('delegates to corsOptions and returns a 204 preflight response', async () => {
+    const res = await OPTIONS(makeReq({}) as unknown as Parameters<typeof OPTIONS>[0]);
+    expect(res.status).toBe(204);
   });
 });

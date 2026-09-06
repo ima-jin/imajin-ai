@@ -10,8 +10,11 @@ import { createLogger } from '@imajin/logger';
 const log = createLogger('kernel');
 
 /** Sane upper bound on a single batch (#1998) — keeps the `= ANY(...)` queries
- *  and the response payload bounded regardless of caller behavior. */
-export const MAX_RESOLVE_DIDS = 200;
+ *  and the response payload bounded regardless of caller behavior.
+ *  NOT exported: Next.js route files only permit a fixed allowlist of named
+ *  exports (HTTP method handlers + a few route-config keys) — any other
+ *  export (like this constant previously was) fails the Next.js build. */
+const MAX_RESOLVE_DIDS = 200;
 
 interface ResolveEntry {
   did: string;
