@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { convert, toDecimalString } from '@imajin/money';
+import { resetInsertTransactionDouble } from './receipt-write-mocks';
 
 const mocks = vi.hoisted(() => ({
   insertValues: vi.fn().mockResolvedValue(undefined),
@@ -21,11 +22,6 @@ const mocks = vi.hoisted(() => ({
   emitMechanicalAttestation: vi.fn(),
   getRate: vi.fn(),
 }));
-
-mocks.insert.mockImplementation(() => ({ values: mocks.insertValues }));
-mocks.transaction.mockImplementation(async (fn: (tx: { insert: typeof mocks.insert }) => Promise<void>) =>
-  fn({ insert: mocks.insert }),
-);
 
 vi.mock('@/src/db', () => ({
   db: { insert: mocks.insert, transaction: mocks.transaction },
@@ -60,11 +56,7 @@ const PRINCIPAL_DID = 'did:imajin:owner';
 beforeEach(() => {
   idCounter = 0;
   vi.clearAllMocks();
-  mocks.insert.mockImplementation(() => ({ values: mocks.insertValues }));
-  mocks.transaction.mockImplementation(async (fn: (tx: { insert: typeof mocks.insert }) => Promise<void>) =>
-    fn({ insert: mocks.insert }),
-  );
-  mocks.insertValues.mockResolvedValue(undefined);
+  resetInsertTransactionDouble(mocks);
   mocks.emitMechanicalAttestation.mockResolvedValue('att_fx');
 });
 

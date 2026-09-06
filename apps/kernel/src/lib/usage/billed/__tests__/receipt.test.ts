@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { resetInsertTransactionDouble } from './receipt-write-mocks';
 
 const mocks = vi.hoisted(() => ({
   insertValues: vi.fn().mockResolvedValue(undefined),
@@ -12,11 +13,6 @@ const mocks = vi.hoisted(() => ({
   signFxSnapshot: vi.fn(),
   toDecimalString: vi.fn(),
 }));
-
-mocks.insert.mockImplementation(() => ({ values: mocks.insertValues }));
-mocks.transaction.mockImplementation(async (fn: (tx: { insert: typeof mocks.insert }) => Promise<void>) =>
-  fn({ insert: mocks.insert }),
-);
 
 vi.mock('@/src/db', () => ({
   db: { insert: mocks.insert, transaction: mocks.transaction },
@@ -69,11 +65,7 @@ function baseInput(overrides: Partial<ConfirmReceiptInput> = {}): ConfirmReceipt
 beforeEach(() => {
   idCounter = 0;
   vi.clearAllMocks();
-  mocks.insert.mockImplementation(() => ({ values: mocks.insertValues }));
-  mocks.transaction.mockImplementation(async (fn: (tx: { insert: typeof mocks.insert }) => Promise<void>) =>
-    fn({ insert: mocks.insert }),
-  );
-  mocks.insertValues.mockResolvedValue(undefined);
+  resetInsertTransactionDouble(mocks);
   mocks.getActiveAsset.mockResolvedValue(ASSET);
   mocks.emitMechanicalAttestation.mockResolvedValue('att_receipt');
   mocks.toDecimalString.mockImplementation((money: { amount: number }) => (money.amount / 100).toFixed(2));
