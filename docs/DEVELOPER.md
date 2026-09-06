@@ -345,6 +345,10 @@ The same rules run in SonarCloud via its GitHub App. Catching them in ESLint fir
 
 Edit `eslint.config.mjs` in the repo root. All packages pick it up automatically on the next lint run.
 
+## Typechecking
+
+Run `pnpm typecheck`; it builds type deps first (`build:types`) so workspace packages resolve via `dist/` the same way CI does. If you've already built, `pnpm typecheck:only` skips the rebuild.
+
 ## Troubleshooting
 
 ### "Module not found" for shared packages
