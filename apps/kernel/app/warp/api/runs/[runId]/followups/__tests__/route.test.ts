@@ -23,10 +23,17 @@ vi.mock('@imajin/logger', () => ({
 
 vi.mock('@/src/lib/warp/dispatch', () => ({
   sendFollowup: vi.fn(),
+  watchRun: vi.fn(),
+}));
+
+vi.mock('@/src/lib/warp/run-watch-sweep', () => ({
+  claimTerminalPublish: vi.fn(),
+  countPriorResumes: vi.fn(),
 }));
 
 import { POST, OPTIONS } from '../route';
-import { sendFollowup } from '@/src/lib/warp/dispatch';
+import { sendFollowup, watchRun } from '@/src/lib/warp/dispatch';
+import { claimTerminalPublish, countPriorResumes } from '@/src/lib/warp/run-watch-sweep';
 import { WarpApiError } from '@/src/lib/warp/errors';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -51,6 +58,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockRequireAuth.mockResolvedValue({ identity: { id: OWNER_DID } });
   vi.mocked(sendFollowup).mockResolvedValue({ runId: RUN_ID, accepted: true });
+  vi.mocked(countPriorResumes).mockResolvedValue(0);
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -179,5 +187,67 @@ describe('POST /warp/api/runs/{runId}/followups', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://app.imajin.ai');
 
     expect((await OPTIONS(makeReq())).status).toBe(204);
+  });
+});
+
+// ── Re-arming the in-request watch on resume (#2055) ─────────────────────────────────────────────────
+
+describe('POST /warp/api/runs/{runId}/followups — resume re-arm (#2055)', () => {
+  it('re-arms watchRun for the resumed segment when the ack reports a resume', async () => {
+    vi.mocked(countPriorResumes).mockResolvedValue(0);
+    vi.mocked(sendFollowup).mockResolvedValue({
+      runId: RUN_ID,
+      accepted: true,
+      resumed: { previousSessionId: 'session-a' },
+    });
+
+    await POST(makeReq({ message: 'keep going', resume: true }), { params: { runId: RUN_ID } });
+
+    // Counted before sendFollowup is called, so it can never race this
+    // resume's own (fire-and-forget) durable-log write.
+    expect(countPriorResumes).toHaveBeenCalledWith(RUN_ID);
+    expect(watchRun).toHaveBeenCalledWith(OWNER_DID, RUN_ID, {
+      claimTerminalPublish,
+      resumeContext: { resumedFrom: 'session-a', segment: 2 },
+    });
+  });
+
+  it('computes the segment from prior resumes, not always 2', async () => {
+    vi.mocked(countPriorResumes).mockResolvedValue(3);
+    vi.mocked(sendFollowup).mockResolvedValue({
+      runId: RUN_ID,
+      accepted: true,
+      resumed: { previousSessionId: 'session-d' },
+    });
+
+    await POST(makeReq({ message: 'keep going', resume: true }), { params: { runId: RUN_ID } });
+
+    expect(watchRun).toHaveBeenCalledWith(OWNER_DID, RUN_ID, {
+      claimTerminalPublish,
+      resumeContext: { resumedFrom: 'session-d', segment: 5 },
+    });
+  });
+
+  it('does not re-arm the watch when the ack reports no resume', async () => {
+    vi.mocked(sendFollowup).mockResolvedValue({ runId: RUN_ID, accepted: true });
+
+    await POST(makeReq({ message: 'keep going', resume: true }), { params: { runId: RUN_ID } });
+
+    expect(watchRun).not.toHaveBeenCalled();
+  });
+
+  it('does not count prior resumes or re-arm the watch when resume was not requested at all', async () => {
+    await POST(makeReq({ message: 'use pnpm, not npm' }), { params: { runId: RUN_ID } });
+
+    expect(countPriorResumes).not.toHaveBeenCalled();
+    expect(watchRun).not.toHaveBeenCalled();
+  });
+
+  it('does not re-arm the watch when the follow-up itself is refused', async () => {
+    vi.mocked(sendFollowup).mockRejectedValueOnce(new Error('warp_run_terminal: nope'));
+
+    await POST(makeReq({ message: 'keep going', resume: true }), { params: { runId: RUN_ID } });
+
+    expect(watchRun).not.toHaveBeenCalled();
   });
 });

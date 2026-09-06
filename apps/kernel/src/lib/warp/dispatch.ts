@@ -100,6 +100,23 @@
  * the same invocation that already sent its response — see
  * `apps/kernel/app/warp/api/dispatch/route.ts`) is not the only thing that can
  * ever report a stuck run's outcome.
+ *
+ * ## Re-arming the watch on resume (#2055)
+ * A fresh dispatch has always had two independent paths to its terminal
+ * outcome — the in-request watch above AND the scheduled sweep. A resumed
+ * run (`sendFollowup`'s `resume: true` path, #1939) did not: before this fix
+ * its second (and later) terminal was observed by the sweep alone, so a
+ * resumed run's outcome was both slower to surface (bounded by the sweep's
+ * cron interval, not the watch's `WATCH_POLL_INTERVALS_MS`) and had no
+ * backup path if that one sweep tick were ever delayed or skipped. The
+ * followups route now re-arms {@link watchRun} immediately after an accepted
+ * resume, the same way the dispatch route arms one for a fresh run — see
+ * {@link WatchRunOptions.resumeContext} and {@link WarpFollowupAck.resumed}.
+ * The pre-existing segment-aware claim (#2043) and sweep (#2032) needed no
+ * change for this: {@link watchRun}'s terminal branch already claims
+ * whichever segment `resumeContext` names, so a re-armed watch and the sweep
+ * racing the very same resumed segment dedupe exactly like a fresh run's
+ * watch and the sweep already did for segment 1.
  */
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -523,6 +540,18 @@ export interface SendFollowupInput {
 export interface WarpFollowupAck {
   runId: string;
   accepted: true;
+  /**
+   * Present only when this follow-up resumed an already-terminal run via
+   * Warp's cloud-to-cloud handoff (#1939, #2055) — i.e. exactly when
+   * {@link sendFollowup} also published `warp.run.resumed`. Lets the
+   * followups route re-arm the in-request watch for the new segment the
+   * same way the dispatch route arms one for a fresh run (see
+   * `WatchRunOptions.resumeContext`): this module holds no DB dependency of
+   * its own (see its top-of-file doc), so it cannot compute the new
+   * segment number itself, only report the one piece of pre-resume state
+   * (the prior segment's session id) the route needs to do so.
+   */
+  resumed?: { previousSessionId: string | null };
 }
 
 // ── Identity stamping ─────────────────────────────────────────────────────────
@@ -1351,7 +1380,10 @@ async function publishRunResumed(
  * "no accidental necromancy" true regardless of what Warp itself would do.
  * When a resumed run is confirmed terminal, the delivery is followed by a
  * `warp.run.resumed` bus event — the kernel run record's honest trace of
- * *that* it happened, distinct from the follow-up's own delivery.
+ * *that* it happened, distinct from the follow-up's own delivery. The
+ * returned {@link WarpFollowupAck.resumed} is what lets the followups route
+ * re-arm the in-request watch for this new segment (#2055) — see
+ * `WatchRunOptions.resumeContext`.
  */
 export async function sendFollowup(
   principalDid: string,
@@ -1404,6 +1436,9 @@ export async function sendFollowup(
     // see `warp.run.resumed`'s doc in packages/bus/src/types.ts.
     const newSessionId = optionalString(objectOrNull(followupPayload)?.session_id) ?? null;
     await publishRunResumed(principalDid, id, current.state, current.sessionId, newSessionId, mode);
+    // #2055: reported back so the route can re-arm the in-request watch for
+    // this resumed segment — see `WarpFollowupAck.resumed`'s doc.
+    return { runId: id, accepted: true, resumed: { previousSessionId: current.sessionId } };
   }
 
   return { runId: id, accepted: true };
@@ -1489,6 +1524,18 @@ export interface WatchRunOptions {
    * watch publishes unconditionally as it always has.
    */
   claimTerminalPublish?: (runId: string, segment: number, claimedBy: string) => Promise<boolean>;
+  /**
+   * Re-arm this watch for a resumed segment rather than a run's first,
+   * unresumed one (#2055). When set, the terminal branch claims
+   * `resumeContext.segment` instead of the hardcoded `1`, and the terminal
+   * event it publishes carries `resumedFrom`/`segment` — the same
+   * generation marker the sweep already attaches when *it* is the one to
+   * observe a resumed segment's completion ({@link ResumeSegmentContext},
+   * `resumeContextFor` in `run-watch-sweep.ts`). Omitted by the dispatch
+   * route's own call (a fresh run always starts at segment 1) and supplied
+   * only by the followups route, immediately after an accepted resume.
+   */
+  resumeContext?: ResumeSegmentContext;
 }
 
 /**
@@ -2272,6 +2319,12 @@ export async function watchRun(
     const outcome = await pollUntilTerminal(principalDid, id, options);
 
     if (outcome.kind === 'terminal') {
+      // #2055: a watch re-armed by the followups route after a resume claims
+      // and publishes as that resumed segment; every other caller (the
+      // dispatch route's own call, and every test that omits the option)
+      // keeps claiming segment 1, exactly as before this fix.
+      const segment = options.resumeContext?.segment ?? 1;
+
       log.info(
         {
           principalDid,
@@ -2279,27 +2332,27 @@ export async function watchRun(
           state: outcome.state,
           runTime: outcome.run.runTime,
           errorCode: outcome.run.statusMessage?.errorCode ?? null,
+          segment,
         },
         'Warp cloud agent run reached a terminal state',
       );
 
-      // #2043: the in-request watch always watches a run's first, unresumed
-      // segment (see this module's doc), so it always claims segment 1. A
+      // #2043: claim this segment's right to publish before doing so. A
       // caller that did not pass `claimTerminalPublish` (most tests, and any
       // caller that has not opted into the guard) publishes unconditionally,
       // exactly as before this fix.
       if (options.claimTerminalPublish !== undefined) {
-        const claimed = await options.claimTerminalPublish(id, 1, 'in-request-watch');
+        const claimed = await options.claimTerminalPublish(id, segment, 'in-request-watch');
         if (!claimed) {
           log.info(
-            { principalDid, runId: id, state: outcome.state },
+            { principalDid, runId: id, state: outcome.state, segment },
             'Warp run watch: terminal outcome for this segment already claimed by another publisher; skipping duplicate publish',
           );
           return;
         }
       }
 
-      await publishTerminalRunOutcome(principalDid, outcome.run, outcome.state);
+      await publishTerminalRunOutcome(principalDid, outcome.run, outcome.state, options.resumeContext);
       return;
     }
 

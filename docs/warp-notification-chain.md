@@ -45,7 +45,10 @@ functions:
   timeout). `watchRun` (`dispatch.ts:2235`) calls `pollUntilTerminal`
   (`dispatch.ts:1930`), polling on `WATCH_POLL_INTERVALS_MS`
   (`dispatch.ts:1426`, `[5s, 10s, 30s, 60s]` then held) up to `WATCH_TIMEOUT_MS`
-  (`dispatch.ts:1429`, 30 minutes).
+  (`dispatch.ts:1429`, 30 minutes). **The followups route now arms a second
+  in-request watch for a resumed run** (#2055), immediately after
+  `sendFollowup` reports `ack.resumed` — see "Resume lifecycle (#2055)"
+  below.
 - **Scheduled sweep** — `sweepInFlightWarpRuns` (`run-watch-sweep.ts:366`),
   invoked from `GET /api/cron/warp-run-watch` on a 10-minute cron tick
   (`apps/kernel/vercel.json`). It lists every run whose latest
@@ -284,9 +287,14 @@ call `getAgentRun`, both observe the same terminal state, and both call
 `publishTerminalRunOutcome`/`publishTimeoutRunOutcome`, producing **two**
 `warp.run.completed` (or `.failed`/`.timeout`) events for one run — a real
 duplicate notification and, per the plugin's own wake chain, a real
-duplicate agent wake. (Resumed segments were not at risk of this specific
-race: `sendFollowup`'s resume path, `dispatch.ts:1339-1393`, never starts an
-in-request watch, so only the sweep ever observes a resumed segment.)
+duplicate agent wake. (At the time of this writing, resumed segments were
+not at risk of this specific race: `sendFollowup`'s resume path,
+`dispatch.ts:1339-1393`, never started an in-request watch, so only the
+sweep ever observed a resumed segment. #2055 changed this — the followups
+route now arms its own in-request watch for a resumed segment too, so that
+segment gets the same watch-vs-sweep race the claim in the "#2043 update"
+note below already closes for segment 1. See "Resume lifecycle (#2055)"
+below.)
 
 **Fixed in this PR**, inside the existing pattern
 (`hasPublishedBlockedNotice`, `run-watch-sweep.ts:252-262`, already re-checks
@@ -374,6 +382,54 @@ The 22:30 failure (a reserved `:` in a cron tag rejecting the scheduled wake
 turn) is entirely inside `openclaw-imajin-plugin`/openclaw-core's Hop 6/7
 (`schedulePluginSessionTurn`'s tag validation) — not investigated further
 here, per scope.
+
+## Resume lifecycle (#2055)
+
+A fresh dispatch has always had two independent paths to its terminal
+outcome: the in-request watch AND the scheduled sweep. A resumed run
+(`sendFollowup`'s `resume: true` path, #1939) did not — before #2055, its
+second (and every later) terminal was observed by the sweep alone (see (c)
+below), so a resumed run's outcome was both slower to surface (bounded by
+the sweep's 10-minute cron rather than the watch's sub-minute poll schedule)
+and had a single point of failure a fresh dispatch never had.
+
+**Confirmed root cause.** Neither part of that gap was closed by #2032/#2033
+or #2043/#2049, despite both already being live on `main`: `sendFollowup`
+(`dispatch.ts:1385-1442`) published `warp.run.resumed` and nothing else — it
+never re-armed `watchRun` — and #2049's claim table
+(`kernel.warp_terminal_publish_claims`, migration 0128) already keys on
+`(run_id, segment)`, not `run_id` alone, so it was never at risk of deduping
+a resumed run's second terminal against its first. The sweep's
+segment-aware `listInFlightRuns`/`checkOneRun` (#2032) already re-observes a
+resumed segment and attaches its `resumedFrom`/`segment` marker correctly.
+What was missing is redundancy and latency parity with a fresh dispatch, not
+correctness of the sweep path itself.
+
+**Fix.** The followups route (`apps/kernel/app/warp/api/runs/[runId]/followups/route.ts`)
+now re-arms `watchRun` immediately after `sendFollowup` reports
+`ack.resumed !== undefined` (i.e. this call actually resumed an
+already-terminal run):
+1. `countPriorResumes(runId)` (`run-watch-sweep.ts`) is read **before**
+   `sendFollowup` is called, counting `warp.run.resumed` rows already
+   durably logged for this run. Reading it first — rather than after —
+   avoids racing this resume's own fire-and-forget durable-log write
+   (`deliverToSubscribers`, `packages/bus/src/publish.ts:24-26`).
+2. `sendFollowup` proxies the resume and, when it actually resumed a
+   terminal run, returns `{ ..., resumed: { previousSessionId } }`
+   (`WarpFollowupAck.resumed`).
+3. The route calls `void watchRun(acting.did, run.runId, { claimTerminalPublish,
+   resumeContext: { resumedFrom: ack.resumed.previousSessionId, segment: priorResumes + 2 } })`
+   — fire-and-forget, identically to the dispatch route's own call.
+4. `watchRun`'s terminal branch (`dispatch.ts:2292-2337`) claims
+   `resumeContext.segment` instead of the hardcoded `1` and passes
+   `resumeContext` through to `publishTerminalRunOutcome`, so the resumed
+   segment's completion carries the same `resumedFrom`/`segment` generation
+   marker the sweep already attaches when it is the one to observe it.
+
+Because the claim is already keyed by `(run_id, segment)`, a re-armed watch
+and the sweep racing the very same resumed segment dedupe exactly like a
+fresh run's watch and the sweep already did for segment 1 — no change to
+`claimTerminalPublish` or migration 0128 was needed.
 
 ## Follow-ups filed
 

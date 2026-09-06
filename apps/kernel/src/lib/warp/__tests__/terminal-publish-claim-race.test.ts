@@ -169,4 +169,37 @@ describe('terminal publish claim: concurrent watch/sweep race (#2043 acceptance)
     // different (runId, segment) key entirely.
     await expect(claimTerminalPublish(RUN_ID, 2, 'sweep')).resolves.toBe(true);
   });
+
+  // ── A re-armed watch for a resumed segment races the sweep too (#2055) ─────
+
+  it('a re-armed watch (segment 2) and the sweep dedupe exactly like segment 1 already did', async () => {
+    // The sweep observed the resumed segment's terminal state first and
+    // already won the claim for THIS segment specifically.
+    const sweepClaimed = await claimTerminalPublish(RUN_ID, 2, 'sweep');
+    expect(sweepClaimed).toBe(true);
+
+    await watchRun(PRINCIPAL, RUN_ID, {
+      sleep,
+      claimTerminalPublish,
+      resumeContext: { resumedFrom: 'session-a', segment: 2 },
+    });
+
+    // The re-armed watch's own claim attempt for the same segment must lose.
+    expect(terminalPublishCount()).toBe(0);
+  });
+
+  it('a re-armed watch (segment 2) winning first still leaves segment 1 and other segments claimable', async () => {
+    await watchRun(PRINCIPAL, RUN_ID, {
+      sleep,
+      claimTerminalPublish,
+      resumeContext: { resumedFrom: 'session-a', segment: 2 },
+    });
+
+    expect(terminalPublishCount()).toBe(1);
+
+    // Segment 1 (the original, unresumed run) was never touched by this.
+    await expect(claimTerminalPublish(RUN_ID, 1, 'sweep')).resolves.toBe(true);
+    // The sweep's own independent claim for segment 2, moments later, must lose.
+    await expect(claimTerminalPublish(RUN_ID, 2, 'sweep')).resolves.toBe(false);
+  });
 });
