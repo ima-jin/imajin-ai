@@ -43,7 +43,7 @@ function createNotificationBacklogReplayer(options = {}) {
       return;
     }
 
-    const frames = result && Array.isArray(result.frames) ? result.frames : [];
+    const frames = Array.isArray(result?.frames) ? result.frames : [];
     for (const frame of frames) {
       if (ws.readyState !== 1) break; // WebSocket.OPEN — socket closed mid-replay
       try {
@@ -54,7 +54,7 @@ function createNotificationBacklogReplayer(options = {}) {
       }
     }
 
-    if (result && result.truncated) {
+    if (result?.truncated) {
       log(`notification backlog truncated for ${did}`);
     }
   }
