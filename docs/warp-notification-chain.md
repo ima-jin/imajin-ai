@@ -155,7 +155,7 @@ any delegate registered via `register_also` (`ws-server.js:230-233`,
 connected (`sendToDid` returns `false`) used to be a dead end on the kernel
 side beyond the persisted row. It no longer is: `notify.notifications` now
 carries a nullable `delivered_at` (migration
-`0127_notify_notifications_delivered_at.sql`) that is distinct from `read`
+`0129_notify_notifications_delivered_at.sql`) that is distinct from `read`
 and means "reached a live WS frame at least once". `pushNotificationToDid`
 claims a row (an atomic `UPDATE ... WHERE delivered_at IS NULL RETURNING`,
 `apps/kernel/src/lib/notify/delivery.ts`) before attempting the push, and

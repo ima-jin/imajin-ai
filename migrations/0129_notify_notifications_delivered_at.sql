@@ -1,4 +1,4 @@
--- 0127_notify_notifications_delivered_at.sql
+-- 0129_notify_notifications_delivered_at.sql
 -- Redelivery/catch-up for a notification that misses its live WS push (#2044).
 --
 -- `read` already means "the recipient opened this notification in the UI"
