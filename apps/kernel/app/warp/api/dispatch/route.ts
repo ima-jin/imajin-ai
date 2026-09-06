@@ -42,7 +42,10 @@
  * `warp.run.completed` lands on the bus without the caller polling for it. The
  * same watch reports the run while it is still going as `warp.run.progress`
  * (#1682), so the caller sees state changes, new tool calls, cost, and early
- * errors instead of a silence that only ends at the outcome.
+ * errors instead of a silence that only ends at the outcome. Its terminal
+ * publish is guarded by a DB-level claim shared with the scheduled sweep
+ * (#2043, `claimTerminalPublish`), so a race between this in-request watch
+ * and a sweep tick observing the same terminal state can't double-publish.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
@@ -56,6 +59,7 @@ import {
   type WarpMcpServerConfig,
 } from '@/src/lib/warp/dispatch';
 import { warpErrorResponse } from '@/src/lib/warp/route-errors';
+import { claimTerminalPublish } from '@/src/lib/warp/run-watch-sweep';
 
 /** Upper bound on `corpusContext.maxChars` accepted from a caller before it is treated as malformed. */
 const CORPUS_CONTEXT_MAX_CHARS_CEILING = 100_000;
@@ -211,7 +215,13 @@ export async function POST(request: NextRequest) {
     // minutes, so putting it in the response path would turn a 201 into a
     // timeout. `watchRun` never rejects, so there is nothing here to catch — it
     // logs its own failures and the dispatch stands either way.
-    void watchRun(principalDid, run.runId);
+    //
+    // `claimTerminalPublish` (#2043) is wired in here rather than defaulted
+    // inside `watchRun` itself: `dispatch.ts` documents itself as having no
+    // DB dependency, and this is the one production call site of the
+    // in-request watch, so it is where the real, DB-backed claim guard
+    // against a duplicate terminal publish with the scheduled sweep belongs.
+    void watchRun(principalDid, run.runId, { claimTerminalPublish });
 
     return NextResponse.json(run, { status: 201, headers: cors });
   } catch (err) {

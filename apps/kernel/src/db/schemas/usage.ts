@@ -6,6 +6,7 @@ import {
   bigint,
   numeric,
   jsonb,
+  date,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
@@ -159,6 +160,16 @@ export const usageBilled = usageSchema.table(
     description: text('description'),
     evidenceAssetId: text('evidence_asset_id'),           // media.assets.id — optional evidence for a 'document' row
     evidenceContentHash: text('evidence_content_hash'),   // media.assets.hash snapshot at write time
+    // #1951 (migrations/0127_usage_billed_receipts.sql) — receipt upload
+    // write path (POST /usage/api/receipts). See that migration's header
+    // for the full column-by-column rationale.
+    receiptId: text('receipt_id'),                        // groups the N lines one uploaded receipt was split into
+    lineNo: integer('line_no'),                           // 1-based order within receiptId
+    receiptTotalMinor: bigint('receipt_total_minor', { mode: 'number' }), // the receipt's declared total (same currency), checked against the sum of its lines at write time
+    fxRate: numeric('fx_rate', { precision: 24, scale: 10 }), // currency -> USD rate used for billedUsd; null when currency = 'USD'
+    fxSource: text('fx_source'),                          // 'ecb' | 'ecb:triangulated' | 'identity'
+    fxAsOf: date('fx_as_of', { mode: 'string' }),          // ECB reference date the rate was published for
+    fxSignature: text('fx_signature'),                     // hex Ed25519 signature over the FxSnapshot (packages/money)
   },
   (table) => ({
     // Idempotent upsert target on re-fetch — see the migration's comment on
@@ -168,6 +179,7 @@ export const usageBilled = usageSchema.table(
     principalIdx: index('idx_usage_billed_principal').on(table.principalDid, table.provider, table.periodStart),
     fetchedIdx: index('idx_usage_billed_fetched').on(table.fetchedAt),
     sourceIdx: index('idx_usage_billed_source').on(table.principalDid, table.source, table.periodStart),
+    receiptIdx: index('idx_usage_billed_receipt').on(table.principalDid, table.receiptId, table.lineNo),
   }),
 );
 

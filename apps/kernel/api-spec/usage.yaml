@@ -105,6 +105,76 @@ components:
         evidenceAssetId: { type: string, nullable: true }
         evidenceContentHash: { type: string, nullable: true, description: "media.assets.hash snapshot at write time" }
         attestationId: { type: string, nullable: true, description: "the usage.billed attestation binding this line item" }
+    ReceiptLineInput:
+      type: object
+      required: [description, amountMinor, date, vendor]
+      properties:
+        description: { type: string, maxLength: 1024 }
+        category: { type: string, maxLength: 64, nullable: true }
+        amountMinor: { type: integer, minimum: 0, description: "minor units, in the receipt's currency" }
+        currency: { type: string, pattern: "^[A-Z]{3}$", description: "must match the receipt-level currency when present" }
+        date: { type: string, format: date-time }
+        vendor: { type: string, maxLength: 128 }
+    ConfirmedReceiptLine:
+      allOf:
+        - $ref: "#/components/schemas/ReceiptLineInput"
+        - type: object
+          properties:
+            id: { type: string, description: "billed_xxx" }
+            lineNo: { type: integer, description: "1-based order within the receipt" }
+            billedUsd: { type: string, description: "USD projection — identity for USD receipts, FxSnapshot-converted otherwise" }
+    ConfirmReceiptRequest:
+      type: object
+      required: [assetId, currency, receiptTotalMinor, lines]
+      properties:
+        assetId: { type: string, description: "media.assets.id of the uploaded receipt — REQUIRED, every line is bound to its content hash" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        receiptTotalMinor: { type: integer, minimum: 0, description: "the receipt's own declared total; must equal the sum of lines[].amountMinor" }
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items: { $ref: "#/components/schemas/ReceiptLineInput" }
+    ConfirmReceiptResponse:
+      type: object
+      properties:
+        receiptId: { type: string, description: "receipt_xxx — groups this receipt's usage.billed rows" }
+        assetId: { type: string }
+        evidenceContentHash: { type: string }
+        currency: { type: string }
+        receiptTotalMinor: { type: integer }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/ConfirmedReceiptLine" }
+        attestationId: { type: string, nullable: true, description: "the usage.billed attestation binding the whole receipt" }
+    ExtractReceiptRequest:
+      type: object
+      required: [assetId]
+      properties:
+        assetId: { type: string, description: "media.assets.id of an already-uploaded, image/* receipt asset owned by the caller" }
+    DraftReceiptLine:
+      type: object
+      properties:
+        description: { type: string }
+        category: { type: string, nullable: true }
+        amount: { type: string, description: "decimal string as read off the receipt, e.g. '19.99' — never a rounded float" }
+        currency: { type: string }
+        date: { type: string, nullable: true, description: "YYYY-MM-DD if legible" }
+        vendor: { type: string, nullable: true }
+    ExtractedReceiptDraft:
+      type: object
+      description: |
+        UNCONFIRMED. Nothing is written or attested by this call — the
+        caller reviews/edits this draft and POSTs the result to
+        POST /api/receipts to confirm and attest it.
+      properties:
+        status: { type: string, enum: [unconfirmed] }
+        assetId: { type: string }
+        connector: { type: string, description: "always 'local' — the owner's own sealed Ollama/vLLM endpoint" }
+        modelId: { type: string }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/DraftReceiptLine" }
 
 paths:
   /api/summary:
@@ -246,6 +316,129 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: A usage.billed line item already exists for this vendor and period
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/receipts:
+    post:
+      tags: [usage]
+      operationId: confirmReceipt
+      summary: Confirm a receipt's structured line items and persist + attest them
+      description: |
+        #1951 D3/D4. Auth: requireAuth + actingFor, onBehalfOf the resolved
+        principal DID. Writes N `usage.billed` rows (source='receipt:manual'),
+        one per line item, sharing one `receiptId`, plus ONE attestation over
+        the whole receipt binding the confirmed line items and the evidence
+        asset's content hash — never the asset's bytes. `receiptTotalMinor`
+        must equal the exact sum of `lines[].amountMinor` (D3's signed-sum
+        invariant) or the call fails closed with no write. A line item not
+        already in USD is converted via a signed FxSnapshot (`packages/money`,
+        #1950), persisted alongside the row. NEVER writes `usage.incurred`
+        (D5).
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfirmReceiptRequest" }
+      responses:
+        "201":
+          description: Receipt confirmed and persisted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfirmReceiptResponse" }
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Forbidden — assetId is not owned by the principal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: assetId does not reference an active asset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: lines[].amountMinor does not sum to receiptTotalMinor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: FX rate resolution failed for a non-USD receipt
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/receipts/extract:
+    post:
+      tags: [usage]
+      operationId: extractReceiptDraft
+      summary: Qwen-assist draft — LLM-extract line items from an uploaded receipt (never attests)
+      description: |
+        #1951 D4. Auth: requireAuth + actingFor. Owner-only: the asset must
+        belong to the resolved principal DID. Runs on the owner's own sealed
+        `local` connector (Ollama/vLLM, e.g. Qwen on imajin-ml) — no new
+        provider, no new env-var scheme. Returns an UNCONFIRMED draft; this
+        call never writes to `usage.billed` and never mints an attestation.
+        POST the (possibly edited) result to `/api/receipts` to confirm it.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExtractReceiptRequest" }
+      responses:
+        "200":
+          description: Unconfirmed draft line items
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExtractedReceiptDraft" }
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Forbidden — assetId is not owned by the caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: assetId does not reference an active asset
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: No local (Ollama/vLLM) brain sealed for this owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "415":
+          description: Asset is not an image/* MIME type
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Extraction failed (model call error or unparseable output)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
