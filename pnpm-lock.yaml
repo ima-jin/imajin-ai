@@ -454,6 +454,9 @@ importers:
       '@imajin/media':
         specifier: workspace:*
         version: link:../../packages/media
+      '@imajin/money':
+        specifier: workspace:*
+        version: link:../../packages/money
       '@imajin/notify':
         specifier: workspace:*
         version: link:../../packages/notify
