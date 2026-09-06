@@ -807,6 +807,9 @@ paths:
       tags: [profile]
       operationId: getForestConfigPublic
       summary: Get the public portion of a forest group configuration (no auth required)
+      description: >-
+        Includes `scopeFeeBps` (#2001) so coffee/learn/market can build
+        `.fair` manifests without a raw `profile.forest_config` read.
       parameters:
         - name: groupDid
           in: path
@@ -815,5 +818,16 @@ paths:
       responses:
         "200":
           description: Public forest group config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabledServices: { type: array, items: { type: string } }
+                  landingService: { type: string, nullable: true }
+                  scopeFeeBps:
+                    type: integer
+                    nullable: true
+                    description: Group's .fair revenue-share fee, in basis points (0-500).
         "404":
           description: Not found

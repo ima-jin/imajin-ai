@@ -35,6 +35,9 @@ export { rateLimit, getClientIP } from "./rate-limit";
 export { getNodeSelf } from "./node-self";
 export type { NodeSelfInfo } from "./node-self";
 
+export { getForestScopeConfig } from "./forest-config";
+export type { ForestScopeConfig } from "./forest-config";
+
 export {
   HANDLE_PATTERN,
   HANDLE_INPUT_PATTERN,

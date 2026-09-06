@@ -6,8 +6,7 @@ import { requireAuth, getSession , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
 import { buildFairManifest } from '@imajin/fair';
-import { getClient } from '@imajin/db';
-import { getNodeSelf } from '@imajin/config';
+import { getNodeSelf, getForestScopeConfig } from '@imajin/config';
 import { publish } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
 
@@ -145,18 +144,12 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
     if (priceChanged || tierChanged || sellerDidChanged) {
       try {
-        const rawSql = getClient();
         const nodeSelf = await getNodeSelf();
         const scopeDid = listing.sellerDid === currentDid  ? (identity.actingAs || null) : null;
         let scopeFeeBps: number | null = null;
         if (scopeDid) {
-          const [forestRow] = await rawSql`
-            SELECT scope_fee_bps
-            FROM profile.forest_config
-            WHERE group_did = ${scopeDid}
-            LIMIT 1
-          `;
-          scopeFeeBps = forestRow?.scope_fee_bps ?? null;
+          const forestConfig = await getForestScopeConfig(scopeDid);
+          scopeFeeBps = forestConfig?.scopeFeeBps ?? null;
         }
         updates.fairManifest = buildFairManifest({
           creatorDid: currentDid,

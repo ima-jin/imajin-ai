@@ -5,8 +5,7 @@ import { db, listings } from '@/db';
 import { requireAuth, getSession , resolveActingDid } from '@imajin/auth';
 import { generateId, jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
-import { getClient } from '@imajin/db';
-import { getNodeSelf } from '@imajin/config';
+import { getNodeSelf, getForestScopeConfig } from '@imajin/config';
 import { buildFairManifest } from '@imajin/fair';
 import { publish } from '@imajin/bus';
 import { eq, ilike, and, desc, asc, sql, ne } from 'drizzle-orm';
@@ -72,19 +71,14 @@ export async function POST(request: NextRequest) {
 
     const did = resolveActingDid(identity);
 
-    // Load node config (via the registry, #2000) and optional scope config for fair manifest
-    const rawSql = getClient();
+    // Load node config (via the registry, #2000) and optional scope config for fair
+    // manifest (via the profile service's public forest route, #2001)
     const nodeSelf = await getNodeSelf();
     const scopeDid = identity.actingAs || null;
     let scopeFeeBps: number | null = null;
     if (scopeDid) {
-      const [forestRow] = await rawSql`
-        SELECT scope_fee_bps
-        FROM profile.forest_config
-        WHERE group_did = ${scopeDid}
-        LIMIT 1
-      `;
-      scopeFeeBps = forestRow?.scope_fee_bps ?? null;
+      const forestConfig = await getForestScopeConfig(scopeDid);
+      scopeFeeBps = forestConfig?.scopeFeeBps ?? null;
     }
     const listingId = generateId('lst');
     const fairManifest = buildFairManifest({

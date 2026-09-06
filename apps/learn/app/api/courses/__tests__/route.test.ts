@@ -35,10 +35,11 @@ const mocks = vi.hoisted(() => {
 
   const requireHardDIDMock = vi.fn();
   const getNodeSelfMock = vi.fn();
-  // Raw postgres client — only reached for the (unrelated) forest_config scope lookup.
-  const sqlMock = vi.fn().mockResolvedValue([]);
+  // Forest scope-fee lookup (#2001, /api/forest/{groupDid}/config/public) —
+  // only reached when actingAs is set, unrelated to the getNodeSelf() chain tests.
+  const getForestScopeConfigMock = vi.fn().mockResolvedValue(null);
 
-  return { limitMock, whereMock, fromMock, selectMock, insertValuesMock, insertMock, requireHardDIDMock, getNodeSelfMock, sqlMock };
+  return { limitMock, whereMock, fromMock, selectMock, insertValuesMock, insertMock, requireHardDIDMock, getNodeSelfMock, getForestScopeConfigMock };
 });
 
 vi.mock('@/db', () => ({
@@ -59,12 +60,9 @@ vi.mock('@imajin/auth', () => ({
   resolveActingDid: resolveActingDidMock,
 }));
 
-vi.mock('@imajin/db', () => ({
-  getClient: () => mocks.sqlMock,
-}));
-
 vi.mock('@imajin/config', () => ({
   getNodeSelf: mocks.getNodeSelfMock,
+  getForestScopeConfig: mocks.getForestScopeConfigMock,
 }));
 
 vi.mock('@/lib/utils', () => ({
@@ -95,7 +93,7 @@ describe('POST /api/courses (#2000: node config sourced via getNodeSelf())', () 
     vi.clearAllMocks();
     mocks.limitMock.mockReset().mockResolvedValue([]);
     mocks.insertValuesMock.mockReset().mockResolvedValue(undefined);
-    mocks.sqlMock.mockReset().mockResolvedValue([]);
+    mocks.getForestScopeConfigMock.mockReset().mockResolvedValue(null);
     mocks.requireHardDIDMock.mockResolvedValue({
       identity: { id: 'did:imajin:creator', actingAs: null },
     });
@@ -120,5 +118,24 @@ describe('POST /api/courses (#2000: node config sourced via getNodeSelf())', () 
 
     const body = await res.json();
     expectDefaultShares(body.metadata.fair.chain);
+  });
+
+  it('applies the forest group scope fee to the .fair manifest when acting as a scope (#2001)', async () => {
+    mocks.getNodeSelfMock.mockResolvedValue(null);
+    mocks.requireHardDIDMock.mockResolvedValue({
+      identity: { id: 'did:imajin:creator', actingAs: 'did:imajin:forest-group' },
+    });
+    mocks.getForestScopeConfigMock.mockResolvedValue({ scopeFeeBps: 40 });
+
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(201);
+    expect(mocks.getForestScopeConfigMock).toHaveBeenCalledWith('did:imajin:forest-group');
+
+    const body = await res.json();
+    const chain = body.metadata.fair.chain as { did: string; role: string; share: number }[];
+    expect(chain.find((entry) => entry.role === 'scope')).toMatchObject({
+      did: 'did:imajin:forest-group',
+      share: 0.004,
+    });
   });
 });

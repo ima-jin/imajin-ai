@@ -8,7 +8,7 @@
  * Shared mock plumbing and .fair chain fixtures/assertions live in
  * packages/fair/src/test-helpers.ts — see that file for why.
  */
-import { describe, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   resolveActingDidMock,
   passthroughMediaRefFactory,
@@ -34,10 +34,11 @@ const mocks = vi.hoisted(() => {
   const getSessionMock = vi.fn().mockResolvedValue(null);
   const getNodeSelfMock = vi.fn();
   const publishMock = vi.fn().mockResolvedValue(undefined);
-  // Raw postgres client — only reached for the (unrelated) forest_config scope lookup.
-  const sqlMock = vi.fn().mockResolvedValue([]);
+  // Forest scope-fee lookup (#2001, /api/forest/{groupDid}/config/public) —
+  // only reached when actingAs is set, unrelated to the getNodeSelf() chain tests.
+  const getForestScopeConfigMock = vi.fn().mockResolvedValue(null);
 
-  return { returningMock, valuesMock, insertMock, requireAuthMock, getSessionMock, getNodeSelfMock, publishMock, sqlMock };
+  return { returningMock, valuesMock, insertMock, requireAuthMock, getSessionMock, getNodeSelfMock, publishMock, getForestScopeConfigMock };
 });
 
 vi.mock('@/db', () => ({
@@ -53,12 +54,9 @@ vi.mock('@imajin/auth', () => ({
 
 vi.mock('@imajin/media', () => passthroughMediaRefFactory());
 
-vi.mock('@imajin/db', () => ({
-  getClient: () => mocks.sqlMock,
-}));
-
 vi.mock('@imajin/config', () => ({
   getNodeSelf: mocks.getNodeSelfMock,
+  getForestScopeConfig: mocks.getForestScopeConfigMock,
 }));
 
 vi.mock('@imajin/bus', () => ({
@@ -94,7 +92,7 @@ const VALID_BODY = {
 describe('POST /api/listings (#2000: node config sourced via getNodeSelf())', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.sqlMock.mockReset().mockResolvedValue([]);
+    mocks.getForestScopeConfigMock.mockReset().mockResolvedValue(null);
     mocks.publishMock.mockResolvedValue(undefined);
     mocks.returningMock.mockImplementation(echoLastInsertedValue(mocks.valuesMock));
     mocks.requireAuthMock.mockResolvedValue({
@@ -106,5 +104,24 @@ describe('POST /api/listings (#2000: node config sourced via getNodeSelf())', ()
     getNodeSelfMock: mocks.getNodeSelfMock,
     callRoute: () => POST(makeRequest(VALID_BODY)),
     getChain: (body) => (body.fairManifest as { chain: FairChainEntry[] }).chain,
+  });
+
+  it('applies the forest group scope fee to the .fair manifest when acting as a scope (#2001)', async () => {
+    mocks.getNodeSelfMock.mockResolvedValue(null);
+    mocks.requireAuthMock.mockResolvedValue({
+      identity: { id: 'did:imajin:seller', actingAs: 'did:imajin:forest-group' },
+    });
+    mocks.getForestScopeConfigMock.mockResolvedValue({ scopeFeeBps: 40 });
+
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(201);
+    expect(mocks.getForestScopeConfigMock).toHaveBeenCalledWith('did:imajin:forest-group');
+
+    const body = await res.json();
+    const chain = (body.fairManifest as { chain: FairChainEntry[] }).chain;
+    expect(chain.find((entry) => entry.role === 'scope')).toMatchObject({
+      did: 'did:imajin:forest-group',
+      share: 0.004,
+    });
   });
 });
