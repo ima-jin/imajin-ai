@@ -35,6 +35,8 @@ export { rateLimit, getClientIP } from "./rate-limit";
 export { getNodeSelf } from "./node-self";
 export type { NodeSelfInfo } from "./node-self";
 
+export { registryServiceUrl, hasRegistryServiceUrl } from "./registry-service-url";
+
 export { getForestScopeConfig } from "./forest-config";
 export type { ForestScopeConfig } from "./forest-config";
 

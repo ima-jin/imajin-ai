@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { registryServiceUrl } from '@imajin/config';
 
 const log = createLogger('kernel');
 
@@ -14,18 +15,15 @@ export interface RelayWellKnown {
  * Fetch the local relay's `.well-known/dfos-relay` document for the
  * Federation admin page.
  *
- * REGISTRY_SERVICE_URL includes the `/registry` path prefix like every
- * other `*_SERVICE_URL` (#2046) — the fallback below matches that
- * convention so this doesn't double-prefix to `/registry/registry/...`
- * when the env var is unset. Returns null on any failure (network error,
- * non-2xx response), logging a warning with the URL actually hit (no
- * secrets) so a misconfigured prefix is visible instead of failing
+ * Uses the shared `registryServiceUrl()` resolver (#2061) so there is
+ * exactly one place the registry base URL — including its `/registry`
+ * path prefix (#2046) — is computed. Returns null on any failure (network
+ * error, non-2xx response), logging a warning with the URL actually hit
+ * (no secrets) so a misconfigured prefix is visible instead of failing
  * silently.
  */
 export async function getRelayWellKnown(): Promise<RelayWellKnown | null> {
-  const registryBaseUrl =
-    process.env.REGISTRY_SERVICE_URL || `http://localhost:${process.env.PORT || 3000}/registry`;
-  const url = `${registryBaseUrl}/relay/.well-known/dfos-relay`;
+  const url = `${registryServiceUrl()}/relay/.well-known/dfos-relay`;
   try {
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) {

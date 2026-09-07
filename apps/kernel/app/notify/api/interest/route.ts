@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders, corsOptions } from '@imajin/config';
+import { corsHeaders, corsOptions, registryServiceUrl, hasRegistryServiceUrl } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
-
-const REGISTRY_URL = process.env.REGISTRY_URL;
 
 /**
  * Fetch the scope that an attestation type maps to.
@@ -16,13 +14,13 @@ async function resolveScopeForAttestation(
   attestationType: string,
   webhookSecret: string,
 ): Promise<string | null> {
-  if (!REGISTRY_URL) {
-    log.warn({ attestationType }, 'REGISTRY_URL not set — cannot resolve scope');
+  if (!hasRegistryServiceUrl()) {
+    log.warn({ attestationType }, 'REGISTRY_SERVICE_URL not set — cannot resolve scope');
     return null;
   }
   try {
     // Fetch full interest catalog and find matching scope
-    const res = await fetch(`${REGISTRY_URL}/api/interests`, {
+    const res = await fetch(`${registryServiceUrl()}/api/interests`, {
       headers: { 'x-webhook-secret': webhookSecret },
       cache: 'no-store',
     });
@@ -49,10 +47,10 @@ async function didInterestExists(
   scope: string,
   webhookSecret: string,
 ): Promise<boolean> {
-  if (!REGISTRY_URL) return false;
+  if (!hasRegistryServiceUrl()) return false;
   try {
     const res = await fetch(
-      `${REGISTRY_URL}/api/preferences/${encodeURIComponent(did)}`,
+      `${registryServiceUrl()}/api/preferences/${encodeURIComponent(did)}`,
       { headers: { 'x-webhook-secret': webhookSecret }, cache: 'no-store' },
     );
     if (!res.ok) return false;
@@ -75,13 +73,13 @@ async function createDidInterest(
   attestationType: string,
   webhookSecret: string,
 ): Promise<void> {
-  if (!REGISTRY_URL) {
-    log.warn({}, 'REGISTRY_URL not set — cannot create did_interest');
+  if (!hasRegistryServiceUrl()) {
+    log.warn({}, 'REGISTRY_SERVICE_URL not set — cannot create did_interest');
     return;
   }
   try {
     const res = await fetch(
-      `${REGISTRY_URL}/api/preferences/${encodeURIComponent(did)}/interests/${encodeURIComponent(scope)}`,
+      `${registryServiceUrl()}/api/preferences/${encodeURIComponent(did)}/interests/${encodeURIComponent(scope)}`,
       {
         method: 'POST',
         headers: {

@@ -7,23 +7,23 @@ import { randomUUID } from 'node:crypto';
 import { verifyChainLog } from './chain-providers';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { createLogger } from '@imajin/logger';
+import { registryServiceUrl, hasRegistryServiceUrl } from '@imajin/config';
 
 const log = createLogger('kernel');
 
-const REGISTRY_URL = process.env.REGISTRY_URL;
-
 /**
  * Ingest a DFOS chain log into the relay.
- * Submits all JWS tokens to REGISTRY_URL/relay/operations.
+ * Submits all JWS tokens to the registry's /relay/operations endpoint
+ * (#2061 — URL resolved via the shared registryServiceUrl() helper).
  * Non-fatal — returns false on any error.
  */
 export async function ingestToRelay(chainLog: string[]): Promise<boolean> {
-  if (!REGISTRY_URL) {
-    log.warn({}, 'REGISTRY_URL not set — skipping relay ingest');
+  if (!hasRegistryServiceUrl()) {
+    log.warn({}, 'REGISTRY_SERVICE_URL not set — skipping relay ingest');
     return false;
   }
   try {
-    const res = await fetch(`${REGISTRY_URL}/relay/operations`, {
+    const res = await fetch(`${registryServiceUrl()}/relay/operations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ operations: chainLog }),
@@ -42,13 +42,13 @@ export async function ingestToRelay(chainLog: string[]): Promise<boolean> {
 
 /**
  * Check if a DFOS identity chain exists on the relay.
- * Returns false on any error or missing REGISTRY_URL.
+ * Returns false on any error or if the registry URL isn't configured.
  */
 export async function checkRelayChain(dfosDid: string): Promise<boolean> {
-  if (!REGISTRY_URL) return false;
+  if (!hasRegistryServiceUrl()) return false;
   try {
     const res = await fetch(
-      `${REGISTRY_URL}/relay/identities/${encodeURIComponent(dfosDid)}`
+      `${registryServiceUrl()}/relay/identities/${encodeURIComponent(dfosDid)}`
     );
     return res.ok;
   } catch {

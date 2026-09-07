@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { getNodeSelf } from "../src/node-self";
 import { useStubbedServiceEnv } from "./service-url-test-utils";
 
-const ENV_KEYS = ["REGISTRY_SERVICE_URL", "NODE_ENV"] as const;
+const ENV_KEYS = ["REGISTRY_SERVICE_URL", "REGISTRY_URL", "NODE_ENV", "PORT"] as const;
 
 describe("getNodeSelf", () => {
   const env = useStubbedServiceEnv(ENV_KEYS);

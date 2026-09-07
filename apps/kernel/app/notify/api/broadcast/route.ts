@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders, corsOptions, buildPublicUrlAbsolute } from '@imajin/config';
+import { corsHeaders, corsOptions, buildPublicUrlAbsolute, registryServiceUrl, hasRegistryServiceUrl } from '@imajin/config';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 
@@ -12,7 +12,6 @@ import { sendEmail, renderBroadcastEmail } from '@imajin/email';
 // TODO(#538): These registry routes will be implemented by Agent 1.
 // Stubbed here with clear fallback behavior.
 
-const REGISTRY_URL = process.env.REGISTRY_URL;
 const UNSUBSCRIBE_HMAC_SECRET = process.env.UNSUBSCRIBE_HMAC_SECRET;
 
 const NOTIFY_URL = buildPublicUrlAbsolute('notify');
@@ -43,12 +42,12 @@ async function fetchAudienceFromRegistry(
   scope: string,
   webhookSecret: string,
 ): Promise<string[]> {
-  if (!REGISTRY_URL) {
-    log.warn({}, 'REGISTRY_URL not set — cannot fetch audience from registry');
+  if (!hasRegistryServiceUrl()) {
+    log.warn({}, 'REGISTRY_SERVICE_URL not set — cannot fetch audience from registry');
     return [];
   }
   try {
-    const res = await fetch(`${REGISTRY_URL}/api/audience/${encodeURIComponent(scope)}?channel=email`, {
+    const res = await fetch(`${registryServiceUrl()}/api/audience/${encodeURIComponent(scope)}?channel=email`, {
       headers: { 'x-webhook-secret': webhookSecret },
       cache: 'no-store',
     });
@@ -74,10 +73,10 @@ async function checkRegistryPreferences(
   scope: string,
   webhookSecret: string,
 ): Promise<boolean> {
-  if (!REGISTRY_URL) return true; // optimistic if registry not configured
+  if (!hasRegistryServiceUrl()) return true; // optimistic if registry not configured
   try {
     const res = await fetch(
-      `${REGISTRY_URL}/api/preferences/${encodeURIComponent(did)}`,
+      `${registryServiceUrl()}/api/preferences/${encodeURIComponent(did)}`,
       { headers: { 'x-webhook-secret': webhookSecret }, cache: 'no-store' },
     );
     if (!res.ok) return true; // default to eligible on registry error
