@@ -21,13 +21,28 @@
  * a finished run back up. With `resume: true`, the follow-up is proxied to
  * Warp's cloud-to-cloud handoff and the resume is recorded on the kernel run
  * record as a `warp.run.resumed` bus event.
+ *
+ * ## Re-arming the watch for the resumed segment (#2055)
+ * Before this fix, a resumed run's second (and later) terminal was only ever
+ * observed by the scheduled sweep (`run-watch-sweep.ts`, a 10-minute cron) —
+ * unlike a fresh dispatch, which gets both that sweep AND an immediate
+ * in-request watch (`apps/kernel/app/warp/api/dispatch/route.ts`) as two
+ * independent paths to the same outcome. When {@link sendFollowup} reports
+ * `ack.resumed` (i.e. this call actually resumed an already-terminal run),
+ * this route re-arms one here too, exactly the way the dispatch route arms
+ * its own — same `watchRun`, same injected `claimTerminalPublish` — so a
+ * resumed run gets the same fast (~seconds, not ~minutes) and
+ * doubly-redundant detection a fresh dispatch always had. `countPriorResumes`
+ * is read BEFORE `sendFollowup` is called specifically to avoid racing this
+ * resume's own (fire-and-forget) durable-log write — see that function's doc.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
-import { sendFollowup, type WarpFollowupMode } from '@/src/lib/warp/dispatch';
+import { sendFollowup, watchRun, type WarpFollowupMode } from '@/src/lib/warp/dispatch';
 import { warpActingDid, warpRunId } from '@/src/lib/warp/route-context';
 import { warpErrorResponse } from '@/src/lib/warp/route-errors';
+import { claimTerminalPublish, countPriorResumes } from '@/src/lib/warp/run-watch-sweep';
 
 const log = createLogger('kernel');
 
@@ -65,12 +80,29 @@ export async function POST(request: NextRequest, props: { params: Promise<{ runI
   const mode = typeof body.mode === 'string' ? (body.mode as WarpFollowupMode) : undefined;
   const resume = typeof body.resume === 'boolean' ? body.resume : undefined;
 
+  // #2055: read before `sendFollowup` proxies the resume — see this file's
+  // module doc for why counting after would race the resume's own durable
+  // log write. Zero cost when `resume` was not requested at all.
+  const priorResumes = resume === true ? await countPriorResumes(run.runId) : 0;
+
   try {
     const ack = await sendFollowup(acting.did, run.runId, {
       message,
       ...(mode === undefined ? {} : { mode }),
       ...(resume === undefined ? {} : { resume }),
     });
+
+    if (ack.resumed !== undefined) {
+      // Fire-and-forget, deliberately un-awaited — same reasoning as the
+      // dispatch route's own `void watchRun(...)`. `priorResumes + 2`: this
+      // resume is the `priorResumes + 1`th ever recorded for the run, so the
+      // segment it just started is one past that (#2055).
+      void watchRun(acting.did, run.runId, {
+        claimTerminalPublish,
+        resumeContext: { resumedFrom: ack.resumed.previousSessionId, segment: priorResumes + 2 },
+      });
+    }
+
     return NextResponse.json(ack, { status: 202, headers: cors });
   } catch (err) {
     log.error(

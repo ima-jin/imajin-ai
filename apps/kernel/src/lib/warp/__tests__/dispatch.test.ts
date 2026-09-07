@@ -1472,11 +1472,30 @@ describe('sendFollowup terminal-run resume', () => {
 
     const ack = await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true });
 
-    expect(ack).toEqual({ runId: RUN_ID, accepted: true });
+    expect(ack).toEqual({ runId: RUN_ID, accepted: true, resumed: { previousSessionId: null } });
     const { url, init } = lastFetchCall();
     expect(url).toBe(`${BASE_URL}/agent/runs/${RUN_ID}/followups`);
     expect(init.method).toBe('POST');
     expect(lastRequestBody()).toEqual({ message: 'keep going' });
+  });
+
+  it('reports the resumed segment\'s previousSessionId in the ack, for the route to re-arm the watch (#2055)', async () => {
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED', session_id: 'session-a' });
+    respondJson({});
+
+    const ack = await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true });
+
+    expect(ack).toEqual({ runId: RUN_ID, accepted: true, resumed: { previousSessionId: 'session-a' } });
+  });
+
+  it('omits `resumed` from the ack for a non-terminal run, even with resume: true (#2055)', async () => {
+    respondJson(INPROGRESS_RUN);
+    respondJson({});
+
+    const ack = await sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true });
+
+    expect(ack).toEqual({ runId: RUN_ID, accepted: true });
+    expect(ack.resumed).toBeUndefined();
   });
 
   it('records the resume on the bus as the honest kernel run record', async () => {
@@ -1559,6 +1578,6 @@ describe('sendFollowup terminal-run resume', () => {
 
     await expect(
       sendFollowup(PRINCIPAL, RUN_ID, { message: 'keep going', resume: true }),
-    ).resolves.toEqual({ runId: RUN_ID, accepted: true });
+    ).resolves.toEqual({ runId: RUN_ID, accepted: true, resumed: { previousSessionId: null } });
   });
 });

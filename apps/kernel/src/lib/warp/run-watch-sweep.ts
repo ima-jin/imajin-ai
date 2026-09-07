@@ -11,7 +11,11 @@
  * and no `warp.run.blocked` nudge for a run stuck waiting on a human. This
  * sweep is the safety net: on a modest cron interval it re-checks any
  * in-flight run and publishes the same events the in-request watch would
- * have.
+ * have. The followups route now arms its own in-request watch for a
+ * resumed segment too (#2055, `WatchRunOptions.resumeContext` in
+ * `dispatch.ts`), so this sweep is that resumed segment's safety net in
+ * exactly the same sense it always was for a fresh dispatch's segment 1 —
+ * not, as before #2055, its *only* path to being observed at all.
  *
  * ## Webhook ingress was investigated first (#1838's own preference order)
  * Warp's run object carries `triggerUrl` (see `WarpAgentRun` in ./dispatch),
@@ -336,9 +340,10 @@ async function hasTerminalEventForSegment(runId: string, activityAt: Date): Prom
  * yet for the other to have seen via {@link hasTerminalEventForSegment}.
  *
  * `segment` is 1-based, mirroring {@link ResumeSegmentContext.segment}: the
- * in-request watch always claims segment 1 (it can only ever watch a run's
- * first, unresumed segment — see `dispatch.ts`'s module doc), and
- * {@link checkOneRun} claims `candidate.resumeCount + 1` for whichever
+ * in-request watch claims segment 1 for a fresh dispatch, or
+ * `resumeContext.segment` when the followups route re-armed it for a
+ * resumed segment (#2055, `WatchRunOptions.resumeContext`, `dispatch.ts`),
+ * and {@link checkOneRun} claims `candidate.resumeCount + 1` for whichever
  * segment `candidate` represents.
  */
 export async function claimTerminalPublish(
@@ -354,6 +359,36 @@ export async function claimTerminalPublish(
     RETURNING run_id
   `;
   return rows.length > 0;
+}
+
+/**
+ * Count of `warp.run.resumed` events already durably logged for `runId`
+ * (#2055) — used by the followups route to compute the segment number for
+ * the in-request watch it re-arms right after an accepted resume (see
+ * `WatchRunOptions.resumeContext`, `dispatch.ts`): segment `N` is
+ * `countPriorResumes(runId) + 2` for the resume the route is *currently*
+ * handling (mirrors `resumeContextFor`'s `resumeCount + 1` for a run's
+ * *current* segment, one higher because this counts resumes strictly
+ * before the one in flight).
+ *
+ * Deliberately called by the route BEFORE it calls `sendFollowup`, not
+ * after: `publish()`'s durable-log write is fire-and-forget
+ * (`deliverToSubscribers`, `packages/bus/src/publish.ts`), so counting
+ * immediately after this resume's own `warp.run.resumed` publish could race
+ * that write and undercount. Counting before this resume is requested has
+ * no such race — it only ever counts resumes that already happened.
+ */
+export async function countPriorResumes(runId: string): Promise<number> {
+  const sql = getClient();
+  const rows = await sql`
+    SELECT COUNT(*)::int AS count
+    FROM kernel.event_subscription_log
+    WHERE event_type = 'warp.run.resumed'
+      AND payload->>'runId' = ${runId}
+  `;
+  const row = rows[0] as { count?: unknown } | undefined;
+  const count = typeof row?.count === 'number' ? row.count : Number(row?.count);
+  return Number.isFinite(count) ? count : 0;
 }
 
 /**

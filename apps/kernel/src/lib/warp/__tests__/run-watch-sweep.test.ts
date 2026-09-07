@@ -24,6 +24,7 @@ const {
   blockedNoticeRows,
   raceRows,
   claimedSegments,
+  priorResumeCounts,
   listingFailure,
   FakeWarpApiErrorHoisted,
 } = vi.hoisted(() => ({
@@ -44,6 +45,9 @@ const {
   // in-request watch (or an overlapping sweep tick) having already won
   // `claimTerminalPublish` for `${runId}:${segment}`.
   claimedSegments: new Set<string>(),
+  // Prior-resume counts a test wants `countPriorResumes` (#2055) to answer,
+  // keyed by runId; defaults to 0 for any runId not seeded.
+  priorResumeCounts: new Map<string, number>(),
   listingFailure: { error: null as Error | null },
   FakeWarpApiErrorHoisted: class extends Error {
     status: number;
@@ -80,6 +84,10 @@ vi.mock('@imajin/db', () => {
       claimedSegments.add(key);
       return Promise.resolve([{ run_id: runId }]);
     }
+    if (text.includes('COUNT(*)::int')) {
+      const runId = values[0] as string;
+      return Promise.resolve([{ count: priorResumeCounts.get(runId) ?? 0 }]);
+    }
     return Promise.resolve([]);
   };
   return { getClient: () => sql };
@@ -95,7 +103,12 @@ vi.mock('../dispatch', () => ({
   WarpApiError: FakeWarpApiErrorHoisted,
 }));
 
-import { sweepInFlightWarpRuns, SWEEP_LOOKBACK_MS, claimTerminalPublish } from '../run-watch-sweep';
+import {
+  sweepInFlightWarpRuns,
+  SWEEP_LOOKBACK_MS,
+  claimTerminalPublish,
+  countPriorResumes,
+} from '../run-watch-sweep';
 
 const PRINCIPAL = 'did:imajin:veteze';
 
@@ -127,6 +140,7 @@ beforeEach(() => {
   blockedNoticeRows.clear();
   raceRows.clear();
   claimedSegments.clear();
+  priorResumeCounts.clear();
   listingFailure.error = null;
   getAgentRunMock.mockReset();
   publishTerminalRunOutcomeMock.mockReset().mockResolvedValue(undefined);
@@ -515,5 +529,27 @@ describe('claimTerminalPublish', () => {
     await claimTerminalPublish('run-9', 1, 'sweep');
 
     await expect(claimTerminalPublish('run-10', 1, 'sweep')).resolves.toBe(true);
+  });
+});
+
+// ── countPriorResumes (#2055) ────────────────────────────────────────────────
+
+describe('countPriorResumes', () => {
+  it('resolves 0 for a run with no recorded resumes', async () => {
+    await expect(countPriorResumes('run-1')).resolves.toBe(0);
+  });
+
+  it('resolves the seeded count for a run with prior resumes', async () => {
+    priorResumeCounts.set('run-1', 3);
+
+    await expect(countPriorResumes('run-1')).resolves.toBe(3);
+  });
+
+  it('counts each run independently', async () => {
+    priorResumeCounts.set('run-1', 1);
+    priorResumeCounts.set('run-2', 4);
+
+    await expect(countPriorResumes('run-1')).resolves.toBe(1);
+    await expect(countPriorResumes('run-2')).resolves.toBe(4);
   });
 });

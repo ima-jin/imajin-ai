@@ -508,6 +508,77 @@ describe('terminal publish claim guard', () => {
   });
 });
 
+// ── Re-armed for a resumed segment (#2055) ───────────────────────────────────
+
+describe('resumeContext: re-armed for a resumed segment', () => {
+  it('claims resumeContext.segment instead of the hardcoded 1', async () => {
+    const claim = vi.fn().mockResolvedValue(true);
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, {
+      sleep,
+      claimTerminalPublish: claim,
+      resumeContext: { resumedFrom: 'session-a', segment: 2 },
+    });
+
+    expect(claim).toHaveBeenCalledWith(RUN_ID, 2, 'in-request-watch');
+  });
+
+  it('attaches resumedFrom/segment to the published terminal event', async () => {
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, {
+      sleep,
+      resumeContext: { resumedFrom: 'session-a', segment: 2 },
+    });
+
+    expect(eventOfType('warp.run.completed').payload).toMatchObject({
+      state: 'SUCCEEDED',
+      resumedFrom: 'session-a',
+      segment: 2,
+    });
+  });
+
+  it('attaches the generation marker to warp.run.failed too', async () => {
+    respondRun(runBody('FAILED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, {
+      sleep,
+      resumeContext: { resumedFrom: 'session-a', segment: 3 },
+    });
+
+    expect(eventOfType('warp.run.failed').payload).toMatchObject({
+      state: 'FAILED',
+      resumedFrom: 'session-a',
+      segment: 3,
+    });
+  });
+
+  it('skips publishing when a claim for the resumed segment is lost to another publisher (e.g. the sweep)', async () => {
+    const claim = vi.fn().mockResolvedValue(false);
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, {
+      sleep,
+      claimTerminalPublish: claim,
+      resumeContext: { resumedFrom: 'session-a', segment: 2 },
+    });
+
+    expect(claim).toHaveBeenCalledWith(RUN_ID, 2, 'in-request-watch');
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('omits resumedFrom/segment from the event when resumeContext is not set, unchanged from pre-#2055 behaviour', async () => {
+    respondRun(runBody('SUCCEEDED'));
+
+    await watchRun(PRINCIPAL, RUN_ID, { sleep });
+
+    const payload = eventOfType('warp.run.completed').payload;
+    expect(payload).not.toHaveProperty('resumedFrom');
+    expect(payload).not.toHaveProperty('segment');
+  });
+});
+
 // ── Watch budget elapsed: still running, NOT a timeout (#2032) ──────────────────────────────
 
 describe('watch budget elapsed', () => {
