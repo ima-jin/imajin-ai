@@ -4,7 +4,8 @@
  * degrades safely (empty audience / optimistic eligibility) when neither
  * `REGISTRY_SERVICE_URL` nor the deprecated `REGISTRY_URL` is configured.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { stubRegistryResolverEnv } from '@/src/lib/__tests__/registry-resolver-env';
 
 const mocks = vi.hoisted(() => ({
   log: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -14,26 +15,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => mocks.log,
 }));
 
-const ENV_KEYS = ['REGISTRY_SERVICE_URL', 'REGISTRY_URL', 'PORT'] as const;
-let saved: Record<string, string | undefined>;
-
-beforeEach(() => {
-  vi.resetModules();
-  vi.clearAllMocks();
-  saved = {};
-  for (const k of ENV_KEYS) {
-    saved[k] = process.env[k];
-    delete process.env[k];
-  }
-});
-
-afterEach(() => {
-  for (const k of ENV_KEYS) {
-    if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
-  }
-  vi.unstubAllGlobals();
-});
+stubRegistryResolverEnv();
 
 const SECRET = 'webhook-secret';
 

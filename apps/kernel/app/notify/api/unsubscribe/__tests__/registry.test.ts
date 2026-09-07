@@ -3,7 +3,8 @@
  * `registryServiceUrl()` helper and silently skips (warn + return) when
  * neither `REGISTRY_SERVICE_URL` nor the deprecated `REGISTRY_URL` is set.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { stubRegistryResolverEnv } from '@/src/lib/__tests__/registry-resolver-env';
 
 const mocks = vi.hoisted(() => ({
   log: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -13,26 +14,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => mocks.log,
 }));
 
-const ENV_KEYS = ['REGISTRY_SERVICE_URL', 'REGISTRY_URL', 'PORT', 'NOTIFY_WEBHOOK_SECRET'] as const;
-let saved: Record<string, string | undefined>;
-
-beforeEach(() => {
-  vi.resetModules();
-  vi.clearAllMocks();
-  saved = {};
-  for (const k of ENV_KEYS) {
-    saved[k] = process.env[k];
-    delete process.env[k];
-  }
-});
-
-afterEach(() => {
-  for (const k of ENV_KEYS) {
-    if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
-  }
-  vi.unstubAllGlobals();
-});
+stubRegistryResolverEnv(['NOTIFY_WEBHOOK_SECRET']);
 
 describe('updateRegistryPreference', () => {
   it('warns and skips the request without calling fetch when the registry URL is not configured', async () => {

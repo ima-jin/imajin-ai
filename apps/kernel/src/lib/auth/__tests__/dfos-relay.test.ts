@@ -9,7 +9,8 @@
  * - When configured, they hit the exact expected registry URL and surface
  *   non-2xx responses / thrown errors as `false` without throwing.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { stubRegistryResolverEnv } from '@/src/lib/__tests__/registry-resolver-env';
 
 const mocks = vi.hoisted(() => ({
   log: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -34,26 +35,7 @@ vi.mock('@/src/db', () => ({
   credentials: {},
 }));
 
-const ENV_KEYS = ['REGISTRY_SERVICE_URL', 'REGISTRY_URL', 'PORT'] as const;
-let saved: Record<string, string | undefined>;
-
-beforeEach(() => {
-  vi.resetModules();
-  vi.clearAllMocks();
-  saved = {};
-  for (const k of ENV_KEYS) {
-    saved[k] = process.env[k];
-    delete process.env[k];
-  }
-});
-
-afterEach(() => {
-  for (const k of ENV_KEYS) {
-    if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
-  }
-  vi.unstubAllGlobals();
-});
+stubRegistryResolverEnv();
 
 describe('ingestToRelay', () => {
   it('skips the relay call and warns when the registry URL is not configured', async () => {
