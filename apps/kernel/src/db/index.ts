@@ -1,4 +1,4 @@
-import { createDb, getClient } from '@imajin/db';
+import { createDb } from '@imajin/db';
 
 import * as authSchema from './schemas/auth';
 import * as oauthSchema from './schemas/oauth';
@@ -62,7 +62,7 @@ const schema = {
 
 export const db = createDb(schema);
 
-export { getClient };
+export { getClient } from '@imajin/db';
 
 export * from './schemas/auth';
 export * from './schemas/oauth';

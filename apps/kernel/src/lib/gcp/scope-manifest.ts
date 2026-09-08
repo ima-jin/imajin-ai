@@ -30,7 +30,7 @@ import {
   validScopesForConnector,
   requiresConsentRow,
 } from '@/src/lib/kernel/scope-projections';
-import { GCP_CONNECTOR_DID, gcpKeySealed, gcpKeyPending } from './connector';
+import { GCP_CONNECTOR_DID } from './connector';
 
 // Re-exported so a connector route needs only this module. `export … from`
 // keeps these pure re-exports rather than local bindings that could drift
@@ -38,7 +38,7 @@ import { GCP_CONNECTOR_DID, gcpKeySealed, gcpKeyPending } from './connector';
 // `vaultFieldExists`-based redefinition here used to shadow the fix #1724
 // made in ./connector, so a disconnected key kept reporting `keySealed: true`
 // forever on this route specifically).
-export { gcpKeySealed, gcpKeyPending };
+export { gcpKeySealed, gcpKeyPending } from './connector';
 
 // ── Scope registry (derived — #1253) ────────────────────────────────────────
 
