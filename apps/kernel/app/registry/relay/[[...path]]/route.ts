@@ -134,12 +134,10 @@ async function initRelay(): Promise<Hono> {
 
 async function getRelay(): Promise<Hono> {
   if (relayApp) return relayApp;
-  if (!relayInitPromise) {
-    relayInitPromise = initRelay().then((r) => {
-      relayApp = r;
-      return r;
-    });
-  }
+  relayInitPromise ??= initRelay().then((r) => {
+    relayApp = r;
+    return r;
+  });
   return relayInitPromise;
 }
 

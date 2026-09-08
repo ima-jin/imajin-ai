@@ -74,9 +74,7 @@ async function loadKeyPair(): Promise<KeyPair> {
 let keyPairPromise: Promise<KeyPair> | null = null;
 
 function getKeyPair(): Promise<KeyPair> {
-  if (!keyPairPromise) {
-    keyPairPromise = loadKeyPair();
-  }
+  keyPairPromise ??= loadKeyPair();
   return keyPairPromise;
 }
 

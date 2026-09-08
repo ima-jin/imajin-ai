@@ -322,9 +322,7 @@ let cachedSpecText: string | null = null;
 
 /** Reads and caches the corpus OpenAPI spec served at `GET /spec` (#2020). */
 function readSpecText(): string {
-  if (cachedSpecText === null) {
-    cachedSpecText = readFileSync(SPEC_FILE_PATH, 'utf-8');
-  }
+  cachedSpecText ??= readFileSync(SPEC_FILE_PATH, 'utf-8');
   return cachedSpecText;
 }
 
