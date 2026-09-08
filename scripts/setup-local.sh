@@ -253,7 +253,7 @@ for app in "${APPS[@]}"; do
     set_env "$local_env" "CHAT_SERVICE_URL"         "${KERNEL_URL}/chat"
     set_env "$local_env" "MEDIA_SERVICE_URL"        "${KERNEL_URL}/media"
     set_env "$local_env" "NOTIFY_SERVICE_URL"       "${KERNEL_URL}/notify"
-    set_env "$local_env" "REGISTRY_URL"             "${KERNEL_URL}/registry"
+    set_env "$local_env" "REGISTRY_SERVICE_URL"     "${KERNEL_URL}/registry"
 
     # ── Shared secrets (must match kernel) ─────────────────────────────────
     set_env "$local_env" "ATTESTATION_INTERNAL_API_KEY" "\"${ATTESTATION_KEY}\""

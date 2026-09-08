@@ -1,4 +1,4 @@
-import { getServiceUrl } from './services';
+import { registryServiceUrl } from './registry-service-url';
 
 /**
  * Minimal public node metadata returned by GET /registry/api/node/self.
@@ -16,19 +16,6 @@ export interface NodeSelfInfo {
   buyerCreditBps: number | null;
 }
 
-function registryBaseUrl(): string {
-  // Like every other `*_SERVICE_URL`, this includes the service's path
-  // prefix (`/registry`) — callers append only the endpoint path
-  // (`/api/node/self`). See #2046: omitting the prefix here caused
-  // `getNodeSelf()` to bake `/registry` into the fetch path instead,
-  // which double-prefixed to `/registry/registry/api/...` for anyone
-  // who set REGISTRY_SERVICE_URL following the established convention.
-  if (process.env.REGISTRY_SERVICE_URL) return process.env.REGISTRY_SERVICE_URL;
-  const mode = process.env.NODE_ENV === 'production' ? 'prod' : 'dev';
-  const base = getServiceUrl('registry', mode) ?? 'http://localhost:3000';
-  return `${base}/registry`;
-}
-
 /**
  * Fetch this node's public identity + .fair fee config from the registry
  * service (`GET /registry/api/node/self`, #2000).
@@ -43,7 +30,7 @@ function registryBaseUrl(): string {
  * silently (#2046).
  */
 export async function getNodeSelf(): Promise<NodeSelfInfo | null> {
-  const url = `${registryBaseUrl()}/api/node/self`;
+  const url = `${registryServiceUrl()}/api/node/self`;
   try {
     const res = await fetch(url);
     if (!res.ok) {

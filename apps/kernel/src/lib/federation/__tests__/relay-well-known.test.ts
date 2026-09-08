@@ -17,7 +17,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => mocks.log,
 }));
 
-const ENV_KEYS = ['REGISTRY_SERVICE_URL', 'PORT'] as const;
+const ENV_KEYS = ['REGISTRY_SERVICE_URL', 'REGISTRY_URL', 'PORT'] as const;
 let saved: Record<string, string | undefined>;
 
 beforeEach(() => {
