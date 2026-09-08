@@ -313,6 +313,13 @@ function defaultLandingPath(connectorId: string): string {
  * credentials for this exchange. Throw `MissingCallbackParamError` for a bad
  * callback.
  */
+/** Build an absolute same-origin redirect to `path` with one param set. */
+function landing(request: NextRequest, path: string, key: string, value: string) {
+  const url = new URL(path, request.url);
+  url.searchParams.set(key, value);
+  return url;
+}
+
 export function createCallbackHandler(opts: {
   verifyState(state: string): VerifiedState;
   exchange(ownerDid: string, code: string, searchParams: URLSearchParams, configDid?: string): Promise<void>;
@@ -321,13 +328,6 @@ export function createCallbackHandler(opts: {
   connectorId: string;
 }) {
   const fallback = defaultLandingPath(opts.connectorId);
-
-  /** Build an absolute same-origin redirect to `path` with one param set. */
-  function landing(request: NextRequest, path: string, key: string, value: string) {
-    const url = new URL(path, request.url);
-    url.searchParams.set(key, value);
-    return url;
-  }
 
   function fail(request: NextRequest, path: string, code: ConnectCallbackError) {
     const url = landing(request, path, 'error', code);

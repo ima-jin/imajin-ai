@@ -9,6 +9,30 @@ function scopeIcon(scope: string): string {
   return '👤';
 }
 
+async function switchTo(did: string | null) {
+  try {
+    const res = await fetch('/auth/api/session/act-as', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ did }),
+    });
+    if (res.ok) {
+      // Sync localStorage + client-side cookie
+      if (did) {
+        localStorage.setItem('imajin:acting-as', did);
+        document.cookie = `x-acting-as=${did}; path=/; max-age=31536000; SameSite=Lax`;
+      } else {
+        localStorage.removeItem('imajin:acting-as');
+        document.cookie = 'x-acting-as=; path=/; max-age=0';
+      }
+      globalThis.location.reload();
+    }
+  } catch {
+    // ignore network errors
+  }
+}
+
 interface Props {
   authUrl: string;
   profileUrl: string;
@@ -25,30 +49,6 @@ export default function IdentitySwitcher({
   personalHandle,
 }: Readonly<Props>) {
   const { identities, loading, activeIdentity } = useIdentities(authUrl, profileUrl);
-
-  async function switchTo(did: string | null) {
-    try {
-      const res = await fetch('/auth/api/session/act-as', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ did }),
-      });
-      if (res.ok) {
-        // Sync localStorage + client-side cookie
-        if (did) {
-          localStorage.setItem('imajin:acting-as', did);
-          document.cookie = `x-acting-as=${did}; path=/; max-age=31536000; SameSite=Lax`;
-        } else {
-          localStorage.removeItem('imajin:acting-as');
-          document.cookie = 'x-acting-as=; path=/; max-age=0';
-        }
-        globalThis.location.reload();
-      }
-    } catch {
-      // ignore network errors
-    }
-  }
 
   const isPersonal = !activeIdentity;
   const personalLabel = personalName || (personalHandle ? `@${personalHandle}` : 'Personal');

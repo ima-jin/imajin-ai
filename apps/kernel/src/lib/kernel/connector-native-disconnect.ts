@@ -47,6 +47,11 @@ import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 
 const log = createLogger('kernel');
 
+/** Shared stateless CORS-preflight handler for every native disconnect route. */
+async function optionsHandler(request: NextRequest): Promise<NextResponse> {
+  return corsOptions(request) as NextResponse;
+}
+
 export interface NativeDisconnectOpts {
   /** Channel label in `auth.channel_links`, e.g. `'mcp'`. */
   channel: string;
@@ -97,10 +102,6 @@ export interface NativeDisconnectResponse {
  *   export const { POST, OPTIONS } = createNativeDisconnectHandler({ … });
  */
 export function createNativeDisconnectHandler(opts: NativeDisconnectOpts) {
-  async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-    return corsOptions(request) as NextResponse;
-  }
-
   async function POST(request: NextRequest): Promise<NextResponse> {
     const cors = corsHeaders(request);
 
@@ -208,5 +209,5 @@ export function createNativeDisconnectHandler(opts: NativeDisconnectOpts) {
     return NextResponse.json(body, { headers: cors });
   }
 
-  return { POST, OPTIONS };
+  return { POST, OPTIONS: optionsHandler };
 }

@@ -44,6 +44,27 @@ type Step = 'form' | 'creating' | 'success' | 'error' | 'no-invite';
 type HandleCheckStatus = 'idle' | 'checking' | 'available' | 'taken' | 'invalid';
 type AvatarMode = 'emoji' | 'image';
 
+function downloadKeys() {
+  const keypair = localStorage.getItem('imajin_keypair');
+  const did = localStorage.getItem('imajin_did');
+  if (!keypair || !did) return;
+
+  const backup = {
+    did,
+    keypair: JSON.parse(keypair),
+    exportedAt: new Date().toISOString(),
+    warning: 'Keep this file safe. Anyone with access can control your identity.',
+  };
+
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `imajin-keys-${did.slice(-8)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function RegisterPageWrapper() {
   return (
     <Suspense fallback={<div className="max-w-md mx-auto text-center py-12 text-gray-500">Loading...</div>}>
@@ -272,27 +293,6 @@ function RegisterPage() {
       generateTempDid();
     }
   }, [avatarMode, tempDid]);
-
-  function downloadKeys() {
-    const keypair = localStorage.getItem('imajin_keypair');
-    const did = localStorage.getItem('imajin_did');
-    if (!keypair || !did) return;
-
-    const backup = {
-      did,
-      keypair: JSON.parse(keypair),
-      exportedAt: new Date().toISOString(),
-      warning: 'Keep this file safe. Anyone with access can control your identity.',
-    };
-
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `imajin-keys-${did.slice(-8)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
 
   if (step === 'no-invite') {
     return (

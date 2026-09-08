@@ -24,6 +24,11 @@ import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
 
 const log = createLogger('kernel');
 
+/** Shared stateless CORS-preflight handler for every connector scope-manifest route. */
+async function optionsHandler(request: NextRequest): Promise<NextResponse> {
+  return corsOptions(request) as NextResponse;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** Minimal asset shape the factory needs from findManifestAsset. */
@@ -85,12 +90,6 @@ export function createConnectorScopeManifestRoute(
   opts: ConnectorRouteOpts,
 ): ConnectorRouteHandlers {
   const validScopeSet = new Set<string>(opts.validScopes);
-
-  // ── OPTIONS ────────────────────────────────────────────────────────────────
-
-  async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-    return corsOptions(request) as NextResponse;
-  }
 
   // ── GET ────────────────────────────────────────────────────────────────────
 
@@ -216,5 +215,5 @@ export function createConnectorScopeManifestRoute(
     );
   }
 
-  return { GET, POST, OPTIONS };
+  return { GET, POST, OPTIONS: optionsHandler };
 }
