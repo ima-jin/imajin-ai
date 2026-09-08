@@ -92,34 +92,28 @@ function nameContains(filename: string, ...terms: string[]): boolean {
   return terms.some((t) => lower.includes(t));
 }
 
-export async function classifyAsset(
-  buffer: Buffer,
-  filename: string,
-  mimeType: string
-): Promise<ClassifyResult> {
-  // ── Video ──────────────────────────────────────────────────────────────────
-  if (mimeType.startsWith("video/")) {
-    return {
-      category: "video",
-      tags: ["video"],
-      suggestedFolder: "Videos",
-      confidence: 0.5, // pure mime-type fallback
-    };
-  }
+function classifyVideo(): ClassifyResult {
+  return {
+    category: "video",
+    tags: ["video"],
+    suggestedFolder: "Videos",
+    confidence: 0.5, // pure mime-type fallback
+  };
+}
 
-  // ── Audio ──────────────────────────────────────────────────────────────────
-  if (mimeType.startsWith("audio/")) {
-    const isVoiceMemo = nameContains(filename, "voice", "memo", "recording", "rec_", "audio_note");
-    return {
-      category: "audio",
-      subcategory: isVoiceMemo ? "voice_memo" : "music",
-      tags: isVoiceMemo ? ["audio", "voice-memo"] : ["audio", "music"],
-      suggestedFolder: "Audio",
-      confidence: isVoiceMemo ? 0.7 : 0.5, // filename match vs pure mime
-    };
-  }
+function classifyAudio(filename: string): ClassifyResult {
+  const isVoiceMemo = nameContains(filename, "voice", "memo", "recording", "rec_", "audio_note");
+  return {
+    category: "audio",
+    subcategory: isVoiceMemo ? "voice_memo" : "music",
+    tags: isVoiceMemo ? ["audio", "voice-memo"] : ["audio", "music"],
+    suggestedFolder: "Audio",
+    confidence: isVoiceMemo ? 0.7 : 0.5, // filename match vs pure mime
+  };
+}
 
-  // ── Documents ─────────────────────────────────────────────────────────────
+// Returns null when the file doesn't look like a document at all.
+function classifyDocument(filename: string, mimeType: string): ClassifyResult | null {
   const isFilenameDoc = nameContains(filename, ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods");
   const isMimeDoc =
     mimeType === "application/pdf" ||
@@ -129,111 +123,149 @@ export async function classifyAsset(
     mimeType.includes("presentation") ||
     mimeType.includes("opendocument");
 
-  if (isMimeDoc || isFilenameDoc) {
-    const isReceipt = nameContains(filename, "receipt", "invoice", "bill");
-    if (isReceipt) {
-      return {
-        category: "receipt",
-        tags: ["document", "receipt"],
-        suggestedFolder: "Documents",
-        confidence: 0.7, // filename keyword match
-      };
-    }
+  if (!isMimeDoc && !isFilenameDoc) return null;
+
+  if (nameContains(filename, "receipt", "invoice", "bill")) {
     return {
-      category: "document",
-      tags: ["document"],
+      category: "receipt",
+      tags: ["document", "receipt"],
       suggestedFolder: "Documents",
-      confidence: isFilenameDoc ? 0.7 : 0.5, // filename match vs pure mime
+      confidence: 0.7, // filename keyword match
+    };
+  }
+  return {
+    category: "document",
+    tags: ["document"],
+    suggestedFolder: "Documents",
+    confidence: isFilenameDoc ? 0.7 : 0.5, // filename match vs pure mime
+  };
+}
+
+// High-confidence filename heuristics for images (skip CLIP/EXIF if obvious).
+function classifyImageByFilename(filename: string): ClassifyResult | null {
+  if (nameContains(filename, "receipt", "invoice", "bill")) {
+    return {
+      category: "receipt",
+      tags: ["photo", "receipt"],
+      suggestedFolder: "Documents",
+      confidence: 0.7,
     };
   }
 
-  // ── Images ─────────────────────────────────────────────────────────────────
-  if (mimeType.startsWith("image/")) {
-    // High-confidence filename heuristics first (skip CLIP if obvious)
-    if (nameContains(filename, "receipt", "invoice", "bill")) {
-      return {
-        category: "receipt",
-        tags: ["photo", "receipt"],
-        suggestedFolder: "Documents",
-        confidence: 0.7,
-      };
-    }
-
-    if (nameContains(filename, "screenshot", "screen_shot", "screen-shot", "scr_", "capture")) {
-      return {
-        category: "screenshot",
-        tags: ["photo", "screenshot"],
-        suggestedFolder: "Photos",
-        confidence: 0.7,
-      };
-    }
-
-    // EXIF camera → high confidence photo, no CLIP needed
-    let exifResult: { camera?: string; width?: number; height?: number } | null = null;
-    try {
-      exifResult = await extractExif(buffer);
-      if (exifResult?.camera) {
-        return {
-          category: "photo",
-          tags: ["photo"],
-          suggestedFolder: "Photos",
-          confidence: 0.9,
-        };
-      }
-    } catch {
-      // EXIF extraction failure is non-fatal
-    }
-
-    // Try CLIP for visual classification (GPU node)
-    const clip = await classifyWithClip(buffer);
-    if (clip) {
-      const mapped = CLIP_LABEL_MAP[clip.label] || { category: 'other', folder: 'Uncategorized' };
-      const baseTags = mapped.category === 'photo' ? ['photo'] : [mapped.category];
-      return {
-        category: mapped.category,
-        tags: [...baseTags, ...clip.tags],
-        suggestedFolder: mapped.folder,
-        confidence: clip.confidence,
-      };
-    }
-
-    // CLIP unavailable — fall back to dimension heuristics
-    if (exifResult?.width && exifResult?.height) {
-      const key = `${exifResult.width}x${exifResult.height}`;
-      const keyAlt = `${exifResult.height}x${exifResult.width}`;
-      if (SCREENSHOT_DIMENSIONS.has(key) || SCREENSHOT_DIMENSIONS.has(keyAlt)) {
-        return {
-          category: "screenshot",
-          tags: ["photo", "screenshot"],
-          suggestedFolder: "Photos",
-          confidence: 0.5,
-        };
-      }
-
-      const ratio = exifResult.height / exifResult.width;
-      if (ratio > 2.5) {
-        return {
-          category: "receipt",
-          tags: ["photo", "receipt"],
-          suggestedFolder: "Documents",
-          confidence: 0.5,
-        };
-      }
-    }
-
+  if (nameContains(filename, "screenshot", "screen_shot", "screen-shot", "scr_", "capture")) {
     return {
-      category: "photo",
-      tags: ["photo"],
+      category: "screenshot",
+      tags: ["photo", "screenshot"],
+      suggestedFolder: "Photos",
+      confidence: 0.7,
+    };
+  }
+
+  return null;
+}
+
+type ExifInfo = { camera?: string; width?: number; height?: number };
+
+async function extractImageExif(buffer: Buffer): Promise<ExifInfo | null> {
+  try {
+    return await extractExif(buffer);
+  } catch {
+    // EXIF extraction failure is non-fatal
+    return null;
+  }
+}
+
+function classifyClipResult(clip: ClipResult): ClassifyResult {
+  const mapped = CLIP_LABEL_MAP[clip.label] || { category: 'other', folder: 'Uncategorized' };
+  const baseTags = mapped.category === 'photo' ? ['photo'] : [mapped.category];
+  return {
+    category: mapped.category,
+    tags: [...baseTags, ...clip.tags],
+    suggestedFolder: mapped.folder,
+    confidence: clip.confidence,
+  };
+}
+
+// CLIP unavailable — fall back to dimension heuristics. Returns null when
+// dimensions are unavailable or don't match a known heuristic.
+function classifyImageByDimensions(exifResult: ExifInfo | null): ClassifyResult | null {
+  if (!exifResult?.width || !exifResult?.height) return null;
+
+  const key = `${exifResult.width}x${exifResult.height}`;
+  const keyAlt = `${exifResult.height}x${exifResult.width}`;
+  if (SCREENSHOT_DIMENSIONS.has(key) || SCREENSHOT_DIMENSIONS.has(keyAlt)) {
+    return {
+      category: "screenshot",
+      tags: ["photo", "screenshot"],
       suggestedFolder: "Photos",
       confidence: 0.5,
     };
   }
 
-  // ── Fallback ───────────────────────────────────────────────────────────────
+  const ratio = exifResult.height / exifResult.width;
+  if (ratio > 2.5) {
+    return {
+      category: "receipt",
+      tags: ["photo", "receipt"],
+      suggestedFolder: "Documents",
+      confidence: 0.5,
+    };
+  }
+
+  return null;
+}
+
+async function classifyImage(buffer: Buffer, filename: string): Promise<ClassifyResult> {
+  const filenameResult = classifyImageByFilename(filename);
+  if (filenameResult) return filenameResult;
+
+  // EXIF camera → high confidence photo, no CLIP needed
+  const exifResult = await extractImageExif(buffer);
+  if (exifResult?.camera) {
+    return {
+      category: "photo",
+      tags: ["photo"],
+      suggestedFolder: "Photos",
+      confidence: 0.9,
+    };
+  }
+
+  // Try CLIP for visual classification (GPU node)
+  const clip = await classifyWithClip(buffer);
+  if (clip) return classifyClipResult(clip);
+
+  const dimensionResult = classifyImageByDimensions(exifResult);
+  if (dimensionResult) return dimensionResult;
+
+  return {
+    category: "photo",
+    tags: ["photo"],
+    suggestedFolder: "Photos",
+    confidence: 0.5,
+  };
+}
+
+function classifyOther(): ClassifyResult {
   return {
     category: "other",
     tags: [],
     suggestedFolder: "Uncategorized",
     confidence: 0.3,
   };
+}
+
+export async function classifyAsset(
+  buffer: Buffer,
+  filename: string,
+  mimeType: string
+): Promise<ClassifyResult> {
+  if (mimeType.startsWith("video/")) return classifyVideo();
+  if (mimeType.startsWith("audio/")) return classifyAudio(filename);
+
+  const documentResult = classifyDocument(filename, mimeType);
+  if (documentResult) return documentResult;
+
+  if (mimeType.startsWith("image/")) return classifyImage(buffer, filename);
+
+  return classifyOther();
 }

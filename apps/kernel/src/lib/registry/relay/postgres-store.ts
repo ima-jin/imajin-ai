@@ -30,6 +30,50 @@ interface ReadLogResult {
   cursor: string | null;
 }
 
+interface DocumentLogEntry {
+  cid: string;
+  documentCID: string | null;
+  signerDID: string;
+  createdAt: string;
+}
+
+function decodeDocumentLogEntry(jws: string): DocumentLogEntry | null {
+  const decoded = decodeJwsUnsafe(jws);
+  if (!decoded) return null;
+  const payload = decoded.payload as Record<string, unknown>;
+  return {
+    cid: typeof decoded.header.cid === 'string' ? decoded.header.cid : '',
+    documentCID: typeof payload['documentCID'] === 'string' ? payload['documentCID'] : null,
+    signerDID: typeof payload['did'] === 'string' ? payload['did'] : '',
+    createdAt: typeof payload['createdAt'] === 'string' ? payload['createdAt'] : '',
+  };
+}
+
+// Derive document entries from a chain log (matches MemoryRelayStore behavior)
+function buildDocumentEntries(log: string[]): DocumentLogEntry[] {
+  const entries: DocumentLogEntry[] = [];
+  for (const jws of log) {
+    const entry = decodeDocumentLogEntry(jws);
+    if (entry) entries.push(entry);
+  }
+  return entries;
+}
+
+// Cursor is an operation CID — find its position and start after it
+function resolveDocumentsStartIndex(entries: DocumentLogEntry[], after: string | undefined): number {
+  if (!after) return 0;
+  const idx = entries.findIndex((e) => e.cid === after);
+  return idx >= 0 ? idx + 1 : entries.length;
+}
+
+function parseDocumentBlob(blob: Uint8Array): unknown | null {
+  try {
+    return JSON.parse(new TextDecoder().decode(blob));
+  } catch {
+    return null;
+  }
+}
+
 export class PostgresRelayStore implements RelayStore {
   constructor(private readonly db: PostgresJsDatabase<Record<string, unknown>>) {}
 
@@ -452,6 +496,15 @@ export class PostgresRelayStore implements RelayStore {
       .where(eq(relayPublicCredentials.cid, credentialCID));
   }
 
+  private async resolveDocumentForEntry(
+    entry: DocumentLogEntry,
+    creatorDID: string,
+  ): Promise<unknown | null> {
+    if (!entry.documentCID) return null;
+    const blob = await this.getBlob({ creatorDID, documentCID: entry.documentCID });
+    return blob ? parseDocumentBlob(blob) : null;
+  }
+
   async getDocuments(
     contentId: string,
     params: { after?: string; limit: number },
@@ -460,43 +513,16 @@ export class PostgresRelayStore implements RelayStore {
     if (!chain) return { documents: [], cursor: null };
 
     // Derive document entries from the chain log (matches MemoryRelayStore behavior)
-    const entries: Array<{ cid: string; documentCID: string | null; signerDID: string; createdAt: string }> = [];
-    for (const jws of chain.log) {
-      const decoded = decodeJwsUnsafe(jws);
-      if (!decoded) continue;
-      const payload = decoded.payload as Record<string, unknown>;
-      const cid = typeof decoded.header.cid === 'string' ? decoded.header.cid : '';
-      const documentCID = typeof payload['documentCID'] === 'string' ? payload['documentCID'] : null;
-      const signerDID = typeof payload['did'] === 'string' ? payload['did'] : '';
-      const createdAt = typeof payload['createdAt'] === 'string' ? payload['createdAt'] : '';
-      entries.push({ cid, documentCID, signerDID, createdAt });
-    }
+    const entries = buildDocumentEntries(chain.log);
 
     // Cursor is an operation CID — find its position and start after it
-    let startIdx = 0;
-    if (params.after) {
-      const idx = entries.findIndex((e) => e.cid === params.after);
-      startIdx = idx >= 0 ? idx + 1 : entries.length;
-    }
+    const startIdx = resolveDocumentsStartIndex(entries, params.after);
     const page = entries.slice(startIdx, startIdx + params.limit);
 
     // Fetch blobs for entries that have a documentCID
     const documents = [];
     for (const entry of page) {
-      let document: unknown = null;
-      if (entry.documentCID) {
-        const blob = await this.getBlob({
-          creatorDID: chain.state.creatorDID,
-          documentCID: entry.documentCID,
-        });
-        if (blob) {
-          try {
-            document = JSON.parse(new TextDecoder().decode(blob));
-          } catch {
-            document = null;
-          }
-        }
-      }
+      const document = await this.resolveDocumentForEntry(entry, chain.state.creatorDID);
       documents.push({
         operationCID: entry.cid,
         documentCID: entry.documentCID,

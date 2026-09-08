@@ -164,6 +164,52 @@ export async function getAllArticleSlugs(): Promise<{ handle: string; slug: stri
 }
 
 /**
+ * Find the first non-blank line of content and, if it's an H1 heading,
+ * return its text as a fallback title.
+ */
+function extractFallbackTitle(content: string): string | undefined {
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    return trimmed.startsWith('# ') ? trimmed.slice(2).trim() : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Find the first paragraph that isn't a heading or frontmatter separator
+ * and use it (truncated to 200 chars) as a fallback description.
+ */
+function extractFallbackDescription(content: string): string | undefined {
+  for (const p of content.split('\n\n')) {
+    const trimmed = p.trim();
+    if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('---')) {
+      return trimmed.slice(0, 200) + (trimmed.length > 200 ? '...' : '');
+    }
+  }
+  return undefined;
+}
+
+function skipBlankLines(lines: string[], from: number): number {
+  let i = from;
+  while (i < lines.length && lines[i].trim() === '') i += 1;
+  return i;
+}
+
+/**
+ * Remove the first leading H1 heading (and surrounding blank lines) from
+ * content, to avoid duplicating the title that's rendered separately.
+ */
+function stripLeadingHeading(content: string): string {
+  const lines = content.split('\n');
+  let start = skipBlankLines(lines, 0);
+  if (start < lines.length && lines[start].startsWith('# ')) {
+    start = skipBlankLines(lines, start + 1);
+  }
+  return lines.slice(start).join('\n');
+}
+
+/**
  * Get a single article by author DID + slug.
  */
 export async function getArticleBySlug(ownerDid: string, slug: string): Promise<Article | null> {
@@ -203,39 +249,17 @@ export async function getArticleBySlug(ownerDid: string, slug: string): Promise<
   let title = data.title;
   const subtitle = data.subtitle;
   if (!title) {
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      if (trimmed.startsWith('# ')) {
-        title = trimmed.slice(2).trim();
-      }
-      break;
-    }
-    title = title || meta.slug;
+    title = extractFallbackTitle(content) || meta.slug;
   }
 
   // Extract description from content if not in frontmatter
   let description = data.description;
   if (!description) {
-    const paragraphs = content.split('\n\n');
-    for (const p of paragraphs) {
-      const trimmed = p.trim();
-      if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('---')) {
-        description = trimmed.slice(0, 200) + (trimmed.length > 200 ? '...' : '');
-        break;
-      }
-    }
+    description = extractFallbackDescription(content);
   }
 
   // Remove the first H1 from content to avoid duplicate title
-  const contentLines = content.split('\n');
-  let contentStart = 0;
-  while (contentStart < contentLines.length && contentLines[contentStart].trim() === '') contentStart += 1;
-  if (contentStart < contentLines.length && contentLines[contentStart].startsWith('# ')) {
-    contentStart += 1;
-    while (contentStart < contentLines.length && contentLines[contentStart].trim() === '') contentStart += 1;
-  }
-  const contentWithoutTitle = contentLines.slice(contentStart).join('\n');
+  const contentWithoutTitle = stripLeadingHeading(content);
 
   // Process markdown to HTML
   const processedContent = await remark()
