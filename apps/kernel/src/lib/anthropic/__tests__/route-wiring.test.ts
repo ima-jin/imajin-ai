@@ -8,10 +8,11 @@
  * `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
  * provider-specific mocks and route imports live here.
  */
-import { vi } from 'vitest';
+import { vi, it } from 'vitest';
 import {
   mockRouteWiringFactories,
   describeRouteWiringContract,
+  expectScopeManifestRouteExportsPostAndOptions,
 } from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
 const sealApiKey = vi.fn();
@@ -42,7 +43,12 @@ vi.doMock('@/src/lib/anthropic/scope-manifest', () => ({
 // Importing evaluates each route module → each factory records its options.
 const tokenRoute = await import('../../../../app/anthropic/api/token/route');
 const disconnectRoute = await import('../../../../app/anthropic/api/disconnect/route');
-const manifestRoute = await import('../../../../app/anthropic/api/scope-manifest/route');
+const anthropicManifestRoute = await import('../../../../app/anthropic/api/scope-manifest/route');
+
+// Direct, literal it() (see expectScopeManifestRouteExportsPostAndOptions's
+// doc comment) so this file itself is recognized by Sonar S2187.
+it('re-exports POST and OPTIONS from the scope-manifest route, not just GET', () =>
+  expectScopeManifestRouteExportsPostAndOptions(anthropicManifestRoute as Record<string, unknown>));
 
 describeRouteWiringContract({
   label: 'Anthropic',
@@ -52,7 +58,7 @@ describeRouteWiringContract({
   manifestOpts,
   tokenRoute: tokenRoute as Record<string, unknown>,
   disconnectRoute: disconnectRoute as Record<string, unknown>,
-  manifestRoute: manifestRoute as Record<string, unknown>,
+  manifestRoute: anthropicManifestRoute as Record<string, unknown>,
   sealApiKey,
   keySealed,
   keyPending,

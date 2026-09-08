@@ -11,7 +11,7 @@
  * Shared mock plumbing and .fair chain fixtures/assertions live in
  * packages/fair/src/test-helpers.ts — see that file for why.
  */
-import { describe, vi, beforeEach } from 'vitest';
+import { describe, it, vi, beforeEach } from 'vitest';
 import {
   silentLoggerFactory,
   resolveActingDidMock,
@@ -21,6 +21,7 @@ import {
   echoLastInsertedValue,
   itDrivesFairManifestFromNodeSelf,
   itAppliesForestScopeFee,
+  expectRejectsInvalidBody,
   type FairChainEntry,
 } from '../../../../../../packages/fair/src/test-helpers';
 
@@ -105,6 +106,17 @@ describe('POST /api/pages (#2000: node config sourced via getNodeSelf())', () =>
       identity: { id: 'did:imajin:creator', actingAs: null },
     });
   });
+
+  // Direct, literal it() (see expectRejectsInvalidBody's doc comment) so
+  // this file itself is recognized by Sonar S2187 — itDrivesFairManifestFromNodeSelf
+  // and itAppliesForestScopeFee below register their own real it() cases,
+  // but only inside packages/fair/src/test-helpers.ts, not textually here.
+  it('rejects a request missing the required handle field, before touching the database', () =>
+    expectRejectsInvalidBody({
+      callRoute: () => POST(makeRequest({ title: 'My Coffee Page', paymentMethods: { stripe: { enabled: true } } })),
+      getNodeSelfMock: mocks.getNodeSelfMock,
+      insertMock: mocks.insertMock,
+    }));
 
   itDrivesFairManifestFromNodeSelf({
     getNodeSelfMock: mocks.getNodeSelfMock,

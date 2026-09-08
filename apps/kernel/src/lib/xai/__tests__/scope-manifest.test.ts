@@ -7,8 +7,11 @@
  * `src/lib/kernel/__tests__/brain-connector-contract.ts` (#1927). Only the
  * provider-specific mock wiring lives here.
  */
-import { vi } from 'vitest';
-import { describeScopeManifestIdentityContract } from '@/src/lib/kernel/__tests__/brain-connector-contract';
+import { vi, it } from 'vitest';
+import {
+  describeScopeManifestIdentityContract,
+  expectKeyStatusReExportedFromConnector,
+} from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
 const core = vi.hoisted(() => ({
   buildConnectorManifestContent: vi.fn(() => '---\nkind: scope-manifest\n---\n'),
@@ -35,7 +38,18 @@ import {
   readActiveXaiScopes,
   syncConsentGrants,
   publishXaiScopeManifest,
+  xaiKeySealed,
+  xaiKeyPending,
 } from '../scope-manifest';
+import { xaiKeySealed as connectorKeySealed, xaiKeyPending as connectorKeyPending } from '../connector';
+
+// Direct, literal it() (see expectKeyStatusReExportedFromConnector's doc
+// comment) so this file itself is recognized by Sonar S2187.
+it('re-exports xaiKeySealed/xaiKeyPending from ./connector rather than redefining them locally', () =>
+  expectKeyStatusReExportedFromConnector(
+    { keySealed: xaiKeySealed, keyPending: xaiKeyPending },
+    { keySealed: connectorKeySealed, keyPending: connectorKeyPending },
+  ));
 
 describeScopeManifestIdentityContract({
   label: 'xAI',

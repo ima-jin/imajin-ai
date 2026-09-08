@@ -8,26 +8,35 @@
  * `src/lib/kernel/__tests__/model-picker-route-test-support.ts`. Only the
  * provider-specific mock and route import live here.
  */
-import { vi } from 'vitest';
+import { vi, it } from 'vitest';
 import {
   mockModelPickerRouteDeps,
   describeModelPickerRouteContract,
+  expectSuccessfulGetCarriesCorsHeader,
 } from '@/src/lib/kernel/__tests__/model-picker-route-test-support';
 
-const mockLoadSealed = vi.fn();
-const mockKeyPending = vi.fn();
+const openaiMockLoadSealed = vi.fn();
+const openaiMockKeyPending = vi.fn();
 const mockSetModelId = vi.fn();
 
-const { resolveOwnerDid: mockResolveOwnerDid } = mockModelPickerRouteDeps();
+const { resolveOwnerDid: openaiMockResolveOwnerDid } = mockModelPickerRouteDeps();
 
 vi.doMock('@/src/lib/openai/connector', () => ({
-  loadOpenaiSealedCredentials: mockLoadSealed,
-  openaiKeyPending: mockKeyPending,
+  loadOpenaiSealedCredentials: openaiMockLoadSealed,
+  openaiKeyPending: openaiMockKeyPending,
   setModelId: mockSetModelId,
   OPENAI_BASE_URL: 'https://api.openai.com/v1',
 }));
 
-const { GET, PUT, OPTIONS } = await import('../route');
+const { GET: openaiGet, PUT, OPTIONS } = await import('../route');
+
+// Direct, literal it() (see expectSuccessfulGetCarriesCorsHeader's doc
+// comment) so this file itself is recognized by Sonar S2187.
+it('answers a successful GET with the shared CORS header attached', () =>
+  expectSuccessfulGetCarriesCorsHeader({
+    GET: openaiGet, resolveOwnerDid: openaiMockResolveOwnerDid, loadSealedCredentials: openaiMockLoadSealed,
+    keyPending: openaiMockKeyPending, apiKey: 'sk-SEALED-KEY',
+  }));
 
 describeModelPickerRouteContract({
   label: 'OpenAI',
@@ -37,13 +46,13 @@ describeModelPickerRouteContract({
   apiKey: 'sk-SEALED-KEY',
   sampleModelIds: ['gpt-5.5', 'gpt-5.6-sol'],
   deprecatedModelId: 'gpt-3',
-  GET,
+  GET: openaiGet,
   PUT,
   OPTIONS,
   mocks: {
-    resolveOwnerDid: mockResolveOwnerDid,
-    loadSealed: mockLoadSealed,
-    keyPending: mockKeyPending,
+    resolveOwnerDid: openaiMockResolveOwnerDid,
+    loadSealed: openaiMockLoadSealed,
+    keyPending: openaiMockKeyPending,
     setModelId: mockSetModelId,
   },
 });

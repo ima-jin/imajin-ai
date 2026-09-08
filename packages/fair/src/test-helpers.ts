@@ -12,7 +12,7 @@
  * keeps those four test suites from reading as near-identical copy-pasted
  * blocks.
  */
-import { expect, it } from 'vitest';
+import { expect, it, type Mock } from 'vitest';
 
 export interface FairChainEntry {
   did: string;
@@ -179,4 +179,30 @@ export function itAppliesForestScopeFee(config: {
 
     expectForestScopeShare(config.getChain(await res.json()), scopeDid, scopeFeeBps);
   });
+}
+
+// ── Sonar S2187 guard (#2066) ────────────────────────────────────────────────
+//
+// SonarCloud's S2187 only recognizes a literal it()/test() call written
+// directly in the file under analysis, so every #2000 call-site route.test.ts
+// keeps ONE direct it() of its own; this helper holds that it()'s body — a
+// real gap neither itDrivesFairManifestFromNodeSelf nor itAppliesForestScopeFee
+// covers (both assume a VALID body), so the required-field validation guard
+// is asserted once here instead of being pasted, near-identically, into
+// every call site's file.
+
+/**
+ * Asserts a route's own request-validation guard rejects an invalid create
+ * body with 400 BEFORE it ever reaches `getNodeSelf()` or the DB insert.
+ */
+export async function expectRejectsInvalidBody(config: {
+  callRoute: () => Promise<Response>;
+  getNodeSelfMock: Mock;
+  insertMock: Mock;
+}): Promise<void> {
+  const res = await config.callRoute();
+
+  expect(res.status).toBe(400);
+  expect(config.getNodeSelfMock).not.toHaveBeenCalled();
+  expect(config.insertMock).not.toHaveBeenCalled();
 }

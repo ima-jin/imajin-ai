@@ -317,6 +317,37 @@ export function describeModelPickerAuthAndValidationContract<Req>(
   });
 }
 
+// ── Sonar S2187 guard (#2066) ────────────────────────────────────────────────
+//
+// SonarCloud's S2187 only recognizes a literal it()/test() call written
+// directly in the file under analysis, so every provider's models/route.test.ts
+// keeps ONE direct it() of its own; this helper holds that it()'s body — a
+// real gap `describeModelPickerRouteContract` below doesn't cover (it only
+// asserts status/body, never that the shared CORS header reaches a
+// non-OPTIONS response) — so the assertion lives once instead of being
+// pasted, near-identically, into every provider's file.
+export interface ExpectSuccessfulGetCarriesCorsHeaderParams {
+  GET: (request: ModelPickerRouteRequest) => Promise<Response>;
+  resolveOwnerDid: Mock;
+  loadSealedCredentials: Mock;
+  keyPending: Mock;
+  apiKey: string;
+  ownerDid?: string;
+}
+
+export async function expectSuccessfulGetCarriesCorsHeader(params: ExpectSuccessfulGetCarriesCorsHeaderParams): Promise<void> {
+  const { GET, resolveOwnerDid, loadSealedCredentials, keyPending, apiKey, ownerDid = 'did:imajin:farmer' } = params;
+  resolveOwnerDid.mockResolvedValueOnce({ ok: true, ownerDid });
+  loadSealedCredentials.mockResolvedValueOnce({ apiKey });
+  keyPending.mockResolvedValueOnce(false);
+  stubModelPickerFetch({ data: [] });
+
+  const res = await GET(makeModelPickerRequest());
+
+  expect(res.status).toBe(200);
+  expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://app.imajin.ai');
+}
+
 /**
  * Pins the route CONTRACT for a connector's GET/PUT `/api/models` model
  * picker (#1927):

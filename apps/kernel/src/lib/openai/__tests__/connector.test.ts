@@ -6,13 +6,16 @@
  * `mockConnectorTokenPasteFactory` and `describeConnectorIdentityContract` in
  * `src/lib/kernel/__tests__/brain-connector-contract.ts`.
  */
+import { it } from 'vitest';
 import {
   mockConnectorTokenPasteFactory,
   describeConnectorIdentityContract,
+  expectNoRawKeyLeak,
 } from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
 const { capturedOpts, loadCredentials, loadSealedCredentials } = mockConnectorTokenPasteFactory();
 
+const openaiConnectorModule = await import('../connector');
 const {
   OPENAI_CONNECTOR_DID,
   OPENAI_CHANNEL,
@@ -21,7 +24,12 @@ const {
   vaultField,
   loadOpenaiCredentials,
   loadOpenaiSealedCredentials,
-} = await import('../connector');
+} = openaiConnectorModule;
+
+// Direct, literal it() (see expectNoRawKeyLeak's doc comment) so this file
+// itself is recognized by Sonar S2187 as containing test cases.
+it('never exports a function that could hand the raw key back to a caller (#1922 anti-goal)', () =>
+  expectNoRawKeyLeak(openaiConnectorModule));
 
 describeConnectorIdentityContract({
   label: 'OpenAI',
