@@ -17,7 +17,9 @@ import {
   mkdirSync,
   readdirSync,
 } from "node:fs";
-import { join, resolve, extname } from "node:path";
+import { join, resolve, relative, isAbsolute, extname } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 // Emitted code still carries the workspace-internal @imajin/* specifiers. The
 // manifest is rewritten to depend on @ima-jin/*, so the source must agree or
@@ -33,6 +35,53 @@ const REWRITABLE_EXTENSIONS = new Set([
   ".tsx",
   ".map",
 ]);
+
+// Environment variables that may legitimately hold an npm/registry credential
+// somewhere in this process's environment (e.g. when this script is invoked
+// from scripts/publish-package.sh, which runs with NODE_AUTH_TOKEN set for
+// the publish step). Nothing in this script intentionally logs these, but any
+// dynamic value that ends up in a log line (a package name/version, an error
+// message, a file path) is redacted defensively so a credential can never
+// reach stdout/stderr, even indirectly or in a future edit.
+const SECRET_ENV_VARS = ["NODE_AUTH_TOKEN", "NPM_TOKEN", "GITHUB_TOKEN"];
+
+export function secretValues(env = process.env) {
+  return SECRET_ENV_VARS.map((name) => env[name]).filter(
+    (value) => typeof value === "string" && value.length > 0
+  );
+}
+
+// Masks any known secret value found in `message`. Splitting/joining (rather
+// than a regex) avoids needing to escape arbitrary secret content.
+export function redact(message, env = process.env) {
+  let safe = message;
+  for (const secret of secretValues(env)) {
+    if (safe.includes(secret)) {
+      safe = safe.split(secret).join("npm_***");
+    }
+  }
+  return safe;
+}
+
+function safeLog(message) {
+  console.log(redact(message));
+}
+
+function safeWarn(message) {
+  console.warn(redact(message));
+}
+
+function safeError(message) {
+  console.error(redact(message));
+}
+
+// True when `target` (already resolved/canonicalized) is `root` itself or a
+// descendant of it. Used to confine CLI-supplied paths to an allowed root
+// instead of trusting `resolve()` output directly.
+export function isPathWithin(root, target) {
+  const rel = relative(root, target);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
 
 function rewriteScopeInTree(dir) {
   let rewritten = 0;
@@ -63,14 +112,42 @@ if (!pkgDir || !outDir) {
   process.exit(1);
 }
 
+// Allowed roots for CLI-supplied paths. Both are canonicalized once up front
+// so every later use of srcDir/destDir is guaranteed to already be validated,
+// rather than re-checked (or forgotten) at each call site.
+const REPO_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const PACKAGES_ROOT = join(REPO_ROOT, "packages");
+
+// The source is always a workspace package under packages/<name> (see the
+// module docstring and scripts/publish-package.sh) — never an arbitrary path.
 const srcDir = resolve(pkgDir);
+if (!isPathWithin(PACKAGES_ROOT, srcDir)) {
+  safeError(
+    `Refusing to read package dir outside ${PACKAGES_ROOT}: ${pkgDir}`
+  );
+  process.exit(1);
+}
+
+// The output dir is caller-chosen (scripts/publish-package.sh uses a fresh
+// `mktemp -d`), so it must stay within either the repo or the OS temp
+// directory rather than being trusted verbatim.
 const destDir = resolve(outDir);
+const ALLOWED_OUTPUT_ROOTS = [REPO_ROOT, resolve(tmpdir())];
+if (!ALLOWED_OUTPUT_ROOTS.some((root) => isPathWithin(root, destDir))) {
+  safeError(
+    `Refusing to write output outside allowed roots (${ALLOWED_OUTPUT_ROOTS.join(
+      ", "
+    )}): ${outDir}`
+  );
+  process.exit(1);
+}
+
 const packagesDir = resolve(srcDir, "..");
 
 // Read source package.json
 const pkg = JSON.parse(readFileSync(join(srcDir, "package.json"), "utf8"));
 
-console.log(`Preparing ${pkg.name}@${pkg.version} for npm publish...`);
+safeLog(`Preparing ${pkg.name}@${pkg.version} for npm publish...`);
 
 // Create output directory
 mkdirSync(destDir, { recursive: true });
@@ -81,9 +158,9 @@ for (const f of filesToCopy) {
   const srcPath = join(srcDir, f);
   if (existsSync(srcPath)) {
     cpSync(srcPath, join(destDir, f), { recursive: true });
-    console.log(`  Copied ${f}`);
+    safeLog(`  Copied ${f}`);
   } else {
-    console.warn(`  Warning: ${f} not found, skipping`);
+    safeWarn(`  Warning: ${f} not found, skipping`);
   }
 }
 
@@ -92,13 +169,13 @@ for (const extra of ["README.md", "LICENSE", "CHANGELOG.md"]) {
   const p = join(srcDir, extra);
   if (existsSync(p)) {
     cpSync(p, join(destDir, extra));
-    console.log(`  Copied ${extra}`);
+    safeLog(`  Copied ${extra}`);
   }
 }
 
 // Rewrite @imajin/* → @ima-jin/* inside the copied sources and build output
 const rewrittenFileCount = rewriteScopeInTree(destDir);
-console.log(`  Rewrote @imajin/ → @ima-jin/ in ${rewrittenFileCount} file(s)`);
+safeLog(`  Rewrote @imajin/ → @ima-jin/ in ${rewrittenFileCount} file(s)`);
 
 // Rewrite package name: @imajin/* → @ima-jin/*
 pkg.name = pkg.name.replaceAll("@imajin/", "@ima-jin/");
@@ -164,9 +241,9 @@ for (const depType of ["dependencies", "peerDependencies"]) {
         );
         const npmName = dep.replaceAll("@imajin/", "@ima-jin/");
         newDeps[npmName] = "^" + depPkg.version;
-        console.log(`  Rewrote dep ${dep}@${ver} → ${npmName}@^${depPkg.version}`);
+        safeLog(`  Rewrote dep ${dep}@${ver} → ${npmName}@^${depPkg.version}`);
       } catch {
-        console.warn(`  Warning: could not resolve ${dep}, keeping as-is`);
+        safeWarn(`  Warning: could not resolve ${dep}, keeping as-is`);
         newDeps[dep] = ver;
       }
     } else {
@@ -191,5 +268,5 @@ if (pkg.peerDependenciesMeta) {
 // Write modified package.json to output
 writeFileSync(join(destDir, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
 
-console.log(`\nReady to publish: ${pkg.name}@${pkg.version}`);
-console.log(`Output: ${destDir}`);
+safeLog(`\nReady to publish: ${pkg.name}@${pkg.version}`);
+safeLog(`Output: ${destDir}`);

@@ -47,7 +47,11 @@ for app in "${APPS[@]}"; do
   # Count SQL files before
   before=$(ls drizzle/*.sql 2>/dev/null | wc -l)
 
-  npx drizzle-kit generate
+  # `pnpm run db:generate` (not `npx drizzle-kit generate`): every app already
+  # declares drizzle-kit as a devDependency and a `db:generate` script, so this
+  # always resolves the locally installed binary instead of letting npx
+  # install an on-demand, unpinned copy of the CLI.
+  pnpm run db:generate
 
   # Count SQL files after
   after=$(ls drizzle/*.sql 2>/dev/null | wc -l)

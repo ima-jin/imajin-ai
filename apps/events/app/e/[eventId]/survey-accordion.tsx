@@ -73,17 +73,29 @@ export function SurveyAccordion({
 
   // Listen for postMessage from iframe
   useEffect(() => {
+    // Resolve DYKIL_URL (which may be a same-origin relative path like
+    // "/dykil" in single-node deployments, or an absolute cross-port/
+    // cross-domain URL in dev/staging — see buildPublicUrl) against the
+    // current page to get the origin the Dykil iframe actually loads from.
+    // This is the real sender origin, derived from the same config that
+    // built the iframe's src, rather than assuming window.location.origin.
+    const expectedOrigin = new URL(DYKIL_URL, window.location.href).origin;
+
+    // Reject anything not posted from the Dykil origin, from this
+    // accordion's own iframe. We previously checked
+    // event.origin.includes('dykil'), but Dykil is deployed under a path
+    // (e.g. dev-jin.imajin.ai/dykil/...) not a dedicated subdomain, so the
+    // origin doesn't contain 'dykil' and every postMessage was getting
+    // silently dropped — which is why ticket registrations stayed 'pending'
+    // even after the user submitted the survey. The origin check is the real
+    // security boundary; comparing event.source to the iframe's
+    // contentWindow additionally scopes accepted messages to this specific
+    // accordion's iframe.
+    const isTrustedMessage = (event: MessageEvent) =>
+      event.origin === expectedOrigin && event.source === iframeRef.current?.contentWindow;
+
     const handleMessage = (event: MessageEvent) => {
-      // Validate source: only accept messages from THIS accordion's iframe.
-      // We previously checked event.origin.includes('dykil'), but Dykil is
-      // deployed under a path (e.g. dev-jin.imajin.ai/dykil/...) not a
-      // dedicated subdomain, so the origin doesn't contain 'dykil' and every
-      // postMessage was getting silently dropped — which is why ticket
-      // registrations stayed 'pending' even after the user submitted the
-      // survey. Comparing event.source to the iframe's contentWindow is
-      // strictly more secure than origin-string-matching anyway.
-      const iframe = iframeRef.current;
-      if (event.source !== iframe?.contentWindow) return;
+      if (!isTrustedMessage(event)) return;
 
       if (event.data.type === 'survey-height') {
         setIframeHeight(event.data.height + 40); // Add some padding
@@ -138,7 +150,7 @@ export function SurveyAccordion({
 
     globalThis.addEventListener('message', handleMessage);
     return () => globalThis.removeEventListener('message', handleMessage);
-  }, [storageKey, ticketId, eventId, fetchStatus, onComplete]);
+  }, [storageKey, ticketId, eventId, fetchStatus, onComplete, DYKIL_URL]);
 
   const icon = '📋';
 

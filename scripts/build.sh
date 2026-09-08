@@ -65,7 +65,10 @@ ENV_FLAG="--env dev"
 ENV_CHECK_FAILED=false
 for app in "${APPS[@]}"; do
   set -o pipefail
-  if ! npx --yes tsx scripts/check-env.ts $ENV_FLAG "$app" 2>&1 | tee -a "$REPORT"; then
+  # `pnpm exec tsx` (not `npx --yes tsx`): resolves the tsx devDependency
+  # already pinned in the root package.json instead of letting npx install an
+  # on-demand, unpinned copy of the CLI.
+  if ! pnpm exec tsx scripts/check-env.ts $ENV_FLAG "$app" 2>&1 | tee -a "$REPORT"; then
     ENV_CHECK_FAILED=true
   fi
   set +o pipefail
@@ -74,7 +77,7 @@ done
 if [[ "$ENV_CHECK_FAILED" = true ]]; then
   echo "" | tee -a "$REPORT"
   echo "❌ Env check found errors. Fix missing vars before building." | tee -a "$REPORT"
-  echo "   Run: npx tsx scripts/check-env.ts $ENV_FLAG ${APPS[*]}" | tee -a "$REPORT"
+  echo "   Run: pnpm exec tsx scripts/check-env.ts $ENV_FLAG ${APPS[*]}" | tee -a "$REPORT"
   exit 1
 fi
 echo "" >> "$REPORT"
@@ -119,7 +122,11 @@ for app in "${APPS[@]}"; do
 
   rm -rf .next || true
 
-  if npx next build >> "$REPORT" 2>&1; then
+  # `pnpm run build` (not `npx next build`): every Next.js app here declares
+  # its own pinned `next` dependency and a `build` script that runs `next
+  # build`, so this resolves the locally installed binary instead of letting
+  # npx install an on-demand, unpinned copy of Next.js.
+  if pnpm run build >> "$REPORT" 2>&1; then
     SUCCEEDED+=("$app")
     echo "✅ $app" | tee -a "$REPORT"
   else
