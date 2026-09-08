@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, FormEvent, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { normalizeHandleInput } from '@imajin/config';
+import { DeviceLocationStatus } from '../../lib/device-location-status';
 
 const SCOPES = [
   { value: 'community', label: 'Community', icon: '🏛️', desc: 'A public or semi-public group' },
@@ -216,20 +217,6 @@ function NewGroupForm() {
   const scopeMeta = SCOPES.find(s => s.value === scope)!;
   const subtypeOptions = SUBTYPES[scope] ?? [];
 
-  let deviceLocationStatus: React.ReactNode;
-  if (deviceLoc) {
-    deviceLocationStatus = (
-      <span className="text-[10px] text-zinc-500 font-mono tabular-nums">
-        📍 {deviceLoc.lat.toFixed(4)}, {deviceLoc.lon.toFixed(4)}
-        <span className="text-zinc-600 ml-1">(±{Math.round(deviceLoc.accuracy)}m)</span>
-      </span>
-    );
-  } else if (deviceLocError) {
-    deviceLocationStatus = <span className="text-[10px] text-zinc-600">{deviceLocError}</span>;
-  } else {
-    deviceLocationStatus = <span className="text-[10px] text-zinc-600">Locating…</span>;
-  }
-
   return (
     <div className="max-w-lg mx-auto py-8">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
@@ -394,7 +381,7 @@ function NewGroupForm() {
                 <label htmlFor="create-group-location" className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                   Location
                 </label>
-                {deviceLocationStatus}
+                <DeviceLocationStatus deviceLoc={deviceLoc} deviceLocError={deviceLocError} />
               </div>
 
               <div className="relative flex gap-2">
