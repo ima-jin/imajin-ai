@@ -8,10 +8,11 @@
  * `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
  * provider-specific mocks and route imports live here.
  */
-import { vi, it, expect } from 'vitest';
+import { vi, it } from 'vitest';
 import {
   mockRouteWiringFactories,
   describeRouteWiringContract,
+  expectScopeManifestRouteExportsPostAndOptions,
 } from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
 const sealApiKey = vi.fn();
@@ -44,17 +45,10 @@ const tokenRoute = await import('../../../../app/zai/api/token/route');
 const disconnectRoute = await import('../../../../app/zai/api/disconnect/route');
 const manifestRoute = await import('../../../../app/zai/api/scope-manifest/route');
 
-// Direct, literal assertion (rather than only delegating to the shared
-// contract below) so this file itself is recognized as containing test
-// cases. See the module doc comment on brain-connector-contract.ts. The
-// shared contract only checks manifestRoute.GET; this pins that the
-// connector's own app/zai/api/scope-manifest/route.ts file actually
-// re-exports POST and OPTIONS too, which is specific to this file's own
-// destructuring — not the factory the contract already covers.
-it('re-exports POST and OPTIONS from the scope-manifest route, not just GET', () => {
-  expect((manifestRoute as Record<string, unknown>).POST).toBeDefined();
-  expect((manifestRoute as Record<string, unknown>).OPTIONS).toBeDefined();
-});
+// Direct, literal it() (see expectScopeManifestRouteExportsPostAndOptions's
+// doc comment) so this file itself is recognized by Sonar S2187.
+it('re-exports POST and OPTIONS from the scope-manifest route, not just GET', () =>
+  expectScopeManifestRouteExportsPostAndOptions(manifestRoute as Record<string, unknown>));
 
 describeRouteWiringContract({
   label: 'Z.ai',

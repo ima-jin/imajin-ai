@@ -14,10 +14,11 @@
  * `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
  * provider-specific mock wiring and sample values live here.
  */
-import { it, expect } from 'vitest';
+import { it } from 'vitest';
 import {
   mockConnectorVaultAndDb,
   describeConnectorCredentialLifecycleContract,
+  expectNoRawKeyLeak,
 } from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
 const mocks = mockConnectorVaultAndDb();
@@ -36,15 +37,10 @@ const {
   GEMINI_INFER_SCOPE,
 } = geminiConnectorModule;
 
-// Direct, literal assertion (rather than only delegating to the shared
-// contract below) so this file itself is recognized as containing test
-// cases. See the module doc comment on brain-connector-contract.ts.
-it('never exports a function that could hand the raw key back to a caller (#1922 anti-goal)', () => {
-  const suspiciousExports = Object.keys(geminiConnectorModule).filter((name) =>
-    /rawkey|exportkey|getkey|returnkey|plaintext/i.test(name),
-  );
-  expect(suspiciousExports).toEqual([]);
-});
+// Direct, literal it() (see expectNoRawKeyLeak's doc comment) so this file
+// itself is recognized by Sonar S2187 as containing test cases.
+it('never exports a function that could hand the raw key back to a caller (#1922 anti-goal)', () =>
+  expectNoRawKeyLeak(geminiConnectorModule));
 
 describeConnectorCredentialLifecycleContract({
   label: 'Gemini',

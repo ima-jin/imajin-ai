@@ -8,12 +8,11 @@
  * `src/lib/kernel/__tests__/model-picker-route-test-support.ts`. Only the
  * provider-specific mock and route import live here.
  */
-import { vi, it, expect } from 'vitest';
+import { vi, it } from 'vitest';
 import {
   mockModelPickerRouteDeps,
   describeModelPickerRouteContract,
-  makeModelPickerRequest,
-  stubModelPickerFetch,
+  expectSuccessfulGetCarriesCorsHeader,
 } from '@/src/lib/kernel/__tests__/model-picker-route-test-support';
 
 const mockLoadSealed = vi.fn();
@@ -31,22 +30,13 @@ vi.doMock('@/src/lib/moonshot/connector', () => ({
 
 const { GET, PUT, OPTIONS } = await import('../route');
 
-// Direct, literal assertion (rather than only delegating to the shared
-// contract below) so this file itself is recognized as containing test
-// cases. See the module doc comment on model-picker-route-test-support.ts.
-// Also a real gap the contract doesn't cover: it only asserts status/body,
-// never that the shared CORS header actually reaches a non-OPTIONS response.
-it('answers a successful GET with the shared CORS header attached', async () => {
-  mockResolveOwnerDid.mockResolvedValueOnce({ ok: true, ownerDid: 'did:imajin:farmer' });
-  mockLoadSealed.mockResolvedValueOnce({ apiKey: 'sk-SEALED-KEY' });
-  mockKeyPending.mockResolvedValueOnce(false);
-  stubModelPickerFetch({ data: [] });
-
-  const res = await GET(makeModelPickerRequest());
-
-  expect(res.status).toBe(200);
-  expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://app.imajin.ai');
-});
+// Direct, literal it() (see expectSuccessfulGetCarriesCorsHeader's doc
+// comment) so this file itself is recognized by Sonar S2187.
+it('answers a successful GET with the shared CORS header attached', () =>
+  expectSuccessfulGetCarriesCorsHeader({
+    GET, resolveOwnerDid: mockResolveOwnerDid, loadSealedCredentials: mockLoadSealed,
+    keyPending: mockKeyPending, apiKey: 'sk-SEALED-KEY',
+  }));
 
 describeModelPickerRouteContract({
   label: 'Moonshot AI',

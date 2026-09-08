@@ -8,7 +8,7 @@
  * Shared mock plumbing and .fair chain fixtures/assertions live in
  * packages/fair/src/test-helpers.ts — see that file for why.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, vi, beforeEach } from 'vitest';
 import {
   resolveActingDidMock,
   passthroughMediaRefFactory,
@@ -18,6 +18,7 @@ import {
   echoLastInsertedValue,
   itDrivesFairManifestFromNodeSelf,
   itAppliesForestScopeFee,
+  expectRejectsInvalidBody,
   type FairChainEntry,
 } from '../../../../../../packages/fair/src/test-helpers';
 
@@ -104,20 +105,16 @@ describe('POST /api/listings (#2000: node config sourced via getNodeSelf())', ()
     });
   });
 
-  // Direct, literal assertion (rather than only delegating to the shared
-  // itDrivesFairManifestFromNodeSelf/itAppliesForestScopeFee helpers below)
-  // so this file itself is recognized as containing test cases — those
-  // helpers register their own real it() cases, but only inside
-  // packages/fair/src/test-helpers.ts, not textually in this file. Also a
-  // real validation gap neither helper covers: the route's own price guard,
-  // exercised before any getNodeSelf()/DB call.
-  it('rejects a request with a non-positive price, before touching the database', async () => {
-    const res = await POST(makeRequest({ title: 'Vintage Chair', price: 0, contactInfo: { email: 'seller@example.com' } }));
-
-    expect(res.status).toBe(400);
-    expect(mocks.getNodeSelfMock).not.toHaveBeenCalled();
-    expect(mocks.insertMock).not.toHaveBeenCalled();
-  });
+  // Direct, literal it() (see expectRejectsInvalidBody's doc comment) so
+  // this file itself is recognized by Sonar S2187 — itDrivesFairManifestFromNodeSelf
+  // and itAppliesForestScopeFee below register their own real it() cases,
+  // but only inside packages/fair/src/test-helpers.ts, not textually here.
+  it('rejects a request with a non-positive price, before touching the database', () =>
+    expectRejectsInvalidBody({
+      callRoute: () => POST(makeRequest({ title: 'Vintage Chair', price: 0, contactInfo: { email: 'seller@example.com' } })),
+      getNodeSelfMock: mocks.getNodeSelfMock,
+      insertMock: mocks.insertMock,
+    }));
 
   itDrivesFairManifestFromNodeSelf({
     getNodeSelfMock: mocks.getNodeSelfMock,

@@ -869,3 +869,62 @@ export function describeConnectorCredentialLifecycleContract(fixture: ConnectorC
     });
   });
 }
+
+// ── Sonar S2187 guards (#2066) ───────────────────────────────────────────────────────
+//
+// SonarCloud's S2187 ("test files should contain at least one test case")
+// only recognizes a literal it()/test() call written directly in the file
+// under analysis — it cannot see the it()s that describeConnectorIdentityContract
+// etc. above register on a caller's behalf. Every connector.test.ts,
+// route-wiring.test.ts, and scope-manifest.test.ts file therefore keeps ONE
+// direct it() of its own; these four `expect*` helpers hold that it()'s BODY
+// so the assertion (and its rationale) lives once instead of being pasted,
+// near-identically, into every connector's file.
+
+/**
+ * Pins the #1922 anti-goal: a token-paste connector module must never export
+ * a function whose name suggests it could hand the raw key back to a caller.
+ * Shared by every connector.test.ts file (identity-contract and
+ * credential-lifecycle-contract style alike).
+ */
+export function expectNoRawKeyLeak(connectorModule: Record<string, unknown>): void {
+  const suspiciousExports = Object.keys(connectorModule).filter((name) =>
+    /rawkey|exportkey|getkey|returnkey|plaintext/i.test(name),
+  );
+  expect(suspiciousExports).toEqual([]);
+}
+
+/**
+ * Pins that a connector's scope-manifest route re-exports POST and OPTIONS,
+ * not just GET — `describeRouteWiringContract` above only ever checks GET on
+ * the manifest route; POST/OPTIONS existence is specific to each connector's
+ * OWN app/{id}/api/scope-manifest/route.ts destructuring, not the mocked
+ * factory the contract already covers.
+ */
+export function expectScopeManifestRouteExportsPostAndOptions(manifestRoute: Record<string, unknown>): void {
+  expect(manifestRoute.POST).toBeDefined();
+  expect(manifestRoute.OPTIONS).toBeDefined();
+}
+
+/**
+ * Pins the #1774 re-export-identity guard: a connector's scope-manifest
+ * wrapper must re-export its KeySealed/KeyPending pair from ./connector
+ * rather than locally redefining them — a local redefinition would shadow
+ * the grant-aware definitions ./connector already has.
+ */
+export function expectKeyStatusReExportedFromConnector(
+  scopeManifestExports: { keySealed: unknown; keyPending: unknown },
+  connectorExports: { keySealed: unknown; keyPending: unknown },
+): void {
+  expect(scopeManifestExports.keySealed).toBe(connectorExports.keySealed);
+  expect(scopeManifestExports.keyPending).toBe(connectorExports.keyPending);
+}
+
+/**
+ * Pins that a Stage 1 billing-key route (#1076) never wires a disconnect
+ * route — there is no disconnect flow for this credential yet, so importing
+ * the route module must never reach for `createConnectorTokenDisconnectRoute`.
+ */
+export function expectNoDisconnectRouteWired(disconnectOpts: { current: Record<string, unknown> | null }): void {
+  expect(disconnectOpts.current).toBeNull();
+}

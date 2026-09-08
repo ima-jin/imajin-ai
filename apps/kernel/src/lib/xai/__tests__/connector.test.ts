@@ -6,10 +6,11 @@
  * `mockConnectorTokenPasteFactory` and `describeConnectorIdentityContract` in
  * `src/lib/kernel/__tests__/brain-connector-contract.ts` (#1927).
  */
-import { it, expect } from 'vitest';
+import { it } from 'vitest';
 import {
   mockConnectorTokenPasteFactory,
   describeConnectorIdentityContract,
+  expectNoRawKeyLeak,
 } from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
 const { capturedOpts, loadCredentials, loadSealedCredentials } = mockConnectorTokenPasteFactory();
@@ -25,15 +26,10 @@ const {
   loadXaiSealedCredentials,
 } = xaiConnectorModule;
 
-// Direct, literal assertion (rather than only delegating to the shared
-// contract below) so this file itself is recognized as containing test
-// cases. See the module doc comment on brain-connector-contract.ts.
-it('never exports a function that could hand the raw key back to a caller (#1922 anti-goal)', () => {
-  const suspiciousExports = Object.keys(xaiConnectorModule).filter((name) =>
-    /rawkey|exportkey|getkey|returnkey|plaintext/i.test(name),
-  );
-  expect(suspiciousExports).toEqual([]);
-});
+// Direct, literal it() (see expectNoRawKeyLeak's doc comment) so this file
+// itself is recognized by Sonar S2187 as containing test cases.
+it('never exports a function that could hand the raw key back to a caller (#1922 anti-goal)', () =>
+  expectNoRawKeyLeak(xaiConnectorModule));
 
 describeConnectorIdentityContract({
   label: 'xAI',
