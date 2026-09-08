@@ -210,7 +210,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
           courseSlug: courseSlug || null,
           emtEmail: emtEnabled ? (emtEmail.trim() || null) : null,
           metadata: {
-            ...(event.metadata as any || {}),
+            ...(event.metadata as any),
             linkedSurveys,
             // Keep legacy fields for backwards compat
             linkedSurveyIds: null,

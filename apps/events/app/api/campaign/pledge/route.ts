@@ -147,7 +147,7 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
           stripeSetupIntentId: setupIntentId,
           stripeCustomerId: customerId,
           status: 'pending',
-          metadata: { ...((existingPledge.metadata as Record<string, any>) || {}), updatedAt: new Date().toISOString() },
+          metadata: { ...(existingPledge.metadata as Record<string, any>), updatedAt: new Date().toISOString() },
         })
         .where(eq(pledges.id, existingPledge.id));
     } else {

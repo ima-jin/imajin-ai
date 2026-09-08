@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     imageUrl: imageUrl || null,
     imageAssetId: imageAssetId || null,
     tags: tags || [],
-    metadata: { ...(metadata || {}), fair: fairManifest },
+    metadata: { ...metadata, fair: fairManifest },
     status: 'draft' as const,
   };
 

@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       type: 'document.created',
       payload: {
         title,
-        ...(payload ?? {}),
+        ...payload,
       },
       signature: '', // legacy — not used for document attestations
       authorJws,

@@ -93,7 +93,7 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
         status: 'confirmed',
         stripePaymentMethodId: paymentMethodId,
         metadata: {
-          ...((pledge.metadata as Record<string, any>) || {}),
+          ...(pledge.metadata as Record<string, any>),
           confirmedAt: new Date().toISOString(),
         },
       })
