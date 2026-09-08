@@ -117,9 +117,8 @@ export function resolveOutboundGuardConfig(
       terms.push(outcome.term);
     } else {
       invalidTermIds.push(outcome.id ?? "(unknown)");
-      warn(
-        `[reflex-guard] dropping invalid sealed term ${outcome.id ? `"${outcome.id}"` : ""}: ${outcome.reason}`,
-      );
+      const idLabel = outcome.id ? `"${outcome.id}"` : "";
+      warn(`[reflex-guard] dropping invalid sealed term ${idLabel}: ${outcome.reason}`);
     }
   }
 

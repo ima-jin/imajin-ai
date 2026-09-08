@@ -50,6 +50,13 @@ function formatDateTime(value: string): string {
   return date.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
 }
 
+/** Human-readable summary of how a retrace walk ended. */
+function terminalMessage(terminal: RetraceResult['terminal']): string {
+  if (!terminal.reached) return 'The chain did not terminate within the walked depth.';
+  const reasonSuffix = terminal.reason ? `: ${terminal.reason}` : '.';
+  return `Reached the origin of this chain${reasonSuffix}`;
+}
+
 /** One expandable hop row: actor/route summary collapsed, linked input/output + signature status expanded. */
 function HopRow({ node }: Readonly<{ node: RetraceHop }>) {
   const [expanded, setExpanded] = useState(false);
@@ -184,9 +191,7 @@ export default function RetracePane({ initialArtifact = '' }: Readonly<RetracePa
             )}
           </ul>
           <p className="text-xs text-gray-600">
-            {result.terminal.reached
-              ? `Reached the origin of this chain${result.terminal.reason ? `: ${result.terminal.reason}` : '.'}`
-              : 'The chain did not terminate within the walked depth.'}
+            {terminalMessage(result.terminal)}
             {result.truncated && ' (truncated — max depth or a cycle was hit)'}
           </p>
         </div>

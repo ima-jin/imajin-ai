@@ -1239,8 +1239,9 @@ export async function listComments(
   const query = params.toString();
 
   const limit = normalizeLimit(options.limit);
+  const querySuffix = query.length > 0 ? `?${query}` : '';
   const { items, hasMore } = await collectPaginated<GitHubComment>(
-    `/repos/${repo}/issues/${issueNumber}/comments${query.length > 0 ? `?${query}` : ''}`,
+    `/repos/${repo}/issues/${issueNumber}/comments${querySuffix}`,
     token,
     limit,
   );

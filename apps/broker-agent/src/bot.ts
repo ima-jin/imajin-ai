@@ -9,18 +9,20 @@ function renderMatch(n: PendingNotification): string {
   const tags = n.overlapTags.length > 0 ? n.overlapTags.join(', ') : 'shared interests';
 
   switch (n.deliveryPolicy) {
-    case 'named_nudge':
+    case 'named_nudge': {
       // Both are favourites and non-sensitive — name the other party.
+      const otherPartyLabel = n.otherDid ? `${n.otherDid.slice(0, 20)}…` : 'someone in your circle';
       return [
         '✨ *A match just surfaced*',
         '',
-        `You and ${n.otherDid ? `${n.otherDid.slice(0, 20)}…` : 'someone in your circle'} are both up for: *${tags}*`,
+        `You and ${otherPartyLabel} are both up for: *${tags}*`,
         '',
         'You reached each other because you both set overlapping intentions.',
         `Match ID: \`${n.matchId}\``,
         '',
         'Reply with "connect", "decline", or "unmask" to respond.',
       ].join('\n');
+    }
 
     case 'staged':
       // Arriver sees first — staged reveal.
