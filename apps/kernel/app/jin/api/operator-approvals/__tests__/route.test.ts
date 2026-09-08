@@ -38,7 +38,7 @@ vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
 
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
-import { GET } from '../route';
+import { GET, OPTIONS } from '../route';
 
 function makeReq(): Request {
   return new Request('https://test.imajin.ai/jin/api/operator-approvals');
@@ -48,6 +48,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetOperatorDid.mockResolvedValue(OPERATOR_DID);
   mockList.mockResolvedValue([pendingApprovalCard()]);
+});
+
+describe('OPTIONS /jin/api/operator-approvals', () => {
+  it('delegates to the shared CORS preflight handler', async () => {
+    const res = await OPTIONS(makeReq() as Parameters<typeof OPTIONS>[0]);
+    expect(res.status).toBe(204);
+  });
 });
 
 describe('GET /jin/api/operator-approvals (#2059)', () => {

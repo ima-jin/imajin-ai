@@ -113,6 +113,37 @@ async function resolveAndSendEmail(
 }
 
 /**
+ * Guard for the `operator.approval.requested` scope (#2059): validates the
+ * payload and confirms the recipient is the configured operator DID.
+ * Returns the 400 response to return immediately, or null when the request
+ * may proceed. Extracted out of POST so its cognitive complexity stays
+ * under the SonarCloud threshold (S3776) — no behavior change.
+ */
+async function rejectInvalidOperatorApprovalRequest(
+  scope: string,
+  data: Record<string, unknown>,
+  to: string,
+  cors: Record<string, string>,
+): Promise<NextResponse | null> {
+  if (scope !== OPERATOR_APPROVAL_REQUESTED_SCOPE) return null;
+
+  const validation = validateApprovalRequestedPayload(data);
+  if (!validation.ok) {
+    return NextResponse.json({ error: validation.error }, { status: 400, headers: cors });
+  }
+
+  const operatorDid = await getOperatorDid();
+  if (!operatorDid || to !== operatorDid) {
+    return NextResponse.json(
+      { error: 'operator.approval.requested must be addressed to the configured operator DID' },
+      { status: 400, headers: cors },
+    );
+  }
+
+  return null;
+}
+
+/**
  * Build the /notify/api/send response body (#1854): honest about whether
  * the email leg actually delivered, kept out of POST's own control flow so
  * the handler's complexity stays where it was before this fix.
@@ -163,19 +194,8 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   // include secret values, and must be addressed to the configured operator
   // DID (never an arbitrary recipient) so the /jin confirm card can only
   // ever reach the one identity allowed to decide it.
-  if (scope === OPERATOR_APPROVAL_REQUESTED_SCOPE) {
-    const validation = validateApprovalRequestedPayload(data);
-    if (!validation.ok) {
-      return NextResponse.json({ error: validation.error }, { status: 400, headers: cors });
-    }
-    const operatorDid = await getOperatorDid();
-    if (!operatorDid || to !== operatorDid) {
-      return NextResponse.json(
-        { error: 'operator.approval.requested must be addressed to the configured operator DID' },
-        { status: 400, headers: cors },
-      );
-    }
-  }
+  const operatorApprovalRejection = await rejectInvalidOperatorApprovalRequest(scope, data, to, cors);
+  if (operatorApprovalRejection) return operatorApprovalRejection;
 
   // Resolve template
   const template = getTemplate(scope);

@@ -59,6 +59,13 @@ describe('validateApprovalRequestedPayload', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('rejects keysTouched with more than the maximum allowed entries', () => {
+    const tooMany = Array.from({ length: 51 }, (_, i) => `gateway.key${i}`);
+    const result = validateApprovalRequestedPayload(validPayload({ keysTouched: tooMany }));
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/at most 50 entries/);
+  });
+
   it('rejects keysTouched entries that are objects instead of path strings', () => {
     const result = validateApprovalRequestedPayload(
       validPayload({ keysTouched: [{ path: 'gateway.token', value: 'sk-should-not-be-here-1234567890' }] }),

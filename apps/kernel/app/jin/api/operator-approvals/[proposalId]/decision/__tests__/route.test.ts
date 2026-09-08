@@ -49,9 +49,9 @@ vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
   decideOperatorApproval: mockDecide,
 }));
 
-// ─── Subject ─────────────────────────────────────────────────────────────────
+// ─── Subject ──────────────────────────────────────────────────
 
-import { POST } from '../route';
+import { POST, OPTIONS } from '../route';
 
 function makeReq(body: unknown): Request {
   return new Request(`https://test.imajin.ai/jin/api/operator-approvals/${PROPOSAL_ID}/decision`, {
@@ -69,6 +69,13 @@ beforeEach(() => {
   mockGetOperatorDid.mockResolvedValue(OPERATOR_DID);
   mockRequireAuth.mockResolvedValue({ identity: operatorIdentity() });
   mockDecide.mockResolvedValue({ ok: true, card: pendingApprovalCard({ status: 'approved' }) });
+});
+
+describe('OPTIONS /jin/api/operator-approvals/:proposalId/decision', () => {
+  it('delegates to the shared CORS preflight handler', async () => {
+    const res = await OPTIONS(makeReq({}) as Parameters<typeof OPTIONS>[0]);
+    expect(res.status).toBe(204);
+  });
 });
 
 describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => {
@@ -175,5 +182,16 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
     });
     const res = await POST(makeReq({ decision: 'withdrawn' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
     expect(res.status).toBe(409);
+  });
+
+  it('returns 500 without leaking the failure detail when decideOperatorApproval throws', async () => {
+    mockDecide.mockRejectedValueOnce(new Error('db unavailable'));
+
+    const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('Failed to record decision');
+    expect(body.error).not.toContain('db unavailable');
   });
 });

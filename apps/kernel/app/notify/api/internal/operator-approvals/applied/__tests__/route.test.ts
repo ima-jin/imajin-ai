@@ -12,7 +12,7 @@ vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
   markApplied: mockMarkApplied,
 }));
 
-import { POST } from '../route';
+import { POST, OPTIONS } from '../route';
 
 const WEBHOOK_SECRET = 'notify-webhook-secret';
 
@@ -31,6 +31,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.NOTIFY_WEBHOOK_SECRET = WEBHOOK_SECRET;
   mockMarkApplied.mockResolvedValue({ ok: true });
+});
+
+describe('OPTIONS /notify/api/internal/operator-approvals/applied', () => {
+  it('delegates to the shared CORS preflight handler', async () => {
+    const res = await OPTIONS(makeReq({}) as Parameters<typeof OPTIONS>[0]);
+    expect(res.status).toBe(204);
+  });
 });
 
 describe('POST /notify/api/internal/operator-approvals/applied (#2059)', () => {

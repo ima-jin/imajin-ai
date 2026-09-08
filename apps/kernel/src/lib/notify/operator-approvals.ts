@@ -59,7 +59,7 @@ const VALID_KINDS = new Set<ApprovalProposalKind>(['restart', 'config-mutation',
 export const REQUEST_ACTIONS: readonly ApprovalRequestAction[] = ['approve', 'deny'] as const;
 
 /** A key path is a short, plain identifier chain — never a resolved value. */
-const KEY_PATH_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.\-/]{0,199}$/;
+const KEY_PATH_PATTERN = /^\w[\w.\-/]{0,199}$/;
 const MAX_KEYS_TOUCHED = 50;
 const MAX_SUMMARY_LENGTH = 2000;
 
@@ -76,9 +76,12 @@ const MAX_SUMMARY_LENGTH = 2000;
  */
 export function looksLikeSecretValue(value: string): boolean {
   if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(value)) return true;
-  if (/^(sk|pk|ghp|gho|ghu|ghs|xox[baprs])[-_][A-Za-z0-9_-]{10,}$/i.test(value)) return true;
-  if (/^[A-Fa-f0-9]{32,}$/.test(value)) return true;
-  if (/^[A-Za-z0-9+/]{40,}={0,2}$/.test(value)) return true;
+  // Case-insensitive (`i`) flags below, so each character class lists only
+  // the lowercase half of any letter range — listing both cases under `i`
+  // is a duplicate-character-class smell (S5869) with no behavior change.
+  if (/^(sk|pk|ghp|gho|ghu|ghs|xox[baprs])[-_][a-z0-9_-]{10,}$/i.test(value)) return true;
+  if (/^[a-f0-9]{32,}$/i.test(value)) return true;
+  if (/^[a-z0-9+/]{40,}={0,2}$/i.test(value)) return true;
   if (/bearer\s+\S+/i.test(value)) return true;
   return false;
 }

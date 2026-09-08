@@ -9,7 +9,6 @@
  * (#1817): the kernel signs the decision using its own signing identity,
  * witnessing the operator's explicit tap.
  */
-import { nanoid } from 'nanoid';
 import { and, desc, eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { canonicalize, crypto as authCrypto } from '@imajin/auth';
@@ -224,9 +223,4 @@ export async function listApprovalsForOperator(operatorDid: string): Promise<Ope
     .where(eq(operatorApprovals.operatorDid, operatorDid))
     .orderBy(desc(operatorApprovals.createdAt));
   return rows.map(toCard);
-}
-
-/** Generate a proposal id — exported for callers that mint one server-side (tests, tooling). */
-export function generateProposalId(): string {
-  return `opap_${nanoid()}`;
 }
