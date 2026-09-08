@@ -27,6 +27,7 @@ import * as consentRequestsSchema from './schemas/consent-requests';
 import * as stripeSchema from './schemas/stripe';
 import * as connectorsSchema from './schemas/connectors';
 import * as usageSchema from './schemas/usage';
+import * as operatorApprovalsSchema from './schemas/operator-approvals';
 
 const schema = {
   ...authSchema,
@@ -56,6 +57,7 @@ const schema = {
   ...stripeSchema,
   ...connectorsSchema,
   ...usageSchema,
+  ...operatorApprovalsSchema,
 };
 
 export const db = createDb(schema);
@@ -88,6 +90,7 @@ export * from './schemas/consent-requests';
 export * from './schemas/stripe';
 export * from './schemas/connectors';
 export * from './schemas/usage';
+export * from './schemas/operator-approvals';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";

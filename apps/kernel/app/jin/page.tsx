@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { UsageFeedPanel } from './usage-feed-panel';
+import { OperatorApprovalsPanel } from './operator-approvals-panel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -370,6 +371,10 @@ export default function JinPage() {
       {/* Body — S3358: avoid nested ternary by extracting render logic */}
       <main className="px-6 py-4">
         {renderBody(loading, visible, showDone, handleAction, actionLoading)}
+
+        {/* Operator approvals (#2059) — gateway restart / config proposals,
+            visible only to the node operator; renders nothing otherwise. */}
+        <OperatorApprovalsPanel />
 
         {/* Live per-turn agent usage feed (#1864) — a second panel on this
             kernel ops page, alongside the confirm-rail proposals above. */}

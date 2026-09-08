@@ -61,6 +61,27 @@ vi.mock('@imajin/email', () => ({ sendEmail: vi.fn() }));
 
 vi.mock('@/src/lib/notify/templates', () => ({ getTemplate: vi.fn(() => undefined) }));
 
+// #2059 — operator-approvals.ts imports node-identity.ts, which calls
+// getClient() at module scope (requires DATABASE_URL); stub these out so
+// importing the route never needs a real DB/operator config. Hoisted and
+// mock-fn-backed (not inline stubs) so the dedicated describe block below
+// can control their return values per test.
+const { mockGetOperatorDid, mockValidateApprovalRequestedPayload, mockRecordApprovalRequested } = vi.hoisted(() => ({
+  mockGetOperatorDid: vi.fn(),
+  mockValidateApprovalRequestedPayload: vi.fn(),
+  mockRecordApprovalRequested: vi.fn(),
+}));
+
+vi.mock('@/src/lib/notify/operator-approvals', () => ({
+  OPERATOR_APPROVAL_REQUESTED_SCOPE: 'operator.approval.requested',
+  getOperatorDid: mockGetOperatorDid,
+  validateApprovalRequestedPayload: mockValidateApprovalRequestedPayload,
+}));
+
+vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
+  recordApprovalRequested: mockRecordApprovalRequested,
+}));
+
 const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
 
 vi.mock('@/src/lib/notify/ws-push', async () => {
@@ -151,6 +172,12 @@ beforeEach(() => {
   mockPush.mockResolvedValue(true);
   vi.mocked(getTemplate).mockReturnValue(undefined);
   vi.mocked(sendEmail).mockResolvedValue({ success: true, messageId: 'msg_default' });
+  // #2059 — this suite's other tests never send scope='operator.approval.requested',
+  // so rejectInvalidOperatorApprovalRequest short-circuits before touching these;
+  // defaults here only matter for the dedicated describe block below.
+  mockGetOperatorDid.mockResolvedValue(RECIPIENT);
+  mockValidateApprovalRequestedPayload.mockReturnValue({ ok: true });
+  mockRecordApprovalRequested.mockResolvedValue(undefined);
 });
 
 // ─── WebSocket push (#1644) ──────────────────────────────────────────────────
@@ -405,5 +432,71 @@ describe('email delivery honesty (#1854)', () => {
     expect(res.status).toBe(200);
     expect(body).toEqual({ id: NOTIFICATION_ID, sent: true });
     expect(sendEmail).not.toHaveBeenCalled();
+  });
+});
+
+// ─── operator.approval.requested boundary (#2059) ──────────────────────────────────────────
+// Shares this file's mocks/fixtures rather than duplicating the whole route
+// test apparatus in a separate file (SonarCloud duplicated-lines guard).
+
+const PROPOSAL_ID = 'opap_test123';
+
+function operatorApprovalBody(overrides: Record<string, unknown> = {}) {
+  return {
+    to: RECIPIENT,
+    scope: 'operator.approval.requested',
+    data: {
+      proposalId: PROPOSAL_ID,
+      kind: 'restart',
+      summary: 'Restart the gateway to load the updated plugin.',
+      keysTouched: ['gateway.plugins.openclaw.version'],
+      ...overrides,
+    },
+  };
+}
+
+describe('operator.approval.requested boundary (#2059)', () => {
+  it('accepts a well-formed proposal, stores the notification, and records the lifecycle row', async () => {
+    const res = await POST(makeReq(operatorApprovalBody()));
+
+    expect(res.status).toBe(200);
+    expect(mockInsertValues).toHaveBeenCalledOnce();
+    expect(mockRecordApprovalRequested).toHaveBeenCalledWith({
+      proposalId: PROPOSAL_ID,
+      operatorDid: RECIPIENT,
+      kind: 'restart',
+      summary: 'Restart the gateway to load the updated plugin.',
+      keysTouched: ['gateway.plugins.openclaw.version'],
+      notificationId: NOTIFICATION_ID,
+    });
+  });
+
+  it('rejects (400) a payload the validator flags, without touching the db', async () => {
+    mockValidateApprovalRequestedPayload.mockReturnValueOnce({ ok: false, error: 'summary must not contain secret values' });
+
+    const res = await POST(makeReq(operatorApprovalBody()));
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('summary must not contain secret values');
+    expect(mockInsertValues).not.toHaveBeenCalled();
+    expect(mockRecordApprovalRequested).not.toHaveBeenCalled();
+  });
+
+  it('rejects (400) when addressed to a DID other than the configured operator', async () => {
+    const res = await POST(makeReq({ ...operatorApprovalBody(), to: 'did:imajin:someone-else' }));
+
+    expect(res.status).toBe(400);
+    expect(mockInsertValues).not.toHaveBeenCalled();
+    expect(mockRecordApprovalRequested).not.toHaveBeenCalled();
+  });
+
+  it('rejects (400) when no operator DID is configured on this node at all', async () => {
+    mockGetOperatorDid.mockResolvedValueOnce(null);
+
+    const res = await POST(makeReq(operatorApprovalBody()));
+
+    expect(res.status).toBe(400);
+    expect(mockInsertValues).not.toHaveBeenCalled();
   });
 });

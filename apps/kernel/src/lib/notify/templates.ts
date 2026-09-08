@@ -686,6 +686,19 @@ export const templates: NotifyTemplate[] = [
       return fields.length > 0 ? `Fields shared: ${fields.join(', ')}` : 'Your data was disclosed.';
     },
   },
+  {
+    // #2059 — operator approvals (gateway restart / config proposals) appear
+    // as a signed confirm on /jin. No email: this is a fast-moving
+    // operational prompt meant to be acted on from wherever the operator is
+    // already authenticated, not a channel to configure separately.
+    scope: 'operator.approval.requested',
+    urgency: 'urgent',
+    title: (data) => {
+      const kind = typeof data.kind === 'string' ? data.kind : 'other';
+      return `Operator approval needed — ${kind}`;
+    },
+    body: (data) => (typeof data.summary === 'string' ? data.summary : 'An operator approval is pending.'),
+  },
 ];
 
 export function getTemplate(scope: string): NotifyTemplate | undefined {
