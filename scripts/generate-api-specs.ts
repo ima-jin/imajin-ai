@@ -183,7 +183,7 @@ async function findRoutesRecursive(dir: string): Promise<string[]> {
 function filePathToUrlPath(absoluteFile: string, routeRootAbs: string): string {
   let rel = relative(routeRootAbs, absoluteFile); // e.g. "events/[id]/tiers/route.ts"
   const slashSuffix = '/route.ts';
-  const backslashSuffix = '\\route.ts';
+  const backslashSuffix = String.raw`\route.ts`;
   if (rel.endsWith(slashSuffix)) rel = rel.slice(0, -slashSuffix.length);
   else if (rel.endsWith(backslashSuffix)) rel = rel.slice(0, -backslashSuffix.length);
 

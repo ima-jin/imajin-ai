@@ -21,10 +21,10 @@ import type { ArticleBlock } from "./article-core";
 function yamlQuote(value: string): string {
   const escaped = value
     .replaceAll("\\", "\\\\")
-    .replaceAll("\"", "\\\"")
-    .replaceAll("\n", "\\n")
-    .replaceAll("\r", "\\r")
-    .replaceAll("\t", "\\t");
+    .replaceAll("\"", String.raw`\"`)
+    .replaceAll("\n", String.raw`\n`)
+    .replaceAll("\r", String.raw`\r`)
+    .replaceAll("\t", String.raw`\t`);
   return `"${escaped}"`;
 }
 

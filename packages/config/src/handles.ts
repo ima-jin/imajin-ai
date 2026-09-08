@@ -16,7 +16,7 @@ const HANDLE_EDGE = /^[.-]|[.-]$/;
 const HANDLE_CONSECUTIVE = /[.-]{2}/;
 
 /** HTML input pattern attribute (no anchors, no flags) */
-export const HANDLE_INPUT_PATTERN = '[a-z0-9._\\-]{3,30}';
+export const HANDLE_INPUT_PATTERN = String.raw`[a-z0-9._\-]{3,30}`;
 
 /** Characters allowed in handles — use in onChange filters */
 export const HANDLE_ALLOWED_CHARS = /[^a-z0-9._-]/g;
