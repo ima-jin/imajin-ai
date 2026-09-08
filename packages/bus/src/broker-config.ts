@@ -187,17 +187,48 @@ function resolveConsentFromDefaults(
  * degraded mode and fall back to {@link CONSENT_DEFAULTS}. A reachable DB with
  * no matching grants returns `undefined` (fail-closed).
  */
-export async function resolveConsentFromDb(
+type GrantRow = {
+  granted_to: string;
+  purpose: string;
+  allowed_fields: string[];
+  mode: string;
+  consent_ref: string;
+};
+
+type ClassGrantRow = {
+  granted_to_class: string;
+  allowed_fields: string[];
+  mode: string;
+  consent_ref: string;
+};
+
+type ReachRings = Awaited<ReturnType<typeof import('./match/reach').resolveReachRings>>;
+type SqlClient = ReturnType<typeof import('@imajin/db').getClient>;
+
+function computeGrantSpecificity(row: { granted_to: string; purpose: string }): number {
+  const reqWild = row.granted_to === '*';
+  const purposeWild = row.purpose === '*';
+  if (!reqWild && !purposeWild) return 0;
+  if (reqWild && !purposeWild) return 1;
+  if (!reqWild && purposeWild) return 2;
+  return 3;
+}
+
+function toConsentEntry(row: { allowed_fields: string[]; mode: string; consent_ref: string }): ConsentEntry {
+  return {
+    allowedFields: row.allowed_fields ?? [],
+    mode: row.mode === 'raw' ? 'raw' : 'attestation',
+    consentRef: row.consent_ref,
+  };
+}
+
+/** Path 1: per-DID grants (`granted_to` = exact DID or `*` wildcard), most specific first. */
+async function fetchDidGrants(
+  sql: SqlClient,
   subject: string,
   requester: string,
   purpose: string
-): Promise<ResolvedConsent | undefined> {
-  const { getClient } = await import('@imajin/db');
-  const sql = getClient();
-
-  const allEntries: ConsentEntry[] = [];
-
-  // ── Path 1: per-DID grants ────────────────────────────────────────────────
+): Promise<ConsentEntry[]> {
   const rows = await sql`
     SELECT allowed_fields, mode, consent_ref, granted_to, purpose
     FROM kernel.consent_grants
@@ -209,35 +240,34 @@ export async function resolveConsentFromDb(
       AND (expires_at IS NULL OR expires_at > now())
   `;
 
-  if (rows.length > 0) {
-    const specificity = (row: { granted_to: string; purpose: string }): number => {
-      const reqWild = row.granted_to === '*';
-      const purposeWild = row.purpose === '*';
-      if (!reqWild && !purposeWild) return 0;
-      if (reqWild && !purposeWild) return 1;
-      if (!reqWild && purposeWild) return 2;
-      return 3;
-    };
+  if (rows.length === 0) return [];
 
-    type GrantRow = {
-      granted_to: string;
-      purpose: string;
-      allowed_fields: string[];
-      mode: string;
-      consent_ref: string;
-    };
+  const ordered = ([...rows] as GrantRow[]).sort(
+    (a, b) => computeGrantSpecificity(a) - computeGrantSpecificity(b)
+  );
+  return ordered.map(toConsentEntry);
+}
 
-    const ordered = ([...rows] as GrantRow[]).sort((a, b) => specificity(a) - specificity(b));
-    for (const row of ordered) {
-      allEntries.push({
-        allowedFields: row.allowed_fields ?? [],
-        mode: row.mode === 'raw' ? 'raw' : 'attestation',
-        consentRef: row.consent_ref,
-      });
-    }
+/** Whether `requester` is admitted under a `grantedToClass` grant, given the subject's reach rings. */
+function isClassAdmitted(grantedToClass: string, requester: string, rings: ReachRings): boolean {
+  if (grantedToClass === 'connections') {
+    // subject's direct connections (favourites proxy)
+    return rings.favouritesSet.has(requester);
   }
+  if (grantedToClass === 'one_degree') {
+    // subject's 1° ring (direct + 2-hop)
+    return rings.oneDegreeSet.has(requester);
+  }
+  return grantedToClass === 'strangers';
+}
 
-  // ── Path 2: grantedToClass grants (reach-ring based) ─────────────────────
+/** Path 2: `grantedToClass` grants (reach-ring based). */
+async function fetchClassGrants(
+  sql: SqlClient,
+  subject: string,
+  requester: string,
+  purpose: string
+): Promise<ConsentEntry[]> {
   const classRows = await sql`
     SELECT allowed_fields, mode, consent_ref, granted_to_class
     FROM kernel.consent_grants
@@ -249,42 +279,32 @@ export async function resolveConsentFromDb(
       AND (expires_at IS NULL OR expires_at > now())
   `;
 
-  if (classRows.length > 0) {
-    // Resolve the subject's connection rings once per request.
-    const { resolveReachRings } = await import('./match/reach');
-    const subjectRings = await resolveReachRings(subject);
+  if (classRows.length === 0) return [];
 
-    type ClassGrantRow = {
-      granted_to_class: string;
-      allowed_fields: string[];
-      mode: string;
-      consent_ref: string;
-    };
+  // Resolve the subject's connection rings once per request.
+  const { resolveReachRings } = await import('./match/reach');
+  const subjectRings = await resolveReachRings(subject);
 
-    for (const row of [...classRows] as ClassGrantRow[]) {
-      let admitted = false;
-      switch (row.granted_to_class) {
-        case 'connections':
-          // subject's direct connections (favourites proxy)
-          admitted = subjectRings.favouritesSet.has(requester);
-          break;
-        case 'one_degree':
-          // subject's 1° ring (direct + 2-hop)
-          admitted = subjectRings.oneDegreeSet.has(requester);
-          break;
-        case 'strangers':
-          admitted = true;
-          break;
-      }
-      if (admitted) {
-        allEntries.push({
-          allowedFields: row.allowed_fields ?? [],
-          mode: row.mode === 'raw' ? 'raw' : 'attestation',
-          consentRef: row.consent_ref,
-        });
-      }
+  const entries: ConsentEntry[] = [];
+  for (const row of [...classRows] as ClassGrantRow[]) {
+    if (isClassAdmitted(row.granted_to_class, requester, subjectRings)) {
+      entries.push(toConsentEntry(row));
     }
   }
+  return entries;
+}
+
+export async function resolveConsentFromDb(
+  subject: string,
+  requester: string,
+  purpose: string
+): Promise<ResolvedConsent | undefined> {
+  const { getClient } = await import('@imajin/db');
+  const sql = getClient();
+
+  const didEntries = await fetchDidGrants(sql, subject, requester, purpose);
+  const classEntries = await fetchClassGrants(sql, subject, requester, purpose);
+  const allEntries = [...didEntries, ...classEntries];
 
   if (allEntries.length === 0) return undefined;
   return composeEntries(allEntries);

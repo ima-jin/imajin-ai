@@ -71,20 +71,11 @@ function buildDefaultFees(): AgentPricingManifest['fees'] {
 // Validation
 // ============================================================================
 
-/**
- * Validate an AgentPricingManifest.
- */
-export function validateAgentPricingManifest(
-  manifest: unknown
-): { valid: boolean; errors: string[] } {
+const VALID_FEE_ROLES = ['protocol', 'node', 'buyer_credit', 'scope'];
+
+/** Validate the manifest's fixed top-level fields (fair, type, agent, pricing). */
+function validateTopLevelFields(m: Record<string, unknown>): string[] {
   const errors: string[] = [];
-
-  if (typeof manifest !== 'object' || manifest === null) {
-    return { valid: false, errors: ['manifest must be an object'] };
-  }
-
-  const m = manifest as Record<string, unknown>;
-
   if (m.fair !== '1.0') errors.push('fair must be "1.0"');
   if (m.type !== 'agent-interaction') errors.push('type must be "agent-interaction"');
   if (typeof m.agent !== 'string' || !m.agent.startsWith('did:')) {
@@ -93,24 +84,47 @@ export function validateAgentPricingManifest(
   if (typeof m.pricing !== 'object' || m.pricing === null) {
     errors.push('pricing must be an object');
   }
+  return errors;
+}
 
-  if (Array.isArray(m.fees)) {
-    const validRoles = ['protocol', 'node', 'buyer_credit', 'scope'];
-    for (let i = 0; i < m.fees.length; i++) {
-      const fee = m.fees[i] as Record<string, unknown>;
-      if (!validRoles.includes(fee.role as string)) {
-        errors.push(`fees[${i}].role must be one of ${validRoles.join(', ')}`);
-      }
-      if (typeof fee.name !== 'string' || !fee.name) {
-        errors.push(`fees[${i}].name must be a non-empty string`);
-      }
-      if (typeof fee.rateBps !== 'number' || fee.rateBps < 0 || fee.rateBps > 10000) {
-        errors.push(`fees[${i}].rateBps must be a number between 0 and 10000`);
-      }
-    }
-  } else {
-    errors.push('fees must be an array');
+/** Validate a single entry of the manifest's `fees` array. */
+function validateFeeEntry(fee: Record<string, unknown>, index: number): string[] {
+  const errors: string[] = [];
+  if (!VALID_FEE_ROLES.includes(fee.role as string)) {
+    errors.push(`fees[${index}].role must be one of ${VALID_FEE_ROLES.join(', ')}`);
   }
+  if (typeof fee.name !== 'string' || !fee.name) {
+    errors.push(`fees[${index}].name must be a non-empty string`);
+  }
+  if (typeof fee.rateBps !== 'number' || fee.rateBps < 0 || fee.rateBps > 10000) {
+    errors.push(`fees[${index}].rateBps must be a number between 0 and 10000`);
+  }
+  return errors;
+}
+
+/** Validate the manifest's `fees` array as a whole. */
+function validateFees(m: Record<string, unknown>): string[] {
+  if (!Array.isArray(m.fees)) return ['fees must be an array'];
+
+  const errors: string[] = [];
+  for (const [index, fee] of (m.fees as unknown[]).entries()) {
+    errors.push(...validateFeeEntry(fee as Record<string, unknown>, index));
+  }
+  return errors;
+}
+
+/**
+ * Validate an AgentPricingManifest.
+ */
+export function validateAgentPricingManifest(
+  manifest: unknown
+): { valid: boolean; errors: string[] } {
+  if (typeof manifest !== 'object' || manifest === null) {
+    return { valid: false, errors: ['manifest must be an object'] };
+  }
+
+  const m = manifest as Record<string, unknown>;
+  const errors = [...validateTopLevelFields(m), ...validateFees(m)];
 
   return { valid: errors.length === 0, errors };
 }

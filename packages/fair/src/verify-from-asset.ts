@@ -75,6 +75,66 @@ async function verifyDfosAnchor(
   return { ok: true, anchorTimestamp: event.anchoredAt };
 }
 
+type FetchStep = { response: FetchResponse } | { error: string };
+
+/** Fetch a URL via the injected fetcher, normalizing non-ok status and thrown errors into a single error shape. */
+async function fetchStep(
+  url: string,
+  fetchAsset: VerifyManifestFromAssetOptions['fetchAsset'],
+  notOkMessage: string,
+  catchLabel: string,
+): Promise<FetchStep> {
+  try {
+    const response = await fetchAsset(url);
+    if (!response.ok) return { error: notOkMessage };
+    return { response };
+  } catch (err) {
+    return { error: `Failed to fetch ${catchLabel}: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/** Parse and validate the manifest JSON body. */
+async function parseManifestJson(
+  manifestResponse: FetchResponse,
+): Promise<{ manifest: SignedFairManifest } | { error: string }> {
+  try {
+    return { manifest: (await manifestResponse.json()) as SignedFairManifest };
+  } catch {
+    return { error: 'Manifest response is not valid JSON' };
+  }
+}
+
+function computeManifestDigest(manifest: SignedFairManifest): string {
+  return `sha256:${bytesToHex(sha256(new TextEncoder().encode(canonicalize(manifest))))}`;
+}
+
+/** Verify the manifest's embedded signature is present and valid. */
+async function verifySignatureStep(
+  manifest: SignedFairManifest,
+  resolveOwnerKey: VerifyManifestFromAssetOptions['resolveOwnerKey'],
+): Promise<{ signedAt?: string } | { error: string }> {
+  const sig = manifest.signature;
+  if (!sig || typeof sig !== 'object' || !('alg' in sig)) {
+    return { error: 'Manifest is not a v1.1 signed manifest' };
+  }
+  const verifyResult = await verifyManifest(manifest, resolveOwnerKey);
+  if (('ok' in verifyResult && !verifyResult.ok) || ('valid' in verifyResult && !verifyResult.valid)) {
+    return { error: (verifyResult as { reason?: string }).reason || 'Signature verification failed' };
+  }
+  return { signedAt: 'signedAt' in sig ? (sig as { signedAt?: string }).signedAt : undefined };
+}
+
+/** Check X-Fair-Digest against the recomputed manifest digest, when present. */
+function verifyDigestHeader(assetResponse: FetchResponse, manifest: SignedFairManifest): { error: string } | null {
+  const digestHeader = assetResponse.headers.get('x-fair-digest') || '';
+  if (!digestHeader) return null;
+  const expected = computeManifestDigest(manifest);
+  if (digestHeader !== expected) {
+    return { error: `Digest mismatch: expected ${expected}, got ${digestHeader}` };
+  }
+  return null;
+}
+
 /**
  * Verify a .fair manifest from an asset URL.
  *
@@ -89,15 +149,9 @@ export async function verifyManifestFromAsset(
   opts: VerifyManifestFromAssetOptions,
 ): Promise<VerificationResult> {
   // 1. Fetch asset and read Link header
-  let assetResponse: FetchResponse;
-  try {
-    assetResponse = await opts.fetchAsset(assetUrl);
-  } catch (err) {
-    return { valid: false, reason: `Failed to fetch asset: ${err instanceof Error ? err.message : String(err)}` };
-  }
-  if (!assetResponse.ok) {
-    return { valid: false, reason: 'Asset fetch failed with non-ok status' };
-  }
+  const assetResult = await fetchStep(assetUrl, opts.fetchAsset, 'Asset fetch failed with non-ok status', 'asset');
+  if ('error' in assetResult) return { valid: false, reason: assetResult.error };
+  const { response: assetResponse } = assetResult;
 
   const fairHref = parseFairLinkHref(assetResponse.headers.get('link') || '');
   if (!fairHref) {
@@ -105,42 +159,26 @@ export async function verifyManifestFromAsset(
   }
 
   // 2. Fetch manifest
-  let manifestResponse: FetchResponse;
-  try {
-    manifestResponse = await opts.fetchAsset(new URL(fairHref, assetUrl).toString());
-  } catch (err) {
-    return { valid: false, reason: `Failed to fetch manifest: ${err instanceof Error ? err.message : String(err)}` };
-  }
-  if (!manifestResponse.ok) {
-    return { valid: false, reason: 'Manifest fetch failed with non-ok status' };
-  }
+  const manifestResult = await fetchStep(
+    new URL(fairHref, assetUrl).toString(),
+    opts.fetchAsset,
+    'Manifest fetch failed with non-ok status',
+    'manifest',
+  );
+  if ('error' in manifestResult) return { valid: false, reason: manifestResult.error };
 
-  let manifest: SignedFairManifest;
-  try {
-    manifest = (await manifestResponse.json()) as SignedFairManifest;
-  } catch {
-    return { valid: false, reason: 'Manifest response is not valid JSON' };
-  }
+  const parsed = await parseManifestJson(manifestResult.response);
+  if ('error' in parsed) return { valid: false, reason: parsed.error };
+  const { manifest } = parsed;
 
   // 3. Verify signature
-  const sig = manifest.signature;
-  if (!sig || typeof sig !== 'object' || !('alg' in sig)) {
-    return { valid: false, reason: 'Manifest is not a v1.1 signed manifest' };
-  }
-  const verifyResult = await verifyManifest(manifest, opts.resolveOwnerKey);
-  if (('ok' in verifyResult && !verifyResult.ok) || ('valid' in verifyResult && !verifyResult.valid)) {
-    return { valid: false, reason: (verifyResult as { reason?: string }).reason || 'Signature verification failed' };
-  }
-  const signedAt = 'signedAt' in sig ? (sig as { signedAt?: string }).signedAt : undefined;
+  const sigResult = await verifySignatureStep(manifest, opts.resolveOwnerKey);
+  if ('error' in sigResult) return { valid: false, reason: sigResult.error };
+  const { signedAt } = sigResult;
 
   // 4. Check X-Fair-Digest
-  const digestHeader = assetResponse.headers.get('x-fair-digest') || '';
-  if (digestHeader) {
-    const expected = `sha256:${bytesToHex(sha256(new TextEncoder().encode(canonicalize(manifest))))}`;
-    if (digestHeader !== expected) {
-      return { valid: false, signedAt, reason: `Digest mismatch: expected ${expected}, got ${digestHeader}` };
-    }
-  }
+  const digestError = verifyDigestHeader(assetResponse, manifest);
+  if (digestError) return { valid: false, signedAt, reason: digestError.error };
 
   // 5. Verify DFOS anchor if present
   const dfosHeader = assetResponse.headers.get('x-fair-dfos') || '';
