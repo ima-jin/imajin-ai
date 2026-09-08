@@ -143,7 +143,7 @@ export function resolveAmount(rule: EmissionRule, settlementCents?: number): num
   if (typeof rule.amount === 'number') return rule.amount;
 
   // Parse percentage string like '0.25%'
-  const match = rule.amount.match(/^([\d.]+)%$/);
+  const match = /^([\d.]+)%$/.exec(rule.amount);
   if (!match) {
     log.warn({ amount: rule.amount }, 'invalid amount format');
     return 0;

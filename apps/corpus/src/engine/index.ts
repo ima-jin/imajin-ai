@@ -491,7 +491,7 @@ function excerptAroundQuery(text: string, query: string, tokenBudget: number): s
     return text;
   }
 
-  const firstTerm = query.match(/[\p{L}\p{N}_-]+/u)?.[0].toLowerCase();
+  const firstTerm = /[\p{L}\p{N}_-]+/u.exec(query)?.[0].toLowerCase();
   const index = firstTerm ? text.toLowerCase().indexOf(firstTerm) : -1;
   if (index < 0) {
     return text.slice(0, charBudget);

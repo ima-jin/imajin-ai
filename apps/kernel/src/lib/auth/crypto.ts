@@ -22,7 +22,7 @@ export function didFromPublicKey(publicKeyHex: string): string {
  * Extract public key from DID
  */
 export function publicKeyFromDid(did: string): string | null {
-  const match = did.match(/^did:imajin:(.+)$/);
+  const match = /^did:imajin:(.+)$/.exec(did);
   if (!match) return null;
   
   try {
