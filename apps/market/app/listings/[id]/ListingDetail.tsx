@@ -116,6 +116,310 @@ function OwnerStatusBadge({ status }: Readonly<{ status: string }>) {
   );
 }
 
+async function resolveSellerIdentity(sellerDid: string): Promise<{ handle: string | null; name: string | null }> {
+  try {
+    const lookupRes = await apiFetch(`/api/resolve/${encodeURIComponent(sellerDid)}`);
+    if (!lookupRes.ok) return { handle: null, name: null };
+    const identity = await lookupRes.json();
+    if (identity?.handle) {
+      return { handle: identity.handle, name: `@${identity.handle}` };
+    }
+    if (identity?.displayName) {
+      return { handle: null, name: identity.displayName };
+    }
+    return { handle: null, name: null };
+  } catch {
+    // Silently fall back to truncated DID
+    return { handle: null, name: null };
+  }
+}
+
+async function resolveSessionDid(): Promise<string | null> {
+  try {
+    const meRes = await apiFetch('/api/me', { credentials: 'include' });
+    if (!meRes.ok) return null;
+    const me = await meRes.json();
+    return me?.did ?? null;
+  } catch {
+    // Not authenticated — no management strip
+    return null;
+  }
+}
+
+async function resolveSellerConnected(sellerDid: string): Promise<boolean> {
+  try {
+    const payUrl = buildPublicUrl('pay');
+    const connectRes = await fetch(
+      `${payUrl}/api/connect/check?did=${encodeURIComponent(sellerDid)}`
+    );
+    if (!connectRes.ok) return false;
+    const connectData = await connectRes.json();
+    return connectData.chargesEnabled ?? false;
+  } catch {
+    return true; // default true on error to avoid false blocks
+  }
+}
+
+async function fetchOtherListingsForSeller(sellerDid: string, excludeId: string): Promise<RelatedListing[]> {
+  try {
+    const relatedRes = await apiFetch(
+      `/api/listings?seller_did=${encodeURIComponent(sellerDid)}&status=active&limit=4&exclude=${excludeId}`
+    );
+    if (!relatedRes.ok) return [];
+    const relatedData = await relatedRes.json();
+    return relatedData.listings ?? [];
+  } catch {
+    // Best-effort
+    return [];
+  }
+}
+
+function deriveListingFlags(listing: Listing) {
+  const isSold = listing.status === 'sold';
+  const isRented = listing.status === 'rented';
+  const isUnavailable = listing.status === 'unavailable';
+  const isInactive = isSold || isRented || isUnavailable;
+  const isRental = listing.type === 'rental';
+  const isOnplatform = listing.sellerTier === 'public_onplatform' || listing.sellerTier === 'trust_gated';
+  return { isSold, isRented, isUnavailable, isInactive, isRental, isOnplatform };
+}
+
+function buyButtonLabel(buyLoading: boolean, isRental: boolean): string {
+  if (buyLoading) return 'Processing…';
+  return isRental ? 'Rent Now' : 'Buy Now';
+}
+
+function ImageGallery({
+  detailImages,
+  thumbImages,
+  activeImage,
+  setActiveImage,
+  hasImages,
+  title,
+  isSold,
+  isRented,
+  isUnavailable,
+}: Readonly<{
+  detailImages: string[];
+  thumbImages: string[];
+  activeImage: number;
+  setActiveImage: (i: number) => void;
+  hasImages: boolean;
+  title: string;
+  isSold: boolean;
+  isRented: boolean;
+  isUnavailable: boolean;
+}>) {
+  const isInactive = isSold || isRented || isUnavailable;
+  return (
+    <div>
+      <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden flex items-center justify-center mb-3 relative">
+        {hasImages ? (
+           
+          <img
+            src={detailImages[activeImage]}
+            alt={title}
+            className={`w-full h-full object-cover ${isInactive ? 'opacity-60' : ''}`}
+          />
+        ) : (
+          <span className="text-7xl">🏪</span>
+        )}
+        {isSold && (
+          <div className="absolute top-3 left-3 px-3 py-1 bg-red-600 text-white text-sm font-bold rounded-lg">
+            SOLD
+          </div>
+        )}
+        {isRented && (
+          <div className="absolute top-3 left-3 px-3 py-1 bg-blue-600 text-white text-sm font-bold rounded-lg">
+            RENTED
+          </div>
+        )}
+        {isUnavailable && (
+          <div className="absolute top-3 left-3 px-3 py-1 bg-gray-600 text-white text-sm font-bold rounded-lg">
+            UNAVAILABLE
+          </div>
+        )}
+      </div>
+
+      {hasImages && detailImages.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          {thumbImages.map((src, i) => (
+            <button type="button"
+              key={src}
+              onClick={() => setActiveImage(i)}
+              aria-label={`Select image ${i + 1}`}
+              className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition ${
+                i === activeImage ? 'border-orange-500' : 'border-transparent opacity-60 hover:opacity-100'
+              }`}
+            >
+              { }
+              <img src={src} alt="" className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OwnerManagementStrip({
+  listing,
+  actionLoading,
+  actionError,
+  onUpdateStatus,
+}: Readonly<{
+  listing: Listing;
+  actionLoading: string | null;
+  actionError: string | null;
+  onUpdateStatus: (status: string) => void;
+}>) {
+  return (
+    <div className="mb-6 bg-gray-900 border border-gray-700 rounded-xl p-4 flex flex-wrap items-center gap-3">
+      <span className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Your listing</span>
+      <OwnerStatusBadge status={listing.status} />
+      <div className="flex flex-wrap gap-2 ml-auto">
+        <Link
+          href={`/listings/${listing.id}/edit`}
+          className="px-3 py-1.5 text-sm rounded-lg bg-gray-700 text-gray-200 hover:bg-gray-600 transition"
+        >
+          Edit
+        </Link>
+        {listing.status === 'active' && (
+          <button type="button"
+            onClick={() => onUpdateStatus('paused')}
+            disabled={!!actionLoading}
+            className="px-3 py-1.5 text-sm rounded-lg bg-yellow-900/50 text-yellow-400 hover:bg-yellow-900 border border-yellow-700/50 transition disabled:opacity-50"
+          >
+            {actionLoading === 'paused' ? '…' : 'Pause'}
+          </button>
+        )}
+        {listing.status === 'paused' && (
+          <button type="button"
+            onClick={() => onUpdateStatus('active')}
+            disabled={!!actionLoading}
+            className="px-3 py-1.5 text-sm rounded-lg bg-green-900/50 text-green-400 hover:bg-green-900 border border-green-700/50 transition disabled:opacity-50"
+          >
+            {actionLoading === 'active' ? '…' : 'Resume'}
+          </button>
+        )}
+        {listing.type === 'sale' && listing.status === 'active' && (
+          <button type="button"
+            onClick={() => onUpdateStatus('sold')}
+            disabled={!!actionLoading}
+            className="px-3 py-1.5 text-sm rounded-lg bg-blue-900/50 text-blue-400 hover:bg-blue-900 border border-blue-700/50 transition disabled:opacity-50"
+          >
+            {actionLoading === 'sold' ? '…' : 'Mark Sold'}
+          </button>
+        )}
+        {listing.type === 'rental' && listing.status === 'active' && (
+          <button type="button"
+            onClick={() => onUpdateStatus('rented')}
+            disabled={!!actionLoading}
+            className="px-3 py-1.5 text-sm rounded-lg bg-purple-900/50 text-purple-400 hover:bg-purple-900 border border-purple-700/50 transition disabled:opacity-50"
+          >
+            {actionLoading === 'rented' ? '…' : 'Mark Rented'}
+          </button>
+        )}
+        {(listing.status === 'active' || listing.status === 'paused') && (
+          <button type="button"
+            onClick={() => onUpdateStatus('unavailable')}
+            disabled={!!actionLoading}
+            className="px-3 py-1.5 text-sm rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600 transition disabled:opacity-50"
+          >
+            {actionLoading === 'unavailable' ? '…' : 'Mark Unavailable'}
+          </button>
+        )}
+      </div>
+      {actionError && (
+        <p className="w-full text-sm text-red-400 mt-1">{actionError}</p>
+      )}
+    </div>
+  );
+}
+
+function PurchaseSection({
+  listing,
+  isOnplatform,
+  isRental,
+  isInactive,
+  sellerConnected,
+  buyLoading,
+  buyError,
+  onBuyNow,
+}: Readonly<{
+  listing: Listing;
+  isOnplatform: boolean;
+  isRental: boolean;
+  isInactive: boolean;
+  sellerConnected: boolean | null;
+  buyLoading: boolean;
+  buyError: string | null;
+  onBuyNow: () => void;
+}>) {
+  const isTrustGated = listing.sellerTier === 'trust_gated';
+  const paymentsUnavailable = listing.price > 0 && sellerConnected === false;
+
+  if (isInactive) return null;
+
+  if (isOnplatform && !isTrustGated) {
+    if (paymentsUnavailable) {
+      return (
+        <p className="text-sm text-gray-500 dark:text-gray-400 italic px-1">
+          Payments not yet available
+        </p>
+      );
+    }
+    return (
+      <OnboardGate
+        action={isRental ? 'rent this item' : 'purchase this item'}
+        onIdentity={() => onBuyNow()}
+        authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
+      >
+        <div className="flex flex-col gap-2">
+          <button type="button"
+            disabled={buyLoading}
+            className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {buyButtonLabel(buyLoading, isRental)}
+          </button>
+          {buyError && (
+            <p className="text-sm text-red-500">{buyError}</p>
+          )}
+        </div>
+      </OnboardGate>
+    );
+  }
+
+  if (isTrustGated) {
+    if (paymentsUnavailable) {
+      return (
+        <p className="text-sm text-gray-500 dark:text-gray-400 italic px-1">
+          Payments not yet available
+        </p>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-2">
+        <button type="button"
+          onClick={onBuyNow}
+          disabled={buyLoading}
+          className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {buyButtonLabel(buyLoading, isRental)}
+        </button>
+        {buyError && (
+          <p className="text-sm text-red-500">{buyError}</p>
+        )}
+        <p className="text-xs text-gray-500">
+          🔒 Requires a verified identity to purchase
+        </p>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 export default function ListingDetail() {
   const { id } = useParams<{ id: string }>();
   const [listing, setListing] = useState<Listing | null>(null);
@@ -183,62 +487,19 @@ export default function ListingDetail() {
         setListing(data);
 
         // Resolve seller name server-side via profile service
-        try {
-          const lookupRes = await apiFetch(
-            `/api/resolve/${encodeURIComponent(data.sellerDid)}`
-          );
-          if (lookupRes.ok) {
-            const identity = await lookupRes.json();
-            if (identity?.handle) {
-              setSellerHandle(identity.handle);
-              setSellerName(`@${identity.handle}`);
-            } else if (identity?.displayName) {
-              setSellerName(identity.displayName);
-            }
-          }
-        } catch {
-          // Silently fall back to truncated DID
-        }
+        const { handle, name } = await resolveSellerIdentity(data.sellerDid);
+        if (handle) setSellerHandle(handle);
+        if (name) setSellerName(name);
 
         // Fetch current session DID to detect ownership
-        try {
-          const meRes = await apiFetch('/api/me', { credentials: 'include' });
-          if (meRes.ok) {
-            const me = await meRes.json();
-            if (me?.did) setSessionDid(me.did);
-          }
-        } catch {
-          // Not authenticated — no management strip
-        }
+        const did = await resolveSessionDid();
+        if (did) setSessionDid(did);
 
         // Check if seller has Stripe Connect enabled
-        try {
-          const payUrl = buildPublicUrl('pay');
-          const connectRes = await fetch(
-            `${payUrl}/api/connect/check?did=${encodeURIComponent(data.sellerDid)}`
-          );
-          if (connectRes.ok) {
-            const connectData = await connectRes.json();
-            setSellerConnected(connectData.chargesEnabled ?? false);
-          } else {
-            setSellerConnected(false);
-          }
-        } catch {
-          setSellerConnected(true); // default true on error to avoid false blocks
-        }
+        setSellerConnected(await resolveSellerConnected(data.sellerDid));
 
         // Fetch other listings by this seller
-        try {
-          const relatedRes = await apiFetch(
-            `/api/listings?seller_did=${encodeURIComponent(data.sellerDid)}&status=active&limit=4&exclude=${data.id}`
-          );
-          if (relatedRes.ok) {
-            const relatedData = await relatedRes.json();
-            setOtherListings(relatedData.listings ?? []);
-          }
-        } catch {
-          // Best-effort
-        }
+        setOtherListings(await fetchOtherListingsForSeller(data.sellerDid, data.id));
       } catch {
         setError('Could not load this listing. Please try again.');
       } finally {
@@ -339,13 +600,7 @@ export default function ListingDetail() {
   const thumbImages = images.map((ref: string) => resolveMediaRef(ref, 'thumbnail'));
   const hasImages = detailImages.length > 0;
 
-  const isSold = listing.status === 'sold';
-  const isRented = listing.status === 'rented';
-  const isUnavailable = listing.status === 'unavailable';
-  const isInactive = isSold || isRented || isUnavailable;
-
-  const isRental = listing.type === 'rental';
-  const isOnplatform = listing.sellerTier === 'public_onplatform' || listing.sellerTier === 'trust_gated';
+  const { isSold, isRented, isUnavailable, isInactive, isRental, isOnplatform } = deriveListingFlags(listing);
 
   const TIER_LABEL_MAP: Record<string, string> = {
     public_onplatform: 'Protected',
@@ -369,118 +624,28 @@ export default function ListingDetail() {
 
         {/* Owner management strip */}
         {isOwner && (
-          <div className="mb-6 bg-gray-900 border border-gray-700 rounded-xl p-4 flex flex-wrap items-center gap-3">
-            <span className="text-xs text-gray-400 uppercase tracking-wide font-semibold">Your listing</span>
-            <OwnerStatusBadge status={listing.status} />
-            <div className="flex flex-wrap gap-2 ml-auto">
-              <Link
-                href={`/listings/${listing.id}/edit`}
-                className="px-3 py-1.5 text-sm rounded-lg bg-gray-700 text-gray-200 hover:bg-gray-600 transition"
-              >
-                Edit
-              </Link>
-              {listing.status === 'active' && (
-                <button type="button"
-                  onClick={() => updateStatus('paused')}
-                  disabled={!!actionLoading}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-yellow-900/50 text-yellow-400 hover:bg-yellow-900 border border-yellow-700/50 transition disabled:opacity-50"
-                >
-                  {actionLoading === 'paused' ? '…' : 'Pause'}
-                </button>
-              )}
-              {listing.status === 'paused' && (
-                <button type="button"
-                  onClick={() => updateStatus('active')}
-                  disabled={!!actionLoading}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-green-900/50 text-green-400 hover:bg-green-900 border border-green-700/50 transition disabled:opacity-50"
-                >
-                  {actionLoading === 'active' ? '…' : 'Resume'}
-                </button>
-              )}
-              {listing.type === 'sale' && listing.status === 'active' && (
-                <button type="button"
-                  onClick={() => updateStatus('sold')}
-                  disabled={!!actionLoading}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-blue-900/50 text-blue-400 hover:bg-blue-900 border border-blue-700/50 transition disabled:opacity-50"
-                >
-                  {actionLoading === 'sold' ? '…' : 'Mark Sold'}
-                </button>
-              )}
-              {listing.type === 'rental' && listing.status === 'active' && (
-                <button type="button"
-                  onClick={() => updateStatus('rented')}
-                  disabled={!!actionLoading}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-purple-900/50 text-purple-400 hover:bg-purple-900 border border-purple-700/50 transition disabled:opacity-50"
-                >
-                  {actionLoading === 'rented' ? '…' : 'Mark Rented'}
-                </button>
-              )}
-              {(listing.status === 'active' || listing.status === 'paused') && (
-                <button type="button"
-                  onClick={() => updateStatus('unavailable')}
-                  disabled={!!actionLoading}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 border border-gray-600 transition disabled:opacity-50"
-                >
-                  {actionLoading === 'unavailable' ? '…' : 'Mark Unavailable'}
-                </button>
-              )}
-            </div>
-            {actionError && (
-              <p className="w-full text-sm text-red-400 mt-1">{actionError}</p>
-            )}
-          </div>
+          <OwnerManagementStrip
+            listing={listing}
+            actionLoading={actionLoading}
+            actionError={actionError}
+            onUpdateStatus={updateStatus}
+          />
         )}
 
         <div className="grid md:grid-cols-2 gap-8">
 
           {/* Image gallery */}
-          <div>
-            <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden flex items-center justify-center mb-3 relative">
-              {hasImages ? (
-                 
-                <img
-                  src={detailImages[activeImage]}
-                  alt={listing.title}
-                  className={`w-full h-full object-cover ${isInactive ? 'opacity-60' : ''}`}
-                />
-              ) : (
-                <span className="text-7xl">🏪</span>
-              )}
-              {isSold && (
-                <div className="absolute top-3 left-3 px-3 py-1 bg-red-600 text-white text-sm font-bold rounded-lg">
-                  SOLD
-                </div>
-              )}
-              {isRented && (
-                <div className="absolute top-3 left-3 px-3 py-1 bg-blue-600 text-white text-sm font-bold rounded-lg">
-                  RENTED
-                </div>
-              )}
-              {isUnavailable && (
-                <div className="absolute top-3 left-3 px-3 py-1 bg-gray-600 text-white text-sm font-bold rounded-lg">
-                  UNAVAILABLE
-                </div>
-              )}
-            </div>
-
-            {hasImages && detailImages.length > 1 && (
-              <div className="flex gap-2 flex-wrap">
-                {thumbImages.map((src, i) => (
-                  <button type="button"
-                    key={src}
-                    onClick={() => setActiveImage(i)}
-                    aria-label={`Select image ${i + 1}`}
-                    className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition ${
-                      i === activeImage ? 'border-orange-500' : 'border-transparent opacity-60 hover:opacity-100'
-                    }`}
-                  >
-                    { }
-                    <img src={src} alt="" className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <ImageGallery
+            detailImages={detailImages}
+            thumbImages={thumbImages}
+            activeImage={activeImage}
+            setActiveImage={setActiveImage}
+            hasImages={hasImages}
+            title={listing.title}
+            isSold={isSold}
+            isRented={isRented}
+            isUnavailable={isUnavailable}
+          />
 
           {/* Details */}
           <div className="flex flex-col gap-4">
@@ -562,57 +727,17 @@ export default function ListingDetail() {
               <ContactSection contactInfo={listing.contactInfo} />
             )}
 
-            {/* On-platform: Buy/Rent button (only when active) */}
-            {isOnplatform && !isInactive && listing.sellerTier !== 'trust_gated' && (
-              listing.price > 0 && sellerConnected === false ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400 italic px-1">
-                  Payments not yet available
-                </p>
-              ) : (
-                <OnboardGate
-                  action={isRental ? 'rent this item' : 'purchase this item'}
-                  onIdentity={() => handleBuyNow()}
-                  authUrl={process.env.NEXT_PUBLIC_AUTH_URL}
-                >
-                  <div className="flex flex-col gap-2">
-                    <button type="button"
-                      disabled={buyLoading}
-                      className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {(() => { if (buyLoading) { return 'Processing…'; } return isRental ? 'Rent Now' : 'Buy Now'; })()}
-                    </button>
-                    {buyError && (
-                      <p className="text-sm text-red-500">{buyError}</p>
-                    )}
-                  </div>
-                </OnboardGate>
-              )
-            )}
-
-            {/* Trust-gated: requires verified identity (hard DID) */}
-            {listing.sellerTier === 'trust_gated' && !isInactive && (
-              listing.price > 0 && sellerConnected === false ? (
-                <p className="text-sm text-gray-500 dark:text-gray-400 italic px-1">
-                  Payments not yet available
-                </p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <button type="button"
-                    onClick={handleBuyNow}
-                    disabled={buyLoading}
-                    className="px-6 py-3 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600 transition hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {(() => { if (buyLoading) { return 'Processing…'; } return isRental ? 'Rent Now' : 'Buy Now'; })()}
-                  </button>
-                  {buyError && (
-                    <p className="text-sm text-red-500">{buyError}</p>
-                  )}
-                  <p className="text-xs text-gray-500">
-                    🔒 Requires a verified identity to purchase
-                  </p>
-                </div>
-              )
-            )}
+            {/* Buy/Rent action (on-platform or trust-gated, only when active) */}
+            <PurchaseSection
+              listing={listing}
+              isOnplatform={isOnplatform}
+              isRental={isRental}
+              isInactive={isInactive}
+              sellerConnected={sellerConnected}
+              buyLoading={buyLoading}
+              buyError={buyError}
+              onBuyNow={handleBuyNow}
+            />
 
             {/* .fair attribution */}
             {listing.fairManifest && (
