@@ -172,6 +172,11 @@ function connectHref(entry: ConnectorEntry): string {
   return buildConnectHref(entry.connectRoute!, entry.id);
 }
 
+/** Save/update label for an OAuth-app configure button — shared by the GitHub and QuickBooks cards. */
+function configSaveButtonLabel(configSealed: boolean): string {
+  return configSealed ? 'Update config' : 'Save config';
+}
+
 // ── Shared subcomponents ──────────────────────────────────────────────────────
 
 /** Header badge for connector cards — eliminates nested ternary duplication. */
@@ -1161,7 +1166,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
                     disabled={configuring || !configureReady()}
                     className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition"
                   >
-                    {configuring ? 'Saving…' : (status.configSealed ? 'Update config' : 'Save config')}
+                    {configuring ? 'Saving…' : configSaveButtonLabel(status.configSealed)}
                   </button>
                   {showConfigure && (
                     <button
@@ -1343,6 +1348,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
   // Discord card hardcoded `discord:post`, which reported "Not configured" for a
   // deliberate read-only grant; any active scope means the connector can act.
   const ready = sealed && activeSet.size > 0;
+  const sealActionLabel = sealed ? 'Replace' : 'Seal';
 
   async function handleSealCredential(e: React.FormEvent) {
     e.preventDefault();
@@ -1446,7 +1452,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
                     disabled={sealing || !credentialInput.trim()}
                     className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition"
                   >
-                    {sealing ? 'Sealing…' : `${sealed ? 'Replace' : 'Seal'} ${ui.label}`}
+                    {sealing ? 'Sealing…' : `${sealActionLabel} ${ui.label}`}
                   </button>
                   {showCredentialInput && (
                     <button type="button" onClick={() => { setShowCredentialInput(false); setSealError(null); }}
@@ -1642,7 +1648,7 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
                 <div className="flex gap-2 pt-1">
                   <button type="submit" disabled={configuring || !clientId.trim() || !clientSecret.trim()}
                     className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition">
-                    {configuring ? 'Saving…' : (status.configSealed ? 'Update config' : 'Save config')}
+                    {configuring ? 'Saving…' : configSaveButtonLabel(status.configSealed)}
                   </button>
                   {showConfigure && (
                     <button type="button" onClick={() => { setShowConfigure(false); setConfigError(null); }}

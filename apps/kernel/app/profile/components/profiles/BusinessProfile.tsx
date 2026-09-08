@@ -10,9 +10,14 @@ import type { ProfileViewProps } from '../../lib/types';
 
 export async function BusinessProfile({ profile, identity, viewer, counts, links }: Readonly<ProfileViewProps>) {
   const isUnclaimed = !profile.claimStatus || profile.claimStatus === 'unclaimed';
-  const viewerRole = viewer.viewerDid && !viewer.isSelf
-    ? await getViewerMembership(profile.did, viewer.viewerDid)
-    : (viewer.isSelf ? 'owner' : null);
+  let viewerRole: string | null;
+  if (viewer.viewerDid && !viewer.isSelf) {
+    viewerRole = await getViewerMembership(profile.did, viewer.viewerDid);
+  } else if (viewer.isSelf) {
+    viewerRole = 'owner';
+  } else {
+    viewerRole = null;
+  }
   const isMaintainer = viewerRole === 'maintainer' || viewerRole === 'owner' || viewerRole === 'admin';
 
   // For unclaimed stubs: show maintainers. For claimed: show owners/admins.

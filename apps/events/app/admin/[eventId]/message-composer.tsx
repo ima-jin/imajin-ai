@@ -107,6 +107,7 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
   }
 
   const canSend = subject.trim().length > 0 && markdown.trim().length > 0 && !sending && recipientCount > 0;
+  const sendButtonLabel = sending ? 'Sending…' : `Send to ${recipientCount} attendee${recipientCount === 1 ? '' : 's'}`;
 
   return (
     <div>
@@ -253,8 +254,7 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
             disabled={!canSend}
             className="px-5 py-2 rounded-md bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors"
           >
-            {sending ? 'Sending…' : `Send to ${recipientCount} attendee${recipientCount === 1 ? '' : 's'}`}
-            {/* Note: the inner pluralization ternary (recipientCount !== 1) is inside a template literal within one branch — not a nested ternary */}
+            {sendButtonLabel}
           </button>
         </div>
       </div>

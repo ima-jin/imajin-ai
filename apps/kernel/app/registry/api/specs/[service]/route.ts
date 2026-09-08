@@ -42,7 +42,12 @@ export async function GET(request: NextRequest, props: { params: Promise<{ servi
 
   // Userspace services: fetch from their own process (must include basePath)
   const svcDef = getService(service);
-  const port = svcDef ? (process.env.NODE_ENV === "production" ? svcDef.prodPort : svcDef.devPort) : 3000;
+  let port: number;
+  if (svcDef) {
+    port = process.env.NODE_ENV === "production" ? svcDef.prodPort : svcDef.devPort;
+  } else {
+    port = 3000;
+  }
   const internalUrl = `http://localhost:${port}`;
 
   try {

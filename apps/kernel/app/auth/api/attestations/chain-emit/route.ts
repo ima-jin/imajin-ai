@@ -41,11 +41,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'issuer_did, subject_did, and type are required strings' }, { status: 400 });
   }
 
-  const issuedAt = issued_at instanceof Date
-    ? issued_at
-    : typeof issued_at === 'string'
-      ? new Date(issued_at)
-      : new Date();
+  let issuedAt: Date;
+  if (issued_at instanceof Date) {
+    issuedAt = issued_at;
+  } else if (typeof issued_at === 'string') {
+    issuedAt = new Date(issued_at);
+  } else {
+    issuedAt = new Date();
+  }
 
   const ok = await createAttestationEntry({
     issuer_did,

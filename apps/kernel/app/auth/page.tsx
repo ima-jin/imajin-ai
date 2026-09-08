@@ -80,6 +80,21 @@ export default async function AuthPage() {
     avatarSrc = profile.avatar;
   }
 
+  let avatarContent: React.ReactNode = null;
+  if (avatarSrc) {
+    avatarContent = (
+      <div className="relative w-16 h-16 rounded-full overflow-hidden bg-zinc-800 shrink-0">
+        <Image src={avatarSrc} alt="" fill className="object-cover" />
+      </div>
+    );
+  } else if (profile.avatar) {
+    avatarContent = (
+      <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center text-2xl shrink-0">
+        {profile.avatar}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Banner */}
@@ -98,15 +113,7 @@ export default async function AuthPage() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
         <div className="flex items-start gap-4">
           {/* Avatar */}
-          {avatarSrc ? (
-            <div className="relative w-16 h-16 rounded-full overflow-hidden bg-zinc-800 shrink-0">
-              <Image src={avatarSrc} alt="" fill className="object-cover" />
-            </div>
-          ) : profile.avatar ? (
-            <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center text-2xl shrink-0">
-              {profile.avatar}
-            </div>
-          ) : null}
+          {avatarContent}
 
           <div className="min-w-0">
             <h2 className="text-lg font-semibold text-white">{profile.displayName}</h2>

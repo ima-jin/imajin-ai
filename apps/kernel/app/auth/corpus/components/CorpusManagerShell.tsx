@@ -294,6 +294,35 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
   const sources = status?.sources ?? [];
   const totalThreads = status?.threadCount ?? 0;
 
+  let sourcesContent: React.ReactNode;
+  if (loading) {
+    sourcesContent = <p className="text-sm text-gray-500">Loading sources…</p>;
+  } else if (loadError) {
+    sourcesContent = <p className="text-sm text-red-400">{loadError}</p>;
+  } else if (sources.length === 0) {
+    sourcesContent = (
+      <div className="text-center py-8">
+        <p className="text-2xl mb-3">📚</p>
+        <p className="text-sm text-gray-500">No sources loaded yet.</p>
+      </div>
+    );
+  } else {
+    sourcesContent = (
+      <div className="space-y-2">
+        {sources.map((source) => (
+          <SourceRow
+            key={source.source}
+            source={source}
+            onSync={handleSync}
+            onRemove={handleRemove}
+            syncing={syncingSource === source.source}
+            removing={removingSource === source.source}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -348,29 +377,7 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
         <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-1">Sources</h2>
         <p className="text-sm text-gray-400 mb-6">Where this identity&apos;s corpus threads come from.</p>
 
-        {loading ? (
-          <p className="text-sm text-gray-500">Loading sources…</p>
-        ) : loadError ? (
-          <p className="text-sm text-red-400">{loadError}</p>
-        ) : sources.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-2xl mb-3">📚</p>
-            <p className="text-sm text-gray-500">No sources loaded yet.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {sources.map((source) => (
-              <SourceRow
-                key={source.source}
-                source={source}
-                onSync={handleSync}
-                onRemove={handleRemove}
-                syncing={syncingSource === source.source}
-                removing={removingSource === source.source}
-              />
-            ))}
-          </div>
-        )}
+        {sourcesContent}
       </div>
     </div>
   );

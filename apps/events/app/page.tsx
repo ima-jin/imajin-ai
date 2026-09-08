@@ -105,6 +105,10 @@ async function getEvents(viewerDid: string | null) {
 
     const accessibleEventIds = [...new Set([...cohostEventIds, ...ticketEventIds])];
 
+    const accessibleEventCondition = accessibleEventIds.length > 0
+      ? [and(or(...publicStatuses.map(s => eq(events.status, s))), inArray(events.id, accessibleEventIds))]
+      : [];
+
     const conditions = viewerDid
       ? or(
           // Public events
@@ -114,9 +118,7 @@ async function getEvents(viewerDid: string | null) {
           and(eq(events.status, 'paused'), eq(events.creatorDid, viewerDid)),
           and(or(...publicStatuses.map(s => eq(events.status, s))), eq(events.creatorDid, viewerDid)),
           // Cohosts and ticket holders see invite-only events
-          ...(accessibleEventIds.length > 0
-            ? [and(or(...publicStatuses.map(s => eq(events.status, s))), inArray(events.id, accessibleEventIds))]
-            : [])  // Note: this spread-ternary is at the top level of the or() call, not nested inside another ternary
+          ...accessibleEventCondition
         )
       : and(or(...publicStatuses.map(s => eq(events.status, s))), isPublicAccess);
 

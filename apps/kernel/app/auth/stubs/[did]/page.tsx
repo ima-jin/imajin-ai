@@ -420,6 +420,20 @@ export default function EditStubPage() {
 
   const profileUrl = profilePath(stub.handle || stub.did);
 
+  let deviceLocationStatus: React.ReactNode;
+  if (deviceLoc) {
+    deviceLocationStatus = (
+      <span className="text-[10px] text-zinc-500 font-mono tabular-nums">
+        📍 {deviceLoc.lat.toFixed(4)}, {deviceLoc.lon.toFixed(4)}
+        <span className="text-zinc-600 ml-1">(±{Math.round(deviceLoc.accuracy)}m)</span>
+      </span>
+    );
+  } else if (deviceLocError) {
+    deviceLocationStatus = <span className="text-[10px] text-zinc-600">{deviceLocError}</span>;
+  } else {
+    deviceLocationStatus = <span className="text-[10px] text-zinc-600">Locating…</span>;
+  }
+
   return (
     <div className="max-w-lg mx-auto py-8 space-y-6">
       {/* Edit form */}
@@ -561,16 +575,7 @@ export default function EditStubPage() {
               <label htmlFor="stub-edit-location" className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                 Location
               </label>
-              {deviceLoc ? (
-                <span className="text-[10px] text-zinc-500 font-mono tabular-nums">
-                  📍 {deviceLoc.lat.toFixed(4)}, {deviceLoc.lon.toFixed(4)}
-                  <span className="text-zinc-600 ml-1">(±{Math.round(deviceLoc.accuracy)}m)</span>
-                </span>
-              ) : deviceLocError ? (
-                <span className="text-[10px] text-zinc-600">{deviceLocError}</span>
-              ) : (
-                <span className="text-[10px] text-zinc-600">Locating…</span>
-              )}
+              {deviceLocationStatus}
             </div>
 
             <div className="relative flex gap-2">

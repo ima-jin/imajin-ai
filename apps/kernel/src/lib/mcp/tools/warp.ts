@@ -288,7 +288,14 @@ const getRunTool: McpTool = {
  */
 function statesArg(args: Record<string, unknown>): string[] | undefined {
   const value = args.state;
-  const candidates = typeof value === 'string' ? [value] : Array.isArray(value) ? value : [];
+  let candidates: unknown[];
+  if (typeof value === 'string') {
+    candidates = [value];
+  } else if (Array.isArray(value)) {
+    candidates = value;
+  } else {
+    candidates = [];
+  }
 
   const states: string[] = [];
   for (const entry of candidates) {

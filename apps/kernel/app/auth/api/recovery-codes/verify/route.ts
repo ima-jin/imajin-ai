@@ -102,7 +102,14 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const result = await redeemRecoveryCode({ did, code, newPublicKeyHex: newPublicKey, ip });
 
     if (!result.ok) {
-      const status = result.reason === 'invalid_public_key' ? 400 : result.reason === 'public_key_conflict' ? 409 : 401;
+      let status: number;
+      if (result.reason === 'invalid_public_key') {
+        status = 400;
+      } else if (result.reason === 'public_key_conflict') {
+        status = 409;
+      } else {
+        status = 401;
+      }
       return NextResponse.json({ error: GENERIC_ERROR }, { status, headers: cors });
     }
 
