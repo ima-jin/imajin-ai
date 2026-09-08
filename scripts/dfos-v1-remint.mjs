@@ -60,18 +60,8 @@ const didWidth = did => (did?.split(':')[2] ?? '').length;
 
 const sql = postgres(databaseUrl, { max: 1 });
 
-async function run() {
-  console.log(`\n=== DFOS v1 re-mint + prune (#1111) ===`);
-  console.log(`mode: ${APPLY ? 'APPLY (will commit)' : 'DRY-RUN (no writes)'}`);
-
-  // --- snapshot before ---
-  const ours = await sql`SELECT did, dfos_did, log FROM auth.identity_chains`;
-  const preV1 = ours.filter(r => didWidth(r.dfos_did) !== V1_WIDTH);
-  console.log(
-    `\nour identity chains: ${ours.length} total, ${preV1.length} pre-v1 (need re-mint)`,
-  );
-
-  // --- derive new dids from genesis (read-only, fail fast) ---
+// --- derive new dids from genesis (read-only, fail fast) ---
+async function deriveRemints(preV1) {
   const remints = [];
   for (const row of preV1) {
     const log = Array.isArray(row.log) ? row.log : JSON.parse(row.log);
@@ -94,13 +84,11 @@ async function run() {
     }
     remints.push({ imajinDid: row.did, oldDid: row.dfos_did, newDid });
   }
+  return remints;
+}
 
-  console.log(`\n--- re-mint plan (${remints.length}) ---`);
-  for (const r of remints) {
-    console.log(`  ${r.oldDid}  ->  ${r.newDid}   [${r.imajinDid}]`);
-  }
-
-  // collision guard: a new 31-char did must not already exist as someone else's chain
+// collision guard: a new 31-char did must not already exist as someone else's chain
+async function assertNoCollisions(remints) {
   for (const r of remints) {
     const clash = await sql`
       SELECT did FROM auth.identity_chains WHERE dfos_did = ${r.newDid} AND did <> ${r.imajinDid}
@@ -109,12 +97,10 @@ async function run() {
       throw new Error(`collision: ${r.newDid} already bound to ${clash[0].did}`);
     }
   }
+}
 
-  // --- prune preview: foreign rows (not bound to ANY of our chains) ---
-  const ownDids = ours.map(r => r.dfos_did);
-  // after re-mint the relay rows still carry OLD dids, so "ours" in relay = old + new
-  const ownDidsAll = [...new Set([...ownDids, ...remints.map(r => r.newDid)])];
-
+// --- prune preview: foreign rows (not bound to ANY of our chains) ---
+async function computePrunePreview(ownDidsAll) {
   const pruneCounts = await sql`
     SELECT
       (SELECT count(*) FROM relay.relay_identity_chains   r WHERE r.did      <> ALL(${ownDidsAll})) AS identity_chains,
@@ -129,7 +115,10 @@ async function run() {
       (SELECT count(*) FROM relay.relay_blobs)                                                        AS blobs_all,
       (SELECT count(*) FROM relay.relay_pending_operations)                                          AS pending_ops_all
   `;
-  const pc = pruneCounts[0];
+  return pruneCounts[0];
+}
+
+function logPrunePreview(pc) {
   console.log(`\n--- prune plan (foreign gossip; not bound to our chains) ---`);
   console.log(`  relay_identity_chains : ${pc.identity_chains}`);
   console.log(`  relay_operations      : ${pc.operations}`);
@@ -142,14 +131,10 @@ async function run() {
   console.log(`  public_creds    (ALL) : ${pc.public_credentials_all}`);
   console.log(`  blobs           (ALL) : ${pc.blobs_all}`);
   console.log(`  pending_ops     (ALL) : ${pc.pending_ops_all}`);
+}
 
-  if (!APPLY) {
-    console.log(`\nDRY-RUN complete. Re-run with --apply to commit.\n`);
-    await sql.end();
-    return;
-  }
-
-  // --- APPLY in one transaction ---
+// --- APPLY in one transaction ---
+async function applyRemint(remints, ownDidsAll) {
   await sql.begin(async tx => {
     // 1) PRUNE foreign. Content/countersign/document/blob/credential/revocation/
     //    pending corpora are entirely Brandon's gossip (no Imajin-user binding) —
@@ -177,12 +162,9 @@ async function run() {
       await tx`UPDATE registry.nodes                SET chain_did= ${r.newDid} WHERE chain_did= ${r.oldDid}`;
     }
   });
+}
 
-  // --- verify after ---
-  const after = await sql`
-    SELECT length(split_part(dfos_did,':',3)) AS w, count(*)::int AS n
-    FROM auth.identity_chains GROUP BY 1 ORDER BY 1
-  `;
+function logWidthDistribution(after) {
   console.log(`\n--- after: auth.identity_chains width distribution ---`);
   for (const row of after) console.log(`  width ${row.w}: ${row.n}`);
   const stillPre = after.find(r => r.w !== V1_WIDTH);
@@ -192,12 +174,57 @@ async function run() {
   } else {
     console.log(`\n✅ All identity chains are v1 (${V1_WIDTH}-char). Re-mint + prune complete.\n`);
   }
+}
+
+async function run() {
+  console.log(`\n=== DFOS v1 re-mint + prune (#1111) ===`);
+  console.log(`mode: ${APPLY ? 'APPLY (will commit)' : 'DRY-RUN (no writes)'}`);
+
+  // --- snapshot before ---
+  const ours = await sql`SELECT did, dfos_did, log FROM auth.identity_chains`;
+  const preV1 = ours.filter(r => didWidth(r.dfos_did) !== V1_WIDTH);
+  console.log(
+    `\nour identity chains: ${ours.length} total, ${preV1.length} pre-v1 (need re-mint)`,
+  );
+
+  const remints = await deriveRemints(preV1);
+
+  console.log(`\n--- re-mint plan (${remints.length}) ---`);
+  for (const r of remints) {
+    console.log(`  ${r.oldDid}  ->  ${r.newDid}   [${r.imajinDid}]`);
+  }
+
+  await assertNoCollisions(remints);
+
+  // after re-mint the relay rows still carry OLD dids, so "ours" in relay = old + new
+  const ownDids = ours.map(r => r.dfos_did);
+  const ownDidsAll = [...new Set([...ownDids, ...remints.map(r => r.newDid)])];
+
+  const pc = await computePrunePreview(ownDidsAll);
+  logPrunePreview(pc);
+
+  if (!APPLY) {
+    console.log(`\nDRY-RUN complete. Re-run with --apply to commit.\n`);
+    await sql.end();
+    return;
+  }
+
+  await applyRemint(remints, ownDidsAll);
+
+  // --- verify after ---
+  const after = await sql`
+    SELECT length(split_part(dfos_did,':',3)) AS w, count(*)::int AS n
+    FROM auth.identity_chains GROUP BY 1 ORDER BY 1
+  `;
+  logWidthDistribution(after);
 
   await sql.end();
 }
 
-run().catch(async err => {
+try {
+  await run();
+} catch (err) {
   console.error('❌ FAILED:', err?.message ?? err);
   try { await sql.end(); } catch {}
   process.exit(1);
-});
+}

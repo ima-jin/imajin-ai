@@ -68,4 +68,8 @@ async function main() {
   console.log(`# Key ID: ${keyId}`);
 }
 
-main().catch(console.error);
+try {
+  await main();
+} catch (err) {
+  console.error(err);
+}

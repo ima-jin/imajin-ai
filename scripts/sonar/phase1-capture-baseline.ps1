@@ -13,6 +13,32 @@ function Get-Json {
   Invoke-RestMethod -Method Get -Uri "$baseUrl$Path"
 }
 
+function Resolve-MeasureValue {
+  param($Measure)
+  $hasValue = $Measure.PSObject.Properties.Name -contains "value"
+  if ($hasValue -and $Measure.value) { return [double]$Measure.value }
+  $hasPeriods = $Measure.PSObject.Properties.Name -contains "periods"
+  if ($hasPeriods -and $Measure.periods -and $Measure.periods.Count -gt 0) {
+    return [double]$Measure.periods[0].value
+  }
+  return [double]0
+}
+
+function ConvertTo-MeasureMap {
+  param($Measures)
+  $m = @{}
+  foreach ($measure in $Measures) {
+    $m[$measure.metric] = Resolve-MeasureValue -Measure $measure
+  }
+  return $m
+}
+
+function Get-MetricOrZero {
+  param([hashtable]$Map, [string]$Key)
+  if ($Map.ContainsKey($Key)) { return $Map[$Key] }
+  return 0
+}
+
 function Get-FileMeasures {
   param([string]$MetricKeys)
 
@@ -25,27 +51,14 @@ function Get-FileMeasures {
     $resp = Get-Json -Path $url
 
     foreach ($c in $resp.components) {
-      $m = @{}
-      foreach ($measure in $c.measures) {
-        $hasValue = $measure.PSObject.Properties.Name -contains "value"
-        $hasPeriods = $measure.PSObject.Properties.Name -contains "periods"
-
-        if ($hasValue -and $measure.value) {
-          $val = $measure.value
-        } elseif ($hasPeriods -and $measure.periods -and $measure.periods.Count -gt 0) {
-          $val = $measure.periods[0].value
-        } else {
-          $val = "0"
-        }
-        $m[$measure.metric] = [double]$val
-      }
+      $m = ConvertTo-MeasureMap -Measures $c.measures
 
       $rows += [PSCustomObject]@{
         path = $c.path
-        new_duplicated_lines_density = $(if ($m.ContainsKey("new_duplicated_lines_density")) { $m["new_duplicated_lines_density"] } else { 0 })
-        new_bugs = $(if ($m.ContainsKey("new_bugs")) { $m["new_bugs"] } else { 0 })
-        new_vulnerabilities = $(if ($m.ContainsKey("new_vulnerabilities")) { $m["new_vulnerabilities"] } else { 0 })
-        new_code_smells = $(if ($m.ContainsKey("new_code_smells")) { $m["new_code_smells"] } else { 0 })
+        new_duplicated_lines_density = Get-MetricOrZero -Map $m -Key "new_duplicated_lines_density"
+        new_bugs = Get-MetricOrZero -Map $m -Key "new_bugs"
+        new_vulnerabilities = Get-MetricOrZero -Map $m -Key "new_vulnerabilities"
+        new_code_smells = Get-MetricOrZero -Map $m -Key "new_code_smells"
       }
     }
 

@@ -53,189 +53,173 @@ const sd = new StyleDictionary({
   },
 });
 
+// --- Raw color token buckets ------------------------------------------------
+function createColorBuckets() {
+  return { colors: {}, sunset: {}, surface: {}, functional: {}, interactive: {} };
+}
+
+function assignColorToken(path, value, buckets) {
+  if (path[0] !== 'color') return;
+  if (path[1] === 'background') {
+    buckets.surface[path[2]] = value;
+  } else if (path[1] === 'sunset') {
+    buckets.sunset[path[2]] = value;
+  } else if (path[1] === 'functional') {
+    buckets.functional[path[2].replaceAll('text-', '')] = value;
+  } else if (path[1] === 'interactive') {
+    buckets.interactive[path[2].replaceAll('border-', '')] = value;
+  } else if (path[1] === 'gradient' && path[2] === 'sunset') {
+    buckets.colors['sunset-gradient'] = value;
+  }
+}
+
+// --- Semantic tokens — role-based aliases (app code uses these, not raw) ---
+function createSemanticBuckets() {
+  return {
+    surface: {},
+    text: {},
+    cta: {},
+    border: {},
+    status: {},
+    accent: null,
+    focusRing: null,
+  };
+}
+
+function assignSemanticToken(path, value, semantic) {
+  if (path[0] !== 'semantic') return;
+  if (path[1] === 'surface') {
+    semantic.surface[path[2]] = value;
+  } else if (path[1] === 'text') {
+    semantic.text[path[2]] = value;
+  } else if (path[1] === 'cta') {
+    semantic.cta[path[2]] = value;
+  } else if (path[1] === 'border') {
+    semantic.border[path[2]] = value;
+  } else if (path[1] === 'focus') {
+    if (path[2] === 'ring') semantic.focusRing = value;
+  } else if (path[1] === 'status') {
+    semantic.status[path[2]] = value;
+  } else if (path[1] === 'accent' && path.length === 2) {
+    semantic.accent = value;
+  }
+}
+
+// --- Simple scalar-scale tokens (spacing, radius, shadow, font.*) ----------
+const SCALE_ROUTES = [
+  { match: (path) => path[0] === 'space', bucket: 'spacing', key: (path) => path[1] },
+  { match: (path) => path[0] === 'radius', bucket: 'borderRadius', key: (path) => path[1] },
+  { match: (path) => path[0] === 'shadow', bucket: 'boxShadow', key: (path) => path[1] },
+  { match: (path) => path[0] === 'font' && path[1] === 'family', bucket: 'fontFamily', key: (path) => path[2] },
+  { match: (path) => path[0] === 'font' && path[1] === 'weight', bucket: 'fontWeight', key: (path) => path[2] },
+  { match: (path) => path[0] === 'font' && path[1] === 'size', bucket: 'fontSize', key: (path) => path[2] },
+  { match: (path) => path[0] === 'font' && path[1] === 'tracking', bucket: 'letterSpacing', key: (path) => path[2] },
+];
+
+function createScaleBuckets() {
+  return {
+    spacing: {},
+    borderRadius: {},
+    boxShadow: {},
+    fontFamily: {},
+    fontWeight: {},
+    fontSize: {},
+    letterSpacing: {},
+  };
+}
+
+function assignScaleToken(path, value, scales) {
+  for (const route of SCALE_ROUTES) {
+    if (route.match(path)) {
+      scales[route.bucket][route.key(path)] = value;
+      return;
+    }
+  }
+}
+
+// Raw tokens stay available (imajin-*, surface-*, etc) for use INSIDE packages/ui only.
+// Semantic tokens (accent, cta-*, surface-1/2/3, text-heading/body/quiet, border-*, focus-ring,
+// status-*) are what app code and primitives should use.
+function buildThemeColors(colorBuckets, semantic) {
+  return {
+    // --- Raw tokens (use only inside packages/ui primitives) ---
+    imajin: colorBuckets.sunset,
+    surface: colorBuckets.surface,
+    ...colorBuckets.functional,
+    interactive: colorBuckets.interactive,
+    ...colorBuckets.colors,
+    // --- Semantic tokens (use everywhere else) ---
+    ...(semantic.accent ? { accent: semantic.accent } : {}),
+    'cta-primary': semantic.cta.primary,
+    'cta-secondary': semantic.cta.secondary,
+    'surface-1': semantic.surface['1'],
+    'surface-2': semantic.surface['2'],
+    'surface-3': semantic.surface['3'],
+    'surface-input': semantic.surface.input,
+    'text-heading': semantic.text.heading,
+    'text-body': semantic.text.body,
+    'text-quiet': semantic.text.quiet,
+    'text-on-accent': semantic.text['on-accent'],
+    'border-subtle': semantic.border.subtle,
+    'border-strong': semantic.border.strong,
+    'border-input-field': semantic.border.input,
+    'border-nav': semantic.border.nav,
+    ...(semantic.focusRing ? { 'focus-ring': semantic.focusRing } : {}),
+    'status-success': semantic.status.success,
+    'status-warning': semantic.status.warning,
+    'status-error': semantic.status.error,
+    'status-info': semantic.status.info,
+  };
+}
+
+// Serialize to JS — quote keys with special chars, keep clean identifiers unquoted
+function serializeValue(value, indent = 2) {
+  const pad = ' '.repeat(indent);
+  if (Array.isArray(value)) {
+    const items = value.map((v) => serializeValue(v, indent + 2)).join(', ');
+    return `[${items}]`;
+  }
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value).map(([k, v]) => {
+      const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k) ? k : `'${k}'`;
+      return `${pad}${key}: ${serializeValue(v, indent + 2)}`;
+    });
+    return `{\n${entries.join(',\n')}\n${' '.repeat(indent - 2)}}`;
+  }
+  if (typeof value === 'string') {
+    return `'${value.replaceAll("'", String.raw`\'`)}'`;
+  }
+  return String(value);
+}
+
 // Register a custom format for Tailwind theme extension
 sd.registerFormat({
   name: 'tailwind',
   format: ({ dictionary }) => {
-    const tokens = dictionary.allTokens;
+    const colorBuckets = createColorBuckets();
+    const semantic = createSemanticBuckets();
+    const scales = createScaleBuckets();
 
-    // Extract colors
-    const colors = {};
-    const sunset = {};
-    const surface = {};
-    const functional = {};
-    const interactive = {};
-
-    // Semantic tokens — role-based aliases (app code uses these, not raw)
-    const semSurface = {};
-    const semText = {};
-    const semCta = {};
-    const semBorder = {};
-    const semStatus = {};
-    let semAccent = null;
-    let semFocusRing = null;
-
-    // Extract spacing
-    const spacing = {};
-
-    // Extract border radius
-    const borderRadius = {};
-
-    // Extract shadows
-    const boxShadow = {};
-
-    // Extract font families
-    const fontFamily = {};
-
-    // Extract font weights
-    const fontWeight = {};
-
-    // Extract font sizes
-    const fontSize = {};
-
-    // Extract letter spacing
-    const letterSpacing = {};
-
-    for (const token of tokens) {
+    for (const token of dictionary.allTokens) {
       const path = token.path;
       const value = token.$value ?? token.value;
-
-      // Colors
-      if (path[0] === 'color') {
-        if (path[1] === 'background') {
-          surface[path[2]] = value;
-        } else if (path[1] === 'sunset') {
-          sunset[path[2]] = value;
-        } else if (path[1] === 'functional') {
-          const key = path[2].replaceAll('text-', '');
-          functional[key] = value;
-        } else if (path[1] === 'interactive') {
-          const key = path[2].replaceAll('border-', '');
-          interactive[key] = value;
-        } else if (path[1] === 'gradient' && path[2] === 'sunset') {
-          colors['sunset-gradient'] = value;
-        }
-      }
-
-      // Semantic tokens — alias tier
-      if (path[0] === 'semantic') {
-        if (path[1] === 'surface') {
-          semSurface[path[2]] = value;
-        } else if (path[1] === 'text') {
-          semText[path[2]] = value;
-        } else if (path[1] === 'cta') {
-          semCta[path[2]] = value;
-        } else if (path[1] === 'border') {
-          semBorder[path[2]] = value;
-        } else if (path[1] === 'focus') {
-          if (path[2] === 'ring') semFocusRing = value;
-        } else if (path[1] === 'status') {
-          semStatus[path[2]] = value;
-        } else if (path[1] === 'accent' && path.length === 2) {
-          semAccent = value;
-        }
-      }
-
-      // Spacing
-      if (path[0] === 'space') {
-        spacing[path[1]] = value;
-      }
-
-      // Border radius
-      if (path[0] === 'radius') {
-        borderRadius[path[1]] = value;
-      }
-
-      // Shadows
-      if (path[0] === 'shadow') {
-        boxShadow[path[1]] = value;
-      }
-
-      // Font families
-      if (path[0] === 'font' && path[1] === 'family') {
-        fontFamily[path[2]] = value;
-      }
-
-      // Font weights
-      if (path[0] === 'font' && path[1] === 'weight') {
-        fontWeight[path[2]] = value;
-      }
-
-      // Font sizes
-      if (path[0] === 'font' && path[1] === 'size') {
-        fontSize[path[2]] = value;
-      }
-
-      // Letter spacing
-      if (path[0] === 'font' && path[1] === 'tracking') {
-        letterSpacing[path[2]] = value;
-      }
+      assignColorToken(path, value, colorBuckets);
+      assignSemanticToken(path, value, semantic);
+      assignScaleToken(path, value, scales);
     }
 
-    // Assemble the Tailwind theme extension
-    // Raw tokens stay available (imajin-*, surface-*, etc) for use INSIDE packages/ui only.
-    // Semantic tokens (accent, cta-*, surface-1/2/3, text-heading/body/quiet, border-*, focus-ring,
-    // status-*) are what app code and primitives should use.
     const theme = {
-      colors: {
-        // --- Raw tokens (use only inside packages/ui primitives) ---
-        imajin: sunset,
-        surface,
-        ...functional,
-        interactive,
-        ...colors,
-        // --- Semantic tokens (use everywhere else) ---
-        ...(semAccent ? { accent: semAccent } : {}),
-        'cta-primary': semCta.primary,
-        'cta-secondary': semCta.secondary,
-        'surface-1': semSurface['1'],
-        'surface-2': semSurface['2'],
-        'surface-3': semSurface['3'],
-        'surface-input': semSurface.input,
-        'text-heading': semText.heading,
-        'text-body': semText.body,
-        'text-quiet': semText.quiet,
-        'text-on-accent': semText['on-accent'],
-        'border-subtle': semBorder.subtle,
-        'border-strong': semBorder.strong,
-        'border-input-field': semBorder.input,
-        'border-nav': semBorder.nav,
-        ...(semFocusRing ? { 'focus-ring': semFocusRing } : {}),
-        'status-success': semStatus.success,
-        'status-warning': semStatus.warning,
-        'status-error': semStatus.error,
-        'status-info': semStatus.info,
-      },
-      spacing,
-      borderRadius,
-      boxShadow,
-      fontFamily,
-      fontWeight,
-      fontSize,
-      letterSpacing,
+      colors: buildThemeColors(colorBuckets, semantic),
+      spacing: scales.spacing,
+      borderRadius: scales.borderRadius,
+      boxShadow: scales.boxShadow,
+      fontFamily: scales.fontFamily,
+      fontWeight: scales.fontWeight,
+      fontSize: scales.fontSize,
+      letterSpacing: scales.letterSpacing,
     };
 
-    // Serialize to JS — quote keys with special chars, keep clean identifiers unquoted
-    function serialize(value, indent = 2) {
-      const pad = ' '.repeat(indent);
-      if (Array.isArray(value)) {
-        const items = value.map((v) => serialize(v, indent + 2)).join(', ');
-        return `[${items}]`;
-      }
-      if (typeof value === 'object' && value !== null) {
-        const entries = Object.entries(value).map(([k, v]) => {
-          const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k) ? k : `'${k}'`;
-          return `${pad}${key}: ${serialize(v, indent + 2)}`;
-        });
-        return `{\n${entries.join(',\n')}\n${' '.repeat(indent - 2)}}`;
-      }
-      if (typeof value === 'string') {
-      return `'${value.replaceAll("'", "\\'")}'`;
-      }
-      return String(value);
-    }
-
-    const jsString = serialize(theme, 2);
+    const jsString = serializeValue(theme, 2);
     return `/** @type {import('tailwindcss').Config['theme']['extend']} */\nmodule.exports = ${jsString};\n`;
   },
 });

@@ -67,12 +67,7 @@ if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
   process.exit(1);
 }
 
-async function run() {
-  console.log(`\n=== Vault custody migration (#1537) ===`);
-  console.log(`target: ${BASE}`);
-  console.log(`mode: ${APPLY ? 'APPLY (will upgrade fields)' : 'DRY-RUN (no writes)'}`);
-  if (limit !== undefined) console.log(`limit: ${limit}`);
-
+async function postMigrationRequest() {
   const res = await fetch(`${BASE}/api/vault/migrate-custody`, {
     method: 'POST',
     headers: {
@@ -85,6 +80,32 @@ async function run() {
   const text = await res.text();
   let json;
   try { json = JSON.parse(text); } catch { json = null; }
+  return { res, json, text };
+}
+
+function formatFieldResult(r) {
+  const ok = r.status === 'upgraded' || r.status === 'would-upgrade';
+  const suffix = r.error ? ` — ${sanitizeForLog(r.error)}` : '';
+  return `  ${ok ? '✓' : '✗'} ${sanitizeForLog(r.field)}: ${sanitizeForLog(r.status)}${suffix}`;
+}
+
+function logFieldResults(results) {
+  console.log(`\n--- per-field results ---`);
+  if (results.length === 0) {
+    console.log('  (none — nothing attempted)');
+  }
+  for (const r of results) {
+    console.log(formatFieldResult(r));
+  }
+}
+
+async function run() {
+  console.log(`\n=== Vault custody migration (#1537) ===`);
+  console.log(`target: ${BASE}`);
+  console.log(`mode: ${APPLY ? 'APPLY (will upgrade fields)' : 'DRY-RUN (no writes)'}`);
+  if (limit !== undefined) console.log(`limit: ${limit}`);
+
+  const { res, json, text } = await postMigrationRequest();
 
   if (!res.ok) {
     console.error(`\n❌ request failed: ${res.status}`);
@@ -97,15 +118,7 @@ async function run() {
   console.log(`v1 fields remaining before this run: ${sanitizeForLog(report.totalV1Fields)}`);
   console.log(`candidates this run: ${sanitizeForLog(report.candidateCount)}`);
 
-  console.log(`\n--- per-field results ---`);
-  if (report.results.length === 0) {
-    console.log('  (none — nothing attempted)');
-  }
-  for (const r of report.results) {
-    const ok = r.status === 'upgraded' || r.status === 'would-upgrade';
-    const suffix = r.error ? ` — ${sanitizeForLog(r.error)}` : '';
-    console.log(`  ${ok ? '✓' : '✗'} ${sanitizeForLog(r.field)}: ${sanitizeForLog(r.status)}${suffix}`);
-  }
+  logFieldResults(report.results);
 
   if (report.aborted) {
     console.error(`\n❌ ABORTED: ${sanitizeForLog(report.abortReason)}`);
@@ -118,7 +131,9 @@ async function run() {
   }
 }
 
-run().catch((err) => {
+try {
+  await run();
+} catch (err) {
   console.error('❌ FAILED:', err?.message ?? err);
   process.exit(1);
-});
+}

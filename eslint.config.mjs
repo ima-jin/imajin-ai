@@ -67,7 +67,8 @@ export default tseslint.config(
   // eslint-plugin-react-hooks@5 below instead.
   ...compat.extends('next/core-web-vitals').map(config => {
     const { plugins = {}, ...rest } = config;
-    const { 'react-hooks': _rh, ...otherPlugins } = plugins;
+    const otherPlugins = { ...plugins };
+    delete otherPlugins['react-hooks'];
     return { ...rest, plugins: otherPlugins, files: ['apps/**/*.{ts,tsx,js,jsx}'] };
   }),
 

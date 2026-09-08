@@ -167,10 +167,10 @@ delete pkg.scripts;
 delete pkg.devDependencies;
 
 // Rewrite exports/main/types to point to dist/ instead of src/
-if (pkg.main && pkg.main.startsWith("./src/")) {
+if (pkg.main?.startsWith("./src/")) {
   pkg.main = pkg.main.replaceAll("./src/", "./dist/").replaceAll(".ts", ".js");
 }
-if (pkg.types && pkg.types.startsWith("./src/")) {
+if (pkg.types?.startsWith("./src/")) {
   pkg.types = pkg.types.replaceAll("./src/", "./dist/").replaceAll(".ts", ".d.ts");
 }
 if (pkg.exports) {

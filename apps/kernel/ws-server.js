@@ -266,12 +266,97 @@ const notificationBacklog = createNotificationBacklogReplayer({
   log: (message) => console.log('[WS]', message),
 });
 
+/**
+ * Handle a deferred 'auth' message (WS token supplied after connecting
+ * unauthenticated). On success, promotes the socket the same way the
+ * cookie-auth path in setupWebSocket's upgrade handler does.
+ */
+async function handleAuthMessage(ws, meta, msg) {
+  const authedDid = await authenticateWsToken(msg.token);
+  if (!authedDid) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Authentication failed' }));
+    ws.close(4001, 'Authentication failed');
+    return;
+  }
+  meta.did = authedDid;
+  meta.authenticated = true;
+  if (!didSockets.has(authedDid)) didSockets.set(authedDid, new Set());
+  didSockets.get(authedDid).add(ws);
+  ws.send(JSON.stringify({ type: 'connected' }));
+  // Fire-and-forget, same as the cookie-auth path above (#2044).
+  notificationBacklog.replay(ws, authedDid);
+  if (didSockets.get(authedDid).size === 1) {
+    broadcastPresenceChange(authedDid, true);
+  }
+  console.log('[WS] Deferred auth succeeded for:', authedDid);
+}
+
+/**
+ * Agent delegation: also receive notifications for this DID (#1545/#1653).
+ * The registry verifies the delegation before it registers anything.
+ */
+async function handleAlsoRegistryMessage(ws, meta, msg) {
+  const frame = await alsoRegistry.handle(ws, meta, msg);
+  if (frame && ws.readyState === 1) ws.send(JSON.stringify(frame));
+}
+
+function handleSubscribeMessage(meta, msg) {
+  if (msg.conversationId) meta.subscriptions.add(msg.conversationId);
+  if (msg.did) meta.subscriptions.add(msg.did);
+}
+
+function handleTypingMessage(meta, msg) {
+  const channel = msg.did || msg.conversationId;
+  if (channel) handleTyping(channel, meta.did, msg.name || null);
+}
+
+function handleStopTypingMessage(meta, msg) {
+  const channel = msg.did || msg.conversationId;
+  if (channel) handleStopTyping(channel, meta.did);
+}
+
+/**
+ * Route one parsed WS message to its handler. Deferred auth is checked first
+ * (it's the only message type allowed before `meta.authenticated`); every
+ * other type is rejected until the socket has authenticated.
+ */
+async function dispatchMessage(ws, meta, msg) {
+  if (msg.type === 'auth' && msg.token && !meta.authenticated) {
+    await handleAuthMessage(ws, meta, msg);
+    return;
+  }
+
+  if (!meta.authenticated) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated. Send auth message first.' }));
+    return;
+  }
+
+  switch (msg.type) {
+    case 'ping':
+      ws.send(JSON.stringify({ type: 'pong' }));
+      break;
+    case 'register_also':
+    case 'unregister_also':
+      await handleAlsoRegistryMessage(ws, meta, msg);
+      break;
+    case 'subscribe':
+      handleSubscribeMessage(meta, msg);
+      break;
+    case 'typing':
+      handleTypingMessage(meta, msg);
+      break;
+    case 'stop_typing':
+      handleStopTypingMessage(meta, msg);
+      break;
+  }
+}
+
 function setupWebSocket(server) {
   wss = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', async (req, socket, head) => {
     const { pathname } = new URL(req.url, `http://${req.headers.host}`);
-    const safePath = pathname.replace(/[\r\n\x00-\x1f\x7f]/g, '').substring(0, 100);
+    const safePath = pathname.replace(/[\x00-\x1f\x7f]/g, '').substring(0, 100);
     console.log('[WS] Upgrade request for:', safePath);
     if (pathname !== '/ws' && pathname !== '/chat/ws') {
       socket.destroy();
@@ -303,52 +388,7 @@ function setupWebSocket(server) {
       ws.on('message', async (raw) => {
         try {
           const msg = JSON.parse(raw.toString());
-
-          // Handle deferred auth via WS token
-          if (msg.type === 'auth' && msg.token && !meta.authenticated) {
-            const authedDid = await authenticateWsToken(msg.token);
-            if (authedDid) {
-              meta.did = authedDid;
-              meta.authenticated = true;
-              if (!didSockets.has(authedDid)) didSockets.set(authedDid, new Set());
-              didSockets.get(authedDid).add(ws);
-              ws.send(JSON.stringify({ type: 'connected' }));
-              // Fire-and-forget, same as the cookie-auth path above (#2044).
-              notificationBacklog.replay(ws, authedDid);
-              if (didSockets.get(authedDid).size === 1) {
-                broadcastPresenceChange(authedDid, true);
-              }
-              console.log('[WS] Deferred auth succeeded for:', authedDid);
-            } else {
-              ws.send(JSON.stringify({ type: 'error', message: 'Authentication failed' }));
-              ws.close(4001, 'Authentication failed');
-            }
-            return;
-          }
-
-          // Reject other messages if not authenticated
-          if (!meta.authenticated) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Not authenticated. Send auth message first.' }));
-            return;
-          }
-
-          if (msg.type === 'ping') {
-            ws.send(JSON.stringify({ type: 'pong' }));
-          } else if (msg.type === 'register_also' || msg.type === 'unregister_also') {
-            // Agent delegation: also receive notifications for this DID (#1545/#1653).
-            // The registry verifies the delegation before it registers anything.
-            const frame = await alsoRegistry.handle(ws, meta, msg);
-            if (frame && ws.readyState === 1) ws.send(JSON.stringify(frame));
-          } else if (msg.type === 'subscribe') {
-            if (msg.conversationId) meta.subscriptions.add(msg.conversationId);
-            if (msg.did) meta.subscriptions.add(msg.did);
-          } else if (msg.type === 'typing') {
-            const channel = msg.did || msg.conversationId;
-            if (channel) handleTyping(channel, meta.did, msg.name || null);
-          } else if (msg.type === 'stop_typing') {
-            const channel = msg.did || msg.conversationId;
-            if (channel) handleStopTyping(channel, meta.did);
-          }
+          await dispatchMessage(ws, meta, msg);
         } catch {
           ws.send(JSON.stringify({ type: 'error', message: 'Invalid message' }));
         }
