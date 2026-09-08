@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identityMembers, profiles, identities } from '@/src/db';
-import { eq, and, isNull } from 'drizzle-orm';
+import { db, identities, profiles } from '@/src/db';
+import { eq } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
+import { buildProfilePatch, checkStubMaintainerAccess } from '@/src/lib/profile/stubs';
 
 const log = createLogger('kernel');
-const ALLOWED_ROLES = new Set(['maintainer', 'admin', 'owner']);
 
 interface RouteParams {
   params: Promise<{ did: string }>;
@@ -33,19 +33,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { identity: caller } = authResult;
 
   // Check caller is maintainer/admin/owner of this identity
-  const [membership] = await db
-    .select({ role: identityMembers.role })
-    .from(identityMembers)
-    .where(
-      and(
-        eq(identityMembers.identityDid, did),
-        eq(identityMembers.memberDid, caller.id),
-        isNull(identityMembers.removedAt)
-      )
-    )
-    .limit(1);
-
-  if (!membership || !ALLOWED_ROLES.has(membership.role)) {
+  const hasAccess = await checkStubMaintainerAccess(did, caller.id);
+  if (!hasAccess) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -67,33 +56,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   const { avatar, banner, name, bio, category, location, lat, lon } = body;
 
-  const hasUpdate = avatar || banner || name !== undefined || bio !== undefined
-    || category !== undefined || location !== undefined || lat !== undefined || lon !== undefined;
-  if (!hasUpdate) {
+  const profilePatch = await buildProfilePatch(did, { avatar, banner, name, bio, category, location, lat, lon });
+  if (!profilePatch) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
-  }
-
-  const profilePatch: Partial<typeof profiles.$inferInsert> = {};
-  if (avatar) profilePatch.avatar = avatar;
-  if (banner) profilePatch.banner = banner;
-  if (name !== undefined) profilePatch.displayName = name;
-  if (bio !== undefined) profilePatch.bio = bio;
-
-  // Merge metadata fields (category, location, lat, lon) with existing metadata
-  if (category !== undefined || location !== undefined || lat !== undefined || lon !== undefined) {
-    const [existing] = await db
-      .select({ metadata: profiles.metadata })
-      .from(profiles)
-      .where(eq(profiles.did, did))
-      .limit(1);
-
-    const currentMeta = (existing?.metadata as Record<string, unknown>) ?? {};
-    const newMeta = { ...currentMeta };
-    if (category !== undefined) newMeta.category = category;
-    if (location !== undefined) newMeta.location = location;
-    if (lat !== undefined) newMeta.lat = lat;
-    if (lon !== undefined) newMeta.lon = lon;
-    profilePatch.metadata = newMeta;
   }
 
   if (Object.keys(profilePatch).length > 0) {

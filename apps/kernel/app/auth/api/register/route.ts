@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, profiles, credentials } from '@/src/db';
+import { db, identities, profiles } from '@/src/db';
 import { eq, or } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { rateLimit, getClientIP } from '@imajin/config';
@@ -11,9 +10,12 @@ import * as bus from '@imajin/bus';
 import {
   autoAcceptInvite,
   linkDfosChainSafe,
+  recordEmailCredential,
   resolveInviteCode,
   subscribeEmailToMailingList,
+  validateRegistrationFields,
   verifyRegistrationSignature,
+  type InviteData,
 } from '@/src/lib/auth/register';
 
 const log = createLogger('kernel');
@@ -56,27 +58,9 @@ export async function POST(request: NextRequest) {
       ? email.toLowerCase().trim()
       : null;
 
-    if (!publicKey || typeof publicKey !== 'string') {
-      return NextResponse.json({ error: 'publicKey required (Ed25519 hex)' }, { status: 400 });
-    }
-
-    const VALID_SCOPES = ['actor', 'family', 'community', 'business'];
-    if (!VALID_SCOPES.includes(scope)) {
-      return NextResponse.json(
-        { error: `scope must be one of: ${VALID_SCOPES.join(', ')}` },
-        { status: 400 },
-      );
-    }
-
-    if (handle && !/^[a-z0-9_]{3,30}$/.test(handle)) {
-      return NextResponse.json(
-        { error: 'Handle must be 3-30 lowercase letters, numbers, or underscores' },
-        { status: 400 },
-      );
-    }
-
-    if (!signature) {
-      return NextResponse.json({ error: 'signature required' }, { status: 400 });
+    const fieldsResult = validateRegistrationFields({ publicKey, scope, handle, signature });
+    if (!fieldsResult.ok) {
+      return NextResponse.json({ error: fieldsResult.error }, { status: fieldsResult.status });
     }
 
     const isValid = await verifyRegistrationSignature(
@@ -91,14 +75,8 @@ export async function POST(request: NextRequest) {
     if (handle) conditions.push(eq(identities.handle, handle));
 
     const existing = await db.select().from(identities).where(or(...conditions)).limit(1);
-
-    if (existing.length > 0) {
-      if (existing[0].publicKey !== publicKey) {
-        return NextResponse.json({ error: 'Handle already taken' }, { status: 409 });
-      }
-      // Same key — login-via-register flow
-      return loginViaRegister(existing[0], body, publicKey);
-    }
+    const conflictResponse = await handleExistingIdentityConflict(existing, publicKey, body);
+    if (conflictResponse) return conflictResponse;
 
     // Require invite code for new registrations (skip in dev with DISABLE_INVITE_GATE=true)
     // Service-to-service registrations (events, agents, etc.) bypass the invite gate.
@@ -134,14 +112,7 @@ export async function POST(request: NextRequest) {
     // ownership of the email — it's only used here as a resolvable match
     // key. onConflictDoNothing guards the (type, value) unique index in
     // case the email is already claimed by another identity.
-    if (normalizedEmail) {
-      await db.insert(credentials).values({
-        id: `cred_${nanoid(16)}`,
-        did: identity.id,
-        type: 'email',
-        value: normalizedEmail,
-      }).onConflictDoNothing();
-    }
+    await recordEmailCredential(identity.id, normalizedEmail);
 
     // Create session token
     const token = await createSessionToken({
@@ -168,51 +139,96 @@ export async function POST(request: NextRequest) {
     });
 
     // Create profile row (non-fatal)
-    try {
-      await db.insert(profiles).values({
-        did: identity.id,
-        displayName: name?.trim().slice(0, 100) || handle || 'Anonymous',
-        handle: handle || null,
-        contactEmail: normalizedEmail,
-        phone: phone?.trim() || null,
-        metadata: { optInUpdates: optInUpdates || false },
-      }).onConflictDoNothing();
-    } catch (err) {
-      log.error({ err: String(err) }, 'Profile creation failed (non-fatal)');
-    }
+    await createProfileRowSafe(identity.id, { name, handle, normalizedEmail, phone, optInUpdates });
 
     // Subscribe to mailing list — fire and forget
-    if (optInUpdates && email && typeof email === 'string' && email.trim()) {
-      subscribeEmailToMailingList(email, identity.id, request.url);
+    if (optInUpdates && normalizedEmail) {
+      subscribeEmailToMailingList(normalizedEmail, identity.id, request.url);
     }
 
-    // Auto-accept invite: create the connection so the new user lands with a first contact.
-    if (inviteData && inviteCode) {
-      const accepted = await autoAcceptInvite({ inviteData, inviteCode, identity });
-      if (accepted.ok) {
-        const acceptedResponse = NextResponse.json({
-          did: identity.id, handle: identity.handle,
-          scope: identity.scope, subtype: identity.subtype,
-          created: true, inviteAccepted: true, dfosChainLinked,
-        }, { status: 201 });
-        acceptedResponse.cookies.set(cookieConfig.name, token, cookieConfig.options);
-        return acceptedResponse;
-      }
-      log.error({ err: String(accepted.error) }, '[register] Auto-accept failed (non-fatal)');
-    }
-
-    const response = NextResponse.json({
-      did: identity.id, handle: identity.handle,
-      scope: identity.scope, subtype: identity.subtype,
-      created: true, inviteAccepted: false, dfosChainLinked,
-    }, { status: 201 });
-    response.cookies.set(cookieConfig.name, token, cookieConfig.options);
-    return response;
-
+    return finishRegistrationResponse({ identity, inviteData, inviteCode, dfosChainLinked, token, cookieConfig });
   } catch (error) {
     log.error({ err: String(error) }, 'Register error');
     return NextResponse.json({ error: 'Failed to register identity' }, { status: 500 });
   }
+}
+
+/**
+ * Reject registration when the publicKey/handle already belong to a
+ * different identity, or dispatch to the login-via-register flow when the
+ * same key is re-registering. Returns null when there's no existing
+ * identity to reconcile against (the caller should proceed with signup).
+ */
+async function handleExistingIdentityConflict(
+  existing: Array<typeof identities.$inferSelect>,
+  publicKey: string,
+  body: Record<string, unknown>,
+): Promise<NextResponse | null> {
+  if (existing.length === 0) return null;
+  if (existing[0].publicKey !== publicKey) {
+    return NextResponse.json({ error: 'Handle already taken' }, { status: 409 });
+  }
+  // Same key — login-via-register flow
+  return loginViaRegister(existing[0], body, publicKey);
+}
+
+/** Create the profile row for a newly registered identity. Non-fatal: logs and swallows any error. */
+async function createProfileRowSafe(
+  identityId: string,
+  fields: { name?: string; handle?: string; normalizedEmail: string | null; phone?: string; optInUpdates?: boolean },
+): Promise<void> {
+  const { name, handle, normalizedEmail, phone, optInUpdates } = fields;
+  try {
+    await db.insert(profiles).values({
+      did: identityId,
+      displayName: name?.trim().slice(0, 100) || handle || 'Anonymous',
+      handle: handle || null,
+      contactEmail: normalizedEmail,
+      phone: phone?.trim() || null,
+      metadata: { optInUpdates: optInUpdates || false },
+    }).onConflictDoNothing();
+  } catch (err) {
+    log.error({ err: String(err) }, 'Profile creation failed (non-fatal)');
+  }
+}
+
+/**
+ * Auto-accept the invite (if any) and build the final registration response.
+ * Falls back to a non-accepted response when there's no invite to accept or
+ * the accept attempt fails (auto-accept failure is non-fatal — the user can
+ * accept the invite manually afterwards).
+ */
+async function finishRegistrationResponse(params: {
+  identity: { id: string; handle: string | null; scope: string; subtype: string | null };
+  inviteData: InviteData | null;
+  inviteCode: string | undefined;
+  dfosChainLinked: boolean;
+  token: string;
+  cookieConfig: ReturnType<typeof getSessionCookieOptions>;
+}): Promise<NextResponse> {
+  const { identity, inviteData, inviteCode, dfosChainLinked, token, cookieConfig } = params;
+
+  if (inviteData && inviteCode) {
+    const accepted = await autoAcceptInvite({ inviteData, inviteCode, identity });
+    if (accepted.ok) {
+      const acceptedResponse = NextResponse.json({
+        did: identity.id, handle: identity.handle,
+        scope: identity.scope, subtype: identity.subtype,
+        created: true, inviteAccepted: true, dfosChainLinked,
+      }, { status: 201 });
+      acceptedResponse.cookies.set(cookieConfig.name, token, cookieConfig.options);
+      return acceptedResponse;
+    }
+    log.error({ err: String(accepted.error) }, '[register] Auto-accept failed (non-fatal)');
+  }
+
+  const response = NextResponse.json({
+    did: identity.id, handle: identity.handle,
+    scope: identity.scope, subtype: identity.subtype,
+    created: true, inviteAccepted: false, dfosChainLinked,
+  }, { status: 201 });
+  response.cookies.set(cookieConfig.name, token, cookieConfig.options);
+  return response;
 }
 
 /** Handle the case where the same public key re-registers (login-via-register flow). */

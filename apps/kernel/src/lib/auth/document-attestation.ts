@@ -176,6 +176,37 @@ export function getCreatorDisplayName(callerIdentity: CallerIdentity, callerDid:
   return callerIdentity.handle ? `@${callerIdentity.handle}` : callerIdentity.name || callerDid;
 }
 
+export interface SignatureCounts {
+  signed: number;
+  declined: number;
+  pending: number;
+}
+
+/**
+ * Build a per-attestation signature status count map (signed/declined/pending)
+ * from the flat grouped-count rows returned by the signatures query. Every
+ * attestation in `attestationIds` gets an entry, defaulting all counts to 0.
+ */
+export function buildSignatureCountMap(
+  attestationIds: string[],
+  sigCounts: Array<{ attestationId: string; status: string; count: number }>,
+): Map<string, SignatureCounts> {
+  const countMap = new Map<string, SignatureCounts>();
+  for (const id of attestationIds) {
+    countMap.set(id, { signed: 0, declined: 0, pending: 0 });
+  }
+
+  const STATUS_KEYS = new Set(['signed', 'declined', 'pending']);
+  for (const sc of sigCounts) {
+    const existing = countMap.get(sc.attestationId);
+    if (existing && STATUS_KEYS.has(sc.status)) {
+      existing[sc.status as keyof SignatureCounts] = sc.count;
+    }
+  }
+
+  return countMap;
+}
+
 export function publishDocumentCreatedNotifications(params: {
   attestationId: string;
   documentAssetId: string;

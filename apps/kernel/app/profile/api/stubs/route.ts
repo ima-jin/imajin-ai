@@ -1,19 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, storedKeys, identityMembers, profiles } from '@/src/db';
-import { eq, and, isNull, count } from 'drizzle-orm';
-import { requireAuth, generateKeypair } from '@imajin/auth';
-import { didFromPublicKey, encryptPrivateKey } from '@/src/lib/auth/crypto';
+import { db, identityMembers, profiles } from '@/src/db';
+import { requireAuth } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { randomUUID } from 'node:crypto';
+import {
+  buildStubMetadata,
+  checkStubQuota,
+  createStubIdentity,
+  isStubHandleTaken,
+  MAX_STUBS_PER_ACTOR,
+} from '@/src/lib/profile/stubs';
 
 const log = createLogger('kernel');
-
-const MAX_STUBS_PER_ACTOR = 10;
-
-function genId(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
-}
 
 /**
  * POST /api/stubs
@@ -61,17 +59,8 @@ export async function POST(request: NextRequest) {
 
   try {
     // Rate limit: max MAX_STUBS_PER_ACTOR stubs per actor
-    const [{ value: stubCount }] = await db
-      .select({ value: count() })
-      .from(identityMembers)
-      .where(
-        and(
-          eq(identityMembers.memberDid, caller.id),
-          eq(identityMembers.role, 'maintainer'),
-          isNull(identityMembers.removedAt)
-        )
-      );
-    if (stubCount >= MAX_STUBS_PER_ACTOR) {
+    const quotaExceeded = await checkStubQuota(caller.id);
+    if (quotaExceeded) {
       return NextResponse.json(
         { error: `Maximum of ${MAX_STUBS_PER_ACTOR} maintained places reached` },
         { status: 429 }
@@ -79,78 +68,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Check handle uniqueness
-    if (handle) {
-      const existing = await db
-        .select({ id: identities.id })
-        .from(identities)
-        .where(eq(identities.handle, handle))
-        .limit(1);
-      if (existing.length > 0) {
-        return NextResponse.json({ error: 'Handle already taken' }, { status: 409 });
-      }
+    if (handle && await isStubHandleTaken(handle)) {
+      return NextResponse.json({ error: 'Handle already taken' }, { status: 409 });
     }
-
-    // Generate Ed25519 keypair server-side
-    const { privateKey, publicKey } = generateKeypair();
-    const stubDid = didFromPublicKey(publicKey);
-
-    // Encrypt and store private key
-    const { encryptedKey, salt } = await encryptPrivateKey(privateKey);
-    const keyId = genId('key');
 
     const trimmedName = name.trim().slice(0, 100);
 
-    // Store identity
-    await db.insert(identities).values({
-      id: stubDid,
-      scope: 'business',
-      subtype: (subtype as string) || null,
-      publicKey,
-      handle: handle || null,
-      name: trimmedName,
-      tier: 'preliminary',
-    });
+    // Generate keypair, encrypt + store the private key, and create the identity row.
+    const { stubDid } = await createStubIdentity({ subtype: subtype as string, handle, trimmedName });
 
-    // Store encrypted private key
-    await db.insert(storedKeys).values({
-      id: keyId,
-      did: stubDid,
-      encryptedKey,
-      salt,
-      keyDerivation: 'pbkdf2',
-    });
-
-    // Create profile
-    const metadata: Record<string, string | number> = {};
-    if (location) metadata.location = String(location).slice(0, 200);
-    if (category) metadata.category = String(category).slice(0, 100);
-    if (typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon)) {
-      metadata.lat = Math.round(lat * 1e6) / 1e6;  // ~11cm precision
-      metadata.lon = Math.round(lon * 1e6) / 1e6;
-    }
-
-    // Server-side geocoding fallback: if no coords from client but location text is present, query Nominatim
-    let resolvedLat = lat;
-    let resolvedLon = lon;
-    if (!resolvedLat && !resolvedLon && location) {
-      try {
-        const geoUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=json&limit=1`;
-        const geoRes = await fetch(geoUrl, {
-          headers: { 'User-Agent': 'Imajin/1.0 (https://imajin.ai)' },
-        });
-        if (geoRes.ok) {
-          const geoData = await geoRes.json() as Array<{ lat: string; lon: string }>;
-          if (geoData.length > 0) {
-            resolvedLat = Number.parseFloat(geoData[0].lat);
-            resolvedLon = Number.parseFloat(geoData[0].lon);
-          }
-        }
-      } catch (err) {
-        log.error({ err: String(err) }, '[stubs] Nominatim geocode failed (non-fatal)');
-      }
-    }
-    if (resolvedLat != null) metadata.lat = String(resolvedLat);
-    if (resolvedLon != null) metadata.lon = String(resolvedLon);
+    // Build profile metadata (location/category text + resolved coordinates).
+    const metadata = await buildStubMetadata({ location, category, lat, lon, log });
 
     await db.insert(profiles).values({
       did: stubDid,

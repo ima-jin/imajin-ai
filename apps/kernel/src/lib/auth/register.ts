@@ -3,8 +3,9 @@
  * to reduce its cognitive complexity below the S3776 threshold of 15.
  */
 
-import { db, invitesInConnections as invites, podsInConnections as pods, podMembersInConnections as podMembers, connections, profiles, mailingLists, subscriptions, contacts } from '@/src/db';
+import { db, invitesInConnections as invites, podsInConnections as pods, podMembersInConnections as podMembers, connections, profiles, mailingLists, subscriptions, contacts, credentials } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
 import { verifySignature } from '@/src/lib/auth/crypto';
 import { generateId } from '@/src/lib/kernel/utils';
 import { sendEmail } from '@imajin/email';
@@ -20,6 +21,60 @@ export type InviteData = { fromDid: string; fromHandle?: string };
 export type InviteResult =
   | { ok: true; inviteData: InviteData | null }
   | { ok: false; error: string; status: number };
+
+export type RegistrationFieldsResult =
+  | { ok: true }
+  | { ok: false; error: string; status: number };
+
+const VALID_REGISTRATION_SCOPES = ['actor', 'family', 'community', 'business'];
+
+/**
+ * Validate the required top-level registration fields (publicKey, scope,
+ * handle format, signature presence) in the same order/messages as the
+ * original inline checks.
+ */
+export function validateRegistrationFields(fields: {
+  publicKey: unknown;
+  scope: string;
+  handle: string | undefined;
+  signature: unknown;
+}): RegistrationFieldsResult {
+  const { publicKey, scope, handle, signature } = fields;
+
+  if (!publicKey || typeof publicKey !== 'string') {
+    return { ok: false, error: 'publicKey required (Ed25519 hex)', status: 400 };
+  }
+  if (!VALID_REGISTRATION_SCOPES.includes(scope)) {
+    return { ok: false, error: `scope must be one of: ${VALID_REGISTRATION_SCOPES.join(', ')}`, status: 400 };
+  }
+  if (handle && !/^[a-z0-9_]{3,30}$/.test(handle)) {
+    return { ok: false, error: 'Handle must be 3-30 lowercase letters, numbers, or underscores', status: 400 };
+  }
+  if (!signature) {
+    return { ok: false, error: 'signature required', status: 400 };
+  }
+  return { ok: true };
+}
+
+/**
+ * Record the auth.credentials row for a signup email so this identity is
+ * resolvable via the same lookup every other identity-mint site uses
+ * (resolveOrMintInviteTarget, createOrFindSoftDid, ...) — without this, a
+ * later email invite for this same person misses and silently mints a
+ * disconnected stub DID (#1855). Left unverified (no verifiedAt): unlike the
+ * onboard magic-link flow, the keypair register flow never proves ownership
+ * of the email — it's only used here as a resolvable match key.
+ * No-op when there's no normalized email to record.
+ */
+export async function recordEmailCredential(identityId: string, normalizedEmail: string | null): Promise<void> {
+  if (!normalizedEmail) return;
+  await db.insert(credentials).values({
+    id: `cred_${nanoid(16)}`,
+    did: identityId,
+    type: 'email',
+    value: normalizedEmail,
+  }).onConflictDoNothing();
+}
 
 /**
  * Verify a registration signature using three fallback payload forms:
