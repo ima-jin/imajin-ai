@@ -18,8 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, attestations, identities } from '@/src/db';
-import { eq, and, isNull, desc } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
+import { eq, and, isNull, desc, sql } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { canonicalize, crypto as authCrypto, verifyNostrSig } from '@imajin/auth';
 import type { NostrKeyBindingClaim } from '@imajin/auth';

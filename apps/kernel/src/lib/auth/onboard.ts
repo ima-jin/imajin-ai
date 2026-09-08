@@ -7,10 +7,9 @@ import { db, identities, credentials, identityMembers, onboardTokens, invites } 
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
-import { mintOrAccrueClaimableStub } from '@/src/lib/auth/claimable-stub';
+import { mintOrAccrueClaimableStub, findClaimableStubDid, verifyClaimantEmail } from '@/src/lib/auth/claimable-stub';
 import { createLogger } from '@imajin/logger';
 import { buildPublicUrlAbsolute } from '@imajin/config';
-import { findClaimableStubDid, verifyClaimantEmail } from '@/src/lib/auth/claimable-stub';
 
 const log = createLogger('kernel');
 

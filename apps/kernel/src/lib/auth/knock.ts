@@ -31,15 +31,17 @@ import { generateId } from '@/src/lib/kernel/id';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { resolveExternalDidVerification } from '@/src/lib/auth/did-web';
-import { canonicalize, crypto as authCrypto, isDid } from '@imajin/auth';
-import type { AttestationType, ExternalDidVerificationState } from '@imajin/auth';
 import {
+  canonicalize,
+  crypto as authCrypto,
+  isDid,
   isKnockPublicKey,
   isKnockRequestedCapabilities,
   isKnockSelfDescription,
   isKnockExternalDid,
   KNOCK_TTL,
 } from '@imajin/auth';
+import type { AttestationType, ExternalDidVerificationState } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import * as bus from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
