@@ -33,6 +33,11 @@ export const GRANT_SCOPE_REGISTRY = [
   { scope: 'intros:propose', origin: 'kernel', eventTypes: ['availability.match.surfaced'] },
   { scope: 'events:read', origin: 'kernel', eventTypes: ['event.created', 'event.update', 'event.rsvp'] },
   { scope: 'contacts:read', origin: 'kernel', eventTypes: [] },
+  // #2059 — lets an agent (the OpenClaw plugin's own agent DID) subscribe to
+  // the operator's signed approve/deny/withdraw decisions over the existing
+  // #1884 event-subscription WS fan-out, so it can apply or discard the
+  // Gateway proposal the decision refers to.
+  { scope: 'operator:approvals', origin: 'kernel', eventTypes: ['operator.approval.decided'] },
 ] as const satisfies readonly {
   scope: string;
   origin: 'mcp' | 'kernel';

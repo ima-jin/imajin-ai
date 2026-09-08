@@ -61,6 +61,19 @@ vi.mock('@imajin/email', () => ({ sendEmail: vi.fn() }));
 
 vi.mock('@/src/lib/notify/templates', () => ({ getTemplate: vi.fn(() => undefined) }));
 
+// #2059 — this suite never exercises the operator.approval.requested scope
+// (see operator-approval-requested.test.ts for that); stub these out so
+// importing the route doesn't require a real DB/operator config.
+vi.mock('@/src/lib/notify/operator-approvals', () => ({
+  OPERATOR_APPROVAL_REQUESTED_SCOPE: 'operator.approval.requested',
+  getOperatorDid: vi.fn(),
+  validateApprovalRequestedPayload: vi.fn(() => ({ ok: true })),
+}));
+
+vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
+  recordApprovalRequested: vi.fn(),
+}));
+
 const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
 
 vi.mock('@/src/lib/notify/ws-push', async () => {

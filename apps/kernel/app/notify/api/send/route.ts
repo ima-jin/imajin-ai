@@ -7,6 +7,12 @@ import { eq, and } from 'drizzle-orm';
 import { getTemplate } from '@/src/lib/notify/templates';
 import { buildNotificationFrame, pushNotificationToDid } from '@/src/lib/notify/ws-push';
 import { sendEmail } from '@imajin/email';
+import {
+  OPERATOR_APPROVAL_REQUESTED_SCOPE,
+  getOperatorDid,
+  validateApprovalRequestedPayload,
+} from '@/src/lib/notify/operator-approvals';
+import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -153,6 +159,24 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     return NextResponse.json({ error: 'Missing required fields: to, scope' }, { status: 400, headers: cors });
   }
 
+  // #2059 — operator.approval.requested carries a proposal that must never
+  // include secret values, and must be addressed to the configured operator
+  // DID (never an arbitrary recipient) so the /jin confirm card can only
+  // ever reach the one identity allowed to decide it.
+  if (scope === OPERATOR_APPROVAL_REQUESTED_SCOPE) {
+    const validation = validateApprovalRequestedPayload(data);
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.error }, { status: 400, headers: cors });
+    }
+    const operatorDid = await getOperatorDid();
+    if (!operatorDid || to !== operatorDid) {
+      return NextResponse.json(
+        { error: 'operator.approval.requested must be addressed to the configured operator DID' },
+        { status: 400, headers: cors },
+      );
+    }
+  }
+
   // Resolve template
   const template = getTemplate(scope);
   const urgency = body.urgency ?? template?.urgency ?? 'normal';
@@ -219,6 +243,19 @@ export const POST = withLogger('kernel', async (request, { log }) => {
       .update(notifications)
       .set({ channelsSent })
       .where(eq(notifications.id, id));
+  }
+
+  // #2059 — persist the proposal lifecycle row alongside the notification.
+  // Validated above, so `data` is known-shaped here.
+  if (scope === OPERATOR_APPROVAL_REQUESTED_SCOPE) {
+    await recordApprovalRequested({
+      proposalId: data.proposalId as string,
+      operatorDid: to,
+      kind: data.kind as 'restart' | 'config-mutation' | 'other',
+      summary: data.summary as string,
+      keysTouched: (data.keysTouched as string[] | undefined) ?? [],
+      notificationId: id,
+    });
   }
 
   // #1854: `sent` used to be hardcoded `true` regardless of delivery outcome.

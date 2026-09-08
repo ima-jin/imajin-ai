@@ -67,6 +67,20 @@ vi.mock('@/src/lib/notify/ws-push', () => ({
   pushNotificationToDid: vi.fn().mockResolvedValue(false),
 }));
 
+// #2059 — this suite never exercises the operator.approval.requested scope;
+// stub these out so importing the route doesn't require a real DB/operator
+// config (operator-approvals.ts -> node-identity.ts calls getClient() at
+// module scope).
+vi.mock('@/src/lib/notify/operator-approvals', () => ({
+  OPERATOR_APPROVAL_REQUESTED_SCOPE: 'operator.approval.requested',
+  getOperatorDid: vi.fn(),
+  validateApprovalRequestedPayload: vi.fn(() => ({ ok: true })),
+}));
+
+vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
+  recordApprovalRequested: vi.fn(),
+}));
+
 // The real templates module (NOT mocked) — this is what proves the new scope's
 // email template is actually reachable through the send route.
 import { POST } from '../route';

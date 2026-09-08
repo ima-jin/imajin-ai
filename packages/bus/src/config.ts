@@ -494,6 +494,14 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'approval.decision': [
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #2059 — operator approvals. Delivered live to the OpenClaw plugin via the
+  // #1884 grant-bound event-subscription fan-out (independent of this chain),
+  // so `emit` here only needs to put it on the signed event stream — no
+  // human-facing `notify` reactor, since the decision's audience is the
+  // plugin, not a /jin viewer (the operator already saw their own tap).
+  'operator.approval.decided': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
   // #1147/#1148 — Agent Resource-Accounting Layer's `usage.incurred` primitive.
   // "Bread is free" pattern: `attestation` writes the durable signed record,
   // `emit` makes it observable, deliberately NO `settle` (metered, not
