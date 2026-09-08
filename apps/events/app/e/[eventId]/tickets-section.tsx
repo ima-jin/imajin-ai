@@ -1619,22 +1619,22 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
   // resurrect the previous user's reservation panel.
   const emtStorageKey = emtStorageKeyFor(sessionContactEmail, sessionEmail);
 
-  const [step, setStepState] = useState<BarStep>(() => readStoredBarStep(emtStorageKey));
-  const setStep = (s: BarStep) => {
-    setStepState(s);
+  const [step, setStep] = useState<BarStep>(() => readStoredBarStep(emtStorageKey));
+  const updateStep = (s: BarStep) => {
+    setStep(s);
     if (s !== 'emt-done') clearStorageKeySilently(emtStorageKey);
   };
   const [emtEmail, setEmtEmail] = useState(sessionContactEmail || sessionEmail || '');
   const [emtName, setEmtName] = useState('');
-  const [emtResult, setEmtResultState] = useState<EmtReservation | null>(() => readStoredEmtReservation(emtStorageKey));
-  const setEmtResult = (result: EmtReservation | null) => {
-    setEmtResultState(result);
+  const [emtResult, setEmtResult] = useState<EmtReservation | null>(() => readStoredEmtReservation(emtStorageKey));
+  const updateEmtResult = (result: EmtReservation | null) => {
+    setEmtResult(result);
     persistEmtReservation(emtStorageKey, result);
   };
 
   useLegacyEmtKeyCleanup();
-  useEmtSessionReset(emtStorageKey, setStepState, setEmtResultState);
-  useSessionChangedReset(setStepState, setEmtResultState);
+  useEmtSessionReset(emtStorageKey, setStep, setEmtResult);
+  useSessionChangedReset(setStep, setEmtResult);
 
   const [verifySentTo, setVerifySentTo] = useState<string | null>(null);
   // Issue #1: polling state for tab-A-canonical verification
@@ -1648,15 +1648,15 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
 
   useEtransferVerificationPolling({
     step, pollHandle, eventId, cartItems, inviteToken, emtEmail, emtName, totalQty, onError,
-    setPollStatus, setPollError, setPollHandle, setStep, setEmtResult, setShowFallbackHint, clearCart,
+    setPollStatus, setPollError, setPollHandle, setStep: updateStep, setEmtResult: updateEmtResult, setShowFallbackHint, clearCart,
   });
 
-  const handleStripeClick = () => startStripeCheckout({ first, sessionContactEmail, emtEmail, eventId, cartItems, inviteToken, onError, setStep });
+  const handleStripeClick = () => startStripeCheckout({ first, sessionContactEmail, emtEmail, eventId, cartItems, inviteToken, onError, setStep: updateStep });
   const handleEtransferClick = () => startEtransferCheckout({
     first, sessionContactEmail, sessionEmail, emtEmail, emtName, eventId, cartItems, inviteToken, totalQty, onError,
-    setStep, setVerifySentTo, setPollHandle, setPollStatus, setPollError, setShowFallbackHint, setEmtResult, clearCart,
+    setStep: updateStep, setVerifySentTo, setPollHandle, setPollStatus, setPollError, setShowFallbackHint, setEmtResult: updateEmtResult, clearCart,
   });
-  const handleBalanceClick = () => startBalanceCheckout({ eventId, cartItems, inviteToken, onError, setStep, router });
+  const handleBalanceClick = () => startBalanceCheckout({ eventId, cartItems, inviteToken, onError, setStep: updateStep, router });
 
   if (step === 'emt-verify-sent') {
     return (
@@ -1667,14 +1667,14 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         totalQty={totalQty}
         showFallbackHint={showFallbackHint}
         onRetry={() => {
-          setStep('idle');
+          updateStep('idle');
           setPollHandle(null);
           setPollStatus(null);
           setPollError(null);
           setShowFallbackHint(false);
         }}
         onUseDifferentEmail={() => {
-          setStep('emt-form');
+          updateStep('emt-form');
           setVerifySentTo(null);
           setPollHandle(null);
           setPollStatus(null);
@@ -1701,8 +1701,8 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         onRegisterNow={() => jumpToMyTicketsOrReload(onJumpToMyTickets)}
         onViewMyTickets={() => {
           // Clear the emt-done state so it doesn't persist on return
-          setEmtResult(null);
-          setStep('idle');
+          updateEmtResult(null);
+          updateStep('idle');
           router.refresh();
           jumpToMyTicketsOrReload(onJumpToMyTickets);
         }}
@@ -1721,7 +1721,7 @@ function UnifiedCheckoutBar({ eventId, inviteToken, cartItems, totalQty, formatt
         setEmtEmail={setEmtEmail}
         sessionContactEmail={sessionContactEmail}
         onReserve={handleEtransferClick}
-        onBack={() => setStep('idle')}
+        onBack={() => updateStep('idle')}
       />
     );
   }

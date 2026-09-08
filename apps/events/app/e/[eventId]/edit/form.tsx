@@ -48,6 +48,7 @@ interface LinkedSurvey {
 }
 
 type ActiveTab = 'details' | 'fair' | 'campaign';
+type LocationType = 'physical' | 'virtual' | 'hybrid';
 
 interface EventUpdateFormState {
   title: string;
@@ -55,7 +56,7 @@ interface EventUpdateFormState {
   dateTime: string;
   endDateTime: string;
   timezone: string;
-  locationType: 'physical' | 'virtual' | 'hybrid';
+  locationType: LocationType;
   virtualUrl: string;
   venue: string;
   address: string;
@@ -97,7 +98,7 @@ function buildEventUpdatePayload(form: EventUpdateFormState): Record<string, unk
     courseSlug: form.courseSlug || null,
     emtEmail: form.emtEnabled ? (form.emtEmail.trim() || null) : null,
     metadata: {
-      ...(form.existingMetadata || {}),
+      ...form.existingMetadata,
       linkedSurveys: form.linkedSurveys,
       // Keep legacy fields for backwards compat
       linkedSurveyIds: null,
@@ -193,8 +194,8 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
     event.endsAt ? toLocalDateTimeString(new Date(event.endsAt)) : ''
   );
   const [timezone, setTimezone] = useState(event.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-  const [locationType, setLocationType] = useState<'physical' | 'virtual' | 'hybrid'>(
-    ((event as any).locationType || (event.isVirtual ? 'virtual' : 'physical')) as 'physical' | 'virtual' | 'hybrid'
+  const [locationType, setLocationType] = useState<LocationType>(
+    ((event as any).locationType || (event.isVirtual ? 'virtual' : 'physical')) as LocationType
   );
   const [virtualUrl, setVirtualUrl] = useState(event.virtualUrl || '');
   const [venue, setVenue] = useState(event.venue || '');
