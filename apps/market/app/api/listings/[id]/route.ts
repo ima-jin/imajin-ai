@@ -7,6 +7,7 @@ import { requireAuth, getSession , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
 import { buildFairManifest } from '@imajin/fair';
+import type { FairFeeManifest } from '@imajin/fair';
 import { getNodeSelf, getForestScopeConfig } from '@imajin/config';
 import { publish } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
@@ -83,7 +84,7 @@ async function recalculateFairManifest(params: {
   price?: number;
   sellerTier?: string;
   actingAs?: string | null;
-}): Promise<Record<string, unknown> | undefined> {
+}): Promise<FairFeeManifest | undefined> {
   const { did, listing, listingId, price, sellerTier, actingAs } = params;
   const priceChanged = price !== undefined && price !== listing.price;
   const tierChanged = sellerTier !== undefined && sellerTier !== listing.sellerTier;
