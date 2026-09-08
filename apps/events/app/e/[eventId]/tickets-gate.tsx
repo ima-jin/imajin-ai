@@ -58,7 +58,16 @@ export function TicketsGate({ children, surveysRequired, initialCompleted, requi
   useEffect(() => {
     if (!surveysRequired || completed) return;
 
+    // Resolve DYKIL_URL (which may be a same-origin relative path like
+    // "/dykil" in single-node deployments, or an absolute cross-port/
+    // cross-domain URL in dev/staging — see buildPublicUrl) against the
+    // current page to get the origin the Dykil iframe actually loads from.
+    // This is the real sender origin, derived from the same config used to
+    // build the survey iframe's src, rather than assuming window.location.origin.
+    const expectedOrigin = new URL(DYKIL_URL, window.location.href).origin;
+
     const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== expectedOrigin) return;
       if (event.data?.type === 'survey-completed') {
         const completedSurveyId = event.data.surveyId;
         if (requiredSurveyIds.includes(completedSurveyId)) {

@@ -17,7 +17,9 @@ import {
   mkdirSync,
   readdirSync,
 } from "node:fs";
-import { join, resolve, extname } from "node:path";
+import { join, resolve, relative, isAbsolute, extname } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 // Emitted code still carries the workspace-internal @imajin/* specifiers. The
 // manifest is rewritten to depend on @ima-jin/*, so the source must agree or
@@ -33,6 +35,27 @@ const REWRITABLE_EXTENSIONS = new Set([
   ".tsx",
   ".map",
 ]);
+
+// This script is invoked from scripts/publish-package.sh while
+// NODE_AUTH_TOKEN (or GITHUB_TOKEN) is present in the surrounding shell
+// environment for the subsequent `npm publish` step. To guarantee that
+// credential can never reach a log line, this module reads no environment
+// variables at all — every value it logs below comes only from explicit,
+// non-secret sources: the CLI path arguments (already validated against an
+// allowed root before use), and fields read from the package's own
+// package.json (name, version, files, dependencies). Redacting secret values
+// after the fact (e.g. scanning log text for known token strings) was
+// deliberately rejected: it still requires reading the secret on the path to
+// the log sink, which is exactly the taint flow static analysis flags as a
+// leak risk regardless of the string replacement performed afterwards.
+
+// True when `target` (already resolved/canonicalized) is `root` itself or a
+// descendant of it. Used to confine CLI-supplied paths to an allowed root
+// instead of trusting `resolve()` output directly.
+export function isPathWithin(root, target) {
+  const rel = relative(root, target);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
 
 function rewriteScopeInTree(dir) {
   let rewritten = 0;
@@ -63,8 +86,36 @@ if (!pkgDir || !outDir) {
   process.exit(1);
 }
 
+// Allowed roots for CLI-supplied paths. Both are canonicalized once up front
+// so every later use of srcDir/destDir is guaranteed to already be validated,
+// rather than re-checked (or forgotten) at each call site.
+const REPO_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const PACKAGES_ROOT = join(REPO_ROOT, "packages");
+
+// The source is always a workspace package under packages/<name> (see the
+// module docstring and scripts/publish-package.sh) — never an arbitrary path.
 const srcDir = resolve(pkgDir);
+if (!isPathWithin(PACKAGES_ROOT, srcDir)) {
+  console.error(
+    `Refusing to read package dir outside ${PACKAGES_ROOT}: ${pkgDir}`
+  );
+  process.exit(1);
+}
+
+// The output dir is caller-chosen (scripts/publish-package.sh uses a fresh
+// `mktemp -d`), so it must stay within either the repo or the OS temp
+// directory rather than being trusted verbatim.
 const destDir = resolve(outDir);
+const ALLOWED_OUTPUT_ROOTS = [REPO_ROOT, resolve(tmpdir())];
+if (!ALLOWED_OUTPUT_ROOTS.some((root) => isPathWithin(root, destDir))) {
+  console.error(
+    `Refusing to write output outside allowed roots (${ALLOWED_OUTPUT_ROOTS.join(
+      ", "
+    )}): ${outDir}`
+  );
+  process.exit(1);
+}
+
 const packagesDir = resolve(srcDir, "..");
 
 // Read source package.json
