@@ -23,6 +23,7 @@ import {
   createOnboardToken,
   syncBuyerToEventChat,
   publishConfirmationEmails,
+  type CartEntry,
 } from '@/src/lib/webhook-payment-helpers';
 
 // Shared secret between pay service and events service.
@@ -136,6 +137,165 @@ async function migrateSoftDidToHard(email: string, hardDid: string, eventId: str
   }
 }
 
+// ---------------------------------------------------------------------------
+// handleCheckoutCompleted step helpers
+// ---------------------------------------------------------------------------
+
+async function isDuplicateWebhookOrder(sessionId: string): Promise<boolean> {
+  const existingOrder = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(eq(orders.stripeSessionId, sessionId))
+    .limit(1);
+  return existingOrder.length > 0;
+}
+
+async function loadWebhookEvent(eventId: string) {
+  const [event] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+  if (!event) {
+    throw new Error(`Event not found: ${eventId}`);
+  }
+  return event;
+}
+
+async function resolveWebhookTicketTypes(cart: CartEntry[], eventId: string) {
+  const allTypes = await db.select().from(ticketTypes).where(eq(ticketTypes.eventId, eventId));
+  const typesById = new Map(allTypes.map((t) => [t.id, t]));
+  for (const item of cart) {
+    if (!typesById.has(item.ticketTypeId)) {
+      throw new Error(`Ticket type not found: ${item.ticketTypeId}`);
+    }
+  }
+  return typesById;
+}
+
+/**
+ * Resolve the ticket owner DID: reuse the hard DID when the buyer was logged
+ * in at checkout time, otherwise create/resolve a soft DID from their email.
+ */
+async function resolveWebhookOwnerDid(
+  buyerDid: string | undefined,
+  customerEmail: string,
+  customerName: string | null | undefined,
+  eventId: string,
+): Promise<string> {
+  if (buyerDid) {
+    log.info({ ownerDid: buyerDid }, 'Buyer authenticated with hard DID');
+    await attachEmailToProfile(buyerDid, customerEmail);
+    await backfillContactEmail(buyerDid, customerEmail, log);
+    await migrateSoftDidToHard(customerEmail, buyerDid, eventId);
+    return buyerDid;
+  }
+
+  const softSession = await createSoftDidSession(customerEmail, customerName || undefined);
+  if (!softSession?.did) {
+    throw new Error(`Failed to create soft DID session for ${customerEmail}`);
+  }
+  await backfillContactEmail(softSession.did, customerEmail, log);
+  return softSession.did;
+}
+
+function publishWebhookTicketsPurchased(
+  createdTickets: Array<{ id: string; pricePaid: number | null }>,
+  event: { id: string; creatorDid: string },
+  ownerDid: string,
+  currency: string,
+): void {
+  for (const ticket of createdTickets) {
+    bus.publish('ticket.purchased', {
+      issuer: ownerDid, subject: event.creatorDid, scope: 'events',
+      payload: {
+        ticketId: ticket.id, eventId: event.id,
+        amount: ticket.pricePaid ?? 0, currency,
+        context_id: event.id, context_type: 'event',
+        to: ownerDid,
+        interestDids: [ownerDid],
+      }
+    });
+  }
+}
+
+interface WebhookSettlementParams {
+  ownerDid: string;
+  event: { id: string; did: string; creatorDid: string; metadata: unknown };
+  orderId: string;
+  amountTotal: number;
+  currency: string;
+  createdTickets: Array<{ id: string }>;
+  firstTypeId: string;
+  sessionId: string;
+}
+
+/**
+ * Trigger the .fair settlement + notification signal for a completed order.
+ * Non-fatal — settlement failures are logged, not thrown.
+ */
+async function triggerWebhookSettlement(params: WebhookSettlementParams): Promise<void> {
+  const { ownerDid, event, orderId, amountTotal, currency, createdTickets, firstTypeId, sessionId } = params;
+  const eventMetadata = (event.metadata || {}) as Record<string, any>;
+
+  try {
+    await bus.publish('order.completed', {
+      issuer: ownerDid, subject: event.creatorDid, scope: 'events',
+      payload: {
+        orderId,
+        eventId: event.id,
+        eventDid: event.did,
+        buyerDid: ownerDid,
+        amount: amountTotal,
+        currency,
+        fairManifest: eventMetadata.fair || null,
+        metadata: {
+          ticketIds: createdTickets.map(t => t.id),
+          ticketTypeId: firstTypeId,
+          stripeSessionId: sessionId,
+          eventId: event.id,
+        },
+        funded: true,
+        funded_provider: 'stripe',
+      }
+    });
+  } catch (settleError) {
+    log.error({ err: String(settleError) }, '[settle] Unexpected settlement error (non-fatal)');
+  }
+}
+
+interface WebhookRegistrationInfo {
+  magicLink?: string;
+  registrationUrl: string;
+}
+
+/**
+ * Build the onboard magic link and registration/tickets destination URL used
+ * in the confirmation email.
+ */
+async function resolveWebhookRegistrationInfo(
+  createdTickets: Array<{ id: string; registrationStatus?: string | null }>,
+  event: { id: string; title: string },
+  customerEmail: string,
+  customerName: string | null | undefined,
+): Promise<WebhookRegistrationInfo> {
+  const EVENTS_URL = buildPublicUrlAbsolute('events');
+  const eventsAuthUrl = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || buildPublicUrlAbsolute('auth');
+
+  const registrationPendingTickets = createdTickets.filter((t) => t.registrationStatus === 'pending');
+  const ctaTicket = registrationPendingTickets[0] ?? null;
+  const anyPendingRegistration = registrationPendingTickets.length > 0;
+
+  const onboardRedirectUrl = ctaTicket
+    ? eventRegisterUrl(EVENTS_URL, event.id, ctaTicket.id)
+    : eventMyTicketsUrl(EVENTS_URL, event.id);
+
+  const onboardToken = await createOnboardToken(customerEmail, customerName, onboardRedirectUrl, event.title, log);
+  const magicLink = onboardToken ? `${eventsAuthUrl}/api/onboard/verify?token=${onboardToken}` : undefined;
+  const registrationBaseUrl = onboardToken
+    ? `${eventsAuthUrl}/api/onboard/verify?token=${onboardToken}`
+    : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id);
+  const registrationUrl = anyPendingRegistration ? registrationBaseUrl : eventMyTicketsUrl(EVENTS_URL, event.id);
+
+  return { magicLink, registrationUrl };
+}
+
 interface PaymentWebhookPayload {
   type: 'checkout.completed' | 'payment.failed';
   sessionId: string;
@@ -194,13 +354,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const totalQuantity = cart.reduce((sum, c) => sum + c.quantity, 0);
 
   // Idempotency: check if an order for this Stripe session already exists
-  const existingOrder = await db
-    .select({ id: orders.id })
-    .from(orders)
-    .where(eq(orders.stripeSessionId, sessionId))
-    .limit(1);
-
-  if (existingOrder.length > 0) {
+  if (await isDuplicateWebhookOrder(sessionId)) {
     log.info({ sessionId }, 'Duplicate webhook — order already exists for session');
     return;
   }
@@ -209,45 +363,15 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     throw new Error('Customer email is required for ticket creation');
   }
 
-  const [event] = await db
-    .select()
-    .from(events)
-    .where(eq(events.id, metadata.eventId))
-    .limit(1);
-
-  if (!event) {
-    throw new Error(`Event not found: ${metadata.eventId}`);
-  }
+  const event = await loadWebhookEvent(metadata.eventId);
 
   // Fetch all ticket types referenced in cart
-  const allTypes = await db.select().from(ticketTypes).where(eq(ticketTypes.eventId, metadata.eventId));
-  const typesById = new Map(allTypes.map(t => [t.id, t]));
-  for (const item of cart) {
-    if (!typesById.has(item.ticketTypeId)) {
-      throw new Error(`Ticket type not found: ${item.ticketTypeId}`);
-    }
-  }
+  const typesById = await resolveWebhookTicketTypes(cart, metadata.eventId);
   // Use first type for backward-compat fields that need a single value
   const firstType = typesById.get(cart[0].ticketTypeId)!;
 
   // Resolve owner DID: use hard DID if buyer was logged in, otherwise create soft DID
-  let ownerDid: string;
-
-  if (metadata.buyerDid) {
-    ownerDid = metadata.buyerDid;
-    log.info({ ownerDid }, 'Buyer authenticated with hard DID');
-
-    await attachEmailToProfile(ownerDid, customerEmail);
-    await backfillContactEmail(ownerDid, customerEmail, log);
-    await migrateSoftDidToHard(customerEmail, ownerDid, event.id);
-  } else {
-    const softSession = await createSoftDidSession(customerEmail, customerName || undefined);
-    if (!softSession?.did) {
-      throw new Error(`Failed to create soft DID session for ${customerEmail}`);
-    }
-    ownerDid = softSession.did;
-    await backfillContactEmail(ownerDid, customerEmail, log);
-  }
+  const ownerDid = await resolveWebhookOwnerDid(metadata.buyerDid, customerEmail, customerName, event.id);
 
   const { tickets: createdTickets, order } = await createOrderWithTickets({
     eventId: event.id,
@@ -280,18 +404,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   const orderId = order.id;
 
   // Per-ticket attestation: fire-and-forget so we never block the response.
-  for (const ticket of createdTickets) {
-    bus.publish('ticket.purchased', {
-      issuer: ownerDid, subject: event.creatorDid, scope: 'events',
-      payload: {
-        ticketId: ticket.id, eventId: event.id,
-        amount: ticket.pricePaid ?? 0, currency,
-        context_id: event.id, context_type: 'event',
-        to: ownerDid,
-        interestDids: [ownerDid],
-      }
-    });
-  }
+  publishWebhookTicketsPurchased(createdTickets, event, ownerDid, currency);
 
   log.info({ count: createdTickets.length, orderId, customerEmail }, 'Order + tickets created');
 
@@ -302,50 +415,24 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
   }
 
   // Trigger settlement and notification signals via bus
-  const eventMetadata = (event.metadata || {}) as Record<string, any>;
-  try {
-    await bus.publish('order.completed', {
-      issuer: ownerDid, subject: event.creatorDid, scope: 'events',
-      payload: {
-        orderId,
-        eventId: event.id,
-        eventDid: event.did,
-        buyerDid: ownerDid,
-        amount: amountTotal,
-        currency,
-        fairManifest: eventMetadata.fair || null,
-        metadata: {
-          ticketIds: createdTickets.map(t => t.id),
-          ticketTypeId: firstType.id,
-          stripeSessionId: sessionId,
-          eventId: event.id,
-        },
-        funded: true,
-        funded_provider: 'stripe',
-      }
-    });
-  } catch (settleError) {
-    log.error({ err: String(settleError) }, '[settle] Unexpected settlement error (non-fatal)');
-  }
+  await triggerWebhookSettlement({
+    ownerDid,
+    event,
+    orderId,
+    amountTotal,
+    currency,
+    createdTickets,
+    firstTypeId: firstType.id,
+    sessionId,
+  });
 
   // Build onboard token for magic-link auth in confirmation email
-  const EVENTS_URL = buildPublicUrlAbsolute('events');
-  const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL || process.env.AUTH_URL || buildPublicUrlAbsolute('auth');
-
-  const registrationPendingTickets = createdTickets.filter((t) => t.registrationStatus === 'pending');
-  const ctaTicket = registrationPendingTickets[0] ?? null;
-  const anyPendingRegistration = registrationPendingTickets.length > 0;
-
-  const onboardRedirectUrl = ctaTicket
-    ? eventRegisterUrl(EVENTS_URL, event.id, ctaTicket.id)
-    : eventMyTicketsUrl(EVENTS_URL, event.id);
-
-  const onboardToken = await createOnboardToken(customerEmail, customerName, onboardRedirectUrl, event.title, log);
-  const magicLink = onboardToken ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}` : undefined;
-  const registrationBaseUrl = onboardToken
-    ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`
-    : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id);
-  const registrationUrl = anyPendingRegistration ? registrationBaseUrl : eventMyTicketsUrl(EVENTS_URL, event.id);
+  const { magicLink, registrationUrl } = await resolveWebhookRegistrationInfo(
+    createdTickets,
+    event,
+    customerEmail,
+    customerName,
+  );
 
   await publishConfirmationEmails({
     customerEmail,

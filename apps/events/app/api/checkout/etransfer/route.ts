@@ -8,18 +8,16 @@
 
 import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
-import { db, events } from '@/src/db';
-import { eq } from 'drizzle-orm';
 import {
   validateCart,
-  resolveCheckoutIdentity,
-  validateInviteAccess,
+  resolveInviteAccessForEvent,
   createOrderWithTickets,
+  loadPublishedEvent,
   CheckoutValidationError,
 } from '@/src/lib/checkout-common';
 import {
   normalizeAndCoalesceCart,
-  handleAnonymousMagicLink,
+  resolveEtransferBuyer,
   findExistingEtransferOrder,
   resolveBuyerEmailFromDb,
   publishReservationEmail,
@@ -56,51 +54,26 @@ export const POST = withLogger('events', async (request, { log }) => {
 
     // Resolve identity from session (any tier). The anonymous-with-email branch
     // short-circuits to a "verification email sent" reply.
-    const identity = await resolveCheckoutIdentity(request, { email: body.email }, log);
-
-    let ownerDid: string;
-    let ownerEmail: string | undefined;
-
-    if (identity.did) {
-      ownerDid = identity.did;
-      ownerEmail = identity.email;
-
-      // Validate we have an email for ticket delivery
-      if (!ownerEmail) {
-        return NextResponse.json(
-          { error: 'Email required to send your ticket', field: 'email' },
-          { status: 400 },
-        );
-      }
-    } else if (body.email) {
-      // Anonymous buyer with an email but no session: send a magic-link
-      // verification email. This proves email ownership before reserving inventory.
-      return handleAnonymousMagicLink({ email: body.email, name: body.name, eventId: body.eventId, invite: body.invite, totalQuantity, log });
-    } else {
-      return NextResponse.json(
-        { error: 'Not authenticated. Please log in or provide an email address.' },
-        { status: 401 },
-      );
+    const buyerResult = await resolveEtransferBuyer(request, body, totalQuantity, log);
+    if (buyerResult instanceof NextResponse) {
+      return buyerResult;
     }
+    const { ownerDid, ownerEmail } = buyerResult;
 
     // Fetch event for downstream emtEmail + invite + emails
-    const [event] = await db.select().from(events).where(eq(events.id, body.eventId)).limit(1);
-    if (!event) {
-      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    const eventResult = await loadPublishedEvent(body.eventId);
+    if ('error' in eventResult) {
+      return NextResponse.json({ error: eventResult.error }, { status: eventResult.status });
     }
-    if (event.status !== 'published') {
-      return NextResponse.json({ error: 'Tickets are not available for this event' }, { status: 400 });
-    }
+    const { event } = eventResult;
 
     const etransferEmail = (event as any).emtEmail;
     if (!etransferEmail) {
       return NextResponse.json({ error: 'e-Transfer is not available for this event' }, { status: 400 });
     }
 
-    if (event.accessMode === 'invite_only') {
-      const token = body.invite || request.nextUrl.searchParams.get('invite');
-      await validateInviteAccess(body.eventId, token);
-    }
+    const inviteToken = body.invite || request.nextUrl.searchParams.get('invite');
+    await resolveInviteAccessForEvent(event, inviteToken);
 
     // First validateCart pass: types exist + currency consistency. Availability
     // is deferred until AFTER duplicate-pending-order detection so a buyer
