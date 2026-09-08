@@ -150,16 +150,19 @@ describe('decideOperatorApproval', () => {
     );
   });
 
-  it('denies a pending proposal', async () => {
+  it.each([
+    { decision: 'deny' as const, fromStatus: 'pending' as const, toStatus: 'denied' as const },
+    { decision: 'withdrawn' as const, fromStatus: 'approved' as const, toStatus: 'withdrawn' as const },
+  ])('transitions $fromStatus -> $toStatus for decision=$decision', async ({ decision, fromStatus, toStatus }) => {
     mockSelectLimit
-      .mockResolvedValueOnce([row({ status: 'pending' })])
-      .mockResolvedValueOnce([row({ status: 'denied' })]);
+      .mockResolvedValueOnce([row({ status: fromStatus })])
+      .mockResolvedValueOnce([row({ status: toStatus })]);
 
-    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'deny' });
+    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision });
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok result');
-    expect(result.card.status).toBe('denied');
+    expect(result.card.status).toBe(toStatus);
   });
 
   it('rejects deciding a proposal addressed to a different operator DID (404, not a leak)', async () => {
@@ -179,47 +182,20 @@ describe('decideOperatorApproval', () => {
     expect(result).toEqual({ ok: false, error: 'Proposal not found', status: 404 });
   });
 
-  it('rejects approving an already-decided proposal', async () => {
-    mockSelectLimit.mockResolvedValueOnce([row({ status: 'denied' })]);
+  it.each([
+    { label: 'approving an already-decided proposal', currentStatus: 'denied' as const, decision: 'approve' as const },
+    { label: 'withdrawing a proposal that was never approved (still pending)', currentStatus: 'pending' as const, decision: 'withdrawn' as const },
+    // #2059 acceptance (f): withdrawal is only legal while pending-apply.
+    { label: 'withdrawing a proposal that has already been applied', currentStatus: 'applied' as const, decision: 'withdrawn' as const },
+  ])('rejects (409) $label', async ({ currentStatus, decision }) => {
+    mockSelectLimit.mockResolvedValueOnce([row({ status: currentStatus })]);
 
-    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision });
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected failure result');
     expect(result.status).toBe(409);
     expect(mockSignSync).not.toHaveBeenCalled();
-  });
-
-  it('withdraws an approved (pending-apply) proposal', async () => {
-    mockSelectLimit
-      .mockResolvedValueOnce([row({ status: 'approved' })])
-      .mockResolvedValueOnce([row({ status: 'withdrawn' })]);
-
-    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'withdrawn' });
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('expected ok result');
-    expect(result.card.status).toBe('withdrawn');
-  });
-
-  it('rejects withdrawing a proposal that was never approved (still pending)', async () => {
-    mockSelectLimit.mockResolvedValueOnce([row({ status: 'pending' })]);
-
-    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'withdrawn' });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('expected failure result');
-    expect(result.status).toBe(409);
-  });
-
-  it('rejects withdrawing a proposal that has already been applied (#2059 acceptance (f))', async () => {
-    mockSelectLimit.mockResolvedValueOnce([row({ status: 'applied' })]);
-
-    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'withdrawn' });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('expected failure result');
-    expect(result.status).toBe(409);
     expect(mockPublish).not.toHaveBeenCalled();
   });
 

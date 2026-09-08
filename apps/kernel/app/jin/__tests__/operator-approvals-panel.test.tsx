@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { OperatorApprovalsPanel } from '../operator-approvals-panel';
+import { installIntervalSpy } from './panel-test-support';
 
 interface ApprovalFixture {
   proposalId: string;
@@ -54,16 +55,6 @@ function installFetch(
   });
   vi.stubGlobal('fetch', spy);
   return spy;
-}
-
-function installIntervalSpy(): Array<() => void> {
-  const callbacks: Array<() => void> = [];
-  vi.stubGlobal('setInterval', vi.fn((cb: () => void) => {
-    callbacks.push(cb);
-    return 1 as unknown as ReturnType<typeof setInterval>;
-  }));
-  vi.stubGlobal('clearInterval', vi.fn());
-  return callbacks;
 }
 
 afterEach(() => {
@@ -114,48 +105,6 @@ describe('operator — pending proposal', () => {
     expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
   });
 
-  it('approves the proposal, posts the decision, and refreshes the list', async () => {
-    const spy = installFetch(
-      [
-        { isOperator: true, approvals: [approval()] },
-        { isOperator: true, approvals: [approval({ status: 'approved' })] },
-      ],
-      { ok: true, body: { approval: approval({ status: 'approved' }) } },
-    );
-    render(<OperatorApprovalsPanel />);
-    await screen.findByRole('button', { name: 'Approve' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
-
-    await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
-    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
-    expect(decisionCall?.[0]).toBe('/jin/api/operator-approvals/opap_1/decision');
-    expect(decisionCall?.[1]).toMatchObject({
-      method: 'POST',
-      credentials: 'include',
-      body: JSON.stringify({ decision: 'approve' }),
-    });
-    await waitFor(() => expect(screen.getByText('approved — pending apply')).toBeDefined());
-  });
-
-  it('denies the proposal', async () => {
-    const spy = installFetch(
-      [
-        { isOperator: true, approvals: [approval()] },
-        { isOperator: true, approvals: [approval({ status: 'denied' })] },
-      ],
-      { ok: true, body: { approval: approval({ status: 'denied' }) } },
-    );
-    render(<OperatorApprovalsPanel />);
-    await screen.findByRole('button', { name: 'Deny' });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
-
-    await waitFor(() => expect(screen.getByText('Proposal deny.')).toBeDefined());
-    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
-    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'deny' }) });
-  });
-
   it('shows the server error message and does not refresh when the decision request fails', async () => {
     installFetch(
       [{ isOperator: true, approvals: [approval()] }],
@@ -189,23 +138,35 @@ describe('operator — approved (pending-apply) proposal', () => {
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
   });
+});
 
-  it('withdraws the proposal (#2059 acceptance (f))', async () => {
+// Approve/Deny/Withdraw share the same request/refresh shape (post the
+// decision, flash "Proposal <decision>.", then show the refreshed status) —
+// parameterized instead of three near-identical test bodies.
+describe.each([
+  { buttonName: 'Approve', decision: 'approve', from: approval(), to: approval({ status: 'approved' }), resultingStatusText: 'approved — pending apply' },
+  { buttonName: 'Deny', decision: 'deny', from: approval(), to: approval({ status: 'denied' }), resultingStatusText: 'denied' },
+  { buttonName: 'Withdraw', decision: 'withdrawn', from: approval({ status: 'approved' }), to: approval({ status: 'withdrawn' }), resultingStatusText: 'withdrawn' },
+])('operator — $buttonName action', ({ buttonName, decision, from, to, resultingStatusText }) => {
+  it(`posts decision=${decision} and refreshes to the new state`, async () => {
     const spy = installFetch(
-      [
-        { isOperator: true, approvals: [approval({ status: 'approved' })] },
-        { isOperator: true, approvals: [approval({ status: 'withdrawn' })] },
-      ],
-      { ok: true, body: { approval: approval({ status: 'withdrawn' }) } },
+      [{ isOperator: true, approvals: [from] }, { isOperator: true, approvals: [to] }],
+      { ok: true, body: { approval: to } },
     );
     render(<OperatorApprovalsPanel />);
-    await screen.findByRole('button', { name: 'Withdraw' });
+    await screen.findByRole('button', { name: buttonName });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+    fireEvent.click(screen.getByRole('button', { name: buttonName }));
 
-    await waitFor(() => expect(screen.getByText('Proposal withdrawn.')).toBeDefined());
+    await waitFor(() => expect(screen.getByText(`Proposal ${decision}.`)).toBeDefined());
     const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
-    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'withdrawn' }) });
+    expect(decisionCall?.[0]).toBe('/jin/api/operator-approvals/opap_1/decision');
+    expect(decisionCall?.[1]).toMatchObject({
+      method: 'POST',
+      credentials: 'include',
+      body: JSON.stringify({ decision }),
+    });
+    await waitFor(() => expect(screen.getByText(resultingStatusText)).toBeDefined());
   });
 });
 

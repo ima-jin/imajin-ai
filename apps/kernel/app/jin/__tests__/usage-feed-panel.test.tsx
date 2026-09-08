@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, waitFor, within, fireEvent } from '@testing-library/react';
 import type { TurnUsageRow } from '../usage-feed-grouping';
+import { installIntervalSpy } from './panel-test-support';
 
 // `useSearchParams` needs a Next router context that does not exist outside
 // the app runtime — stub it per-test so `?subject_did=` overrides can be
@@ -76,22 +77,6 @@ async function renderPanel(rows: TurnUsageRow[]) {
   render(<UsageFeedPanel />);
   await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
   return spy;
-}
-
-/**
- * Stub `setInterval`/`clearInterval` so the poll tick can be driven
- * deterministically (invoking the captured callback directly) instead of
- * depending on fake-timer/real-timer interplay with async fetch + React
- * effects, which is flaky in combination with `@testing-library/react`.
- */
-function installIntervalSpy(): Array<() => void> {
-  const callbacks: Array<() => void> = [];
-  vi.stubGlobal('setInterval', vi.fn((cb: () => void) => {
-    callbacks.push(cb);
-    return 1 as unknown as ReturnType<typeof setInterval>;
-  }));
-  vi.stubGlobal('clearInterval', vi.fn());
-  return callbacks;
 }
 
 beforeEach(() => {
