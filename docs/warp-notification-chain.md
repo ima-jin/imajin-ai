@@ -158,34 +158,105 @@ any delegate registered via `register_also` (`ws-server.js:230-233`,
 connected (`sendToDid` returns `false`) used to be a dead end on the kernel
 side beyond the persisted row. It no longer is: `notify.notifications` now
 carries a nullable `delivered_at` (migration
-`0129_notify_notifications_delivered_at.sql`) that is distinct from `read`
-and means "reached a live WS frame at least once". `pushNotificationToDid`
-claims a row (an atomic `UPDATE ... WHERE delivered_at IS NULL RETURNING`,
-`apps/kernel/src/lib/notify/delivery.ts`) before attempting the push, and
-releases the claim again if the push does not actually reach a socket.
+`0129_notify_notifications_delivered_at.sql`) that is distinct from `read`.
 `ws-server.js`'s connection handler asks the kernel for that DID's
 undelivered backlog immediately after sending `{type: 'connected'}`
 (`POST /notify/api/internal/backlog` →
 `apps/kernel/src/lib/notify/backlog.ts`'s `getNotificationBacklog`, oldest
-first, capped at 100), claiming each row the same way before replaying it
-as a `NotificationWsFrame` with `replay: true`
-(`apps/kernel/src/lib/ws/notification-backlog.js`). The shared
-`delivered_at IS NULL` claim is what keeps a live push and a backlog replay
-racing the same row from ever delivering it twice — whichever claims it
-first is the only one that pushes.
+first, capped at 100), replaying each eligible row as a
+`NotificationWsFrame` with `replay: true`
+(`apps/kernel/src/lib/ws/notification-backlog.js`).
 
 `GET /notify/api/notifications` and `GET /notify/api/notifications/unread`
 still exist for a client to poll, and `openclaw-imajin-plugin` still never
 calls either (confirmed by `git grep -n "notifications\|/notify/" src` in
 that repo returning no REST call sites) — the kernel-side replay above
 means it no longer needs to, per #2044's kernel-side option. See
-"Incidents 2026-09-05" (a) and (b) below for the state before this fix.
+"Incidents 2026-09-05" (a) and (b) below for the state before this fix, and
+"WS heartbeat + ack-confirmed delivery (#2099)" below for what `delivered_at`
+means today — #2044's own claim/release design ("claims a row before
+attempting the push, releases the claim again if the push does not reach a
+socket") is superseded by that section; a live `.send()` no longer sets
+`delivered_at` on its own.
 
 **Grep:** `"Notification WS push failed"` / `"Notification WS push error"`
-(`ws-push.ts:103,116` after this PR's fix — previously `:91,98`); the new
-`"Notification WS push found no connected socket for recipient"`
-(`ws-push.ts:110-113`); `"Notification delivery claim failed"` /
-`"Notification delivery claim release failed"` (`ws-push.ts`, #2044).
+(`ws-push.ts`); `"Notification WS push found no connected socket for
+recipient"` (`ws-push.ts`); `"Notification WS claim failed"` /
+`"Notification WS claim rollback failed"` (`ws-push.ts`); `"Notification WS
+re-offer cap reached"` (`ws-push.ts`, `backlog.ts`).
+
+## WS heartbeat + ack-confirmed delivery (#2099)
+
+**The gap (#2098, Candidate A).** #2044's redelivery design used
+`delivered_at` to mean two different things at once: "a live `.send()` call
+reported the socket as OPEN" and "the recipient actually has this". Those
+collapse to the same thing only if a socket's `readyState` can be trusted —
+and it can't, for a peer that crashes without a clean TCP close (a hard
+gateway/turn crash rather than a normal disconnect). `ws-server.js` had no
+server-side liveness check: only client→server `{type: 'ping'}` handling and
+cleanup on the socket's own `close` event, which a crashed peer never fires.
+`sendToDid` kept reporting `sent = true` for that socket indefinitely,
+`pushNotificationToDid` marked the row delivered on the strength of that,
+and `getNotificationBacklog`'s `delivered_at IS NULL` filter then
+permanently excluded the row from replay — the exact failure mode that lost
+two `warp.run.completed` wakes on 2026-09-08.
+
+**Fix, in two parts.**
+
+1. **Server-initiated heartbeat** (`apps/kernel/src/lib/ws/heartbeat.js`,
+   wired into `ws-server.js`). Every tracked socket is `ws.ping()`'d on a
+   30s interval; a `pong` marks it alive again. A socket that misses two
+   consecutive pongs is presumed dead: `ws.terminate()`d, removed from
+   `didSockets`/`socketMeta` immediately (`cleanupSocket`, shared with the
+   normal `close` handler via a `cleanedUpSockets` guard so the two paths
+   never double-run), and has its DID's un-acked WS claims released
+   (`releaseWsClaimsForDid`, via `POST /notify/api/internal/release`) — all
+   before the underlying connection is actually torn down.
+2. **Ack-confirmed delivery.** The plugin sends an explicit frame once it
+   has actually processed a notification:
+   ```json
+   { "type": "notification_ack", "id": "<notification id>" }
+   ```
+   `ws-server.js`'s message handler forwards this to
+   `POST /notify/api/internal/ack`, which calls
+   `ackNotificationDelivery` (`apps/kernel/src/lib/notify/delivery.ts`) —
+   the **only** place `delivered_at` is ever set now. It is a no-op, not an
+   error, for an unknown or already-acked id (an atomic
+   `UPDATE ... WHERE delivered_at IS NULL RETURNING`), since the plugin
+   dedups by notification id on its own and a duplicate/late ack has
+   nowhere useful to report a failure to anyway.
+
+**Claim lifecycle.** Migration `0131_notify_notifications_ws_ack.sql` adds
+two columns that separate "attempted a WS send" from "confirmed delivered":
+`ws_sent_at` (claim/attempt timestamp) and `ws_attempts` (cumulative attempt
+count). `claimNotificationForWsSend` is the atomic guard both a live push
+and a backlog replay claim through — eligible when `delivered_at IS NULL`,
+`ws_attempts < 3`, and `ws_sent_at` is either `NULL` or older than the 30s
+ack timeout. A claim records the attempt (`ws_sent_at` = now, `ws_attempts`
++ 1) but never touches `delivered_at`. Three ways a claimed-but-unacked row
+becomes eligible again:
+- **Timeout** — once `ws_sent_at` is more than 30s old, the next backlog
+  fetch's claim attempt simply succeeds again (no explicit "release" step
+  needed — the eligibility check itself is time-based).
+- **Heartbeat release** — `releaseWsClaimsForDid` resets `ws_sent_at` to
+  `NULL` for every un-acked row belonging to a DID whose socket the
+  heartbeat just terminated, so a fast reconnect does not have to wait out
+  the 30s timeout. Leaves `ws_attempts` untouched: that send genuinely
+  reached a socket the server believed was live, so it still counts as a
+  spent re-offer.
+- **Rollback** — `rollbackWsClaim` fully undoes a claim that never actually
+  reached a live socket at all (no open connection found, or the internal
+  push route itself failed): resets both `ws_sent_at` and decrements
+  `ws_attempts`, since a send that never left the server should cost
+  nothing.
+
+**Compat / anti-storm cap.** An old plugin build that never sends the ack
+frame must not be re-offered the same notification forever across
+reconnects: `ws_attempts` caps re-offers at 3 (`WS_MAX_ATTEMPTS`,
+`delivery.ts`), and both `ws-push.ts` and `backlog.ts` log a `warn` the
+moment a claim spends the last permitted attempt (`"Notification WS
+re-offer cap reached"`). The row still exists and is still readable via
+`GET /notify/api/notifications`; it simply stops being re-pushed over WS.
 
 ## Incidents 2026-09-05
 
@@ -449,5 +520,13 @@ fresh run's watch and the sweep already did for segment 1 — no change to
   reconnecting DID's undelivered backlog itself (see the redelivery
   paragraph in Hop 3 above), so the plugin needs no client-side catch-up
   read of `GET /notify/api/notifications`/`/unread` to get this guarantee.
-  The shared `delivered_at IS NULL` claim keeps a live push and a backlog
-  replay from ever delivering the same notification twice.
+  Superseded in part by #2099 below: the original design's `delivered_at IS
+  NULL` claim conflated "attempted a WS send" with "confirmed delivered".
+- [#2098](https://github.com/ima-jin/imajin-ai/issues/2098) /
+  [#2099](https://github.com/ima-jin/imajin-ai/issues/2099) — **fixed.** A
+  dead gateway socket (crashed without a clean close) could still be marked
+  `delivered_at` by a live `.send()` that reported `readyState === OPEN`,
+  permanently stranding the notification from `getNotificationBacklog`'s
+  replay. See "WS heartbeat + ack-confirmed delivery (#2099)" above for the
+  server-initiated ping/pong heartbeat and the plugin's explicit
+  `notification_ack` frame that now gate `delivered_at`.

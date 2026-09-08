@@ -11,15 +11,22 @@
  * `{type: 'connected'}`, and replays whatever it returns down that socket.
  *
  * Every candidate row is claimed one at a time with the same atomic
- * `delivered_at IS NULL` guard a live push uses (`delivery.ts`) before it is
- * turned into a frame, so a notification created at the exact instant its
- * recipient reconnects is delivered exactly once — by whichever of the two
- * paths claims it first, never both.
+ * WS-send-attempt guard a live push uses (`delivery.ts`) before it is turned
+ * into a frame, so a notification created at the exact instant its
+ * recipient reconnects is attempted exactly once -- by whichever of the two
+ * paths claims it first, never both. The claim also re-validates eligibility
+ * (#2099): a row this SELECT finds is skipped, not replayed, when it is
+ * still within its ack grace period or has exhausted its re-offer cap --
+ * the same "lost the race" tolerance already applied to a claim a
+ * concurrent live push won first.
  */
+import { createLogger } from '@imajin/logger';
 import { db, notifications } from '@/src/db';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { buildNotificationFrame, type NotificationWsFrame } from './ws-push';
-import { claimNotificationForDelivery } from './delivery';
+import { claimNotificationForWsSend, WS_MAX_ATTEMPTS } from './delivery';
+
+const log = createLogger('kernel');
 
 /**
  * Cap on how many notifications one reconnect replays. Generous enough to
@@ -36,10 +43,11 @@ export interface NotificationBacklog {
 }
 
 /**
- * Undelivered, unread notifications for `recipientDid`, oldest first, each
- * atomically claimed for delivery before being turned into a frame. A row
- * this call cannot claim (lost the race to a concurrent live push) is simply
- * skipped, not retried, since the other path is already delivering it. Callers
+ * Un-acked, unread notifications for `recipientDid`, oldest first, each
+ * atomically claimed for a WS send attempt before being turned into a
+ * frame. A row this call cannot claim -- lost the race to a concurrent live
+ * push, still within its ack grace period, or has exhausted its re-offer
+ * cap (#2099) -- is simply skipped, not retried, on this pass. Callers
  * decide how to handle a thrown DB error — the internal route this backs
  * (`/notify/api/internal/backlog`) treats it as "nothing to replay this time".
  */
@@ -62,8 +70,11 @@ export async function getNotificationBacklog(recipientDid: string): Promise<Noti
 
   const frames: NotificationWsFrame[] = [];
   for (const row of toClaim) {
-    const claimed = await claimNotificationForDelivery(row.id);
+    const { claimed, attempts } = await claimNotificationForWsSend(row.id);
     if (!claimed) continue;
+    if (attempts >= WS_MAX_ATTEMPTS) {
+      log.warn({ id: row.id, recipientDid, attempts }, 'Notification WS re-offer cap reached');
+    }
     frames.push({
       ...buildNotificationFrame({
         id: row.id,

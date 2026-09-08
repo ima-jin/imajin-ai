@@ -1,17 +1,20 @@
 /**
- * Notification WebSocket push (#1644).
+ * Notification WebSocket push (#1644, #2099).
  *
  * The push is the difference between an agent being woken by a completed Warp run
  * and having to poll for it, so what matters here is the frame that reaches the
  * socket and the guarantee that a failed push never becomes a thrown error — the
- * notification row is already persisted by the time this runs.
+ * notification row is already persisted by the time this runs. Since #2099, a
+ * successful `.send()` no longer marks the row delivered on its own — only an
+ * explicit ack does that (delivery.ts) — so this module's job is narrowed to
+ * claiming/rolling back the WS-send *attempt*.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { logMock, mockClaim, mockRelease } = vi.hoisted(() => ({
+const { logMock, mockClaim, mockRollback } = vi.hoisted(() => ({
   logMock: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
   mockClaim: vi.fn(),
-  mockRelease: vi.fn(),
+  mockRollback: vi.fn(),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -19,8 +22,9 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 vi.mock('../delivery', () => ({
-  claimNotificationForDelivery: mockClaim,
-  releaseNotificationClaim: mockRelease,
+  claimNotificationForWsSend: mockClaim,
+  rollbackWsClaim: mockRollback,
+  WS_MAX_ATTEMPTS: 3,
 }));
 
 const RECIPIENT = 'did:imajin:veteze';
@@ -59,8 +63,8 @@ beforeEach(() => {
   logMock.error.mockReset();
   logMock.info.mockReset();
   logMock.warn.mockReset();
-  mockClaim.mockReset().mockResolvedValue(true);
-  mockRelease.mockReset().mockResolvedValue(undefined);
+  mockClaim.mockReset().mockResolvedValue({ claimed: true, attempts: 1 });
+  mockRollback.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -151,9 +155,6 @@ describe('pushNotificationToDid', () => {
   });
 
   it('warns when nobody was connected, instead of staying silent (2026-09-05 incident)', async () => {
-    // Before the fix this branch (res.ok but delivered: false) logged nothing at
-    // all, unlike the error branches below — a genuinely missed live push for a
-    // completed run left no trace anywhere of why the owner never got pinged.
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: false }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -205,9 +206,9 @@ describe('pushNotificationToDid', () => {
   });
 });
 
-// ─── Delivery claim guard (#2044) ───────────────────────────────────────────
+// ─── WS-send claim guard (#2044, #2099) ─────────────────────────────────────
 
-describe('pushNotificationToDid — delivery claim guard', () => {
+describe('pushNotificationToDid — WS-send claim guard', () => {
   const FRAME = {
     type: 'notification' as const,
     id: 'ntf_abc123',
@@ -230,7 +231,7 @@ describe('pushNotificationToDid — delivery claim guard', () => {
   });
 
   it('does not push when the row was already claimed — e.g. a backlog replay won the race', async () => {
-    mockClaim.mockResolvedValueOnce(false);
+    mockClaim.mockResolvedValueOnce({ claimed: false, attempts: 0 });
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
@@ -239,47 +240,60 @@ describe('pushNotificationToDid — delivery claim guard', () => {
 
     expect(delivered).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(mockRelease).not.toHaveBeenCalled();
+    expect(mockRollback).not.toHaveBeenCalled();
   });
 
-  it('keeps the claim (never releases it) when the push actually delivers', async () => {
+  it('does not roll back the claim when the push actually delivers', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: true }));
     vi.stubGlobal('fetch', fetchMock);
 
     const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
     await pushNotificationToDid(RECIPIENT, FRAME);
 
-    expect(mockRelease).not.toHaveBeenCalled();
+    expect(mockRollback).not.toHaveBeenCalled();
   });
 
-  it('releases the claim when nobody was connected, so a later backlog replay can still deliver it', async () => {
+  it('never sets delivered_at itself -- a live send is not an ack (#2099)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+    await pushNotificationToDid(RECIPIENT, FRAME);
+
+    // The only DB-touching calls this module ever makes are the claim and,
+    // on a failed attempt, the rollback -- never anything ack-shaped.
+    expect(mockClaim).toHaveBeenCalledTimes(1);
+    expect(mockRollback).not.toHaveBeenCalled();
+  });
+
+  it('rolls back the claim when nobody was connected, so a later backlog replay can still attempt it', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: false }));
     vi.stubGlobal('fetch', fetchMock);
 
     const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
     await pushNotificationToDid(RECIPIENT, FRAME);
 
-    expect(mockRelease).toHaveBeenCalledWith(FRAME.id);
+    expect(mockRollback).toHaveBeenCalledWith(FRAME.id);
   });
 
-  it('releases the claim on a non-2xx response', async () => {
+  it('rolls back the claim on a non-2xx response', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: 'nope' }, 500));
     vi.stubGlobal('fetch', fetchMock);
 
     const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
     await pushNotificationToDid(RECIPIENT, FRAME);
 
-    expect(mockRelease).toHaveBeenCalledWith(FRAME.id);
+    expect(mockRollback).toHaveBeenCalledWith(FRAME.id);
   });
 
-  it('releases the claim on a transport failure', async () => {
+  it('rolls back the claim on a transport failure', async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
     vi.stubGlobal('fetch', fetchMock);
 
     const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
     await pushNotificationToDid(RECIPIENT, FRAME);
 
-    expect(mockRelease).toHaveBeenCalledWith(FRAME.id);
+    expect(mockRollback).toHaveBeenCalledWith(FRAME.id);
   });
 
   it('fails open — still pushes — when the claim lookup itself throws', async () => {
@@ -294,8 +308,8 @@ describe('pushNotificationToDid — delivery claim guard', () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
-  it('does not throw when releasing the claim itself fails', async () => {
-    mockRelease.mockRejectedValueOnce(new Error('connection refused'));
+  it('does not throw when rolling back the claim itself fails', async () => {
+    mockRollback.mockRejectedValueOnce(new Error('connection refused'));
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: false }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -304,7 +318,7 @@ describe('pushNotificationToDid — delivery claim guard', () => {
     await expect(pushNotificationToDid(RECIPIENT, FRAME)).resolves.toBe(false);
   });
 
-  it('never claims when no internal key is configured, so a disabled push cannot mark a row delivered', async () => {
+  it('never claims when no internal key is configured, so a disabled push cannot spend a re-offer', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
@@ -312,5 +326,33 @@ describe('pushNotificationToDid — delivery claim guard', () => {
     await pushNotificationToDid(RECIPIENT, FRAME);
 
     expect(mockClaim).not.toHaveBeenCalled();
+  });
+
+  it('warns when this attempt spends the row\'s last permitted re-offer', async () => {
+    mockClaim.mockResolvedValueOnce({ claimed: true, attempts: 3 });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+    await pushNotificationToDid(RECIPIENT, FRAME);
+
+    expect(logMock.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ id: FRAME.id, attempts: 3 }),
+      expect.stringContaining('re-offer cap'),
+    );
+  });
+
+  it('does not warn about the cap before it is reached', async () => {
+    mockClaim.mockResolvedValueOnce({ claimed: true, attempts: 1 });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ delivered: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { pushNotificationToDid } = await loadModule({ internalKey: INTERNAL_KEY });
+    await pushNotificationToDid(RECIPIENT, FRAME);
+
+    expect(logMock.warn).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining('re-offer cap'),
+    );
   });
 });
