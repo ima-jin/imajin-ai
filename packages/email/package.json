@@ -11,7 +11,7 @@
     "@imajin/config": "workspace:*",
     "@imajin/logger": "workspace:*",
     "marked": "^18.0.4",
-    "nodemailer": "^9.0.1",
+    "nodemailer": "^9.1.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
