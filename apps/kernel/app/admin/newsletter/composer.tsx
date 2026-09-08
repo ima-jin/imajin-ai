@@ -102,7 +102,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
 
 
   const canSend = subject.trim().length > 0 && markdown.trim().length > 0 && recipientCount > 0;
-  const resultRecipientSuffix = result && result.recipientCount === 1 ? '' : 's';
+  const resultRecipientSuffix = result?.recipientCount === 1 ? '' : 's';
 
   let bodyEditor: React.ReactNode;
   if (editorMode === 'preview') {

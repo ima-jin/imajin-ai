@@ -107,7 +107,8 @@ export function MessageComposer({ eventId, recipientCount: initialCount, tiers }
   }
 
   const canSend = subject.trim().length > 0 && markdown.trim().length > 0 && !sending && recipientCount > 0;
-  const sendButtonLabel = sending ? 'Sending…' : `Send to ${recipientCount} attendee${recipientCount === 1 ? '' : 's'}`;
+  const attendeeCountSuffix = recipientCount === 1 ? '' : 's';
+  const sendButtonLabel = sending ? 'Sending…' : `Send to ${recipientCount} attendee${attendeeCountSuffix}`;
 
   return (
     <div>
