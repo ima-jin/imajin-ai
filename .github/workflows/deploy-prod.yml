@@ -37,7 +37,15 @@ jobs:
           echo "✅ Synced ecosystem config to $ECOSYSTEM_FILE"
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
+
+      # --ignore-scripts above blocks install/postinstall scripts for every
+      # dependency (githubactions:S6505). apps/corpus's better-sqlite3 is the
+      # one dependency prod-corpus can't run without: its install script
+      # compiles/fetches the native binding pm2 loads at runtime, so it's
+      # rebuilt individually here rather than re-enabling scripts globally.
+      - name: Rebuild native dependencies
+        run: pnpm rebuild -r better-sqlite3
 
       - name: Build changed apps
         # build-changed.sh walks the pnpm graph and only rebuilds apps affected
