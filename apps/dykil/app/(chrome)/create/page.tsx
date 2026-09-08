@@ -19,6 +19,105 @@ interface SurveyData {
   type?: string;
 }
 
+type FieldFormFieldProps = Readonly<{
+  fieldForm: SurveyJSElement;
+  setFieldForm: (f: SurveyJSElement) => void;
+  isEditing: boolean;
+}>;
+
+const CHOICE_FIELD_TYPES = new Set(['radiogroup', 'checkbox', 'dropdown']);
+
+function ChoicesEditor({ fieldForm, setFieldForm, isEditing }: FieldFormFieldProps) {
+  return (
+    <div>
+      <label htmlFor={`field-choice-0-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Answer Choices</label>
+      {(fieldForm.choices || []).map((choice, i) => {
+        const choiceText = typeof choice === 'string' ? choice : choice.text || '';
+        return (
+          <div key={`choice-${choiceText || i}`} className="flex gap-2 mb-2">
+            <input
+              id={i === 0 ? `field-choice-0-${isEditing ? 'edit' : 'new'}` : undefined}
+              type="text"
+              value={choiceText}
+              onChange={(e) => {
+                const newChoices = [...(fieldForm.choices || [])];
+                newChoices[i] = e.target.value;
+                setFieldForm({ ...fieldForm, choices: newChoices });
+              }}
+              placeholder={`Choice ${i + 1}`}
+              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+            />
+            {i > 0 && (
+              <button type="button"
+                onClick={() => {
+                  const newChoices = (fieldForm.choices || []).filter((_, idx) => idx !== i);
+                  setFieldForm({ ...fieldForm, choices: newChoices });
+                }}
+                className="px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        );
+      })}
+      <button type="button"
+        onClick={() => {
+          setFieldForm({ ...fieldForm, choices: [...(fieldForm.choices || []), ''] });
+        }}
+        className="text-sm text-orange-500 hover:text-orange-600"
+      >
+        + Add choice
+      </button>
+    </div>
+  );
+}
+
+function RatingRangeEditor({ fieldForm, setFieldForm, isEditing }: FieldFormFieldProps) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div>
+        <label htmlFor={`field-rate-min-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Min Value</label>
+        <input
+          id={`field-rate-min-${isEditing ? 'edit' : 'new'}`}
+          type="number"
+          value={fieldForm.rateMin || 1}
+          onChange={(e) => setFieldForm({ ...fieldForm, rateMin: Number(e.target.value) })}
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+        />
+      </div>
+      <div>
+        <label htmlFor={`field-rate-max-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Max Value</label>
+        <input
+          id={`field-rate-max-${isEditing ? 'edit' : 'new'}`}
+          type="number"
+          value={fieldForm.rateMax || 5}
+          onChange={(e) => setFieldForm({ ...fieldForm, rateMax: Number(e.target.value) })}
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+        />
+      </div>
+    </div>
+  );
+}
+
+function TextInputTypeEditor({ fieldForm, setFieldForm, isEditing }: FieldFormFieldProps) {
+  return (
+    <div>
+      <label htmlFor={`field-input-type-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Input Type</label>
+      <select
+        id={`field-input-type-${isEditing ? 'edit' : 'new'}`}
+        value={fieldForm.inputType || 'text'}
+        onChange={(e) => setFieldForm({ ...fieldForm, inputType: e.target.value })}
+        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+      >
+        <option value="text">Text</option>
+        <option value="email">Email</option>
+        <option value="number">Number</option>
+      </select>
+    </div>
+  );
+}
+
 function FieldFormPanel({
   fieldForm,
   setFieldForm,
@@ -75,89 +174,16 @@ function FieldFormPanel({
           <label htmlFor={`required-${isEditing ? 'edit' : 'new'}`} className="text-sm">Required question</label>
         </div>
 
-        {(fieldForm.type === 'radiogroup' || fieldForm.type === 'checkbox' || fieldForm.type === 'dropdown') && (
-          <div>
-            <label htmlFor={`field-choice-0-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Answer Choices</label>
-            {(fieldForm.choices || []).map((choice, i) => {
-              const choiceText = typeof choice === 'string' ? choice : choice.text || '';
-              return (
-                <div key={`choice-${choiceText || i}`} className="flex gap-2 mb-2">
-                  <input
-                    id={i === 0 ? `field-choice-0-${isEditing ? 'edit' : 'new'}` : undefined}
-                    type="text"
-                    value={choiceText}
-                    onChange={(e) => {
-                      const newChoices = [...(fieldForm.choices || [])];
-                      newChoices[i] = e.target.value;
-                      setFieldForm({ ...fieldForm, choices: newChoices });
-                    }}
-                    placeholder={`Choice ${i + 1}`}
-                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
-                  />
-                  {i > 0 && (
-                    <button type="button"
-                      onClick={() => {
-                        const newChoices = (fieldForm.choices || []).filter((_, idx) => idx !== i);
-                        setFieldForm({ ...fieldForm, choices: newChoices });
-                      }}
-                      className="px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-            <button type="button"
-              onClick={() => {
-                setFieldForm({ ...fieldForm, choices: [...(fieldForm.choices || []), ''] });
-              }}
-              className="text-sm text-orange-500 hover:text-orange-600"
-            >
-              + Add choice
-            </button>
-          </div>
+        {CHOICE_FIELD_TYPES.has(fieldForm.type) && (
+          <ChoicesEditor fieldForm={fieldForm} setFieldForm={setFieldForm} isEditing={isEditing} />
         )}
 
         {fieldForm.type === 'rating' && (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor={`field-rate-min-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Min Value</label>
-              <input
-                id={`field-rate-min-${isEditing ? 'edit' : 'new'}`}
-                type="number"
-                value={fieldForm.rateMin || 1}
-                onChange={(e) => setFieldForm({ ...fieldForm, rateMin: Number(e.target.value) })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
-              />
-            </div>
-            <div>
-              <label htmlFor={`field-rate-max-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Max Value</label>
-              <input
-                id={`field-rate-max-${isEditing ? 'edit' : 'new'}`}
-                type="number"
-                value={fieldForm.rateMax || 5}
-                onChange={(e) => setFieldForm({ ...fieldForm, rateMax: Number(e.target.value) })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
-              />
-            </div>
-          </div>
+          <RatingRangeEditor fieldForm={fieldForm} setFieldForm={setFieldForm} isEditing={isEditing} />
         )}
 
         {fieldForm.type === 'text' && (
-          <div>
-            <label htmlFor={`field-input-type-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Input Type</label>
-            <select
-              id={`field-input-type-${isEditing ? 'edit' : 'new'}`}
-              value={fieldForm.inputType || 'text'}
-              onChange={(e) => setFieldForm({ ...fieldForm, inputType: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
-            >
-              <option value="text">Text</option>
-              <option value="email">Email</option>
-              <option value="number">Number</option>
-            </select>
-          </div>
+          <TextInputTypeEditor fieldForm={fieldForm} setFieldForm={setFieldForm} isEditing={isEditing} />
         )}
 
         <div className="flex gap-2 pt-2">

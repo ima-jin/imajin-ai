@@ -94,6 +94,95 @@ interface SurveyData {
   status: string;
 }
 
+/** Build the localStorage key used to remember a response id for a survey (optionally scoped to a ticket) */
+function responseStorageKey(surveyId: string | string[] | undefined, ticketId: string | null): string {
+  return ticketId ? `survey_${surveyId}_${ticketId}_responseId` : `survey_${surveyId}_responseId`;
+}
+
+/**
+ * Sanitize raw survey field data into a null-free SurveyJS json object, filtering out
+ * null elements/pages that would otherwise crash SurveyJS. Returns null when there are
+ * no renderable questions.
+ */
+function buildSanitizedSurveyJson(fields: any) {
+  let surveyJson = typeof fields === 'object' && ('elements' in fields || 'pages' in fields)
+    ? fields
+    : { elements: Array.isArray(fields) ? fields : [] };
+
+  // Sanitize: remove null elements from pages and top-level
+  if (surveyJson.pages) {
+    surveyJson = {
+      ...surveyJson,
+      pages: surveyJson.pages
+        .map((page: any) => page ? { ...page, elements: (page.elements || []).filter(Boolean) } : null)
+        .filter(Boolean)
+        .filter((page: any) => page.elements.length > 0),
+    };
+  }
+  if (surveyJson.elements) {
+    surveyJson = { ...surveyJson, elements: surveyJson.elements.filter(Boolean) };
+  }
+
+  // Don't create a model if there are no questions
+  if ((!surveyJson.elements || surveyJson.elements.length === 0) && (!surveyJson.pages || surveyJson.pages.length === 0)) {
+    return null;
+  }
+
+  return surveyJson;
+}
+
+/** Create a fully configured SurveyJS model: hidden built-in completion page, dark theme, HTML allowlist */
+function createConfiguredSurveyModel(surveyJson: any): Model {
+  const model = new Model(surveyJson);
+  // Hide SurveyJS built-in completion page — we render our own
+  model.showCompletedPage = false;
+  // Apply dark-mode-safe theme
+  applyDarkTheme(model);
+  // Allow HTML in question titles/descriptions (for links etc.)
+  applyHtmlHandler(model);
+  return model;
+}
+
+type CompletedResponseCheck =
+  | { completed: true; answers: Record<string, any>; responseId?: string }
+  | { completed: false };
+
+/**
+ * Check whether the current respondent already has a completed response for this survey,
+ * pre-filling from a locally stored response id when available. When ticketId is set, only
+ * checks by the ticket-scoped stored response id (not session DID). Non-fatal on any error
+ * — callers should treat failures the same as "not completed".
+ */
+async function checkForCompletedResponse(surveyId: string | string[] | undefined, ticketId: string | null): Promise<CompletedResponseCheck> {
+  try {
+    const storageKey = responseStorageKey(surveyId, ticketId);
+    const storedResponseId = localStorage.getItem(storageKey);
+
+    // Ticket-scoped: no stored response means fresh form — skip the check
+    if (ticketId && !storedResponseId) {
+      return { completed: false };
+    }
+
+    const checkUrl = new URL(apiUrl(`/api/surveys/${surveyId}/responses/check`), globalThis.location.origin);
+    checkUrl.searchParams.set('include', 'answers');
+    if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
+    if (ticketId) checkUrl.searchParams.set('skipDid', 'true');
+
+    const checkRes = await fetch(checkUrl.toString(), { credentials: 'include' });
+    if (checkRes.ok) {
+      const checkData = await checkRes.json();
+      if (checkData.completed && checkData.answers) {
+        return { completed: true, answers: checkData.answers, responseId: checkData.responseId };
+      }
+    }
+
+    return { completed: false };
+  } catch {
+    // Non-fatal — just proceed without pre-fill
+    return { completed: false };
+  }
+}
+
 export default function SurveyEmbedPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -161,101 +250,54 @@ export default function SurveyEmbedPage() {
         credentials: 'include',
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      if (!res.ok) {
+        console.error('Survey not found');
+        return;
+      }
+
+      const data = await res.json();
+      setSurveyData(data);
+
+      const surveyJson = buildSanitizedSurveyJson(data.fields);
+
+      // Don't create a model if there are no questions
+      if (!surveyJson) {
         setSurveyData(data);
+        return;
+      }
 
-        // Create SurveyJS model — filter out null elements to prevent crashes
-        let surveyJson = typeof data.fields === 'object' && ('elements' in data.fields || 'pages' in data.fields)
-          ? data.fields
-          : { elements: Array.isArray(data.fields) ? data.fields : [] };
+      const model = createConfiguredSurveyModel(surveyJson);
 
-        // Sanitize: remove null elements from pages and top-level
-        if (surveyJson.pages) {
-          surveyJson = {
-            ...surveyJson,
-            pages: surveyJson.pages
-              .map((page: any) => page ? { ...page, elements: (page.elements || []).filter(Boolean) } : null)
-              .filter(Boolean)
-              .filter((page: any) => page.elements.length > 0),
-          };
+      // Check for existing response and pre-fill
+      // When ticketId is set, only check by ticket-scoped responseId (not session DID)
+      const existingResponse = await checkForCompletedResponse(surveyId, ticketId);
+      if (existingResponse.completed) {
+        model.data = existingResponse.answers;
+        if (existingResponse.responseId) {
+          localStorage.setItem(responseStorageKey(surveyId, ticketId), existingResponse.responseId);
         }
-        if (surveyJson.elements) {
-          surveyJson = { ...surveyJson, elements: surveyJson.elements.filter(Boolean) };
-        }
-
-        // Don't create model if there are no questions
-        if ((!surveyJson.elements || surveyJson.elements.length === 0) && (!surveyJson.pages || surveyJson.pages.length === 0)) {
-          setSurveyData(data);
-          return;
-        }
-
-        const model = new Model(surveyJson);
-
-        // Hide SurveyJS built-in completion page — we render our own
-        model.showCompletedPage = false;
-
-        // Apply dark-mode-safe theme
-        applyDarkTheme(model);
-
-        // Allow HTML in question titles/descriptions (for links etc.)
-        applyHtmlHandler(model);
-
-        // Check for existing response and pre-fill
-        // When ticketId is set, only check by ticket-scoped responseId (not session DID)
-        try {
-          const storageKey = ticketId ? `survey_${surveyId}_${ticketId}_responseId` : `survey_${surveyId}_responseId`;
-          const storedResponseId = localStorage.getItem(storageKey);
-
-          // Ticket-scoped: no stored response means fresh form
-          if (ticketId && !storedResponseId) {
-            // Skip check — show fresh form for this ticket
-          } else {
-
-          const checkUrl = new URL(apiUrl(`/api/surveys/${surveyId}/responses/check`), globalThis.location.origin);
-          checkUrl.searchParams.set('include', 'answers');
-          if (storedResponseId) checkUrl.searchParams.set('responseId', storedResponseId);
-          if (ticketId) checkUrl.searchParams.set('skipDid', 'true');
-
-          const checkRes = await fetch(checkUrl.toString(), { credentials: 'include' });
-          if (checkRes.ok) {
-            const checkData = await checkRes.json();
-            if (checkData.completed && checkData.answers) {
-              model.data = checkData.answers;
-              if (checkData.responseId) {
-                localStorage.setItem(storageKey, checkData.responseId);
-              }
-              // Show as already completed with pre-filled data
-              setSavedAnswers(checkData.answers);
-              setSubmitted(true);
-              setSurveyData(data);
-              surveyModelRef.current = model;
-              setSurveyModel(model);
-              // Notify parent that survey is already done
-              const targetOrigin = getParentOrigin();
-              if (targetOrigin) {
-                globalThis.parent.postMessage({ type: 'survey-completed', surveyId }, targetOrigin);
-              }
-              return;
-            }
-          }
-
-          } // end else (has storedResponseId or no ticketId)
-        } catch (e) {
-          // Non-fatal — just proceed without pre-fill
-        }
-
-        // Handle completion — clone data immediately since SurveyJS may mutate the reference
-        model.onComplete.add(async (sender) => {
-          const answers = JSON.parse(JSON.stringify(sender.data));
-          await submitResponse(answers);
-        });
-
+        // Show as already completed with pre-filled data
+        setSavedAnswers(existingResponse.answers);
+        setSubmitted(true);
+        setSurveyData(data);
         surveyModelRef.current = model;
         setSurveyModel(model);
-      } else {
-        console.error('Survey not found');
+        // Notify parent that survey is already done
+        const targetOrigin = getParentOrigin();
+        if (targetOrigin) {
+          globalThis.parent.postMessage({ type: 'survey-completed', surveyId }, targetOrigin);
+        }
+        return;
       }
+
+      // Handle completion — clone data immediately since SurveyJS may mutate the reference
+      model.onComplete.add(async (sender) => {
+        const answers = JSON.parse(JSON.stringify(sender.data));
+        await submitResponse(answers);
+      });
+
+      surveyModelRef.current = model;
+      setSurveyModel(model);
     } catch (error) {
       console.error('Failed to fetch survey:', error);
     } finally {
