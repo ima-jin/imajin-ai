@@ -11,9 +11,6 @@ const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
 
 const COFFEE_URL = buildPublicUrl('coffee');
 
-/** Loosely-typed coffee page record as read from the database */
-type CoffeePageRecord = any;
-
 /** Validate the basic shape of a tip request body. Returns an error message, or null when valid. */
 function validateTipRequestBody(body: any): string | null {
   const { pageHandle, amount, paymentMethod } = body;
@@ -35,7 +32,7 @@ function validateTipRequestBody(body: any): string | null {
 
 /** Validate that a coffee page can accept this tip request (visibility, payment method, messages) */
 function validatePageForTip(
-  page: CoffeePageRecord,
+  page: any,
   paymentMethod: string,
   message: string | undefined
 ): { message: string; status?: number } | null {
@@ -75,7 +72,7 @@ async function resolveSender(request: NextRequest): Promise<{ fromDid: string | 
 /** Create a pending tip and start a Stripe Checkout session for it */
 async function createStripeTip(params: {
   tipId: string;
-  page: CoffeePageRecord;
+  page: any;
   amount: number;
   currency: string;
   message: string | undefined;
@@ -160,7 +157,7 @@ async function createStripeTip(params: {
 /** Create a pending tip to be settled via a direct Solana transfer */
 async function createSolanaTip(params: {
   tipId: string;
-  page: CoffeePageRecord;
+  page: any;
   amount: number;
   fromName: string | undefined;
   fromDid: string | null;

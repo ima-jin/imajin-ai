@@ -34,7 +34,7 @@ function isFieldConditionMet(visibleIf: string | undefined, answers: SurveyAnswe
   if (!visibleIf) return true;
 
   // Simple check: extract the referenced field from visibleIf (e.g. "{dietary} = \"Other\"")
-  const match = visibleIf.match(/\{(\w+)\}/);
+  const match = /\{(\w+)\}/.exec(visibleIf);
   if (!match) return true;
 
   const depField = match[1];

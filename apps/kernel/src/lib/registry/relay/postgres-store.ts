@@ -66,7 +66,7 @@ function resolveDocumentsStartIndex(entries: DocumentLogEntry[], after: string |
   return idx >= 0 ? idx + 1 : entries.length;
 }
 
-function parseDocumentBlob(blob: Uint8Array): unknown | null {
+function parseDocumentBlob(blob: Uint8Array): unknown {
   try {
     return JSON.parse(new TextDecoder().decode(blob));
   } catch {
@@ -499,7 +499,7 @@ export class PostgresRelayStore implements RelayStore {
   private async resolveDocumentForEntry(
     entry: DocumentLogEntry,
     creatorDID: string,
-  ): Promise<unknown | null> {
+  ): Promise<unknown> {
     if (!entry.documentCID) return null;
     const blob = await this.getBlob({ creatorDID, documentCID: entry.documentCID });
     return blob ? parseDocumentBlob(blob) : null;
@@ -508,7 +508,7 @@ export class PostgresRelayStore implements RelayStore {
   async getDocuments(
     contentId: string,
     params: { after?: string; limit: number },
-  ): Promise<{ documents: { operationCID: string; documentCID: string | null; document: unknown | null; signerDID: string; createdAt: string }[]; cursor: string | null }> {
+  ): Promise<{ documents: { operationCID: string; documentCID: string | null; document: unknown; signerDID: string; createdAt: string }[]; cursor: string | null }> {
     const chain = await this.getContentChain(contentId);
     if (!chain) return { documents: [], cursor: null };
 
