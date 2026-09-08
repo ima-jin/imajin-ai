@@ -1,4 +1,4 @@
-﻿// TODO(#904): Replace owner-confirms-receipt with atomic node-ledger debit when MJNx balance system lands. Until then, settlement is operator-mediated.
+﻿// Settlement is operator-mediated (owner confirms receipt) pending a node-ledger balance system for atomic buyer-side debits.
 
 /**
  * POST /media/api/assets/[id]/settle/confirm

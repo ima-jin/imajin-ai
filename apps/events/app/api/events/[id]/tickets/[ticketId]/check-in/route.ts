@@ -65,10 +65,10 @@ export async function POST(
     // Fire-and-forget attestations — do not block check-in on failure
     if (ticket.owner_did) {
       const attendeeDid = ticket.owner_did as string;
-      // TODO: institution.verified should be issued BY the event DID, not the organizer.
-      // Event DIDs are not real identities (no keypair, no chain). Need sub-identity
-      // delegation model before this can be cryptographically correct. See #537.
-      // For now, only emit event.attendance (organizer vouches for attendee).
+      // institution.verified should be issued BY the event DID, not the organizer.
+      // Event DIDs are not real identities (no keypair, no chain), so a sub-identity
+      // delegation model is required before this can be cryptographically correct
+      // (see #537). For now, only emit event.attendance (organizer vouches for attendee).
       publish('event.attendance', {
         issuer: identity.id,
         subject: attendeeDid,

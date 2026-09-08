@@ -24,7 +24,7 @@ export const mjnReactor: ReactorHandler = async (event, config) => {
     issuerDid: event.issuer,
     subjectDid: event.subject,
     scopeDid: (event.payload?.scope_did as string) || null,
-    nodeDid: null as string | null, // TODO: resolve from config
+    nodeDid: null as string | null, // see: not yet resolved from config
   };
 
   for (const rule of spec.emit) {

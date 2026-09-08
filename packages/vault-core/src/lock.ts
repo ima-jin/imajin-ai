@@ -41,7 +41,7 @@ export class InMemoryFieldLock implements VaultLock {
 /**
  * Stub interface for filesystem-level locking.
  *
- * TODO: Implement cross-process file locking (e.g. using flock or lockfile).
+ * see: cross-process file locking (e.g. flock or lockfile) is not yet implemented.
  */
 export interface FileLock {
     // Reserved for future filesystem-level locking implementation

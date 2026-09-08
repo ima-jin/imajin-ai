@@ -35,7 +35,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
   }
 
-  // TODO: trust-bound visibility check via connections service
+  // see: trust-bound visibility check via connections service is not yet implemented
 
   // Get modules with lessons
   const courseModules = await db.select()

@@ -228,10 +228,6 @@ export async function PUT(
     .set({ fairManifest: toPersist as unknown as Record<string, unknown> })
     .where(eq(assets.id, id));
 
-  // TODO(#894): On manual manifest upgrade, re-publish to DFOS so the
-  // updated signature propagates. Wire up publishContentEvent + update
-  // assets.fair_dfos_event_id when D5 ships.
-
   // Update sidecar file if it exists
   if (asset.fairPath) {
     try {

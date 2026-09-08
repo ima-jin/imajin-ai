@@ -9,9 +9,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-// TODO(#435-followup): invites.conversationId FK to chat.conversations.id needs to be
-// dropped and the column treated as plain text pointing to a conversation DID.
-
 /**
  * GET /api/invites/:id - Get invite info (public — for preview before joining)
  */

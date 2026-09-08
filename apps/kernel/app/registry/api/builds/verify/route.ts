@@ -62,7 +62,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     return NextResponse.json({
       valid: true,
-      source: 'official', // TODO: Distinguish forks
+      source: 'official', // see: forks are not yet distinguished from official builds
       version: build.version,
       architecture: build.architecture,
       releaseDate: build.releaseDate?.toISOString(),

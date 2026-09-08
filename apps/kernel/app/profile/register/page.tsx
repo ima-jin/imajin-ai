@@ -134,7 +134,8 @@ function RegisterPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  // TODO: Password manager integration (Phase 2 - passkeys)
+  // see: passkey support (Phase 2) is not yet implemented here — this only
+  // covers the Credential Management API / form-fallback password save
   async function saveToPasswordManager() {
     const keypair = localStorage.getItem('imajin_keypair');
     const did = localStorage.getItem('imajin_did');
