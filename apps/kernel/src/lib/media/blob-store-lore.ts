@@ -110,7 +110,7 @@ export class LoreBlobStore implements BlobStore {
         .collectAsync()) as LoreRevisionCommitRevisionEvent[];
 
       const loreRef = events[0]?.data?.revision;
-      if (!loreRef || loreRef.length !== 64) {
+      if (loreRef?.length !== 64) {
         throw new Error(
           `Lore revisionCommit did not return a valid revision hash (got: ${String(loreRef)})`,
         );

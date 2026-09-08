@@ -286,7 +286,7 @@ export async function isUnclaimedStub(did: string): Promise<boolean> {
     .from(claimStubIndex)
     .where(eq(claimStubIndex.did, did))
     .limit(1);
-  if (!stub || stub.stubStatus !== 'active') return false;
+  if (stub?.stubStatus !== 'active') return false;
 
   const [identity] = await db
     .select({ tier: identities.tier })

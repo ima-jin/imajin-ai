@@ -91,7 +91,7 @@ export async function settlePaidInvoices(ownerDid: string, appDid?: string): Pro
     }
 
     const lot = await loadLot(invoice.correlationId);
-    if (!lot || !lot.fairManifest || lot.status === 'settled') {
+    if (!lot?.fairManifest || lot.status === 'settled') {
       skipped.push(invoice.id);
       continue;
     }

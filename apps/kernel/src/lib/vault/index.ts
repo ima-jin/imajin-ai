@@ -253,7 +253,7 @@ const UNIQUE_VIOLATION = '23505';
  */
 function isUniqueViolationOn(err: unknown, constraintName: string): boolean {
   const pgErr = err as { code?: unknown; constraint_name?: unknown; constraint?: unknown } | null;
-  if (!pgErr || pgErr.code !== UNIQUE_VIOLATION) {
+  if (pgErr?.code !== UNIQUE_VIOLATION) {
     return false;
   }
   const name = pgErr.constraint_name ?? pgErr.constraint;

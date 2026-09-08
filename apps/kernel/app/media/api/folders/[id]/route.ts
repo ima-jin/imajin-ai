@@ -22,7 +22,7 @@ async function validateParentFolder(
     return { error: "Folder cannot be its own parent", status: 400 };
   }
   const [parent] = await db.select().from(folders).where(eq(folders.id, parentId)).limit(1);
-  if (!parent || parent.ownerDid !== ownerDid) {
+  if (parent?.ownerDid !== ownerDid) {
     return { error: "Parent folder not found", status: 404 };
   }
   return null;
