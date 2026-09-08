@@ -54,7 +54,7 @@ async function mergeStubMetadata(
     .where(eq(profiles.did, did))
     .limit(1);
 
-  const newMeta = { ...((existing?.metadata as Record<string, unknown>) ?? {}) };
+  const newMeta: Record<string, unknown> = { ...(existing?.metadata as Record<string, unknown> | undefined) };
   if (category !== undefined) newMeta.category = category;
   if (location !== undefined) newMeta.location = location;
   if (lat !== undefined) newMeta.lat = lat;
