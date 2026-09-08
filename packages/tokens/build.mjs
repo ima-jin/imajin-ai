@@ -172,6 +172,10 @@ function buildThemeColors(colorBuckets, semantic) {
   };
 }
 
+// Raw (unescaped) backslash + single-quote, used to escape embedded quotes
+// below without doubling up backslash-escaping (javascript:S7780).
+const ESCAPED_SINGLE_QUOTE = String.raw`\'`;
+
 // Serialize to JS — quote keys with special chars, keep clean identifiers unquoted
 function serializeValue(value, indent = 2) {
   const pad = ' '.repeat(indent);
@@ -187,7 +191,7 @@ function serializeValue(value, indent = 2) {
     return `{\n${entries.join(',\n')}\n${' '.repeat(indent - 2)}}`;
   }
   if (typeof value === 'string') {
-    return `'${value.replaceAll("'", String.raw`\'`)}'`;
+    return `'${value.replaceAll("'", ESCAPED_SINGLE_QUOTE)}'`;
   }
   return String(value);
 }
