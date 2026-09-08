@@ -342,9 +342,11 @@ function buildPathsYaml(routes: Array<{ urlPath: string; methods: HttpMethod[]; 
       const operationId = methodToOperationId(method, urlPath);
       const security = detectSecurity(source, method);
 
-      lines.push(`    ${m}:`);
-      lines.push(`      operationId: ${operationId}`);
-      lines.push(`      summary: "${method} ${urlPath}"`);
+      lines.push(
+        `    ${m}:`,
+        `      operationId: ${operationId}`,
+        `      summary: "${method} ${urlPath}"`,
+      );
 
       if (security.length > 0) {
         lines.push('      security:');

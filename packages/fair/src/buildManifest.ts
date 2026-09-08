@@ -95,8 +95,10 @@ export function buildFairManifest(params: {
     chain.push({ did: scopeDid, role: 'scope', share: scopeShare });
   }
 
-  chain.push({ did: PLATFORM_DID, role: 'platform', share: platformShare });
-  chain.push({ did: creatorDid, role: 'seller', share: sellerShare });
+  chain.push(
+    { did: PLATFORM_DID, role: 'platform', share: platformShare },
+    { did: creatorDid, role: 'seller', share: sellerShare },
+  );
 
   const distributions: FairEntry[] =
     collaborators && collaborators.length > 0

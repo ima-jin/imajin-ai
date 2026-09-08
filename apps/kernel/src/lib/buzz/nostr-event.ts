@@ -161,8 +161,7 @@ export function buildKind9Event(
 ): NostrEvent {
   const tags: string[][] = [['h', groupId]];
   if (didTags) {
-    tags.push(['imajin-did', didTags.ownerDid]);
-    tags.push(['imajin-attestation', didTags.attestationDigest]);
+    tags.push(['imajin-did', didTags.ownerDid], ['imajin-attestation', didTags.attestationDigest]);
   }
   const unsigned: UnsignedNostrEvent = {
     pubkey,

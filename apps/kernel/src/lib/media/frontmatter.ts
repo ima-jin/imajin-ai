@@ -34,12 +34,10 @@ function yamlQuote(value: string): string {
  */
 export function serializeFrontmatter(article: ArticleBlock): string {
   const lines: string[] = ["---"];
-  lines.push(`slug: ${yamlQuote(article.slug)}`);
-  lines.push(`title: ${yamlQuote(article.title)}`);
+  lines.push(`slug: ${yamlQuote(article.slug)}`, `title: ${yamlQuote(article.title)}`);
   if (article.subtitle !== undefined) lines.push(`subtitle: ${yamlQuote(article.subtitle)}`);
   if (article.description !== undefined) lines.push(`description: ${yamlQuote(article.description)}`);
-  lines.push(`status: ${yamlQuote(article.status)}`);
-  lines.push(`date: ${yamlQuote(article.date)}`);
+  lines.push(`status: ${yamlQuote(article.status)}`, `date: ${yamlQuote(article.date)}`);
   if (article.order !== undefined) lines.push(`order: ${article.order}`);
   lines.push("---");
   return `${lines.join("\n")}\n`;
