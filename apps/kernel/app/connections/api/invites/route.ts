@@ -199,147 +199,171 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   if ('error' in contextResult) {
     return NextResponse.json({ error: contextResult.error }, { status: contextResult.status });
   }
-  const { scopeDid, pendingAttestationId } = contextResult.context;
 
-  if (delivery === 'email') {
-    // Email invites require hard DID + trust graph membership
-    if (!isVerifiedTier(session.tier)) {
-      return NextResponse.json({
-        error: 'Only users with verified identities can send email invites'
-      }, { status: 403 });
-    }
+  return delivery === 'email'
+    ? handleEmailInvite(session, body, contextResult.context, log)
+    : handleLinkInvite(session, body, contextResult.context, log);
+});
 
-    const inTrustGraph = await isInTrustGraph(session.did);
-    if (!inTrustGraph) {
-      return NextResponse.json({
-        error: 'You must be a member of the trust graph to send email invites'
-      }, { status: 403 });
-    }
+/**
+ * Email invite flow: requires a hard DID + trust graph membership, enforces
+ * the cooldown + tier-based pending-count limit, mints/resolves the target
+ * DID up front (match-without-disclosure), and delivers the invite email.
+ */
+async function handleEmailInvite(
+  session: KernelSession,
+  body: Record<string, unknown>,
+  context: InviteContext,
+  log: LoggerLike,
+): Promise<NextResponse> {
+  const { scopeDid, pendingAttestationId } = context;
 
-    // Get profile for cooldown check and email sending
-    const [profile] = await db
-      .select()
-      .from(profiles)
-      .where(eq(profiles.did, session.did))
-      .limit(1);
-
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
-    }
-
-    const now = new Date();
-    if (profile.nextInviteAvailableAt && profile.nextInviteAvailableAt > now) {
-      const hoursRemaining = Math.ceil((profile.nextInviteAvailableAt.getTime() - now.getTime()) / (1000 * 60 * 60));
-      return NextResponse.json({
-        error: `Invite cooldown active. Next invite available in ${hoursRemaining} hours`,
-        nextAvailableAt: profile.nextInviteAvailableAt.toISOString()
-      }, { status: 429 });
-    }
-
-    // Check pending email invite count (tier-based limit)
-    const emailLimit = getInviteLimit(session.tier);
-    const pendingEmailCount = await db
-      .select({ value: count() })
-      .from(invites)
-      .where(and(
-        eq(invites.fromDid, session.did),
-        eq(invites.delivery, 'email'),
-        eq(invites.status, 'pending'),
-      ));
-
-    if (pendingEmailCount[0]?.value >= emailLimit) {
-      return NextResponse.json({
-        error: emailLimit === Infinity
-          ? `You have too many pending email invites. Please wait for some to be accepted or revoke them first.`
-          : `You have reached your email invite limit (${emailLimit}) for your tier. Please wait for some to be accepted or revoke them first.`,
-      }, { status: 429 });
-    }
-
-    const { toEmail, note } = body;
-
-    // Normalize at write time (#1858) — the as-typed toEmail is still used
-    // for actual delivery below so we don't alter what the recipient sees.
-    //
-    // Validate against the NORMALIZED value, not the raw `toEmail` (#1853):
-    // a whitespace-only string (e.g. "   ") is truthy, so the old `if
-    // (!toEmail)` check let it through while normalizeInviteEmail() quietly
-    // returned null. That null got written to invites.toEmail, which broke
-    // the accept route's isForUser fallback (its `!!invite.toEmail` guard
-    // skips resolveDidForEmail entirely — #1858), leaving only the toDid
-    // check — which also failed, because resolveOrMintInviteTarget still
-    // minted a real (but unreachable) stub DID for the blank string. The
-    // net result was "This invite is not for you" for the intended
-    // recipient, plus a doomed deliverInviteEmail() attempt against a
-    // blank address that silently produced emailSent: false instead of
-    // failing fast with a clear 400 at creation time.
-    const normalizedToEmail = normalizeInviteEmail(toEmail);
-    if (!normalizedToEmail) {
-      return NextResponse.json({ error: 'toEmail is required for email invites' }, { status: 400 });
-    }
-
-    const code = randomBytes(12).toString('hex');
-    const id = generateId('inv_');
-    const expiresAtDate = new Date(now.getTime() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-
-    // Mint-on-new-email (#1834 Phase 1): resolve toEmail to a stable target
-    // DID up front. A brand-new email mints a claimable stub; an email
-    // already owned by a real identity, or a previously-minted stub, is
-    // reused silently — the response shape below is identical either way,
-    // so a second introducer of the same email learns nothing about whether
-    // it already existed (match-without-disclosure).
-    const toDid = await resolveOrMintInviteTarget(toEmail);
-
-    const [invite] = await db.insert(invites).values({
-      id,
-      code,
-      fromDid: session.did,
-      fromHandle: session.handle || null,
-      toEmail: normalizedToEmail,
-      toDid,
-      note: note || null,
-      delivery: 'email',
-      status: 'pending',
-      maxUses: 1,
-      expiresAt: expiresAtDate.toISOString(),
-      scopeDid,
-      pendingAttestationId,
-    }).returning();
-
-    const inviteUrl = `${buildPublicUrl('connections')}/invite/${session.did}/${code}`;
-    const inviterName = profile.displayName || profile.handle || session.did;
-    const inviterHandle = profile.handle || undefined;
-
-    const emailSent = await deliverInviteEmail({
-      log,
-      toEmail,
-      inviterName,
-      inviterHandle,
-      inviteUrl,
-      note: note || undefined,
-      expiresAt: expiresAtDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-    });
-
-    // subject = toDid (#1846): the invitee's DID, not the sender's. toDid is
-    // already resolved above (real identity, or a freshly-minted claimable
-    // stub) — using it here is what lets the attestation reactor land the
-    // resulting auth.attestation's PendingSignature on the invitee, not the
-    // sender.
-    publish('connection.invited', {
-      issuer: session.did,
-      subject: toDid,
-      scope: 'connections',
-      payload: { context_id: invite.id, context_type: 'connection', delivery: invite.delivery },
-    }).catch((err: unknown) => {
-      log.error({ err: String(err) }, 'Attestation (connection.invited) error');
-    });
-
-    // No-disclosure (#1839): the caller must never learn toDid pre-claim —
-    // it's the resolved match target and doubles as an existence oracle for
-    // the email (fresh mint vs. accrue-to-stub vs. resolve-to-real-identity).
-    return NextResponse.json({ invite: withNoDisclosure(invite), url: inviteUrl, emailSent }, { status: 201 });
+  // Email invites require hard DID + trust graph membership
+  if (!isVerifiedTier(session.tier)) {
+    return NextResponse.json({
+      error: 'Only users with verified identities can send email invites'
+    }, { status: 403 });
   }
 
-  // Link invite flow
+  const inTrustGraph = await isInTrustGraph(session.did);
+  if (!inTrustGraph) {
+    return NextResponse.json({
+      error: 'You must be a member of the trust graph to send email invites'
+    }, { status: 403 });
+  }
+
+  // Get profile for cooldown check and email sending
+  const [profile] = await db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.did, session.did))
+    .limit(1);
+
+  if (!profile) {
+    return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+  }
+
+  const now = new Date();
+  if (profile.nextInviteAvailableAt && profile.nextInviteAvailableAt > now) {
+    const hoursRemaining = Math.ceil((profile.nextInviteAvailableAt.getTime() - now.getTime()) / (1000 * 60 * 60));
+    return NextResponse.json({
+      error: `Invite cooldown active. Next invite available in ${hoursRemaining} hours`,
+      nextAvailableAt: profile.nextInviteAvailableAt.toISOString()
+    }, { status: 429 });
+  }
+
+  // Check pending email invite count (tier-based limit)
+  const emailLimit = getInviteLimit(session.tier);
+  const pendingEmailCount = await db
+    .select({ value: count() })
+    .from(invites)
+    .where(and(
+      eq(invites.fromDid, session.did),
+      eq(invites.delivery, 'email'),
+      eq(invites.status, 'pending'),
+    ));
+
+  if (pendingEmailCount[0]?.value >= emailLimit) {
+    return NextResponse.json({
+      error: emailLimit === Infinity
+        ? `You have too many pending email invites. Please wait for some to be accepted or revoke them first.`
+        : `You have reached your email invite limit (${emailLimit}) for your tier. Please wait for some to be accepted or revoke them first.`,
+    }, { status: 429 });
+  }
+
+  const { toEmail, note } = body as { toEmail: string; note?: string };
+
+  // Normalize at write time (#1858) — the as-typed toEmail is still used
+  // for actual delivery below so we don't alter what the recipient sees.
+  //
+  // Validate against the NORMALIZED value, not the raw `toEmail` (#1853):
+  // a whitespace-only string (e.g. "   ") is truthy, so the old `if
+  // (!toEmail)` check let it through while normalizeInviteEmail() quietly
+  // returned null. That null got written to invites.toEmail, which broke
+  // the accept route's isForUser fallback (its `!!invite.toEmail` guard
+  // skips resolveDidForEmail entirely — #1858), leaving only the toDid
+  // check — which also failed, because resolveOrMintInviteTarget still
+  // minted a real (but unreachable) stub DID for the blank string. The
+  // net result was "This invite is not for you" for the intended
+  // recipient, plus a doomed deliverInviteEmail() attempt against a
+  // blank address that silently produced emailSent: false instead of
+  // failing fast with a clear 400 at creation time.
+  const normalizedToEmail = normalizeInviteEmail(toEmail);
+  if (!normalizedToEmail) {
+    return NextResponse.json({ error: 'toEmail is required for email invites' }, { status: 400 });
+  }
+
+  const code = randomBytes(12).toString('hex');
+  const id = generateId('inv_');
+  const expiresAtDate = new Date(now.getTime() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+  // Mint-on-new-email (#1834 Phase 1): resolve toEmail to a stable target
+  // DID up front. A brand-new email mints a claimable stub; an email
+  // already owned by a real identity, or a previously-minted stub, is
+  // reused silently — the response shape below is identical either way,
+  // so a second introducer of the same email learns nothing about whether
+  // it already existed (match-without-disclosure).
+  const toDid = await resolveOrMintInviteTarget(toEmail);
+
+  const [invite] = await db.insert(invites).values({
+    id,
+    code,
+    fromDid: session.did,
+    fromHandle: session.handle || null,
+    toEmail: normalizedToEmail,
+    toDid,
+    note: note || null,
+    delivery: 'email',
+    status: 'pending',
+    maxUses: 1,
+    expiresAt: expiresAtDate.toISOString(),
+    scopeDid,
+    pendingAttestationId,
+  }).returning();
+
+  const inviteUrl = `${buildPublicUrl('connections')}/invite/${session.did}/${code}`;
+  const inviterName = profile.displayName || profile.handle || session.did;
+  const inviterHandle = profile.handle || undefined;
+
+  const emailSent = await deliverInviteEmail({
+    log,
+    toEmail,
+    inviterName,
+    inviterHandle,
+    inviteUrl,
+    note: note || undefined,
+    expiresAt: expiresAtDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+  });
+
+  // subject = toDid (#1846): the invitee's DID, not the sender's. toDid is
+  // already resolved above (real identity, or a freshly-minted claimable
+  // stub) — using it here is what lets the attestation reactor land the
+  // resulting auth.attestation's PendingSignature on the invitee, not the
+  // sender.
+  publish('connection.invited', {
+    issuer: session.did,
+    subject: toDid,
+    scope: 'connections',
+    payload: { context_id: invite.id, context_type: 'connection', delivery: invite.delivery },
+  }).catch((err: unknown) => {
+    log.error({ err: String(err) }, 'Attestation (connection.invited) error');
+  });
+
+  // No-disclosure (#1839): the caller must never learn toDid pre-claim —
+  // it's the resolved match target and doubles as an existence oracle for
+  // the email (fresh mint vs. accrue-to-stub vs. resolve-to-real-identity).
+  return NextResponse.json({ invite: withNoDisclosure(invite), url: inviteUrl, emailSent }, { status: 201 });
+}
+
+/** Link invite flow: quota-limited by tier, no target DID resolution needed until claimed. */
+async function handleLinkInvite(
+  session: KernelSession,
+  body: Record<string, unknown>,
+  context: InviteContext,
+  log: LoggerLike,
+): Promise<NextResponse> {
+  const { toEmail, note, maxUses } = body as { toEmail?: string; note?: string; maxUses?: number };
+  const { scopeDid, pendingAttestationId } = context;
   const limit = getInviteLimit(session.tier);
 
   const [{ count: pendingCount }] = await db
@@ -368,11 +392,11 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     code,
     fromDid: session.did,
     fromHandle: session.handle || null,
-    toEmail: normalizeInviteEmail(body.toEmail),
-    note: body.note || null,
+    toEmail: normalizeInviteEmail(toEmail),
+    note: note || null,
     delivery: 'link',
     status: 'pending',
-    maxUses: body.maxUses || 1,
+    maxUses: maxUses || 1,
     scopeDid,
     pendingAttestationId,
   }).returning();
@@ -398,7 +422,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     url: inviteUrl,
     remaining: limit - pendingCount - 1,
   }, { status: 201 });
-});
+}
 
 export async function GET(request: NextRequest) {
   const session = await getSessionFromCookies(request.headers.get('cookie'));

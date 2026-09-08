@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { broker } from '@imajin/bus';
-import type { BrokerRequest } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
+import { parseBrokerRequestBody } from '@/src/lib/broker/parse-request';
 
 const log = createLogger('kernel');
 
@@ -39,34 +39,18 @@ export async function POST(request: Request) {
 
   const actingDid = resolveActingDid(auth.identity);
 
-  let body: Record<string, unknown>;
+  let rawBody: Record<string, unknown>;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const type = typeof body.type === 'string' ? body.type.trim() : null;
-  const requester = typeof body.requester === 'string' ? body.requester.trim() : null;
-  const subject = typeof body.subject === 'string' ? body.subject.trim() : null;
-  const purpose = typeof body.purpose === 'string' ? body.purpose.trim() : null;
-  const fields = Array.isArray(body.fields) ? (body.fields as unknown[]).filter((f): f is string => typeof f === 'string') : null;
-  const scope = typeof body.scope === 'string' ? body.scope : 'default';
-  const data = typeof body.data === 'object' && body.data !== null ? (body.data as Record<string, unknown>) : undefined;
-  const predicates = typeof body.predicates === 'object' && body.predicates !== null && !Array.isArray(body.predicates)
-    ? body.predicates as BrokerRequest['predicates']
-    : undefined;
-  const preview = body.preview === true;
-  const mode = body.mode === undefined ? 'enforce' : body.mode;
-
-  if (!type) return NextResponse.json({ error: 'type is required' }, { status: 400 });
-  if (!requester) return NextResponse.json({ error: 'requester is required' }, { status: 400 });
-  if (!subject) return NextResponse.json({ error: 'subject is required' }, { status: 400 });
-  if (!purpose) return NextResponse.json({ error: 'purpose is required' }, { status: 400 });
-  if (!fields || fields.length === 0) return NextResponse.json({ error: 'fields must be a non-empty string array' }, { status: 400 });
-  if (mode !== 'enforce' && mode !== 'shadow') {
-    return NextResponse.json({ error: "mode must be 'enforce' or 'shadow'" }, { status: 400 });
+  const parsed = parseBrokerRequestBody(rawBody);
+  if (!parsed.ok) {
+    return NextResponse.json({ error: parsed.error }, { status: parsed.status });
   }
+  const { type, requester, subject, purpose, fields, scope, data, predicates, preview, mode } = parsed.request;
 
   // Acting DID must match requester — no impersonation.
   if (requester !== actingDid) {

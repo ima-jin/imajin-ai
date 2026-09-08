@@ -5,6 +5,7 @@ import { corsHeaders } from '@imajin/config';
 import { requireAuth } from '@/src/lib/auth/middleware';
 import { createLogger } from '@imajin/logger';
 import {
+  buildSignatureCountMap,
   finalizeDocumentAttestation,
   parseDocumentRequestBody,
   validateDocumentRequestInput,
@@ -165,18 +166,7 @@ export async function GET(request: NextRequest) {
         .groupBy(attestationSignatures.attestationId, attestationSignatures.status);
     }
 
-    const countMap = new Map<string, { signed: number; declined: number; pending: number }>();
-    for (const row of rows) {
-      countMap.set(row.id, { signed: 0, declined: 0, pending: 0 });
-    }
-    for (const sc of sigCounts) {
-      const existing = countMap.get(sc.attestationId);
-      if (existing) {
-        if (sc.status === 'signed') existing.signed = sc.count;
-        if (sc.status === 'declined') existing.declined = sc.count;
-        if (sc.status === 'pending') existing.pending = sc.count;
-      }
-    }
+    const countMap = buildSignatureCountMap(attIds, sigCounts);
 
     const documents = rows.map((att) => ({
       ...att,

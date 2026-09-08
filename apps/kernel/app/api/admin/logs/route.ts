@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getClient } from '@imajin/db';
 import { withLogger } from '@imajin/logger';
 import { requireAdmin } from '@imajin/auth';
+import { buildLogsWhereFragment, parseLogFilters } from '@/src/lib/admin/logs-query';
 
 export const GET = withLogger('kernel', async (req: NextRequest, { log }) => {
   const sql = getClient();
@@ -11,50 +12,29 @@ export const GET = withLogger('kernel', async (req: NextRequest, { log }) => {
   }
 
   const url = new URL(req.url);
-  const service = url.searchParams.get('service') || null;
-  const levelParam = url.searchParams.get('level') || null;
-  const levels = levelParam ? levelParam.split(',').filter(Boolean) : null;
-  const source = url.searchParams.get('source') || null;
-  const correlationId = url.searchParams.get('correlationId') || null;
-  const did = url.searchParams.get('did') || null;
-  const search = url.searchParams.get('search') || null;
-  const from = url.searchParams.get('from') || null;
-  const to = url.searchParams.get('to') || null;
-  const limit = Math.min(200, Number.parseInt(url.searchParams.get('limit') || '50', 10));
-  const offset = Number.parseInt(url.searchParams.get('offset') || '0', 10);
-  const searchPattern = search ? `%${search}%` : null;
+  const filters = parseLogFilters(url);
+  const whereFragment = buildLogsWhereFragment(sql, filters);
 
   const [countRow] = await sql`
     SELECT COUNT(*)::int AS total
     FROM registry.logs
     WHERE TRUE
-    ${service ? sql`AND service = ${service}` : sql``}
-    ${levels && levels.length > 0 ? sql`AND level = ANY(${levels})` : sql``}
-    ${source ? sql`AND source = ${source}` : sql``}
-    ${correlationId ? sql`AND correlation_id = ${correlationId}` : sql``}
-    ${did ? sql`AND did = ${did}` : sql``}
-    ${searchPattern ? sql`AND (message ILIKE ${searchPattern} OR path ILIKE ${searchPattern} OR error_message ILIKE ${searchPattern})` : sql``}
-    ${from ? sql`AND created_at >= ${from}::timestamptz` : sql``}
-    ${to ? sql`AND created_at <= ${to}::timestamptz` : sql``}
+    ${whereFragment}
   `;
 
   const rows = await sql`
     SELECT id, source, service, level, message, correlation_id, did, method, path, status, duration_ms, ip, error_message, metadata, created_at
     FROM registry.logs
     WHERE TRUE
-    ${service ? sql`AND service = ${service}` : sql``}
-    ${levels && levels.length > 0 ? sql`AND level = ANY(${levels})` : sql``}
-    ${source ? sql`AND source = ${source}` : sql``}
-    ${correlationId ? sql`AND correlation_id = ${correlationId}` : sql``}
-    ${did ? sql`AND did = ${did}` : sql``}
-    ${searchPattern ? sql`AND (message ILIKE ${searchPattern} OR path ILIKE ${searchPattern} OR error_message ILIKE ${searchPattern})` : sql``}
-    ${from ? sql`AND created_at >= ${from}::timestamptz` : sql``}
-    ${to ? sql`AND created_at <= ${to}::timestamptz` : sql``}
+    ${whereFragment}
     ORDER BY created_at DESC
-    LIMIT ${limit} OFFSET ${offset}
+    LIMIT ${filters.limit} OFFSET ${filters.offset}
   `;
 
-  log.info({ service: 'kernel', filterService: service, levels, source, limit, offset, count: rows.length }, 'admin logs query');
+  log.info(
+    { service: 'kernel', filterService: filters.service, levels: filters.levels, source: filters.source, limit: filters.limit, offset: filters.offset, count: rows.length },
+    'admin logs query',
+  );
 
   return NextResponse.json({ rows, total: countRow?.total ?? 0 });
 });

@@ -15,6 +15,7 @@ import { recordPresenceQueryUsage } from '@/src/lib/inference/presence-query-usa
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 import { buildPublicUrl } from '@imajin/config';
+import { checkTrustDistance, fetchPresenceData, resolveQueryProfile, settleQueryCost } from '@/src/lib/profile/presence-query';
 
 const log = createLogger('kernel');
 
@@ -41,6 +42,26 @@ function buildToolBootstrap(tools: Record<string, { description?: string }>): st
   );
 }
 
+/** Convert useChat-format messages (which may carry tool invocations) to plain user/assistant text for streamText. */
+function toPlainMessages(rawMessages: Array<{ role: string; content: unknown }>) {
+  return rawMessages
+    .filter((msg) => {
+      // Drop tool result messages entirely
+      if (msg.role === 'tool') return false;
+      // Drop assistant messages that have no text content (tool-call-only)
+      if (msg.role === 'assistant') {
+        const text = typeof msg.content === 'string' ? msg.content.trim() : '';
+        if (!text) return false;
+      }
+      return true;
+    })
+    .map((msg) => ({
+      role: msg.role as 'user' | 'assistant' | 'system',
+      content: typeof msg.content === 'string' ? msg.content : '',
+      // Explicitly exclude toolInvocations — streamText will re-invoke tools as needed
+    }));
+}
+
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { id: targetDid } = await params;
 
@@ -55,55 +76,26 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const requesterDid = authResult.identity.id;
 
   // 2. Check target
-  const profile = await db.query.profiles.findFirst({
-    where: (profiles, { eq, or }) =>
-      or(eq(profiles.did, targetDid), eq(profiles.handle, targetDid)),
-  });
-
-  if (!profile) {
-    return new Response(JSON.stringify({ error: 'Profile not found' }), { status: 404 });
+  const profileResult = await resolveQueryProfile(targetDid);
+  if (!profileResult.ok) {
+    return new Response(JSON.stringify({ error: profileResult.error }), { status: profileResult.status });
   }
-  if (!profile.featureToggles?.inference_enabled) {
-    return new Response(JSON.stringify({ error: 'Inference not enabled' }), { status: 403 });
-  }
-
+  const { profile } = profileResult;
   const resolvedTargetDid = profile.did;
   const isSelf = requesterDid === resolvedTargetDid;
 
-  // 3. Trust gate
-  let trustDistance = 0;
-  if (!isSelf) {
-    try {
-      const trustRes = await fetch(
-        `${CONNECTIONS_URL}/api/trust/distance?from=${encodeURIComponent(requesterDid)}&to=${encodeURIComponent(resolvedTargetDid)}`,
-        { headers: { Authorization: `Bearer ${TRUST_INTERNAL_API_KEY}` } }
-      );
-      if (trustRes.ok) {
-        const trustData = await trustRes.json();
-        if (!trustData.connected) {
-          return new Response(JSON.stringify({ error: 'Not connected' }), { status: 403 });
-        }
-        if (trustData.distance > 2) {
-          return new Response(JSON.stringify({ error: 'Too far in trust graph' }), { status: 403 });
-        }
-        trustDistance = trustData.distance;
-      }
-    } catch {
-      // Allow if trust service is down (permissive for now)
-    }
+  // 3. Trust gate (permissive: a down trust service allows the query through)
+  const trustResult = await checkTrustDistance(requesterDid, resolvedTargetDid, isSelf, {
+    strict: false,
+    messages: { notConnected: 'Not connected', tooFar: 'Too far in trust graph' },
+  });
+  if (!trustResult.ok) {
+    return new Response(JSON.stringify({ error: trustResult.error }), { status: trustResult.status });
   }
+  const { trustDistance } = trustResult;
 
   // 4. Fetch presence
-  let presenceData: { config?: Record<string, unknown>; soul?: string; context?: string } = {};
-  try {
-    const presenceRes = await fetch(
-      `${MEDIA_URL}/api/presence/${encodeURIComponent(resolvedTargetDid)}`,
-      { headers: { Authorization: `Bearer ${MEDIA_INTERNAL_API_KEY}` } }
-    );
-    if (presenceRes.ok) {
-      presenceData = await presenceRes.json();
-    }
-  } catch { /* proceed with defaults */ }
+  const presenceData = await fetchPresenceData(resolvedTargetDid);
 
   // 5. Resolve the model from the PRESENCE OWNER's sealed connector card (#1621).
   //    Their presence, their brain, their credential. Supersedes any
@@ -143,26 +135,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     buildToolBootstrap(tools);
 
   // 8. Parse body — convert useChat format to plain messages for streamText
-  //    useChat sends messages with toolInvocations[] on assistant messages.
-  //    We strip those and only keep user/assistant text for the model context.
   const body = await request.json();
   const rawMessages = body.messages ?? [{ role: 'user', content: body.message ?? '' }];
-  const messages = rawMessages
-    .filter((msg: any) => {
-      // Drop tool result messages entirely
-      if (msg.role === 'tool') return false;
-      // Drop assistant messages that have no text content (tool-call-only)
-      if (msg.role === 'assistant') {
-        const text = typeof msg.content === 'string' ? msg.content.trim() : '';
-        if (!text) return false;
-      }
-      return true;
-    })
-    .map((msg: any) => ({
-      role: msg.role as 'user' | 'assistant' | 'system',
-      content: typeof msg.content === 'string' ? msg.content : '',
-      // Explicitly exclude toolInvocations — streamText will re-invoke tools as needed
-    }));
+  const messages = toPlainMessages(rawMessages);
 
   // 9. Stream with custom SSE that includes tool call metadata
   const queryId = nanoid();
@@ -188,39 +163,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const completionTokens = usage?.completionTokens ?? 0;
       const cost = calculateCost(modelId, promptTokens, completionTokens);
 
-      // Settle (non-fatal)
-      let settled = false;
-      if (cost > 0 && !isSelf) {
-        const payUrl = process.env.PAY_SERVICE_URL;
-        const payKey = process.env.PAY_SERVICE_API_KEY;
-        const platformDid = process.env.PLATFORM_DID;
-        const platformFee = Number.parseFloat(process.env.PLATFORM_FEE_PERCENT ?? '0.2');
-
-        if (payUrl && payKey && platformDid) {
-          const platformAmount = +(cost * platformFee).toFixed(6);
-          const targetAmount = +(cost - platformAmount).toFixed(6);
-          try {
-            const settleRes = await fetch(`${payUrl}/api/settle`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${payKey}` },
-              body: JSON.stringify({
-                from_did: requesterDid,
-                total_amount: cost,
-                service: 'inference',
-                type: 'query',
-                fair_manifest: {
-                  chain: [
-                    { did: resolvedTargetDid, amount: targetAmount, role: 'presence-owner' },
-                    { did: platformDid, amount: platformAmount, role: 'infrastructure' },
-                  ],
-                },
-                metadata: { queryId, model: modelId, promptTokens, completionTokens },
-              }),
-            });
-            settled = settleRes.ok;
-          } catch { /* non-fatal */ }
-        }
-      }
+      // Settle (non-fatal, silent on failure)
+      const settled = await settleQueryCost({
+        cost, isSelf, requesterDid, resolvedTargetDid, queryId, modelId, promptTokens, completionTokens,
+      });
 
       // Log
       try {

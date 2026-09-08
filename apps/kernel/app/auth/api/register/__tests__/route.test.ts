@@ -64,13 +64,21 @@ vi.mock('@/src/lib/kernel/node-identity', () => ({
   getNodeDid: mockGetNodeDid,
 }));
 
-vi.mock('@/src/lib/auth/register', () => ({
-  verifyRegistrationSignature: mockVerifyRegistrationSignature,
-  resolveInviteCode: mockResolveInviteCode,
-  autoAcceptInvite: mockAutoAcceptInvite,
-  linkDfosChainSafe: mockLinkDfosChainSafe,
-  subscribeEmailToMailingList: mockSubscribeEmailToMailingList,
-}));
+vi.mock('@/src/lib/auth/register', async (importOriginal) => {
+  // Keep the real `validateRegistrationFields`/`recordEmailCredential` implementations
+  // (added when the route's field validation + credential insert were extracted into
+  // this module) so this test still exercises real validation and the real
+  // db.insert(credentials) call the assertions below depend on.
+  const actual = await importOriginal<typeof import('@/src/lib/auth/register')>();
+  return {
+    ...actual,
+    verifyRegistrationSignature: mockVerifyRegistrationSignature,
+    resolveInviteCode: mockResolveInviteCode,
+    autoAcceptInvite: mockAutoAcceptInvite,
+    linkDfosChainSafe: mockLinkDfosChainSafe,
+    subscribeEmailToMailingList: mockSubscribeEmailToMailingList,
+  };
+});
 
 function selectChain(result: unknown) {
   const chain: Record<string, unknown> = {};
