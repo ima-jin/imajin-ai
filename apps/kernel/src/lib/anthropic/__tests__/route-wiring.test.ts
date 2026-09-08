@@ -8,7 +8,7 @@
  * `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
  * provider-specific mocks and route imports live here.
  */
-import { vi, it } from 'vitest';
+import { vi, it, expect } from 'vitest';
 import {
   mockRouteWiringFactories,
   describeRouteWiringContract,
@@ -45,10 +45,12 @@ const tokenRoute = await import('../../../../app/anthropic/api/token/route');
 const disconnectRoute = await import('../../../../app/anthropic/api/disconnect/route');
 const anthropicManifestRoute = await import('../../../../app/anthropic/api/scope-manifest/route');
 
-// Direct, literal it() (see expectScopeManifestRouteExportsPostAndOptions's
-// doc comment) so this file itself is recognized by Sonar S2187.
-it('re-exports POST and OPTIONS from the scope-manifest route, not just GET', () =>
-  expectScopeManifestRouteExportsPostAndOptions(anthropicManifestRoute as Record<string, unknown>));
+// Direct, literal it() with a literal expect() on the helper's return value
+// (see expectScopeManifestRouteExportsPostAndOptions's doc comment) so Sonar
+// S2699 recognizes this file as containing a real assertion.
+it('re-exports POST and OPTIONS from the scope-manifest route, not just GET', () => {
+  expect(expectScopeManifestRouteExportsPostAndOptions(anthropicManifestRoute as Record<string, unknown>)).toBe(true);
+});
 
 describeRouteWiringContract({
   label: 'Anthropic',

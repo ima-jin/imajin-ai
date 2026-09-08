@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   mockRouteWiringFactories,
   mockBillingKeyConnector,
@@ -12,10 +12,12 @@ const { sealBillingKey, billingKeySealed } = mockBillingKeyConnector('@/src/lib/
 const route = await import('../route');
 
 describe('anthropic billing-key route wiring', () => {
-  // Direct, literal it() (see expectNoDisconnectRouteWired's doc comment)
-  // so this file itself is recognized by Sonar S2187.
-  it('does not wire a disconnect route for this Stage 1 billing credential', () =>
-    expectNoDisconnectRouteWired(disconnectOpts));
+  // Direct, literal it() with a literal expect() on the helper's return
+  // value (see expectNoDisconnectRouteWired's doc comment) so Sonar S2699
+  // recognizes this file as containing a real assertion.
+  it('does not wire a disconnect route for this Stage 1 billing credential', () => {
+    expect(expectNoDisconnectRouteWired(disconnectOpts)).toBe(true);
+  });
 
   describeBillingKeyRouteWiringContract({
     label: 'Anthropic Billing',
