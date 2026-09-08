@@ -33,6 +33,65 @@ async function getTicketTypes(eventId: string) {
     .orderBy(ticketTypes.sortOrder);
 }
 
+/** Creator always has access; otherwise fall back to a cohost membership check. */
+async function checkIsOrganizer(event: { creatorDid: string; podId: string | null }, sessionId: string, did: string): Promise<boolean> {
+  if (event.creatorDid === did) return true;
+  if (!event.podId) return false;
+  try {
+    const [member] = await sql`
+      SELECT did FROM connections.pod_members
+      WHERE pod_id = ${event.podId} AND did = ${sessionId} AND role = 'cohost' AND removed_at IS NULL
+      LIMIT 1
+    `;
+    return !!member;
+  } catch (err) {
+    log.error({ err: String(err) }, '[edit] Failed to check cohost membership');
+    return false;
+  }
+}
+
+interface CreatorInfo {
+  creatorEmail: string | null;
+  creatorHandle: string | null;
+  creatorName: string | null;
+}
+
+/** Fetch creator email + display info via the profile service's batched /api/resolve route (#1998). */
+async function resolveCreatorInfo(creatorDid: string): Promise<CreatorInfo> {
+  try {
+    const resolved = await resolveIdentitiesForDids([creatorDid]);
+    const creator = resolved.get(creatorDid);
+    return {
+      creatorEmail: creator?.email ?? null,
+      creatorHandle: creator?.handle ?? null,
+      creatorName: creator?.displayName ?? null,
+    };
+  } catch (err) {
+    log.warn({ err: String(err) }, '[edit] Failed to resolve creator identity');
+    return { creatorEmail: null, creatorHandle: null, creatorName: null };
+  }
+}
+
+/** Gather all organizer DIDs (creator + cohosts) for the survey dropdown. */
+async function gatherOrganizerDids(event: { creatorDid: string; podId: string | null }): Promise<string[]> {
+  const organizerDids = [event.creatorDid];
+  if (!event.podId) return organizerDids;
+  try {
+    const cohosts = await sql`
+      SELECT did FROM connections.pod_members
+      WHERE pod_id = ${event.podId} AND role IN ('cohost', 'owner', 'host') AND removed_at IS NULL
+    `;
+    for (const row of cohosts) {
+      if (row.did && !organizerDids.includes(row.did as string)) {
+        organizerDids.push(row.did as string);
+      }
+    }
+  } catch (err) {
+    log.warn({ err: String(err) }, '[edit] Failed to fetch cohosts for survey dropdown');
+  }
+  return organizerDids;
+}
+
 export default async function EditEventPage({ params }: Readonly<Props>) {
   const session = await getSession();
   const { eventId } = await params;
@@ -50,19 +109,7 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
   const did = resolveActingDid(session);
 
   // Check authorization - creator or cohost can edit
-  let isOrganizer = event.creatorDid === did;
-  if (!isOrganizer && event.podId) {
-    try {
-      const [member] = await sql`
-        SELECT did FROM connections.pod_members
-        WHERE pod_id = ${event.podId} AND did = ${session.id} AND role = 'cohost' AND removed_at IS NULL
-        LIMIT 1
-      `;
-      isOrganizer = !!member;
-    } catch (err) {
-      log.error({ err: String(err) }, '[edit] Failed to check cohost membership');
-    }
-  }
+  const isOrganizer = await checkIsOrganizer(event, session.id, did);
   if (!isOrganizer) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8">
@@ -84,40 +131,8 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
   }
 
   const tickets = await getTicketTypes(eventId);
-
-  // Fetch creator email + display info via the profile service's batched
-  // /api/resolve route (#1998) — replaces the raw profile.profiles /
-  // auth.identities queries this page used to run for itself.
-  let creatorEmail: string | null = null;
-  let creatorHandle: string | null = null;
-  let creatorName: string | null = null;
-  try {
-    const resolved = await resolveIdentitiesForDids([event.creatorDid]);
-    const creator = resolved.get(event.creatorDid);
-    creatorEmail = creator?.email ?? null;
-    creatorHandle = creator?.handle ?? null;
-    creatorName = creator?.displayName ?? null;
-  } catch (err) {
-    log.warn({ err: String(err) }, '[edit] Failed to resolve creator identity');
-  }
-
-  // Gather all organizer DIDs (creator + cohosts) for survey dropdown
-  const organizerDids = [event.creatorDid];
-  if (event.podId) {
-    try {
-      const cohosts = await sql`
-        SELECT did FROM connections.pod_members
-        WHERE pod_id = ${event.podId} AND role IN ('cohost', 'owner', 'host') AND removed_at IS NULL
-      `;
-      for (const row of cohosts) {
-        if (row.did && !organizerDids.includes(row.did as string)) {
-          organizerDids.push(row.did as string);
-        }
-      }
-    } catch (err) {
-      log.warn({ err: String(err) }, '[edit] Failed to fetch cohosts for survey dropdown');
-    }
-  }
+  const { creatorEmail, creatorHandle, creatorName } = await resolveCreatorInfo(event.creatorDid);
+  const organizerDids = await gatherOrganizerDids(event);
 
   return (
     <div className="min-h-screen">

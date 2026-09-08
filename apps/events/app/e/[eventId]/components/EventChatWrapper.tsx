@@ -19,6 +19,40 @@ interface EventChatWrapperProps {
   compact?: boolean;
 }
 
+type DisplayPref = 'real_name' | 'handle' | 'anonymous';
+
+/** Assigns (and remembers) a stable 1-based attendee number for anonymous display. */
+function getOrAssignAttendeeIndex(senderDid: string, senderIndexMap: Map<string, number>, nextIndexRef: { current: number }): number {
+  if (!senderIndexMap.has(senderDid)) {
+    senderIndexMap.set(senderDid, nextIndexRef.current);
+    nextIndexRef.current += 1;
+  }
+  return senderIndexMap.get(senderDid)!;
+}
+
+/** Resolves the display policy that actually applies to this sender's message. */
+function resolveEffectivePolicy(nameDisplayPolicy: NameDisplayPolicy, isOwnMessage: boolean, myDisplayPref: DisplayPref): DisplayPref {
+  if (nameDisplayPolicy === 'attendee_choice') return isOwnMessage ? myDisplayPref : 'handle';
+  return nameDisplayPolicy as DisplayPref;
+}
+
+function resolveRealNameDisplay(senderDid: string, profile: Profile | undefined, names: Record<string, string>, fetchProfile: (senderDid: string) => void): string {
+  if (profile?.name) return profile.name;
+  if (names[senderDid]) return names[senderDid]; // useChatNames may already have the name
+  if (profile?.handle) return `@${profile.handle}`;
+  // Trigger lazy fetch and fallback
+  fetchProfile(senderDid);
+  return `${senderDid.slice(0, 16)}...`;
+}
+
+function resolveHandleDisplay(senderDid: string, profile: Profile | undefined, names: Record<string, string>, fetchProfile: (senderDid: string) => void): string {
+  if (profile?.handle) return `@${profile.handle}`;
+  // If we only have a name in didNames but want handle, try to fetch
+  fetchProfile(senderDid);
+  if (names[senderDid]?.startsWith('@')) return names[senderDid];
+  return `${senderDid.slice(0, 16)}...`;
+}
+
 export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWrapperProps>) {
   const [nameDisplayPolicy, setNameDisplayPolicy] = useState<NameDisplayPolicy>('attendee_choice');
   const [myDisplayPref, setMyDisplayPref] = useState<'real_name' | 'handle' | 'anonymous'>('handle');
@@ -98,48 +132,26 @@ export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWr
 
     // For anonymous policy, build attendee numbers based on first-seen order
     if (nameDisplayPolicy === 'anonymous') {
-      if (!senderIndexMap.current.has(senderDid)) {
-        senderIndexMap.current.set(senderDid, nextIndex.current);
-        nextIndex.current += 1;
-      }
-      const idx = senderIndexMap.current.get(senderDid)!;
+      const idx = getOrAssignAttendeeIndex(senderDid, senderIndexMap.current, nextIndex);
       return `Attendee #${idx + 1}`;
     }
 
     // Determine effective policy for this sender
-    let effectivePolicy: 'real_name' | 'handle' | 'anonymous';
-    if (nameDisplayPolicy === 'attendee_choice') {
-      effectivePolicy = isOwnMessage ? myDisplayPref : 'handle';
-    } else {
-      effectivePolicy = nameDisplayPolicy as 'real_name' | 'handle' | 'anonymous';
-    }
+    const effectivePolicy = resolveEffectivePolicy(nameDisplayPolicy, isOwnMessage, myDisplayPref);
 
     if (effectivePolicy === 'anonymous') {
-      if (!senderIndexMap.current.has(senderDid)) {
-        senderIndexMap.current.set(senderDid, nextIndex.current);
-        nextIndex.current += 1;
-      }
-      const idx = senderIndexMap.current.get(senderDid)!;
+      const idx = getOrAssignAttendeeIndex(senderDid, senderIndexMap.current, nextIndex);
       return `Attendee #${idx + 1}`;
     }
 
     const profile = profilesRef.current[senderDid];
 
     if (effectivePolicy === 'real_name') {
-      if (profile?.name) return profile.name;
-      if (names[senderDid]) return names[senderDid]; // useChatNames may already have the name
-      if (profile?.handle) return `@${profile.handle}`;
-      // Trigger lazy fetch and fallback
-      fetchProfile(senderDid);
-      return senderDid.slice(0, 16) + '...';
+      return resolveRealNameDisplay(senderDid, profile, names, fetchProfile);
     }
 
     if (effectivePolicy === 'handle') {
-      if (profile?.handle) return `@${profile.handle}`;
-      // If we only have a name in didNames but want handle, try to fetch
-      fetchProfile(senderDid);
-      if (names[senderDid]?.startsWith('@')) return names[senderDid];
-      return senderDid.slice(0, 16) + '...';
+      return resolveHandleDisplay(senderDid, profile, names, fetchProfile);
     }
 
     return undefined; // Let Chat use default didNames

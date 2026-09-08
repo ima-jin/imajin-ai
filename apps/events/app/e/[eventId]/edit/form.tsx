@@ -40,7 +40,137 @@ interface Survey {
   responseCount?: number;
 }
 
+interface LinkedSurvey {
+  id: string;
+  visibility: 'always' | 'pre-event' | 'post-event';
+  paywall: boolean;
+  requiredForTickets: boolean;
+}
+
 type ActiveTab = 'details' | 'fair' | 'campaign';
+
+interface EventUpdateFormState {
+  title: string;
+  description: string;
+  dateTime: string;
+  endDateTime: string;
+  timezone: string;
+  locationType: 'physical' | 'virtual' | 'hybrid';
+  virtualUrl: string;
+  venue: string;
+  address: string;
+  city: string;
+  country: string;
+  imageUrl: string;
+  status: string;
+  nameDisplayPolicy: string;
+  chatEnabled: boolean;
+  accessMode: 'public' | 'invite_only';
+  courseSlug: string;
+  emtEnabled: boolean;
+  emtEmail: string;
+  existingMetadata: Record<string, unknown> | null | undefined;
+  linkedSurveys: LinkedSurvey[];
+}
+
+/** Builds the PUT /api/events/:id request body from the edit form's field state. */
+function buildEventUpdatePayload(form: EventUpdateFormState): Record<string, unknown> {
+  const { locationType } = form;
+  return {
+    title: form.title,
+    description: form.description,
+    startsAt: new Date(form.dateTime).toISOString(),
+    endsAt: form.endDateTime ? new Date(form.endDateTime).toISOString() : null,
+    timezone: form.timezone,
+    locationType,
+    isVirtual: locationType !== 'physical',
+    virtualUrl: locationType === 'physical' ? null : form.virtualUrl,
+    venue: locationType === 'virtual' ? null : form.venue,
+    address: locationType === 'virtual' ? null : form.address,
+    city: locationType === 'virtual' ? null : form.city,
+    country: locationType === 'virtual' ? null : form.country,
+    imageUrl: form.imageUrl || null,
+    status: form.status,
+    nameDisplayPolicy: form.nameDisplayPolicy,
+    chatEnabled: form.chatEnabled,
+    accessMode: form.accessMode,
+    courseSlug: form.courseSlug || null,
+    emtEmail: form.emtEnabled ? (form.emtEmail.trim() || null) : null,
+    metadata: {
+      ...(form.existingMetadata || {}),
+      linkedSurveys: form.linkedSurveys,
+      // Keep legacy fields for backwards compat
+      linkedSurveyIds: null,
+      preEventSurveyId: null,
+      postEventSurveyId: null,
+    },
+  };
+}
+
+/** Sends the updated event fields to the API, throwing with the server's error message on failure. */
+async function updateEventDetails(eventId: string, payload: Record<string, unknown>): Promise<void> {
+  const response = await apiFetch(`/api/events/${eventId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || 'Failed to update event');
+  }
+}
+
+/** Finds the first tier whose quantity would drop below its already-sold count. */
+function validateTierQuantities(tiers: TicketTier[]): string | null {
+  for (const tier of tiers) {
+    if (tier.sold && tier.quantity !== null && tier.quantity < tier.sold) {
+      return `Cannot reduce "${tier.name}" quantity below ${tier.sold} (already sold)`;
+    }
+  }
+  return null;
+}
+
+function buildTierPayload(tier: TicketTier, sortOrder: number): Record<string, unknown> {
+  return {
+    name: tier.name,
+    description: tier.description,
+    price: Math.round(tier.price * 100), // Convert dollars to cents
+    currency: tier.currency || 'CAD',
+    quantity: tier.quantity,
+    perks: tier.perks || [],
+    sortOrder,
+    requiresRegistration: tier.requiresRegistration,
+    registrationFormId: tier.registrationFormId || null,
+    accessCode: tier.accessCode?.trim() || undefined,
+  };
+}
+
+/** Creates or updates a single ticket tier, throwing with the server's error message on failure. */
+async function saveTicketTier(eventId: string, tier: TicketTier, sortOrder: number): Promise<void> {
+  const isUpdate = Boolean(tier.id);
+  const body = isUpdate ? { tierId: tier.id, ...buildTierPayload(tier, sortOrder) } : buildTierPayload(tier, sortOrder);
+  const tierRes = await apiFetch(`/api/events/${eventId}/tiers`, {
+    method: isUpdate ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(body),
+  });
+  if (!tierRes.ok) {
+    const tierData = await tierRes.json();
+    const fallback = isUpdate
+      ? tierData.violations?.join(', ') || `Failed to update tier "${tier.name}"`
+      : `Failed to create tier "${tier.name}"`;
+    throw new Error(tierData.error || fallback);
+  }
+}
+
+/** Persists all ticket tiers (create new ones, update existing ones) in their displayed order. */
+async function syncTicketTiers(eventId: string, tiers: TicketTier[]): Promise<void> {
+  for (const [index, tier] of tiers.entries()) {
+    await saveTicketTier(eventId, tier, index);
+  }
+}
 
 export default function EventEditForm({ event, existingTickets, creatorEmail, organizerDids, viewerDid, creatorHandle, creatorName }: Readonly<Props>) {
   const router = useRouter();
@@ -90,12 +220,6 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
   const DYKIL_URL = buildPublicUrl('dykil');
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loadingSurveys, setLoadingSurveys] = useState(true);
-  interface LinkedSurvey {
-    id: string;
-    visibility: 'always' | 'pre-event' | 'post-event';
-    paywall: boolean;
-    requiredForTickets: boolean;
-  }
   const [linkedSurveys, setLinkedSurveys] = useState<LinkedSurvey[]>(
     (event.metadata as any)?.linkedSurveys?.map((ls: any) => ({
       ...ls,
@@ -175,110 +299,38 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
     setLoading(true);
     setError('');
 
-    // Validate ticket quantity changes
-    for (const tier of tiers) {
-      if (tier.sold && tier.quantity !== null && tier.quantity < tier.sold) {
-        setError(`Cannot reduce "${tier.name}" quantity below ${tier.sold} (already sold)`);
-        setLoading(false);
-        return;
-      }
+    const quantityError = validateTierQuantities(tiers);
+    if (quantityError) {
+      setError(quantityError);
+      setLoading(false);
+      return;
     }
 
     try {
-      const response = await apiFetch(`/api/events/${event.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          title,
-          description,
-          startsAt: new Date(dateTime).toISOString(),
-          endsAt: endDateTime ? new Date(endDateTime).toISOString() : null,
-          timezone,
-          locationType,
-          isVirtual: locationType !== 'physical',
-          virtualUrl: locationType === 'physical'  ? null : virtualUrl,
-          venue: locationType === 'virtual'  ? null : venue,
-          address: locationType === 'virtual'  ? null : address,
-          city: locationType === 'virtual'  ? null : city,
-          country: locationType === 'virtual'  ? null : country,
-          imageUrl: imageUrl || null,
-          status,
-          nameDisplayPolicy,
-          chatEnabled,
-          accessMode,
-          courseSlug: courseSlug || null,
-          emtEmail: emtEnabled ? (emtEmail.trim() || null) : null,
-          metadata: {
-            ...(event.metadata as any),
-            linkedSurveys,
-            // Keep legacy fields for backwards compat
-            linkedSurveyIds: null,
-            preEventSurveyId: null,
-            postEventSurveyId: null,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to update event');
-      }
-
-
-
-      // Update ticket tiers
-      for (let i = 0; i < tiers.length; i++) {
-        const tier = tiers[i];
-        if (tier.id) {
-          // Update existing tier
-          const tierRes = await apiFetch(`/api/events/${event.id}/tiers`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              tierId: tier.id,
-              name: tier.name,
-              description: tier.description,
-              price: Math.round(tier.price * 100), // Convert dollars to cents
-              currency: tier.currency || 'CAD',
-              quantity: tier.quantity,
-              perks: tier.perks || [],
-              sortOrder: i,
-              requiresRegistration: tier.requiresRegistration,
-              registrationFormId: tier.registrationFormId || null,
-              accessCode: tier.accessCode?.trim() || undefined,
-            }),
-          });
-          if (!tierRes.ok) {
-            const tierData = await tierRes.json();
-            throw new Error(tierData.error || tierData.violations?.join(', ') || `Failed to update tier "${tier.name}"`);
-          }
-        } else {
-          // Create new tier
-          const tierRes = await apiFetch(`/api/events/${event.id}/tiers`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              name: tier.name,
-              description: tier.description,
-              price: Math.round(tier.price * 100),
-              currency: tier.currency || 'CAD',
-              quantity: tier.quantity,
-              perks: tier.perks || [],
-              sortOrder: i,
-              requiresRegistration: tier.requiresRegistration,
-              registrationFormId: tier.registrationFormId || null,
-              accessCode: tier.accessCode?.trim() || undefined,
-            }),
-          });
-          if (!tierRes.ok) {
-            const tierData = await tierRes.json();
-            throw new Error(tierData.error || `Failed to create tier "${tier.name}"`);
-          }
-        }
-      }
+      await updateEventDetails(event.id, buildEventUpdatePayload({
+        title,
+        description,
+        dateTime,
+        endDateTime,
+        timezone,
+        locationType,
+        virtualUrl,
+        venue,
+        address,
+        city,
+        country,
+        imageUrl,
+        status,
+        nameDisplayPolicy,
+        chatEnabled,
+        accessMode,
+        courseSlug,
+        emtEnabled,
+        emtEmail,
+        existingMetadata: event.metadata as any,
+        linkedSurveys,
+      }));
+      await syncTicketTiers(event.id, tiers);
 
       router.push(eventPath(event.id));
     } catch (err) {

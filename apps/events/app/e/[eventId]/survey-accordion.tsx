@@ -94,57 +94,65 @@ export function SurveyAccordion({
     const isTrustedMessage = (event: MessageEvent) =>
       event.origin === expectedOrigin && event.source === iframeRef.current?.contentWindow;
 
+    // Store hint for optimistic UI on other components
+    const persistCompletionHint = () => {
+      try { localStorage.setItem(storageKey, 'true'); } catch {}
+    };
+
+    const finishCompletion = () => {
+      isCompletingRef.current = false;
+      setIsCompleted(true);
+      setIsExpanded(false);
+    };
+
+    // Dykil sends two distinct 'survey-completed' shapes:
+    //   1. Fresh submit:    { type, surveyId, answers: {...} }  — user just
+    //      finished. Run onComplete (registers + flips status) and collapse.
+    //   2. On-load FYI:    { type, surveyId }                  — the iframe
+    //      loaded with a ticketId that already has a response. The accordion
+    //      is already 'complete'; the user expanded it to review/edit and
+    //      we must NOT collapse it or run onComplete again. Without this
+    //      branch the box would expand and immediately re-collapse the moment
+    //      Dykil finished its initial fetch.
+    const handleSurveyCompleted = (data: { answers?: unknown }) => {
+      const isFreshSubmit = data.answers !== undefined && data.answers !== null;
+      if (!isFreshSubmit) {
+        // Sync local state in case parent hadn't told us yet, but stay open.
+        setIsCompleted(true);
+        persistCompletionHint();
+        return;
+      }
+
+      // Guard against double-fire from iframe or React strict mode
+      if (isCompletingRef.current) return;
+
+      persistCompletionHint();
+      // Call onComplete first (which registers the response in DB),
+      // then mark completed and collapse. Don't fetchStatus here —
+      // the DB update hasn't happened yet at this point.
+      if (!onComplete) {
+        finishCompletion();
+        return;
+      }
+      // onComplete handles the DB write; mark done after it resolves.
+      // If it fails, DO NOT collapse — keep the accordion open so the
+      // user sees the error and can retry. This prevents silent failures
+      // where the user thinks they're done but the ticket is still pending.
+      isCompletingRef.current = true;
+      Promise.resolve(onComplete()).then(finishCompletion).catch((err) => {
+        console.error('[events:survey-accordion] onComplete failed:', err);
+        isCompletingRef.current = false;
+        // Leave accordion expanded and isCompleted false so user can retry
+      });
+    };
+
     const handleMessage = (event: MessageEvent) => {
       if (!isTrustedMessage(event)) return;
 
       if (event.data.type === 'survey-height') {
         setIframeHeight(event.data.height + 40); // Add some padding
       } else if (event.data.type === 'survey-completed') {
-        // Dykil sends two distinct 'survey-completed' shapes:
-        //   1. Fresh submit:    { type, surveyId, answers: {...} }  — user just
-        //      finished. Run onComplete (registers + flips status) and collapse.
-        //   2. On-load FYI:    { type, surveyId }                  — the iframe
-        //      loaded with a ticketId that already has a response. The accordion
-        //      is already 'complete'; the user expanded it to review/edit and
-        //      we must NOT collapse it or run onComplete again. Without this
-        //      branch the box would expand and immediately re-collapse the moment
-        //      Dykil finished its initial fetch.
-        const isFreshSubmit =
-          event.data.answers !== undefined && event.data.answers !== null;
-        if (!isFreshSubmit) {
-          // Sync local state in case parent hadn't told us yet, but stay open.
-          setIsCompleted(true);
-          try { localStorage.setItem(storageKey, 'true'); } catch {}
-          return;
-        }
-
-        // Guard against double-fire from iframe or React strict mode
-        if (isCompletingRef.current) return;
-
-        // Store hint for optimistic UI on other components
-        try { localStorage.setItem(storageKey, 'true'); } catch {}
-        // Call onComplete first (which registers the response in DB),
-        // then mark completed and collapse. Don't fetchStatus here —
-        // the DB update hasn't happened yet at this point.
-        const finish = () => {
-          isCompletingRef.current = false;
-          setIsCompleted(true);
-          setIsExpanded(false);
-        };
-        if (onComplete) {
-          // onComplete handles the DB write; mark done after it resolves.
-          // If it fails, DO NOT collapse — keep the accordion open so the
-          // user sees the error and can retry. This prevents silent failures
-          // where the user thinks they're done but the ticket is still pending.
-          isCompletingRef.current = true;
-          Promise.resolve(onComplete()).then(finish).catch((err) => {
-            console.error('[events:survey-accordion] onComplete failed:', err);
-            isCompletingRef.current = false;
-            // Leave accordion expanded and isCompleted false so user can retry
-          });
-        } else {
-          finish();
-        }
+        handleSurveyCompleted(event.data);
       }
     };
 
