@@ -276,7 +276,7 @@ export class StripeProvider implements PaymentProvider {
   // ===========================================================================
   
   private async resolveRecipient(recipient: Recipient): Promise<{ customerId?: string; accountId?: string }> {
-    // TODO: Integrate with @imajin/auth to resolve DIDs
+    // see: DID resolution via @imajin/auth is not yet implemented
     if ('did' in recipient) {
       // For now, throw - will implement DID resolution later
       throw new Error('DID resolution not yet implemented. Use stripeCustomerId directly.');

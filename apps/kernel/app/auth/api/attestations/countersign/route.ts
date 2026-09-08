@@ -71,9 +71,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // TODO: Verify witnessJws signature matches subject's chain key
-  // TODO: Verify witnessJws CID matches attestation CID
-  // For now, store the JWS — crypto verification is a fast follow
+  // see: witness JWS is stored without verifying its signature matches the
+  // subject's chain key, or that its CID matches the attestation CID —
+  // crypto verification is a fast follow
 
   // Amendment-by-supersession (#1790): when this attestation proposes to
   // amend an earlier one, flip both rows atomically — v1 (referenced by

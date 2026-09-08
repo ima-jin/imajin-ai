@@ -160,8 +160,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       );
     }
 
-    // 5. Optional chain verification — best-effort, degraded mode if chain is not found
-    // TODO(#538): Full verify-chain log validation requires cryptographic chain replay.
+    // 5. Optional chain verification — best-effort, degraded mode if chain is not found.
+    // Full verify-chain log validation requires cryptographic chain replay.
     const chainDid = await resolveChainDid(chainLog);
 
     // 6. Verify build hash against approved builds

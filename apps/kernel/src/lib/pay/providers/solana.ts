@@ -36,7 +36,7 @@ export class SolanaProvider implements PaymentProvider {
   readonly capabilities: ProviderCapabilities = {
     charge: true,
     checkout: false,      // No hosted checkout for crypto
-    escrow: false,        // TODO: Implement escrow program
+    escrow: false,        // see: escrow program not yet implemented (see escrow() below)
     subscriptions: false, // No native subscriptions on Solana
     refunds: false,       // Blockchain is immutable
   };
@@ -150,11 +150,8 @@ export class SolanaProvider implements PaymentProvider {
   // ===========================================================================
   
   async escrow(_request: EscrowRequest): Promise<EscrowResult> {
-    // TODO: Implement escrow via custom Solana program
-    // Options:
-    // 1. Custom escrow program (most flexible)
-    // 2. Integrate existing (Streamflow, etc.)
-    // 3. Multi-sig approach
+    // see: escrow requires a custom Solana program (or an integration such as
+    // Streamflow, or a multi-sig approach) — not yet implemented
     throw new Error('Solana escrow not yet implemented');
   }
   
@@ -168,7 +165,7 @@ export class SolanaProvider implements PaymentProvider {
     }
     
     if ('did' in recipient) {
-      // TODO: Integrate with @imajin/auth to resolve DID → Solana address
+      // see: DID → Solana address resolution via @imajin/auth is not yet implemented
       throw new Error('DID resolution not yet implemented. Use solanaAddress directly.');
     }
     

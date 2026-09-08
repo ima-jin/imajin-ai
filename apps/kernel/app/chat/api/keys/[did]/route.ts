@@ -33,7 +33,8 @@ export async function GET(
     // Get an unused one-time pre-key (if available)
     const oneTimeKey = await db.query.preKeys.findFirst({
       where: eq(preKeys.did, did),
-      // TODO: Filter unused keys - Drizzle syntax for this
+      // see: this doesn't filter to unused keys at the query level; unused-ness
+      // is only checked below, after fetch
     });
 
     // Mark the pre-key as used if we found one

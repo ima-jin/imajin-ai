@@ -110,11 +110,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       });
     }
 
-    // TODO: Check for available upgrades
-    // const latestVersion = await getLatestVersion();
-    // if (heartbeat.version !== latestVersion) {
-    //   actions.push({ type: 'upgrade', targetVersion: latestVersion, reason: 'New version available' });
-    // }
+    // see: upgrade-availability notifications are not yet implemented
 
     // 6. Update node status
     await db

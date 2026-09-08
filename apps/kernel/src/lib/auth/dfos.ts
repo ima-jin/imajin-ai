@@ -353,8 +353,8 @@ export async function createAttestationEntry(params: {
       kid,
     });
 
-    // TODO(#640): upload attestation bytes as blob to relay so documents are
-    // retrievable via getDocuments(). For now the chain entry proves existence.
+    // For now, the chain entry proves existence — attestation bytes are not
+    // uploaded as a retrievable blob via getDocuments().
 
     const ok = await ingestToRelay([jwsToken]);
     if (!ok) {

@@ -87,7 +87,7 @@ function buildUserLinks(prefix: string, domain: string, overrides?: ServiceUrls)
 function getLauncherTier(identity: NavIdentity | null): 'anonymous' | 'soft' | 'hard' | 'creator' {
   if (!identity?.isLoggedIn) return 'anonymous';
   if (identity.tier === 'soft') return 'soft';
-  // TODO: distinguish creator from hard DID when roles are implemented
+  // see: creator vs. hard DID is not yet distinguished — roles are not implemented
   return 'hard';
 }
 

@@ -74,7 +74,6 @@ export async function POST(request: NextRequest) {
       case 'payment_intent.succeeded': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         log.info({ paymentIntentId: paymentIntent.id }, 'Payment succeeded');
-        // TODO: Update order status, send confirmation, etc.
         await handlePaymentSucceeded(paymentIntent);
         break;
       }
@@ -82,7 +81,6 @@ export async function POST(request: NextRequest) {
       case 'payment_intent.payment_failed': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         log.info({ paymentIntentId: paymentIntent.id }, 'Payment failed');
-        // TODO: Notify customer, update order status
         await handlePaymentFailed(paymentIntent);
         break;
       }
@@ -90,7 +88,6 @@ export async function POST(request: NextRequest) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         log.info({ sessionId: session.id }, 'Checkout completed');
-        // TODO: Fulfill order, send receipt
         await handleCheckoutCompleted(session);
         break;
       }
@@ -98,7 +95,6 @@ export async function POST(request: NextRequest) {
       case 'customer.subscription.created': {
         const subscription = event.data.object as Stripe.Subscription;
         log.info({ subscriptionId: subscription.id }, 'Subscription created');
-        // TODO: Provision access
         await handleSubscriptionCreated(subscription);
         break;
       }
@@ -153,7 +149,7 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
   // Check if this is an escrow release
   if (paymentIntent.metadata.escrow === 'true') {
     log.info({ id: paymentIntent.id, from: paymentIntent.metadata.from_did, to: paymentIntent.metadata.to_did, amount: paymentIntent.amount }, 'Escrow released');
-    // TODO: Notify parties, update escrow record
+    // see: escrow release does not yet notify the parties or persist an escrow record
     return;
   }
 

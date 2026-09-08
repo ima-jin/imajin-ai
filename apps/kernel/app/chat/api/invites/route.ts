@@ -7,11 +7,6 @@ import { checkAccess } from '@/src/lib/kernel/access';
 import { withLogger } from '@imajin/logger';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 
-// TODO(#435-followup): The invites table still references chat.conversations.id (v1 FK).
-// The conversationId field here now accepts a conversation DID as a plain text column
-// (FK constraint should be dropped in a follow-up migration).
-// Until then, invite creation/acceptance works with both v1 conv IDs (legacy) and v2 DIDs.
-
 /**
  * POST /api/invites - Create an invite link for a v2 conversation
  */

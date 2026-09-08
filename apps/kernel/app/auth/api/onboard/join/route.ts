@@ -56,7 +56,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     // For invite-only, only allow if there's a valid invite context
     // (onboard page passes through, direct API calls get blocked)
     // For now, allow — the onboard page is the invite mechanism
-    // TODO: require invite token validation for strict invite-only
+    // see: strict invite-only mode does not yet validate an invite token here
   }
 
   if (visibility === 'network') {
