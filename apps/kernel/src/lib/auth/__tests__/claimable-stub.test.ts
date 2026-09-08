@@ -243,7 +243,7 @@ describe('resolveOrMintInviteTarget', () => {
     await resolveOrMintInviteTarget('real@example.com', recordingSleep);
 
     // The fast branch still pays the latency floor instead of returning early.
-    expect(sleepCalls.length).toBe(1);
+    expect(sleepCalls).toHaveLength(1);
     expect(sleepCalls[0]).toBeGreaterThan(0);
   });
 
@@ -258,7 +258,7 @@ describe('resolveOrMintInviteTarget', () => {
 
     await resolveOrMintInviteTarget('real@example.com', recordingSleep);
 
-    expect(sleepCalls.length).toBe(0);
+    expect(sleepCalls).toHaveLength(0);
     delete process.env.CLAIMABLE_STUB_MIN_RESOLVE_MS;
   });
 });

@@ -136,7 +136,7 @@ describe('buildCorpusContextBlock', () => {
       50,
     );
 
-    expect(block.length).toBe(51); // 50 chars + the ellipsis character
+    expect(block).toHaveLength(51); // 50 chars + the ellipsis character
     expect(block.endsWith('…')).toBe(true);
   });
 
@@ -196,7 +196,7 @@ describe('fetchCorpusContext', () => {
     });
 
     const result = await fetchCorpusContext(PRINCIPAL, { source: 's', query: 'q', maxChars: -1 });
-    expect(result.promptPrefix.length).toBe(CORPUS_CONTEXT_DEFAULT_MAX_CHARS + 1);
+    expect(result.promptPrefix).toHaveLength(CORPUS_CONTEXT_DEFAULT_MAX_CHARS + 1);
   });
 
   it('reports the metadata a later reader needs, without the snippet text', async () => {
