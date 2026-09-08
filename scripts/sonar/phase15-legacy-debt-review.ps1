@@ -7,6 +7,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "lib/measure-helpers.ps1")
+
 $baseUrl = "https://sonarcloud.io"
 $headers = @{}
 if ($env:SONAR_TOKEN) {
@@ -106,32 +108,6 @@ function Get-Hotspots {
     hotspots = $all
     componentMap = $componentMap
   }
-}
-
-function Resolve-MeasureValue {
-  param($Measure)
-  $hasValue = $Measure.PSObject.Properties.Name -contains "value"
-  if ($hasValue -and $Measure.value) { return [double]$Measure.value }
-  $hasPeriods = $Measure.PSObject.Properties.Name -contains "periods"
-  if ($hasPeriods -and $Measure.periods -and $Measure.periods.Count -gt 0) {
-    return [double]$Measure.periods[0].value
-  }
-  return [double]0
-}
-
-function ConvertTo-MeasureMap {
-  param($Measures)
-  $m = @{}
-  foreach ($measure in $Measures) {
-    $m[$measure.metric] = Resolve-MeasureValue -Measure $measure
-  }
-  return $m
-}
-
-function Get-MetricOrZero {
-  param([hashtable]$Map, [string]$Key)
-  if ($Map.ContainsKey($Key)) { return $Map[$Key] }
-  return 0
 }
 
 function Get-FileMeasureRows {
