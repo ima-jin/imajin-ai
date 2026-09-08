@@ -7,7 +7,7 @@
  * `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
  * connector-specific mock wiring lives here.
  */
-import { vi } from 'vitest';
+import { vi, it, expect } from 'vitest';
 import { describeScopeManifestIdentityContract } from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
 const core = vi.hoisted(() => ({
@@ -25,6 +25,7 @@ vi.mock('../connector', () => ({
   LOCAL_CHANNEL: 'local',
 }));
 
+import * as localScopeManifestModule from '../scope-manifest';
 import {
   LOCAL_SCOPE_DESCRIPTORS,
   VALID_LOCAL_SCOPES,
@@ -34,6 +35,18 @@ import {
   syncConsentGrants,
   publishLocalScopeManifest,
 } from '../scope-manifest';
+
+// Direct, literal assertion (rather than only delegating to the shared
+// contract below) so this file itself is recognized as containing test
+// cases. See the module doc comment on brain-connector-contract.ts. Also a
+// real guard on this connector's documented design (connector.ts: "no key
+// is local's normal resolved state") — unlike every other token-paste
+// connector, local has no vault-sealed key to report a KeySealed/KeyPending
+// pair for, so this module must not accidentally grow one.
+it('does not export a KeySealed/KeyPending pair (local has no vault-sealed key)', () => {
+  expect(localScopeManifestModule).not.toHaveProperty('localKeySealed');
+  expect(localScopeManifestModule).not.toHaveProperty('localKeyPending');
+});
 
 describeScopeManifestIdentityContract({
   label: 'Local Inference',

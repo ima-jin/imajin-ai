@@ -7,7 +7,7 @@
  * `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
  * provider-specific mock wiring lives here.
  */
-import { vi } from 'vitest';
+import { vi, it, expect } from 'vitest';
 import { describeScopeManifestIdentityContract } from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
 const core = vi.hoisted(() => ({
@@ -35,7 +35,20 @@ import {
   readActiveOpenaiScopes,
   syncConsentGrants,
   publishOpenaiScopeManifest,
+  openaiKeySealed,
+  openaiKeyPending,
 } from '../scope-manifest';
+import { openaiKeySealed as connectorKeySealed, openaiKeyPending as connectorKeyPending } from '../connector';
+
+// Direct, literal assertion (rather than only delegating to the shared
+// contract below) so this file itself is recognized as containing test
+// cases. See the module doc comment on brain-connector-contract.ts. Also a
+// real regression guard (#1774 pattern): a local redefinition here would
+// shadow the grant-aware openaiKeySealed/openaiKeyPending ./connector exports.
+it('re-exports openaiKeySealed/openaiKeyPending from ./connector rather than redefining them locally', () => {
+  expect(openaiKeySealed).toBe(connectorKeySealed);
+  expect(openaiKeyPending).toBe(connectorKeyPending);
+});
 
 describeScopeManifestIdentityContract({
   label: 'OpenAI',

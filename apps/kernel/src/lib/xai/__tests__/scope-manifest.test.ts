@@ -7,7 +7,7 @@
  * `src/lib/kernel/__tests__/brain-connector-contract.ts` (#1927). Only the
  * provider-specific mock wiring lives here.
  */
-import { vi } from 'vitest';
+import { vi, it, expect } from 'vitest';
 import { describeScopeManifestIdentityContract } from '@/src/lib/kernel/__tests__/brain-connector-contract';
 
 const core = vi.hoisted(() => ({
@@ -35,7 +35,20 @@ import {
   readActiveXaiScopes,
   syncConsentGrants,
   publishXaiScopeManifest,
+  xaiKeySealed,
+  xaiKeyPending,
 } from '../scope-manifest';
+import { xaiKeySealed as connectorKeySealed, xaiKeyPending as connectorKeyPending } from '../connector';
+
+// Direct, literal assertion (rather than only delegating to the shared
+// contract below) so this file itself is recognized as containing test
+// cases. See the module doc comment on brain-connector-contract.ts. Also a
+// real regression guard (#1774 pattern): a local redefinition here would
+// shadow the grant-aware xaiKeySealed/xaiKeyPending ./connector exports.
+it('re-exports xaiKeySealed/xaiKeyPending from ./connector rather than redefining them locally', () => {
+  expect(xaiKeySealed).toBe(connectorKeySealed);
+  expect(xaiKeyPending).toBe(connectorKeyPending);
+});
 
 describeScopeManifestIdentityContract({
   label: 'xAI',

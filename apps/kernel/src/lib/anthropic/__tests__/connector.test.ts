@@ -11,6 +11,7 @@
  * in `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
  * provider-specific mock wiring and sample values live here.
  */
+import { it, expect } from 'vitest';
 import {
   mockConnectorVaultAndDb,
   describeConnectorCredentialLifecycleContract,
@@ -18,6 +19,7 @@ import {
 
 const mocks = mockConnectorVaultAndDb();
 
+const anthropicConnectorModule = await import('../connector');
 const {
   resolveActiveGrant,
   sealApiKey,
@@ -29,7 +31,17 @@ const {
   revokeApiKey,
   ANTHROPIC_CONNECTOR_DID,
   ANTHROPIC_INFER_SCOPE,
-} = await import('../connector');
+} = anthropicConnectorModule;
+
+// Direct, literal assertion (rather than only delegating to the shared
+// contract below) so this file itself is recognized as containing test
+// cases. See the module doc comment on brain-connector-contract.ts.
+it('never exports a function that could hand the raw key back to a caller (#1922 anti-goal)', () => {
+  const suspiciousExports = Object.keys(anthropicConnectorModule).filter((name) =>
+    /rawkey|exportkey|getkey|returnkey|plaintext/i.test(name),
+  );
+  expect(suspiciousExports).toEqual([]);
+});
 
 describeConnectorCredentialLifecycleContract({
   label: 'Anthropic',
