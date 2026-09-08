@@ -422,6 +422,13 @@ async function notifyCoffeeServiceSubscription(
     return;
   }
 
+  let invoiceSubscriptionId: string | undefined;
+  if (invoice?.subscription) {
+    invoiceSubscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+  } else {
+    invoiceSubscriptionId = undefined;
+  }
+
   try {
     const response = await fetch(`${coffeeServiceUrl}/api/webhook/payment`, {
       method: 'POST',
@@ -431,9 +438,7 @@ async function notifyCoffeeServiceSubscription(
       },
       body: JSON.stringify({
         type,
-        subscriptionId: subscription?.id || (invoice?.subscription
-          ? (typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id)
-          : undefined),
+        subscriptionId: subscription?.id || invoiceSubscriptionId,
         invoiceId: invoice?.id,
         amount: invoice?.amount_paid,
         status: type === 'subscription.canceled' ? 'canceled' : 'active',

@@ -372,7 +372,14 @@ function parseTarget(rawUrl: string): { ok: true; value: ParsedTarget } | { ok: 
   const hostname = rawHostname.startsWith('[') && rawHostname.endsWith(']')
     ? rawHostname.slice(1, -1)
     : rawHostname;
-  const port = url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80;
+  let port: number;
+  if (url.port) {
+    port = Number(url.port);
+  } else if (url.protocol === 'https:') {
+    port = 443;
+  } else {
+    port = 80;
+  }
 
   return { ok: true, value: { url, hostname, port } };
 }

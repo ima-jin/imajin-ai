@@ -334,6 +334,8 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
     return 'Conversation';
   })();
   const displayName = convName || nameParam || typeLabel;
+  const memberCountSuffix = memberCount === 1 ? '' : 's';
+  const memberCountLabel = memberCount ? `${memberCount} member${memberCountSuffix}` : 'Group conversation';
 
   if (authLoading) {
     return <div className="max-w-2xl mx-auto mt-20 text-center text-gray-500">Loading...</div>;
@@ -398,7 +400,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
               onClick={() => setShowMembers(!showMembers)}
               className="text-xs text-gray-500 mt-0.5 hover:text-orange-500 transition-colors text-left"
             >
-              {memberCount ? `${memberCount} member${memberCount === 1 ? '' : 's'}` : 'Group conversation'}
+              {memberCountLabel}
             </button>
           )}
           {parsed.type === 'event' && (

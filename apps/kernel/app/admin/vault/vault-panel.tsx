@@ -34,6 +34,10 @@ function CustodyCell({ row }: { row: VaultSecretRow }) {
   const isExpired = row.expiresAt ? new Date(row.expiresAt) < new Date() : false;
   const hasActiveGrant = isDelegation && row.grantStatus === 'active' && !isExpired;
   const isGrantRevoked = isDelegation && (row.grantStatus === 'none' || (row.grantStatus === 'active' && isExpired));
+  let custodyLabel: string;
+  if (hasActiveGrant) custodyLabel = 'delegation-grant';
+  else if (isGrantRevoked) custodyLabel = 'grant revoked';
+  else custodyLabel = 'delegation-grant';
 
   if (!isDelegation) {
     return (
@@ -50,7 +54,7 @@ function CustodyCell({ row }: { row: VaultSecretRow }) {
           ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
           : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
       }`}>
-        {hasActiveGrant ? 'delegation-grant' : isGrantRevoked ? 'grant revoked' : 'delegation-grant'}
+        {custodyLabel}
       </span>
       {row.grantedTo && (
         <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">

@@ -72,6 +72,12 @@ function FolderRow({
   const hasChildren = node.children.length > 0;
   const count = assetCounts[node.id];
   const icon = node.icon ?? "📁";
+  let toggleAriaLabel: string;
+  if (hasChildren) {
+    toggleAriaLabel = isExpanded ? "Collapse folder" : "Expand folder";
+  } else {
+    toggleAriaLabel = "No child folders";
+  }
 
   return (
     <>
@@ -107,7 +113,7 @@ function FolderRow({
               onToggle(node.id);
             }
           }}
-          aria-label={hasChildren ? (isExpanded ? "Collapse folder" : "Expand folder") : "No child folders"}
+          aria-label={toggleAriaLabel}
           disabled={!hasChildren}
         >
           {hasChildren && (isExpanded ? "▼" : "▶")}

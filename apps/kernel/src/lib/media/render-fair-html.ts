@@ -84,9 +84,14 @@ function formatDate(iso: string): string {
 // ── Section builders ────────────────────────────────────────────────────────
 
 function renderAttribution(manifest: FairManifest): string {
-  const entries = manifest.attribution?.length
-    ? manifest.attribution
-    : ("chain" in manifest ? (manifest as FairManifestV1_1).chain ?? [] : []);
+  let entries: FairManifest["attribution"];
+  if (manifest.attribution?.length) {
+    entries = manifest.attribution;
+  } else if ("chain" in manifest) {
+    entries = (manifest as FairManifestV1_1).chain ?? [];
+  } else {
+    entries = [];
+  }
 
   if (!entries.length) return "";
 
