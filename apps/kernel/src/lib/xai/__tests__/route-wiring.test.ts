@@ -43,12 +43,12 @@ vi.doMock('@/src/lib/xai/scope-manifest', () => ({
 // Importing evaluates each route module → each factory records its options.
 const tokenRoute = await import('../../../../app/xai/api/token/route');
 const disconnectRoute = await import('../../../../app/xai/api/disconnect/route');
-const manifestRoute = await import('../../../../app/xai/api/scope-manifest/route');
+const xaiManifestRoute = await import('../../../../app/xai/api/scope-manifest/route');
 
 // Direct, literal it() (see expectScopeManifestRouteExportsPostAndOptions's
 // doc comment) so this file itself is recognized by Sonar S2187.
 it('re-exports POST and OPTIONS from the scope-manifest route, not just GET', () =>
-  expectScopeManifestRouteExportsPostAndOptions(manifestRoute as Record<string, unknown>));
+  expectScopeManifestRouteExportsPostAndOptions(xaiManifestRoute as Record<string, unknown>));
 
 describeRouteWiringContract({
   label: 'xAI',
@@ -58,7 +58,7 @@ describeRouteWiringContract({
   manifestOpts,
   tokenRoute: tokenRoute as Record<string, unknown>,
   disconnectRoute: disconnectRoute as Record<string, unknown>,
-  manifestRoute: manifestRoute as Record<string, unknown>,
+  manifestRoute: xaiManifestRoute as Record<string, unknown>,
   sealApiKey,
   keySealed,
   keyPending,
