@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   // Merge inference_enabled into feature_toggles
   const result = await db
     .update(profiles)
-    .set({ featureToggles: { ...(existing?.featureToggles ?? {}), inference_enabled: enabled } })
+    .set({ featureToggles: { ...existing?.featureToggles, inference_enabled: enabled } })
     .where(eq(profiles.did, identity.id))
     .returning();
 

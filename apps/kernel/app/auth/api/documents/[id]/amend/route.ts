@@ -97,7 +97,7 @@ export async function POST(
         payload: {
           title,
           amends: original.cid ?? original.id,
-          ...(payload ?? {}),
+          ...payload,
         },
         signature: '',
         authorJws,

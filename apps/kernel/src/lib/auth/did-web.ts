@@ -19,9 +19,8 @@
  * `declared_unverified`, never `resolution_failed`.
  */
 import bs58 from 'bs58';
-import { multibaseToHex } from '@imajin/auth';
+import { multibaseToHex, DID_WEB_RESOLUTION_TIMEOUT_MS } from '@imajin/auth';
 import type { ExternalDidVerificationState } from '@imajin/auth';
-import { DID_WEB_RESOLUTION_TIMEOUT_MS } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');

@@ -324,7 +324,7 @@ async function buildProfileUpdates(
   if (avatarAssetId !== undefined) updates.avatarAssetId = avatarAssetId;
   if (bio !== undefined) updates.bio = bio;
   if (feature_toggles !== undefined) {
-    updates.featureToggles = { ...(existing?.featureToggles ?? {}), ...feature_toggles };
+    updates.featureToggles = { ...existing?.featureToggles, ...feature_toggles };
   }
   if (agentPricing !== undefined) updates.agentPricing = agentPricing;
   if (visibility !== undefined) updates.visibility = visibility;

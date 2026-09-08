@@ -468,7 +468,8 @@ export function createConnectorOAuth<
       Accept: 'application/json',
     };
     if (opts.tokenAuth === 'basic') {
-      headers.Authorization = `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret ?? ''}`).toString('base64')}`;
+      const credentials = `${config.clientId}:${config.clientSecret ?? ''}`;
+      headers.Authorization = `Basic ${Buffer.from(credentials).toString('base64')}`;
     } else {
       body.set('client_id', config.clientId);
       if (config.clientSecret) body.set('client_secret', config.clientSecret);

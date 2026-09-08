@@ -64,7 +64,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }
 
     // 4. Build .fair manifest (use listing's manifest if present)
-    const fairManifest = (listing.fairManifest as object | null) || {
+    const fairManifest = (listing.fairManifest as object | null) ?? {
       version: '1.0',
       type: 'market:purchase',
       distributions: [

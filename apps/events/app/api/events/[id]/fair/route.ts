@@ -50,7 +50,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid .fair manifest', errors }, { status: 400 });
     }
 
-    const updatedMetadata = { ...(event.metadata as Record<string, unknown> || {}), fair: manifest };
+    const updatedMetadata = { ...(event.metadata as Record<string, unknown>), fair: manifest };
 
     const [updated] = await db
       .update(events)

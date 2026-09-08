@@ -87,11 +87,9 @@ export class RouteTokenProvider implements TokenSource {
     if (this.cached && this.cached.expiresAt - this.refreshSkewMs > this.now()) {
       return this.cached.token;
     }
-    if (!this.mintPromise) {
-      this.mintPromise = this.refresh().finally(() => {
-        this.mintPromise = null;
-      });
-    }
+    this.mintPromise ??= this.refresh().finally(() => {
+      this.mintPromise = null;
+    });
     return this.mintPromise;
   }
 

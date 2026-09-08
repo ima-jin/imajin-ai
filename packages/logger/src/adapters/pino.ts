@@ -85,23 +85,23 @@ function formatErrorMessage(source: unknown): string | undefined {
   return JSON.stringify(source);
 }
 
-function wrapPino(instance: pino.Logger): Logger {
-  function persist(level: string, ctx: LogContext, message: string) {
-    const { service, correlationId, did, method, path, err, error, ...rest } = ctx;
-    const errorMessage = formatErrorMessage(err ?? error);
-    writeAppLog({
-      service: service || 'unknown',
-      level,
-      message,
-      correlationId,
-      did,
-      method,
-      path,
-      errorMessage,
-      metadata: Object.keys(rest).length > 0 ? rest : undefined,
-    });
-  }
+function persist(level: string, ctx: LogContext, message: string) {
+  const { service, correlationId, did, method, path, err, error, ...rest } = ctx;
+  const errorMessage = formatErrorMessage(err ?? error);
+  writeAppLog({
+    service: service || 'unknown',
+    level,
+    message,
+    correlationId,
+    did,
+    method,
+    path,
+    errorMessage,
+    metadata: Object.keys(rest).length > 0 ? rest : undefined,
+  });
+}
 
+function wrapPino(instance: pino.Logger): Logger {
   return {
     info(ctx: LogContext, message: string) {
       instance.info(ctx, message);

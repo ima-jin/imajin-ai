@@ -68,7 +68,7 @@ export function authErrorResponse(authError: AuthError): NextResponse {
 /** Parse a single cookie value from a raw Cookie header string */
 function parseCookieValue(cookieHeader: string | null, name: string): string | null {
   if (!cookieHeader) return null;
-  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  const match = new RegExp(String.raw`(?:^|;\s*)${name}=([^;]*)`).exec(cookieHeader);
   return match ? decodeURIComponent(match[1]) : null;
 }
 

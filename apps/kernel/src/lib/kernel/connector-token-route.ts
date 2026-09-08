@@ -48,6 +48,11 @@ function optionalString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/** Shared stateless CORS-preflight handler, reused by every route factory below. */
+async function optionsHandler(request: NextRequest): Promise<NextResponse> {
+  return corsOptions(request) as NextResponse;
+}
+
 /**
  * Build the three handlers for a token-paste credential endpoint. Designed to be
  * re-exported straight from the connector's route file:
@@ -59,10 +64,6 @@ function optionalString(value: unknown): string | undefined {
 export function createConnectorTokenRoutes(
   opts: ConnectorTokenRouteOpts,
 ): ConnectorTokenRouteHandlers {
-
-  async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-    return corsOptions(request) as NextResponse;
-  }
 
   /** Returns `{ keySealed }` — whether a key is already sealed for the owner. */
   async function GET(request: NextRequest): Promise<NextResponse> {
@@ -119,7 +120,7 @@ export function createConnectorTokenRoutes(
     return NextResponse.json({ sealed: true }, { status: 201, headers: cors });
   }
 
-  return { GET, POST, OPTIONS };
+  return { GET, POST, OPTIONS: optionsHandler };
 }
 
 // ── Disconnect (#1720) ────────────────────────────────────────────────────────────
@@ -162,10 +163,6 @@ export function createConnectorTokenDisconnectRoute(
   opts: ConnectorTokenDisconnectRouteOpts,
 ): ConnectorTokenDisconnectRouteHandlers {
 
-  async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-    return corsOptions(request) as NextResponse;
-  }
-
   async function POST(request: NextRequest): Promise<NextResponse> {
     const cors = corsHeaders(request);
 
@@ -190,5 +187,5 @@ export function createConnectorTokenDisconnectRoute(
     return NextResponse.json({ connected: false, revoked }, { headers: cors });
   }
 
-  return { POST, OPTIONS };
+  return { POST, OPTIONS: optionsHandler };
 }

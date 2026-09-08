@@ -42,7 +42,11 @@ function stableJson(value: unknown): string {
 
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record).sort((a, b) => a.localeCompare(b));
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(',')}}`;
+  const entries = keys.map((key) => {
+    const entryValue = stableJson(record[key]);
+    return `${JSON.stringify(key)}:${entryValue}`;
+  });
+  return `{${entries.join(',')}}`;
 }
 
 function hashJson(value: unknown): string {

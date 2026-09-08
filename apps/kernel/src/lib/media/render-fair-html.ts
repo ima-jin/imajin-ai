@@ -276,7 +276,7 @@ export function renderFairHtml(manifest: FairManifest, assetId: string, baseUrl:
   const sections: string[] = [];
 
   // Header info
-  sections.push(`
+  const headerHtml = `
   <header>
     <div class="header-top">
       <div class="fair-badge">.fair</div>
@@ -306,10 +306,10 @@ export function renderFairHtml(manifest: FairManifest, assetId: string, baseUrl:
         <span class="meta-value">${esc(manifest.source)}</span>
       </div>` : ""}
     </div>
-  </header>`);
+  </header>`;
 
   // Attribution
-  sections.push(renderAttribution(manifest));
+  sections.push(headerHtml, renderAttribution(manifest));
 
   // Distribution rights (v1.1)
   if (v11) {

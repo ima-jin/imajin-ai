@@ -85,6 +85,6 @@ describe('ATTESTATION_TYPES', () => {
   });
 
   it('has no duplicate entries', () => {
-    expect(ATTESTATION_TYPES.length).toBe(ATTESTATION_TYPES_SET.size);
+    expect(ATTESTATION_TYPES).toHaveLength(ATTESTATION_TYPES_SET.size);
   });
 });

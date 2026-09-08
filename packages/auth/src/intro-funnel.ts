@@ -140,7 +140,7 @@ export function verifyFunnelChainLink(
   if (!event.prevEventRef) {
     return { ok: false, reason: 'missing-prev-event-ref', eventId: event.id };
   }
-  if (!predecessor || predecessor.id !== event.prevEventRef) {
+  if (predecessor?.id !== event.prevEventRef) {
     return { ok: false, reason: 'missing-predecessor', eventId: event.id };
   }
   if (predecessor.type !== expectedType) {

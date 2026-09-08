@@ -21,9 +21,9 @@ import {
   validScopesForConnector,
   requiresConsentRow,
 } from '@/src/lib/kernel/scope-projections';
-import { STRIPE_CONNECTOR_DID, keySealed as stripeKeySealed, keyPending as stripeKeyPending } from './connector';
+import { STRIPE_CONNECTOR_DID } from './connector';
 
-export { stripeKeySealed, stripeKeyPending };
+export { keySealed as stripeKeySealed, keyPending as stripeKeyPending } from './connector';
 
 const CONNECTOR = 'stripe' as const;
 

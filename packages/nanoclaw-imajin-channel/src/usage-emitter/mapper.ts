@@ -60,7 +60,7 @@ function extractAssistantTurn(rawLine: unknown): AssistantTurn | undefined {
   if (!line || line.type !== 'assistant') return undefined;
 
   const message = asObject(line.message);
-  const usage = message && asObject(message.usage);
+  const usage = asObject(message?.usage);
   if (!message || !usage) return undefined;
 
   const model = asPositiveString(message.model);

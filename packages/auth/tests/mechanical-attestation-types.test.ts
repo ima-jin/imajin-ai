@@ -14,6 +14,6 @@ describe('MECHANICAL_ATTESTATION_TYPES (#1822)', () => {
   });
 
   it('has no duplicate entries', () => {
-    expect(MECHANICAL_ATTESTATION_TYPES.length).toBe(new Set(MECHANICAL_ATTESTATION_TYPES).size);
+    expect(MECHANICAL_ATTESTATION_TYPES).toHaveLength(new Set(MECHANICAL_ATTESTATION_TYPES).size);
   });
 });

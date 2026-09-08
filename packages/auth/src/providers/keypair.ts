@@ -12,11 +12,13 @@ const log = createLogger('auth');
 
 import type { Keypair, SignedMessage, IdentityType } from '../types';
 import * as crypto from '../crypto';
-import { sign, signSync, createChallenge } from '../sign';
-import { verify, verifySync, verifyChallenge } from '../verify';
+import { sign, signSync } from '../sign';
+import { verify, verifySync } from '../verify';
 
 // Re-export for convenience
-export { sign, signSync, verify, verifySync, verifyChallenge, createChallenge };
+export { sign, signSync, verify, verifySync };
+export { createChallenge } from '../sign';
+export { verifyChallenge } from '../verify';
 
 /**
  * Generate a new Ed25519 keypair

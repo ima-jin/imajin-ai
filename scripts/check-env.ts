@@ -64,7 +64,7 @@ function parseEnvFile(filePath: string): Map<string, string> {
 
 /** Extract port from a localhost URL like http://localhost:3001 */
 function extractPort(url: string): number | null {
-  const m = url.match(/localhost:(\d+)/);
+  const m = /localhost:(\d+)/.exec(url);
   return m ? Number.parseInt(m[1], 10) : null;
 }
 
@@ -80,7 +80,7 @@ function expectedPort(serviceName: string, env: "dev" | "prod"): number | null {
  * extract the service name if it follows the {NAME}_SERVICE_URL pattern.
  */
 function serviceNameFromKey(key: string): string | null {
-  const m = key.match(/^([A-Z]+)_SERVICE_URL$/);
+  const m = /^([A-Z]+)_SERVICE_URL$/.exec(key);
   if (!m) return null;
   return m[1].toLowerCase();
 }
@@ -90,7 +90,7 @@ function serviceNameFromKey(key: string): string | null {
  * e.g. NEXT_PUBLIC_AUTH_URL → auth, NEXT_PUBLIC_DYKIL_URL → dykil
  */
 function serviceNameFromPublicKey(key: string): string | null {
-  const m = key.match(/^NEXT_PUBLIC_([A-Z]+)_URL$/);
+  const m = /^NEXT_PUBLIC_([A-Z]+)_URL$/.exec(key);
   if (!m) return null;
   const candidate = m[1].toLowerCase();
   const svc = SERVICES.find((s) => s.name === candidate);

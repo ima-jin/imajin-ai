@@ -1,5 +1,5 @@
 import type { FairManifestV1_1 } from "@imajin/fair";
-import { signManifest, isFairManifestV1_1 } from "@imajin/fair";
+import { signManifest } from "@imajin/fair";
 import { getNodeDid } from "./node-identity";
 import { createLogger } from "@imajin/logger";
 
@@ -73,4 +73,4 @@ export async function signFairAsNode(
 }
 
 /** Re-export for callers that need to gate on v1.1-ness before signing. */
-export { isFairManifestV1_1 };
+export { isFairManifestV1_1 } from "@imajin/fair";
