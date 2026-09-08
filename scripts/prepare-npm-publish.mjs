@@ -36,44 +36,18 @@ const REWRITABLE_EXTENSIONS = new Set([
   ".map",
 ]);
 
-// Environment variables that may legitimately hold an npm/registry credential
-// somewhere in this process's environment (e.g. when this script is invoked
-// from scripts/publish-package.sh, which runs with NODE_AUTH_TOKEN set for
-// the publish step). Nothing in this script intentionally logs these, but any
-// dynamic value that ends up in a log line (a package name/version, an error
-// message, a file path) is redacted defensively so a credential can never
-// reach stdout/stderr, even indirectly or in a future edit.
-const SECRET_ENV_VARS = ["NODE_AUTH_TOKEN", "NPM_TOKEN", "GITHUB_TOKEN"];
-
-export function secretValues(env = process.env) {
-  return SECRET_ENV_VARS.map((name) => env[name]).filter(
-    (value) => typeof value === "string" && value.length > 0
-  );
-}
-
-// Masks any known secret value found in `message`. Splitting/joining (rather
-// than a regex) avoids needing to escape arbitrary secret content.
-export function redact(message, env = process.env) {
-  let safe = message;
-  for (const secret of secretValues(env)) {
-    if (safe.includes(secret)) {
-      safe = safe.split(secret).join("npm_***");
-    }
-  }
-  return safe;
-}
-
-function safeLog(message) {
-  console.log(redact(message));
-}
-
-function safeWarn(message) {
-  console.warn(redact(message));
-}
-
-function safeError(message) {
-  console.error(redact(message));
-}
+// This script is invoked from scripts/publish-package.sh while
+// NODE_AUTH_TOKEN (or GITHUB_TOKEN) is present in the surrounding shell
+// environment for the subsequent `npm publish` step. To guarantee that
+// credential can never reach a log line, this module reads no environment
+// variables at all — every value it logs below comes only from explicit,
+// non-secret sources: the CLI path arguments (already validated against an
+// allowed root before use), and fields read from the package's own
+// package.json (name, version, files, dependencies). Redacting secret values
+// after the fact (e.g. scanning log text for known token strings) was
+// deliberately rejected: it still requires reading the secret on the path to
+// the log sink, which is exactly the taint flow static analysis flags as a
+// leak risk regardless of the string replacement performed afterwards.
 
 // True when `target` (already resolved/canonicalized) is `root` itself or a
 // descendant of it. Used to confine CLI-supplied paths to an allowed root
@@ -122,7 +96,7 @@ const PACKAGES_ROOT = join(REPO_ROOT, "packages");
 // module docstring and scripts/publish-package.sh) — never an arbitrary path.
 const srcDir = resolve(pkgDir);
 if (!isPathWithin(PACKAGES_ROOT, srcDir)) {
-  safeError(
+  console.error(
     `Refusing to read package dir outside ${PACKAGES_ROOT}: ${pkgDir}`
   );
   process.exit(1);
@@ -134,7 +108,7 @@ if (!isPathWithin(PACKAGES_ROOT, srcDir)) {
 const destDir = resolve(outDir);
 const ALLOWED_OUTPUT_ROOTS = [REPO_ROOT, resolve(tmpdir())];
 if (!ALLOWED_OUTPUT_ROOTS.some((root) => isPathWithin(root, destDir))) {
-  safeError(
+  console.error(
     `Refusing to write output outside allowed roots (${ALLOWED_OUTPUT_ROOTS.join(
       ", "
     )}): ${outDir}`
@@ -147,7 +121,7 @@ const packagesDir = resolve(srcDir, "..");
 // Read source package.json
 const pkg = JSON.parse(readFileSync(join(srcDir, "package.json"), "utf8"));
 
-safeLog(`Preparing ${pkg.name}@${pkg.version} for npm publish...`);
+console.log(`Preparing ${pkg.name}@${pkg.version} for npm publish...`);
 
 // Create output directory
 mkdirSync(destDir, { recursive: true });
@@ -158,9 +132,9 @@ for (const f of filesToCopy) {
   const srcPath = join(srcDir, f);
   if (existsSync(srcPath)) {
     cpSync(srcPath, join(destDir, f), { recursive: true });
-    safeLog(`  Copied ${f}`);
+    console.log(`  Copied ${f}`);
   } else {
-    safeWarn(`  Warning: ${f} not found, skipping`);
+    console.warn(`  Warning: ${f} not found, skipping`);
   }
 }
 
@@ -169,13 +143,13 @@ for (const extra of ["README.md", "LICENSE", "CHANGELOG.md"]) {
   const p = join(srcDir, extra);
   if (existsSync(p)) {
     cpSync(p, join(destDir, extra));
-    safeLog(`  Copied ${extra}`);
+    console.log(`  Copied ${extra}`);
   }
 }
 
 // Rewrite @imajin/* → @ima-jin/* inside the copied sources and build output
 const rewrittenFileCount = rewriteScopeInTree(destDir);
-safeLog(`  Rewrote @imajin/ → @ima-jin/ in ${rewrittenFileCount} file(s)`);
+console.log(`  Rewrote @imajin/ → @ima-jin/ in ${rewrittenFileCount} file(s)`);
 
 // Rewrite package name: @imajin/* → @ima-jin/*
 pkg.name = pkg.name.replaceAll("@imajin/", "@ima-jin/");
@@ -241,9 +215,9 @@ for (const depType of ["dependencies", "peerDependencies"]) {
         );
         const npmName = dep.replaceAll("@imajin/", "@ima-jin/");
         newDeps[npmName] = "^" + depPkg.version;
-        safeLog(`  Rewrote dep ${dep}@${ver} → ${npmName}@^${depPkg.version}`);
+        console.log(`  Rewrote dep ${dep}@${ver} → ${npmName}@^${depPkg.version}`);
       } catch {
-        safeWarn(`  Warning: could not resolve ${dep}, keeping as-is`);
+        console.warn(`  Warning: could not resolve ${dep}, keeping as-is`);
         newDeps[dep] = ver;
       }
     } else {
@@ -268,5 +242,5 @@ if (pkg.peerDependenciesMeta) {
 // Write modified package.json to output
 writeFileSync(join(destDir, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
 
-safeLog(`\nReady to publish: ${pkg.name}@${pkg.version}`);
-safeLog(`Output: ${destDir}`);
+console.log(`\nReady to publish: ${pkg.name}@${pkg.version}`);
+console.log(`Output: ${destDir}`);
