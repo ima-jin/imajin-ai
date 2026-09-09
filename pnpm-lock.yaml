@@ -854,9 +854,6 @@ importers:
       '@imajin/config':
         specifier: workspace:*
         version: link:../config
-      '@imajin/db':
-        specifier: workspace:*
-        version: link:../db
       '@imajin/logger':
         specifier: workspace:*
         version: link:../logger
