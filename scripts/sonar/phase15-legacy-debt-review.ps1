@@ -7,6 +7,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "lib/measure-helpers.ps1")
+
 $baseUrl = "https://sonarcloud.io"
 $headers = @{}
 if ($env:SONAR_TOKEN) {
@@ -61,6 +63,20 @@ function Get-Issues {
   return $all
 }
 
+function Resolve-HotspotComponentPath {
+  param($Component)
+  if (($Component.PSObject.Properties.Name -contains "path") -and $Component.path) {
+    return $Component.path
+  }
+  if (($Component.PSObject.Properties.Name -contains "longName") -and $Component.longName) {
+    return $Component.longName
+  }
+  if (($Component.PSObject.Properties.Name -contains "name") -and $Component.name) {
+    return $Component.name
+  }
+  return $Component.key
+}
+
 function Get-Hotspots {
   param(
     [hashtable]$ExtraQuery = @{}
@@ -81,20 +97,8 @@ function Get-Hotspots {
     }
 
     $resp = Invoke-SonarGet -Path "/api/hotspots/search" -Query $query
-    if ($resp.components) {
-      foreach ($c in $resp.components) {
-        $resolvedPath = ""
-        if (($c.PSObject.Properties.Name -contains "path") -and $c.path) {
-          $resolvedPath = $c.path
-        } elseif (($c.PSObject.Properties.Name -contains "longName") -and $c.longName) {
-          $resolvedPath = $c.longName
-        } elseif (($c.PSObject.Properties.Name -contains "name") -and $c.name) {
-          $resolvedPath = $c.name
-        } else {
-          $resolvedPath = $c.key
-        }
-        $componentMap[$c.key] = $resolvedPath
-      }
+    foreach ($c in $resp.components) {
+      $componentMap[$c.key] = Resolve-HotspotComponentPath -Component $c
     }
     foreach ($h in $resp.hotspots) { $all += $h }
     $page++
@@ -123,28 +127,14 @@ function Get-FileMeasureRows {
     }
 
     foreach ($c in $resp.components) {
-      $m = @{}
-      foreach ($measure in $c.measures) {
-        $hasValue = $measure.PSObject.Properties.Name -contains "value"
-        $hasPeriods = $measure.PSObject.Properties.Name -contains "periods"
-
-        if ($hasValue -and $measure.value) {
-          $val = $measure.value
-        } elseif ($hasPeriods -and $measure.periods -and $measure.periods.Count -gt 0) {
-          $val = $measure.periods[0].value
-        } else {
-          $val = "0"
-        }
-
-        $m[$measure.metric] = [double]$val
-      }
+      $m = ConvertTo-MeasureMap -Measures $c.measures
 
       $rows += [PSCustomObject]@{
         path = $c.path
-        duplicated_lines_density = $(if ($m.ContainsKey("duplicated_lines_density")) { $m["duplicated_lines_density"] } else { 0 })
-        new_duplicated_lines_density = $(if ($m.ContainsKey("new_duplicated_lines_density")) { $m["new_duplicated_lines_density"] } else { 0 })
-        code_smells = $(if ($m.ContainsKey("code_smells")) { $m["code_smells"] } else { 0 })
-        new_code_smells = $(if ($m.ContainsKey("new_code_smells")) { $m["new_code_smells"] } else { 0 })
+        duplicated_lines_density = Get-MetricOrZero -Map $m -Key "duplicated_lines_density"
+        new_duplicated_lines_density = Get-MetricOrZero -Map $m -Key "new_duplicated_lines_density"
+        code_smells = Get-MetricOrZero -Map $m -Key "code_smells"
+        new_code_smells = Get-MetricOrZero -Map $m -Key "new_code_smells"
       }
     }
     $page++

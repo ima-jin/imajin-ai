@@ -59,7 +59,7 @@ case "$REGISTRY" in
 esac
 
 cd "$PUBLISH_DIR"
-if [ "$DRY_RUN" = "true" ]; then
+if [[ "$DRY_RUN" = "true" ]]; then
   echo "DRY RUN — skipping publish to $REGISTRY"
   npm publish --dry-run "${PUBLISH_ARGS[@]}" 2>&1 || true
 else

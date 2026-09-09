@@ -35,4 +35,11 @@ jobs:
           context: .github/docker
           file: .github/docker/Dockerfile.ci
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          # `:latest` stays for local/manual convenience, but CI jobs in
+          # ci.yml pin to the immutable `:<sha>` tag (githubactions:S6596 —
+          # image references must use a specific version, not a floating
+          # tag). Bump the sha ci.yml references whenever this Dockerfile
+          # changes and this workflow has re-run on main.
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
