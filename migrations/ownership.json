@@ -1,0 +1,950 @@
+{
+  "tables": {
+    "auth.agent_knocks": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0102_agent_knocks.sql",
+      "notes": ""
+    },
+    "auth.agent_provisions": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0123_agent_provisions.sql",
+      "notes": ""
+    },
+    "auth.attestation_signatures": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0034_attestation_signatures.sql",
+      "notes": ""
+    },
+    "auth.attestation_type_registry": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0100_attestation_type_registry.sql",
+      "notes": ""
+    },
+    "auth.attestations": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "auth.challenges": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "auth.channel_link_tokens": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0044_channel_links.sql",
+      "notes": ""
+    },
+    "auth.channel_links": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0044_channel_links.sql",
+      "notes": ""
+    },
+    "auth.claim_stub_index": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0093_claimable_stub_primitive.sql",
+      "notes": ""
+    },
+    "auth.credentials": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "auth.delegation_grant_capabilities": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0099_delegation_grants.sql",
+      "notes": ""
+    },
+    "auth.delegation_grant_events": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0104_delegation_grant_audit.sql",
+      "notes": ""
+    },
+    "auth.delegation_grants": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0099_delegation_grants.sql",
+      "notes": ""
+    },
+    "auth.devices": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "auth.identities": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "auth.identity_chains": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "auth.identity_members": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "auth.intro_attribution_terms": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0106_intro_attribution.sql",
+      "notes": ""
+    },
+    "auth.mfa_methods": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "auth.oauth_authorization_codes": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0051_oauth_mcp_tables.sql",
+      "notes": ""
+    },
+    "auth.oauth_refresh_tokens": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0051_oauth_mcp_tables.sql",
+      "notes": ""
+    },
+    "auth.onboard_tokens": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "auth.recovery_attempts": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0116_recovery_codes.sql",
+      "notes": ""
+    },
+    "auth.recovery_codes": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0116_recovery_codes.sql",
+      "notes": ""
+    },
+    "auth.stored_keys": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "auth.tokens": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "chat.conversation_members": {
+      "owner": "kernel",
+      "schema": "chat",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "chat.conversation_reads_v2": {
+      "owner": "kernel",
+      "schema": "chat",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "chat.conversations_v2": {
+      "owner": "kernel",
+      "schema": "chat",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "chat.invites": {
+      "owner": "kernel",
+      "schema": "chat",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "chat.message_reactions_v2": {
+      "owner": "kernel",
+      "schema": "chat",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "chat.messages_v2": {
+      "owner": "kernel",
+      "schema": "chat",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "chat.pre_keys": {
+      "owner": "kernel",
+      "schema": "chat",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "chat.public_keys": {
+      "owner": "kernel",
+      "schema": "chat",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "coffee.pages": {
+      "owner": "coffee",
+      "schema": "coffee",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "coffee.tips": {
+      "owner": "coffee",
+      "schema": "coffee",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "connections.connections": {
+      "owner": "kernel",
+      "schema": "connections",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "connections.invites": {
+      "owner": "kernel",
+      "schema": "connections",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "connections.nicknames": {
+      "owner": "kernel",
+      "schema": "connections",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "connections.pod_keys": {
+      "owner": "kernel",
+      "schema": "connections",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "connections.pod_links": {
+      "owner": "kernel",
+      "schema": "connections",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "connections.pod_member_keys": {
+      "owner": "kernel",
+      "schema": "connections",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "connections.pod_members": {
+      "owner": "kernel",
+      "schema": "connections",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "connections.pods": {
+      "owner": "kernel",
+      "schema": "connections",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "consent_requests.decisions": {
+      "owner": "kernel",
+      "schema": "consent_requests",
+      "firstMigration": "0110_consent_requests.sql",
+      "notes": ""
+    },
+    "consent_requests.requests": {
+      "owner": "kernel",
+      "schema": "consent_requests",
+      "firstMigration": "0110_consent_requests.sql",
+      "notes": ""
+    },
+    "dykil.survey_responses": {
+      "owner": "dykil",
+      "schema": "dykil",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "dykil.surveys": {
+      "owner": "dykil",
+      "schema": "dykil",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "events.event_invites": {
+      "owner": "events",
+      "schema": "events",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "events.events": {
+      "owner": "events",
+      "schema": "events",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "events.orders": {
+      "owner": "events",
+      "schema": "events",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "events.pledges": {
+      "owner": "events",
+      "schema": "events",
+      "firstMigration": "0032_campaign_events.sql",
+      "notes": ""
+    },
+    "events.ticket_queue": {
+      "owner": "events",
+      "schema": "events",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "events.ticket_transfers": {
+      "owner": "events",
+      "schema": "events",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "events.ticket_types": {
+      "owner": "events",
+      "schema": "events",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "events.tickets": {
+      "owner": "events",
+      "schema": "events",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "github.action_proposals": {
+      "owner": "kernel",
+      "schema": "github",
+      "firstMigration": "0073_github_action_proposals.sql",
+      "notes": ""
+    },
+    "inference.attestations": {
+      "owner": "kernel",
+      "schema": "inference",
+      "firstMigration": "0068_inference_engine.sql",
+      "notes": ""
+    },
+    "inference.sessions": {
+      "owner": "kernel",
+      "schema": "inference",
+      "firstMigration": "0068_inference_engine.sql",
+      "notes": ""
+    },
+    "kernel.audit_log": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0077_audit_log.sql",
+      "notes": ""
+    },
+    "kernel.broker_audit_log": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0058_broker_audit_log.sql",
+      "notes": ""
+    },
+    "kernel.bus_chain_configs": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0037_bus_chain_configs.sql",
+      "notes": ""
+    },
+    "kernel.calendar_entries": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0040_calendar_entries.sql",
+      "notes": ""
+    },
+    "kernel.connectors": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0114_connectors_registry.sql",
+      "notes": ""
+    },
+    "kernel.consent_grants": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0056_consent_grants.sql",
+      "notes": ""
+    },
+    "kernel.contact_metadata": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0070_disclosure_phase2.sql",
+      "notes": ""
+    },
+    "kernel.event_subscription_log": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0103_event_subscription_log.sql",
+      "notes": ""
+    },
+    "kernel.identity_aliases": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0061_identity_aliases.sql",
+      "notes": ""
+    },
+    "kernel.match_notifications": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0045_match_notifications.sql",
+      "notes": ""
+    },
+    "kernel.match_records": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0043_match_records.sql",
+      "notes": ""
+    },
+    "kernel.quickbooks_realm_index": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0088_quickbooks_realm_index.sql",
+      "notes": ""
+    },
+    "kernel.stripe_webhook_index": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0113_stripe_webhook_index.sql",
+      "notes": ""
+    },
+    "kernel.supply_lots": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0064_bus_supply_lots.sql",
+      "notes": ""
+    },
+    "kernel.supply_stages": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0064_bus_supply_lots.sql",
+      "notes": ""
+    },
+    "kernel.vault_delegation_grants": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0063_vault_delegation_grants.sql",
+      "notes": ""
+    },
+    "kernel.vault_grant_requests": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0075_vault_grant_requests.sql",
+      "notes": ""
+    },
+    "kernel.vault_owner_envelopes": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0078_vault_owner_envelopes.sql",
+      "notes": ""
+    },
+    "kernel.warp_terminal_publish_claims": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0128_warp_terminal_publish_claims.sql",
+      "notes": ""
+    },
+    "learn.courses": {
+      "owner": "learn",
+      "schema": "learn",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "learn.enrollments": {
+      "owner": "learn",
+      "schema": "learn",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "learn.lesson_progress": {
+      "owner": "learn",
+      "schema": "learn",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "learn.lessons": {
+      "owner": "learn",
+      "schema": "learn",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "learn.modules": {
+      "owner": "learn",
+      "schema": "learn",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "links.clicks": {
+      "owner": "links",
+      "schema": "links",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "links.links": {
+      "owner": "links",
+      "schema": "links",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "links.pages": {
+      "owner": "links",
+      "schema": "links",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "market.disputes": {
+      "owner": "market",
+      "schema": "market",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "market.listings": {
+      "owner": "market",
+      "schema": "market",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "market.seller_settings": {
+      "owner": "market",
+      "schema": "market",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "media.access_log": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0022_media_settlements_access_log.sql",
+      "notes": ""
+    },
+    "media.asset_folders": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "media.asset_references": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "media.assets": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "media.folders": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "media.settlements": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0022_media_settlements_access_log.sql",
+      "notes": ""
+    },
+    "media.workspace_branches": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0050_workspace_manifest.sql",
+      "notes": ""
+    },
+    "media.workspace_history_grants": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0050_workspace_manifest.sql",
+      "notes": ""
+    },
+    "media.workspace_snapshots": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0050_workspace_manifest.sql",
+      "notes": ""
+    },
+    "money.fx_rates": {
+      "owner": "kernel",
+      "schema": "money",
+      "firstMigration": "0126_money_fx_rates.sql",
+      "notes": ""
+    },
+    "notify.notifications": {
+      "owner": "kernel",
+      "schema": "notify",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "notify.preferences": {
+      "owner": "kernel",
+      "schema": "notify",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "operator.approvals": {
+      "owner": "kernel",
+      "schema": "operator",
+      "firstMigration": "0130_operator_approvals.sql",
+      "notes": ""
+    },
+    "pay.balance_rollups": {
+      "owner": "kernel",
+      "schema": "pay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "pay.balances": {
+      "owner": "kernel",
+      "schema": "pay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "pay.connected_accounts": {
+      "owner": "kernel",
+      "schema": "pay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "pay.fee_ledger": {
+      "owner": "kernel",
+      "schema": "pay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "pay.transactions": {
+      "owner": "kernel",
+      "schema": "pay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "pay.withdrawal_requests": {
+      "owner": "kernel",
+      "schema": "pay",
+      "firstMigration": "0030_withdrawal_requests.sql",
+      "notes": ""
+    },
+    "profile.connections": {
+      "owner": "kernel",
+      "schema": "profile",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "profile.contact_hashes": {
+      "owner": "kernel",
+      "schema": "profile",
+      "firstMigration": "0067_contact_hashes.sql",
+      "notes": ""
+    },
+    "profile.follows": {
+      "owner": "kernel",
+      "schema": "profile",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "profile.forest_config": {
+      "owner": "kernel",
+      "schema": "profile",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "profile.profile_images": {
+      "owner": "kernel",
+      "schema": "profile",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "profile.profiles": {
+      "owner": "kernel",
+      "schema": "profile",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "profile.query_logs": {
+      "owner": "kernel",
+      "schema": "profile",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.app_logs": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.approved_builds": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.apps": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0007_registry_apps.sql",
+      "notes": ""
+    },
+    "registry.bump_events": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.bump_matches": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.bump_sessions": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.did_interests": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.did_preferences": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.flags": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.heartbeats": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.interests": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.logs": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0009_unified_logs.sql",
+      "notes": ""
+    },
+    "registry.moderation_log": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.newsletter_sends": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.node_config": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.nodes": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.request_log": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.system_events": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "registry.trust": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_beacons": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_blobs": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_config": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_content_chains": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_countersignatures": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_documents": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0002_relay_081.sql",
+      "notes": ""
+    },
+    "relay.relay_identity_chains": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_operation_log": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_operations": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_peer_cursors": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_peers": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0005_relay_peers.sql",
+      "notes": ""
+    },
+    "relay.relay_pending_operations": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "relay.relay_public_credentials": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0002_relay_081.sql",
+      "notes": ""
+    },
+    "relay.relay_revocations": {
+      "owner": "kernel",
+      "schema": "relay",
+      "firstMigration": "0002_relay_081.sql",
+      "notes": ""
+    },
+    "usage.billed": {
+      "owner": "kernel",
+      "schema": "usage",
+      "firstMigration": "0122_usage_billed.sql",
+      "notes": ""
+    },
+    "usage.emitters": {
+      "owner": "kernel",
+      "schema": "usage",
+      "firstMigration": "0121_usage_emitters.sql",
+      "notes": ""
+    },
+    "usage.incurred": {
+      "owner": "kernel",
+      "schema": "usage",
+      "firstMigration": "0119_usage_incurred.sql",
+      "notes": ""
+    },
+    "www.bug_reports": {
+      "owner": "kernel",
+      "schema": "www",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "www.contacts": {
+      "owner": "kernel",
+      "schema": "www",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "www.mailing_lists": {
+      "owner": "kernel",
+      "schema": "www",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    },
+    "www.subscriptions": {
+      "owner": "kernel",
+      "schema": "www",
+      "firstMigration": "0001_seed.sql",
+      "notes": ""
+    }
+  },
+  "views": {},
+  "types": {},
+  "functions": {
+    "registry.cleanup_legacy_logs": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0010_logs_cleanup.sql",
+      "notes": ""
+    },
+    "registry.cleanup_old_logs": {
+      "owner": "kernel",
+      "schema": "registry",
+      "firstMigration": "0010_logs_cleanup.sql",
+      "notes": ""
+    }
+  }
+}
