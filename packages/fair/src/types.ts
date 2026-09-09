@@ -8,6 +8,12 @@ export interface FairSignature {
   publicKeyRef: string; // DID of the signer
 }
 
+/**
+ * A single `.fair` attribution/distribution/chain entry — shared by both
+ * `FairManifestV1_0` and `FairManifestV1_1` (#1712: this used to also be
+ * declared separately as `DidShareEntry`; the two were never structurally
+ * different, so this is now the single canonical shape for both versions).
+ */
 export interface FairEntry {
   did?: string;
   role: string;
@@ -91,19 +97,13 @@ export interface FairManifestV1_0 {
 import type { Money } from '@imajin/money';
 export type { Money };
 
-export interface DidShareEntry {
-  did?: string;
-  role: string;
-  share: number;
-  name?: string;
-  note?: string;
-  chainProof?: {
-    verified: boolean;
-    verifiedAt?: string;
-  };
-}
-
-export type DidShareList = DidShareEntry[];
+// `DidShareEntry` used to be a hand-maintained duplicate of `FairEntry`
+// (#1712) — same six fields (`did?`, `role`, `share`, `name?`, `note?`,
+// `chainProof?`), just declared a second time for the v1.1 manifest. There
+// was never a v1.0/v1.1 distinction at the *entry* level — only at the
+// *manifest* level (`FairManifestV1_0` vs `FairManifestV1_1` genuinely
+// differ) — so `FairEntry` is now the one shape both versions share.
+export type DidShareList = FairEntry[];
 
 export interface FairDistributionRight {
   mode: string;

@@ -16,18 +16,12 @@
 import { createLogger } from '@imajin/logger';
 import { db, listings } from '@/db';
 import { eq } from 'drizzle-orm';
-import { computeFeeCents, resolveSettlementChain } from '@imajin/fair';
+import { computeFeeCents, resolveSettlementChain, type FairSettlementEntry } from '@imajin/fair';
 
 const log = createLogger('market');
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
-
-interface FairEntry {
-  did: string;
-  role: string;
-  share: number; // 0–1 fraction
-}
 
 interface FairFee {
   role: string;
@@ -39,8 +33,8 @@ interface FairFee {
 interface FairManifest {
   version?: string;
   fees?: FairFee[];
-  chain?: FairEntry[];
-  distributions?: FairEntry[];
+  chain?: FairSettlementEntry[];
+  distributions?: FairSettlementEntry[];
   [key: string]: unknown;
 }
 

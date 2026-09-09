@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { DidShareList, DidShareEntry } from '@imajin/fair';
+import type { DidShareList, FairEntry } from '@imajin/fair';
 
 interface ResolvedProfile {
   name: string;
@@ -281,20 +281,20 @@ export function DidShareListEditor({
   const [resolvedCache, setResolvedCache] = useState<Record<string, ResolvedProfile | null>>({});
 
   const totalShare = useMemo(
-    () => value.reduce((sum: number, e: DidShareEntry) => sum + e.share, 0),
+    () => value.reduce((sum: number, e: FairEntry) => sum + e.share, 0),
     [value],
   );
 
   const isValid = Math.abs(totalShare - 1.0) <= SUM_TOLERANCE;
   const isOver = totalShare > 1.0 + SUM_TOLERANCE;
 
-  const update = (i: number, patch: Partial<DidShareEntry>) => {
-    const next = value.map((e: DidShareEntry, idx: number) => (idx === i ? { ...e, ...patch } : e));
+  const update = (i: number, patch: Partial<FairEntry>) => {
+    const next = value.map((e: FairEntry, idx: number) => (idx === i ? { ...e, ...patch } : e));
     onChange(next);
   };
 
   const remove = (i: number) => {
-    onChange(value.filter((_e: DidShareEntry, idx: number) => idx !== i));
+    onChange(value.filter((_e: FairEntry, idx: number) => idx !== i));
   };
 
   const add = () => {
