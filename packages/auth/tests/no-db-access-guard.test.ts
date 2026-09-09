@@ -73,32 +73,39 @@ describe('packages/auth/src must not reach the database (#1992)', () => {
   });
 });
 
+interface SanityCase {
+  label: string;
+  source: string;
+  shouldFlag: boolean;
+}
+
+/**
+ * One row per banned pattern (positive control: `shouldFlag: true`) plus the
+ * two legitimate DB-adjacent shapes this package actually uses and must NOT
+ * flag (negative controls: `shouldFlag: false`) — collapsed into a single
+ * `it.each` table rather than one `it()` per case to avoid the near-identical
+ * `expect(violationsIn(...)).(not.)toEqual([])` block repeating per pattern.
+ */
+const SANITY_CASES: SanityCase[] = [
+  { label: 'a @imajin/db import', source: "import { getClient } from '@imajin/db';", shouldFlag: true },
+  { label: 'a getClient() call', source: 'const sql = getClient();', shouldFlag: true },
+  { label: 'a raw SQL tagged template', source: 'const rows = await sql`SELECT * FROM auth.credentials`;', shouldFlag: true },
+  { label: 'a direct postgres driver import', source: "import postgres from 'postgres';", shouldFlag: true },
+  { label: 'a DB-connected drizzle adapter import', source: "import { drizzle } from 'drizzle-orm/postgres-js';", shouldFlag: true },
+  {
+    label: 'drizzle-orm query-builder usage via dependency injection (resolve.ts pattern)',
+    source: "const { eq } = await import('drizzle-orm');\nexport function createDbResolver(db, table) {}",
+    shouldFlag: false,
+  },
+  {
+    label: "postInternal()-based HTTP calls (this package's actual DB-access replacement)",
+    source: "import { postInternal } from './internal-post';\nawait postInternal('/api/credentials/resolve', { did });",
+    shouldFlag: false,
+  },
+];
+
 describe('BANNED_PATTERNS sanity checks (proves the scan is not vacuous)', () => {
-  it('flags a @imajin/db import', () => {
-    expect(violationsIn("import { getClient } from '@imajin/db';")).not.toEqual([]);
-  });
-
-  it('flags a getClient() call', () => {
-    expect(violationsIn('const sql = getClient();')).not.toEqual([]);
-  });
-
-  it('flags a raw SQL tagged template', () => {
-    expect(violationsIn('const rows = await sql`SELECT * FROM auth.credentials`;')).not.toEqual([]);
-  });
-
-  it('flags a direct postgres driver import', () => {
-    expect(violationsIn("import postgres from 'postgres';")).not.toEqual([]);
-  });
-
-  it('flags a DB-connected drizzle adapter import', () => {
-    expect(violationsIn("import { drizzle } from 'drizzle-orm/postgres-js';")).not.toEqual([]);
-  });
-
-  it('does not flag drizzle-orm query-builder usage via dependency injection (resolve.ts pattern)', () => {
-    expect(violationsIn("const { eq } = await import('drizzle-orm');\nexport function createDbResolver(db, table) {}")).toEqual([]);
-  });
-
-  it('does not flag postInternal()-based HTTP calls (this package\u2019s actual DB-access replacement)', () => {
-    expect(violationsIn("import { postInternal } from './internal-post';\nawait postInternal('/api/credentials/resolve', { did });")).toEqual([]);
+  it.each(SANITY_CASES)('$label -> flagged: $shouldFlag', ({ source, shouldFlag }) => {
+    expect(violationsIn(source).length > 0).toBe(shouldFlag);
   });
 });

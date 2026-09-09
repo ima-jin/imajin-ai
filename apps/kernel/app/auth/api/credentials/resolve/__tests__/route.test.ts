@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
+import { describeInternalApiKeyAuth, makeInternalKeyRequest } from '../../../__tests__/internal-api-key-auth-test-support';
 
 const API_KEY = 'internal-api-key';
 const DID = 'did:imajin:kia';
@@ -34,9 +35,7 @@ vi.mock('@imajin/logger', () => ({
 import { POST } from '../route';
 
 function makeReq(body: unknown, apiKey: string | undefined = API_KEY): NextRequest {
-  const headers = new Headers();
-  if (apiKey !== undefined) headers.set('authorization', `Bearer ${apiKey}`);
-  return { headers, json: async () => body } as unknown as NextRequest;
+  return makeInternalKeyRequest(body, apiKey);
 }
 
 beforeEach(() => {
@@ -44,19 +43,15 @@ beforeEach(() => {
   process.env.ATTESTATION_INTERNAL_API_KEY = API_KEY;
 });
 
-describe('POST /auth/api/credentials/resolve — auth', () => {
-  it('rejects when the API key is missing or wrong', async () => {
-    const res = await POST(makeReq({ did: DID }, 'wrong-key'));
-    expect(res.status).toBe(401);
-    expect(h.mockDbSelect).not.toHaveBeenCalled();
-  });
+describeInternalApiKeyAuth({
+  routeLabel: 'POST /auth/api/credentials/resolve',
+  post: POST,
+  apiKey: API_KEY,
+  validBody: { did: DID },
+  assertNoSideEffect: () => expect(h.mockDbSelect).not.toHaveBeenCalled(),
+});
 
-  it('rejects when ATTESTATION_INTERNAL_API_KEY is not configured server-side', async () => {
-    delete process.env.ATTESTATION_INTERNAL_API_KEY;
-    const res = await POST(makeReq({ did: DID }));
-    expect(res.status).toBe(401);
-  });
-
+describe('POST /auth/api/credentials/resolve — invalid request body', () => {
   it('returns 400 for invalid JSON', async () => {
     const req = {
       headers: new Headers({ authorization: `Bearer ${API_KEY}` }),
