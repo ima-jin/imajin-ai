@@ -58,6 +58,12 @@ function commitAll(dir, message) {
   git(dir, ['commit', '-q', '-m', message]);
 }
 
+/** Writes and commits a single migration file in one step — the common case for every scenario below. */
+function addMigration(dir, filename, content) {
+  writeMigration(dir, filename, content);
+  commitAll(dir, `add ${filename}`);
+}
+
 function runGuard(dir, baseRef) {
   try {
     const stdout = execFileSync(process.execPath, [SCRIPT], {
@@ -80,72 +86,52 @@ function runGuard(dir, baseRef) {
   }
 }
 
+function expectPass(result) {
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('PASS');
+}
+
+function expectFail(result, ...expectedSubstrings) {
+  expect(result.status).toBe(1);
+  const combined = result.stdout + result.stderr;
+  expect(combined).toContain('FAIL');
+  for (const substring of expectedSubstrings) {
+    expect(combined).toContain(substring);
+  }
+}
+
 describe('check-migration-ownership', () => {
   it('passes on a clean tree with no changed migration files', () => {
     const { dir, baseRef } = makeBaseRepo();
-    const result = runGuard(dir, baseRef);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
+    expectPass(runGuard(dir, baseRef));
   });
 
   it('fails when a cross-owner migration alters a table it does not own', () => {
     const { dir, baseRef } = makeBaseRepo();
-    writeMigration(
-      dir,
-      '0002_events_touches_auth.sql',
-      '-- owner: events\nALTER TABLE auth.identities ADD COLUMN foo TEXT;\n',
-    );
-    commitAll(dir, 'events touches auth.identities');
-
-    const result = runGuard(dir, baseRef);
-    expect(result.status).toBe(1);
-    const combined = result.stdout + result.stderr;
-    expect(combined).toContain('FAIL');
-    expect(combined).toContain('auth.identities');
-    expect(combined).toContain('owned by "kernel"');
+    addMigration(dir, '0002_events_touches_auth.sql', '-- owner: events\nALTER TABLE auth.identities ADD COLUMN foo TEXT;\n');
+    expectFail(runGuard(dir, baseRef), 'auth.identities', 'owned by "kernel"');
   });
 
   it('passes when a same-owner migration alters a table it owns', () => {
     const { dir, baseRef } = makeBaseRepo();
-    writeMigration(
-      dir,
-      '0002_kernel_touches_auth.sql',
-      '-- owner: kernel\nALTER TABLE auth.identities ADD COLUMN foo TEXT;\n',
-    );
-    commitAll(dir, 'kernel touches its own table');
-
-    const result = runGuard(dir, baseRef);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
+    addMigration(dir, '0002_kernel_touches_auth.sql', '-- owner: kernel\nALTER TABLE auth.identities ADD COLUMN foo TEXT;\n');
+    expectPass(runGuard(dir, baseRef));
   });
 
   it('fails when a new migration has no "-- owner:" header', () => {
     const { dir, baseRef } = makeBaseRepo();
-    writeMigration(dir, '0002_no_header.sql', 'CREATE TABLE IF NOT EXISTS events.foo (id SERIAL PRIMARY KEY);\n');
-    commitAll(dir, 'new migration without header');
-
-    const result = runGuard(dir, baseRef);
-    expect(result.status).toBe(1);
-    const combined = result.stdout + result.stderr;
-    expect(combined).toContain('FAIL');
-    expect(combined).toContain('missing a "-- owner:');
+    addMigration(dir, '0002_no_header.sql', 'CREATE TABLE IF NOT EXISTS events.foo (id SERIAL PRIMARY KEY);\n');
+    expectFail(runGuard(dir, baseRef), 'missing a "-- owner:');
   });
 
   it('fails when a new migration creates a table not registered in ownership.json', () => {
     const { dir, baseRef } = makeBaseRepo();
-    writeMigration(
+    addMigration(
       dir,
       '0002_events_new_table.sql',
       '-- owner: events\nCREATE TABLE IF NOT EXISTS events.new_table (id SERIAL PRIMARY KEY);\n',
     );
-    commitAll(dir, 'events adds an unregistered table');
-
-    const result = runGuard(dir, baseRef);
-    expect(result.status).toBe(1);
-    const combined = result.stdout + result.stderr;
-    expect(combined).toContain('FAIL');
-    expect(combined).toContain('events.new_table');
-    expect(combined).toContain('not registered');
+    expectFail(runGuard(dir, baseRef), 'events.new_table', 'not registered');
   });
 
   it('passes when a new table is created and registered in ownership.json in the same PR', () => {
@@ -163,10 +149,7 @@ describe('check-migration-ownership', () => {
       },
     });
     commitAll(dir, 'events adds and registers a new table');
-
-    const result = runGuard(dir, baseRef);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
+    expectPass(runGuard(dir, baseRef));
   });
 
   it('grandfathers a pre-existing headerless migration that is merely touched, not added', () => {
@@ -174,27 +157,13 @@ describe('check-migration-ownership', () => {
     // 0001_seed.sql already exists in the base commit with no "-- owner:" header.
     // Appending a comment makes it a "modified" (M) file, not "added" (A).
     const existing = readFileSync(join(dir, 'migrations', '0001_seed.sql'), 'utf8');
-    writeMigration(dir, '0001_seed.sql', `${existing}\n-- trailing comment, no functional change\n`);
-    commitAll(dir, 'touch pre-existing migration without adding a header');
-
-    const result = runGuard(dir, baseRef);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
+    addMigration(dir, '0001_seed.sql', `${existing}\n-- trailing comment, no functional change\n`);
+    expectPass(runGuard(dir, baseRef));
   });
 
   it('rejects an unknown declared owner', () => {
     const { dir, baseRef } = makeBaseRepo();
-    writeMigration(
-      dir,
-      '0002_bad_owner.sql',
-      '-- owner: not-a-real-app\nCREATE TABLE IF NOT EXISTS events.foo (id SERIAL PRIMARY KEY);\n',
-    );
-    commitAll(dir, 'bad owner header');
-
-    const result = runGuard(dir, baseRef);
-    expect(result.status).toBe(1);
-    const combined = result.stdout + result.stderr;
-    expect(combined).toContain('FAIL');
-    expect(combined).toContain('not a known owner');
+    addMigration(dir, '0002_bad_owner.sql', '-- owner: not-a-real-app\nCREATE TABLE IF NOT EXISTS events.foo (id SERIAL PRIMARY KEY);\n');
+    expectFail(runGuard(dir, baseRef), 'not a known owner');
   });
 });
