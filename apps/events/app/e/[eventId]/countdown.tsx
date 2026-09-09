@@ -15,7 +15,7 @@ interface TimeLeft {
 }
 
 function calculateTimeLeft(targetDate: string): TimeLeft | null {
-  const difference = new Date(targetDate).getTime() - new Date().getTime();
+  const difference = new Date(targetDate).getTime() - Date.now();
   
   if (difference <= 0) {
     return null;

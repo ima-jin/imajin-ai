@@ -91,7 +91,7 @@ async function main() {
       });
       console.log(`  ✅ ${app.dir} schema pushed`);
     } catch (error) {
-      console.error(`  ❌ Failed to push ${app.dir} schema`);
+      console.error(`  ❌ Failed to push ${app.dir} schema:`, error);
     }
   }
 

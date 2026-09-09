@@ -177,7 +177,7 @@ async function mintIdentity(cfg: Readonly<Config>, ref: string, type: string): P
   }
   const did = json.did;
   if (typeof did !== 'string') {
-    throw new Error(`identity mint returned no DID for ${ref}`);
+    throw new TypeError(`identity mint returned no DID for ${ref}`);
   }
   info(`${type} ${ref} -> ${did} (created=${String(json.created)})`);
   return did;

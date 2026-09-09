@@ -64,7 +64,7 @@ export type SurveyJSElementType =
 
 // SurveyJS element definition (compatible with survey-core)
 export interface SurveyJSElement {
-  type: SurveyJSElementType | string;
+  type: SurveyJSElementType;
   name: string;              // Unique field identifier
   title: string;             // Display label
   exportLabel?: string;       // Short name for CSV export

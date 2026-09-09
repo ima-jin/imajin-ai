@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '@imajin/config';
-import { ListingForm, ListingFormData } from '../../../components/ListingForm';
+import { ListingForm, ListingFormData, SellerTier } from '../../../components/ListingForm';
 
 interface Listing {
   id: string;
@@ -175,7 +175,7 @@ export default function EditListingPage() {
     category: listing.category ?? '',
     quantity: listing.quantity,
     images: listing.images ?? [],
-    sellerTier: (listing.sellerTier as 'public_offplatform' | 'public_onplatform' | 'trust_gated') ?? 'public_offplatform',
+    sellerTier: (listing.sellerTier as SellerTier) ?? 'public_offplatform',
     showContactInfo: listing.showContactInfo ?? false,
     contactInfo: {
       phone: listing.contactInfo?.phone ?? '',

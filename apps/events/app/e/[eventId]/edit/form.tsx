@@ -295,6 +295,10 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
     setTiers(newTiers);
   }
 
+  function removeLinkedSurvey(index: number) {
+    setLinkedSurveys((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -938,7 +942,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
                     </select>
                     <button
                       type="button"
-                      onClick={() => { const idx = index; setLinkedSurveys(prev => prev.filter((_, i) => i !== idx)); }}
+                      onClick={() => removeLinkedSurvey(index)}
                       className="px-3 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
                       title="Remove survey"
                     >

@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -53,6 +54,7 @@ export default function DashboardPage() {
         if (data.courses?.[0]?.creatorDid) setMyDid(data.courses[0].creatorDid);
       }
     } catch (e) {
+      console.error('Failed to load courses:', e);
       setError('Failed to load courses');
     } finally {
       setLoading(false);
@@ -78,6 +80,7 @@ export default function DashboardPage() {
         toast.error(err.error || 'Failed to create course');
       }
     } catch (e) {
+      console.error('Failed to create course:', e);
       toast.error('Failed to create course');
     } finally {
       setCreating(false);

@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useToast } from '@imajin/ui';
 import { apiFetch } from '@imajin/config';
@@ -100,6 +100,7 @@ export default function CourseEditorPage() {
       });
       await loadCourse();
     } catch (e) {
+      console.error('Failed to save course:', e);
       toast.error('Failed to save');
     } finally {
       setSaving(false);

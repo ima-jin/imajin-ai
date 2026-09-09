@@ -84,7 +84,7 @@ export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
       }
 
       const allowed = fileArray.slice(0, totalSlots);
-      const invalid = fileArray.find(
+      const invalid = fileArray.some(
         (f) => !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(f.type)
       );
       if (invalid) {
