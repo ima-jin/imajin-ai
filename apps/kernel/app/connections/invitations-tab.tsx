@@ -380,16 +380,10 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
     <div className="space-y-8">
       {/* ─── QR Code Fullscreen Overlay ─── */}
       {qrUrl && (
-        <div
-          className="fixed inset-0 z-[9999] bg-white flex items-center justify-center cursor-pointer"
+        <button
+          type="button"
+          className="fixed inset-0 z-[9999] w-full bg-white flex items-center justify-center cursor-pointer"
           onClick={() => setQrUrl(null)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              setQrUrl(null);
-            }
-          }}
-          tabIndex={0}
           aria-label="Close QR code overlay"
         >
           <div className="flex flex-col items-center gap-6 p-8 max-w-[90vmin]">
@@ -406,7 +400,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
               <div className="text-black/40 text-xs">Tap anywhere to close</div>
             </div>
           </div>
-        </div>
+        </button>
       )}
 
       {/* ─── Section A: Invited by ─── */}

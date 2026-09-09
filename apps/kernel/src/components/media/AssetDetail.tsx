@@ -40,18 +40,19 @@ function FairEditModal({
   const [saving, setSaving] = useState(false);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onCancel}
-      onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
-      aria-label="Close fair manifest editor"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop is a real button (not a div+role) and a sibling of the dialog box below,
+          so the dialog box never needs to stop click/keydown propagation. */}
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/60 cursor-default"
+        onClick={onCancel}
+        onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
+        aria-label="Close fair manifest editor"
+      />
       <div
-        className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[520px] max-h-[85vh] overflow-y-auto"
-        role="dialog"
+        className="relative bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl p-4 w-[520px] max-h-[85vh] overflow-y-auto"
         aria-label="Edit .fair manifest"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-medium text-gray-200">Edit .fair Manifest</p>

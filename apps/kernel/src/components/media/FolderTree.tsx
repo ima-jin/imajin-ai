@@ -96,6 +96,9 @@ function FolderRow({
           }
         }}
         onContextMenu={(e) => onContextMenu(e, node)}
+        role="button"
+        tabIndex={0}
+        aria-current={isSelected ? "true" : undefined}
       >
         <button
           type="button"
@@ -341,11 +344,13 @@ export function FolderTree({
               setRenamingId(null);
             }
           }}
+          role="presentation"
           aria-label="Close rename dialog"
         >
           <div
             className="bg-[#2a2a2a] border border-white/10 rounded-lg shadow-xl p-4 w-72"
             aria-label="Rename folder"
+            role="presentation"
             onMouseDown={(e) => e.stopPropagation()}
           >
             <p className="text-sm text-gray-300 mb-2">Rename folder</p>
@@ -392,7 +397,13 @@ export function FolderTree({
         </button>
         {mobileOpen && (
           <div className="fixed inset-0 z-40 flex">
-            <div aria-label="Close menu" className="fixed inset-0 bg-black/60" onClick={() => setMobileOpen(false)} onKeyDown={(e) => { if (e.key === 'Escape') setMobileOpen(false); }} />
+            <button
+              type="button"
+              aria-label="Close menu"
+              className="fixed inset-0 bg-black/60 cursor-default"
+              onClick={() => setMobileOpen(false)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setMobileOpen(false); }}
+            />
             <div className="relative z-50 w-64 h-full bg-[#1a1a1a] border-r border-white/10 p-3">
               {treeContent}
             </div>

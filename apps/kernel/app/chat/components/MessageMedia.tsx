@@ -51,6 +51,7 @@ export function MessageMedia({ mediaType, mediaPath, mediaMeta }: Readonly<Messa
                 setLightboxOpen(false);
               }
             }}
+            role="presentation"
             aria-label="Close image preview"
           >
             <img

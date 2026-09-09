@@ -593,6 +593,9 @@ export function AssetGrid({
                       onSelectAsset(asset.id);
                     }
                   }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Select asset ${asset.filename}`}
                 >
                   {/* Checkbox */}
                   <button

@@ -102,6 +102,7 @@ export function OnboardGate({
       <div
         onClick={handleTriggerClick}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTriggerClick(); } }}
+        role="button"
         tabIndex={0}
         style={{ cursor: 'pointer' }}
       >

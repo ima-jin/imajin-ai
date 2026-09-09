@@ -206,6 +206,9 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
             setExpanded((prev) => !prev);
           }
         }}
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
       >
         <span className={`text-xs px-2 py-0.5 rounded-full border shrink-0 ${badge.classes}`}>
           {badge.label}

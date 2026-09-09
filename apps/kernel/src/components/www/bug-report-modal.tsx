@@ -123,6 +123,7 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
           onClose();
         }
       }}
+      role="presentation"
       aria-label="Close feedback modal"
     >
       <div className="w-full max-w-lg rounded-xl bg-[#111] border border-gray-800 shadow-2xl">

@@ -87,6 +87,8 @@ function AssetCard({ asset, selected, checked, compact, selectionActive, onSelec
           onSelect(e);
         }
       }}
+      role="button"
+      tabIndex={0}
       aria-label={`Select asset ${asset.filename}`}
       {...longPress}
     >

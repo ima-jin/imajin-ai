@@ -132,7 +132,7 @@ export default function TraceView({ events, correlationId }: Readonly<{ events: 
                         : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800'
                     } shadow-sm`}
                   >
-                    <div
+                    <section
                       className={`px-4 py-3 flex flex-wrap items-center gap-3 ${hasPayload ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-xl' : ''} transition-colors`}
                       onClick={hasPayload ? () => toggle(evt.id) : undefined}
                       onKeyDown={hasPayload ? (e) => {
@@ -141,9 +141,7 @@ export default function TraceView({ events, correlationId }: Readonly<{ events: 
                           toggle(evt.id);
                         }
                       } : undefined}
-                      role={hasPayload ? 'region' : undefined}
                       tabIndex={hasPayload ? 0 : undefined}
-                      aria-expanded={hasPayload ? isExpanded : undefined}
                       aria-label={hasPayload ? `Toggle ${evt.action} details` : undefined}
                     >
                       {/* Step number */}
@@ -191,7 +189,7 @@ export default function TraceView({ events, correlationId }: Readonly<{ events: 
                           {isExpanded ? '▲' : '▼'}
                         </span>
                       )}
-                    </div>
+                    </section>
 
                     {/* DID */}
                     {evt.did && (

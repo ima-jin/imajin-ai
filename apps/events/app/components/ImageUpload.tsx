@@ -98,7 +98,7 @@ export function ImageUpload({ currentImage, onUploadComplete }: Readonly<ImageUp
   );
 
   const onDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
+    (e: React.DragEvent<HTMLButtonElement>) => {
       e.preventDefault();
       setIsDragging(false);
       const files = Array.from(e.dataTransfer.files);
@@ -107,12 +107,12 @@ export function ImageUpload({ currentImage, onUploadComplete }: Readonly<ImageUp
     [handleFile]
   );
 
-  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const onDragOver = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setIsDragging(true);
   }, []);
 
-  const onDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const onDragLeave = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setIsDragging(false);
   }, []);
@@ -141,30 +141,30 @@ export function ImageUpload({ currentImage, onUploadComplete }: Readonly<ImageUp
         </div>
       )}
 
-      <div
+      <input
+        ref={fileInputRef}
+        id="cover-image-upload"
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        onChange={onFileInputChange}
+        className="hidden"
+      />
+
+      {/* Native button (not a div+role) so drag/click/keyboard activation all come for free. */}
+      <button
+        type="button"
         onDrop={onDrop}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
-        tabIndex={0}
         onClick={() => fileInputRef.current?.click()}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
         className={`
-          border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition
+          w-full border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition
           ${isDragging
             ? 'border-orange-500 bg-orange-500/10'
             : 'border-gray-300 dark:border-gray-600 hover:border-orange-500/50 hover:bg-orange-500/5'}
           ${isUploading ? 'opacity-50 pointer-events-none' : ''}
         `}
       >
-        <input
-          ref={fileInputRef}
-          id="cover-image-upload"
-          type="file"
-          accept="image/jpeg,image/png,image/gif,image/webp"
-          onChange={onFileInputChange}
-          className="hidden"
-        />
-
         {isUploading ? (
           <div className="flex flex-col items-center gap-2">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div>
@@ -181,7 +181,7 @@ export function ImageUpload({ currentImage, onUploadComplete }: Readonly<ImageUp
             </p>
           </>
         )}
-      </div>
+      </button>
 
       {error && (
         <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">

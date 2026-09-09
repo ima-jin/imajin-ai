@@ -78,7 +78,7 @@ function NicknameEditor({
 
   if (editing) {
     return (
-      <div className="flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-1" role="presentation" onMouseDown={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
           value={value}
@@ -367,6 +367,7 @@ export default function ConnectionsPage() {
                       globalThis.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`;
                     }
                   }}
+                  role="button"
                   tabIndex={0}
                   className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition"
                 >

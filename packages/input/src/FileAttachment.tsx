@@ -151,16 +151,14 @@ export function FileAttachment({
       {renderTrigger ? (
         renderTrigger(openPicker)
       ) : (
-        <label
-          htmlFor={fileInputId}
+        <button
+          type="button"
           className={`p-2 text-gray-500 hover:text-orange-400 transition-colors cursor-pointer inline-block ${
             disabled ? 'opacity-40 cursor-not-allowed' : ''
           } ${isDragging ? 'text-orange-400' : ''}`}
           title="Attach file"
           aria-label="Attach file"
-          tabIndex={0}
           onClick={openPicker}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPicker(); }}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragging(true);
@@ -169,7 +167,7 @@ export function FileAttachment({
           onDrop={handleDrop}
         >
           📎
-        </label>
+        </button>
       )}
       {error && (
         <div className="absolute bottom-full mb-1 left-0 text-xs text-red-400 whitespace-nowrap bg-gray-900 px-2 py-1 rounded">

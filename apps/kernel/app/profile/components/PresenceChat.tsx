@@ -133,8 +133,9 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: R
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-      <div
-        className="absolute inset-0 bg-black/60"
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/60 cursor-default"
         onClick={onClose}
         onKeyDown={(e) => {
           if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {

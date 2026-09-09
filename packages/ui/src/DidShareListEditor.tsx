@@ -68,6 +68,8 @@ function ResolvedDidChip({
           handleCopy();
         }
       }}
+      role="button"
+      tabIndex={0}
     >
       {avatar ? (
         <img
