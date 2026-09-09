@@ -134,10 +134,10 @@ function InlineDidPicker({
       .then((r) => r.json())
       .then((data) => {
         const list = (data.connections || []).map((c: Record<string, unknown>) => ({
-          did: String(c.did || ''),
-          name: c.name ? String(c.name) : null,
-          handle: c.handle ? String(c.handle) : null,
-          avatar: c.avatar ? String(c.avatar) : null,
+          did: typeof c.did === 'string' ? c.did : '',
+          name: typeof c.name === 'string' && c.name.length > 0 ? c.name : null,
+          handle: typeof c.handle === 'string' && c.handle.length > 0 ? c.handle : null,
+          avatar: typeof c.avatar === 'string' && c.avatar.length > 0 ? c.avatar : null,
         })) as Connection[];
         setConnections(list);
       })

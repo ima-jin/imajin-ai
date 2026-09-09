@@ -29,8 +29,6 @@ export function OnboardGate({
   children,
   authUrl: authUrlProp,
   redirectUrl,
-   
-  requireVerification: _requireVerification,
 }: Readonly<OnboardGateProps>) {
   const [state, setState] = useState<State>('idle');
   const [email, setEmail] = useState('');

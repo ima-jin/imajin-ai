@@ -26,7 +26,9 @@ export interface ContentHashInput {
 export function computeContentHash(pairs: ContentHashInput[]): string {
   const sorted = [...pairs].sort((left, right) => {
     if (left.docId !== right.docId) return left.docId < right.docId ? -1 : 1;
-    return left.updated < right.updated ? -1 : left.updated > right.updated ? 1 : 0;
+    if (left.updated < right.updated) return -1;
+    if (left.updated > right.updated) return 1;
+    return 0;
   });
   const serialized = sorted.map(pair => `${pair.docId}:${pair.updated}`).join('|');
   return createHash('sha256').update(serialized).digest('hex');
