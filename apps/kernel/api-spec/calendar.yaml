@@ -1,0 +1,633 @@
+openapi: "3.1.0"
+info:
+  title: imajin calendar
+  version: "1.0.0"
+  description: |
+    Kernel-level temporal entries (#241) and availability intents (#1099). A
+    single type-agnostic `calendar_entries` row backs availability, meeting,
+    event, booking, reminder, and block entries — differing only in `type`
+    and `metadata` ceremony. Storage lives in the shared `kernel` Postgres
+    schema (not a dedicated `calendar` schema), consistent with this being a
+    kernel rail rather than a standalone service (#1994). Runs as a kernel
+    service at /{service}/api/... on a shared node domain.
+
+    Availability intents are sealed by default: setting one surfaces
+    NOTHING to anyone until the bilateral match engine (#1102) finds an
+    overlap or the TTL expires. Cross-DID reads of other entry types are
+    gated by a per-entry `visibility` (`public` | `connections` | `selective`
+    | `private` | `sealed`) — `connections`-visibility entries are
+    broker-gated (fail-closed until #1049 + #1189 land); `private` and
+    `sealed` entries are never disclosed to a non-owner and never reach the
+    broker.
+servers:
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: calendar
+  - url: http://localhost:3000/{service}
+    description: local development
+
+tags:
+  - name: calendar
+    description: imajin calendar service
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        Short-lived scoped app token (broker-agent). Requires the
+        `availability:read` or `availability:write` scope depending on the
+        operation, plus an `X-Acting-For` header naming the user DID the
+        app is acting on behalf of.
+  parameters:
+    XActingFor:
+      name: X-Acting-For
+      in: header
+      required: true
+      schema: { type: string }
+      description: >-
+        Required only on the app-auth (bearerAuth) path: the user DID the
+        calling app is acting on behalf of. Ignored/unused on the
+        cookieAuth (session) path, which derives the DID from the session
+        itself.
+  schemas:
+    EntryType:
+      type: string
+      enum: [availability, meeting, event, booking, reminder, block]
+    Visibility:
+      type: string
+      enum: [public, connections, selective, private, sealed]
+    Reach:
+      type: string
+      enum: [favourites, one_degree, strangers]
+      description: Who an availability intent's eventual match may be surfaced to.
+    CalendarEntry:
+      type: object
+      description: The full owner-visible row. Availability-specific fields are null for non-availability types.
+      properties:
+        id: { type: string, example: "cal_xxx" }
+        did: { type: string, description: "Owner DID" }
+        type: { $ref: "#/components/schemas/EntryType" }
+        title: { type: string, nullable: true }
+        activityTags: { type: array, items: { type: string }, nullable: true }
+        intent: { type: string, nullable: true, description: "Availability switch, e.g. 'going_out'. Null for non-availability types." }
+        sensitiveTags: { type: array, items: { type: string }, nullable: true, description: "Subset of activityTags flagged sensitive (double-blind only)." }
+        reach: { $ref: "#/components/schemas/Reach" }
+        startsAt: { type: string, format: date-time, nullable: true, description: "Null = open-ended." }
+        endsAt: { type: string, format: date-time, nullable: true, description: "Null = open-ended." }
+        expiresAt: { type: string, format: date-time, nullable: true, description: "TTL — auto-cleanup for transient entries." }
+        visibility: { $ref: "#/components/schemas/Visibility" }
+        visibilityDids: { type: array, items: { type: string }, nullable: true, description: "For visibility=selective: the specific DIDs that can see this entry." }
+        recurrence: { type: object, nullable: true, description: "Future: rrule-style recurrence. Not yet enforced." }
+        metadata: { type: object }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ProjectedEntry:
+      type: object
+      description: Minimal disclosure surface returned for cross-DID reads (GET /api/d/{did}/entries, GET /api/d/{did}/availability) — never the full row.
+      properties:
+        id: { type: string }
+        type: { $ref: "#/components/schemas/EntryType" }
+        title: { type: string, nullable: true }
+        activityTags: { type: array, items: { type: string }, nullable: true }
+        startsAt: { type: string, format: date-time, nullable: true }
+        endsAt: { type: string, format: date-time, nullable: true }
+    MatchNotification:
+      type: object
+      description: One pending bilateral-match delivery for the broker-agent bot to deliver.
+      properties:
+        id: { type: string }
+        matchId: { type: string }
+        recipientDid: { type: string }
+        channel: { type: string, example: "telegram", description: "Defaults to 'telegram' when the recipient's channel link doesn't specify one." }
+        channelUid: { type: string, nullable: true, description: "External chat id to deliver to; null if the recipient has no active channel link." }
+        otherDid: { type: string, nullable: true, description: "Null when the match is sensitive_staged (identity withheld)." }
+        overlapTags: { type: array, items: { type: string } }
+        isSensitive: { type: boolean }
+        deliveryPolicy: { type: string, enum: [named_nudge, staged, sensitive_staged] }
+        createdAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/availability:
+    get:
+      tags: [calendar]
+      operationId: listAvailability
+      summary: List the caller's own live (not-expired) availability intents
+      description: >-
+        Session path (cookieAuth) lists the authenticated caller's own
+        intents. App-auth path (bearerAuth, `availability:read` scope) lists
+        the intents of the user named by `X-Acting-For` — used by
+        broker-agent.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XActingFor"
+      responses:
+        "200":
+          description: Live availability intents, newest expiry first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  intents:
+                    type: array
+                    items: { $ref: "#/components/schemas/CalendarEntry" }
+        "400":
+          description: X-Acting-For header required for app auth
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    post:
+      tags: [calendar]
+      operationId: setAvailability
+      summary: Set an availability intent (the standing note)
+      description: >-
+        Sealed by default: setting an intent surfaces NOTHING. It sits until
+        the match engine (#1102) finds a bilateral overlap or the TTL
+        expires. Session path (cookieAuth) sets an intent for the caller.
+        App-auth path (bearerAuth, `availability:write` scope) sets one for
+        the user named by `X-Acting-For` — used by broker-agent.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XActingFor"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [intent]
+              properties:
+                intent: { type: string, description: "The switch, e.g. 'going_out'." }
+                activityTags: { type: array, items: { type: string }, description: "Activity overlap surface, e.g. ['film','eat']." }
+                sensitiveTags: { type: array, items: { type: string }, description: "Subset of activityTags flagged sensitive (double-blind only); non-members of activityTags are dropped." }
+                reach: { $ref: "#/components/schemas/Reach" }
+                window:
+                  type: string
+                  enum: [today, tonight, this_weekend, this_week, next_week]
+                  description: "Shorthand time window. Resolves to startsAt/endsAt/expiresAt. An explicit timestamp field below overrides the corresponding piece."
+                startsAt: { type: string, format: date-time, description: "Explicit — overrides window." }
+                endsAt: { type: string, format: date-time, description: "Explicit — overrides window." }
+                expiresAt: { type: string, format: date-time, description: "Explicit TTL — overrides window." }
+                title: { type: string, description: "Optional display title." }
+                metadata: { type: object }
+      responses:
+        "201":
+          description: Intent created (always visibility=sealed regardless of caller input)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  intent: { $ref: "#/components/schemas/CalendarEntry" }
+        "400":
+          description: "intent is required, X-Acting-For header required for app auth, or an unrecognized window shorthand"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/availability/{id}:
+    delete:
+      tags: [calendar]
+      operationId: cancelAvailability
+      summary: Cancel an availability intent the caller owns
+      description: >-
+        Owner-only: scoped by a `did` match in the WHERE clause, so a sealed
+        entry the caller doesn't own is reported as not-found rather than
+        forbidden. The note dies sealed — nobody ever knew it existed.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/XActingFor"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelled: { type: boolean }
+        "400":
+          description: X-Acting-For header required for app auth
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Intent not found or not owned by the caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/availability/matches:
+    get:
+      tags: [calendar]
+      operationId: listPendingMatchNotifications
+      summary: List pending match notifications for users linked to the requesting bot (bot-authenticated)
+      description: >-
+        The bot polls this to know who to notify and what to say. Scoped to
+        DIDs with an active `channelLinks` row for the caller's app DID —
+        an app with no linked users gets an empty list rather than an
+        error.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Pending notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items: { $ref: "#/components/schemas/MatchNotification" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      tags: [calendar]
+      operationId: markMatchNotificationsDelivered
+      summary: Mark notifications as delivered (bot-authenticated)
+      description: >-
+        Called by the bot after sending to chat. Only notifications whose
+        recipient is linked to the caller's app DID are marked; unauthorized
+        ids in the request are silently dropped rather than erroring the
+        whole call.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: Delivered count (0 when ids is empty/all unauthorized)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marked: { type: integer }
+        "400":
+          description: ids is required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/d/{did}/availability:
+    get:
+      tags: [calendar]
+      operationId: getIdentityAvailability
+      summary: Query another identity's live availability entries
+      description: |
+        Session-authenticated only (no app-auth path). Visibility model (#241):
+          - self        → the requester querying their own did sees everything, no gating
+          - public      → returned directly to anyone
+          - selective   → inline visibilityDids check, no broker call
+          - connections → broker-gated (`calendar.availability.request`) — fail-closes
+                          until consent grants (#1049) + reach-ring resolution (#1189) land
+          - private / sealed → never disclosed to non-owner; never touch broker
+
+        The requester DID is the caller's `actingFor` delegation if present,
+        otherwise their own resolved DID — there is no `X-Acting-For` header
+        on this path.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: Target identity DID
+      responses:
+        "200":
+          description: >-
+            Full CalendarEntry rows when the requester is the target DID
+            (self-query); otherwise the disclosed subset as ProjectedEntry.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      oneOf:
+                        - { $ref: "#/components/schemas/CalendarEntry" }
+                        - { $ref: "#/components/schemas/ProjectedEntry" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/d/{did}/entries:
+    get:
+      tags: [calendar]
+      operationId: getIdentityEntries
+      summary: Broker-gated read of another identity's calendar entries
+      description: |
+        Session-authenticated only (no app-auth path). Same visibility model
+        as GET /api/d/{did}/availability (#241, #1188), gated per-entry:
+          - self        → everything
+          - public      → returned directly
+          - selective   → inline visibilityDids check
+          - connections → broker-gated (`calendar.entry.request`) — fail-closed
+          - private / sealed → never disclosed, never touch broker
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: Target identity DID
+        - name: type
+          in: query
+          schema: { $ref: "#/components/schemas/EntryType" }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+          description: Filter to entries with startsAt >= from
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+          description: Filter to entries with startsAt <= to
+      responses:
+        "200":
+          description: >-
+            Full CalendarEntry rows when the requester is the target DID
+            (self-query); otherwise the disclosed subset as ProjectedEntry.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      oneOf:
+                        - { $ref: "#/components/schemas/CalendarEntry" }
+                        - { $ref: "#/components/schemas/ProjectedEntry" }
+        "400":
+          description: type is not one of the recognized entry types
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/entries:
+    get:
+      tags: [calendar]
+      operationId: listOwnEntries
+      summary: List the caller's own calendar entries
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema: { $ref: "#/components/schemas/EntryType" }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+          description: Filter to entries with startsAt >= from
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+          description: Filter to entries with startsAt <= to
+        - name: active
+          in: query
+          schema: { type: boolean, default: false }
+          description: When true, only entries with no expiresAt or an expiresAt in the future
+      responses:
+        "200":
+          description: The caller's own entries, newest startsAt first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/CalendarEntry" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    post:
+      tags: [calendar]
+      operationId: createEntry
+      summary: Create a calendar entry owned by the caller
+      description: >-
+        Sealed by default: `visibility` defaults to `private`, nothing
+        surfaces on create. `type=reminder`/`block` are forced to
+        `visibility=private` regardless of caller input. `type=meeting` with
+        `metadata.participantDids` defaults to `visibility=selective` with
+        `visibilityDids` copied from `participantDids` (caller may still
+        override to `private`, but not to any other visibility).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { $ref: "#/components/schemas/EntryType" }
+                title: { type: string }
+                activityTags: { type: array, items: { type: string } }
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: string, format: date-time }
+                expiresAt: { type: string, format: date-time }
+                visibility:
+                  allOf:
+                    - $ref: "#/components/schemas/Visibility"
+                  description: "Defaults to 'private'. May be overridden by type-derived defaults — see description above."
+                visibilityDids:
+                  type: array
+                  items: { type: string }
+                  description: "Used when visibility=selective and the type doesn't already derive it (e.g. non-meeting types)."
+                recurrence: { type: object, description: "Future: rrule-style recurrence. Not yet enforced." }
+                metadata: { type: object, description: "For type=meeting, metadata.participantDids (string[]) drives the selective-visibility default." }
+      responses:
+        "201":
+          description: Entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entry: { $ref: "#/components/schemas/CalendarEntry" }
+        "400":
+          description: type is required/unrecognized, or visibility is not one of the recognized values
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/entries/{id}:
+    patch:
+      tags: [calendar]
+      operationId: updateEntry
+      summary: Update an entry the caller owns
+      description: >-
+        Whitelisted-field patch: only `title`, `activityTags`, `visibility`,
+        `visibilityDids`, `recurrence`, `metadata`, `startsAt`, `endsAt`, and
+        `expiresAt` are settable. Fields absent from the body are left
+        unchanged; `updatedAt` is always bumped. Does not re-run the
+        per-type `enforceTypeDefaults` derivation that POST applies — a
+        caller can set an arbitrary `visibility`/`visibilityDids` combo here
+        as long as `visibility` is a recognized value.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                activityTags: { type: array, items: { type: string } }
+                visibility: { $ref: "#/components/schemas/Visibility" }
+                visibilityDids: { type: array, items: { type: string } }
+                recurrence: { type: object }
+                metadata: { type: object }
+                startsAt: { type: string, format: date-time, nullable: true }
+                endsAt: { type: string, format: date-time, nullable: true }
+                expiresAt: { type: string, format: date-time, nullable: true }
+      responses:
+        "200":
+          description: Updated entry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entry: { $ref: "#/components/schemas/CalendarEntry" }
+        "400":
+          description: visibility is not one of the recognized values
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Entry not found or not owned by the caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [calendar]
+      operationId: deleteEntry
+      summary: Delete an entry the caller owns
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: boolean }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Entry not found or not owned by the caller
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/spec:
+    get:
+      tags: [calendar]
+      operationId: getSpec
+      summary: Serve the OpenAPI spec YAML
+      responses:
+        "200":
+          description: OpenAPI YAML
+          content:
+            text/yaml:
+              schema: { type: string }
