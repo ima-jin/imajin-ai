@@ -16,7 +16,11 @@ jobs:
     name: Check Migrations
     runs-on: imajin-self-hosted
     container:
-      image: ghcr.io/ima-jin/ci-runner:latest
+      # Pinned to the immutable digest `build-ci-image.yml` published on main
+      # for commit 30643d7f (githubactions:S6596 — no floating tags). Bump by
+      # re-running that workflow (push to .github/docker/Dockerfile.ci or
+      # workflow_dispatch) and copying the new `containerimage.digest` here.
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -34,7 +38,7 @@ jobs:
     name: Security Audit
     runs-on: imajin-self-hosted
     container:
-      image: ghcr.io/ima-jin/ci-runner:latest
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -86,7 +90,7 @@ jobs:
     name: Lint & Typecheck
     runs-on: imajin-self-hosted
     container:
-      image: ghcr.io/ima-jin/ci-runner:latest
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -121,7 +125,7 @@ jobs:
     name: Test
     runs-on: imajin-self-hosted
     container:
-      image: ghcr.io/ima-jin/ci-runner:latest
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -167,7 +171,7 @@ jobs:
     name: Build
     runs-on: imajin-self-hosted
     container:
-      image: ghcr.io/ima-jin/ci-runner:latest
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -196,7 +200,7 @@ jobs:
     name: CI Guards
     runs-on: imajin-self-hosted
     container:
-      image: ghcr.io/ima-jin/ci-runner:latest
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -237,7 +241,7 @@ jobs:
     name: SonarCloud
     runs-on: imajin-self-hosted
     container:
-      image: ghcr.io/ima-jin/ci-runner:latest
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
