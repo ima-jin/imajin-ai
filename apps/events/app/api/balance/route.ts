@@ -10,6 +10,12 @@ import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 
+// PAY_SERVICE_URL already includes the /pay path prefix (kernel-hosted
+// service convention, e.g. http://localhost:3000/pay in dev) — callers
+// append only the endpoint path, e.g. /api/balance/{did}. This call site
+// used to hardcode a duplicated /pay segment that pay.yaml never
+// documented, resolving to /pay/pay/api/balance/{did} → 404, silently
+// masked by the `{balance: 0}` catch-all below (#2137, sibling of #2002).
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 
 export const GET = withLogger('events', async (request, { log }) => {
@@ -19,23 +25,23 @@ export const GET = withLogger('events', async (request, { log }) => {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
     const buyerDid = resolveActingDid(authResult.identity);
+    const payUrl = `${PAY_SERVICE_URL}/api/balance/${encodeURIComponent(buyerDid)}`;
 
-    const payRes = await fetch(
-      `${PAY_SERVICE_URL}/pay/api/balance/${encodeURIComponent(buyerDid)}`,
-      {
-        headers: {
-          'Cookie': request.headers.get('cookie') || '',
-        },
+    const payRes = await fetch(payUrl, {
+      headers: {
+        'Cookie': request.headers.get('cookie') || '',
       },
-    );
+    });
 
     if (!payRes.ok) {
-      // If the pay service returns 404 (no balance record), treat as zero
-      if (payRes.status === 404) {
-        return NextResponse.json({ balance: 0, currency: 'CAD' });
-      }
-      log.warn({ status: payRes.status }, 'Failed to fetch balance from pay service');
-      return NextResponse.json({ balance: 0, currency: 'CAD' });
+      // Log the upstream status + URL so a 404 (e.g. from a proxy-prefix
+      // regression) can't hide as a real zero balance again (#2137). The
+      // body stays `{balance: 0}` for UI stability (the buyer balance
+      // widget renders whatever comes back), but `unavailable: true` plus
+      // a non-2xx status lets callers/monitoring distinguish this from an
+      // actual zero balance.
+      log.warn({ status: payRes.status, url: payUrl }, 'Failed to fetch balance from pay service');
+      return NextResponse.json({ balance: 0, currency: 'CAD', unavailable: true }, { status: 502 });
     }
 
     const data = await payRes.json();
@@ -44,7 +50,7 @@ export const GET = withLogger('events', async (request, { log }) => {
       currency: data.currency ?? 'CAD',
     });
   } catch (error) {
-    log.error({ err: String(error) }, 'Balance check error');
-    return NextResponse.json({ balance: 0, currency: 'CAD' });
+    log.error({ err: String(error), url: `${PAY_SERVICE_URL}/api/balance/{did}` }, 'Balance check error');
+    return NextResponse.json({ balance: 0, currency: 'CAD', unavailable: true }, { status: 502 });
   }
 });

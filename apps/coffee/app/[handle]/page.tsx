@@ -68,7 +68,10 @@ export default async function CoffeePage(props: Readonly<PageProps>) {
   // Check if the page owner has Stripe Connect enabled
   let sellerConnected = true;
   try {
-    const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
+    // Pay is a kernel service reached through the kernel's port with the
+    // /pay path prefix (#2046) — the previous localhost:3004 fallback
+    // predated the kernel consolidation and pointed at nothing real (#2137).
+    const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3000/pay';
     const checkRes = await fetch(
       `${PAY_SERVICE_URL}/api/connect/check?did=${encodeURIComponent(page.did)}`,
       { cache: 'no-store' }
