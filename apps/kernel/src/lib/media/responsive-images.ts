@@ -60,9 +60,17 @@ const MEDIA_ASSET_PATH_RE = /(?:^|\/)media\/api\/assets\/[^/]+$/;
  */
 const IMG_TAG_RE = /<img\b((?:[^>"']|"[^"]*"|'[^']*')*)\/?>/gi;
 
-/** Matches one HTML attribute: `name`, `name=value`, `name="value"`, `name='value'`. */
+/**
+ * Matches one HTML attribute: `name`, `name=value`, `name="value"`, `name='value'`.
+ *
+ * The quoted-value branches are merged into one alternative via a backreference
+ * to the opening quote (group 2) rather than two separate `"..."` / `'...'`
+ * alternatives (#2074, S5843 — keeps the regex's branch/group count under the
+ * complexity budget). `[\s\S]*?` (not `.*?`) so an embedded newline is still
+ * consumed exactly like the old `[^"]*` / `[^']*` character classes were.
+ */
 const ATTR_RE =
-  /([^\s"'=/<>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]*)))?/g;
+  /([^\s"'=/<>]+)(?:\s*=\s*(?:(["'])([\s\S]*?)\2|([^\s"'=<>`]*)))?/g;
 
 interface ParsedAttribute {
   /** Attribute name as authored (case preserved for round-tripping). */
@@ -108,12 +116,12 @@ function parseAttributes(raw: string): ParsedAttribute[] {
   ATTR_RE.lastIndex = 0;
   let match = ATTR_RE.exec(raw);
   while (match !== null) {
-    const [, name, dq, sq, bare] = match;
+    const [, name, , quoted, bare] = match;
     // A zero-length match would spin the loop forever; `+` on the name group
     // rules that out, but guard the index anyway.
     if (match.index === ATTR_RE.lastIndex) ATTR_RE.lastIndex += 1;
     if (name) {
-      const value = dq ?? sq ?? bare ?? null;
+      const value = quoted ?? bare ?? null;
       attrs.push({ name, key: name.toLowerCase(), value });
     }
     match = ATTR_RE.exec(raw);

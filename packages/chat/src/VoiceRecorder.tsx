@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 type RecordingState = 'idle' | 'recording' | 'processing';
 
@@ -25,6 +25,15 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Stable per-bar ids (S6479): each bar's position is fixed for the
+  // component's lifetime (WAVEFORM_BARS never changes), so ids are generated
+  // once rather than keying bars by their render-time array index — which
+  // would otherwise change on every animation frame while recording.
+  const waveformBarIds = useMemo(
+    () => Array.from({ length: WAVEFORM_BARS }, () => crypto.randomUUID()),
+    [],
+  );
 
   const stopAnimation = () => {
     if (animFrameRef.current !== null) {
@@ -172,7 +181,7 @@ export function VoiceRecorder({ onRecordingComplete, onCancel, onRecordingStart,
       <div className="flex items-center gap-px flex-1 h-8">
         {waveform.map((val, i) => (
           <div
-            key={`bar-${i}`}
+            key={waveformBarIds[i]}
             className="flex-1 bg-orange-500 dark:bg-orange-400 rounded-full transition-all duration-75"
             style={{ height: `${Math.max(4, val * 32)}px` }}
           />

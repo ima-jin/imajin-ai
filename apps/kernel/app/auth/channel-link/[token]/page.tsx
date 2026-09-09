@@ -58,10 +58,10 @@ function maskUid(uid: string): string {
 }
 
 export default async function ChannelLinkApprovalPage(
-  props: {
+  props: Readonly<{
     params: Promise<{ token: string }>;
     searchParams: Promise<{ approved?: string; error?: string }>;
-  }
+  }>
 ) {
   const searchParams = await props.searchParams;
   const params = await props.params;

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import { useWebSocket } from '@/src/hooks/useWebSocket';
 
 interface UnreadCountContextValue {
@@ -44,8 +44,10 @@ export function UnreadCountProvider({ children }: Readonly<{ children: React.Rea
     }
   }, [lastMessage, fetchUnreadCount]);
 
+  const value = useMemo(() => ({ total }), [total]);
+
   return (
-    <UnreadCountContext.Provider value={{ total }}>
+    <UnreadCountContext.Provider value={value}>
       {children}
     </UnreadCountContext.Provider>
   );

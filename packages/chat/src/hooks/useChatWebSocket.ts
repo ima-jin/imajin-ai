@@ -48,6 +48,30 @@ export function useChatWebSocket(did: string): UseChatWebSocketResult {
     reconnectTimer.current = null;
   }, []);
 
+  // Named at the hook's top level (rather than inlined inside the
+  // `setTimeout` inside `setTypingUsers` inside `ws.onmessage` inside
+  // `connect`) to keep function nesting within the linter's limit (S2004).
+  const clearTypingUser = useCallback((senderDid: string) => {
+    setTypingUsers((prev) => {
+      const next = new Map(prev);
+      next.delete(senderDid);
+      return next;
+    });
+  }, []);
+
+  // Also hoisted out of `ws.onmessage` for the same S2004 reason: this was
+  // the deepest nested closure in the file before extraction.
+  const handleUserTyping = useCallback((senderDid: string, name: string | undefined) => {
+    setTypingUsers(prev => {
+      const next = new Map(prev);
+      const existing = next.get(senderDid);
+      if (existing) clearTimeout(existing.timeout);
+      const timeout = setTimeout(() => clearTypingUser(senderDid), 5000);
+      next.set(senderDid, { did: senderDid, name, timeout });
+      return next;
+    });
+  }, [clearTypingUser]);
+
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
     cleanup();
@@ -96,20 +120,7 @@ export function useChatWebSocket(did: string): UseChatWebSocketResult {
         if (data.type === 'user_typing') {
           const senderDid = data.did as string;
           if (!senderDid || senderDid === didRef.current) return;
-          setTypingUsers(prev => {
-            const next = new Map(prev);
-            const existing = next.get(senderDid);
-            if (existing) clearTimeout(existing.timeout);
-            const timeout = setTimeout(() => {
-              setTypingUsers(m => {
-                const n = new Map(m);
-                n.delete(senderDid);
-                return n;
-              });
-            }, 5000);
-            next.set(senderDid, { did: senderDid, name: data.name as string | undefined, timeout });
-            return next;
-          });
+          handleUserTyping(senderDid, data.name as string | undefined);
           return;
         }
 
@@ -144,7 +155,7 @@ export function useChatWebSocket(did: string): UseChatWebSocketResult {
     ws.onerror = () => {
       ws.close();
     };
-  }, [wsUrl, cleanup]);
+  }, [wsUrl, cleanup, handleUserTyping]);
 
   useEffect(() => {
     mountedRef.current = true;

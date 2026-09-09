@@ -93,7 +93,7 @@ function serviceNameFromPublicKey(key: string): string | null {
   const m = /^NEXT_PUBLIC_([A-Z]+)_URL$/.exec(key);
   if (!m) return null;
   const candidate = m[1].toLowerCase();
-  const svc = SERVICES.find((s) => s.name === candidate);
+  const svc = SERVICES.some((s) => s.name === candidate);
   return svc ? candidate : null;
 }
 
@@ -261,7 +261,7 @@ function parseArgs(args: string[]): { env: "dev" | "prod"; names: string[] } {
 
 /** Print the names of any requested services that aren't in the manifest and exit(1) if any */
 function exitIfUnknownServices(names: string[]): void {
-  const unknown = names.filter((n) => !SERVICES.find((s) => s.name === n));
+  const unknown = names.filter((n) => !SERVICES.some((s) => s.name === n));
   if (unknown.length > 0) {
     console.error(`${sym.err} Unknown service(s): ${unknown.map(n => red(n)).join(", ")}`);
     console.error(`  Valid names: ${SERVICES.map((s) => s.name).join(", ")}`);

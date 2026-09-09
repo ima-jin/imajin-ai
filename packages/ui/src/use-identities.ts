@@ -25,11 +25,16 @@ export function useIdentities(authUrl: string | null, profileUrl?: string | null
 } {
   const [identities, setIdentities] = useState<GroupIdentity[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeIdentity, setActiveIdentityState] = useState<string | null>(null);
+  // Named `rawActiveIdentity`/`setRawActiveIdentity` (rather than
+  // `activeIdentity`/`setActiveIdentity`) so the raw useState pair follows
+  // the `[thing, setThing]` naming convention (S6754) without colliding with
+  // the `setActiveIdentity` wrapper function defined below, which also
+  // persists the choice via `setActingAs` and reloads the page.
+  const [rawActiveIdentity, setRawActiveIdentity] = useState<string | null>(null);
   const [activeConfig, setActiveConfig] = useState<IdentityConfig | null>(null);
 
   useEffect(() => {
-    setActiveIdentityState(getActingAs());
+    setRawActiveIdentity(getActingAs());
   }, []);
 
   useEffect(() => {
@@ -47,23 +52,23 @@ export function useIdentities(authUrl: string | null, profileUrl?: string | null
 
   useEffect(() => {
     const configBase = profileUrl;
-    if (!configBase || !activeIdentity) {
+    if (!configBase || !rawActiveIdentity) {
       setActiveConfig(null);
       return;
     }
-    fetch(`${configBase}/api/forest/${encodeURIComponent(activeIdentity)}/config/public`)
+    fetch(`${configBase}/api/forest/${encodeURIComponent(rawActiveIdentity)}/config/public`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data) setActiveConfig(data as IdentityConfig);
       })
       .catch(() => {});
-  }, [authUrl, profileUrl, activeIdentity]);
+  }, [authUrl, profileUrl, rawActiveIdentity]);
 
   function setActiveIdentity(did: string | null) {
     setActingAs(did);
-    setActiveIdentityState(did);
+    setRawActiveIdentity(did);
     globalThis.location.reload();
   }
 
-  return { identities, loading, activeIdentity, activeConfig, setActiveIdentity };
+  return { identities, loading, activeIdentity: rawActiveIdentity, activeConfig, setActiveIdentity };
 }

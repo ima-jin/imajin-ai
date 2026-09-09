@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useToast } from './toast';
 
 type ToastActions = {
@@ -145,8 +145,13 @@ export function NotificationProvider({ children }: Readonly<{ children: React.Re
     } catch {}
   }, [notifyUrl]);
 
+  const value = useMemo(
+    () => ({ unreadCount, notifications, markAsRead, markAllAsRead, refresh }),
+    [unreadCount, notifications, markAsRead, markAllAsRead, refresh],
+  );
+
   return (
-    <NotificationContext.Provider value={{ unreadCount, notifications, markAsRead, markAllAsRead, refresh }}>
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );

@@ -11,6 +11,8 @@
  * media-share.ts) is:
  *   `process.env.NEXT_PUBLIC_BASE_URL || process.env.MEDIA_PUBLIC_URL || <request origin>`
  */
+import { stripTrailingSlashes } from "@/src/lib/kernel/utils";
+
 export function buildAssetViewUrl(baseUrl: string, assetId: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/media/api/assets/${assetId}`;
+  return `${stripTrailingSlashes(baseUrl)}/media/api/assets/${assetId}`;
 }

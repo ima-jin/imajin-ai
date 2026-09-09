@@ -24,7 +24,7 @@ const sql = getClient();
 
 function csvEscape(v: unknown): string {
   if (v == null) return '';
-  const s = String(v);
+  const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
   if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
   return s;
 }
@@ -182,7 +182,7 @@ async function fetchOrderSales(eventId: string, fallbackCurrency: string | null)
     }
 
     const sale = saleMap.get(orderId)!;
-    if (row.ticket_id && !sale.tickets.find((t) => t.id === row.ticket_id)) {
+    if (row.ticket_id && !sale.tickets.some((t) => t.id === row.ticket_id)) {
       sale.tickets.push({
         id: row.ticket_id,
         type: row.ticket_type_name ?? 'Unknown',

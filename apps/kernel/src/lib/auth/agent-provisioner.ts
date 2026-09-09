@@ -61,13 +61,25 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Strip a leading/trailing run of `-` in guaranteed linear time (#2074, S8786).
+ *
+ * Deliberately not `.replace(/(^-+|-+$)/g, '')`: `-+$` is an unanchored
+ * quantifier immediately before an end anchor, which forces backtracking
+ * engines into O(n^2) work whenever that anchor doesn't hold at the position
+ * the quantifier first commits to. A backward scan has no such edge case.
+ */
+function trimDashes(value: string): string {
+  let start = 0;
+  while (start < value.length && value[start] === '-') start += 1;
+  let end = value.length;
+  while (end > start && value[end - 1] === '-') end -= 1;
+  return value.slice(start, end);
+}
+
 /** Directory/handle-safe slug, plus a short random suffix so concurrent same-name provisions don't collide on the global handle-uniqueness constraint. */
 function deriveHandle(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-+|-+$)/g, '')
-    .slice(0, 40);
+  const slug = trimDashes(name.toLowerCase().replace(/[^a-z0-9]+/g, '-')).slice(0, 40);
   const suffix = generateId('').slice(1, 7);
   return `${slug || 'agent'}-${suffix}`;
 }

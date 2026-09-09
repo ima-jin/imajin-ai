@@ -1,4 +1,5 @@
 import { toOrigin } from "./public-origin";
+import { stripTrailingSlashes } from "@/src/lib/kernel/utils";
 
 /**
  * This node's public origin, for machine-readable discovery documents.
@@ -43,7 +44,7 @@ function originFromServicePrefix(): string {
   const domain = process.env.NEXT_PUBLIC_DOMAIN ?? "imajin.ai";
 
   const scheme = prefix.startsWith("http://") ? "http" : "https";
-  const prefixHost = prefix.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const prefixHost = stripTrailingSlashes(prefix.replace(/^https?:\/\//, ""));
 
   // A dot means the prefix carries a real host; `http://localhost:` and a bare
   // `https://` do not, so fall back to the configured domain.

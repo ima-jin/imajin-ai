@@ -80,18 +80,24 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
     expect(r.viewer).toBeUndefined();
   });
 
-  it('media:read is silent (no release override, discloses_others: false)', () => {
-    const r = MCP_SCOPE_DESCRIPTORS['media:read'].release;
-    expect(r.discloses_others).toBe(false);
-    expect(r.sensitive).toBe(false);
-    expect(r.release).toBeUndefined();
-  });
+  it.each(['media:read', 'connections:read', 'messages:read', 'inference:read', 'corpus:read'] as const)(
+    '%s is silent (no release override, discloses_others: false)',
+    (scope) => {
+      const r = MCP_SCOPE_DESCRIPTORS[scope].release;
+      expect(r.discloses_others).toBe(false);
+      expect(r.sensitive).toBe(false);
+      expect(r.release).toBeUndefined();
+    },
+  );
 
-  it('media:write is on-consent (explicit release override)', () => {
-    const r = MCP_SCOPE_DESCRIPTORS['media:write'].release;
-    expect(r.release).toBe('on-consent');
-    expect(r.viewer).toBe(MCP_DID);
-  });
+  it.each(['media:write', 'messages:write', 'corpus:write'] as const)(
+    '%s is on-consent (explicit release override)',
+    (scope) => {
+      const r = MCP_SCOPE_DESCRIPTORS[scope].release;
+      expect(r.release).toBe('on-consent');
+      expect(r.viewer).toBe(MCP_DID);
+    },
+  );
 
   it('media:share is on-consent (derived from discloses_others: true)', () => {
     const r = MCP_SCOPE_DESCRIPTORS['media:share'].release;
@@ -102,34 +108,7 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
     expect(r.release).toBeUndefined();
   });
 
-  it('connections:read is silent (no release override, discloses_others: false)', () => {
-    const r = MCP_SCOPE_DESCRIPTORS['connections:read'].release;
-    expect(r.discloses_others).toBe(false);
-    expect(r.sensitive).toBe(false);
-    expect(r.release).toBeUndefined();
-  });
-
-  it('messages:read is silent (no release override, discloses_others: false)', () => {
-    const r = MCP_SCOPE_DESCRIPTORS['messages:read'].release;
-    expect(r.discloses_others).toBe(false);
-    expect(r.sensitive).toBe(false);
-    expect(r.release).toBeUndefined();
-  });
-
-  it('messages:write is on-consent (explicit release override)', () => {
-    const r = MCP_SCOPE_DESCRIPTORS['messages:write'].release;
-    expect(r.release).toBe('on-consent');
-    expect(r.viewer).toBe(MCP_DID);
-  });
-
   // #1298 — the inference surface stopped riding the media scopes.
-  it('inference:read is silent (no release override, discloses_others: false)', () => {
-    const r = MCP_SCOPE_DESCRIPTORS['inference:read'].release;
-    expect(r.discloses_others).toBe(false);
-    expect(r.sensitive).toBe(false);
-    expect(r.release).toBeUndefined();
-  });
-
   it('inference:write is owner-only (derived from sensitive: true, signs attestations)', () => {
     const r = MCP_SCOPE_DESCRIPTORS['inference:write'].release;
     expect(r.discloses_others).toBe(false);
@@ -139,19 +118,8 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
     expect(r.viewer).toBe(MCP_DID);
   });
 
-  // #1730 — corpus proxy tools.
-  it('corpus:read is silent (no release override, discloses_others: false)', () => {
-    const r = MCP_SCOPE_DESCRIPTORS['corpus:read'].release;
-    expect(r.discloses_others).toBe(false);
-    expect(r.sensitive).toBe(false);
-    expect(r.release).toBeUndefined();
-  });
-
-  it('corpus:write is on-consent (explicit release override, mirrors media:write)', () => {
-    const r = MCP_SCOPE_DESCRIPTORS['corpus:write'].release;
-    expect(r.release).toBe('on-consent');
-    expect(r.viewer).toBe(MCP_DID);
-  });
+  // #1730 — corpus proxy tools (silent/on-consent already covered by the
+  // parameterized groups above).
 });
 
 // ── Delegation tests ──────────────────────────────────────────────────────────

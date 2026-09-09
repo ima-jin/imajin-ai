@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import * as ed from '@noble/ed25519';
 
 // Base58 encoding for DIDs
@@ -100,7 +100,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
     }
   }
 
-  async function logout() {
+  const logout = useCallback(async () => {
     if (globalThis.window === undefined) return;
 
     // Clear auth session cookie
@@ -119,9 +119,9 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
     setAvatar(null);
     setDisplayName(null);
     setIsLoggedIn(false);
-  }
+  }, []);
 
-  async function importKeys(privateKeyHex: string): Promise<{ success: boolean; error?: string; did?: string; handle?: string }> {
+  const importKeys = useCallback(async (privateKeyHex: string): Promise<{ success: boolean; error?: string; did?: string; handle?: string }> => {
     try {
       // Validate hex format
       if (!/^[0-9a-fA-F]{64}$/.test(privateKeyHex)) {
@@ -194,9 +194,9 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
       console.error('Import keys failed:', error);
       return { success: false, error: error.message || 'Failed to import keys' };
     }
-  }
+  }, []);
 
-  async function refreshProfile() {
+  const refreshProfile = useCallback(async () => {
     if (!did) return;
 
     try {
@@ -210,22 +210,25 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
     } catch (error) {
       console.error('Failed to refresh profile:', error);
     }
-  }
+  }, [did]);
+
+  const value = useMemo<IdentityContextType>(
+    () => ({
+      did,
+      handle,
+      avatar,
+      displayName,
+      isLoggedIn,
+      isLoading,
+      logout,
+      importKeys,
+      refreshProfile,
+    }),
+    [did, handle, avatar, displayName, isLoggedIn, isLoading, logout, importKeys, refreshProfile],
+  );
 
   return (
-    <IdentityContext.Provider
-      value={{
-        did,
-        handle,
-        avatar,
-        displayName,
-        isLoggedIn,
-        isLoading,
-        logout,
-        importKeys,
-        refreshProfile,
-      }}
-    >
+    <IdentityContext.Provider value={value}>
       {children}
     </IdentityContext.Provider>
   );

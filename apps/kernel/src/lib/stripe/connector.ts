@@ -60,6 +60,7 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { sealAndStore, loadAndUnseal, deleteFromVault } from '@/src/lib/vault';
 import { generateId } from '@/src/lib/kernel/id';
+import { stripTrailingSlashes } from '@/src/lib/kernel/utils';
 import {
   createConnectorTokenPaste,
   type TokenPasteCredentials,
@@ -221,7 +222,7 @@ export async function connectAndProvisionWebhook(
   await bestEffortDeprovisionExisting(ownerDid);
 
   const routingId = generateId('stripewh');
-  const url = `${webhookBaseUrl.replace(/\/+$/, '')}/stripe/api/webhook/${routingId}`;
+  const url = `${stripTrailingSlashes(webhookBaseUrl)}/stripe/api/webhook/${routingId}`;
 
   const { endpointId, signingSecret } = await createStripeWebhookEndpoint(trimmedKey, url);
 
@@ -291,7 +292,13 @@ export type StripeWebhookResult =
 
 /** String-coerce a Stripe object field for a bus payload, defaulting to ''. */
 function str(value: unknown): string {
-  return typeof value === 'string' ? value : String(value ?? '');
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return value === null || value === undefined ? '' : JSON.stringify(value);
 }
 
 /** Number-coerce a Stripe object field for a bus payload, defaulting to 0. */

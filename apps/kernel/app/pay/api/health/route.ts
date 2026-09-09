@@ -24,6 +24,7 @@ export async function GET() {
       status: allHealthy ? 200 : 503,
     });
   } catch (error) {
+    console.error('Payment health check failed', error);
     return NextResponse.json({
       status: 'unhealthy',
       error: 'Health check failed',

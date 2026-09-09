@@ -99,7 +99,7 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
     a.download = `.app-${name.trim().toLowerCase().replace(/\s+/g, '-')}.json`;
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+    a.remove();
     URL.revokeObjectURL(url);
     setKeypairDownloaded(true);
   }

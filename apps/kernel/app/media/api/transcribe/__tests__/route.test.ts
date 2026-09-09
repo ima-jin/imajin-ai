@@ -142,23 +142,13 @@ describe('POST /media/api/transcribe', () => {
       expect(res.status).toBe(400);
     });
 
-    it('returns 400 for JSON body with empty url string', async () => {
-      const res = await POST(makeJsonRequest({ url: '' }) as any);
-      expect(res.status).toBe(400);
-    });
-
-    it('returns 400 for JSON body with invalid URL', async () => {
-      const res = await POST(makeJsonRequest({ url: 'not-a-url' }) as any);
-      expect(res.status).toBe(400);
-    });
-
-    it('returns 400 for non-https URL (SSRF guard — http)', async () => {
-      const res = await POST(makeJsonRequest({ url: 'http://internal.service/secret' }) as any);
-      expect(res.status).toBe(400);
-    });
-
-    it('returns 400 for non-https URL (SSRF guard — file protocol)', async () => {
-      const res = await POST(makeJsonRequest({ url: 'file:///etc/passwd' }) as any);
+    it.each([
+      ['returns 400 for JSON body with empty url string', ''],
+      ['returns 400 for JSON body with invalid URL', 'not-a-url'],
+      ['returns 400 for non-https URL (SSRF guard — http)', 'http://internal.service/secret'],
+      ['returns 400 for non-https URL (SSRF guard — file protocol)', 'file:///etc/passwd'],
+    ])('%s', async (_description, url) => {
+      const res = await POST(makeJsonRequest({ url }) as any);
       expect(res.status).toBe(400);
     });
 

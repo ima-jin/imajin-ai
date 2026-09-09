@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 
 interface VoiceMessageProps {
   assetId: string;
@@ -28,6 +28,14 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
 
   const audioSrc = `${mediaUrl}/api/assets/${assetId}`;
   const totalDuration = durationMs / 1000;
+
+  // Stable per-bar ids (S6479): the waveform prop is fixed data for this
+  // message, so ids are generated once per `waveform` reference rather than
+  // keying bars by their render-time array index.
+  const waveformBarIds = useMemo(
+    () => (waveform ?? []).map(() => crypto.randomUUID()),
+    [waveform],
+  );
 
   const updateProgress = () => {
     const audio = audioRef.current;
@@ -134,7 +142,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
                 const height = Math.max(3, Math.round(amp * 28));
                 return (
                   <div
-                    key={`bar-${i}`}
+                    key={waveformBarIds[i]}
                     className={`w-[2px] rounded-full transition-colors ${(() => {
                       if (filled) return isOwn ? 'bg-white' : 'bg-orange-500';
                       return isOwn ? 'bg-white/30' : 'bg-gray-300 dark:bg-gray-600';

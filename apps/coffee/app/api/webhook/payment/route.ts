@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
   try {
     const {
       type, tipId, paymentId, amount, fromDid, fromName,
-      to_did, pageId, pageHandle, stripeSessionId,
+      to_did, pageId, stripeSessionId,
     } = await request.json();
 
     if (!tipId) {

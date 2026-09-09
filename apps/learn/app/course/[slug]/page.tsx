@@ -174,6 +174,7 @@ export default function CourseDetailPage() {
         globalThis.location.reload();
       }
     } catch (e) {
+      console.error('Enrollment failed:', e);
       toast.error('Enrollment failed');
     } finally {
       setEnrolling(false);
