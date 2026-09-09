@@ -179,22 +179,38 @@ function RegisterPage() {
       }
     }
 
-    // Fallback: open a small window with a real form that triggers password managers
+    // Fallback: open a small window with a real form that triggers password managers.
+    // Built via DOM APIs rather than document.write() (deprecated, S1874) — the
+    // popup's own <script> that used to auto-submit is replaced by calling
+    // form.submit() directly from here instead.
     const w = globalThis.open('', '_blank', 'width=1,height=1');
     if (w) {
-      w.document.write(`
-        <html><body>
-          <form id="f" action="javascript:void(0)">
-            <input type="text" name="username" autocomplete="username" value="${did}" />
-            <input type="password" name="password" autocomplete="current-password" value="${privateKey}" />
-            <button type="submit">Save</button>
-          </form>
-          <script>
-            document.getElementById('f').submit();
-            setTimeout(() => globalThis.close(), 3000);
-          </script>
-        </body></html>
-      `);
+      const doc = w.document;
+      const form = doc.createElement('form');
+      form.id = 'f';
+      form.action = 'javascript:void(0)';
+
+      const usernameInput = doc.createElement('input');
+      usernameInput.type = 'text';
+      usernameInput.name = 'username';
+      usernameInput.autocomplete = 'username';
+      usernameInput.value = did;
+
+      const passwordInput = doc.createElement('input');
+      passwordInput.type = 'password';
+      passwordInput.name = 'password';
+      passwordInput.autocomplete = 'current-password';
+      passwordInput.value = privateKey;
+
+      const submitButton = doc.createElement('button');
+      submitButton.type = 'submit';
+      submitButton.textContent = 'Save';
+
+      form.append(usernameInput, passwordInput, submitButton);
+      doc.body.appendChild(form);
+
+      form.submit();
+      setTimeout(() => w.close(), 3000);
     }
   }
 
