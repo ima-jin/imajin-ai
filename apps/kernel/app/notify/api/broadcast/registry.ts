@@ -3,12 +3,10 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-// TODO(#538): These registry routes will be implemented by Agent 1.
 // Stubbed here with clear fallback behavior.
 
 /**
  * Fetch audience DIDs from registry for a scope.
- * TODO(#538): Registry /api/audience/:scope implemented by Agent 1.
  */
 export async function fetchAudienceFromRegistry(
   scope: string,
@@ -38,7 +36,6 @@ export async function fetchAudienceFromRegistry(
 /**
  * Check registry preferences for a DID + scope.
  * Returns true if the DID is eligible to receive marketing email for this scope.
- * TODO(#538): Registry /api/preferences/:did implemented by Agent 1.
  */
 export async function checkRegistryPreferences(
   did: string,

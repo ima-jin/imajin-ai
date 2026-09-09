@@ -5,7 +5,6 @@ const log = createLogger('kernel');
 
 /**
  * Fetch the scope that an attestation type maps to.
- * TODO(#538): Registry /api/interests/:scope and interest catalog implemented by Agent 1.
  *
  * Returns the scope string, or null if no match found.
  */
@@ -39,7 +38,6 @@ export async function resolveScopeForAttestation(
 
 /**
  * Check whether a did_interests row already exists for DID + scope.
- * TODO(#538): Registry /api/preferences/:did implemented by Agent 1.
  */
 export async function didInterestExists(
   did: string,
@@ -64,7 +62,6 @@ export async function didInterestExists(
 /**
  * Create a did_interests row via registry internal API.
  * Channels enabled/disabled based on DID's auto_subscribe preference.
- * TODO(#538): Registry POST /api/preferences/:did/interests/:scope implemented by Agent 1.
  */
 export async function createDidInterest(
   did: string,
