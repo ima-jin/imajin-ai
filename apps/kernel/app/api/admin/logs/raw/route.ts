@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { requireAdmin } from '@imajin/auth';
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { homedir } from 'os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const PM2_LOGS_DIR = join(homedir(), '.pm2', 'logs');

@@ -331,7 +331,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
       const ax = acc?.x ?? 0;
       const ay = acc?.y ?? 0;
       const az = acc?.z ?? 0;
-      const mag = Math.sqrt(ax * ax + ay * ay + az * az);
+      const mag = Math.hypot(ax, ay, az);
 
       accelBuffer.current.push(mag);
       if (accelBuffer.current.length > 30) accelBuffer.current.shift();
@@ -339,7 +339,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
       const ra = rot?.alpha ?? 0;
       const rb = rot?.beta ?? 0;
       const rg = rot?.gamma ?? 0;
-      const rmag = Math.sqrt(ra * ra + rb * rb + rg * rg);
+      const rmag = Math.hypot(ra, rb, rg);
       rotBuffer.current.push(rmag);
       if (rotBuffer.current.length > 30) rotBuffer.current.shift();
 

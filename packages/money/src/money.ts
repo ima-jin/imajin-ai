@@ -25,11 +25,9 @@ import {
   roundHalfEven,
 } from './decimal';
 
-export type CurrencyCode = string;
-
 export interface Money {
   readonly amount: number;
-  readonly currency: CurrencyCode;
+  readonly currency: string;
 }
 
 /** A multiplier: a whole number, an exact rational, or a decimal string (parsed exactly, never as a float). */
@@ -69,7 +67,7 @@ export function equals(a: Money, b: Money): boolean {
 }
 
 /** Parse a human decimal string (e.g. "19.99") into minor units for `currency`, banker's-rounded if over-precise. */
-export function fromDecimalString(value: string, currency: CurrencyCode): Money {
+export function fromDecimalString(value: string, currency: string): Money {
   const exponent = minorUnitExponent(currency);
   const { numerator, denominator } = parseDecimalToFraction(value);
   const minor = roundHalfEven(numerator * 10n ** BigInt(exponent), denominator);

@@ -59,7 +59,6 @@ export type {
   BrokerResult,
   BrokerPipelineState,
   BrokerReactor,
-  BrokerEventType,
 } from './types';
 export type { ConsentEntry } from './broker-config';
 export type { LotChain, SupplyLotRecord, SupplyStageRecord, RecentLot } from './supply-lots';

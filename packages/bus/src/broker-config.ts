@@ -23,20 +23,16 @@ export interface ConsentEntry {
 }
 
 /**
- * Consent lookup key.
- * Format: `${subject}|${requester}|${purpose}`
- * Use `*` as wildcard for requester or purpose.
- */
-type ConsentKey = string;
-
-/**
  * Hardcoded consent configuration — Phase 1.
  *
  * Maps { subject, requester, purpose } → consent entries.
  * Multiple entries for the same key are merged permissively (union of fields).
  * Default: reject (fail-closed).
+ *
+ * Keys are consent lookup keys, format `${subject}|${requester}|${purpose}`;
+ * `*` is a wildcard for requester or purpose.
  */
-const CONSENT_DEFAULTS: Record<ConsentKey, ConsentEntry[]> = {
+const CONSENT_DEFAULTS: Record<string, ConsentEntry[]> = {
   // Example: alice allows bob for marketing — multiple overlapping grants (union)
   'did:imajin:alice|did:imajin:bob|marketing': [
     { allowedFields: ['name', 'email'], mode: 'attestation', consentRef: 'consent-alice-bob-001' },
@@ -75,7 +71,7 @@ const CONSENT_DEFAULTS: Record<ConsentKey, ConsentEntry[]> = {
 /**
  * Build lookup keys in order of specificity (most specific first).
  */
-function buildLookupKeys(subject: string, requester: string, purpose: string): ConsentKey[] {
+function buildLookupKeys(subject: string, requester: string, purpose: string): string[] {
   return [
     `${subject}|${requester}|${purpose}`,
     `${subject}|*|${purpose}`,

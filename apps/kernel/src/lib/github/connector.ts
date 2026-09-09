@@ -330,9 +330,6 @@ export type WriteGateResult =
       limitLabel: string | null;
     };
 
-/** Alias kept for backward compatibility with existing call sites. */
-export type MutateGateResult = WriteGateResult;
-
 /**
  * The discriminated-union result returned from all write operations.
  * The MCP tool handler checks `status` before building its response.

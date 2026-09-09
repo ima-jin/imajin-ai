@@ -50,7 +50,7 @@ const DEFAULT_MIN_RESOLVE_LATENCY_MS = 40;
 
 function minResolveLatencyMs(): number {
   const raw = process.env.CLAIMABLE_STUB_MIN_RESOLVE_MS;
-  const parsed = raw ? Number(raw) : NaN;
+  const parsed = raw ? Number(raw) : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MIN_RESOLVE_LATENCY_MS;
 }
 
@@ -66,7 +66,7 @@ const DEFAULT_CLAIMABLE_STUB_EXPIRY_DAYS = 90;
 
 function claimableStubExpiryDays(): number {
   const raw = process.env.CLAIMABLE_STUB_EXPIRY_DAYS;
-  const parsed = raw ? Number(raw) : NaN;
+  const parsed = raw ? Number(raw) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CLAIMABLE_STUB_EXPIRY_DAYS;
 }
 

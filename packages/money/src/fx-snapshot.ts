@@ -10,11 +10,10 @@
  */
 
 import { canonicalize, crypto } from '@imajin/auth';
-import type { CurrencyCode } from './money';
 
 export interface FxSnapshot {
-  readonly base: CurrencyCode;
-  readonly quote: CurrencyCode;
+  readonly base: string;
+  readonly quote: string;
   /** Decimal string, e.g. "1.0864" — never a float. */
   readonly rate: string;
   /** e.g. 'ecb', 'ecb:triangulated', or 'identity' for a same-currency no-op snapshot. */

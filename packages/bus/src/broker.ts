@@ -1,6 +1,5 @@
 import { createLogger } from '@imajin/logger';
 import type {
-  BrokerEventType,
   BrokerReactor,
   BrokerRequest,
   BrokerResult,
@@ -123,7 +122,7 @@ async function resolveBrokerChain(
  * @param request - the release request
  * @returns BrokerRelease on success, BrokerRejection on failure
  */
-export async function broker<T extends BrokerEventType>(
+export async function broker<T extends string>(
   type: T,
   request: BrokerRequest<T>
 ): Promise<BrokerResult> {

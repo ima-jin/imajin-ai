@@ -1628,7 +1628,7 @@ export interface BrokerPredicateClaim {
 }
 
 /** Broker request — asks for consented field release */
-export interface BrokerRequest<T extends BrokerEventType = BrokerEventType> {
+export interface BrokerRequest<T extends string = string> {
   type: T;
   requester: string;        // DID of the requester
   subject: string;          // DID of the data subject
@@ -1719,5 +1719,3 @@ export type BrokerReactor = (
   state: BrokerPipelineState
 ) => Promise<BrokerPipelineState | BrokerRejection>;
 
-/** Broker event types (Phase 1) */
-export type BrokerEventType = string;

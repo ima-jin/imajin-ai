@@ -10,7 +10,6 @@
 import { sql } from 'drizzle-orm';
 import type { AnyDatabase } from '@imajin/db';
 
-import type { CurrencyCode } from './money';
 import type { FxSnapshot } from './fx-snapshot';
 import { triangulate } from './convert';
 import { fractionToDecimalString, invertRational, parseDecimalToFraction } from './decimal';
@@ -29,8 +28,8 @@ interface CachedRateRow {
 
 async function readCachedRate(
   db: AnyDatabase,
-  base: CurrencyCode,
-  quote: CurrencyCode,
+  base: string,
+  quote: string,
   date: string,
 ): Promise<FxSnapshot | null> {
   const rows = (await db.execute(sql`
@@ -50,7 +49,7 @@ async function writeCachedRate(db: AnyDatabase, snapshot: FxSnapshot, date: stri
   `);
 }
 
-function eurLegFromDaily(quote: CurrencyCode, daily: EcbDailyRates): FxSnapshot {
+function eurLegFromDaily(quote: string, daily: EcbDailyRates): FxSnapshot {
   const rate = daily.rates[quote];
   if (!rate) {
     throw new EcbParseError(`ECB daily rates has no entry for currency "${quote}"`);
@@ -58,7 +57,7 @@ function eurLegFromDaily(quote: CurrencyCode, daily: EcbDailyRates): FxSnapshot 
   return { base: 'EUR', quote, rate, source: 'ecb', asOf: daily.date };
 }
 
-function deriveSnapshotFromDaily(base: CurrencyCode, quote: CurrencyCode, daily: EcbDailyRates): FxSnapshot {
+function deriveSnapshotFromDaily(base: string, quote: string, daily: EcbDailyRates): FxSnapshot {
   if (base === 'EUR') return eurLegFromDaily(quote, daily);
   if (quote === 'EUR') {
     const eurToBase = eurLegFromDaily(base, daily);
@@ -75,8 +74,8 @@ function deriveSnapshotFromDaily(base: CurrencyCode, quote: CurrencyCode, daily:
  * legs of triangulation were needed to derive it.
  */
 export async function getRate(
-  base: CurrencyCode,
-  quote: CurrencyCode,
+  base: string,
+  quote: string,
   date: string,
   db: AnyDatabase,
   options: GetRateOptions = {},

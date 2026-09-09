@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Asset } from "@/src/db/schemas/media";
 import { FairEditor } from "@imajin/fair/react";
 import { isFairManifestV1_1 } from "@imajin/fair";
@@ -162,6 +162,16 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
 
   const assetUrl = `/media/api/assets/${asset.id}`;
 
+  // Real captions track sourced from the actual transcript (via `handleTranscribe`),
+  // never fabricated dialogue. Before transcription (or if it hasn't produced
+  // text) the cue honestly says so instead of pretending captions exist.
+  const captionsTrackUrl = useMemo(() => {
+    const text = typeof transcript?.text === "string" ? transcript.text.trim() : "";
+    const cueText = text.length > 0 ? text : "No captions available.";
+    const vtt = `WEBVTT\n\n00:00:00.000 --> 23:59:59.000\n${cueText}\n`;
+    return `data:text/vtt;charset=utf-8,${encodeURIComponent(vtt)}`;
+  }, [transcript]);
+
   const handleDelete = async () => {
     if (!confirm(`Delete "${savedFilename}"? This cannot be undone.`)) return;
     await fetch(`/media/api/assets/${asset.id}`, {
@@ -311,6 +321,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
               { }
               <audio controls className="w-full" style={{ colorScheme: "dark" }}>
                 <source src={assetUrl} type={asset.mimeType} />
+                <track kind="captions" srcLang="en" label="Transcript" src={captionsTrackUrl} default />
               </audio>
             </div>
           )}
@@ -322,6 +333,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
               style={{ colorScheme: "dark" }}
             >
               <source src={assetUrl} type={asset.mimeType} />
+              <track kind="captions" srcLang="en" label="Transcript" src={captionsTrackUrl} default />
             </video>
           )}
           {!isImage && !isAudio && !isVideo && showFileEditor && (
