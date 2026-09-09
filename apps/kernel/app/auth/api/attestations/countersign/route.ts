@@ -3,8 +3,11 @@ import { corsHeaders } from '@imajin/config';
 import { db, attestations } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { resolveEffectiveDid } from '@imajin/auth';
+import { createLogger } from '@imajin/logger';
 import { checkSupersessionEligibility, SupersessionError } from '../attestation-helpers';
 import { verifyWitnessJws } from '@/src/lib/auth/witness-jws';
+
+const log = createLogger('kernel:countersign');
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -85,6 +88,12 @@ export async function POST(request: NextRequest) {
     cid: att.cid,
   });
   if (!witnessVerification.ok) {
+    // Abuse-monitoring signal only — never logs witnessJws or key material,
+    // just which attestation/witness pair failed verification and why.
+    log.warn(
+      { attestationId, witnessDid: auth.effectiveDid, reason: witnessVerification.error },
+      'countersign rejected: witnessJws verification failed'
+    );
     return NextResponse.json({ error: witnessVerification.error }, { status: 422, headers: cors });
   }
 
