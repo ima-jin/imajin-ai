@@ -812,20 +812,31 @@ export default function AgentsPage() {
     }
   }
 
-  async function handleRevokeCapability(grantId: string, capability: string) {
-    const key = `revoke-cap-${grantId}-${capability}`;
-    setActionLoading(key);
+  /**
+   * Shared fetch/reload/error-handling shape for both capability mutations
+   * below (#2108): only the HTTP method, action key, and messaging differ
+   * between revoking and adding a capability on the same resource.
+   */
+  async function performCapabilityAction(opts: {
+    grantId: string;
+    capability: string;
+    method: 'DELETE' | 'PUT';
+    actionKey: string;
+    successMessage: string;
+    failureMessage: string;
+  }) {
+    setActionLoading(opts.actionKey);
     try {
       const res = await fetch(
-        `/auth/api/grants/${encodeURIComponent(grantId)}/capabilities/${encodeURIComponent(capability)}`,
-        { method: 'DELETE', credentials: 'include' },
+        `/auth/api/grants/${encodeURIComponent(opts.grantId)}/capabilities/${encodeURIComponent(opts.capability)}`,
+        { method: opts.method, credentials: 'include' },
       );
       if (res.ok) {
-        showStatus('success', `Revoked ${capability}.`);
+        showStatus('success', opts.successMessage);
         await loadData();
       } else {
         const body = await res.json().catch(() => ({}));
-        showStatus('error', body.error || 'Failed to revoke capability');
+        showStatus('error', body.error || opts.failureMessage);
       }
     } catch {
       showStatus('error', 'Network error. Please try again.');
@@ -834,27 +845,27 @@ export default function AgentsPage() {
     }
   }
 
+  async function handleRevokeCapability(grantId: string, capability: string) {
+    await performCapabilityAction({
+      grantId,
+      capability,
+      method: 'DELETE',
+      actionKey: `revoke-cap-${grantId}-${capability}`,
+      successMessage: `Revoked ${capability}.`,
+      failureMessage: 'Failed to revoke capability',
+    });
+  }
+
   /** Add a single capability to an existing, active grant (#2108) — the additive counterpart to per-capability revocation. */
   async function handleAddCapability(grantId: string, capability: string) {
-    const key = `add-cap-${grantId}`;
-    setActionLoading(key);
-    try {
-      const res = await fetch(
-        `/auth/api/grants/${encodeURIComponent(grantId)}/capabilities/${encodeURIComponent(capability)}`,
-        { method: 'PUT', credentials: 'include' },
-      );
-      if (res.ok) {
-        showStatus('success', `Added ${capability}.`);
-        await loadData();
-      } else {
-        const body = await res.json().catch(() => ({}));
-        showStatus('error', body.error || 'Failed to add capability');
-      }
-    } catch {
-      showStatus('error', 'Network error. Please try again.');
-    } finally {
-      setActionLoading('');
-    }
+    await performCapabilityAction({
+      grantId,
+      capability,
+      method: 'PUT',
+      actionKey: `add-cap-${grantId}`,
+      successMessage: `Added ${capability}.`,
+      failureMessage: 'Failed to add capability',
+    });
   }
 
   async function handleRevokeAll(grantId: string) {
