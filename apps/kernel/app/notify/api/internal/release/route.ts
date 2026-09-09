@@ -17,34 +17,26 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { releaseWsClaimsForDid } from '@/src/lib/notify/delivery';
+import { requireInternalKey, parseJsonBody, requireStringField } from '@/src/lib/notify/internal-route-guards';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
 export async function POST(request: NextRequest) {
-  const expectedKey = process.env.AUTH_INTERNAL_API_KEY;
-  // An unset key must not degrade into "any caller matches undefined".
-  if (!expectedKey || request.headers.get('x-internal-key') !== expectedKey) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const unauthorized = requireInternalKey(request);
+  if (unauthorized) return unauthorized;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
 
-  const { did } = (body ?? {}) as Record<string, unknown>;
-  if (typeof did !== 'string' || !did) {
-    return NextResponse.json({ error: 'Missing did' }, { status: 400 });
-  }
+  const didField = requireStringField(parsed.body, 'did');
+  if (!didField.ok) return didField.response;
 
   try {
-    await releaseWsClaimsForDid(did);
+    await releaseWsClaimsForDid(didField.value);
     return NextResponse.json({ ok: true });
   } catch (err) {
-    log.error({ did, err: String(err) }, 'Notification WS claim release failed');
+    log.error({ did: didField.value, err: String(err) }, 'Notification WS claim release failed');
     return NextResponse.json({ ok: false, error: 'Release failed' }, { status: 500 });
   }
 }

@@ -19,34 +19,26 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ackNotificationDelivery } from '@/src/lib/notify/delivery';
+import { requireInternalKey, parseJsonBody, requireStringField } from '@/src/lib/notify/internal-route-guards';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
 export async function POST(request: NextRequest) {
-  const expectedKey = process.env.AUTH_INTERNAL_API_KEY;
-  // An unset key must not degrade into "any caller matches undefined".
-  if (!expectedKey || request.headers.get('x-internal-key') !== expectedKey) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const unauthorized = requireInternalKey(request);
+  if (unauthorized) return unauthorized;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request);
+  if (!parsed.ok) return parsed.response;
 
-  const { id } = (body ?? {}) as Record<string, unknown>;
-  if (typeof id !== 'string' || !id) {
-    return NextResponse.json({ error: 'Missing id' }, { status: 400 });
-  }
+  const idField = requireStringField(parsed.body, 'id');
+  if (!idField.ok) return idField.response;
 
   try {
-    const delivered = await ackNotificationDelivery(id);
+    const delivered = await ackNotificationDelivery(idField.value);
     return NextResponse.json({ ok: true, delivered });
   } catch (err) {
-    log.error({ id, err: String(err) }, 'Notification ack failed');
+    log.error({ id: idField.value, err: String(err) }, 'Notification ack failed');
     return NextResponse.json({ ok: false, error: 'Ack failed' }, { status: 500 });
   }
 }
