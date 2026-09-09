@@ -19,7 +19,7 @@
 import { writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildOwnershipMap } from './lib/migration-ownership-parser.mjs';
+import { buildOwnershipMap, BUCKET_FOR_KIND } from './lib/migration-ownership-parser.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -28,7 +28,6 @@ const OUTPUT_PATH = join(MIGRATIONS_DIR, 'ownership.json');
 
 function toOutputShape(entries) {
   const output = { tables: {}, views: {}, types: {}, functions: {} };
-  const bucketFor = { table: 'tables', view: 'views', type: 'types', function: 'functions' };
 
   const sortedEntries = [...entries.values()].sort((a, b) => {
     if (a.schema !== b.schema) return a.schema.localeCompare(b.schema);
@@ -36,7 +35,7 @@ function toOutputShape(entries) {
   });
 
   for (const entry of sortedEntries) {
-    const bucket = output[bucketFor[entry.kind]];
+    const bucket = output[BUCKET_FOR_KIND[entry.kind]];
     bucket[`${entry.schema}.${entry.name}`] = {
       owner: entry.owner,
       schema: entry.schema,

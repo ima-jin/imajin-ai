@@ -8,11 +8,12 @@
  * how the map itself was derived.
  *
  * Scope: this repo's migrations only ever use `CREATE TABLE`, `DROP TABLE`,
- * `ALTER TABLE ... RENAME TO`, and `CREATE [OR REPLACE] FUNCTION` (verified
- * by grepping the full migrations/ directory — no `CREATE VIEW`, `CREATE
- * TYPE ... AS ENUM`, or `CREATE MATERIALIZED VIEW` exist today). VIEW/TYPE
- * are still parsed below so a future migration that introduces one is
- * registered and ownership-checked rather than silently ignored.
+ * `ALTER TABLE ... RENAME TO`, generic `ALTER TABLE` (e.g. `ADD COLUMN`), and
+ * `CREATE [OR REPLACE] FUNCTION` (verified by grepping the full migrations/
+ * directory — no `CREATE VIEW`, `CREATE TYPE ... AS ENUM`, or `CREATE
+ * MATERIALIZED VIEW` exist today). VIEW/TYPE are still parsed below so a
+ * future migration that introduces one is registered and ownership-checked
+ * rather than silently ignored.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -20,6 +21,20 @@ import { join } from 'node:path';
 
 /** Schemas that map 1:1 onto an app that owns tables in this repo today. */
 export const APP_SCHEMAS = new Set(['coffee', 'dykil', 'events', 'learn', 'links', 'market']);
+
+/**
+ * Owners that don't correspond to an app schema: the kernel monolith itself,
+ * plus broker-agent/corpus, which own zero tables in `migrations/` today
+ * (see migrations/OWNERSHIP.md's Gaps section) but are still valid owner
+ * names an app could declare.
+ */
+export const NON_SCHEMA_OWNERS = new Set(['kernel', 'broker-agent', 'corpus']);
+
+/** Every valid owner name — single source of truth shared by the guard and the map generator. */
+export const ALL_OWNERS = new Set([...NON_SCHEMA_OWNERS, ...APP_SCHEMAS]);
+
+/** Maps a parsed statement's `kind` to its bucket name in ownership.json. */
+export const BUCKET_FOR_KIND = { table: 'tables', view: 'views', type: 'types', function: 'functions' };
 
 /**
  * Every other schema (auth, chat, connections, consent_requests, github,
@@ -83,47 +98,64 @@ export function stripSqlComments(sql) {
   return out;
 }
 
-const NAME = `"?([A-Za-z_][A-Za-z0-9_]*)"?`;
-const QUALIFIED = `${NAME}(?:\\.${NAME})?`;
+const NAME = String.raw`"?([A-Za-z_][A-Za-z0-9_]*)"?`;
+const QUALIFIED = String.raw`${NAME}(?:\.${NAME})?`;
+const OPTIONAL_IF_NOT_EXISTS = String.raw`(?:IF\s+NOT\s+EXISTS\s+)?`;
+const OPTIONAL_IF_EXISTS = String.raw`(?:IF\s+EXISTS\s+)?`;
 
+// Statement kinds recognized anywhere in migrations/, in the order they're
+// matched (order doesn't affect results — matches are re-sorted by source
+// position below). Every regex source is built with String.raw so the `\s`/
+// `\.` escapes stay single-backslash instead of doubled JS-string escapes.
 const STATEMENT_PATTERNS = [
   {
     kind: 'table',
     action: 'create',
     // Group 1 = TEMP/TEMPORARY marker (skip if present — not a persistent table).
-    re: new RegExp(`CREATE\\s+(TEMP(?:ORARY)?\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${QUALIFIED}`, 'gi'),
+    re: new RegExp(String.raw`CREATE\s+(TEMP(?:ORARY)?\s+)?TABLE\s+${OPTIONAL_IF_NOT_EXISTS}${QUALIFIED}`, 'gi'),
     skip: (m) => Boolean(m[1]),
     nameGroups: [2, 3],
   },
   {
     kind: 'table',
     action: 'drop',
-    re: new RegExp(`DROP\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?${QUALIFIED}`, 'gi'),
+    re: new RegExp(String.raw`DROP\s+TABLE\s+${OPTIONAL_IF_EXISTS}${QUALIFIED}`, 'gi'),
     nameGroups: [1, 2],
   },
   {
     kind: 'table',
     action: 'rename',
-    re: new RegExp(`ALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?${QUALIFIED}\\s+RENAME\\s+TO\\s+${NAME}`, 'gi'),
+    re: new RegExp(String.raw`ALTER\s+TABLE\s+${OPTIONAL_IF_EXISTS}${QUALIFIED}\s+RENAME\s+TO\s+${NAME}`, 'gi'),
     nameGroups: [1, 2],
     renameToGroup: 3,
   },
   {
+    // Generic ALTER TABLE detector — a superset of the RENAME pattern above,
+    // so a plain ALTER (e.g. ADD COLUMN) also registers as "touching" the
+    // table. Both patterns matching the same RENAME statement is expected;
+    // consumers that care (the CI guard) dedupe by identity and prefer the
+    // more specific 'rename' action.
+    kind: 'table',
+    action: 'alter',
+    re: new RegExp(String.raw`ALTER\s+TABLE\s+${OPTIONAL_IF_EXISTS}${QUALIFIED}`, 'gi'),
+    nameGroups: [1, 2],
+  },
+  {
     kind: 'view',
     action: 'create',
-    re: new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?VIEW\\s+${QUALIFIED}`, 'gi'),
+    re: new RegExp(String.raw`CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+${OPTIONAL_IF_NOT_EXISTS}${QUALIFIED}`, 'gi'),
     nameGroups: [1, 2],
   },
   {
     kind: 'type',
     action: 'create',
-    re: new RegExp(`CREATE\\s+TYPE\\s+${QUALIFIED}`, 'gi'),
+    re: new RegExp(String.raw`CREATE\s+TYPE\s+${QUALIFIED}`, 'gi'),
     nameGroups: [1, 2],
   },
   {
     kind: 'function',
     action: 'create',
-    re: new RegExp(`CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+${QUALIFIED}\\s*\\(`, 'gi'),
+    re: new RegExp(String.raw`CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+${QUALIFIED}\s*\(`, 'gi'),
     nameGroups: [1, 2],
   },
 ];

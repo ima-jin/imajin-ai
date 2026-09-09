@@ -9,7 +9,7 @@
  * stopped one app's migration from creating, altering, or dropping a table
  * that conceptually belongs to another app or to the kernel — a schema
  * ownership violation that should instead go through the kernel's HTTP API.
- * `migrations/OWNERSHIP.md` + `ownership.json` name who owns what;  this
+ * `migrations/OWNERSHIP.md` + `ownership.json` name who owns what; this
  * guard is what makes drift from that map a CI failure.
  *
  * ## What it checks
@@ -32,20 +32,39 @@
  * onto history is not this guard's job. Files the PR does not change at all
  * are never inspected.
  *
+ * ## Running inside a container-based CI job
+ *
+ * `actions/checkout` registers `safe.directory` in the *runner host's*
+ * global git config. A `container:`-based job step runs git inside a
+ * separate container filesystem/HOME, which never sees that config — git
+ * then refuses to resolve refs in the checked-out repo at all. The
+ * workflow step should add `safe.directory` itself (see ci.yml), but this
+ * script also does it defensively before diffing, and falls back to a
+ * shallow `git fetch` of the base ref if it's simply missing locally, so a
+ * misconfigured environment degrades to a clear message instead of a raw
+ * git stack trace.
+ *
+ * ## Sonar-clean notes
+ *
+ * - No PATH-spawn (S4036): `git` is resolved to an absolute path up front
+ *   (env override or a fixed list of known install locations) rather than
+ *   left to PATH lookup.
+ *
  * ## Usage
  *
  * `node scripts/check-migration-ownership.mjs`
  *
  * Env overrides (for tests / non-standard checkouts):
- *   - `CI_GUARD_WORKDIR`      — repo root (default: two levels up from this file)
+ *   - `CI_GUARD_WORKDIR`             — repo root (default: two levels up from this file)
  *   - `MIGRATION_OWNERSHIP_BASE_REF` — git ref to diff against (default: `origin/main`)
+ *   - `GIT_BIN`                      — absolute path to the git binary
  */
 
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseStatements, stripSqlComments } from './lib/migration-ownership-parser.mjs';
+import { parseStatements, ALL_OWNERS, BUCKET_FOR_KIND } from './lib/migration-ownership-parser.mjs';
 
 const ROOT = process.env.CI_GUARD_WORKDIR
   ? resolve(process.env.CI_GUARD_WORKDIR)
@@ -54,47 +73,108 @@ const BASE_REF = process.env.MIGRATION_OWNERSHIP_BASE_REF || 'origin/main';
 const MIGRATIONS_DIR = join(ROOT, 'migrations');
 const OWNERSHIP_PATH = join(MIGRATIONS_DIR, 'ownership.json');
 
-const KNOWN_OWNERS = new Set([
-  'kernel',
-  'coffee',
-  'dykil',
-  'links',
-  'learn',
-  'events',
-  'market',
-  'broker-agent',
-  'corpus',
-]);
-
 const OWNER_HEADER_RE = /^--\s*owner:\s*([a-z0-9_-]+)\s*$/im;
 
-const BUCKET_FOR_KIND = { table: 'tables', view: 'views', type: 'types', function: 'functions' };
+// ── git binary resolution (S4036: no PATH-spawn) ────────────────────────────
 
-/** Runs `git diff --name-status <base>...HEAD -- migrations` and returns `{ filename, status }[]`. */
-function getChangedMigrationFiles(root, baseRef) {
+const KNOWN_GIT_LOCATIONS = ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git', '/bin/git'];
+
+function resolveGitBinary() {
+  if (process.env.GIT_BIN) return process.env.GIT_BIN;
+  const found = KNOWN_GIT_LOCATIONS.find((candidate) => existsSync(candidate));
+  if (found) return found;
+  throw new Error(
+    `git binary not found in any of: ${KNOWN_GIT_LOCATIONS.join(', ')}. Set GIT_BIN to its absolute path.`,
+  );
+}
+
+// ── git diff against the base branch ────────────────────────────────────────
+
+/** Best-effort: registers ROOT as a safe.directory so a container job's separate git config doesn't refuse it. */
+function ensureSafeDirectory(gitBin, root) {
+  try {
+    execFileSync(gitBin, ['config', '--global', '--add', 'safe.directory', root], { stdio: 'pipe' });
+  } catch {
+    // Non-fatal — the workflow step already does this; this is defense in
+    // depth for environments that invoke this script differently.
+  }
+}
+
+function diffNameStatus(gitBin, root, baseRef) {
   const args = ['diff', '--no-color', '--name-status', `${baseRef}...HEAD`, '--', 'migrations'];
-  const output = execFileSync('git', args, { cwd: root, encoding: 'utf8' });
+  return execFileSync(gitBin, args, { cwd: root, encoding: 'utf8' });
+}
 
+/** Splits a `baseRef` like "origin/main" into `["origin", "main"]` for `git fetch`. */
+function splitRemoteRef(baseRef) {
+  const slash = baseRef.indexOf('/');
+  return slash === -1 ? ['origin', baseRef] : [baseRef.slice(0, slash), baseRef.slice(slash + 1)];
+}
+
+/**
+ * Fetches the base ref shallowly, for when it's simply missing locally
+ * (fresh/shallow/single-branch checkouts). Uses an explicit `src:dst`
+ * refspec so the remote-tracking ref actually lands at
+ * `refs/remotes/<remote>/<branch>` — a plain `git fetch origin main` only
+ * updates FETCH_HEAD when the remote's configured fetch refspec doesn't
+ * already cover that branch (e.g. a `--single-branch` clone).
+ */
+function fetchBaseRef(gitBin, root, baseRef) {
+  const [remote, branch] = splitRemoteRef(baseRef);
+  execFileSync(gitBin, ['fetch', remote, `${branch}:refs/remotes/${remote}/${branch}`, '--depth=1'], {
+    cwd: root,
+    stdio: 'pipe',
+  });
+}
+
+function parseDiffLine(line) {
+  const [status, ...pathParts] = line.split('\t');
+  // Renames are "R100\told\tnew" — the new path is what's on disk now.
+  return { status: status[0], filePath: pathParts[pathParts.length - 1] };
+}
+
+function parseDiffOutput(output) {
   return output
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => {
-      const [status, ...pathParts] = line.split('\t');
-      // Renames are "R100\told\tnew" — the new path is what's on disk now.
-      const filePath = pathParts[pathParts.length - 1];
-      return { status: status[0], filePath };
-    })
+    .map(parseDiffLine)
     .filter(({ filePath }) => filePath.endsWith('.sql'));
 }
 
+/** Returns `{ status, filePath }[]` for every migrations/*.sql file changed or added versus `baseRef`. */
+function getChangedMigrationFiles(root, baseRef) {
+  const gitBin = resolveGitBinary();
+  ensureSafeDirectory(gitBin, root);
+
+  let output;
+  try {
+    output = diffNameStatus(gitBin, root, baseRef);
+  } catch (firstErr) {
+    try {
+      fetchBaseRef(gitBin, root, baseRef);
+      output = diffNameStatus(gitBin, root, baseRef);
+    } catch {
+      throw new Error(
+        `could not diff against "${baseRef}" (a fallback "git fetch ${baseRef}" was also tried and failed). ` +
+          `Original error: ${firstErr.message.split('\n')[0]}`,
+      );
+    }
+  }
+
+  return parseDiffOutput(output);
+}
+
+// ── ownership map ────────────────────────────────────────────────────────────
+
 function loadOwnershipMap() {
   if (!existsSync(OWNERSHIP_PATH)) {
-    console.error(`check-migration-ownership: ${OWNERSHIP_PATH} does not exist.`);
-    process.exit(1);
+    throw new Error(`${OWNERSHIP_PATH} does not exist.`);
   }
   return JSON.parse(readFileSync(OWNERSHIP_PATH, 'utf8'));
 }
+
+// ── per-file checks ──────────────────────────────────────────────────────────
 
 function extractDeclaredOwner(sql) {
   const match = OWNER_HEADER_RE.exec(sql);
@@ -102,142 +182,127 @@ function extractDeclaredOwner(sql) {
 }
 
 /**
- * Reduce a migration's parsed statements to the set of (kind, schema, name)
- * identities it "touches" — created, altered, dropped, or renamed
- * (touching both the old and new name).
+ * Resolves this file's declared owner, or `null` when the file should be
+ * skipped entirely (grandfathered pre-existing file with no header).
+ * Returns a violation message instead when a NEW file is missing its header.
+ */
+function resolveDeclaredOwner(filePath, sql, isNew) {
+  const declaredOwner = extractDeclaredOwner(sql);
+  if (declaredOwner) return { declaredOwner };
+  if (!isNew) return { declaredOwner: null }; // grandfathered, skip silently
+
+  return {
+    declaredOwner: null,
+    violation:
+      `${filePath}: new migration is missing a "-- owner: <name>" header line. ` +
+      `Add one near the top of the file, e.g. "-- owner: coffee". ` +
+      `Valid owners: ${[...ALL_OWNERS].join(', ')}.`,
+  };
+}
+
+function checkOwnerIsKnown(filePath, declaredOwner) {
+  if (ALL_OWNERS.has(declaredOwner)) return null;
+  return `${filePath}: declared owner "${declaredOwner}" is not a known owner. Valid owners: ${[...ALL_OWNERS].join(', ')}.`;
+}
+
+/**
+ * Reduces a migration's parsed statements to the set of (kind, schema, name)
+ * identities it "touches" — created, altered, dropped, or renamed (touching
+ * both the old and new name) — deduped so a RENAME (which matches both the
+ * generic 'alter' and the specific 'rename' pattern) is reported once.
  */
 function collectTouches(statements) {
-  const touches = [];
-  for (const stmt of statements) {
-    touches.push({ kind: stmt.kind, schema: stmt.schema, name: stmt.name, action: stmt.action });
-    if (stmt.action === 'rename' && stmt.renameTo) {
-      touches.push({ kind: stmt.kind, schema: stmt.schema, name: stmt.renameTo, action: 'create' });
-    }
-  }
-  return touches;
-}
-
-/** Generic `ALTER TABLE <name> ...` detector (any alter, not just RENAME TO). */
-const ALTER_TABLE_RE = /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?"?([A-Za-z_][A-Za-z0-9_]*)"?(?:\."?([A-Za-z_][A-Za-z0-9_]*)"?)?/gi;
-
-function collectAlterTouches(sql) {
-  const cleaned = stripSqlComments(sql);
-  const touches = [];
-  ALTER_TABLE_RE.lastIndex = 0;
-  let match = ALTER_TABLE_RE.exec(cleaned);
-  while (match !== null) {
-    const [, first, second] = match;
-    const { schema, name } = second ? { schema: first, name: second } : { schema: 'public', name: first };
-    touches.push({ kind: 'table', schema, name, action: 'alter' });
-    match = ALTER_TABLE_RE.exec(cleaned);
-  }
-  return touches;
-}
-
-/** Collapses duplicate (kind, schema, name) touches, preferring 'create' > 'rename' > others. */
-function dedupeTouches(touches) {
   const ACTION_RANK = { create: 3, rename: 2, alter: 1, drop: 1 };
   const byKey = new Map();
-  for (const touch of touches) {
+
+  const consider = (touch) => {
     const key = `${touch.kind}:${touch.schema}.${touch.name}`;
     const existing = byKey.get(key);
     if (!existing || (ACTION_RANK[touch.action] ?? 0) > (ACTION_RANK[existing.action] ?? 0)) {
       byKey.set(key, touch);
     }
+  };
+
+  for (const stmt of statements) {
+    consider({ kind: stmt.kind, schema: stmt.schema, name: stmt.name, action: stmt.action });
+    if (stmt.action === 'rename' && stmt.renameTo) {
+      consider({ kind: stmt.kind, schema: stmt.schema, name: stmt.renameTo, action: 'create' });
+    }
   }
+
   return [...byKey.values()];
 }
 
+/** Checks one touched identity against the ownership map. Returns a violation message, or `null` when clean. */
+function checkTouch(filePath, touch, ownershipMap, declaredOwner) {
+  const bucket = ownershipMap[BUCKET_FOR_KIND[touch.kind]] ?? {};
+  const key = `${touch.schema}.${touch.name}`;
+  const registered = bucket[key];
+
+  if (!registered) {
+    if (touch.action !== 'create') return null; // predates the map, or a scratch object — not this guard's concern
+    return (
+      `${filePath}: creates ${key} (${touch.kind}) but it is not registered in migrations/ownership.json. ` +
+      `Add an entry under "${BUCKET_FOR_KIND[touch.kind]}" with owner "${declaredOwner}" in this PR.`
+    );
+  }
+
+  if (registered.owner === declaredOwner) return null;
+  return (
+    `${filePath}: touches ${key} (${touch.kind}), which migrations/ownership.json lists as owned by ` +
+    `"${registered.owner}", but this migration declares "-- owner: ${declaredOwner}". ` +
+    `Cross-schema writes are a contract violation — go through ${registered.owner}'s API instead, ` +
+    `or if ${declaredOwner} is genuinely taking ownership, update ownership.json in the same PR.`
+  );
+}
+
 function checkFile(filePath, status, ownershipMap) {
-  const violations = [];
-  const absolutePath = join(ROOT, filePath);
-  const sql = readFileSync(absolutePath, 'utf8');
+  const sql = readFileSync(join(ROOT, filePath), 'utf8');
   const isNew = status === 'A';
 
-  const declaredOwner = extractDeclaredOwner(sql);
+  const { declaredOwner, violation: headerViolation } = resolveDeclaredOwner(filePath, sql, isNew);
+  if (headerViolation) return [headerViolation];
+  if (!declaredOwner) return []; // grandfathered
 
-  if (!declaredOwner) {
-    if (isNew) {
-      violations.push(
-        `${filePath}: new migration is missing a "-- owner: <name>" header line. ` +
-          `Add one near the top of the file, e.g. "-- owner: coffee". ` +
-          `Valid owners: ${[...KNOWN_OWNERS].join(', ')}.`,
-      );
-    }
-    // Pre-existing file touched without a header: grandfathered, skip entirely.
-    return violations;
+  const ownerViolation = checkOwnerIsKnown(filePath, declaredOwner);
+  if (ownerViolation) return [ownerViolation];
+
+  const touches = collectTouches(parseStatements(sql));
+  return touches.map((touch) => checkTouch(filePath, touch, ownershipMap, declaredOwner)).filter(Boolean);
+}
+
+// ── main ─────────────────────────────────────────────────────────────────────
+
+function reportAndExit(violations) {
+  if (violations.length === 0) {
+    console.log('PASS: no migration ownership violations found.');
+    process.exit(0);
   }
 
-  if (!KNOWN_OWNERS.has(declaredOwner)) {
-    violations.push(
-      `${filePath}: declared owner "${declaredOwner}" is not a known owner. ` +
-        `Valid owners: ${[...KNOWN_OWNERS].join(', ')}.`,
-    );
-    return violations;
+  console.error(`\nFAIL: ${violations.length} migration ownership violation(s) found:\n`);
+  for (const violation of violations) {
+    console.error(`  - ${violation}`);
   }
-
-  const statements = parseStatements(sql);
-  const touches = dedupeTouches([...collectTouches(statements), ...collectAlterTouches(sql)]);
-
-  for (const touch of touches) {
-    const bucketName = BUCKET_FOR_KIND[touch.kind];
-    const bucket = ownershipMap[bucketName] ?? {};
-    const key = `${touch.schema}.${touch.name}`;
-    const registered = bucket[key];
-
-    if (!registered) {
-      if (touch.action === 'create') {
-        violations.push(
-          `${filePath}: creates ${key} (${touch.kind}) but it is not registered in migrations/ownership.json. ` +
-            `Add an entry under "${bucketName}" with owner "${declaredOwner}" in this PR.`,
-        );
-      }
-      // Non-create touches on unregistered identities aren't this guard's
-      // concern (e.g. a name that predates the map, or a scratch object).
-      continue;
-    }
-
-    if (registered.owner !== declaredOwner) {
-      violations.push(
-        `${filePath}: touches ${key} (${touch.kind}), which migrations/ownership.json lists as owned by ` +
-          `"${registered.owner}", but this migration declares "-- owner: ${declaredOwner}". ` +
-          `Cross-schema writes are a contract violation — go through ${registered.owner}'s API instead, ` +
-          `or if ${declaredOwner} is genuinely taking ownership, update ownership.json in the same PR.`,
-      );
-    }
-  }
-
-  return violations;
+  process.exit(1);
 }
 
 function main() {
-  const ownershipMap = loadOwnershipMap();
-
+  let ownershipMap;
   let changedFiles;
   try {
+    ownershipMap = loadOwnershipMap();
     changedFiles = getChangedMigrationFiles(ROOT, BASE_REF);
   } catch (err) {
-    console.error(`check-migration-ownership: failed to diff against ${BASE_REF}: ${err.message}`);
+    console.error(`check-migration-ownership: ${err.message}`);
     process.exit(1);
     return;
   }
 
-  const allViolations = [];
-  for (const { status, filePath } of changedFiles) {
-    if (status === 'D') continue; // deleted files have nothing left to parse
-    allViolations.push(...checkFile(filePath, status, ownershipMap));
-  }
+  const violations = changedFiles
+    .filter(({ status }) => status !== 'D') // deleted files have nothing left to parse
+    .flatMap(({ status, filePath }) => checkFile(filePath, status, ownershipMap));
 
-  if (allViolations.length > 0) {
-    console.error(`\nFAIL: ${allViolations.length} migration ownership violation(s) found:\n`);
-    for (const violation of allViolations) {
-      console.error(`  - ${violation}`);
-    }
-    process.exit(1);
-  }
-
-  console.log('PASS: no migration ownership violations found.');
-  process.exit(0);
+  reportAndExit(violations);
 }
 
 main();

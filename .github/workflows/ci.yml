@@ -127,6 +127,15 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # actions/checkout registers safe.directory in the RUNNER HOST's global
+      # git config. This job's steps run inside the ci-runner container,
+      # which has its own separate git config/HOME, so it never sees that —
+      # git then refuses to touch the checked-out repo at all
+      # ("Could not access 'origin/main...HEAD'"). Register it again here,
+      # inside the container, before anything needs to run git.
+      - name: Allow git to operate on the checked-out repo inside the container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       # Schema-boundary guard (#1991 phase 1): a migration may only touch
       # tables its declared "-- owner:" header actually owns, per
       # migrations/ownership.json. See migrations/OWNERSHIP.md.

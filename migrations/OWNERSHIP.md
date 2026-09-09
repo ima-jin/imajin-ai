@@ -40,12 +40,14 @@ not Postgres. Neither has a schema to own here — noted so their absence from
 `scripts/generate-migration-ownership.mjs` (built on the same parser the CI
 guard uses, `scripts/lib/migration-ownership-parser.mjs`) replays every file
 in `migrations/` in application order and tracks `CREATE TABLE`,
-`CREATE [OR REPLACE] FUNCTION`, `DROP TABLE`, and `ALTER TABLE ... RENAME TO`
-(the only DDL forms actually present in this repo's 131 migration files,
-confirmed by grepping for `CREATE VIEW`, `CREATE TYPE ... AS ENUM`, and
-`CREATE MATERIALIZED VIEW` — none exist today; the parser still recognizes
-them so a future migration that adds one is registered, not silently
-ignored). A `DROP TABLE` removes the entry; a `RENAME TO` carries the
+`CREATE [OR REPLACE] FUNCTION`, `DROP TABLE`, `ALTER TABLE ... RENAME TO`,
+and generic `ALTER TABLE` (e.g. `ADD COLUMN`, which the map builder ignores
+but the CI guard treats as "touching" the table) (the only DDL forms
+actually present in this repo's 131 migration files, confirmed by grepping
+for `CREATE VIEW`, `CREATE TYPE ... AS ENUM`, and `CREATE MATERIALIZED
+VIEW` — none exist today; the parser still recognizes them so a future
+migration that adds one is registered, not silently ignored). A
+`DROP TABLE` removes the entry; a `RENAME TO` carries the
 original `firstMigration` forward under the new name. This is why
 `ownership.json` has no entries for `drizzle.*` (dropped in
 `0003_drop_drizzle_tracking.sql`, and in fact never created by a migration
