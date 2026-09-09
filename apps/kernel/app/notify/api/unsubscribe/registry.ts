@@ -5,7 +5,6 @@ const log = createLogger('kernel');
 
 /**
  * Update registry preference to opt-out of marketing for this scope.
- * TODO(#538): Registry PUT /api/preferences/:did/interests/:scope implemented by Agent 1.
  */
 export async function updateRegistryPreference(did: string, scope: string): Promise<void> {
   if (!hasRegistryServiceUrl()) {
