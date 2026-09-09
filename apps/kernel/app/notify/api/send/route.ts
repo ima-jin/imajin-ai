@@ -162,6 +162,82 @@ function buildResponseBody(
   return body;
 }
 
+/**
+ * Resolve urgency/title/body from the request payload, falling back to the
+ * scope's template (or the bare scope, for title). Extracted from POST
+ * (#2119) so the value-fallback chains don't add to its complexity.
+ */
+function resolveNotificationUrgency(
+  body: { urgency?: string },
+  template: ReturnType<typeof getTemplate> | undefined,
+): string {
+  return body.urgency ?? template?.urgency ?? 'normal';
+}
+
+function resolveNotificationTitle(
+  body: { title?: string },
+  template: ReturnType<typeof getTemplate> | undefined,
+  scope: string,
+  data: Record<string, unknown>,
+): string {
+  if (body.title) return body.title;
+  return template ? template.title(data as Record<string, any>) : scope;
+}
+
+function resolveNotificationBody(
+  body: { body?: string },
+  template: ReturnType<typeof getTemplate> | undefined,
+  data: Record<string, unknown>,
+): string | undefined {
+  if (body.body) return body.body;
+  return template ? template.body(data as Record<string, any>) : undefined;
+}
+
+/** Preference defaults (#2119): both channels default on when no row exists. */
+function resolvePreferenceFlags(
+  pref: { email: boolean | null; inapp: boolean | null } | undefined,
+): { emailEnabled: boolean | null; inappEnabled: boolean | null } {
+  return {
+    emailEnabled: pref ? pref.email : true,
+    inappEnabled: pref ? pref.inapp : true,
+  };
+}
+
+/**
+ * Deliver the in-app leg (WS push, #1644) and report which channels landed.
+ * Extracted from POST (#2119) so the nested delivered-check doesn't add to
+ * its complexity — no behavior change: 'inapp' is still recorded whenever
+ * the preference is on, and 'ws' only when a socket actually received it.
+ */
+async function resolveInAppChannels(
+  inappEnabled: boolean | null,
+  to: string,
+  frame: ReturnType<typeof buildNotificationFrame>,
+): Promise<string[]> {
+  if (!inappEnabled) return [];
+  const delivered = await pushNotificationToDid(to, frame);
+  return delivered ? ['inapp', 'ws'] : ['inapp'];
+}
+
+/**
+ * Resolve + send the email leg when enabled, and report which channels
+ * landed alongside the raw outcome (still needed for the response body).
+ * Extracted from POST (#2119) so the nested delivered-check doesn't add to
+ * its complexity — no behavior change.
+ */
+async function resolveEmailChannel(
+  emailEnabled: boolean | null,
+  template: ReturnType<typeof getTemplate> | undefined,
+  to: string,
+  data: Record<string, unknown>,
+  log: { error: (obj: Record<string, unknown>, msg: string) => void },
+  notifId: string,
+): Promise<{ channels: string[]; emailResult: EmailDeliveryResult | null }> {
+  if (!emailEnabled || !template?.email) return { channels: [], emailResult: null };
+  const emailResult = await resolveAndSendEmail(to, data, template, log, notifId);
+  return { channels: emailResult.delivered ? ['email'] : [], emailResult };
+}
+
 export const POST = withLogger('kernel', async (request, { log }) => {
   const cors = corsHeaders(request);
 
@@ -199,9 +275,9 @@ export const POST = withLogger('kernel', async (request, { log }) => {
 
   // Resolve template
   const template = getTemplate(scope);
-  const urgency = body.urgency ?? template?.urgency ?? 'normal';
-  const title = body.title ?? (template ? template.title(data as Record<string, any>) : scope);
-  const notifBody = body.body ?? (template ? template.body(data as Record<string, any>) : undefined);
+  const urgency = resolveNotificationUrgency(body, template);
+  const title = resolveNotificationTitle(body, template, scope, data);
+  const notifBody = resolveNotificationBody(body, template, data);
 
   // Look up preferences (default: email + inapp both on)
   const [pref] = await db
@@ -210,8 +286,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     .where(and(eq(preferences.did, to), eq(preferences.scope, scope)))
     .limit(1);
 
-  const emailEnabled = pref ? pref.email : true;
-  const inappEnabled = pref ? pref.inapp : true;
+  const { emailEnabled, inappEnabled } = resolvePreferenceFlags(pref);
 
   // Store notification. `createdAt` is set explicitly rather than left to the
   // column default so the WS frame below carries the same timestamp the row does
@@ -232,30 +307,22 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     createdAt,
   });
 
-  const channelsSent: string[] = [];
-
-  if (inappEnabled) {
-    channelsSent.push('inapp');
-
-    // Real-time push down any socket the recipient has open (#1644). Gated on the
-    // in-app preference because a WS frame *is* in-app delivery, and awaited only
-    // so `channelsSent` can record whether anyone was actually listening — the
-    // push itself never fails the request.
-    const delivered = await pushNotificationToDid(
-      to,
-      buildNotificationFrame({ id, scope, title, body: notifBody, data, createdAt }),
-    );
-    if (delivered) channelsSent.push('ws');
-  }
+  // Real-time push down any socket the recipient has open (#1644). Gated on the
+  // in-app preference because a WS frame *is* in-app delivery, and awaited only
+  // so `channelsSent` can record whether anyone was actually listening — the
+  // push itself never fails the request.
+  const inAppChannels = await resolveInAppChannels(
+    inappEnabled,
+    to,
+    buildNotificationFrame({ id, scope, title, body: notifBody, data, createdAt }),
+  );
 
   // Send email if enabled and template has email config (#1854: the result
   // is a structured outcome, not a boolean, so the response below can be
   // honest about whether the email leg actually delivered).
-  let emailResult: EmailDeliveryResult | null = null;
-  if (emailEnabled && template?.email) {
-    emailResult = await resolveAndSendEmail(to, data, template, log, id);
-    if (emailResult.delivered) channelsSent.push('email');
-  }
+  const { channels: emailChannels, emailResult } = await resolveEmailChannel(emailEnabled, template, to, data, log, id);
+
+  const channelsSent: string[] = [...inAppChannels, ...emailChannels];
 
   // Update channels_sent
   if (channelsSent.length > 0) {
