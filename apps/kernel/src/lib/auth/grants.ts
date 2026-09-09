@@ -78,7 +78,7 @@ function toGrantRecord(row: {
  * a logging failure must never unwind an otherwise-successful grant mutation. */
 async function recordGrantEvent(params: {
   grantId: string;
-  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked';
+  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked' | 'capability_added';
   actorDid: string;
   capability?: string;
 }): Promise<void> {
@@ -241,6 +241,71 @@ export async function revokeGrantCapability(params: {
   }
 
   return { revoked: result.length > 0 };
+}
+
+/**
+ * Add exactly one capability to an existing, active grant (#2108), mirroring
+ * `revokeGrantCapability`'s per-capability granularity in the other
+ * direction. Only the issuing delegator may do this, and only against an
+ * active grant — a revoked grant is a deliberate act and must be re-issued,
+ * never resurrected via a capability add (mirrors `renewGrant`'s same rule).
+ *
+ * Idempotent: adding a capability the grant already actively holds is a
+ * no-op that returns `{ added: false }` without writing a duplicate row or
+ * lifecycle event. Re-adding a capability that was previously revoked on
+ * this grant reactivates the same `delegation_grant_capabilities` row
+ * (extending the existing grant, per #2108's "extending is the better UX"
+ * decision) rather than leaving an orphaned duplicate around — the unique
+ * (grantId, capability) index would reject a second insert anyway.
+ */
+export async function addGrantCapability(params: {
+  grantId: string;
+  capability: string;
+  requestedBy: string;
+}): Promise<{ added: boolean } | LibError> {
+  const [grant] = await db
+    .select({ delegatorDid: delegationGrants.delegatorDid, status: delegationGrants.status })
+    .from(delegationGrants)
+    .where(eq(delegationGrants.id, params.grantId))
+    .limit(1);
+
+  if (!grant) return { error: 'Grant not found', status: 404 };
+  if (grant.delegatorDid !== params.requestedBy) {
+    return { error: 'Only the delegator may modify this grant', status: 403 };
+  }
+  if (grant.status !== 'active') {
+    return { error: 'Cannot add a capability to a revoked grant — issue a new one', status: 409 };
+  }
+
+  const { valid, invalid } = validateGrantCapabilities([params.capability]);
+  if (invalid.length > 0) {
+    return { error: `Unknown capability: ${params.capability}`, status: 400 };
+  }
+  const [capability] = valid;
+
+  const [existing] = await db
+    .select({ id: delegationGrantCapabilities.id, status: delegationGrantCapabilities.status })
+    .from(delegationGrantCapabilities)
+    .where(and(eq(delegationGrantCapabilities.grantId, params.grantId), eq(delegationGrantCapabilities.capability, capability)))
+    .limit(1);
+
+  if (existing?.status === 'active') {
+    return { added: false };
+  }
+
+  if (existing) {
+    await db
+      .update(delegationGrantCapabilities)
+      .set({ status: 'active', revokedAt: null })
+      .where(eq(delegationGrantCapabilities.id, existing.id));
+  } else {
+    await db.insert(delegationGrantCapabilities).values({ id: generateId('gcap'), grantId: params.grantId, capability, status: 'active' });
+  }
+
+  log.info({ grantId: params.grantId, delegatorDid: params.requestedBy, capability }, 'Delegation grant capability added');
+  await recordGrantEvent({ grantId: params.grantId, event: 'capability_added', actorDid: params.requestedBy, capability });
+
+  return { added: true };
 }
 
 /**
@@ -433,7 +498,7 @@ export interface GrantCapabilityDetail {
 }
 
 export interface GrantEventDetail {
-  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked';
+  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked' | 'capability_added';
   capability: string | null;
   actorDid: string;
   createdAt: string;
