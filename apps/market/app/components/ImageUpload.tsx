@@ -99,7 +99,7 @@ export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
   );
 
   const onDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
+    (e: React.DragEvent<HTMLButtonElement>) => {
       e.preventDefault();
       setIsDragging(false);
       addFiles(e.dataTransfer.files);
@@ -107,12 +107,12 @@ export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
     [addFiles]
   );
 
-  const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const onDragOver = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setIsDragging(true);
   }, []);
 
-  const onDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const onDragLeave = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setIsDragging(false);
   }, []);
@@ -244,23 +244,7 @@ export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
 
       {/* Drop zone */}
       {!isFull && (
-        <div
-          onDrop={onDrop}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          role="button"
-          tabIndex={0}
-          onClick={() => fileInputRef.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
-          }}
-          className={`
-            border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition
-            ${isDragging
-              ? 'border-blue-500 bg-blue-500/10'
-              : 'border-gray-600 hover:border-blue-500/50 hover:bg-blue-500/5'}
-          `}
-        >
+        <>
           <input
             ref={fileInputRef}
             type="file"
@@ -269,11 +253,26 @@ export function ImageUpload({ images, onChange }: Readonly<ImageUploadProps>) {
             onChange={onFileInputChange}
             className="hidden"
           />
-          <p className="text-sm text-gray-400 mb-1">Drop images here or click to browse</p>
-          <p className="text-xs text-gray-500">
-            {totalCount} of {MAX_IMAGES} images · JPG, PNG, GIF, WebP
-          </p>
-        </div>
+          {/* Native button (not a div+role) so drag/click/keyboard activation all come for free. */}
+          <button
+            type="button"
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onClick={() => fileInputRef.current?.click()}
+            className={`
+              w-full border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition
+              ${isDragging
+                ? 'border-blue-500 bg-blue-500/10'
+                : 'border-gray-600 hover:border-blue-500/50 hover:bg-blue-500/5'}
+            `}
+          >
+            <p className="text-sm text-gray-400 mb-1">Drop images here or click to browse</p>
+            <p className="text-xs text-gray-500">
+              {totalCount} of {MAX_IMAGES} images · JPG, PNG, GIF, WebP
+            </p>
+          </button>
+        </>
       )}
 
       {isFull && (

@@ -91,11 +91,11 @@ export function ActionSheet({ open, onClose, title, children }: Readonly<ActionS
         aria-hidden="true"
       />
       {/* Sheet */}
-      <div
-        role="dialog"
+      <dialog
+        open
         aria-modal="true"
         aria-label={title ?? 'Actions'}
-        className="relative w-full bg-gray-900 rounded-t-2xl border-t border-gray-700 max-h-[70vh] overflow-y-auto"
+        className="static m-0 p-0 w-full text-inherit bg-gray-900 rounded-t-2xl border-0 border-t border-gray-700 max-h-[70vh] overflow-y-auto"
         style={{ animation: 'actionSheetSlideUp 0.25s ease-out' }}
       >
         {/* Drag handle */}
@@ -108,7 +108,7 @@ export function ActionSheet({ open, onClose, title, children }: Readonly<ActionS
           </div>
         )}
         {children}
-      </div>
+      </dialog>
     </div>
   );
 }

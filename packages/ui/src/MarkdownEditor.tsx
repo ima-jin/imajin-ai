@@ -18,6 +18,22 @@ import {
 } from '@mdxeditor/editor';
 import '@mdxeditor/editor/style.css';
 
+// Kept at module scope (not nested inside MarkdownEditor) since it does not close over
+// any component props/state.
+function renderMarkdownEditorToolbar() {
+  return (
+    <>
+      <BlockTypeSelect />
+      <Separator />
+      <BoldItalicUnderlineToggles options={['Bold', 'Italic']} />
+      <Separator />
+      <CreateLink />
+      <Separator />
+      <ListsToggle />
+    </>
+  );
+}
+
 export interface MarkdownEditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -60,17 +76,7 @@ export function MarkdownEditor({ value, onChange, placeholder, maxLength }: Read
           linkDialogPlugin(),
           markdownShortcutPlugin(),
           toolbarPlugin({
-            toolbarContents: () => (
-              <>
-                <BlockTypeSelect />
-                <Separator />
-                <BoldItalicUnderlineToggles options={['Bold', 'Italic']} />
-                <Separator />
-                <CreateLink />
-                <Separator />
-                <ListsToggle />
-              </>
-            ),
+            toolbarContents: renderMarkdownEditorToolbar,
           }),
         ]}
       />

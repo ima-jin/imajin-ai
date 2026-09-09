@@ -67,23 +67,25 @@ export function MediaMessage({ assetId, filename, mimeType, size, width, height,
         </div>
 
         {lightboxOpen && (
-          <div
-            className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-            onClick={() => setLightboxOpen(false)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                setLightboxOpen(false);
-              }
-            }}
-            aria-label="Close image preview"
-          >
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+            {/* Backdrop is a real button (not a div+role) and a sibling of the image/close
+                button below, so neither of those needs to stop click/keydown propagation. */}
+            <button
+              type="button"
+              className="absolute inset-0 cursor-default"
+              onClick={() => setLightboxOpen(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setLightboxOpen(false);
+                }
+              }}
+              aria-label="Close image preview"
+            />
             <img
               src={fullUrl}
               alt={filename}
-              role="presentation"
-              className="max-w-full max-h-full object-contain rounded-lg"
-              onMouseDown={(e) => e.stopPropagation()}
+              className="relative max-w-full max-h-full object-contain rounded-lg"
             />
             <button type="button"
               className="absolute top-4 right-4 text-white text-3xl hover:text-gray-300 leading-none"

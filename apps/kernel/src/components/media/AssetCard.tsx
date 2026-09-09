@@ -80,16 +80,22 @@ function AssetCard({ asset, selected, checked, compact, selectionActive, onSelec
         if (selectionActive) return "border-transparent hover:border-gray-500 opacity-90 hover:opacity-100";
         return "border-transparent hover:border-gray-600";
       })()}`}
-      onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect(e);
-        }
-      }}
-      aria-label={`Select asset ${asset.filename}`}
-      {...longPress}
     >
+      {/* Full-card select trigger. A real <button> (not a div+role) placed behind the
+          checkbox/thumbnail/info via z-index so it never blocks them. */}
+      <button
+        type="button"
+        className="absolute inset-0 z-0 w-full text-left"
+        onClick={onSelect}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelect(e);
+          }
+        }}
+        aria-label={`Select asset ${asset.filename}`}
+        {...longPress}
+      />
       {/* Checkbox overlay */}
       <button
         type="button"

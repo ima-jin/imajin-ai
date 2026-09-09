@@ -120,8 +120,9 @@ function ConfirmRevokeDialog({
 }>) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/70"
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/70 cursor-default"
         onClick={onCancel}
         onKeyDown={(e) => {
           if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
