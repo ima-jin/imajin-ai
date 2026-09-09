@@ -294,8 +294,11 @@ paths:
       summary: Transfer balance from one DID to another
       description: |
         Burns credits first, then cash. The transfer recipient receives cash (real value earned).
-        The authenticated identity must match `from_did`.
+        The authenticated identity must match `from_did`. Accepts either a session cookie or a
+        Bearer token (app token or session JWT) — the route resolves the caller via
+        `resolveEffectiveDid`, same as `GET /api/balance/{did}` (#2002).
       security:
+        - cookieAuth: []
         - bearerAuth: []
       requestBody:
         required: true
