@@ -317,15 +317,16 @@ export function describeModelPickerAuthAndValidationContract<Req>(
   });
 }
 
-// ── Sonar S2187 guard (#2066) ────────────────────────────────────────────────
+// ── Sonar S2699 guard (#2085, following the #2066 S2187 guard above) ────────
 //
-// SonarCloud's S2187 only recognizes a literal it()/test() call written
-// directly in the file under analysis, so every provider's models/route.test.ts
-// keeps ONE direct it() of its own; this helper holds that it()'s body — a
-// real gap `describeModelPickerRouteContract` below doesn't cover (it only
-// asserts status/body, never that the shared CORS header reaches a
-// non-OPTIONS response) — so the assertion lives once instead of being
-// pasted, near-identically, into every provider's file.
+// SonarCloud's S2699 ("tests should include assertions") only recognizes a
+// literal expect(...) call written directly in the it() body under analysis,
+// so every provider's models/route.test.ts keeps its own literal
+// `expect(...)` calls on this helper's RETURN VALUE — a real gap
+// `describeModelPickerRouteContract` below doesn't cover (it only asserts
+// status/body, never that the shared CORS header reaches a non-OPTIONS
+// response) — so the request/stub setup lives once instead of being pasted,
+// near-identically, into every provider's file.
 export interface ExpectSuccessfulGetCarriesCorsHeaderParams {
   GET: (request: ModelPickerRouteRequest) => Promise<Response>;
   resolveOwnerDid: Mock;
@@ -335,7 +336,14 @@ export interface ExpectSuccessfulGetCarriesCorsHeaderParams {
   ownerDid?: string;
 }
 
-export async function expectSuccessfulGetCarriesCorsHeader(params: ExpectSuccessfulGetCarriesCorsHeaderParams): Promise<void> {
+export interface SuccessfulGetCorsResult {
+  status: number;
+  corsOrigin: string | null;
+}
+
+export async function expectSuccessfulGetCarriesCorsHeader(
+  params: ExpectSuccessfulGetCarriesCorsHeaderParams,
+): Promise<SuccessfulGetCorsResult> {
   const { GET, resolveOwnerDid, loadSealedCredentials, keyPending, apiKey, ownerDid = 'did:imajin:farmer' } = params;
   resolveOwnerDid.mockResolvedValueOnce({ ok: true, ownerDid });
   loadSealedCredentials.mockResolvedValueOnce({ apiKey });
@@ -344,8 +352,7 @@ export async function expectSuccessfulGetCarriesCorsHeader(params: ExpectSuccess
 
   const res = await GET(makeModelPickerRequest());
 
-  expect(res.status).toBe(200);
-  expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://app.imajin.ai');
+  return { status: res.status, corsOrigin: res.headers.get('Access-Control-Allow-Origin') };
 }
 
 /**

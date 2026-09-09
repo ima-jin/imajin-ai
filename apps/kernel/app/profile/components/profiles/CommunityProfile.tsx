@@ -46,11 +46,12 @@ async function resolveCanJoin(
 }
 
 export async function CommunityProfile({ profile, identity, viewer, links }: Readonly<ProfileViewProps>) {
+  const selfViewerRole: string | null = viewer.isSelf ? 'owner' : null;
   const [forestConfig, viewerMemberRole] = await Promise.all([
     getForestConfig(profile.did),
     viewer.viewerDid && !viewer.isSelf
       ? getViewerMembership(profile.did, viewer.viewerDid)
-      : Promise.resolve(viewer.isSelf ? 'owner' : null),
+      : Promise.resolve(selfViewerRole),
   ]);
 
   const { canJoin, joinVisibility } = await resolveCanJoin(

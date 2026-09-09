@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { normalizeHandleInput, profilePath } from '@imajin/config';
+import { DeviceLocationStatus } from '../../lib/device-location-status';
 
 const CATEGORY_PRESETS = ['café', 'restaurant', 'shop', 'venue', 'studio', 'bar', 'gallery', 'gym'];
 const MAX_IMAGES = 6;
@@ -561,16 +562,7 @@ export default function EditStubPage() {
               <label htmlFor="stub-edit-location" className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                 Location
               </label>
-              {deviceLoc ? (
-                <span className="text-[10px] text-zinc-500 font-mono tabular-nums">
-                  📍 {deviceLoc.lat.toFixed(4)}, {deviceLoc.lon.toFixed(4)}
-                  <span className="text-zinc-600 ml-1">(±{Math.round(deviceLoc.accuracy)}m)</span>
-                </span>
-              ) : deviceLocError ? (
-                <span className="text-[10px] text-zinc-600">{deviceLocError}</span>
-              ) : (
-                <span className="text-[10px] text-zinc-600">Locating…</span>
-              )}
+              <DeviceLocationStatus deviceLoc={deviceLoc} deviceLocError={deviceLocError} />
             </div>
 
             <div className="relative flex gap-2">

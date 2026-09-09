@@ -190,28 +190,35 @@ export function ImageUpload({
 
   const displayAvatar = previewUrl || currentAvatar;
 
+  let previewContent: React.ReactNode = null;
+  if (previewMode === 'banner') {
+    if (displayAvatar) {
+      previewContent = (
+        <div
+          className="w-full h-24 rounded bg-cover bg-center mb-2"
+          style={{ backgroundImage: `url(${displayAvatar})` }}
+        />
+      );
+    }
+  } else {
+    previewContent = (
+      <div className="flex items-center gap-4">
+        <Avatar avatar={displayAvatar} size="xl" />
+        <div className="flex-1">
+          <p className="text-sm text-gray-400 mb-2">
+            {displayAvatar ? 'Current avatar' : 'No avatar set'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <label className="block text-sm font-medium text-gray-300">{label}</label>
 
       {/* Preview */}
-      {previewMode === 'banner' ? (
-        displayAvatar ? (
-          <div
-            className="w-full h-24 rounded bg-cover bg-center mb-2"
-            style={{ backgroundImage: `url(${displayAvatar})` }}
-          />
-        ) : null
-      ) : (
-        <div className="flex items-center gap-4">
-          <Avatar avatar={displayAvatar} size="xl" />
-          <div className="flex-1">
-            <p className="text-sm text-gray-400 mb-2">
-              {displayAvatar ? 'Current avatar' : 'No avatar set'}
-            </p>
-          </div>
-        </div>
-      )}
+      {previewContent}
 
       {/* Upload Zone */}
       <input

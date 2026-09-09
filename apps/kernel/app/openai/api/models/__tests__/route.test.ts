@@ -8,7 +8,7 @@
  * `src/lib/kernel/__tests__/model-picker-route-test-support.ts`. Only the
  * provider-specific mock and route import live here.
  */
-import { vi, it } from 'vitest';
+import { vi, it, expect } from 'vitest';
 import {
   mockModelPickerRouteDeps,
   describeModelPickerRouteContract,
@@ -30,13 +30,17 @@ vi.doMock('@/src/lib/openai/connector', () => ({
 
 const { GET: openaiGet, PUT, OPTIONS } = await import('../route');
 
-// Direct, literal it() (see expectSuccessfulGetCarriesCorsHeader's doc
-// comment) so this file itself is recognized by Sonar S2187.
-it('answers a successful GET with the shared CORS header attached', () =>
-  expectSuccessfulGetCarriesCorsHeader({
+// Direct, literal it() with literal expect()s on the helper's return value
+// (see expectSuccessfulGetCarriesCorsHeader's doc comment) so Sonar S2699
+// recognizes this file as containing real assertions.
+it('answers a successful GET with the shared CORS header attached', async () => {
+  const result = await expectSuccessfulGetCarriesCorsHeader({
     GET: openaiGet, resolveOwnerDid: openaiMockResolveOwnerDid, loadSealedCredentials: openaiMockLoadSealed,
     keyPending: openaiMockKeyPending, apiKey: 'sk-SEALED-KEY',
-  }));
+  });
+  expect(result.status).toBe(200);
+  expect(result.corsOrigin).toBe('https://app.imajin.ai');
+});
 
 describeModelPickerRouteContract({
   label: 'OpenAI',

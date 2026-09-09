@@ -73,6 +73,42 @@ function statusBadge(status: string) {
   );
 }
 
+interface SentInviteRow {
+  status: string;
+  acceptedHandle: string | null;
+  acceptedBy: string | null;
+  acceptedDid: string | null;
+  recipient: string;
+}
+
+/** Sent-invite recipient cell — eliminates nested ternary duplication (#2070). */
+function SentInviteRecipient({ row }: Readonly<{ row: SentInviteRow }>) {
+  if (row.status === 'accepted' && row.acceptedHandle) {
+    return (
+      <a
+        href={`${PROFILE_URL}/${row.acceptedHandle}`}
+        className="text-amber-400 hover:text-amber-300 transition"
+      >
+        @{row.acceptedHandle}
+      </a>
+    );
+  }
+  if (row.status === 'accepted' && row.acceptedBy) {
+    if (row.acceptedDid) {
+      return (
+        <a
+          href={`${PROFILE_URL}/${row.acceptedDid}`}
+          className="text-amber-400 hover:text-amber-300 transition"
+        >
+          {row.acceptedBy}
+        </a>
+      );
+    }
+    return <span>{row.acceptedBy}</span>;
+  }
+  return row.recipient;
+}
+
 interface EmailInvitePanelProps {
   limitReached: boolean;
   emailResult: EmailInviteResult | null;
@@ -565,27 +601,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
                 <span className="text-base shrink-0">{row.type === 'link' ? '🔗' : '📧'}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-gray-200 truncate">
-                    {row.status === 'accepted' && row.acceptedHandle ? (
-                      <a
-                        href={`${PROFILE_URL}/${row.acceptedHandle}`}
-                        className="text-amber-400 hover:text-amber-300 transition"
-                      >
-                        @{row.acceptedHandle}
-                      </a>
-                    ) : row.status === 'accepted' && row.acceptedBy ? (
-                      row.acceptedDid ? (
-                        <a
-                          href={`${PROFILE_URL}/${row.acceptedDid}`}
-                          className="text-amber-400 hover:text-amber-300 transition"
-                        >
-                          {row.acceptedBy}
-                        </a>
-                      ) : (
-                        <span>{row.acceptedBy}</span>
-                      )
-                    ) : (
-                      row.recipient
-                    )}
+                    <SentInviteRecipient row={row} />
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5">
                     {formatDate(row.date)}

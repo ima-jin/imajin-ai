@@ -7,7 +7,7 @@
  * `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
  * provider-specific mock wiring lives here.
  */
-import { vi, it } from 'vitest';
+import { vi, it, expect } from 'vitest';
 import {
   describeScopeManifestIdentityContract,
   expectKeyStatusReExportedFromConnector,
@@ -43,13 +43,15 @@ import {
 } from '../scope-manifest';
 import { openaiKeySealed as connectorKeySealed, openaiKeyPending as connectorKeyPending } from '../connector';
 
-// Direct, literal it() (see expectKeyStatusReExportedFromConnector's doc
-// comment) so this file itself is recognized by Sonar S2187.
-it('re-exports openaiKeySealed/openaiKeyPending from ./connector rather than redefining them locally', () =>
-  expectKeyStatusReExportedFromConnector(
+// Direct, literal it() with a literal expect() on the helper's return value
+// (see expectKeyStatusReExportedFromConnector's doc comment) so Sonar S2699
+// recognizes this file as containing a real assertion.
+it('re-exports openaiKeySealed/openaiKeyPending from ./connector rather than redefining them locally', () => {
+  expect(expectKeyStatusReExportedFromConnector(
     { keySealed: openaiKeySealed, keyPending: openaiKeyPending },
     { keySealed: connectorKeySealed, keyPending: connectorKeyPending },
-  ));
+  )).toBe(true);
+});
 
 describeScopeManifestIdentityContract({
   label: 'OpenAI',

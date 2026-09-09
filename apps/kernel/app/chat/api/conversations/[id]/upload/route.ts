@@ -1,28 +1,16 @@
-﻿import { NextRequest } from 'next/server';
+import { NextRequest } from 'next/server';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import sharp from 'sharp';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { createLogger } from '@imajin/logger';
+import { processImageUpload, validateUploadFile } from '@/src/lib/chat/upload';
 
 const log = createLogger('kernel');
 
 const UPLOAD_DIR = '/mnt/media/chat';
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
-const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
-const FILE_TYPES = new Set([
-  'application/pdf',
-  'application/zip',
-  'application/x-zip-compressed',
-  'text/plain',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-]);
 
 /**
  * POST /api/conversations/:id/upload - Upload media to conversation
@@ -51,20 +39,12 @@ export async function POST(
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
 
-    if (!file) {
-      return errorResponse('No file provided', 400);
+    const validation = validateUploadFile(file);
+    if (!validation.ok) {
+      return errorResponse(validation.error, validation.status);
     }
-
-    if (file.size > MAX_FILE_SIZE) {
-      return errorResponse('File too large. Maximum size is 25MB.', 400);
-    }
-
-    const isImage = IMAGE_TYPES.has(file.type);
-    const isFile = FILE_TYPES.has(file.type);
-
-    if (!isImage && !isFile) {
-      return errorResponse('Invalid file type', 400);
-    }
+    const { isImage } = validation;
+    const validFile = file as File;
 
     // Use a filesystem-safe slug from the DID (replace colons with underscores)
     const dirSlug = conversationDid.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -73,55 +53,25 @@ export async function POST(
       await mkdir(convUploadDir, { recursive: true });
     }
 
-    const ext = file.name.split('.').pop() || 'bin';
+    const ext = validFile.name.split('.').pop() || 'bin';
     const timestamp = Date.now();
     const filename = `${timestamp}.${ext}`;
     const filepath = path.join(convUploadDir, filename);
 
-    const bytes = await file.arrayBuffer();
+    const bytes = await validFile.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const mediaMeta: Record<string, unknown> = {
-      originalName: file.name,
-      mimeType: file.type,
-      size: file.size,
+    let mediaMeta: Record<string, unknown> = {
+      originalName: validFile.name,
+      mimeType: validFile.type,
+      size: validFile.size,
     };
 
-    let mediaType: 'image' | 'file';
+    const mediaType: 'image' | 'file' = isImage ? 'image' : 'file';
 
     if (isImage) {
-      mediaType = 'image';
-
-      const metadata = await sharp(buffer).metadata();
-      mediaMeta.width = metadata.width;
-      mediaMeta.height = metadata.height;
-
-      const maxDimension = 1600;
-      let processedBuffer: Buffer = buffer;
-
-      if (metadata.width && metadata.height) {
-        if (metadata.width > maxDimension || metadata.height > maxDimension) {
-          processedBuffer = await sharp(buffer)
-            .resize(maxDimension, maxDimension, { fit: 'inside', withoutEnlargement: true })
-            .jpeg({ quality: 85 })
-            .toBuffer();
-        }
-      }
-
-      await writeFile(filepath, processedBuffer);
-
-      const thumbFilename = `${timestamp}_thumb.jpg`;
-      const thumbPath = path.join(convUploadDir, thumbFilename);
-
-      await sharp(buffer)
-        .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 80 })
-        .toBuffer()
-        .then(thumbBuffer => writeFile(thumbPath, thumbBuffer));
-
-      mediaMeta.thumbnailPath = `${dirSlug}/${thumbFilename}`;
+      ({ mediaMeta } = await processImageUpload({ buffer, filepath, convUploadDir, dirSlug, timestamp, mediaMeta }));
     } else {
-      mediaType = 'file';
       await writeFile(filepath, buffer);
     }
 

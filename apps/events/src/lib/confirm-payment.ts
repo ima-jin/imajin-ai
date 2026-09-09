@@ -220,9 +220,12 @@ async function sendConfirmationEmails(
   const eventDate = new Date(event.startsAt);
   const formattedEventDate = eventDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const formattedEventTime = eventDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
-  const eventImageUrl = event.imageUrl
-    ? (event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`)
-    : undefined;
+  let eventImageUrl: string | undefined;
+  if (event.imageUrl) {
+    eventImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
+  } else {
+    eventImageUrl = undefined;
+  }
 
   const bundleTickets = confirmedTickets.filter((t) => t.registrationStatus !== 'pending');
   const registrationPendingTickets = confirmedTickets.filter((t) => t.registrationStatus === 'pending');
@@ -236,9 +239,12 @@ async function sendConfirmationEmails(
   const magicLink = onboardToken
     ? `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`
     : eventMyTicketsUrl(EVENTS_URL, event.id);
-  const registrationUrl = anyPendingRegistration
-    ? (onboardToken ? magicLink : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id))
-    : eventMyTicketsUrl(EVENTS_URL, event.id);
+  let registrationUrl: string;
+  if (anyPendingRegistration) {
+    registrationUrl = onboardToken ? magicLink : eventRegisterUrl(EVENTS_URL, event.id, ctaTicket!.id);
+  } else {
+    registrationUrl = eventMyTicketsUrl(EVENTS_URL, event.id);
+  }
 
   publish('ticket.receipt', {
     issuer: buyerDid || '',

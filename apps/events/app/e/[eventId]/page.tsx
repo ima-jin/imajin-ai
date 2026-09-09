@@ -73,10 +73,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     priceText = lowestPrice === 0 ? 'Free' : `From CA$${(lowestPrice / 100).toFixed(2)}`;
   }
   
+  const descriptionTruncationSuffix = event.description && event.description.length > 200 ? '...' : '';
   const description = event.description
-    ? event.description.slice(0, 200) + (event.description.length > 200 ? '...' : '')
+    ? event.description.slice(0, 200) + descriptionTruncationSuffix
     : `Join us for ${event.title} on ${formattedDate}`;
-  // Note: inner ternary (length > 200) is inside string concatenation, not inside another ternary
   
   const baseUrl = buildPublicUrlAbsolute('events');
   const url = eventUrl(baseUrl, event.id);

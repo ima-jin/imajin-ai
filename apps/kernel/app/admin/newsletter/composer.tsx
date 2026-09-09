@@ -23,6 +23,12 @@ interface Props {
   }>;
 }
 
+const EDITOR_MODE_LABELS: Record<'raw' | 'rich' | 'preview', string> = {
+  raw: 'Raw',
+  rich: 'Rich',
+  preview: 'Preview',
+};
+
 export default function NewsletterComposer({ initialLists, initialConnectionCount, recentSends }: Readonly<Props>) {
   const [subject, setSubject] = useState('');
   const [replyTo, setReplyTo] = useState('');
@@ -96,6 +102,34 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
 
 
   const canSend = subject.trim().length > 0 && markdown.trim().length > 0 && recipientCount > 0;
+  const resultRecipientSuffix = result?.recipientCount === 1 ? '' : 's';
+
+  let bodyEditor: React.ReactNode;
+  if (editorMode === 'preview') {
+    bodyEditor = (
+      <div className="w-full min-h-48 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-4 py-3">
+        <MarkdownContent content={markdown} />
+      </div>
+    );
+  } else if (editorMode === 'rich') {
+    bodyEditor = (
+      <MarkdownEditor
+        value={markdown}
+        onChange={setMarkdown}
+        placeholder="Write your newsletter in Markdown…"
+      />
+    );
+  } else {
+    bodyEditor = (
+      <textarea
+        value={markdown}
+        onChange={(e) => setMarkdown(e.target.value)}
+        placeholder="Write your newsletter in Markdown…"
+        rows={12}
+        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-500 resize-y"
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -149,30 +183,12 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                     }`}
                   >
-                    {mode === 'raw' ? 'Raw' : mode === 'rich' ? 'Rich' : 'Preview'}
+                    {EDITOR_MODE_LABELS[mode]}
                   </button>
                 ))}
               </div>
             </div>
-            {editorMode === 'preview' ? (
-              <div className="w-full min-h-48 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-4 py-3">
-                <MarkdownContent content={markdown} />
-              </div>
-            ) : editorMode === 'rich' ? (
-              <MarkdownEditor
-                value={markdown}
-                onChange={setMarkdown}
-                placeholder="Write your newsletter in Markdown…"
-              />
-            ) : (
-              <textarea
-                value={markdown}
-                onChange={(e) => setMarkdown(e.target.value)}
-                placeholder="Write your newsletter in Markdown…"
-                rows={12}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-500 resize-y"
-              />
-            )}
+            {bodyEditor}
           </div>
 
           {/* Audience */}
@@ -230,9 +246,7 @@ export default function NewsletterComposer({ initialLists, initialConnectionCoun
 
           {result && (
             <p className="text-sm text-green-600 dark:text-green-400">
-              {result.sent
-                ? `Sent to ${result.recipientCount.toLocaleString()} recipient${result.recipientCount === 1 ? '' : 's'}.`
-                : 'No recipients found.'}
+              {result.sent ? `Sent to ${result.recipientCount.toLocaleString()} recipient${resultRecipientSuffix}.` : 'No recipients found.'}
             </p>
           )}
 

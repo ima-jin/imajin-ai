@@ -22,12 +22,14 @@ function normalizeLegacyManifest(
 ): { oldVersion: string; normalized: Record<string, unknown> } {
   const raw = manifest as unknown as Record<string, unknown>;
   const oldVersion = String(raw.version ?? raw.fair ?? "1.0");
-  const normalizedCreated =
-    typeof raw.created === "string"
-      ? raw.created
-      : typeof raw.createdAt === "string"
-        ? raw.createdAt
-        : new Date().toISOString();
+  let normalizedCreated: string;
+  if (typeof raw.created === "string") {
+    normalizedCreated = raw.created;
+  } else if (typeof raw.createdAt === "string") {
+    normalizedCreated = raw.createdAt;
+  } else {
+    normalizedCreated = new Date().toISOString();
+  }
   const normalized: Record<string, unknown> = {
     ...raw,
     fair: typeof raw.fair === "string" ? raw.fair : "1.0",

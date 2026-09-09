@@ -32,8 +32,9 @@ export async function generateMetadata({ params }: Readonly<PageProps>): Promise
   const identity = await getIdentityInfo(profile.did);
   const emoji = getScopeEmoji(identity.scope, identity.subtype);
   const displayHandle = profile.handle ? `@${profile.handle}` : handle;
+  const bioTruncationSuffix = profile.bio && profile.bio.length > 200 ? '...' : '';
   const description = profile.bio
-    ? profile.bio.slice(0, 200) + (profile.bio.length > 200 ? '...' : '')
+    ? profile.bio.slice(0, 200) + bioTruncationSuffix
     : `${emoji} ${identity.subtype ?? identity.scope} on the Imajin network`;
 
   const baseUrl = buildPublicUrlAbsolute('profile');
