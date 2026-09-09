@@ -10,6 +10,7 @@
  * completion takes longer than the TTFB deadline.
  */
 import type { ProviderRouteConfig } from './types.js';
+import { stripTrailingSlashes } from './url-utils.js';
 
 export class UpstreamTimeoutError extends Error {
   constructor(what: string, timeoutMs: number) {
@@ -51,7 +52,7 @@ export async function forwardToKernel(
   timeoutMs: number,
   headers: ForwardHeaders = {},
 ): Promise<Response> {
-  const url = `${kernelBaseUrl.replace(/\/+$/, '')}/infer/v1/chat/completions`;
+  const url = `${stripTrailingSlashes(kernelBaseUrl)}/infer/v1/chat/completions`;
   const reqHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
@@ -89,7 +90,7 @@ export async function forwardDirect(
   if (!route.directBaseUrl) {
     throw new NoDirectFallbackError(route.id);
   }
-  const url = `${route.directBaseUrl.replace(/\/+$/, '')}/chat/completions`;
+  const url = `${stripTrailingSlashes(route.directBaseUrl)}/chat/completions`;
   try {
     return await fetch(url, {
       method: 'POST',
@@ -135,7 +136,7 @@ export async function forwardAnthropicToKernel(
   timeoutMs: number,
   headers: AnthropicForwardHeaders = {},
 ): Promise<Response> {
-  const url = `${kernelBaseUrl.replace(/\/+$/, '')}/infer/v1/${path}`;
+  const url = `${stripTrailingSlashes(kernelBaseUrl)}/infer/v1/${path}`;
   const reqHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-api-key': token,
@@ -180,7 +181,7 @@ export async function forwardAnthropicDirect(
   if (!route.directBaseUrl) {
     throw new NoDirectFallbackError(route.id);
   }
-  const url = `${route.directBaseUrl.replace(/\/+$/, '')}/${path}`;
+  const url = `${stripTrailingSlashes(route.directBaseUrl)}/${path}`;
   const reqHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-api-key': directApiKey,
