@@ -17,7 +17,24 @@ jobs:
   conformance:
     name: DFOS Conformance Suite
     runs-on: imajin-self-hosted
-    container: imajin-ci:latest
+    # `imajin-ci:latest` was a runner-local tag on the imajin-self-hosted host
+    # that was never actually produced by any Dockerfile or publish workflow
+    # in this repo — there was no image to pin a digest from, and the
+    # scheduled run had been silently failing at "Initialize containers" for
+    # three weeks straight (2026-08-24, 08-31, 09-07) because the tag simply
+    # didn't exist on the runner. Switching to the same `ci-runner` image
+    # ci.yml already uses: it only needs git (to clone dfos) plus whatever
+    # actions/setup-go@v5 needs to unpack its own toolchain (curl + tar),
+    # all of which .github/docker/Dockerfile.ci installs.
+    container:
+      # Pinned to the immutable digest `build-ci-image.yml` published on main
+      # for commit 30643d7f (githubactions:S6596 — no floating tags). Bump by
+      # re-running that workflow (push to .github/docker/Dockerfile.ci or
+      # workflow_dispatch) and copying the new `containerimage.digest` here.
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Set up Go
         uses: actions/setup-go@v5
