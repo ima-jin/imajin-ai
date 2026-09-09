@@ -92,7 +92,7 @@ export async function verifyWitnessJws(params: {
   }
 
   const payload = parseWitnessPayload(verifiedPayload);
-  if (!payload || payload.attestationId !== attestationId || payload.cid !== cid) {
+  if (payload?.attestationId !== attestationId || payload?.cid !== cid) {
     return { ok: false, error: 'witnessJws payload does not bind to this attestation (attestationId/cid mismatch)' };
   }
 
