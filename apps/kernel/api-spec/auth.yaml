@@ -124,6 +124,15 @@ components:
         status: { type: string, enum: [pending, accepted, declined] }
         expiresAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
+    AppTokenMintResult:
+      type: object
+      description: Shape returned by every app-token mint endpoint (#1069).
+      properties:
+        token: { type: string, description: "Short-lived EdDSA-signed app token" }
+        expiresIn: { type: integer, example: 600, description: "Seconds until expiry" }
+        scopes:
+          type: array
+          items: { type: string }
 
 paths:
   /api/health:
@@ -546,6 +555,118 @@ paths:
         "400":
           description: Missing or expired token (returns HTML error page)
 
+  /api/onboard/poll:
+    get:
+      tags: [auth]
+      operationId: onboardPoll
+      summary: Poll for verification status of an onboard token (cross-tab handoff)
+      description: |
+        Used by the events magic-link flow (`MagicLinkButton`) and any other cross-tab
+        onboarding UI: after `POST /api/onboard` with `wantPolling: true` returns a
+        `pollHandle`, the originating tab polls this endpoint until the link is clicked
+        in another tab. Rate-limited to 200 req/min per IP (generous — clients poll every
+        ~2s for up to the token's 15-min TTL).
+
+        An unknown or expired `handle` resolves to `status: expired` rather than 404, so
+        pollers do not need to special-case a missing record.
+      parameters:
+        - name: handle
+          in: query
+          required: true
+          schema: { type: string }
+          description: "pollHandle returned by POST /api/onboard"
+      responses:
+        "200":
+          description: Poll result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [pending, completed, claimed, expired] }
+                  handoffToken:
+                    type: string
+                    description: "Present only when status=completed — single-use, exchanged via POST /api/onboard/claim"
+        "400":
+          description: handle is required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Poll failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/onboard/claim:
+    post:
+      tags: [auth]
+      operationId: onboardClaim
+      summary: Claim a session via one-shot handoff token (cross-tab handoff)
+      description: |
+        The other half of the `/api/onboard/poll` handoff: exchanges the single-use
+        `handoffToken` (surfaced by poll once the magic link has been clicked in another
+        tab) for a real `imajin_session` cookie set on THIS response — the tab that
+        initiated onboarding is the one that ends up logged in. The handoff token expires
+        5 minutes after the link was clicked, independent of the original onboard token's
+        own TTL. Rate-limited to 60 req/min per IP (defense-in-depth only — the token
+        itself is single-use, nanoid(24), and short-lived).
+
+        Also sets the `x-acting-as` cookie when the onboard record carried a `scopeDid`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [handoffToken]
+              properties:
+                handoffToken: { type: string }
+      responses:
+        "200":
+          description: Session claimed — sets imajin_session cookie (and x-acting-as, if scoped)
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: "imajin_session=<jwt>; HttpOnly; Secure; SameSite=Lax"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+        "400":
+          description: handoffToken missing, the handoff record is unknown/already used, or it has no usedAt yet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No identity resolves for the email or DID behind this handoff token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "410":
+          description: Handoff token expired (more than 5 minutes since the link was clicked)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Claim failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/lookup/{id}:
     get:
       tags: [auth]
@@ -606,6 +727,270 @@ paths:
                   valid: { type: boolean }
                   identity: { $ref: "#/components/schemas/Identity" }
                   error: { type: string }
+
+  /api/apps/token:
+    post:
+      tags: [auth]
+      operationId: mintAppToken
+      summary: Mint a short-lived, scoped app token for a third-party app holding a user's app.authorized attestation (#1069, #799 P3)
+      description: |
+        Front door of the registered-app contract (#1993): replaces passing the raw
+        `attestationId` around as a long-lived bearer. The app proves possession of its
+        keypair — an Ed25519 signature over `${appDid}:${attestationId}:${nonce}:${timestamp}`
+        — and the kernel validates the user's `app.authorized` attestation for that app
+        before minting. No cookie or bearer auth: the signature IS the authentication.
+
+        `nonce` must be at least 16 characters (client-generated); `timestamp` must be an
+        ISO-8601 string within 60s of server time (replay-window bound). The app's public
+        key is resolved from `registry.apps`, not `auth.identities` — see the route source
+        for why. Narrowing to a single `scope` is optional; when omitted, all scopes on the
+        attestation are granted. The minted token is verified downstream via
+        `POST /api/apps/token/verify`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appDid, attestationId, nonce, timestamp, signature]
+              properties:
+                appDid: { type: string, description: "The app's registered DID" }
+                attestationId: { type: string, description: "The user's app.authorized attestation for this app" }
+                scope: { type: string, description: "Optional single scope to narrow to (must already be granted)" }
+                aud: { type: string, description: "Optional target service" }
+                nonce: { type: string, minLength: 16, description: "Client-generated, >= 16 chars" }
+                timestamp: { type: string, format: date-time, description: "Must be within 60s of server time" }
+                signature: { type: string, description: "Ed25519 hex signature over `${appDid}:${attestationId}:${nonce}:${timestamp}`" }
+      responses:
+        "200":
+          description: App token minted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppTokenMintResult" }
+        "400":
+          description: Missing required field, or nonce shorter than 16 chars
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Timestamp outside the 60s replay window, or invalid proof-of-possession signature
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: App is not active, the app.authorized attestation was revoked, or the requested scope was not granted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown app DID, or no matching app.authorized attestation found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/apps/token/service:
+    post:
+      tags: [auth]
+      operationId: mintAppServiceToken
+      summary: Mint an app-tier (keyholder) service token — no user delegation (#1141)
+      description: |
+        For registered daemons (e.g. broker-agent) that authenticate as the app itself
+        rather than on behalf of a specific user. Proof-of-possession only: an Ed25519
+        signature over `${appDid}:${nonce}:${timestamp}`, verified against the app's
+        registered public key in `registry.apps`.
+
+        Service tokens carry no `userDid` and cannot impersonate a user — routes that
+        accept them must resolve the effective user separately (e.g. via `X-Acting-For`).
+        Granted scopes are the app's registered `requestedScopes`, clamped first to the
+        SCOPES vocabulary and then to the service-eligible fence (#1803); today that fence
+        ships empty, so no scope currently materialises on a service token. Verified
+        downstream via `POST /api/apps/token/verify`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appDid, nonce, timestamp, signature]
+              properties:
+                appDid: { type: string, description: "The app's registered DID" }
+                nonce: { type: string, minLength: 16, description: "Client-generated, >= 16 chars" }
+                timestamp: { type: string, format: date-time, description: "Must be within 60s of server time" }
+                signature: { type: string, description: "Ed25519 hex signature over `${appDid}:${nonce}:${timestamp}`" }
+      responses:
+        "200":
+          description: Service token minted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppTokenMintResult" }
+        "400":
+          description: Missing required field, or nonce shorter than 16 chars
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Timestamp outside the 60s replay window, or invalid proof-of-possession signature
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: App is not active
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown app DID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/apps/token/verify:
+    post:
+      tags: [auth]
+      operationId: verifyAppToken
+      summary: Stateless verification of an app token minted by /api/apps/token or /api/apps/token/service (#1069)
+      description: |
+        Checks the EdDSA signature and expiry locally against the kernel's public key —
+        no DB lookup. Accepts both user-delegated (`app+jwt`) and keyholder service
+        (`app-service+jwt`) tokens; for service tokens `userDid` is returned as `""` and
+        `isServiceToken` is `true`. Optionally enforces that `scope` is among the token's
+        granted scopes. This is the transport `requireAppAuth` (`@imajin/auth`) calls into.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+                scope: { type: string, description: "Optional scope that must be present in the token" }
+      responses:
+        "200":
+          description: Token is valid — AppAuthContext shape
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appDid: { type: string }
+                  userDid: { type: string, description: "Empty string for service tokens" }
+                  scopes: { type: array, items: { type: string } }
+                  attestationId: { type: string }
+                  isServiceToken: { type: boolean, description: "Present and true only for app-service+jwt tokens" }
+        "400":
+          description: token is required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Invalid or expired app token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: scope was not granted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/tokens/app:
+    post:
+      tags: [auth]
+      operationId: mintSessionAppToken
+      summary: Mint a short-lived, host-scoped app token from the caller's own session (#1069 Phase 1)
+      description: |
+        The other half of the app-token model: `/api/apps/token` mints a token for a
+        THIRD-PARTY app that already holds a user's `app.authorized` attestation; this
+        endpoint mints one for a FIRST-PARTY app the signed-in user is about to visit, so
+        that app can stop reading the shared session cookie directly (see
+        `docs/security/cookie-isolation.md`, "Path A" / "Path B"). Requires the
+        `imajin_session` cookie. `scopes` are clamped to the SCOPES vocabulary (default:
+        none). Verified downstream via `POST /api/tokens/app/verify`.
+
+        A Phase 1 primitive: shipping it does not change any existing app's default auth
+        behavior. Nothing calls it unless an app explicitly opts in via
+        `requireSessionOrAppToken` (`@imajin/auth`), e.g. apps/coffee behind
+        `SESSION_COOKIE_SCOPE=host`.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [aud]
+              properties:
+                aud: { type: string, description: "Target app host this token is scoped to" }
+                scopes:
+                  type: array
+                  items: { type: string }
+                  description: "Requested scopes, clamped to the SCOPES vocabulary (default: [])"
+      responses:
+        "200":
+          description: Session-scoped app token minted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppTokenMintResult" }
+        "400":
+          description: aud is missing or not a string, or the request body is invalid JSON
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated, or the session cookie is invalid/expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/tokens/app/verify:
+    post:
+      tags: [auth]
+      operationId: verifySessionAppToken
+      summary: Stateless verification of a session-scoped app token minted by /api/tokens/app (#1069 Phase 1)
+      description: |
+        Checks the EdDSA signature, expiry, and `typ` locally (no DB hit). When `aud` is
+        supplied, also enforces that the token was minted for that exact host, so a token
+        minted for one app can never verify for another. This is the transport
+        `verifyAppToken` (`@imajin/auth`) calls into.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+                aud: { type: string, description: "Expected audience (host) — checked exactly when supplied" }
+                scope: { type: string, description: "Optional scope that must be present in the token" }
+      responses:
+        "200":
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sub: { type: string, description: "DID of the session that minted this token" }
+                  aud: { type: string }
+                  scopes: { type: array, items: { type: string } }
+        "400":
+          description: token is required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Invalid, expired, or mismatched-audience token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: scope was not granted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/verify:
     post:
@@ -2212,6 +2597,66 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: A revoked grant cannot be renewed — issue a new one
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/internal/verify-delegation:
+    post:
+      tags: [auth]
+      operationId: internalVerifyDelegation
+      summary: Internal — may agentDid act for principalDid? (#1887 dual-read acting-for check)
+      description: |
+        Internal-only, guarded by `AUTH_INTERNAL_API_KEY` via the `x-internal-key` header
+        (same convention as `/api/internal/grants/introspect`). Answers a single coarse
+        question — not capability-specific like grant introspection — used to bootstrap
+        `X-Acting-For` delegation and `register_also` (ws-server.js).
+
+        Resolution is grants-first with a logged fallback to the legacy `role='agent'`
+        membership check (#1887 migration window): checks for any active, unexpired grant
+        from `principalDid` to `agentDid` first, and only falls back to membership when no
+        grant is found — so `via` tells you which path answered. Fails closed: a lookup
+        error resolves `allowed: false` with a 500, never a silent allow.
+
+        Called by `packages/auth`'s `requireAuth` (via `resolveAgentDelegationAuthority`)
+        whenever a caller sends `X-Acting-For`, and by `ws-server.js` to authorize
+        `register_also` — every service that imports `@imajin/auth` hits this
+        transitively (#1995).
+      security:
+        - internalKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentDid, principalDid]
+              properties:
+                agentDid: { type: string }
+                principalDid: { type: string }
+      responses:
+        "200":
+          description: Resolution result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allowed: { type: boolean }
+                  via: { type: string, enum: [grant, membership, none] }
+                  grantId: { type: string, description: "Present only when via=grant" }
+        "400":
+          description: Missing agentDid or principalDid, or invalid JSON
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Missing or invalid x-internal-key
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Lookup failed — treated as denied by every caller
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
