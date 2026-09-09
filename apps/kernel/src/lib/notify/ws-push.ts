@@ -11,18 +11,24 @@
  * readable through `GET /notify/api/notifications`, so a failed push is a
  * degraded experience, never a failed send.
  *
- * ## Redelivery (#2044)
+ * ## Redelivery (#2044) and ack-confirmed delivery (#2099)
  * A push that finds nobody connected used to be a dead end beyond the
  * persisted row — see `docs/warp-notification-chain.md` Hop 3. `ws-server.js`
  * now replays a recipient's undelivered backlog immediately on reconnect
  * (`src/lib/notify/backlog.ts`), so this function claims the row
- * (`delivery.ts`'s atomic `delivered_at IS NULL` guard) before attempting the
- * push, and releases the claim again if the push does not actually reach a
- * socket — the same guard the backlog replay uses, so the two paths can never
- * both deliver the same notification.
+ * (`delivery.ts`'s atomic WS-send-attempt guard) before attempting the push,
+ * and rolls the claim back if the push does not actually reach a socket —
+ * the same guard the backlog replay uses, so the two paths can never both
+ * attempt the same notification at once.
+ *
+ * A WS `.send()` succeeding here does NOT mark the row delivered: a socket
+ * whose peer already crashed still reports `readyState === OPEN`, which is
+ * exactly the stale-socket gap #2099 closes. `delivered_at` is set only by
+ * an explicit `{ type: 'notification_ack' }` frame from the recipient's
+ * plugin (`ackNotificationDelivery`, handled by `ws-server.js`).
  */
 import { createLogger } from '@imajin/logger';
-import { claimNotificationForDelivery, releaseNotificationClaim } from './delivery';
+import { claimNotificationForWsSend, rollbackWsClaim, WS_MAX_ATTEMPTS } from './delivery';
 
 const log = createLogger('kernel');
 
@@ -95,17 +101,24 @@ export function buildNotificationFrame(input: {
  */
 
 /**
- * Release `id`'s delivery claim, swallowing any error. This already runs
+ * Roll back `id`'s WS-send claim, swallowing any error. This already runs
  * from inside `pushNotificationToDid`'s "never throws" contract; a failed
- * release just leaves the row claimed until the next explicit fix, degrading
- * to "will not be replayed" rather than throwing out of a fire-and-forget push.
+ * rollback just leaves the row claimed until its ack timeout elapses,
+ * degrading to "replayed later than ideal" rather than throwing out of a
+ * fire-and-forget push.
  */
-async function releaseClaimSafely(id: string): Promise<void> {
+async function rollbackClaimSafely(id: string): Promise<void> {
   try {
-    await releaseNotificationClaim(id);
+    await rollbackWsClaim(id);
   } catch (err) {
-    log.error({ id, err: String(err) }, 'Notification delivery claim release failed');
+    log.error({ id, err: String(err) }, 'Notification WS claim rollback failed');
   }
+}
+
+/** Warn once a row has spent its last permitted WS re-offer (#2099). */
+function warnIfAttemptsCapped(id: string, attempts: number): void {
+  if (attempts < WS_MAX_ATTEMPTS) return;
+  log.warn({ id, attempts }, 'Notification WS re-offer cap reached');
 }
 
 export async function pushNotificationToDid(
@@ -117,21 +130,23 @@ export async function pushNotificationToDid(
     return false;
   }
 
-  // Claim this row before attempting delivery (#2044): the same atomic guard
-  // a backlog replay uses (delivery.ts), so a notification created at the
-  // exact instant its recipient reconnects is never delivered by both paths.
-  let claimed = true;
+  // Claim this row before attempting delivery (#2044/#2099): the same atomic
+  // guard a backlog replay uses (delivery.ts), so a notification created at
+  // the exact instant its recipient reconnects is never attempted by both
+  // paths at once.
+  let claim = { claimed: true, attempts: 0 };
   try {
-    claimed = await claimNotificationForDelivery(frame.id);
+    claim = await claimNotificationForWsSend(frame.id);
   } catch (err) {
-    log.error({ id: frame.id, err: String(err) }, 'Notification delivery claim failed');
+    log.error({ id: frame.id, err: String(err) }, 'Notification WS claim failed');
     // Fail open: a DB hiccup here must not silently drop a live push. Worst
     // case is a rare duplicate frame, not a permanently missed one.
-    claimed = true;
+    claim = { claimed: true, attempts: 0 };
   }
-  if (!claimed) {
+  if (!claim.claimed) {
     return false;
   }
+  warnIfAttemptsCapped(frame.id, claim.attempts);
 
   try {
     const res = await fetch(`http://localhost:${WS_PORT}/chat/api/internal/did-push`, {
@@ -145,7 +160,7 @@ export async function pushNotificationToDid(
 
     if (!res.ok) {
       log.error({ id: frame.id, status: res.status }, 'Notification WS push failed');
-      await releaseClaimSafely(frame.id);
+      await rollbackClaimSafely(frame.id);
       return false;
     }
 
@@ -156,12 +171,12 @@ export async function pushNotificationToDid(
         { id: frame.id, recipientDid },
         'Notification WS push found no connected socket for recipient',
       );
-      await releaseClaimSafely(frame.id);
+      await rollbackClaimSafely(frame.id);
     }
     return delivered;
   } catch (err) {
     log.error({ id: frame.id, err: String(err) }, 'Notification WS push error');
-    await releaseClaimSafely(frame.id);
+    await rollbackClaimSafely(frame.id);
     return false;
   }
 }

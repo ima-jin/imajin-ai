@@ -1,6 +1,7 @@
 const { WebSocketServer } = require('ws');
 const { createAlsoRegistry } = require('./src/lib/ws/also-registry');
 const { createNotificationBacklogReplayer } = require('./src/lib/ws/notification-backlog');
+const { createHeartbeat } = require('./src/lib/ws/heartbeat');
 
 /** @type {Map<import('ws').WebSocket, { did: string, alsoDids: Set<string>, subscriptions: Set<string> }>} */
 const socketMeta = new Map();
@@ -316,6 +317,75 @@ function handleStopTypingMessage(meta, msg) {
 }
 
 /**
+ * Release `did`'s un-acked WS claims (#2099). Called by the heartbeat the
+ * moment it terminates a socket that missed too many pongs, so a fast
+ * reconnect does not have to wait out the 30s ack timeout before its
+ * backlog replay re-offers a notification that was sent to the socket that
+ * just died. Fire-and-forget by contract — a failed release just means
+ * those rows wait out their own ack timeout instead, same reasoning as
+ * `fetchNotificationBacklog` degrading to an empty backlog on failure.
+ */
+async function releaseWsClaims(did) {
+  const port = process.env.PORT || '3000';
+  const key = process.env.AUTH_INTERNAL_API_KEY;
+  if (!key) return;
+  try {
+    await fetch(`http://localhost:${port}/notify/api/internal/release`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-key': key,
+      },
+      body: JSON.stringify({ did }),
+    });
+  } catch (err) {
+    console.error('[WS] Notification WS claim release failed:', err.message);
+  }
+}
+
+/**
+ * Forward the plugin's `{ type: 'notification_ack', id }` frame (#2099) to
+ * the kernel — the only place `delivered_at` is ever set. `did` is always
+ * the acking socket's own authenticated DID, never anything read out of
+ * the frame itself, so `ackNotificationDelivery` can scope its UPDATE to
+ * it (PR #2101 review: a socket must not be able to ack an arbitrary id
+ * belonging to a different DID). Never throws: an ack that fails to land
+ * is simply retried by the plugin's own retry/dedup logic, or the row
+ * eventually times out and gets re-offered on the next reconnect either way.
+ */
+async function ackNotification(id, did) {
+  const port = process.env.PORT || '3000';
+  const key = process.env.AUTH_INTERNAL_API_KEY;
+  if (!key) return;
+  try {
+    await fetch(`http://localhost:${port}/notify/api/internal/ack`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-key': key,
+      },
+      body: JSON.stringify({ id, did }),
+    });
+  } catch (err) {
+    console.error('[WS] Notification ack failed:', err.message);
+  }
+}
+
+/**
+ * Handle an inbound `{ type: 'notification_ack', id }` frame (#2099).
+ * Binds the ack to `meta.did` -- the socket's own authenticated identity,
+ * established at connection/auth time, never a value the frame itself
+ * could spoof (#2101 review). A socket with no authenticated DID never
+ * reaches here (the message dispatcher already rejects it), but the guard
+ * stays as defense in depth.
+ */
+function handleNotificationAck(meta, msg) {
+  if (typeof msg.id !== 'string' || !msg.id) return;
+  if (!meta.did) return;
+  ackNotification(msg.id, meta.did);
+}
+
+/**
  * Route one parsed WS message to its handler. Deferred auth is checked first
  * (it's the only message type allowed before `meta.authenticated`); every
  * other type is rejected until the socket has authenticated.
@@ -348,11 +418,74 @@ async function dispatchMessage(ws, meta, msg) {
     case 'stop_typing':
       handleStopTypingMessage(meta, msg);
       break;
+    case 'notification_ack':
+      // Protocol contract with the plugin (#2099): the only trigger for
+      // `delivered_at`. Fire-and-forget — nothing useful to report back
+      // over this socket either way, and a dropped ack just leaves the
+      // row to time out and get re-offered on the next reconnect.
+      handleNotificationAck(meta, msg);
+      break;
   }
+}
+
+/**
+ * Server-initiated liveness check (#2099): a dead gateway socket that never
+ * fires `close` (a hard crash rather than a clean disconnect) would
+ * otherwise sit in `didSockets` forever, letting `sendToDid` keep reporting
+ * `sent = true` for a peer that is already gone. See src/lib/ws/heartbeat.js.
+ */
+const heartbeat = createHeartbeat({
+  releaseClaims: releaseWsClaims,
+  log: (message) => console.log('[WS]', message),
+});
+
+/**
+ * Sockets already cleaned up, so a redundant event for the same socket
+ * (`ws.terminate()` still fires `close` once the underlying connection
+ * actually tears down) never double-runs cleanup — e.g. a duplicate
+ * presence-offline broadcast or `updateLastSeen` call.
+ * @type {WeakSet<import('ws').WebSocket>}
+ */
+const cleanedUpSockets = new WeakSet();
+
+/**
+ * Remove a socket from every index it participates in: `register_also`
+ * delegations, `socketMeta`, the heartbeat's own tracking, and — when it was
+ * the DID's last open socket — `didSockets` plus the last-seen/presence
+ * side effects. Shared by the normal `close` handler and the heartbeat's
+ * dead-socket path so "immediate removal from didSockets" means the same
+ * thing from either trigger (#2099).
+ */
+function cleanupSocket(ws, meta) {
+  if (cleanedUpSockets.has(ws)) return;
+  cleanedUpSockets.add(ws);
+
+  alsoRegistry.cleanup(ws, meta);
+  socketMeta.delete(ws);
+  heartbeat.untrack(ws);
+
+  const closeDid = meta.did;
+  if (!closeDid) return;
+  const sockets = didSockets.get(closeDid);
+  if (!sockets) return;
+  sockets.delete(ws);
+  if (sockets.size !== 0) return;
+
+  didSockets.delete(closeDid);
+  // Fire-and-forget: both already swallow their own errors internally, and
+  // neither result gates anything else in this cleanup.
+  updateLastSeen(closeDid);
+  for (const [convId, convTyping] of typingStatus.entries()) {
+    if (convTyping.has(closeDid)) {
+      handleStopTyping(convId, closeDid);
+    }
+  }
+  broadcastPresenceChange(closeDid, false);
 }
 
 function setupWebSocket(server) {
   wss = new WebSocketServer({ noServer: true });
+  heartbeat.start(() => socketMeta.entries(), cleanupSocket);
 
   server.on('upgrade', async (req, socket, head) => {
     const { pathname } = new URL(req.url, `http://${req.headers.host}`);
@@ -369,6 +502,8 @@ function setupWebSocket(server) {
     wss.handleUpgrade(req, socket, head, (ws) => {
       const meta = { did: did || null, alsoDids: new Set(), subscriptions: new Set(), authenticated: !!did };
       socketMeta.set(ws, meta);
+      heartbeat.track(ws);
+      ws.on('pong', () => heartbeat.markAlive(ws));
 
       if (did) {
         if (!didSockets.has(did)) didSockets.set(did, new Set());
@@ -394,27 +529,7 @@ function setupWebSocket(server) {
         }
       });
 
-      ws.on('close', async () => {
-        const closeDid = meta.did;
-        alsoRegistry.cleanup(ws, meta);
-        socketMeta.delete(ws);
-        if (closeDid) {
-          const sockets = didSockets.get(closeDid);
-          if (sockets) {
-            sockets.delete(ws);
-            if (sockets.size === 0) {
-              didSockets.delete(closeDid);
-              await updateLastSeen(closeDid);
-              for (const [convId, convTyping] of typingStatus.entries()) {
-                if (convTyping.has(closeDid)) {
-                  handleStopTyping(convId, closeDid);
-                }
-              }
-              broadcastPresenceChange(closeDid, false);
-            }
-          }
-        }
-      });
+      ws.on('close', () => cleanupSocket(ws, meta));
     });
   });
 }
