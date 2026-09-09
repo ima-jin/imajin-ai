@@ -1726,6 +1726,70 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/credentials/resolve:
+    post:
+      tags: [auth]
+      operationId: resolveCredential
+      summary: Internal — resolve email/DID credential pairs (service-to-service)
+      description: |
+        Single-item counterpart to the profile service's batched
+        `POST /profile/api/resolve` (#1998): serves the two directions that
+        route does not cover. Exactly one of `did` or `email` is required.
+
+        - `did` -> `{ email }`: looks up `auth.credentials` (type='email')
+          only, no `profile.profiles`/`auth.identities` fallback.
+        - `email` -> `{ did }`: `mode: "credential"` queries
+          `auth.credentials` only; `mode: "full"` (default) additionally
+          falls back to `profile.profiles.contact_email` then
+          `auth.identities.contact_email`, in that precedence order
+          (#1834/#1858).
+
+        Replaces the raw SQL that `packages/auth/src/credentials.ts` used
+        to run directly against these tables — the last direct DB reach in
+        the published `@imajin/auth` SDK (#1992, closing the #1983 audit
+        finding on this file).
+
+        Requires `ATTESTATION_INTERNAL_API_KEY` as Bearer token. No session
+        cookie — mirrors POST /api/eligibility/evaluate's reasoning: the
+        caller acts on its own service identity, not on behalf of a
+        session belonging to `did`/`email`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                did: { type: string, description: "Resolve this DID's email credential. Mutually exclusive with email." }
+                email: { type: string, format: email, description: "Resolve the DID that owns this email. Mutually exclusive with did." }
+                mode:
+                  type: string
+                  enum: [credential, full]
+                  default: full
+                  description: "Only applies to an email lookup. credential = auth.credentials only; full = 3-tier fallback (default)."
+      responses:
+        "200":
+          description: Resolution result — whichever field was requested is populated (or null), the other is omitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  email: { type: string, nullable: true, description: "Present when did was provided" }
+                  did: { type: string, nullable: true, description: "Present when email was provided" }
+        "400":
+          description: Invalid request (neither or both of did/email provided, or an unknown mode)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized (invalid API key)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/keys/retrieve:
     post:
       tags: [auth]

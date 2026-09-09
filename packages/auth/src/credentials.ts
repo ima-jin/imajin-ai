@@ -1,4 +1,7 @@
-import { getClient } from '@imajin/db';
+import { createLogger } from '@imajin/logger';
+import { postInternal } from './internal-post';
+
+const log = createLogger('auth');
 
 function normalizeEmail(email: string): string {
   return email.toLowerCase().trim();
@@ -73,23 +76,48 @@ export async function resolveIdentitiesForDids(dids: string[]): Promise<Map<stri
 }
 
 /**
+ * Service-to-service call to the kernel's internal
+ * `POST /auth/api/credentials/resolve` (#1992/#1983) — replaces the raw
+ * `auth.credentials`/`profile.profiles`/`auth.identities` SQL this file used
+ * to run directly against the kernel database, the last direct DB reach in
+ * the published `@imajin/auth` SDK. Never throws: a transport/auth failure
+ * or an unresolved did/email simply resolves to `null`, matching how the
+ * raw-SQL helpers this replaces failed soft rather than propagating into
+ * transactional flows (refunds, ticket emails, invite accept, ...).
+ */
+async function resolveCredential(
+  field: 'email' | 'did',
+  body: Record<string, unknown>,
+): Promise<string | null> {
+  try {
+    const outcome = await postInternal<Record<string, string | null>>('/api/credentials/resolve', body);
+    if (!outcome) {
+      log.warn({}, 'Credential resolution skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
+      return null;
+    }
+    if (!outcome.ok) {
+      log.warn({ status: outcome.status }, 'Credential resolution rejected');
+      return null;
+    }
+    return outcome.data?.[field] ?? null;
+  } catch (err) {
+    log.error({ err: String(err) }, 'Credential resolution error');
+    return null;
+  }
+}
+
+/**
  * Look up the email credential for a DID.
  * Returns null if no email credential exists (e.g. keypair-only DIDs).
  *
- * Deliberately narrower than {@link resolveEmailForDid}: this checks
+ * Deliberately narrower than {@link resolveEmailForDid}: this resolves
  * `auth.credentials` only, with no `profile.profiles`/`auth.identities`
- * fallback, so it stays raw SQL rather than moving onto the new
- * `/api/resolve` route (#1998), which always resolves the full 3-tier
- * precedence and has no "credentials-only" mode.
+ * fallback — a "credentials-only" contract the batched `/api/resolve`
+ * route (#1998) does not serve (that route always resolves the full
+ * 3-tier precedence).
  */
 export async function getEmailForDid(did: string): Promise<string | null> {
-  const sql = getClient();
-  const rows = await sql`
-    SELECT value FROM auth.credentials
-    WHERE did = ${did} AND type = 'email'
-    LIMIT 1
-  `;
-  return rows[0]?.value ?? null;
+  return resolveCredential('email', { did });
 }
 
 /**
@@ -97,13 +125,7 @@ export async function getEmailForDid(did: string): Promise<string | null> {
  * Returns null if no identity has registered this email.
  */
 export async function getDidForEmail(email: string): Promise<string | null> {
-  const sql = getClient();
-  const rows = await sql`
-    SELECT did FROM auth.credentials
-    WHERE type = 'email' AND value = ${normalizeEmail(email)}
-    LIMIT 1
-  `;
-  return rows[0]?.did ?? null;
+  return resolveCredential('did', { email: normalizeEmail(email), mode: 'credential' });
 }
 
 /**
@@ -125,31 +147,11 @@ export async function getDidForEmail(email: string): Promise<string | null> {
  *     profile row at all.
  *
  * Returns null when no identity owns this email under any of the three.
+ * The kernel route resolves the same precedence server-side (#1992) — this
+ * is a transport change only, not a behavior change.
  */
 export async function resolveDidForEmail(email: string): Promise<string | null> {
-  const normalized = normalizeEmail(email);
-  const sql = getClient();
-
-  const [byCredential] = await sql`
-    SELECT did FROM auth.credentials
-    WHERE type = 'email' AND value = ${normalized}
-    LIMIT 1
-  `;
-  if (byCredential?.did) return byCredential.did;
-
-  const [byProfile] = await sql`
-    SELECT did FROM profile.profiles
-    WHERE lower(trim(contact_email)) = ${normalized}
-    LIMIT 1
-  `;
-  if (byProfile?.did) return byProfile.did;
-
-  const [byIdentity] = await sql`
-    SELECT id AS did FROM auth.identities
-    WHERE lower(trim(contact_email)) = ${normalized}
-    LIMIT 1
-  `;
-  return byIdentity?.did ?? null;
+  return resolveCredential('did', { email: normalizeEmail(email), mode: 'full' });
 }
 
 /**
