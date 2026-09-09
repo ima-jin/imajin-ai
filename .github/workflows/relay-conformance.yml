@@ -6,7 +6,15 @@ on:
       relay_url:
         description: 'Relay URL to test against'
         required: false
-        default: 'https://dev-registry.imajin.ai/relay'
+        # dev-registry.imajin.ai was retired when services moved to the
+        # one-domain-per-env, path-prefixed layout (#2116): it now 301s to
+        # dev-jin.imajin.ai/registry/..., and a 301 on a POST is followed as
+        # a GET by both curl -L and Go's net/http, landing on a route the
+        # relay never registered for GET — hence the 404 on every request.
+        # The relay is mounted at apps/kernel/app/registry/relay/[[...path]]
+        # under the registry service's own path prefix, so the correct
+        # target is the new host with that prefix baked in, no redirect hop.
+        default: 'https://dev-jin.imajin.ai/registry/relay'
         type: string
   schedule:
     # Weekly safety net (Mondays 08:00 UTC) against the default dev relay.
@@ -50,7 +58,7 @@ jobs:
         # silently passed zero tests).
         working-directory: dfos/packages/relay-conformance
         env:
-          RELAY_URL: ${{ github.event.inputs.relay_url || 'https://dev-registry.imajin.ai/relay' }}
+          RELAY_URL: ${{ github.event.inputs.relay_url || 'https://dev-jin.imajin.ai/registry/relay' }}
         run: |
           echo "🔍 Testing relay at: $RELAY_URL"
           go test -v -count=1 ./... 2>&1 | tee results.txt
