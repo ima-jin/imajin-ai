@@ -2,13 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback, FormEvent } from 'react';
 
-interface Message {
+export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
 }
 
-interface ToolEvent {
+export interface ToolEvent {
   type: 'tool_call' | 'tool_result';
   name: string;
   data: unknown;
@@ -20,6 +20,87 @@ interface PresenceChatProps {
   targetName: string;
   targetHandle?: string;
   onClose: () => void;
+}
+
+type StreamEvent = { type: string; [key: string]: unknown };
+
+// ─── Stream parsing/handling (#2119: extracted out of sendMessage so its
+// cognitive complexity stays under the SonarCloud threshold — no behavior
+// change) ─────────────────────────────────────────────────────────────────────
+
+/** Parses one NDJSON line into an event, or null for a blank/malformed line. */
+export function parseStreamLine(line: string): StreamEvent | null {
+  if (!line.trim()) return null;
+  try {
+    return JSON.parse(line);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Routes a parsed stream event to the state update for its type; unknown
+ * types are ignored. Takes the raw setters directly (rather than a handlers
+ * object built from closures in the caller) so this stays a shallow,
+ * top-level function instead of adding nesting inside sendMessage.
+ */
+export function dispatchStreamEvent(
+  event: StreamEvent,
+  assistantId: string,
+  setMessages: (updater: (prev: Message[]) => Message[]) => void,
+  setToolEvents: (updater: (prev: ToolEvent[]) => ToolEvent[]) => void,
+  setError: (message: string) => void,
+): void {
+  if (event.type === 'text') {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + (event.text as string) } : m)),
+    );
+  } else if (event.type === 'tool_call') {
+    setToolEvents((prev) => [
+      ...prev,
+      { type: 'tool_call', name: event.name as string, data: event.args, timestamp: Date.now() },
+    ]);
+  } else if (event.type === 'tool_result') {
+    setToolEvents((prev) => [
+      ...prev,
+      { type: 'tool_result', name: event.name as string, data: event.result, timestamp: Date.now() },
+    ]);
+  } else if (event.type === 'error') {
+    setError(event.message as string);
+  }
+}
+
+/** Throws when the response isn't usable, mirroring the original inline guards. */
+export async function validateStreamResponse(res: Response): Promise<void> {
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Request failed (${res.status})`);
+  }
+  if (!res.body) throw new Error('No response body');
+}
+
+/** Reads an NDJSON body to completion, dispatching each parsed event as it arrives. */
+export async function consumeEventStream(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: StreamEvent) => void,
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || ''; // keep incomplete line in buffer
+
+    for (const line of lines) {
+      const event = parseStreamLine(line);
+      if (event) onEvent(event);
+    }
+  }
 }
 
 export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: Readonly<PresenceChatProps>) {
@@ -57,62 +138,14 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: R
         signal: abortRef.current.signal,
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Request failed (${res.status})`);
-      }
-      if (!res.body) throw new Error('No response body');
+      await validateStreamResponse(res);
 
       // Add empty assistant message
       setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }]);
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const event = JSON.parse(line);
-
-            if (event.type === 'text') {
-              setMessages(prev =>
-                prev.map(m =>
-                  m.id === assistantId
-                    ? { ...m, content: m.content + event.text }
-                    : m
-                )
-              );
-            } else if (event.type === 'tool_call') {
-              setToolEvents(prev => [...prev, {
-                type: 'tool_call',
-                name: event.name,
-                data: event.args,
-                timestamp: Date.now(),
-              }]);
-            } else if (event.type === 'tool_result') {
-              setToolEvents(prev => [...prev, {
-                type: 'tool_result',
-                name: event.name,
-                data: event.result,
-                timestamp: Date.now(),
-              }]);
-            } else if (event.type === 'error') {
-              setError(event.message);
-            }
-          } catch {
-            // skip malformed lines
-          }
-        }
-      }
+      await consumeEventStream(res.body!, (event) =>
+        dispatchStreamEvent(event, assistantId, setMessages, setToolEvents, setError),
+      );
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       setError(err.message || 'Something went wrong');

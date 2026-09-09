@@ -3,41 +3,16 @@
 
 import { useState, useEffect } from 'react';
 import RecoveryCodesSection from './components/RecoveryCodesSection';
+import StatusBanner, { type StatusMessage } from './components/StatusBanner';
+import PasswordLoginSection from './components/PasswordLoginSection';
+import TotpSection, { type TotpSetupData } from './components/TotpSection';
+import EmailMfaSection from './components/EmailMfaSection';
+import DevicesSection, { type Device } from './components/DevicesSection';
 
 interface AccountMethods {
   did: string;
   hasStoredKey: boolean;
   mfaMethods: string[];
-}
-
-interface TotpSetupData {
-  secret: string;
-  otpauthUrl: string;
-  qrCode: string;
-}
-
-interface Device {
-  id: string;
-  fingerprint: string;
-  name: string | null;
-  ip: string | null;
-  userAgent: string | null;
-  platform: string | null;
-  browser: string | null;
-  trusted: boolean;
-  firstSeenAt: string;
-  lastSeenAt: string;
-}
-
-function truncateUserAgent(ua: string | null): string {
-  if (!ua) return 'Unknown device';
-  if (ua.length <= 60) return ua;
-  return ua.slice(0, 57) + '…';
-}
-
-function describeDevice(device: Device): string {
-  if (device.browser && device.platform) return `${device.browser} on ${device.platform}`;
-  return truncateUserAgent(device.userAgent);
 }
 
 async function encryptPrivateKey(privateKeyJson: string, password: string): Promise<{ encryptedKey: string; salt: string }> {
@@ -107,7 +82,7 @@ export default function SecuritySettingsPage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
   const [actionLoading, setActionLoading] = useState('');
 
   useEffect(() => {
@@ -488,9 +463,10 @@ export default function SecuritySettingsPage() {
     }
   }
 
-  const hasTotpEnabled = methods?.mfaMethods.includes('totp');
-  const hasEmailMfa = methods?.mfaMethods.includes('email');
+  const hasTotpEnabled = !!methods?.mfaMethods.includes('totp');
+  const hasEmailMfa = !!methods?.mfaMethods.includes('email');
   const hasMfa = (methods?.mfaMethods.length ?? 0) > 0;
+  const hasStoredKey = !!methods?.hasStoredKey;
 
   if (loading) {
     return (
@@ -509,12 +485,7 @@ export default function SecuritySettingsPage() {
           <p className="text-gray-400 text-sm">Manage how you authenticate and protect your account.</p>
         </div>
 
-        {/* Status message */}
-        {statusMessage && (
-          <div className={`p-4 rounded-lg border ${statusMessage.type === 'success' ? 'bg-green-900/20 border-green-800 text-green-400' : 'bg-red-900/20 border-red-800 text-red-400'}`}>
-            {statusMessage.text}
-          </div>
-        )}
+        <StatusBanner statusMessage={statusMessage} />
 
         {/* Auth methods */}
         <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
@@ -529,190 +500,29 @@ export default function SecuritySettingsPage() {
             <span className="px-2 py-1 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap ml-4">Always active</span>
           </div>
 
-          {/* Stored key (password login) */}
-          <div className="py-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-white font-medium">Password login</p>
-                <p className="text-sm text-gray-400 mt-1">
-                  {methods?.hasStoredKey
-                    ? 'Your encrypted key is stored. Use your password to log in on this device.'
-                    : 'Store an encrypted copy of your key to log in with a password.'}
-                </p>
-                {methods?.hasStoredKey && !hasMfa && (
-                  <p className="text-xs text-blue-400 mt-2">We recommend setting up an additional MFA method (authenticator app or email code) to protect your account.</p>
-                )}
-              </div>
-              <div className="ml-4 flex flex-col items-end gap-2">
-                {methods?.hasStoredKey ? (
-                  <>
-                    <span className="px-2 py-1 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap">Active</span>
-                    <button type="button"
-                      onClick={() => { setShowPasswordChange(true); setShowPasswordReset(false); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
-                      className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition"
-                    >
-                      Change password
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 whitespace-nowrap">Not set up</span>
-                    <button type="button"
-                      onClick={() => { setShowPasswordSetup(true); setPassword(''); setConfirmPassword(''); }}
-                      className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition"
-                    >
-                      Set up password
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Change password flow (requires current password) */}
-            {showPasswordChange && methods?.hasStoredKey && (
-              <div className="mt-4 p-4 bg-gray-900 border border-gray-700 rounded-lg">
-                <h3 className="text-white font-medium mb-2">Change password</h3>
-                <p className="text-sm text-gray-400 mb-4">
-                  Enter your current password to verify, then choose a new one.
-                </p>
-                <form onSubmit={handlePasswordChange} className="space-y-3">
-                  <input
-                    type="password"
-                    value={currentPassword}
-                    onChange={e => setCurrentPassword(e.target.value)}
-                    placeholder="Current password"
-                    autoFocus
-                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-                  />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="New password"
-                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-                  />
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm new password"
-                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="submit"
-                      disabled={!currentPassword || !password || !confirmPassword || actionLoading === 'password-change'}
-                      className="flex-1 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium disabled:opacity-50"
-                    >
-                      {actionLoading === 'password-change' ? 'Changing…' : 'Change password'}
-                    </button>
-                  </div>
-                </form>
-                <div className="mt-3 flex items-center justify-between">
-                  <button type="button"
-                    onClick={() => { setShowPasswordChange(false); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
-                    className="text-sm text-gray-500 hover:text-gray-300 transition"
-                  >
-                    Cancel
-                  </button>
-                  <button type="button"
-                    onClick={() => { setShowPasswordChange(false); setShowPasswordReset(true); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
-                    className="text-sm text-amber-500 hover:text-amber-400 transition"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Reset password flow (no current password — uses device-local key) */}
-            {showPasswordReset && methods?.hasStoredKey && (
-              <div className="mt-4 p-4 bg-amber-900/10 border border-amber-700/50 rounded-lg">
-                <h3 className="text-white font-medium mb-2">Reset password from this device</h3>
-                <p className="text-sm text-gray-400 mb-2">
-                  Your key is present in this browser, so you can set a new password without the old one.
-                </p>
-                <p className="text-xs text-amber-400 mb-4">
-                  ⚠️ This works because your device already has your private key. It&apos;s no different from re-running initial setup.
-                </p>
-                <form onSubmit={handlePasswordReset} className="space-y-3">
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="New password"
-                    autoFocus
-                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-                  />
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm new password"
-                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="submit"
-                      disabled={!password || !confirmPassword || actionLoading === 'password-reset'}
-                      className="flex-1 py-2 bg-amber-600 text-black rounded-lg hover:bg-amber-500 transition font-medium disabled:opacity-50"
-                    >
-                      {actionLoading === 'password-reset' ? 'Resetting…' : 'Reset password'}
-                    </button>
-                  </div>
-                </form>
-                <button type="button"
-                  onClick={() => { setShowPasswordReset(false); setPassword(''); setConfirmPassword(''); }}
-                  className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-
-            {/* Password setup flow (first time) */}
-            {showPasswordSetup && !methods?.hasStoredKey && (
-              <div className="mt-4 p-4 bg-gray-900 border border-gray-700 rounded-lg">
-                <h3 className="text-white font-medium mb-2">Set up password login</h3>
-                <p className="text-sm text-gray-400 mb-4">
-                  Your private key will be encrypted in your browser using this password and stored securely.
-                  Choose a strong password — it cannot be recovered if lost.
-                </p>
-                <form onSubmit={handlePasswordSetup} className="space-y-3">
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="New password"
-                    autoFocus
-                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-                  />
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm password"
-                    className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="submit"
-                      disabled={!password || !confirmPassword || actionLoading === 'password-setup'}
-                      className="flex-1 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium disabled:opacity-50"
-                    >
-                      {actionLoading === 'password-setup' ? 'Encrypting…' : 'Enable password login'}
-                    </button>
-                  </div>
-                </form>
-                <button type="button"
-                  onClick={() => { setShowPasswordSetup(false); setPassword(''); setConfirmPassword(''); }}
-                  className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
+          <PasswordLoginSection
+            hasStoredKey={hasStoredKey}
+            hasMfa={hasMfa}
+            showPasswordChange={showPasswordChange}
+            showPasswordReset={showPasswordReset}
+            showPasswordSetup={showPasswordSetup}
+            currentPassword={currentPassword}
+            password={password}
+            confirmPassword={confirmPassword}
+            actionLoading={actionLoading}
+            onOpenChange={() => { setShowPasswordChange(true); setShowPasswordReset(false); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
+            onOpenSetup={() => { setShowPasswordSetup(true); setPassword(''); setConfirmPassword(''); }}
+            onSwitchToReset={() => { setShowPasswordChange(false); setShowPasswordReset(true); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
+            onCancelChange={() => { setShowPasswordChange(false); setCurrentPassword(''); setPassword(''); setConfirmPassword(''); }}
+            onCancelReset={() => { setShowPasswordReset(false); setPassword(''); setConfirmPassword(''); }}
+            onCancelSetup={() => { setShowPasswordSetup(false); setPassword(''); setConfirmPassword(''); }}
+            setCurrentPassword={setCurrentPassword}
+            setPassword={setPassword}
+            setConfirmPassword={setConfirmPassword}
+            handlePasswordChange={handlePasswordChange}
+            handlePasswordReset={handlePasswordReset}
+            handlePasswordSetup={handlePasswordSetup}
+          />
         </div>
 
         {/* Recovery codes */}
@@ -723,178 +533,35 @@ export default function SecuritySettingsPage() {
           <h2 className="text-lg font-semibold text-white mb-2">Multi-factor authentication</h2>
           <p className="text-sm text-gray-400 mb-6">Add a second factor to protect logins after key authentication.</p>
 
-          {/* TOTP */}
-          <div className="py-4 border-b border-gray-800">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-white font-medium">Authenticator app (TOTP)</p>
-                <p className="text-sm text-gray-400 mt-1">Use an app like Authy or Google Authenticator to generate codes.</p>
-              </div>
-              <div className="ml-4 flex flex-col items-end gap-2">
-                {hasTotpEnabled ? (
-                  <span className="px-2 py-1 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap">Active</span>
-                ) : (
-                  <span className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 whitespace-nowrap">Not set up</span>
-                )}
-                {hasTotpEnabled ? (
-                  <button type="button"
-                    onClick={() => setShowTotpDisable(true)}
-                    className="text-sm px-3 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition"
-                  >
-                    Remove
-                  </button>
-                ) : (
-                  <button type="button"
-                    onClick={handleStartTotpSetup}
-                    disabled={actionLoading === 'totp-setup'}
-                    className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition disabled:opacity-50"
-                  >
-                    {actionLoading === 'totp-setup' ? 'Setting up…' : 'Set up'}
-                  </button>
-                )}
-              </div>
-            </div>
+          <TotpSection
+            hasTotpEnabled={hasTotpEnabled}
+            showTotpSetup={showTotpSetup}
+            totpSetup={totpSetup}
+            totpCode={totpCode}
+            showTotpDisable={showTotpDisable}
+            totpDisableCode={totpDisableCode}
+            actionLoading={actionLoading}
+            onStartSetup={handleStartTotpSetup}
+            onOpenDisable={() => setShowTotpDisable(true)}
+            onCancelSetup={() => { setShowTotpSetup(false); setTotpSetup(null); }}
+            onCancelDisable={() => { setShowTotpDisable(false); setTotpDisableCode(''); }}
+            setTotpCode={setTotpCode}
+            setTotpDisableCode={setTotpDisableCode}
+            handleVerifyTotp={handleVerifyTotp}
+            handleDisableTotp={handleDisableTotp}
+          />
 
-            {/* TOTP setup flow */}
-            {showTotpSetup && totpSetup && (
-              <div className="mt-4 p-4 bg-gray-900 border border-gray-700 rounded-lg">
-                <h3 className="text-white font-medium mb-3">Scan QR code</h3>
-                <p className="text-sm text-gray-400 mb-4">Scan this code with your authenticator app, then enter the 6-digit code to confirm.</p>
-                <div className="flex justify-center mb-4">
-                  { }
-                  <img src={totpSetup.qrCode} alt="TOTP QR Code" className="rounded" width={200} height={200} />
-                </div>
-                <p className="text-xs text-gray-500 text-center mb-4 font-mono break-all">
-                  Manual key: {totpSetup.secret}
-                </p>
-                <form onSubmit={handleVerifyTotp} className="flex gap-2">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={totpCode}
-                    onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="000000"
-                    maxLength={6}
-                    autoFocus
-                    className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white text-center font-mono tracking-widest focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-                  />
-                  <button
-                    type="submit"
-                    disabled={totpCode.length !== 6 || actionLoading === 'totp-verify'}
-                    className="px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium disabled:opacity-50"
-                  >
-                    {actionLoading === 'totp-verify' ? 'Verifying…' : 'Confirm'}
-                  </button>
-                </form>
-                <button type="button"
-                  onClick={() => { setShowTotpSetup(false); setTotpSetup(null); }}
-                  className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-
-            {/* TOTP disable flow */}
-            {showTotpDisable && (
-              <div className="mt-4 p-4 bg-red-900/10 border border-red-800/50 rounded-lg">
-                <h3 className="text-white font-medium mb-2">Confirm removal</h3>
-                <p className="text-sm text-gray-400 mb-4">Enter your current authenticator code to remove TOTP.</p>
-                <form onSubmit={handleDisableTotp} className="flex gap-2">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={totpDisableCode}
-                    onChange={e => setTotpDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="000000"
-                    maxLength={6}
-                    autoFocus
-                    className="flex-1 px-4 py-2 border border-red-800 rounded-lg bg-black text-white text-center font-mono tracking-widest focus:ring-2 focus:ring-red-600 focus:border-transparent"
-                  />
-                  <button
-                    type="submit"
-                    disabled={totpDisableCode.length !== 6 || actionLoading === 'totp-disable'}
-                    className="px-4 py-2 border border-red-700 text-red-400 rounded-lg hover:bg-red-900/30 transition disabled:opacity-50"
-                  >
-                    {actionLoading === 'totp-disable' ? 'Removing…' : 'Remove'}
-                  </button>
-                </form>
-                <button type="button"
-                  onClick={() => { setShowTotpDisable(false); setTotpDisableCode(''); }}
-                  className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Email MFA */}
-          <div className="py-4 border-b border-gray-800">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-white font-medium">Email code</p>
-                <p className="text-sm text-gray-400 mt-1">Receive a one-time code via email as a second factor.</p>
-              </div>
-              <div className="ml-4 flex flex-col items-end gap-2">
-                {hasEmailMfa ? (
-                  <span className="px-2 py-1 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap">Active</span>
-                ) : (
-                  <span className="px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-400 whitespace-nowrap">Not set up</span>
-                )}
-                {hasEmailMfa ? (
-                  <button type="button"
-                    onClick={handleDisableEmailMfa}
-                    disabled={actionLoading === 'email-disable'}
-                    className="text-sm px-3 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition disabled:opacity-50"
-                  >
-                    {actionLoading === 'email-disable' ? 'Disabling…' : 'Disable'}
-                  </button>
-                ) : (
-                  <button type="button"
-                    onClick={handleStartEmailSetup}
-                    disabled={actionLoading === 'email-setup'}
-                    className="text-sm px-3 py-1 bg-[#F59E0B] text-black rounded hover:bg-[#D97706] transition disabled:opacity-50"
-                  >
-                    {actionLoading === 'email-setup' ? 'Sending…' : 'Enable'}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Email MFA setup flow */}
-            {showEmailSetup && !hasEmailMfa && (
-              <div className="mt-4 p-4 bg-gray-900 border border-gray-700 rounded-lg">
-                <h3 className="text-white font-medium mb-2">Verify your email</h3>
-                <p className="text-sm text-gray-400 mb-4">A 6-digit code was sent to your registered email address. Enter it below to activate email MFA.</p>
-                <form onSubmit={handleVerifyEmailSetup} className="flex gap-2">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={emailCode}
-                    onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="000000"
-                    maxLength={6}
-                    autoFocus
-                    className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white text-center font-mono tracking-widest focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-                  />
-                  <button
-                    type="submit"
-                    disabled={emailCode.length !== 6 || actionLoading === 'email-verify'}
-                    className="px-4 py-2 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-medium disabled:opacity-50"
-                  >
-                    {actionLoading === 'email-verify' ? 'Verifying…' : 'Confirm'}
-                  </button>
-                </form>
-                <button type="button"
-                  onClick={() => { setShowEmailSetup(false); setEmailCode(''); }}
-                  className="mt-3 text-sm text-gray-500 hover:text-gray-300 transition"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
+          <EmailMfaSection
+            hasEmailMfa={hasEmailMfa}
+            showEmailSetup={showEmailSetup}
+            emailCode={emailCode}
+            actionLoading={actionLoading}
+            onStartSetup={handleStartEmailSetup}
+            onDisable={handleDisableEmailMfa}
+            onCancelSetup={() => { setShowEmailSetup(false); setEmailCode(''); }}
+            setEmailCode={setEmailCode}
+            handleVerifyEmailSetup={handleVerifyEmailSetup}
+          />
 
           {/* SMS */}
           <div className="py-4 opacity-50">
@@ -921,52 +588,12 @@ export default function SecuritySettingsPage() {
           <p className="text-xs text-gray-600 mt-2">Applied when session cookie is set on this device.</p>
         </div>
 
-        {/* Trusted devices */}
-        <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
-          <h2 className="text-lg font-semibold text-white mb-2">Known devices</h2>
-          <p className="text-sm text-gray-400 mb-6">Devices that have been used to access your account.</p>
-
-          {devices.length === 0 ? (
-            <p className="text-sm text-gray-500">No devices recorded yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {devices.map(device => (
-                <div key={device.id} className="flex items-start justify-between p-3 bg-gray-900 rounded-lg border border-gray-800">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm text-white truncate">{describeDevice(device)}</p>
-                      {device.trusted && (
-                        <span className="px-1.5 py-0.5 text-xs bg-green-900/30 border border-green-800 rounded text-green-400 whitespace-nowrap">Trusted</span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {device.ip && <span>{device.ip} · </span>}
-                      Last seen {new Date(device.lastSeenAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 ml-3 flex-shrink-0">
-                    {!device.trusted && (
-                      <button type="button"
-                        onClick={() => handleTrustDevice(device.id)}
-                        disabled={actionLoading === `trust-${device.id}`}
-                        className="text-xs px-2 py-1 border border-gray-700 text-gray-400 rounded hover:bg-gray-800 transition disabled:opacity-50"
-                      >
-                        Trust
-                      </button>
-                    )}
-                    <button type="button"
-                      onClick={() => handleRemoveDevice(device.id)}
-                      disabled={actionLoading === `device-${device.id}`}
-                      className="text-xs px-2 py-1 border border-red-800 text-red-400 rounded hover:bg-red-900/20 transition disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <DevicesSection
+          devices={devices}
+          actionLoading={actionLoading}
+          onTrustDevice={handleTrustDevice}
+          onRemoveDevice={handleRemoveDevice}
+        />
 
       </div>
     </div>
