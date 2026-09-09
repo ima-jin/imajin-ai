@@ -139,3 +139,44 @@ describe('readApiSpec', () => {
     }
   });
 });
+
+/**
+ * Route <-> spec parity for the previously-undocumented auth routes named in
+ * #1983's Phase 0 audit: app-token mint/exchange (#1993), the internal
+ * acting-for check (#1995), and onboarding poll/claim (#1996). Each entry
+ * pins BOTH that the route file still exists on disk AND that `auth.yaml`
+ * documents its path, so the two cannot silently drift apart again.
+ */
+describe('auth.yaml documents the app-token, verify-delegation, and onboard poll/claim routes (#1993 #1995 #1996)', () => {
+  const DOCUMENTED_ROUTES: ReadonlyArray<{ path: string; routeFile: string }> = [
+    { path: '/api/apps/token', routeFile: 'app/auth/api/apps/token/route.ts' },
+    { path: '/api/apps/token/service', routeFile: 'app/auth/api/apps/token/service/route.ts' },
+    { path: '/api/apps/token/verify', routeFile: 'app/auth/api/apps/token/verify/route.ts' },
+    { path: '/api/tokens/app', routeFile: 'app/auth/api/tokens/app/route.ts' },
+    { path: '/api/tokens/app/verify', routeFile: 'app/auth/api/tokens/app/verify/route.ts' },
+    { path: '/api/internal/verify-delegation', routeFile: 'app/auth/api/internal/verify-delegation/route.ts' },
+    { path: '/api/onboard/poll', routeFile: 'app/auth/api/onboard/poll/route.ts' },
+    { path: '/api/onboard/claim', routeFile: 'app/auth/api/onboard/claim/route.ts' },
+  ];
+
+  it.each(DOCUMENTED_ROUTES)('$path has both a live route file and a documented spec path', ({ path, routeFile }) => {
+    pinCwdToKernel();
+    expect(existsSync(join(KERNEL_ROOT, routeFile)), routeFile).toBe(true);
+
+    const auth = listApiSpecs().find((s) => s.service === 'auth');
+    expect(auth?.paths, path).toContain(path);
+  });
+
+  it('marks the internal verify-delegation route with the internalKeyAuth security scheme', () => {
+    pinCwdToKernel();
+    const spec = readApiSpec('auth');
+    expect(spec?.content).toContain('/api/internal/verify-delegation:');
+
+    const authYamlText = readFileSync(join(specDirectory(), 'auth.yaml'), 'utf-8');
+    const section = authYamlText.slice(authYamlText.indexOf('/api/internal/verify-delegation:'));
+    const nextPathIndex = section.indexOf('\n  /api/', 1);
+    const delegationBlock = nextPathIndex === -1 ? section : section.slice(0, nextPathIndex);
+
+    expect(delegationBlock).toContain('internalKeyAuth');
+  });
+});
