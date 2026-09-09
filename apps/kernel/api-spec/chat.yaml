@@ -869,6 +869,60 @@ paths:
         "204":
           description: Reaction removed
 
+  /api/d/{did}/context:
+    patch:
+      tags: [chat]
+      operationId: mergeDConversationContext
+      summary: Merge context into a DID-keyed conversation
+      description: >-
+        Shallow-merges the given object into the conversation's existing
+        `context` JSONB column (Postgres `||` merge — top-level keys are
+        overwritten, not deep-merged). Used to sync app-owned metadata such
+        as an event's `nameDisplayPolicy` onto its chat conversation.
+        Session path (cookieAuth) requires the caller to be authenticated.
+        App-auth path (bearerAuth, internal `AUTH_INTERNAL_API_KEY`) is used
+        by sibling apps (e.g. events) to sync context server-to-server
+        without a user session.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: Conversation DID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [context]
+              properties:
+                context:
+                  type: object
+                  description: "Object to shallow-merge into the conversation's context column"
+      responses:
+        "200":
+          description: Context merged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+        "400":
+          description: Invalid JSON or missing context object
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized (no valid session or internal key)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/d/{did}/members:
     get:
       tags: [chat]
