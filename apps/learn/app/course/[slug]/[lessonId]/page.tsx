@@ -66,7 +66,7 @@ export default function LessonViewerPage() {
           // Find which module this lesson belongs to
           let moduleId = '';
           for (const mod of prog.modules) {
-            if (mod.lessons.find((l: any) => l.id === lessonId)) {
+            if (mod.lessons.some((l: any) => l.id === lessonId)) {
               moduleId = mod.id;
               break;
             }
