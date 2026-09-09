@@ -1,33 +1,15 @@
 import { createLogger } from '@imajin/logger';
+import { postInternal } from './internal-post';
+
 const log = createLogger('auth');
 
-let deprecatedKeyWarned = false;
 let forwardFailureCount = 0;
 
-/**
- * Resolves the shared secret used to authenticate the service-to-service
- * calls below to the kernel's attestation routes
- * (`/api/attestations/internal`, `/api/attestations/chain-emit`) — both
- * routes check `ATTESTATION_INTERNAL_API_KEY` exclusively. `AUTH_INTERNAL_API_KEY`
- * is accepted as a deprecated fallback for one release (#2037: the two names
- * had drifted apart, so this file sent a key neither route ever checked and
- * every mechanical attestation forward was silently rejected). Warns once
- * per process — not once per call — so a misconfigured deployment shows up
- * without spamming the logs.
- */
-export function resolveInternalApiKey(): string | undefined {
-  const canonical = process.env.ATTESTATION_INTERNAL_API_KEY;
-  if (canonical) return canonical;
-
-  const legacy = process.env.AUTH_INTERNAL_API_KEY;
-  if (legacy && !deprecatedKeyWarned) {
-    deprecatedKeyWarned = true;
-    console.warn(
-      '[auth] AUTH_INTERNAL_API_KEY is deprecated for attestation forwarding (#2037) — set ATTESTATION_INTERNAL_API_KEY instead. This fallback will be removed in a future release.',
-    );
-  }
-  return legacy;
-}
+// Re-exported for existing importers (evaluate-eligibility.ts,
+// backfill-contact-email.ts, and any external callers) — the
+// implementation moved to ./internal-post alongside the new shared
+// postInternal() helper (#2058) so both live next to each other.
+export { resolveInternalApiKey } from './internal-post';
 
 /**
  * Count of attestation-forward requests (the internal write or the
@@ -69,37 +51,26 @@ export async function emitAttestation(params: {
    */
   originUrl?: string;
 }): Promise<void> {
-  const authServiceUrl = process.env.AUTH_SERVICE_URL;
-  const internalApiKey = resolveInternalApiKey();
-  if (!authServiceUrl || !internalApiKey) {
-    log.warn({}, 'Attestation skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
-    return;
-  }
-
   // 1. Write attestation to DB via the internal API
   let issuedAt: string | undefined;
   try {
-    const res = await fetch(`${authServiceUrl}/api/attestations/internal`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${internalApiKey}`,
-      },
-      body: JSON.stringify(params),
-    });
-    if (!res.ok) {
+    const outcome = await postInternal<Record<string, unknown>>('/api/attestations/internal', params);
+    if (!outcome) {
+      log.warn({}, 'Attestation skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
+      return;
+    }
+    if (!outcome.ok) {
       forwardFailureCount += 1;
       // Never log the key itself — status + route is enough to diagnose an
       // auth mismatch (#2037) without leaking the secret into logs.
       log.warn(
-        { type: params.type, status: res.status, route: '/api/attestations/internal' },
+        { type: params.type, status: outcome.status, route: '/api/attestations/internal' },
         `Attestation (${params.type}) forward rejected`,
       );
       return;
     }
     // Capture issuedAt from the response for accurate chain timestamp
-    const attestation = await res.json().catch(() => null) as Record<string, unknown> | null;
-    issuedAt = typeof attestation?.['issuedAt'] === 'string' ? attestation['issuedAt'] : undefined;
+    issuedAt = typeof outcome.data?.['issuedAt'] === 'string' ? (outcome.data['issuedAt'] as string) : undefined;
   } catch (err) {
     log.error({ err: String(err) }, `Attestation (${params.type}) error`);
     return;
@@ -108,18 +79,11 @@ export async function emitAttestation(params: {
   // 2. Emit DFOS content chain entry — fire-and-forget, non-fatal
   // Chain emission is handled by the kernel's chain-emit endpoint which
   // signs with the node's DFOS DID via createAttestationEntry() in dfos.ts.
-  fetch(`${authServiceUrl}/api/attestations/chain-emit`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${internalApiKey}`,
-    },
-    body: JSON.stringify({ ...params, issued_at: issuedAt }),
-  }).then((res) => {
-    if (res.ok) return;
+  postInternal('/api/attestations/chain-emit', { ...params, issued_at: issuedAt }).then((outcome) => {
+    if (!outcome || outcome.ok) return;
     forwardFailureCount += 1;
     log.warn(
-      { type: params.type, status: res.status, route: '/api/attestations/chain-emit' },
+      { type: params.type, status: outcome.status, route: '/api/attestations/chain-emit' },
       `Attestation chain-emit (${params.type}) rejected`,
     );
   }).catch((err: unknown) => {

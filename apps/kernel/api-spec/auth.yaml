@@ -1661,6 +1661,70 @@ paths:
           description: Contact details
         "404":
           description: Not found
+    post:
+      tags: [auth]
+      operationId: backfillIdentityContactEmail
+      summary: Internal — backfill contact_email for a DID (service-to-service)
+      description: |
+        NULL-guarded backfill of `auth.identities.contact_email` (#2058,
+        sibling of #1999/#2053). Never overwrites an existing value, so
+        calling this repeatedly for the same DID is safe — once a
+        contact_email is on file, later calls report `backfilled: false`
+        and perform no write. apps/events' checkout and payment-webhook
+        flows must call this instead of writing `auth.identities` directly.
+
+        Requires `ATTESTATION_INTERNAL_API_KEY` as Bearer token. No session
+        cookie — mirrors POST /api/eligibility/evaluate's reasoning: the
+        caller has already established the email itself (a validated
+        session, or a Stripe webhook payload with no end-user session at
+        all) before calling this route.
+
+        Does not emit an attestation: contact_email is an unverified
+        billing/notification address, not a verification-state change.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Backfill complete (may or may not have written the value)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  did: { type: string }
+                  contactEmail: { type: string, nullable: true }
+                  backfilled:
+                    type: boolean
+                    description: True only when this call performed the write (not a prior call).
+        "400":
+          description: Invalid request (missing/invalid email)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized (invalid API key)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No identity found for did
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/keys/retrieve:
     post:
