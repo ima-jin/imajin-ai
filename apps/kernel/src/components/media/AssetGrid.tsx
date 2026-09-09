@@ -116,7 +116,6 @@ export function AssetGrid({
       if ((e.key === "Delete" || e.key === "Backspace") && selectedAssetIds.size > 0) {
         e.preventDefault();
         batchDeleteRef.current();
-        return;
       }
     };
 
@@ -309,7 +308,7 @@ export function AssetGrid({
       a.download = "";
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
     });
   }, [selectedAssetIds]);
 

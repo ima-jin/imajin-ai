@@ -123,23 +123,12 @@ describe('rewriteResponsiveImages — markdown-authored asset images', () => {
 });
 
 describe('rewriteResponsiveImages — images that must be left alone', () => {
-  it('leaves external images untouched', () => {
-    const html = '<p><img src="https://example.com/photo.jpg" alt="ext"></p>';
-    expect(rewriteResponsiveImages(html)).toBe(html);
-  });
-
-  it('leaves local non-asset images untouched', () => {
-    const html = '<img src="/images/logo.svg" alt="logo">';
-    expect(rewriteResponsiveImages(html)).toBe(html);
-  });
-
-  it('leaves an author-supplied srcset untouched', () => {
-    const html = `<img src="${ASSET}" srcset="${ASSET}?w=2000 2000w" sizes="50vw">`;
-    expect(rewriteResponsiveImages(html)).toBe(html);
-  });
-
-  it('leaves an img with no src untouched', () => {
-    const html = '<img alt="broken">';
+  it.each([
+    ['external images', '<p><img src="https://example.com/photo.jpg" alt="ext"></p>'],
+    ['local non-asset images', '<img src="/images/logo.svg" alt="logo">'],
+    ['an author-supplied srcset', `<img src="${ASSET}" srcset="${ASSET}?w=2000 2000w" sizes="50vw">`],
+    ['an img with no src', '<img alt="broken">'],
+  ])('leaves %s untouched', (_label, html) => {
     expect(rewriteResponsiveImages(html)).toBe(html);
   });
 
@@ -200,5 +189,27 @@ describe('rewriteResponsiveImages — hand-authored HTML stays working', () => {
   it('is idempotent — a second pass changes nothing', () => {
     const once = rewriteResponsiveImages(`<p><img src="${ASSET}" alt="x"></p>`);
     expect(rewriteResponsiveImages(once)).toBe(once);
+  });
+
+  // #2074 S5843 — ATTR_RE was simplified to merge its quoted-value branches
+  // via a backreference; these pin the attribute shapes that regression could
+  // plausibly break: boolean (valueless), bare (unquoted), and a tag mixing
+  // single- and double-quoted attributes.
+  it('preserves a valueless (boolean) attribute untouched', () => {
+    const out = rewriteResponsiveImages(`<img src="${ASSET}" hidden>`);
+    expect(out).toContain('hidden');
+    expect(out).not.toContain('hidden=');
+  });
+
+  it('preserves a bare (unquoted) attribute value, re-serialized as quoted', () => {
+    const out = rewriteResponsiveImages(`<img src=${ASSET} alt=diagram>`);
+    expect(attr(out, 'src')).toBe(`${ASSET}?w=${FALLBACK_WIDTH}`);
+    expect(attr(out, 'alt')).toBe('diagram');
+  });
+
+  it('handles a tag mixing single- and double-quoted attributes', () => {
+    const out = rewriteResponsiveImages(`<img src='${ASSET}' alt="Mixed quotes">`);
+    expect(attr(out, 'src')).toBe(`${ASSET}?w=${FALLBACK_WIDTH}`);
+    expect(attr(out, 'alt')).toBe('Mixed quotes');
   });
 });

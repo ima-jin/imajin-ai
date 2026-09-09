@@ -169,18 +169,31 @@ export function normalizeLimit(limit?: number): number {
   return Math.min(Math.max(Math.floor(limit), 1), MAX_LIST_LIMIT);
 }
 
+/** True for a `Link` segment's `rel` parameter naming "next" (with or without quotes). */
+const REL_NEXT_RE = /^rel="?next"?$/;
+
 /**
  * Extract the `rel="next"` URL from a `Link` header, or null when this is the
  * last page. Defensive about a missing `headers` object so a fetch impl that
  * omits them degrades to "no more pages" instead of throwing.
+ *
+ * Deliberately not a single `<([^>]+)>\s*;\s*rel="?next"?` regex (#2074,
+ * S8786): `[^>]+` and the `\s*` that follows it both match whitespace, so an
+ * engine backtracking through every way to split that whitespace between the
+ * two quantifiers is O(n^2) on a malformed/adversarial header. Splitting on
+ * the header's own `,`/`;` delimiters first, then testing each already-short
+ * segment, keeps every match anchored and linear.
  */
 export function parseNextLink(headers: Headers | undefined): string | null {
   const raw = headers?.get?.('link') ?? null;
   if (raw === null || raw.length === 0) return null;
 
   for (const part of raw.split(',')) {
-    const match = /<([^>]+)>\s*;\s*rel="?next"?/.exec(part.trim());
-    if (match?.[1] !== undefined) return match[1];
+    const [urlSegment, ...paramSegments] = part.split(';').map((segment) => segment.trim());
+    if (urlSegment === undefined || !urlSegment.startsWith('<') || !urlSegment.endsWith('>')) continue;
+    if (paramSegments.some((segment) => REL_NEXT_RE.test(segment))) {
+      return urlSegment.slice(1, -1);
+    }
   }
   return null;
 }

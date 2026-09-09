@@ -803,20 +803,14 @@ export function describeConnectorCredentialLifecycleContract(fixture: ConnectorC
       expect(statusMock).toHaveBeenCalledWith(vaultField(OWNER));
     });
 
-    it('returns false when no key is sealed', async () => {
-      statusMock.mockResolvedValue('absent');
-      expect(await keySealed(OWNER)).toBe(false);
-    });
-
-    it('returns false once the grant is revoked, even though the vault entry still exists', async () => {
+    it.each([
+      ['absent', 'no key is sealed'],
       // A revoked grant reports 'pending-grant' (no active grant covers the
       // entry), not 'ready' — this is the exact disconnect state from #1724.
-      statusMock.mockResolvedValue('pending-grant');
-      expect(await keySealed(OWNER)).toBe(false);
-    });
-
-    it('returns false for an unverifiable entry', async () => {
-      statusMock.mockResolvedValue('unverifiable');
+      ['pending-grant', 'the grant is revoked, even though the vault entry still exists'],
+      ['unverifiable', 'an unverifiable entry'],
+    ])('returns false when the field status is %s (%s)', async (status) => {
+      statusMock.mockResolvedValue(status);
       expect(await keySealed(OWNER)).toBe(false);
     });
   });

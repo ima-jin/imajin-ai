@@ -591,7 +591,7 @@ export function createConnectorOAuth<
     if (typeof data.error === 'string') {
       // The most common cause by far is "Enable Device Flow" being unchecked in
       // the owner's OAuth App, which GitHub reports as `device_flow_disabled`.
-      throw new Error(
+      throw new TypeError(
         `${opts.name}_device_code: ${data.error}: ${String(data.error_description ?? '')}`.trimEnd(),
       );
     }
@@ -630,8 +630,8 @@ export function createConnectorOAuth<
     if (typeof data.error === 'string' && data.error.length > 0) {
       const status = devicePollStatusForError(data.error);
       if (status === undefined) {
-        throw new Error(
-          `${opts.name}_device_token: ${data.error}: ${data.error_description ?? ''}`.trimEnd(),
+        throw new TypeError(
+          `${opts.name}_device_token: ${data.error}: ${String(data.error_description ?? '')}`.trimEnd(),
         );
       }
       return status;

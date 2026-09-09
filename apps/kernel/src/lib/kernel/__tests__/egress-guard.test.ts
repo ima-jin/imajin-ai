@@ -117,21 +117,13 @@ describe('checkEgressTarget', () => {
 
   // ── Private space: denied BY DEFAULT ────────────────────────────────────────
 
-  it('denies RFC1918 10.0.0.0/8 by default', async () => {
-    mockResolves([{ address: '10.1.2.3', family: 4 }]);
-    const result = await checkEgressTarget('http://imajin-ml.lan:11434');
-    expect(result).toMatchObject({ ok: false, reason: 'private' });
-  });
-
-  it('denies RFC1918 172.16.0.0/12 by default', async () => {
-    mockResolves([{ address: '172.20.5.5', family: 4 }]);
-    const result = await checkEgressTarget('http://pgx.lan:8000');
-    expect(result).toMatchObject({ ok: false, reason: 'private' });
-  });
-
-  it('denies RFC1918 192.168.0.0/16 by default', async () => {
-    mockResolves([{ address: '192.168.1.50', family: 4 }]);
-    const result = await checkEgressTarget('http://ollama.local:11434');
+  it.each([
+    ['10.0.0.0/8', '10.1.2.3', 'http://imajin-ml.lan:11434'],
+    ['172.16.0.0/12', '172.20.5.5', 'http://pgx.lan:8000'],
+    ['192.168.0.0/16', '192.168.1.50', 'http://ollama.local:11434'],
+  ])('denies RFC1918 %s by default', async (_cidr, address, url) => {
+    mockResolves([{ address, family: 4 }]);
+    const result = await checkEgressTarget(url);
     expect(result).toMatchObject({ ok: false, reason: 'private' });
   });
 

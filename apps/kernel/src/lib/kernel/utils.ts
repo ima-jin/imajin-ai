@@ -83,3 +83,21 @@ export function hexToBytes(hex: string): Uint8Array {
   }
   return bytes;
 }
+
+/**
+ * Strip trailing slashes from a URL/path in guaranteed linear time (#2074, S8786).
+ *
+ * Deliberately NOT `value.replace(/\/+$/, '')`: an unanchored quantifier
+ * immediately before an end anchor forces backtracking engines into O(n^2)
+ * work whenever the anchor doesn't match at the position the quantifier first
+ * commits to (e.g. a long run of slashes that isn't literally at the string's
+ * end) — flagged by Sonar as super-linear regex backtracking. A backward scan
+ * has no such edge case.
+ */
+export function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}

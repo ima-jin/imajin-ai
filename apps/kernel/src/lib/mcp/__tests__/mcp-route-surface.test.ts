@@ -142,49 +142,22 @@ describe('POST /mcp surface scope gate (#1337)', () => {
     expect(res.status).toBe(401);
   });
 
-  it('allows a media:read token through the surface gate', async () => {
-    h.tokenPayload = validPayload({ scope: 'media:read' });
-    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
-    expect(res.status).toBe(200);
-  });
-
-  it('allows a media:write token through the surface gate', async () => {
-    h.tokenPayload = validPayload({ scope: 'media:write' });
-    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
-    expect(res.status).toBe(200);
-  });
-
-  it('allows a github:read token through the surface gate', async () => {
-    h.tokenPayload = validPayload({ scope: 'github:read' });
-    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
-    expect(res.status).toBe(200);
-  });
-
-  it('allows a messages:read token through the surface gate', async () => {
-    h.tokenPayload = validPayload({ scope: 'messages:read' });
-    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
-    expect(res.status).toBe(200);
-  });
-
-  it('allows a messages:write token through the surface gate', async () => {
-    h.tokenPayload = validPayload({ scope: 'messages:write' });
-    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
-    expect(res.status).toBe(200);
-  });
-
-  it('allows a github:write token through the surface gate', async () => {
-    h.tokenPayload = validPayload({ scope: 'github:write' });
-    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
-    expect(res.status).toBe(200);
-  });
-
   /**
    * #1636: a Warp agent connecting purely to read specs holds nothing else, so a
    * `discovery:read`-only token has to clear the surface gate on its own —
    * otherwise the scope is grantable but unusable.
    */
-  it('allows a discovery:read-only token through the surface gate', async () => {
-    h.tokenPayload = validPayload({ scope: 'discovery:read' });
+  it.each([
+    { desc: 'a media:read token', scope: 'media:read' },
+    { desc: 'a media:write token', scope: 'media:write' },
+    { desc: 'a github:read token', scope: 'github:read' },
+    { desc: 'a messages:read token', scope: 'messages:read' },
+    { desc: 'a messages:write token', scope: 'messages:write' },
+    { desc: 'a github:write token', scope: 'github:write' },
+    { desc: 'a discovery:read-only token', scope: 'discovery:read' },
+    { desc: 'a mixed-scope token', scope: 'github:read media:write connections:read' },
+  ])('allows $desc through the surface gate', async ({ scope }) => {
+    h.tokenPayload = validPayload({ scope });
     const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
     expect(res.status).toBe(200);
   });
@@ -196,12 +169,6 @@ describe('POST /mcp surface scope gate (#1337)', () => {
    */
   it.each(['inference:read', 'inference:write'])('allows a %s-only token through the surface gate', async (scope) => {
     h.tokenPayload = validPayload({ scope });
-    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
-    expect(res.status).toBe(200);
-  });
-
-  it('allows a mixed-scope token through the surface gate', async () => {
-    h.tokenPayload = validPayload({ scope: 'github:read media:write connections:read' });
     const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
     expect(res.status).toBe(200);
   });

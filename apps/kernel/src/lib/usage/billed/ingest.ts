@@ -19,6 +19,7 @@
  */
 import { getClient } from '@imajin/db';
 import { generateId } from '@/src/lib/kernel/id';
+import type postgres from 'postgres';
 import type { BilledGranularity, BilledLine, BilledPeriod } from './types';
 
 export interface IngestBilledUsageParams {
@@ -36,11 +37,12 @@ export async function ingestBilledUsage(params: IngestBilledUsageParams): Promis
 
   for (const line of lines) {
     const billedUsd = line.billedUsd === null ? null : line.billedUsd.toFixed(8);
-    // Round-tripped through JSON.stringify/parse so the value structurally
-    // satisfies `postgres`'s `JSONValue` type — `line.raw` is `unknown` here
-    // (an adapter's own provider-shaped object), and it is already destined
-    // for a jsonb column, so this is a type-narrowing no-op, not a behavior change.
-    const raw = JSON.parse(JSON.stringify(line.raw ?? {}));
+    // Deep-cloned so the value structurally satisfies `postgres`'s `JSONValue`
+    // type — `line.raw` is `unknown` here (an adapter's own provider-shaped
+    // object), and it is already destined for a jsonb column, so this is a
+    // type-narrowing no-op, not a behavior change. The cast mirrors what the
+    // old `JSON.parse(JSON.stringify(...))` got for free via `any`.
+    const raw = structuredClone(line.raw ?? {}) as unknown as postgres.JSONValue;
     await sql`
       INSERT INTO usage.billed
         (id, principal_did, provider, period_start, period_end, granularity, model, tokens_in, tokens_out, billed_usd, raw, fetched_at)

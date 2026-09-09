@@ -103,21 +103,13 @@ describe('PATCH /media/api/assets/[id]/article', () => {
     expect(body.error).toContain('slug is required');
   });
 
-  it('returns 400 when slug has underscores', async () => {
+  it.each([
+    ['underscores', 'hello_world'],
+    ['uppercase', 'Hello-World'],
+    ['spaces', 'hello world'],
+  ])('returns 400 when slug has %s', async (_label, slug) => {
     vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
-    const res = await patchArticle(makeRequest({ slug: 'hello_world', title: 'Hello' }), 'asset_test');
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 400 when slug has uppercase', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
-    const res = await patchArticle(makeRequest({ slug: 'Hello-World', title: 'Hello' }), 'asset_test');
-    expect(res.status).toBe(400);
-  });
-
-  it('returns 400 when slug has spaces', async () => {
-    vi.mocked(requireAuth).mockResolvedValueOnce({ identity: mockIdentity() });
-    const res = await patchArticle(makeRequest({ slug: 'hello world', title: 'Hello' }), 'asset_test');
+    const res = await patchArticle(makeRequest({ slug, title: 'Hello' }), 'asset_test');
     expect(res.status).toBe(400);
   });
 
