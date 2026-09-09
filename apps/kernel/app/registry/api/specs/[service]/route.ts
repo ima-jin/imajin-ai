@@ -77,6 +77,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ servi
       headers: { ...cors, "Content-Type": contentType || "text/plain", "Cache-Control": "public, max-age=60" },
     });
   } catch (err) {
+    console.error(`Could not reach ${service} service`, err);
     return NextResponse.json(
       { error: `Could not reach ${service} service` },
       { status: 502, headers: cors }

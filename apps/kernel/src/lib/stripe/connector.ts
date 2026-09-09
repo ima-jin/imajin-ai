@@ -292,7 +292,13 @@ export type StripeWebhookResult =
 
 /** String-coerce a Stripe object field for a bus payload, defaulting to ''. */
 function str(value: unknown): string {
-  return typeof value === 'string' ? value : String(value ?? '');
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return value === null || value === undefined ? '' : JSON.stringify(value);
 }
 
 /** Number-coerce a Stripe object field for a bus payload, defaulting to 0. */

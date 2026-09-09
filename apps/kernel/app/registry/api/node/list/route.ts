@@ -120,6 +120,7 @@ export async function HEAD(request: NextRequest) {
 
     return new NextResponse(null, { status: 200, headers });
   } catch (error) {
+    console.error('Node stats error', error);
     return new NextResponse(null, { status: 500 });
   }
 }

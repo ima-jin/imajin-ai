@@ -238,7 +238,18 @@ function describePollFailure(lastError: unknown): string {
   if (lastError instanceof VaultIntegrityError) {
     return `verification failed (${lastError.code}): ${lastError.message}`;
   }
-  return `verification failed: ${lastError instanceof Error ? lastError.message : String(lastError)}`;
+  return `verification failed: ${describeUnknownError(lastError)}`;
+}
+
+/** String-describe a caught value, avoiding default Object stringification for non-Error objects. */
+function describeUnknownError(value: unknown): string {
+  if (value instanceof Error) {
+    return value.message;
+  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return value === null || value === undefined ? 'unknown error' : JSON.stringify(value);
 }
 
 interface UpgradeVerifyOptions {
