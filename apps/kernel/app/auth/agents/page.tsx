@@ -963,7 +963,7 @@ export default function AgentsPage() {
       a.download = `${provisionId}-bundle.json`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      a.remove();
       URL.revokeObjectURL(url);
     } catch {
       showStatus('error', 'Network error. Please try again.');
@@ -988,7 +988,7 @@ export default function AgentsPage() {
     a.download = `.agent-${createdAgent.handle}.json`;
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+    a.remove();
     URL.revokeObjectURL(url);
   }
 

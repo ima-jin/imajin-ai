@@ -185,9 +185,14 @@ export default function RetracePane({ initialArtifact = '' }: Readonly<RetracePa
       {result && (
         <div className="space-y-3">
           <ul className="space-y-2">
-            {result.hops.map((node, i) =>
-              // Hops carry no stable id for tombstones by design (they must not identify what they hide) — index is the only key available.
-              isTombstone(node) ? <TombstoneRow key={i} node={node} /> : <HopRow key={i} node={node} />,
+            {result.hops.map((node) =>
+              // Hops carry no stable id for tombstones by design (they must not identify what they hide), so the
+              // key is derived from the hash/output each node already carries rather than its position in the list.
+              isTombstone(node) ? (
+                <TombstoneRow key={`tombstone-${node.hash}`} node={node} />
+              ) : (
+                <HopRow key={`hop-${node.output}`} node={node} />
+              ),
             )}
           </ul>
           <p className="text-xs text-gray-600">

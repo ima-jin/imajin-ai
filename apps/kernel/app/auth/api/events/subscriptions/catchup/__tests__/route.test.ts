@@ -62,20 +62,12 @@ describe('request validation', () => {
     expect(catchUpMock).toHaveBeenCalledWith(expect.objectContaining({ cursor: BigInt(42) }));
   });
 
-  it('rejects a non-numeric cursor with 400', async () => {
-    const res = await GET(makeRequest('?cursor=not-a-number') as never);
-    expect(res.status).toBe(400);
-    expect(catchUpMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects a negative cursor with 400', async () => {
-    const res = await GET(makeRequest('?cursor=-1') as never);
-    expect(res.status).toBe(400);
-    expect(catchUpMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects a zero or negative limit with 400', async () => {
-    const res = await GET(makeRequest('?limit=0') as never);
+  it.each([
+    ['rejects a non-numeric cursor with 400', '?cursor=not-a-number'],
+    ['rejects a negative cursor with 400', '?cursor=-1'],
+    ['rejects a zero or negative limit with 400', '?limit=0'],
+  ])('%s', async (_description, query) => {
+    const res = await GET(makeRequest(query) as never);
     expect(res.status).toBe(400);
     expect(catchUpMock).not.toHaveBeenCalled();
   });

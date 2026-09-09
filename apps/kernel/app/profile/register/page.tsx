@@ -175,7 +175,7 @@ function RegisterPage() {
         await navigator.credentials.store(cred);
         return;
       } catch (e) {
-        console.log('Credential API failed, falling back');
+        console.log('Credential API failed, falling back:', e);
       }
     }
 

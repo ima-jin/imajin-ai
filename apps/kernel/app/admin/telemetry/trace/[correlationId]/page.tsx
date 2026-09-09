@@ -44,7 +44,7 @@ export default async function TracePage(
 
   const totalDuration =
     data && data.steps.length >= 2
-      ? new Date(data.steps[data.steps.length - 1].created_at).getTime() -
+      ? new Date(data.steps.at(-1)!.created_at).getTime() -
         new Date(data.steps[0].created_at).getTime()
       : null;
 

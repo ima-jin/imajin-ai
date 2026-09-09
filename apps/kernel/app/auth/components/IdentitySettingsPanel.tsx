@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react';
 import { SERVICES, buildPublicUrl } from '@imajin/config';
 
+type JoinVisibility = 'open' | 'network' | 'invite';
+
 interface IdentityConfig {
   enabledServices: string[];
   landingService: string | null;
-  joinVisibility: 'open' | 'network' | 'invite';
+  joinVisibility: JoinVisibility;
   joinNetworkDepth: number;
   scopeFeeBps: number;
   theme: Record<string, unknown>;
@@ -26,7 +28,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
   const [loading, setLoading] = useState(true);
   const [enabledServices, setEnabledServices] = useState<string[]>([]);
   const [landingService, setLandingService] = useState<string | null>(null);
-  const [joinVisibility, setJoinVisibility] = useState<'open' | 'network' | 'invite'>('open');
+  const [joinVisibility, setJoinVisibility] = useState<JoinVisibility>('open');
   const [joinNetworkDepth, setJoinNetworkDepth] = useState<number>(2);
   const [scopeFeeBps, setScopeFeeBps] = useState<number>(25);
   const [saving, setSaving] = useState(false);
@@ -225,7 +227,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
         <div className="space-y-4">
           <select
             value={joinVisibility}
-            onChange={(e) => setJoinVisibility(e.target.value as 'open' | 'network' | 'invite')}
+            onChange={(e) => setJoinVisibility(e.target.value as JoinVisibility)}
             className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
           >
             <option value="open">🌐 Open — Anyone can join</option>

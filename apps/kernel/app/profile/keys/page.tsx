@@ -31,7 +31,7 @@ interface LocalKeypair {
 }
 
 function loadLocalKeypair(): LocalKeypair | null {
-  if (typeof globalThis.window === 'undefined') return null;
+  if (globalThis.window === undefined) return null;
   const raw = localStorage.getItem('imajin_keypair');
   if (!raw) return null;
   try {

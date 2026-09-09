@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 
 interface IdentityContextType {
   did: string | null;
@@ -41,7 +41,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
     }
   }
 
-  async function logout() {
+  const logout = useCallback(async () => {
     try {
       await fetch('/auth/api/logout', { method: 'POST' });
     } catch {}
@@ -49,10 +49,15 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
     setHandle(null);
     setType(null);
     setIsLoggedIn(false);
-  }
+  }, []);
+
+  const value = useMemo<IdentityContextType>(
+    () => ({ did, handle, type, isLoggedIn, loading, logout }),
+    [did, handle, type, isLoggedIn, loading, logout],
+  );
 
   return (
-    <IdentityContext.Provider value={{ did, handle, type, isLoggedIn, loading, logout }}>
+    <IdentityContext.Provider value={value}>
       {children}
     </IdentityContext.Provider>
   );

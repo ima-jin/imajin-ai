@@ -21,6 +21,7 @@ export default function MarkSentButton({ id }: Readonly<{ id: string }>) {
       }
       router.refresh();
     } catch (err) {
+      console.error('Failed to mark withdrawal as sent', err);
       alert('Network error');
     } finally {
       setLoading(false);

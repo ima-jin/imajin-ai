@@ -17,6 +17,7 @@
  */
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   type ConnectorEntry,
@@ -170,6 +171,43 @@ async function postScopeToggle(
 /** Connect/reconnect href for a connector, carrying `returnTo` (#1529). */
 function connectHref(entry: ConnectorEntry): string {
   return buildConnectHref(entry.connectRoute!, entry.id);
+}
+
+/**
+ * Encapsulates the scope-toggle state + handler shared by all connector cards.
+ * Deduplicated from the near-identical inline copies that previously lived in
+ * each card (Sonar S4144 dedup fix, #2074) — mirrors the `useDisconnect` hook
+ * below, which dedup'd the same pattern for disconnect handling (#1490).
+ *
+ * @param statusEndpoint  The `entry.statusEndpoint` used to POST the toggle.
+ * @param getActiveScopes Reads the card's current `status?.activeScopes ?? []`
+ *                         at call time, so the toggle always starts from the
+ *                         latest server-confirmed set.
+ * @param setStatus       Setter for the card's status state; only
+ *                         `activeScopes` is patched, other fields carry over.
+ */
+function useScopeToggle<T extends { activeScopes: string[] }>(
+  statusEndpoint: string | null | undefined,
+  getActiveScopes: () => string[],
+  setStatus: Dispatch<SetStateAction<T | null>>,
+) {
+  const [grantingScope, setGrantingScope] = useState<string | null>(null);
+  const [grantError, setGrantError] = useState<string | null>(null);
+
+  async function handleToggleScope(scopeName: string, enable: boolean) {
+    setGrantingScope(scopeName);
+    setGrantError(null);
+    try {
+      const newScopes = await postScopeToggle(statusEndpoint!, getActiveScopes(), scopeName, enable);
+      setStatus((prev) => (prev ? { ...prev, activeScopes: newScopes } : prev));
+    } catch (err: unknown) {
+      setGrantError(String(err));
+    } finally {
+      setGrantingScope(null);
+    }
+  }
+
+  return { grantingScope, grantError, setGrantError, handleToggleScope };
 }
 
 /** Save/update label for an OAuth-app configure button — shared by the GitHub and QuickBooks cards. */
@@ -834,6 +872,7 @@ function GitHubFlowSelector({ value, onChange }: Readonly<{
       {options.map((option) => (
         <label
           key={option.flow}
+          htmlFor={`github-auth-flow-${option.flow}`}
           className={`flex gap-3 items-start px-3 py-2 rounded-lg border cursor-pointer transition ${
             value === option.flow
               ? 'border-amber-500/50 bg-amber-500/5'
@@ -841,6 +880,7 @@ function GitHubFlowSelector({ value, onChange }: Readonly<{
           }`}
         >
           <input
+            id={`github-auth-flow-${option.flow}`}
             type="radio"
             name="github-auth-flow"
             value={option.flow}
@@ -955,8 +995,11 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const clientIdRef = useRef<HTMLInputElement>(null);
 
   // Scope grant state
-  const [grantingScope, setGrantingScope] = useState<string | null>(null);
-  const [grantError, setGrantError] = useState<string | null>(null);
+  const { grantingScope, grantError, handleToggleScope } = useScopeToggle(
+    entry.statusEndpoint,
+    () => status?.activeScopes ?? [],
+    setStatus,
+  );
 
   // Prefill redirectUri from current origin (only in browser)
   useEffect(() => {
@@ -1058,23 +1101,6 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       setConfigError(String(err));
     } finally {
       setConfiguring(false);
-    }
-  }
-
-  // ── Step 3: Toggle a scope in the manifest ─────────────────────────────────
-  async function handleToggleScope(scopeName: string, enable: boolean) {
-    setGrantingScope(scopeName);
-    setGrantError(null);
-    try {
-      // Apply POST response directly — no card blank-out, no reactor race.
-      // configSealed/tokenSealed don't change on a scope toggle, so we avoid
-      // a refreshStatus() GET that would race the projection reactor.
-      const newScopes = await postScopeToggle(entry.statusEndpoint!, status?.activeScopes ?? [], scopeName, enable);
-      setStatus(prev => prev ? { ...prev, activeScopes: newScopes } : prev);
-    } catch (err: unknown) {
-      setGrantError(String(err));
-    } finally {
-      setGrantingScope(null);
     }
   }
 
@@ -1304,10 +1330,6 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
   const [sealError, setSealError] = useState<string | null>(null);
   const [showCredentialInput, setShowCredentialInput] = useState(false);
 
-  // Scope grant state
-  const [grantingScope, setGrantingScope] = useState<string | null>(null);
-  const [grantError, setGrantError] = useState<string | null>(null);
-
   const ui = credentialCopy(entry);
 
   const fetchStatus = useCallback(async () => {
@@ -1342,6 +1364,13 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
     disconnectMethod(entry),
   );
 
+  // Scope grant state
+  const { grantingScope, grantError, handleToggleScope } = useScopeToggle(
+    entry.statusEndpoint,
+    () => status?.activeScopes ?? [],
+    setStatus,
+  );
+
   const activeSet = new Set(status?.activeScopes ?? []);
   const sealed = status !== null && credentialSealed(status);
   // Connected = a sealed credential plus at least one active scope. The old
@@ -1371,19 +1400,6 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
       setSealError(String(err));
     } finally {
       setSealing(false);
-    }
-  }
-
-  async function handleToggleScope(scopeName: string, enable: boolean) {
-    setGrantingScope(scopeName);
-    setGrantError(null);
-    try {
-      const newScopes = await postScopeToggle(entry.statusEndpoint!, status?.activeScopes ?? [], scopeName, enable);
-      setStatus(prev => prev ? { ...prev, activeScopes: newScopes } : prev);
-    } catch (err: unknown) {
-      setGrantError(String(err));
-    } finally {
-      setGrantingScope(null);
     }
   }
 
@@ -1536,9 +1552,6 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
   const [configuring, setConfiguring] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
 
-  const [grantingScope, setGrantingScope] = useState<string | null>(null);
-  const [grantError, setGrantError] = useState<string | null>(null);
-
   useEffect(() => { setRedirectUri(`${window.location.origin}/quickbooks/api/callback`); }, []);
 
   const fetchStatus = useCallback(async () => {
@@ -1568,6 +1581,12 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
     () => { void fetchStatus(); },
   );
 
+  const { grantingScope, grantError, handleToggleScope } = useScopeToggle(
+    entry.statusEndpoint,
+    () => status?.activeScopes ?? [],
+    setStatus,
+  );
+
   const activeSet = new Set(status?.activeScopes ?? []);
   const readyForRead = status !== null && status.configSealed && status.tokenSealed && activeSet.has('quickbooks:read');
 
@@ -1583,15 +1602,6 @@ function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>)
       void refreshStatus();
     } catch (err: unknown) { setConfigError(String(err)); }
     finally { setConfiguring(false); }
-  }
-
-  async function handleToggleScope(scopeName: string, enable: boolean) {
-    setGrantingScope(scopeName); setGrantError(null);
-    try {
-      const newScopes = await postScopeToggle(entry.statusEndpoint!, status?.activeScopes ?? [], scopeName, enable);
-      setStatus(prev => prev ? { ...prev, activeScopes: newScopes } : prev);
-    } catch (err: unknown) { setGrantError(String(err)); }
-    finally { setGrantingScope(null); }
   }
 
   return (
@@ -1740,8 +1750,6 @@ function NativeConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const [status, setStatus] = useState<NativeStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
-  const [grantingScope, setGrantingScope] = useState<string | null>(null);
-  const [grantError, setGrantError] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -1770,6 +1778,12 @@ function NativeConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
+  const { grantingScope, grantError, setGrantError, handleToggleScope } = useScopeToggle(
+    entry.statusEndpoint,
+    () => status?.activeScopes ?? [],
+    setStatus,
+  );
+
   /**
    * Clear the toggles from the disconnect response rather than re-fetching into
    * a blanked card. The route verifies the revoke landed before it reports
@@ -1791,19 +1805,6 @@ function NativeConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const activeSet = new Set(status?.activeScopes ?? []);
   // Ready = at least one scope is active (no credential threshold for native connectors).
   const hasAnyActive = activeSet.size > 0;
-
-  async function handleToggleScope(scopeName: string, enable: boolean) {
-    setGrantingScope(scopeName);
-    setGrantError(null);
-    try {
-      const newScopes = await postScopeToggle(entry.statusEndpoint!, status?.activeScopes ?? [], scopeName, enable);
-      setStatus(prev => prev ? { ...prev, activeScopes: newScopes } : prev);
-    } catch (err: unknown) {
-      setGrantError(String(err));
-    } finally {
-      setGrantingScope(null);
-    }
-  }
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl p-6">
