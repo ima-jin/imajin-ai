@@ -7,11 +7,11 @@
  * instead — strictly linear in the length of the trailing-slash run, with
  * no regex involved at all.
  */
-const SLASH_CHAR_CODE = '/'.charCodeAt(0);
+const SLASH_CODE_POINT = '/'.codePointAt(0);
 
 export function stripTrailingSlashes(value: string): string {
   let end = value.length;
-  while (end > 0 && value.charCodeAt(end - 1) === SLASH_CHAR_CODE) {
+  while (end > 0 && value.codePointAt(end - 1) === SLASH_CODE_POINT) {
     end -= 1;
   }
   return value.slice(0, end);
