@@ -1,5 +1,5 @@
 import { createLogger } from '@imajin/logger';
-import { resolveInternalApiKey } from './emit-attestation';
+import { postInternal } from './internal-post';
 
 const log = createLogger('auth');
 
@@ -23,27 +23,17 @@ export interface EligibilityEvaluation {
  * could not be completed (misconfiguration or transport/HTTP error).
  */
 export async function evaluateEligibility(did: string): Promise<EligibilityEvaluation | null> {
-  const authServiceUrl = process.env.AUTH_SERVICE_URL;
-  const internalApiKey = resolveInternalApiKey();
-  if (!authServiceUrl || !internalApiKey) {
-    log.warn({}, 'Eligibility evaluation skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
-    return null;
-  }
-
   try {
-    const res = await fetch(`${authServiceUrl}/api/eligibility/evaluate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${internalApiKey}`,
-      },
-      body: JSON.stringify({ did }),
-    });
-    if (!res.ok) {
-      log.warn({ did, status: res.status }, 'Eligibility evaluation rejected');
+    const outcome = await postInternal<EligibilityEvaluation>('/api/eligibility/evaluate', { did });
+    if (!outcome) {
+      log.warn({}, 'Eligibility evaluation skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
       return null;
     }
-    return (await res.json()) as EligibilityEvaluation;
+    if (!outcome.ok) {
+      log.warn({ did, status: outcome.status }, 'Eligibility evaluation rejected');
+      return null;
+    }
+    return outcome.data;
   } catch (err) {
     log.error({ err: String(err), did }, 'Eligibility evaluation error');
     return null;

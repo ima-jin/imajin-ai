@@ -1,5 +1,5 @@
 import { createLogger } from '@imajin/logger';
-import { resolveInternalApiKey } from './emit-attestation';
+import { postInternal } from './internal-post';
 
 const log = createLogger('auth');
 
@@ -27,27 +27,20 @@ export interface ContactEmailBackfillResult {
  * call could not be completed (misconfiguration or transport/HTTP error).
  */
 export async function backfillContactEmail(did: string, email: string): Promise<ContactEmailBackfillResult | null> {
-  const authServiceUrl = process.env.AUTH_SERVICE_URL;
-  const internalApiKey = resolveInternalApiKey();
-  if (!authServiceUrl || !internalApiKey) {
-    log.warn({}, 'Contact email backfill skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
-    return null;
-  }
-
   try {
-    const res = await fetch(`${authServiceUrl}/api/identity/${encodeURIComponent(did)}/contact`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${internalApiKey}`,
-      },
-      body: JSON.stringify({ email }),
-    });
-    if (!res.ok) {
-      log.warn({ did, status: res.status }, 'Contact email backfill rejected');
+    const outcome = await postInternal<ContactEmailBackfillResult>(
+      `/api/identity/${encodeURIComponent(did)}/contact`,
+      { email },
+    );
+    if (!outcome) {
+      log.warn({}, 'Contact email backfill skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
       return null;
     }
-    return (await res.json()) as ContactEmailBackfillResult;
+    if (!outcome.ok) {
+      log.warn({ did, status: outcome.status }, 'Contact email backfill rejected');
+      return null;
+    }
+    return outcome.data;
   } catch (err) {
     log.error({ err: String(err), did }, 'Contact email backfill error');
     return null;
