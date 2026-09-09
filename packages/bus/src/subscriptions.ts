@@ -126,7 +126,13 @@ export async function deliverToSubscribers(event: BusEvent): Promise<void> {
          ${event.correlationId ?? null}, ${occurredAt.toISOString()})
       RETURNING seq
     `;
-    seq = String((rows[0] as { seq: unknown } | undefined)?.seq ?? '');
+    // Narrow to types with a meaningful (non-Object-default) `toString()`
+    // before stringifying (S6551) — `seq` is a Postgres bigint sequence
+    // value, returned as a string or number depending on the driver.
+    const seqValue = (rows[0] as { seq: unknown } | undefined)?.seq;
+    seq = typeof seqValue === 'string' || typeof seqValue === 'number' || typeof seqValue === 'bigint'
+      ? String(seqValue)
+      : '';
   } catch (err) {
     log.error({ err: String(err), event: event.type }, 'event_subscription_log write failed');
     return;

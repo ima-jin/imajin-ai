@@ -122,8 +122,15 @@ export function canonicalize(obj: unknown): string {
     );
     return `{${  pairs.join(',')  }}`;
   }
-  
-  return String(obj);
+
+  // Remaining typeof categories (`bigint`, `symbol`, `function`) each define
+  // their own non-default `toString()`, so narrow to them explicitly before
+  // stringifying (S6551) rather than calling `String()` on `unknown`.
+  if (typeof obj === 'bigint' || typeof obj === 'symbol' || typeof obj === 'function') {
+    return String(obj);
+  }
+
+  return 'null';
 }
 
 /**
@@ -137,7 +144,7 @@ export function canonicalize(obj: unknown): string {
 export function createChallenge(): string {
   // 32 random bytes as hex
   const bytes = new Uint8Array(32);
-  if (typeof globalThis.crypto === 'undefined') {
+  if (globalThis.crypto === undefined) {
     throw new TypeError('Secure random source unavailable');
   } else {
     globalThis.crypto.getRandomValues(bytes);

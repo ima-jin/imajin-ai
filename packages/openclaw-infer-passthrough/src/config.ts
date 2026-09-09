@@ -68,7 +68,7 @@ export function loadRoutes(configPath: string): ProviderRouteConfig[] {
   }
 
   if (!Array.isArray(parsed)) {
-    throw new Error(`Routes config at ${configPath} must be a JSON array of route entries`);
+    throw new TypeError(`Routes config at ${configPath} must be a JSON array of route entries`);
   }
 
   const invalid = parsed.filter((entry) => !isValidRoute(entry));

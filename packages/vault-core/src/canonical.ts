@@ -36,5 +36,12 @@ function canonicalize(obj: unknown): string {
         return `{${  pairs.join(',')  }}`;
     }
 
-    return String(obj);
+    // Remaining typeof categories (`bigint`, `symbol`, `function`) each define
+    // their own non-default `toString()`, so narrow to them explicitly before
+    // stringifying (S6551) rather than calling `String()` on `unknown`.
+    if (typeof obj === 'bigint' || typeof obj === 'symbol' || typeof obj === 'function') {
+        return String(obj);
+    }
+
+    return 'null';
 }

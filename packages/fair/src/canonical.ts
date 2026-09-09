@@ -24,7 +24,7 @@ export function canonicalize(value: unknown): string {
  * are present.
  */
 export function canonicalizeForSigning(manifest: FairManifest): string {
-  const clone = JSON.parse(JSON.stringify(manifest)) as Record<string, unknown>;
+  const clone = structuredClone(manifest) as unknown as Record<string, unknown>;
   delete clone.signature;
   delete clone.platformSignature;
   return canonicalize(clone);
