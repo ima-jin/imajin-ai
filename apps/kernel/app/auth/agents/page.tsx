@@ -15,7 +15,7 @@ interface GrantCapability {
 }
 
 interface GrantHistoryEntry {
-  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked';
+  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked' | 'capability_added';
   capability: string | null;
   actorDid: string;
   createdAt: string;
@@ -172,6 +172,7 @@ const HISTORY_EVENT_LABELS: Record<GrantHistoryEntry['event'], string> = {
   renewed: 'Renewed',
   revoked: 'Revoked',
   capability_revoked: 'Capability revoked',
+  capability_added: 'Capability added',
 };
 
 function formatDate(value: string | null): string | null {
@@ -221,17 +222,27 @@ function GrantCard({
   onRevokeCapability,
   onRevokeAll,
   onRenew,
+  onAddCapability,
 }: Readonly<{
   grant: Grant;
   actionLoading: string;
   onRevokeCapability: (grantId: string, capability: string) => void;
   onRevokeAll: (grantId: string) => void;
   onRenew: (grantId: string) => void;
+  onAddCapability: (grantId: string, capability: string) => void;
 }>) {
   const [expanded, setExpanded] = useState(false);
   const isRevoked = grant.status === 'revoked';
   const isExpired = grant.status === 'expired';
   const canAct = !isRevoked;
+  const activeCapabilities = new Set(grant.capabilities.filter((cap) => cap.status === 'active').map((cap) => cap.capability));
+  const addableCapabilities = GRANT_SCOPE_REGISTRY.map((entry) => entry.scope).filter((scope) => !activeCapabilities.has(scope));
+
+  function handleAddCapabilitySubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const capability = new FormData(e.currentTarget).get('capability');
+    if (typeof capability === 'string' && capability) onAddCapability(grant.grantId, capability);
+  }
 
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-950 p-3 space-y-2">
@@ -303,6 +314,28 @@ function GrantCard({
           </span>
         ))}
       </div>
+
+      {/* Add-capability control (#2108): available on every grant, not just a zero-grant agent's first-grant flow. */}
+      {canAct && addableCapabilities.length > 0 && (
+        <form onSubmit={handleAddCapabilitySubmit} className="flex items-center gap-2">
+          <select
+            name="capability"
+            aria-label={`Add capability to grant ${grant.grantId}`}
+            className="px-2 py-1 text-xs border border-gray-700 rounded bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+          >
+            {addableCapabilities.map((scope) => (
+              <option key={scope} value={scope}>{scope}</option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            disabled={actionLoading === `add-cap-${grant.grantId}`}
+            className="text-xs px-2 py-1 border border-violet-800 text-violet-300 rounded hover:bg-violet-950/30 transition disabled:opacity-40 whitespace-nowrap"
+          >
+            {actionLoading === `add-cap-${grant.grantId}` ? '…' : '+ Add capability'}
+          </button>
+        </form>
+      )}
 
       {expanded && (
         <div className="pt-2 border-t border-gray-900 space-y-2 text-xs text-gray-500">
@@ -779,26 +812,60 @@ export default function AgentsPage() {
     }
   }
 
-  async function handleRevokeCapability(grantId: string, capability: string) {
-    const key = `revoke-cap-${grantId}-${capability}`;
-    setActionLoading(key);
+  /**
+   * Shared fetch/reload/error-handling shape for both capability mutations
+   * below (#2108): only the HTTP method, action key, and messaging differ
+   * between revoking and adding a capability on the same resource.
+   */
+  async function performCapabilityAction(opts: {
+    grantId: string;
+    capability: string;
+    method: 'DELETE' | 'PUT';
+    actionKey: string;
+    successMessage: string;
+    failureMessage: string;
+  }) {
+    setActionLoading(opts.actionKey);
     try {
       const res = await fetch(
-        `/auth/api/grants/${encodeURIComponent(grantId)}/capabilities/${encodeURIComponent(capability)}`,
-        { method: 'DELETE', credentials: 'include' },
+        `/auth/api/grants/${encodeURIComponent(opts.grantId)}/capabilities/${encodeURIComponent(opts.capability)}`,
+        { method: opts.method, credentials: 'include' },
       );
       if (res.ok) {
-        showStatus('success', `Revoked ${capability}.`);
+        showStatus('success', opts.successMessage);
         await loadData();
       } else {
         const body = await res.json().catch(() => ({}));
-        showStatus('error', body.error || 'Failed to revoke capability');
+        showStatus('error', body.error || opts.failureMessage);
       }
     } catch {
       showStatus('error', 'Network error. Please try again.');
     } finally {
       setActionLoading('');
     }
+  }
+
+  async function handleRevokeCapability(grantId: string, capability: string) {
+    await performCapabilityAction({
+      grantId,
+      capability,
+      method: 'DELETE',
+      actionKey: `revoke-cap-${grantId}-${capability}`,
+      successMessage: `Revoked ${capability}.`,
+      failureMessage: 'Failed to revoke capability',
+    });
+  }
+
+  /** Add a single capability to an existing, active grant (#2108) — the additive counterpart to per-capability revocation. */
+  async function handleAddCapability(grantId: string, capability: string) {
+    await performCapabilityAction({
+      grantId,
+      capability,
+      method: 'PUT',
+      actionKey: `add-cap-${grantId}`,
+      successMessage: `Added ${capability}.`,
+      failureMessage: 'Failed to add capability',
+    });
   }
 
   async function handleRevokeAll(grantId: string) {
@@ -1382,6 +1449,7 @@ export default function AgentsPage() {
                           onRevokeCapability={handleRevokeCapability}
                           onRevokeAll={handleRevokeAll}
                           onRenew={handleRenew}
+                          onAddCapability={handleAddCapability}
                         />
                       ))}
                     </div>

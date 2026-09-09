@@ -2079,6 +2079,58 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
 
   /api/grants/{grantId}/capabilities/{capability}:
+    put:
+      tags: [grants]
+      operationId: addGrantCapability
+      summary: Add one capability to an existing, active grant (#2108), the additive mirror of DELETE below
+      description: |
+        Idempotent: adding a capability the grant already actively holds is a
+        no-op 200 (`added: false`). Re-adding a capability previously revoked
+        on this grant reactivates it on the same grant rather than issuing a
+        sibling grant. Validated against the same closed capability registry
+        as `POST /api/grants`. Same auth as the DELETE below — only the
+        delegator who issued the grant may add to it.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: grantId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: capability
+          in: path
+          required: true
+          schema: { type: string, example: "operator:approvals" }
+      responses:
+        "200":
+          description: Add result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  added: { type: boolean }
+        "400":
+          description: Unknown capability — not in the closed registry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Caller is not the delegator who issued this grant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Grant not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Cannot add a capability to a revoked grant — issue a new one
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
     delete:
       tags: [grants]
       operationId: revokeGrantCapability

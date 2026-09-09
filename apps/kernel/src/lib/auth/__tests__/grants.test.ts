@@ -174,6 +174,7 @@ import {
   issueGrant,
   revokeGrant,
   revokeGrantCapability,
+  addGrantCapability,
   renewGrant,
   introspectGrant,
   listGrantsForDelegator,
@@ -301,6 +302,93 @@ describe('per-capability revocation (#1882 item 4)', () => {
   it('returns 404 for a non-existent grant', async () => {
     const result = await revokeGrantCapability({ grantId: 'grant_nope', capability: 'messages:write', requestedBy: DELEGATOR });
     expect(result).toMatchObject({ status: 404 });
+  });
+});
+
+describe('addGrantCapability — additive counterpart to per-capability revocation (#2108)', () => {
+  it('adds a new capability to an existing grant, leaving siblings untouched', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    const { grantId } = issued.grant;
+
+    const result = await addGrantCapability({ grantId, capability: 'intros:propose', requestedBy: DELEGATOR });
+    expect(result).toEqual({ added: true });
+
+    await expect(introspectGrant({ agentDid: AGENT, capability: 'intros:propose' })).resolves.toMatchObject({ authorized: true, grantId });
+    await expect(introspectGrant({ agentDid: AGENT, capability: 'messages:write' })).resolves.toMatchObject({ authorized: true, grantId });
+  });
+
+  it('is idempotent — adding an already-active capability is a no-op that returns added: false', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+
+    const result = await addGrantCapability({ grantId: issued.grant.grantId, capability: 'messages:write', requestedBy: DELEGATOR });
+    expect(result).toEqual({ added: false });
+  });
+
+  it('reactivates a previously revoked capability on the same grant (extends, does not duplicate)', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    const { grantId } = issued.grant;
+    await revokeGrantCapability({ grantId, capability: 'messages:write', requestedBy: DELEGATOR });
+    await expect(introspectGrant({ agentDid: AGENT, capability: 'messages:write' })).resolves.toMatchObject({ authorized: false });
+
+    const result = await addGrantCapability({ grantId, capability: 'messages:write', requestedBy: DELEGATOR });
+    expect(result).toEqual({ added: true });
+    await expect(introspectGrant({ agentDid: AGENT, capability: 'messages:write' })).resolves.toMatchObject({ authorized: true, grantId });
+    expect(capsStore.size).toBe(1); // reactivated the existing row, not a duplicate
+  });
+
+  it('rejects an unknown/unregistered capability', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+
+    const result = await addGrantCapability({ grantId: issued.grant.grantId, capability: 'bogus:scope', requestedBy: DELEGATOR });
+    expect(result).toMatchObject({ status: 400, error: expect.stringContaining('bogus:scope') });
+  });
+
+  it('rejects a caller other than the issuing delegator', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+
+    const result = await addGrantCapability({ grantId: issued.grant.grantId, capability: 'intros:propose', requestedBy: 'did:imajin:someone-else' });
+    expect(result).toMatchObject({ status: 403 });
+  });
+
+  it('returns 404 for a non-existent grant', async () => {
+    const result = await addGrantCapability({ grantId: 'grant_nope', capability: 'messages:write', requestedBy: DELEGATOR });
+    expect(result).toMatchObject({ status: 404 });
+  });
+
+  it('refuses to add a capability to a revoked grant', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    await revokeGrant({ grantId: issued.grant.grantId, requestedBy: DELEGATOR });
+
+    const result = await addGrantCapability({ grantId: issued.grant.grantId, capability: 'intros:propose', requestedBy: DELEGATOR });
+    expect(result).toMatchObject({ status: 409 });
+  });
+
+  it('records a "capability_added" event naming the capability', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    await addGrantCapability({ grantId: issued.grant.grantId, capability: 'intros:propose', requestedBy: DELEGATOR });
+
+    const details = await listGrantDetailsForDelegator(DELEGATOR);
+    expect(details[0].history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: 'capability_added', capability: 'intros:propose', actorDid: DELEGATOR }),
+      ]),
+    );
+  });
+
+  it('does not record an event for an idempotent no-op add', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    await addGrantCapability({ grantId: issued.grant.grantId, capability: 'messages:write', requestedBy: DELEGATOR });
+
+    const details = await listGrantDetailsForDelegator(DELEGATOR);
+    expect(details[0].history.filter((h) => h.event === 'capability_added')).toHaveLength(0);
   });
 });
 

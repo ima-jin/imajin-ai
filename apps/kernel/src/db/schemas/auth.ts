@@ -503,8 +503,8 @@ export const delegationGrants = authSchema.table('delegation_grants', {
 export const delegationGrantEvents = authSchema.table('delegation_grant_events', {
   id: text('id').primaryKey(),                          // gevt_{nanoid}
   grantId: text('grant_id').notNull().references(() => delegationGrants.id, { onDelete: 'cascade' }),
-  event: text('event').notNull(),                       // 'issued' | 'renewed' | 'revoked' | 'capability_revoked'
-  capability: text('capability'),                       // set only for 'capability_revoked'
+  event: text('event').notNull(),                       // 'issued' | 'renewed' | 'revoked' | 'capability_revoked' | 'capability_added'
+  capability: text('capability'),                       // set for 'capability_revoked' and 'capability_added'
   actorDid: text('actor_did').notNull(),                // the delegator who performed the action
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({

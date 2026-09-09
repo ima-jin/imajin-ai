@@ -197,8 +197,8 @@ describe('grants-view read surface (#1887)', () => {
       }),
     ]);
 
-    const revokedChip = screen.getByText('intros:propose');
-    expect(revokedChip.className).toContain('line-through');
+    const revokedChip = screen.getAllByText('intros:propose').find((el) => el.tagName === 'SPAN');
+    expect(revokedChip?.className).toContain('line-through');
   });
 
   it('does not offer a per-capability revoke control on an already-revoked grant', async () => {
@@ -270,6 +270,43 @@ describe('grant controls call the #1882 grants endpoints', () => {
         expect.objectContaining({ method: expectedMethod }),
       ),
     );
+  });
+});
+
+describe('add-capability control (#2108)', () => {
+  it('renders an add-capability control on an active grant, offering only capabilities not already active', async () => {
+    await renderAgentsPage([
+      agent({ grants: [grant({ capabilities: [{ capability: 'messages:write', status: 'active', revokedAt: null }] })] }),
+    ]);
+
+    const select = screen.getByLabelText('Add capability to grant grant_1') as HTMLSelectElement;
+    const optionValues = Array.from(select.options).map((o) => o.value);
+    expect(optionValues).not.toContain('messages:write');
+    expect(optionValues).toContain('intros:propose');
+  });
+
+  it('adds a capability via PUT /auth/api/grants/:grantId/capabilities/:capability', async () => {
+    const spy = await renderAgentsPage([
+      agent({ grants: [grant({ capabilities: [{ capability: 'messages:write', status: 'active', revokedAt: null }] })] })
+    ], {
+      '/auth/api/grants/grant_1/capabilities': async () => ({ ok: true, status: 200, json: async () => ({ added: true }) } as unknown as Response),
+    });
+
+    fireEvent.change(screen.getByLabelText('Add capability to grant grant_1'), { target: { value: 'intros:propose' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Add capability' }));
+
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/api/grants/grant_1/capabilities/intros%3Apropose'),
+        expect.objectContaining({ method: 'PUT' }),
+      ),
+    );
+  });
+
+  it('does not offer an add-capability control on an already-revoked grant', async () => {
+    await renderAgentsPage([agent({ grants: [grant({ status: 'revoked' })] })]);
+
+    expect(screen.queryByLabelText('Add capability to grant grant_1')).toBeNull();
   });
 });
 

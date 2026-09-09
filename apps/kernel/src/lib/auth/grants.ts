@@ -78,7 +78,7 @@ function toGrantRecord(row: {
  * a logging failure must never unwind an otherwise-successful grant mutation. */
 async function recordGrantEvent(params: {
   grantId: string;
-  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked';
+  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked' | 'capability_added';
   actorDid: string;
   capability?: string;
 }): Promise<void> {
@@ -178,8 +178,23 @@ export async function issueGrant(input: IssueGrantInput): Promise<{ grant: Deleg
   };
 }
 
-/** Revoke the entire grant. Only the issuing delegator may do this. */
-export async function revokeGrant(params: { grantId: string; requestedBy: string }): Promise<{ revoked: boolean } | LibError> {
+/**
+ * Shared preamble for every grant-mutating function below: fetch the grant's
+ * `{ delegatorDid, status }`, confirm it exists, and confirm `requestedBy` is
+ * the delegator who issued it. `action` fills in the 403 message ("Only the
+ * delegator may {action} this grant") so each caller's wording stays exact
+ * without duplicating the lookup + check itself. Pass `requireActiveError`
+ * to additionally fail closed (409) when the grant isn't `active` — callers
+ * that don't touch an already-revoked grant (e.g. per-capability revoke)
+ * omit it and rely on their own mutation's `WHERE status = 'active'` guard
+ * instead.
+ */
+async function requireGrantDelegator(params: {
+  grantId: string;
+  requestedBy: string;
+  action: string;
+  requireActiveError?: string;
+}): Promise<{ delegatorDid: string; status: string } | LibError> {
   const [grant] = await db
     .select({ delegatorDid: delegationGrants.delegatorDid, status: delegationGrants.status })
     .from(delegationGrants)
@@ -188,8 +203,18 @@ export async function revokeGrant(params: { grantId: string; requestedBy: string
 
   if (!grant) return { error: 'Grant not found', status: 404 };
   if (grant.delegatorDid !== params.requestedBy) {
-    return { error: 'Only the delegator may revoke this grant', status: 403 };
+    return { error: `Only the delegator may ${params.action} this grant`, status: 403 };
   }
+  if (params.requireActiveError && grant.status !== 'active') {
+    return { error: params.requireActiveError, status: 409 };
+  }
+  return grant;
+}
+
+/** Revoke the entire grant. Only the issuing delegator may do this. */
+export async function revokeGrant(params: { grantId: string; requestedBy: string }): Promise<{ revoked: boolean } | LibError> {
+  const grant = await requireGrantDelegator({ grantId: params.grantId, requestedBy: params.requestedBy, action: 'revoke' });
+  if ('error' in grant) return grant;
 
   const result = await db
     .update(delegationGrants)
@@ -213,16 +238,8 @@ export async function revokeGrantCapability(params: {
   capability: string;
   requestedBy: string;
 }): Promise<{ revoked: boolean } | LibError> {
-  const [grant] = await db
-    .select({ delegatorDid: delegationGrants.delegatorDid })
-    .from(delegationGrants)
-    .where(eq(delegationGrants.id, params.grantId))
-    .limit(1);
-
-  if (!grant) return { error: 'Grant not found', status: 404 };
-  if (grant.delegatorDid !== params.requestedBy) {
-    return { error: 'Only the delegator may revoke this grant', status: 403 };
-  }
+  const grant = await requireGrantDelegator({ grantId: params.grantId, requestedBy: params.requestedBy, action: 'revoke' });
+  if ('error' in grant) return grant;
 
   const result = await db
     .update(delegationGrantCapabilities)
@@ -244,6 +261,65 @@ export async function revokeGrantCapability(params: {
 }
 
 /**
+ * Add exactly one capability to an existing, active grant (#2108), mirroring
+ * `revokeGrantCapability`'s per-capability granularity in the other
+ * direction. Only the issuing delegator may do this, and only against an
+ * active grant — a revoked grant is a deliberate act and must be re-issued,
+ * never resurrected via a capability add (mirrors `renewGrant`'s same rule).
+ *
+ * Idempotent: adding a capability the grant already actively holds is a
+ * no-op that returns `{ added: false }` without writing a duplicate row or
+ * lifecycle event. Re-adding a capability that was previously revoked on
+ * this grant reactivates the same `delegation_grant_capabilities` row
+ * (extending the existing grant, per #2108's "extending is the better UX"
+ * decision) rather than leaving an orphaned duplicate around — the unique
+ * (grantId, capability) index would reject a second insert anyway.
+ */
+export async function addGrantCapability(params: {
+  grantId: string;
+  capability: string;
+  requestedBy: string;
+}): Promise<{ added: boolean } | LibError> {
+  const grant = await requireGrantDelegator({
+    grantId: params.grantId,
+    requestedBy: params.requestedBy,
+    action: 'modify',
+    requireActiveError: 'Cannot add a capability to a revoked grant — issue a new one',
+  });
+  if ('error' in grant) return grant;
+
+  const { valid, invalid } = validateGrantCapabilities([params.capability]);
+  if (invalid.length > 0) {
+    return { error: `Unknown capability: ${params.capability}`, status: 400 };
+  }
+  const [capability] = valid;
+
+  const [existing] = await db
+    .select({ id: delegationGrantCapabilities.id, status: delegationGrantCapabilities.status })
+    .from(delegationGrantCapabilities)
+    .where(and(eq(delegationGrantCapabilities.grantId, params.grantId), eq(delegationGrantCapabilities.capability, capability)))
+    .limit(1);
+
+  if (existing?.status === 'active') {
+    return { added: false };
+  }
+
+  if (existing) {
+    await db
+      .update(delegationGrantCapabilities)
+      .set({ status: 'active', revokedAt: null })
+      .where(eq(delegationGrantCapabilities.id, existing.id));
+  } else {
+    await db.insert(delegationGrantCapabilities).values({ id: generateId('gcap'), grantId: params.grantId, capability, status: 'active' });
+  }
+
+  log.info({ grantId: params.grantId, delegatorDid: params.requestedBy, capability }, 'Delegation grant capability added');
+  await recordGrantEvent({ grantId: params.grantId, event: 'capability_added', actorDid: params.requestedBy, capability });
+
+  return { added: true };
+}
+
+/**
  * Renew a grant's lease. Only the issuing delegator may renew, and only an
  * active (non-revoked) grant — a revoked grant is a deliberate act and must
  * be re-issued, never resurrected via renewal.
@@ -253,19 +329,13 @@ export async function renewGrant(params: {
   requestedBy: string;
   ttlMs?: number;
 }): Promise<{ grantId: string; expiresAt: string } | LibError> {
-  const [grant] = await db
-    .select({ delegatorDid: delegationGrants.delegatorDid, status: delegationGrants.status })
-    .from(delegationGrants)
-    .where(eq(delegationGrants.id, params.grantId))
-    .limit(1);
-
-  if (!grant) return { error: 'Grant not found', status: 404 };
-  if (grant.delegatorDid !== params.requestedBy) {
-    return { error: 'Only the delegator may renew this grant', status: 403 };
-  }
-  if (grant.status !== 'active') {
-    return { error: 'A revoked grant cannot be renewed — issue a new one', status: 409 };
-  }
+  const grant = await requireGrantDelegator({
+    grantId: params.grantId,
+    requestedBy: params.requestedBy,
+    action: 'renew',
+    requireActiveError: 'A revoked grant cannot be renewed — issue a new one',
+  });
+  if ('error' in grant) return grant;
 
   const expiresAt = new Date(Date.now() + clampTtlMs(params.ttlMs));
 
@@ -433,7 +503,7 @@ export interface GrantCapabilityDetail {
 }
 
 export interface GrantEventDetail {
-  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked';
+  event: 'issued' | 'renewed' | 'revoked' | 'capability_revoked' | 'capability_added';
   capability: string | null;
   actorDid: string;
   createdAt: string;
