@@ -12,8 +12,17 @@
  * app-token-verify chain together (only `fetch` is stubbed, to route the
  * bearer-verification round trip to the in-process verify handler instead of
  * the network) through the *real* route handler.
+ *
+ * #2083: `witnessJws` is now really verified (real EdDSA signature by the
+ * witness's resolved DID key, over a payload binding to this exact
+ * attestation's id + CID) before anything is persisted. Every test that
+ * expects the countersign to succeed must therefore mint a real JWS with
+ * `signWitnessJws()` — a bare string like the old `'witness-jws-token'`
+ * fixture no longer clears verification.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { SignJWT, generateKeyPair, exportJWK, base64url } from 'jose';
+import type { CryptoKey } from 'jose';
 
 vi.mock('next/server', () => ({
   NextRequest: Request,
@@ -63,7 +72,12 @@ vi.mock('@/src/db', () => ({
     update: () => ({ set: () => ({ where: h.mockUpdateWhere }) }),
     transaction: async (fn: (tx: unknown) => Promise<void>) => fn({ select: txSelect, update: txUpdate }),
   },
+  // #2083: verifyWitnessJws resolves the witness's public key via
+  // createDbResolver(db, identities) — the mock only needs to be a
+  // distinct, importable value; `db.select` above is what's actually
+  // exercised (shared across every select() call, attestation or identity).
   attestations: {},
+  identities: {},
 }));
 
 vi.mock('drizzle-orm', () => ({ eq: (...args: unknown[]) => args }));
@@ -80,7 +94,26 @@ const AUTH_SERVICE_URL = 'https://auth.kernel.test/auth';
 const APP_DID = 'did:imajin:agrifortress-webhook';
 const SUBJECT_DID = 'did:imajin:agrifortress-recipient';
 const ATTESTATION_ID = 'att_pending_123';
+const ATTESTATION_CID = 'bafy-test';
 const ISSUER_DID_V2 = 'did:imajin:agrifortress-issuer';
+
+let witnessPrivateKey: CryptoKey;
+let witnessPublicKeyHex: string;
+
+function witnessIdentityRow(publicKey: string = witnessPublicKeyHex) {
+  return [{ id: SUBJECT_DID, publicKey, type: 'actor', tier: 'soft' }];
+}
+
+async function signWitnessJws(payload: Record<string, unknown>, key: CryptoKey = witnessPrivateKey): Promise<string> {
+  return new SignJWT(payload).setProtectedHeader({ alg: 'EdDSA' }).sign(key);
+}
+
+/** Hand-assembled JWS with `alg: none` and an empty signature segment — jose's signers refuse to produce this on purpose. */
+function noneAlgJws(payload: Record<string, unknown>): string {
+  const header = base64url.encode(JSON.stringify({ alg: 'none' }));
+  const body = base64url.encode(JSON.stringify(payload));
+  return `${header}.${body}.`;
+}
 
 function countersignRequest(headers: Record<string, string>, body: Record<string, unknown>): Request {
   return new Request('https://kernel.test/auth/api/attestations/countersign', {
@@ -100,10 +133,23 @@ function pendingAttestation(overrides: Record<string, unknown> = {}) {
     subjectDid: SUBJECT_DID,
     issuerDid: ISSUER_DID_V2,
     attestationStatus: 'pending',
-    cid: 'bafy-test',
+    cid: ATTESTATION_CID,
     ...overrides,
   };
 }
+
+/** Queue the attestation row, then the witness identity row `verifyWitnessJws` resolves next. */
+function queueValidCountersignReads(attestationOverrides: Record<string, unknown> = {}) {
+  h.mockSelectLimit.mockResolvedValueOnce([pendingAttestation(attestationOverrides)]);
+  h.mockSelectLimit.mockResolvedValueOnce(witnessIdentityRow());
+}
+
+beforeAll(async () => {
+  const { privateKey, publicKey } = await generateKeyPair('EdDSA', { crv: 'Ed25519', extractable: true });
+  witnessPrivateKey = privateKey;
+  const jwk = await exportJWK(publicKey);
+  witnessPublicKeyHex = Buffer.from(jwk.x as string, 'base64url').toString('hex');
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -135,19 +181,17 @@ beforeEach(() => {
 
 describe('POST /auth/api/attestations/countersign — app-delegated token (#1824)', () => {
   it('countersigns a pending attestation for a bearer app token with attestations:write, no x-app-did', async () => {
-    h.mockSelectLimit.mockResolvedValueOnce([pendingAttestation()]);
+    queueValidCountersignReads();
     const token = await mintAppToken('attestations:write');
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID });
 
     const res = await POST(
-      countersignRequest(
-        { authorization: `Bearer ${token}` },
-        { attestationId: ATTESTATION_ID, witnessJws: 'witness-jws-token' },
-      ) as never,
+      countersignRequest({ authorization: `Bearer ${token}` }, { attestationId: ATTESTATION_ID, witnessJws }) as never,
     );
 
     expect(res.status).toBe(200);
     const responseBody = await res.json();
-    expect(responseBody).toMatchObject({ id: ATTESTATION_ID, cid: 'bafy-test', status: 'bilateral' });
+    expect(responseBody).toMatchObject({ id: ATTESTATION_ID, cid: ATTESTATION_CID, status: 'bilateral' });
     expect(h.mockUpdateWhere).toHaveBeenCalledTimes(1);
   });
 
@@ -198,6 +242,113 @@ describe('POST /auth/api/attestations/countersign — app-delegated token (#1824
   });
 });
 
+describe('POST /auth/api/attestations/countersign — witnessJws verification (#2083)', () => {
+  async function countersignWithJws(witnessJws: string): Promise<Response> {
+    const token = await mintAppToken('attestations:write');
+    return POST(
+      countersignRequest({ authorization: `Bearer ${token}` }, { attestationId: ATTESTATION_ID, witnessJws }) as never,
+    );
+  }
+
+  it("accepts a validly signed witnessJws bound to this attestation's id + cid", async () => {
+    queueValidCountersignReads();
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID });
+
+    const res = await countersignWithJws(witnessJws);
+
+    expect(res.status).toBe(200);
+    expect(h.mockUpdateWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a bad signature (signed by a key other than the witness's resolved key) with 422, nothing stored", async () => {
+    queueValidCountersignReads();
+    const { privateKey: attackerKey } = await generateKeyPair('EdDSA', { crv: 'Ed25519', extractable: true });
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID }, attackerKey);
+
+    const res = await countersignWithJws(witnessJws);
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toMatch(/Invalid witnessJws signature/);
+    expect(h.mockUpdateWhere).not.toHaveBeenCalled();
+  });
+
+  it('rejects a witnessJws whose payload names the wrong CID with 422, nothing stored', async () => {
+    queueValidCountersignReads();
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: 'bafy-wrong-cid' });
+
+    const res = await countersignWithJws(witnessJws);
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toMatch(/does not bind to this attestation/);
+    expect(h.mockUpdateWhere).not.toHaveBeenCalled();
+  });
+
+  it('rejects a witnessJws whose payload names the wrong attestationId with 422, nothing stored', async () => {
+    queueValidCountersignReads();
+    const witnessJws = await signWitnessJws({ attestationId: 'att_some_other_one', cid: ATTESTATION_CID });
+
+    const res = await countersignWithJws(witnessJws);
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toMatch(/does not bind to this attestation/);
+    expect(h.mockUpdateWhere).not.toHaveBeenCalled();
+  });
+
+  it('rejects alg=none with 422 before ever resolving the witness key, nothing stored', async () => {
+    // Only the attestation read is queued — an unsupported `alg` is
+    // rejected from the decoded header alone, before the witness DID's
+    // public key is ever resolved.
+    h.mockSelectLimit.mockResolvedValueOnce([pendingAttestation()]);
+    const witnessJws = noneAlgJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID });
+
+    const res = await countersignWithJws(witnessJws);
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toMatch(/alg "none" is not allowed/);
+    expect(h.mockUpdateWhere).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unresolvable witness DID with 422, nothing stored', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([pendingAttestation()]);
+    h.mockSelectLimit.mockResolvedValueOnce([]); // identities lookup finds no row
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID });
+
+    const res = await countersignWithJws(witnessJws);
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toMatch(/Could not resolve witness DID/);
+    expect(h.mockUpdateWhere).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed (non-JWS) witnessJws with 422, nothing stored', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([pendingAttestation()]);
+
+    const res = await countersignWithJws('not-a-jws-at-all');
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toMatch(/not a well-formed JWS/);
+    expect(h.mockUpdateWhere).not.toHaveBeenCalled();
+  });
+
+  it('rejects countersigning an attestation with no CID (nothing to bind witnessJws to) with 422', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([pendingAttestation({ cid: null })]);
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID });
+
+    const res = await countersignWithJws(witnessJws);
+
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toMatch(/no CID/);
+    expect(h.mockUpdateWhere).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /auth/api/attestations/countersign — amendment-by-supersession (#1790)', () => {
   const V1_ID = 'att_v1_bilateral';
 
@@ -205,23 +356,22 @@ describe('POST /auth/api/attestations/countersign — amendment-by-supersession 
     return pendingAttestation({ supersedes: V1_ID, ...overrides });
   }
 
-  async function countersignAsIssuer(): Promise<Response> {
+  async function countersignAsIssuer(witnessJws: string): Promise<Response> {
     const token = await mintAppToken('attestations:write');
     return POST(
-      countersignRequest(
-        { authorization: `Bearer ${token}` },
-        { attestationId: ATTESTATION_ID, witnessJws: 'witness-jws-token' },
-      ) as never,
+      countersignRequest({ authorization: `Bearer ${token}` }, { attestationId: ATTESTATION_ID, witnessJws }) as never,
     );
   }
 
   it('atomically flips v1 -> superseded and v2 -> bilateral inside one transaction', async () => {
     h.mockSelectLimit.mockResolvedValueOnce([pendingAmendment()]);
+    h.mockSelectLimit.mockResolvedValueOnce(witnessIdentityRow());
     h.mockTxSelectLimit.mockResolvedValueOnce([
       { id: V1_ID, issuerDid: ISSUER_DID_V2, subjectDid: 'did:imajin:someone-else', attestationStatus: 'bilateral' },
     ]);
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID });
 
-    const res = await countersignAsIssuer();
+    const res = await countersignAsIssuer(witnessJws);
 
     expect(res.status).toBe(200);
     // The non-transactional single-update path must be skipped entirely.
@@ -230,16 +380,18 @@ describe('POST /auth/api/attestations/countersign — amendment-by-supersession 
     expect(h.mockTxUpdateSet.mock.calls[0][0]).toEqual({ attestationStatus: 'superseded' });
     expect(h.mockTxUpdateSet.mock.calls[1][0]).toMatchObject({
       attestationStatus: 'bilateral',
-      witnessJws: 'witness-jws-token',
+      witnessJws,
     });
     expect(h.mockTxUpdateWhere).toHaveBeenCalledTimes(2);
   });
 
   it('rolls back and returns 404 when the supersedes target does not exist', async () => {
     h.mockSelectLimit.mockResolvedValueOnce([pendingAmendment()]);
+    h.mockSelectLimit.mockResolvedValueOnce(witnessIdentityRow());
     h.mockTxSelectLimit.mockResolvedValueOnce([]);
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID });
 
-    const res = await countersignAsIssuer();
+    const res = await countersignAsIssuer(witnessJws);
 
     expect(res.status).toBe(404);
     expect(h.mockTxUpdateSet).not.toHaveBeenCalled();
@@ -247,11 +399,13 @@ describe('POST /auth/api/attestations/countersign — amendment-by-supersession 
 
   it('rolls back and returns 409 when v1 is no longer bilateral by countersign time (TOCTOU re-check)', async () => {
     h.mockSelectLimit.mockResolvedValueOnce([pendingAmendment()]);
+    h.mockSelectLimit.mockResolvedValueOnce(witnessIdentityRow());
     h.mockTxSelectLimit.mockResolvedValueOnce([
       { id: V1_ID, issuerDid: ISSUER_DID_V2, subjectDid: 'did:imajin:someone-else', attestationStatus: 'superseded' },
     ]);
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID });
 
-    const res = await countersignAsIssuer();
+    const res = await countersignAsIssuer(witnessJws);
 
     expect(res.status).toBe(409);
     const body = await res.json();
@@ -261,11 +415,13 @@ describe('POST /auth/api/attestations/countersign — amendment-by-supersession 
 
   it('rolls back and returns 409 when the proposer is not a party to v1', async () => {
     h.mockSelectLimit.mockResolvedValueOnce([pendingAmendment()]);
+    h.mockSelectLimit.mockResolvedValueOnce(witnessIdentityRow());
     h.mockTxSelectLimit.mockResolvedValueOnce([
       { id: V1_ID, issuerDid: 'did:imajin:unrelated', subjectDid: 'did:imajin:also-unrelated', attestationStatus: 'bilateral' },
     ]);
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID });
 
-    const res = await countersignAsIssuer();
+    const res = await countersignAsIssuer(witnessJws);
 
     expect(res.status).toBe(409);
     const body = await res.json();
@@ -274,9 +430,10 @@ describe('POST /auth/api/attestations/countersign — amendment-by-supersession 
   });
 
   it('does not open a transaction for a plain countersign with no supersedes', async () => {
-    h.mockSelectLimit.mockResolvedValueOnce([pendingAttestation()]);
+    queueValidCountersignReads();
+    const witnessJws = await signWitnessJws({ attestationId: ATTESTATION_ID, cid: ATTESTATION_CID });
 
-    const res = await countersignAsIssuer();
+    const res = await countersignAsIssuer(witnessJws);
 
     expect(res.status).toBe(200);
     expect(h.mockTxUpdateSet).not.toHaveBeenCalled();

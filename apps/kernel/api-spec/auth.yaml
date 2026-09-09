@@ -1219,7 +1219,12 @@ paths:
               required: [attestationId, witnessJws]
               properties:
                 attestationId: { type: string }
-                witnessJws: { type: string, description: "JWS from the subject's chain key" }
+                witnessJws:
+                  type: string
+                  description: |
+                    Compact JWS (#2083), `alg: EdDSA` only, signed by the subject's (witness's)
+                    resolved DID key. Payload MUST be `{ attestationId, cid }` matching this
+                    exact attestation, or the countersign is rejected with 422.
       responses:
         "200":
           description: Attestation is now bilateral
@@ -1248,6 +1253,14 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: Attestation is not in pending state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: |
+            witnessJws failed verification (#2083) — bad or unresolvable `alg`, an unresolvable
+            witness DID, an invalid signature, or a payload that doesn't bind to this
+            attestation's id/CID. The countersign is never persisted when this is returned.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
