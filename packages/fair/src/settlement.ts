@@ -11,6 +11,7 @@
  * environment resolution (NODE_DID, PAY_SERVICE_URL, etc.) stays in the
  * caller; this module only performs the arithmetic and DID substitution.
  */
+import type { FairEntry } from './types';
 
 // ── Core formula ───────────────────────────────────────────────────────────────
 
@@ -34,15 +35,36 @@ export function computeFeeCents(
 
 // ── Chain resolution types ─────────────────────────────────────────────────────
 
-/** A single entry in a .fair settlement chain (before placeholder resolution). */
-export interface FairSettlementEntry {
+/**
+ * A single entry in a .fair settlement chain (before placeholder resolution).
+ *
+ * Derived from the canonical {@link FairEntry} (#1712) rather than
+ * hand-maintained separately: `did` is narrowed from optional to required
+ * because a settlement chain entry has always been resolved (or carries a
+ * `*_PLACEHOLDER` sentinel) by the time it reaches this module. Deriving via
+ * `Pick` means a field added to `FairEntry` shows up here automatically
+ * instead of silently diverging.
+ */
+export type FairSettlementEntry = Pick<FairEntry, 'did' | 'role' | 'share'> & {
   /** DID of the recipient, or a placeholder: 'BUYER_PLACEHOLDER' | 'NODE_PLACEHOLDER'. */
   did: string;
-  /** Role of the recipient (e.g. 'seller', 'creator', 'node', 'platform'). */
-  role: string;
-  /** Share as a 0–1 fraction of the total. */
-  share: number;
-}
+};
+
+/**
+ * Compile-time exhaustiveness check (#1712): `FairSettlementEntry` must stay
+ * assignable *from* a fully-resolved `FairEntry` (i.e. every field this
+ * settlement module reads is still present on the canonical shape). If a
+ * future edit to `FairEntry` ever removed or renamed `role`/`share`, this
+ * line would fail to compile instead of silently breaking
+ * `resolveSettlementChain` callers. `Required` mirrors `did` being resolved
+ * (never a placeholder-less optional) by the time a chain reaches this
+ * module — the same narrowing `FairSettlementEntry` itself applies.
+ */
+export type AssertExtends<Actual extends Expected, Expected = Actual> = Actual;
+export type _FairSettlementEntryAssignableFromFairEntry = AssertExtends<
+  Required<Pick<FairEntry, 'did' | 'role' | 'share'>>,
+  FairSettlementEntry
+>;
 
 /** A resolved chain entry with absolute dollar amounts (not cents). */
 export interface ResolvedChainEntry {

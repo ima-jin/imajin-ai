@@ -1,4 +1,4 @@
-import type { FairEntry, FairFee, DidShareEntry } from './types';
+import type { FairEntry, FairFee } from './types';
 import {
   PROTOCOL_FEE_BPS,
   PROTOCOL_DID,
@@ -20,7 +20,7 @@ export interface FairFeeManifest {
   fees: FairFee[];
   chain: FairEntry[];
   distributions: FairEntry[];
-  attribution: DidShareEntry[];
+  attribution: FairEntry[];
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -105,7 +105,7 @@ export function buildFairManifest(params: {
       ? collaborators.map((c) => ({ did: c.did, role: c.role, share: c.share }))
       : [{ did: creatorDid, role: 'creator', share: 1.0 }];
 
-  const attribution: DidShareEntry[] = [
+  const attribution: FairEntry[] = [
     { did: creatorDid, role: 'creator', share: 1 },
   ];
 

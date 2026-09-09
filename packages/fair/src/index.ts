@@ -11,7 +11,6 @@ export type {
   FairSignature,
   // v1.1 new types
   Money,
-  DidShareEntry,
   DidShareList,
   FairDistributionRight,
   FairTraining,

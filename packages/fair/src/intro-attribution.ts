@@ -24,7 +24,7 @@
  * guard, an admin tool, a future reactor) that has already resolved the
  * attestation facts it needs to check.
  */
-import type { DidShareEntry, FairManifestV1_1, FairProvenanceRef } from './types';
+import type { FairEntry, FairManifestV1_1, FairProvenanceRef } from './types';
 
 /** The off-platform "value happened" fact (#1886) — registered in #1885's attestation-type registry. */
 export const VALUE_REALIZED_ATTESTATION_TYPE = 'value_realized';
@@ -214,7 +214,7 @@ export function buildIntroAttributionManifest(params: BuildIntroAttributionManif
   }
   const attributionWindowDays = params.attributionWindowDays ?? DEFAULT_ATTRIBUTION_WINDOW_DAYS;
 
-  const attribution: DidShareEntry[] = [
+  const attribution: FairEntry[] = [
     { did: params.matchmakerDid, role: INTRO_ATTRIBUTION_ROLES.MATCHMAKER, share: split.matchmakerBps / BPS_TOTAL },
     { did: params.partyADid, role: INTRO_ATTRIBUTION_ROLES.PARTY_A, share: split.partyABps / BPS_TOTAL },
     { did: params.partyBDid, role: INTRO_ATTRIBUTION_ROLES.PARTY_B, share: split.partyBBps / BPS_TOTAL },
