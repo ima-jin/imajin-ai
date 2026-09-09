@@ -922,6 +922,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Session caller is not authorized for this conversation (not owner/participant/actingFor the subject DID)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/d/{did}/members:
     get:
