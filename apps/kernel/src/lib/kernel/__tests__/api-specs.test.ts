@@ -93,6 +93,25 @@ describe('listApiSpecs', () => {
       expect(spec.endpoint).toBe(`/${spec.service}/api/spec`);
     }
   });
+
+  /**
+   * Regression for #2124: `calendar.yaml` landed in #2111 but the service was
+   * never added to `SERVICES`, so discovery silently reported `label: null`
+   * for it. Every shipped spec should resolve to a real label.
+   */
+  it('resolves a non-null label for every shipped spec (#2124)', () => {
+    pinCwdToKernel();
+    for (const spec of listApiSpecs()) {
+      expect(spec.label, spec.service).not.toBeNull();
+    }
+  });
+
+  it('labels calendar (#2124)', () => {
+    pinCwdToKernel();
+    const calendar = listApiSpecs().find((s) => s.service === 'calendar');
+
+    expect(calendar?.label).toBe('Calendar');
+  });
 });
 
 describe('readApiSpec', () => {
