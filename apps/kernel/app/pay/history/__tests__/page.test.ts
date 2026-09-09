@@ -7,8 +7,8 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 
-// page.tsx imports '@/src/db', whose index module calls getClient() at
-// module scope; stub it out so importing the page for its pure helpers below
+// helpers.ts imports '@/src/db', whose index module calls getClient() at
+// module scope; stub it out so importing it for its pure helpers below
 // never needs a real DATABASE_URL.
 vi.mock('@/src/db', () => ({ db: {}, transactions: {} }));
 
@@ -20,7 +20,7 @@ import {
   hasActiveFilters,
   serializeTransaction,
   groupIntoDisplayEntries,
-} from '../page';
+} from '../helpers';
 import type { Transaction } from '@/src/db';
 
 function makeTx(overrides: Partial<Transaction> = {}): Transaction {

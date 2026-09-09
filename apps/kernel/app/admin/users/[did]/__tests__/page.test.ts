@@ -5,13 +5,8 @@
  * behavior that used to live inline in the flagged function so the extraction
  * is provably value-equivalent.
  */
-import { describe, it, expect, vi } from 'vitest';
-
-// page.tsx calls getClient() at module scope; stub it out so importing the
-// page for its pure helpers below never needs a real DATABASE_URL.
-vi.mock('@imajin/db', () => ({ getClient: () => vi.fn() }));
-
-import { computeShortKey, formatCreatedTimestamp } from '../page';
+import { describe, it, expect } from 'vitest';
+import { computeShortKey, formatCreatedTimestamp } from '../format';
 
 describe('computeShortKey', () => {
   it('returns an em dash when there is no public key', () => {

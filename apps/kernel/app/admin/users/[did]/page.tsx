@@ -2,6 +2,7 @@ import { getClient } from '@imajin/db';
 import { formatDistanceToNow } from 'date-fns';
 import { notFound } from 'next/navigation';
 import UserActions from './actions';
+import { computeShortKey, formatCreatedTimestamp } from './format';
 
 const sql = getClient();
 
@@ -67,18 +68,6 @@ async function fetchInviter(dbSql: Sql, decodedDid: string): Promise<DbRow | und
     // connections.invites may not exist or schema mismatch — graceful fallback
     return undefined;
   }
-}
-
-// ─── Pure formatting helpers ────────────────────────────────────────────────
-
-export function computeShortKey(publicKey: string | null | undefined): string {
-  return publicKey ? `${publicKey.slice(0, 20)}…${publicKey.slice(-8)}` : '—';
-}
-
-export function formatCreatedTimestamp(createdAt: Date | null | undefined): string {
-  return createdAt
-    ? new Date(createdAt).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
-    : '—';
 }
 
 export default async function AdminUserDetailPage({
