@@ -111,6 +111,27 @@ describe('prepare-npm-publish.mjs — path validation', () => {
       rmSync(srcDir, { recursive: true, force: true });
     }
   });
+
+  it('refuses a sibling directory whose name merely starts with "packages" (S8707)', () => {
+    // Guards against the classic `target.startsWith(root)` boundary bug: a
+    // naive string-prefix check would let "packages-evil" pass because it
+    // textually starts with "packages", even though it is not a descendant
+    // of PACKAGES_ROOT. isPathWithin() uses path.relative() instead, which
+    // correctly rejects this.
+    const evilRoot = `${PACKAGES_ROOT}-evil`;
+    const outDir = mkdtempSync(join(tmpdir(), 'prepare-npm-publish-out-'));
+    try {
+      writePackageFixture(evilRoot, { name: '@imajin/fixture', version: '1.0.0' });
+
+      const { status, output } = runScript([evilRoot, outDir]);
+
+      expect(status).toBe(1);
+      expect(output).toContain('Refusing to read package dir outside');
+    } finally {
+      rmSync(evilRoot, { recursive: true, force: true });
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('prepare-npm-publish.mjs — secret isolation', () => {

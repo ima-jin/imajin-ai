@@ -96,4 +96,25 @@ describe('SurveyAccordion — postMessage origin verification', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(onComplete).not.toHaveBeenCalled();
   });
+
+  it('ignores a survey-height resize message from an unexpected origin', async () => {
+    // The origin check must gate every message type the handler understands,
+    // not just 'survey-completed' — a message-type-specific bypass would
+    // still let an untrusted origin drive UI state (iframe height) here.
+    installFetch();
+    renderAccordion();
+    const iframe = await getIframe();
+    const initialHeight = iframe.style.height;
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        origin: 'https://evil.example.com',
+        source: iframe.contentWindow,
+        data: { type: 'survey-height', height: 999 },
+      }),
+    );
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(iframe.style.height).toBe(initialHeight);
+  });
 });
