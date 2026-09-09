@@ -55,7 +55,7 @@ function resolveHandleDisplay(senderDid: string, profile: Profile | undefined, n
 
 export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWrapperProps>) {
   const [nameDisplayPolicy, setNameDisplayPolicy] = useState<NameDisplayPolicy>('attendee_choice');
-  const [myDisplayPref, setMyDisplayPref] = useState<'real_name' | 'handle' | 'anonymous'>('handle');
+  const [myDisplayPref, setMyDisplayPref] = useState<DisplayPref>('handle');
   const [currentUserDid, setCurrentUserDid] = useState<string | null>(null);
   const profilesRef = useRef<Record<string, Profile>>({});
   const senderIndexMap = useRef<Map<string, number>>(new Map());
@@ -84,7 +84,7 @@ export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWr
   useEffect(() => {
     const stored = localStorage.getItem(`eventChat_displayPref_${eventId}`);
     if (stored && ['real_name', 'handle', 'anonymous'].includes(stored)) {
-      setMyDisplayPref(stored as 'real_name' | 'handle' | 'anonymous');
+      setMyDisplayPref(stored as DisplayPref);
     }
   }, [eventId]);
 
@@ -158,7 +158,7 @@ export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWr
   }, [nameDisplayPolicy, myDisplayPref, fetchProfile]);
 
   const handleDisplayPrefChange = useCallback((pref: string) => {
-    setMyDisplayPref(pref as 'real_name' | 'handle' | 'anonymous');
+    setMyDisplayPref(pref as DisplayPref);
     localStorage.setItem(`eventChat_displayPref_${eventId}`, pref);
   }, [eventId]);
 
