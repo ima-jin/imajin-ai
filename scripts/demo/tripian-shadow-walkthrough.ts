@@ -125,7 +125,12 @@ function info(message: string): void {
   console.log(`    ${message}`);
 }
 
-function assert(condition: boolean, message: string): void {
+interface AssertOptions {
+  condition: boolean;
+  message: string;
+}
+
+function assert({ condition, message }: Readonly<AssertOptions>): void {
   if (condition) {
     console.log(`    \u2713 ${message}`);
   } else {
@@ -296,8 +301,8 @@ async function main(): Promise<void> {
     step('Mint traveler + restaurant DIDs (idempotent, #1230)');
     const travelerDid = await mintIdentity(cfg, 'traveler:demo-jane', 'traveler');
     const restaurantDid = await mintIdentity(cfg, 'restaurant:kai-honolulu', 'restaurant');
-    assert(travelerDid.startsWith('did:imajin:'), 'traveler DID is a did:imajin identifier');
-    assert(restaurantDid !== travelerDid, 'restaurant and traveler are distinct DIDs');
+    assert({ condition: travelerDid.startsWith('did:imajin:'), message: 'traveler DID is a did:imajin identifier' });
+    assert({ condition: restaurantDid !== travelerDid, message: 'restaurant and traveler are distinct DIDs' });
 
     step('Seal traveler prefs into the vault, then unseal (round-trip, #1227)');
     for (const [field, value] of Object.entries(PREFS)) {
@@ -307,12 +312,12 @@ async function main(): Promise<void> {
     for (const field of Object.keys(PREFS)) {
       unsealed[field] = await vault.unseal(travelerDid, field);
     }
-    assert(
-      unsealed.dietary === PREFS.dietary
+    assert({
+      condition: unsealed.dietary === PREFS.dietary
         && unsealed.allergies === PREFS.allergies
         && unsealed.budget === PREFS.budget,
-      'vault seal -> unseal round-trip returns the original plaintext',
-    );
+      message: 'vault seal -> unseal round-trip returns the original plaintext',
+    });
 
     step('Seed traveler consent grants (dietary=raw, allergies=attestation, budget=none)');
     await seedConsent(sql, travelerDid, cfg.agentDid);
@@ -326,15 +331,15 @@ async function main(): Promise<void> {
       { allergies: { predicate: 'overlaps', arg: ['peanut', 'egg', 'wheat'] } },
     );
     info(`restaurant: http=${restaurantRelease.status} released=${restaurantRelease.released} mode=${String(restaurantRelease.releaseMode)} enforced=${String(restaurantRelease.enforced)}`);
-    assert(restaurantRelease.status === 200, 'restaurant request returns HTTP 200 (non-blocking)');
-    assert(restaurantRelease.released, 'dietary + allergy gate is released');
-    assert(restaurantRelease.releaseMode === 'mixed', 'release is MIXED mode (dietary raw, allergies attestation)');
-    assert(restaurantRelease.data.dietary === PREFS.dietary, 'dietary raw value is present');
+    assert({ condition: restaurantRelease.status === 200, message: 'restaurant request returns HTTP 200 (non-blocking)' });
+    assert({ condition: restaurantRelease.released, message: 'dietary + allergy gate is released' });
+    assert({ condition: restaurantRelease.releaseMode === 'mixed', message: 'release is MIXED mode (dietary raw, allergies attestation)' });
+    assert({ condition: restaurantRelease.data.dietary === PREFS.dietary, message: 'dietary raw value is present' });
     const allergyClaim = restaurantRelease.data.allergies as Record<string, unknown> | undefined;
-    assert(allergyClaim?.predicate === 'overlaps', 'allergies response is a predicate claim');
-    assert(allergyClaim?.result === true, 'allergy overlap predicate returns true for the declared dish set');
-    assert(!JSON.stringify(restaurantRelease.data).includes(unsealed.allergies), 'raw allergies value is absent from broker response');
-    assert(restaurantRelease.enforced === false, 'restaurant decision is advisory (enforced:false)');
+    assert({ condition: allergyClaim?.predicate === 'overlaps', message: 'allergies response is a predicate claim' });
+    assert({ condition: allergyClaim?.result === true, message: 'allergy overlap predicate returns true for the declared dish set' });
+    assert({ condition: !JSON.stringify(restaurantRelease.data).includes(unsealed.allergies), message: 'raw allergies value is absent from broker response' });
+    assert({ condition: restaurantRelease.enforced === false, message: 'restaurant decision is advisory (enforced:false)' });
 
     step('Verify the attestation-mode field minted a signed claim, not just mode=attestation (#1508/#1515)');
     const releaseAttestations = await getBrokerReleaseAttestations(cfg, travelerDid);
@@ -342,26 +347,26 @@ async function main(): Promise<void> {
       (a) => a.contextId === restaurantRelease.releaseId,
     );
     info(`broker.release attestations for traveler: ${releaseAttestations.length} (releaseId=${String(restaurantRelease.releaseId)})`);
-    assert(!!allergiesAttestation, 'a broker.release attestation exists referencing the mixed releaseId');
-    assert(
-      typeof allergiesAttestation?.signature === 'string' && (allergiesAttestation.signature as string).length > 0,
-      'the attestation carries a non-empty signature — a signed claim, not a bare tag',
-    );
+    assert({ condition: !!allergiesAttestation, message: 'a broker.release attestation exists referencing the mixed releaseId' });
+    assert({
+      condition: typeof allergiesAttestation?.signature === 'string' && (allergiesAttestation.signature as string).length > 0,
+      message: 'the attestation carries a non-empty signature — a signed claim, not a bare tag',
+    });
     const attestationPayload = JSON.stringify(allergiesAttestation?.payload ?? {});
-    assert(
-      !attestationPayload.includes(unsealed.allergies),
-      'the attestation payload never carries the raw allergies value (withheld, unchanged)',
-    );
-    assert(
-      attestationPayload.includes('predicateClaims'),
-      'the release attestation carries predicate claim metadata',
-    );
+    assert({
+      condition: !attestationPayload.includes(unsealed.allergies),
+      message: 'the attestation payload never carries the raw allergies value (withheld, unchanged)',
+    });
+    assert({
+      condition: attestationPayload.includes('predicateClaims'),
+      message: 'the release attestation carries predicate claim metadata',
+    });
 
     const budget = await brokerShadow(cfg, travelerDid, ['budget'], { budget: unsealed.budget });
     info(`budget: http=${budget.status} released=${budget.released} enforced=${String(budget.enforced)}`);
-    assert(budget.status === 200, 'budget request returns HTTP 200 even when denied (non-blocking)');
-    assert(!budget.released, 'budget is NOT released (no consent)');
-    assert(budget.enforced === false, 'budget denial is advisory (enforced:false)');
+    assert({ condition: budget.status === 200, message: 'budget request returns HTTP 200 even when denied (non-blocking)' });
+    assert({ condition: !budget.released, message: 'budget is NOT released (no consent)' });
+    assert({ condition: budget.enforced === false, message: 'budget denial is advisory (enforced:false)' });
 
     step('Verify shadow-flagged audit rows were written (#1050)');
     const audit = await getJson(
@@ -376,9 +381,9 @@ async function main(): Promise<void> {
     if (entries.length > 0) {
       info(`sample row: ${JSON.stringify(entries[0])}`);
     }
-    assert(entries.length >= 3, 'at least 3 shadow-flagged audit rows exist for this traveler');
-    assert(allShadow, 'every returned audit row is flagged shadow:true');
-    assert(released >= 2 && denied >= 1, 'audit shows 2 releases + 1 denial (nothing gated)');
+    assert({ condition: entries.length >= 3, message: 'at least 3 shadow-flagged audit rows exist for this traveler' });
+    assert({ condition: allShadow, message: 'every returned audit row is flagged shadow:true' });
+    assert({ condition: released >= 2 && denied >= 1, message: 'audit shows 2 releases + 1 denial (nothing gated)' });
   } finally {
     await sql.end();
   }
