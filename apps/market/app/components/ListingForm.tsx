@@ -23,6 +23,8 @@ const CURRENCIES = [
   { code: 'SGD', symbol: 'S$' },
 ];
 
+export type SellerTier = 'public_offplatform' | 'public_onplatform' | 'trust_gated';
+
 export interface ListingFormData {
   type: 'sale' | 'rental';
   title: string;
@@ -32,7 +34,7 @@ export interface ListingFormData {
   category: string;
   quantity: number | null;
   images: string[];
-  sellerTier: 'public_offplatform' | 'public_onplatform' | 'trust_gated';
+  sellerTier: SellerTier;
   showContactInfo: boolean;
   contactInfo: {
     phone: string;
@@ -72,8 +74,8 @@ export function ListingForm({ initialData, onSubmit, submitLabel, isLoading, err
       : '1'
   );
   const [images, setImages] = useState<string[]>(initialData?.images ?? []);
-  const [sellerTier, setSellerTier] = useState<'public_offplatform' | 'public_onplatform' | 'trust_gated'>(
-    (initialData?.sellerTier as 'public_offplatform' | 'public_onplatform' | 'trust_gated') ?? 'public_offplatform'
+  const [sellerTier, setSellerTier] = useState<SellerTier>(
+    (initialData?.sellerTier as SellerTier) ?? 'public_offplatform'
   );
   const [showContactInfo, setShowContactInfo] = useState(initialData?.showContactInfo ?? false);
   const [phone, setPhone] = useState(initialData?.contactInfo?.phone ?? '');
