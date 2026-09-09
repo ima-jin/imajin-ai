@@ -8,16 +8,22 @@
 import { NextResponse } from 'next/server';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { db, events, eventInvites } from '@/src/db';
+import { eventInvites, db } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { rateLimit, getClientIP, eventUrl } from '@imajin/config';
 import {
   validateCart,
   resolveCheckoutIdentity,
-  validateInviteAccess,
+  resolveInviteAccessForEvent,
+  loadPublishedEvent,
   CheckoutValidationError,
 } from '@/src/lib/checkout-common';
-import { normalizeCheckoutCart, validateCheckoutCartLimits } from '@/src/lib/checkout-helpers';
+import {
+  normalizeCheckoutCart,
+  validateCheckoutCartLimits,
+  buildStripeCheckoutItems,
+  requestPayCheckoutSession,
+} from '@/src/lib/checkout-helpers';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;
@@ -59,26 +65,15 @@ export const POST = withLogger('events', async (request, { log, correlationId })
 
     // Fetch event + status check up-front so invite check (which needs
     // accessMode) can run before per-type validation.
-    const [event] = await db
-      .select()
-      .from(events)
-      .where(eq(events.id, body.eventId))
-      .limit(1);
-
-    if (!event) {
-      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    const eventResult = await loadPublishedEvent(body.eventId);
+    if ('error' in eventResult) {
+      return NextResponse.json({ error: eventResult.error }, { status: eventResult.status });
     }
-
-    if (event.status !== 'published') {
-      return NextResponse.json({ error: 'Tickets are not available for this event' }, { status: 400 });
-    }
+    const { event } = eventResult;
 
     // Invite-only access check
-    let inviteRecord: typeof eventInvites.$inferSelect | undefined;
-    if (event.accessMode === 'invite_only') {
-      const token = body.invite || request.nextUrl.searchParams.get('invite');
-      inviteRecord = await validateInviteAccess(body.eventId, token);
-    }
+    const inviteToken = body.invite || request.nextUrl.searchParams.get('invite');
+    const inviteRecord = await resolveInviteAccessForEvent(event, inviteToken);
 
     // validateCart: type existence + currency consistency. Max-per-order
     // and availability are checked inline below so error messages keep the
@@ -99,49 +94,32 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     const customerEmail = identity.email;
 
     const fairManifest = eventMeta.fair || null;
+    const stripeItems = buildStripeCheckoutItems(cart, typesById, event.title);
 
-    const stripeItems = cart.map((c) => {
-      const tt = typesById.get(c.ticketTypeId)!;
-      return {
-        name: `${event.title} â€” ${tt.name}`,
-        description: tt.description || undefined,
-        amount: tt.price,
-        quantity: c.quantity,
-      };
+    const payResult = await requestPayCheckoutSession({
+      payServiceUrl: PAY_SERVICE_URL,
+      items: stripeItems,
+      currency: cartCurrency,
+      customerEmail,
+      successUrl: `${EVENTS_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event=${event.id}`,
+      cancelUrl: eventUrl(EVENTS_URL, event.id),
+      fairManifest,
+      sellerDid: event.creatorDid,
+      metadata: {
+        service: 'events',
+        eventId: event.id,
+        eventDid: event.did,
+        cart: JSON.stringify(cart.map((c) => ({ ticketTypeId: c.ticketTypeId, quantity: c.quantity }))),
+        totalQuantity: String(totalQuantity),
+        ...(buyerDid && { buyerDid }),
+      },
+      log,
     });
 
-    const payResponse = await fetch(`${PAY_SERVICE_URL}/api/checkout`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        items: stripeItems,
-        currency: cartCurrency,
-        customerEmail,
-        successUrl: `${EVENTS_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}&event=${event.id}`,
-        cancelUrl: eventUrl(EVENTS_URL, event.id),
-        fairManifest,
-        sellerDid: event.creatorDid,
-        metadata: {
-          service: 'events',
-          eventId: event.id,
-          eventDid: event.did,
-          cart: JSON.stringify(cart.map((c) => ({ ticketTypeId: c.ticketTypeId, quantity: c.quantity }))),
-          totalQuantity: String(totalQuantity),
-          ...(buyerDid && { buyerDid }),
-        },
-      }),
-    });
-
-    if (!payResponse.ok) {
-      const error = await payResponse.json();
-      log.error({ err: String(error) }, 'Pay service error');
-      return NextResponse.json(
-        { error: error.error || 'Payment service error' },
-        { status: 500 }
-      );
+    if ('error' in payResult) {
+      return NextResponse.json({ error: payResult.error }, { status: payResult.status });
     }
-
-    const checkout = await payResponse.json();
+    const { checkout } = payResult;
 
     publish('ticket.purchase', {
       issuer: buyerDid || '',

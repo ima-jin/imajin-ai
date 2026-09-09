@@ -6,22 +6,24 @@
  */
 
 import { NextResponse } from 'next/server';
-import { withLogger, createLogger } from '@imajin/logger';
-
-const log = createLogger('events');
-import { db, events, ticketTypes, tickets, eventInvites } from '@/src/db';
-import { eq, and, sql } from 'drizzle-orm';
-import { optionalAuth } from '@imajin/auth';
-import { resolveCheckoutIdentity } from '@/src/lib/checkout-common';
-import { rateLimit, getClientIP, eventUrl } from '@imajin/config';
-import { generateQRCode } from '@/src/lib/email';
+import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { getClient } from '@imajin/db';
-import { randomBytes } from 'node:crypto';
+import {
+  resolveInviteAccessForEvent,
+  loadPublishedEvent,
+  syncBuyerToEventChatFireAndForget,
+  CheckoutValidationError,
+} from '@/src/lib/checkout-common';
+import { rateLimit, getClientIP } from '@imajin/config';
+import {
+  resolveFreeTicketType,
+  resolveFreeRsvpOwner,
+  checkExistingFreeTicket,
+  createFreeTicket,
+  sendFreeConfirmationEmail,
+} from '@/src/lib/free-checkout-helpers';
 
-const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const EVENTS_URL = process.env.NEXT_PUBLIC_EVENTS_URL!;
-const PROFILE_URL = process.env.PROFILE_URL!;
 
 interface FreeCheckoutRequest {
   eventId: string;
@@ -52,163 +54,44 @@ export const POST = withLogger('events', async (request, { log }) => {
     }
 
     // Fetch event
-    const [event] = await db
-      .select()
-      .from(events)
-      .where(eq(events.id, body.eventId))
-      .limit(1);
-
-    if (!event) {
-      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    const eventResult = await loadPublishedEvent(body.eventId, 'Event is not published');
+    if ('error' in eventResult) {
+      return NextResponse.json({ error: eventResult.error }, { status: eventResult.status });
     }
-
-    if (event.status !== 'published') {
-      return NextResponse.json({ error: 'Event is not published' }, { status: 400 });
-    }
+    const { event } = eventResult;
 
     // Invite-only access check
-    let inviteRecord: typeof eventInvites.$inferSelect | undefined;
-    if (event.accessMode === 'invite_only') {
-      const token = body.invite;
-      if (!token) {
-        return NextResponse.json({ error: 'This event requires an invite link' }, { status: 403 });
-      }
+    const inviteRecord = await resolveInviteAccessForEvent(event, body.invite);
 
-      const [invite] = await db
-        .select()
-        .from(eventInvites)
-        .where(and(eq(eventInvites.eventId, body.eventId), eq(eventInvites.token, token)))
-        .limit(1);
-
-      if (!invite) {
-        return NextResponse.json({ error: 'Invalid invite token' }, { status: 403 });
-      }
-
-      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
-        return NextResponse.json({ error: 'This invite link has expired' }, { status: 403 });
-      }
-
-      if (invite.maxUses !== null && invite.usedCount >= invite.maxUses) {
-        return NextResponse.json({ error: 'This invite link has reached its maximum uses' }, { status: 403 });
-      }
-
-      inviteRecord = invite;
+    // Fetch ticket type and verify it's free + available
+    const ticketTypeResult = await resolveFreeTicketType(body.eventId, body.ticketTypeId);
+    if ('error' in ticketTypeResult) {
+      return NextResponse.json({ error: ticketTypeResult.error }, { status: ticketTypeResult.status });
     }
-
-    // Fetch ticket type and verify it's free
-    const [ticketType] = await db
-      .select()
-      .from(ticketTypes)
-      .where(
-        and(
-          eq(ticketTypes.id, body.ticketTypeId),
-          eq(ticketTypes.eventId, body.eventId)
-        )
-      )
-      .limit(1);
-
-    if (!ticketType) {
-      return NextResponse.json({ error: 'Ticket type not found' }, { status: 404 });
-    }
-
-    if (ticketType.price !== 0) {
-      return NextResponse.json({ error: 'This ticket is not free' }, { status: 400 });
-    }
-
-    // Check availability
-    if (ticketType.quantity !== null) {
-      const available = ticketType.quantity - (ticketType.sold ?? 0);
-      if (available < 1) {
-        return NextResponse.json({ error: 'No spots remaining' }, { status: 400 });
-      }
-    }
+    const { ticketType } = ticketTypeResult;
 
     // Resolve owner DID via the canonical checkout-identity primitive.
     // Free RSVP needs a ticket owner immediately, so createSoftDid is set:
     // hard session → that DID; otherwise mint/resolve a soft DID from email.
-    if (!body.email) {
-      const probe = await optionalAuth(request);
-      if (!probe || probe.tier === 'soft') {
-        return NextResponse.json(
-          { error: 'Please provide an email address to RSVP' },
-          { status: 400 }
-        );
-      }
+    const ownerResult = await resolveFreeRsvpOwner(request, body, log);
+    if (ownerResult instanceof NextResponse) {
+      return ownerResult;
     }
-
-    const resolved = await resolveCheckoutIdentity(
-      request,
-      { email: body.email, name: body.name },
-      log,
-      { createSoftDid: true },
-    );
-
-    if (!resolved.did) {
-      return NextResponse.json(
-        { error: 'Could not resolve a ticket owner — please provide an email address to RSVP' },
-        { status: 400 }
-      );
-    }
-
-    const ownerDid: string = resolved.did;
-    const ownerEmail: string | null = resolved.email ?? null;
+    const { ownerDid, ownerEmail } = ownerResult;
 
     // Idempotency: check if this DID already has a ticket for this event
-    const [existingTicket] = await db
-      .select({ id: tickets.id })
-      .from(tickets)
-      .where(
-        and(
-          eq(tickets.eventId, event.id),
-          eq(tickets.ownerDid, ownerDid),
-          eq(tickets.ticketTypeId, ticketType.id)
-        )
-      )
-      .limit(1);
-
-    if (existingTicket) {
-      return NextResponse.json(
-        { error: 'You already have a ticket for this event', ticketId: existingTicket.id },
-        { status: 409 }
-      );
+    const existingTicketResponse = await checkExistingFreeTicket(event.id, ownerDid, ticketType.id);
+    if (existingTicketResponse) {
+      return existingTicketResponse;
     }
 
-    // Create ticket
-    const ticketId = `tkt_${Date.now().toString(36)}_0`;
-
-    const [ticket] = await db.insert(tickets).values({
-      id: ticketId,
+    const ticket = await createFreeTicket({
       eventId: event.id,
-      ticketTypeId: ticketType.id,
+      ticketType,
       ownerDid,
-      originalOwnerDid: ownerDid,
-      pricePaid: 0,
-      currency: ticketType.currency,
-      paymentId: `free_${ticketId}`,
-      paymentMethod: 'free',
-      status: 'valid',
-      purchasedAt: new Date(),
-      signature: `free:${ticketId}:${ownerDid}`,
-      registrationStatus: ticketType.requiresRegistration ? 'pending' : 'not_required',
-      metadata: {
-        rsvp: true,
-        ...(ownerEmail && { purchaseEmail: ownerEmail }),
-      },
-    }).returning();
-
-    // Update sold count
-    await db
-      .update(ticketTypes)
-      .set({ sold: sql`${ticketTypes.sold} + 1` })
-      .where(eq(ticketTypes.id, ticketType.id));
-
-    // Increment invite used count
-    if (inviteRecord) {
-      await db
-        .update(eventInvites)
-        .set({ usedCount: inviteRecord.usedCount + 1 })
-        .where(eq(eventInvites.id, inviteRecord.id));
-    }
+      ownerEmail,
+      inviteRecord,
+    });
 
     publish('ticket.purchased', {
       issuer: ownerDid,
@@ -226,80 +109,20 @@ export const POST = withLogger('events', async (request, { log }) => {
     }).catch((err) => log.error({ err: String(err) }, 'Publish error'));
 
     // Add to event chat (fire and forget)
-    const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
-    if (CHAT_URL) {
-      fetch(`${CHAT_URL}/api/d/${encodeURIComponent(event.did)}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberDid: ownerDid, role: 'member' }),
-      }).catch((err) => log.warn({ err: String(err) }, 'Event chat member sync failed (non-fatal)'));
-    }
+    syncBuyerToEventChatFireAndForget(event.did, ownerDid, log);
 
     // Send confirmation email if we have an email
     if (ownerEmail) {
-      try {
-        const eventDate = new Date(event.startsAt);
-        const formattedDate = eventDate.toLocaleDateString('en-US', {
-          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-        });
-        const formattedTime = eventDate.toLocaleTimeString('en-US', {
-          hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
-        });
-
-        // Create onboard token for magic link
-        let magicLink: string | undefined;
-        try {
-          const authSql = getClient();
-          const onboardToken = randomBytes(36).toString('hex');
-          const onboardId = `obt_${randomBytes(8).toString('hex')}`;
-          await authSql`
-            INSERT INTO auth.onboard_tokens (id, email, name, token, redirect_url, context, expires_at)
-            VALUES (
-              ${onboardId},
-              ${ownerEmail.toLowerCase().trim()},
-              ${body.name || null},
-              ${onboardToken},
-              ${eventUrl(EVENTS_URL, event.id)},
-              ${'access your RSVP for ' + event.title},
-              ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()}
-            )
-          `;
-          magicLink = `${AUTH_URL}/api/onboard/verify?token=${onboardToken}`;
-        } catch (err) {
-          log.error({ err: String(err) }, 'Onboard token creation failed (non-fatal)');
-        }
-
-        const qrCodeDataUri = await generateQRCode(ticketId);
-        let eventImageUrl: string | undefined;
-        if (event.imageUrl) {
-          eventImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
-        }
-
-        publish('ticket.confirmed', {
-          issuer: ownerDid,
-          subject: ownerDid,
-          scope: 'events',
-          payload: {
-            email: ownerEmail,
-            eventTitle: event.title,
-            ticketType: ticketType.name,
-            ticketId,
-            eventDate: formattedDate,
-            eventTime: formattedTime,
-            isVirtual: event.isVirtual ?? false,
-            venue: event.venue ?? undefined,
-            price: 'Free',
-            magicLink: magicLink || '',
-            eventImageUrl,
-            eventUrl: eventUrl(EVENTS_URL, event.id),
-            qrCodeDataUri,
-            context_id: event.id,
-            context_type: 'event',
-          },
-        }).catch((err) => log.error({ err: String(err) }, 'Ticket confirmed publish error'));
-      } catch (emailError) {
-        log.error({ err: String(emailError) }, 'Confirmation publish failed (non-fatal)');
-      }
+      await sendFreeConfirmationEmail({
+        event,
+        ticketType,
+        ticketId: ticket.id,
+        ownerDid,
+        ownerEmail,
+        name: body.name,
+        eventsUrl: EVENTS_URL,
+        log,
+      });
     }
 
     return NextResponse.json({
@@ -309,6 +132,12 @@ export const POST = withLogger('events', async (request, { log }) => {
     });
 
   } catch (error) {
+    if (error instanceof CheckoutValidationError) {
+      return NextResponse.json(
+        { error: error.message, ...(error.field ? { field: error.field } : {}) },
+        { status: error.statusCode },
+      );
+    }
     log.error({ err: String(error) }, 'Free checkout error');
     return NextResponse.json(
       { error: 'RSVP failed' },

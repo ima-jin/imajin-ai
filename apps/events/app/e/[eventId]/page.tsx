@@ -294,6 +294,393 @@ async function getCohosts(podId: string, authUrl: string): Promise<OrganizerProf
   }
 }
 
+// --- EventPage step helpers -------------------------------------------------
+// Each helper below owns one independent piece of EventPage's data-fetch /
+// authorization pipeline, following the existing getEvent/getTicketTypes/
+// getUserOrders pattern above. EventPage itself stays a thin sequence of
+// awaited calls plus JSX.
+
+interface LinkedSurveySetting {
+  visibility: string;
+  paywall: boolean;
+  requiredForTickets: boolean;
+}
+
+interface EventTiming {
+  eventDate: Date;
+  eventEndDate: Date | null;
+  isEventDay: boolean;
+  isUpcoming: boolean;
+  isOngoing: boolean;
+  isCompleted: boolean;
+}
+
+interface EventSchedule {
+  formattedDate: string;
+  formattedTime: string;
+  formattedEndTime: string | null;
+  formattedEndDate: string | null;
+}
+
+type EventRecord = Awaited<ReturnType<typeof getEvent>>;
+
+async function checkIsCohost(sessionId: string, podId: string): Promise<boolean> {
+  try {
+    const [member] = await sql`
+      SELECT did FROM connections.pod_members
+      WHERE pod_id = ${podId} AND did = ${sessionId} AND role = 'cohost' AND removed_at IS NULL
+      LIMIT 1
+    `;
+    return !!member;
+  } catch (err) {
+    log.error({ err: String(err) }, '[event] Failed to check cohost membership');
+    return false;
+  }
+}
+
+async function checkInviteValid(eventId: string, inviteToken: string | undefined, accessMode: string): Promise<boolean> {
+  if (accessMode !== 'invite_only' || !inviteToken) return false;
+
+  const [invite] = await db
+    .select()
+    .from(eventInvites)
+    .where(and(eq(eventInvites.eventId, eventId), eq(eventInvites.token, inviteToken)))
+    .limit(1);
+  if (!invite) return false;
+
+  const notExpired = !invite.expiresAt || new Date(invite.expiresAt) > new Date();
+  const hasUsesLeft = invite.maxUses === null || invite.usedCount < invite.maxUses;
+  return notExpired && hasUsesLeft;
+}
+
+async function checkSellerConnected(creatorDid: string): Promise<boolean> {
+  try {
+    const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
+    const checkRes = await fetch(
+      `${PAY_SERVICE_URL}/api/connect/check?did=${encodeURIComponent(creatorDid)}`,
+      { cache: 'no-store' }
+    );
+    // Default true so free events / unknown states don't block payment.
+    if (!checkRes.ok) return true;
+    const checkData = await checkRes.json();
+    return checkData.chargesEnabled ?? false;
+  } catch {
+    // If check fails, default to connected so we don't accidentally block payment.
+    return true;
+  }
+}
+
+function resolveEventTheme(metadata: EventMetadata) {
+  const theme = metadata.theme || {};
+  const themeColor = theme.color || 'orange';
+  const themeEmoji = theme.emoji || '🎉';
+  const gradient = theme.gradient || colorGradients[themeColor] || colorGradients.orange;
+  return { themeColor, themeEmoji, gradient };
+}
+
+function computeEventTiming(event: Pick<EventRecord, 'startsAt' | 'endsAt'>): EventTiming {
+  const eventDate = new Date(event.startsAt);
+  const eventEndDate = event.endsAt ? new Date(event.endsAt) : null;
+  const now = new Date();
+  const startOfEventDay = new Date(new Date(event.startsAt).setHours(0, 0, 0, 0));
+  const isEventDay = eventDate.toDateString() === now.toDateString() ||
+    (eventEndDate !== null && now >= startOfEventDay && now <= eventEndDate);
+  const isUpcoming = eventDate > now;
+  const isOngoing = eventDate <= now && (!eventEndDate || eventEndDate > now);
+  const isCompleted = eventEndDate ? eventEndDate < now : false;
+  return { eventDate, eventEndDate, isEventDay, isUpcoming, isOngoing, isCompleted };
+}
+
+async function fetchLinkedSurveys(event: Pick<EventRecord, 'metadata'>): Promise<{ eventSurveys: any[]; linkedSurveySettings: Record<string, LinkedSurveySetting> }> {
+  const DYKIL_URL = buildPublicUrl('dykil');
+  const linkedSurveysMeta: Array<{ id: string; visibility: string; paywall: boolean; requiredForTickets: boolean }> =
+    (event.metadata as any)?.linkedSurveys || [];
+
+  const linkedSurveySettings: Record<string, LinkedSurveySetting> = {};
+  for (const ls of linkedSurveysMeta) {
+    linkedSurveySettings[ls.id] = {
+      visibility: ls.visibility || 'always',
+      paywall: ls.paywall || false,
+      requiredForTickets: ls.requiredForTickets || false,
+    };
+  }
+
+  if (linkedSurveysMeta.length === 0) {
+    return { eventSurveys: [], linkedSurveySettings };
+  }
+
+  const surveyResults = await Promise.allSettled(
+    linkedSurveysMeta.map(async (ls) => {
+      const res = await fetch(`${DYKIL_URL}/api/surveys/${ls.id}`, { cache: 'no-store' });
+      if (!res.ok) return null;
+      return res.json();
+    })
+  );
+  const eventSurveys = surveyResults
+    .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value !== null)
+    .map(r => r.value);
+
+  return { eventSurveys, linkedSurveySettings };
+}
+
+async function checkSurveyResponseComplete(surveyId: string, sessionId: string): Promise<boolean> {
+  const DYKIL_URL = buildPublicUrl('dykil');
+  const checkRes = await fetch(`${DYKIL_URL}/api/surveys/${surveyId}/responses/check?did=${encodeURIComponent(sessionId)}`, {
+    cache: 'no-store',
+  });
+  if (!checkRes.ok) return false;
+  const data = await checkRes.json();
+  return !!data.completed;
+}
+
+async function resolveSurveyCompletion(
+  eventSurveys: any[],
+  linkedSurveySettings: Record<string, LinkedSurveySetting>,
+  session: { id: string } | null,
+): Promise<{ requiredSurveyIds: string[]; surveysCompleted: boolean }> {
+  const requiredSurveyIds = eventSurveys
+    .filter((s: any) => linkedSurveySettings[s.id]?.requiredForTickets)
+    .map((s: any) => s.id);
+
+  if (requiredSurveyIds.length === 0 || !session) {
+    return { requiredSurveyIds, surveysCompleted: requiredSurveyIds.length === 0 };
+  }
+
+  try {
+    const checks = await Promise.all(
+      requiredSurveyIds.map((surveyId: string) => checkSurveyResponseComplete(surveyId, session.id))
+    );
+    return { requiredSurveyIds, surveysCompleted: checks.every(Boolean) };
+  } catch (err) {
+    log.error({ err: String(err) }, 'Failed to check survey completion');
+    return { requiredSurveyIds, surveysCompleted: false };
+  }
+}
+
+function filterVisibleSurveys(
+  eventSurveys: any[],
+  linkedSurveySettings: Record<string, LinkedSurveySetting>,
+  timing: Pick<EventTiming, 'isUpcoming' | 'isOngoing' | 'isCompleted'>,
+) {
+  return eventSurveys.filter((survey: any) => {
+    const settings = linkedSurveySettings[survey.id];
+    if (!settings) return true; // No settings = show always
+    if (settings.visibility === 'pre-event' && !timing.isUpcoming && !timing.isOngoing) return false;
+    if (settings.visibility === 'post-event' && !timing.isOngoing && !timing.isCompleted) return false;
+    // paywall filtering would happen client-side based on ticket ownership
+    return true;
+  });
+}
+
+function formatEventSchedule(eventDate: Date, eventEndDate: Date | null, eventTz: string): EventSchedule {
+  const dateOpts = { weekday: 'long' as const, year: 'numeric' as const, month: 'long' as const, day: 'numeric' as const, timeZone: eventTz };
+  const timeOpts = { hour: 'numeric' as const, minute: '2-digit' as const, timeZoneName: 'short' as const, timeZone: eventTz };
+
+  const formattedDate = eventDate.toLocaleDateString('en-US', dateOpts);
+  const formattedTime = eventDate.toLocaleTimeString('en-US', timeOpts);
+
+  if (!eventEndDate) {
+    return { formattedDate, formattedTime, formattedEndTime: null, formattedEndDate: null };
+  }
+
+  // If the end date falls on a different day, show the full end date too.
+  const formattedEndTime = eventEndDate.toLocaleTimeString('en-US', timeOpts);
+  const endIsNewDay = eventEndDate.toLocaleDateString('en-US', { timeZone: eventTz }) !== eventDate.toLocaleDateString('en-US', { timeZone: eventTz });
+  const formattedEndDate = endIsNewDay
+    ? eventEndDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: eventTz })
+    : null;
+
+  return { formattedDate, formattedTime, formattedEndTime, formattedEndDate };
+}
+
+const TICKET_SALES_CLOSED_MESSAGES: Record<string, string> = {
+  cancelled: 'Ticket sales are closed — this event was cancelled.',
+  completed: 'This event has ended. Ticket sales are closed.',
+};
+
+function ticketSalesClosedMessage(status: string): string {
+  return TICKET_SALES_CLOSED_MESSAGES[status] || 'Ticket sales are not currently available.';
+}
+
+// --- EventPage rendering sub-components -------------------------------------
+
+function OrganizerBadge({ org }: Readonly<{ org: OrganizerProfile }>) {
+  return (
+    <div className="flex items-center gap-2">
+      {org.avatar ? (
+        <img
+          src={org.avatar}
+          alt={org.name || org.handle || org.did}
+          className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+        />
+      ) : (
+        <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 text-sm font-semibold text-gray-500">
+          {(org.name || org.handle || org.did).charAt(0).toUpperCase()}
+        </div>
+      )}
+      <div className="min-w-0">
+        {org.name && <p className="text-sm font-medium leading-none">{org.name}</p>}
+        {org.handle && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 leading-none mt-0.5">@{org.handle}</p>
+        )}
+        {!org.name && !org.handle && (
+          <p className="text-xs text-gray-500 font-mono">{org.did.slice(0, 20)}...</p>
+        )}
+      </div>
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0 ${
+        org.role === 'owner'
+          ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
+          : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+      }`}>
+        {org.role === 'owner' ? 'Organizer' : 'Co-host'}
+      </span>
+    </div>
+  );
+}
+
+function EventLocationCard({ event, canSeeVirtualUrl }: Readonly<{
+  event: Pick<EventRecord, 'venue' | 'address' | 'city' | 'virtualUrl' | 'locationType' | 'isVirtual'>;
+  canSeeVirtualUrl: boolean;
+}>) {
+  const locType = getLocationType(event);
+
+  if (locType === 'hybrid') {
+    return (
+      <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
+        <div className="text-2xl">💻📍</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
+          <div className="font-semibold truncate">{event.venue || 'Hybrid Event'}</div>
+          {event.address && (
+            <div className="text-sm text-gray-600 dark:text-gray-400">{event.address}</div>
+          )}
+          {event.city && (
+            <div className="text-sm text-gray-500 dark:text-gray-500 truncate">{event.city}</div>
+          )}
+          {canSeeVirtualUrl && event.virtualUrl && (
+            <a
+              href={event.virtualUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-orange-500 hover:text-orange-600 truncate block mt-1"
+            >
+              Join online →
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (locType === 'virtual') {
+    return (
+      <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
+        <div className="text-2xl">💻</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
+          <div className="font-semibold">Virtual Event</div>
+          {canSeeVirtualUrl && event.virtualUrl && (
+            <a
+              href={event.virtualUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-orange-500 hover:text-orange-600 truncate block"
+            >
+              {event.virtualUrl}
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
+      <div className="text-2xl">📍</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
+        <div className="font-semibold truncate">{event.venue || 'TBA'}</div>
+        {event.address && (
+          <div className="text-sm text-gray-600 dark:text-gray-400">{event.address}</div>
+        )}
+        {event.city && (
+          <div className="text-sm text-gray-500 dark:text-gray-500 truncate">{event.city}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface EventTicketsPanelProps {
+  canSeeTickets: boolean;
+  canPurchaseTickets: boolean;
+  status: string;
+  requiredSurveyIds: string[];
+  surveysCompleted: boolean;
+  event: Pick<EventRecord, 'id' | 'title'>;
+  ticketTypesList: Awaited<ReturnType<typeof getTicketTypes>>;
+  userOrders: Awaited<ReturnType<typeof getUserOrders>>;
+  hasTicket: boolean;
+  inviteToken?: string;
+  etransferEnabled: boolean;
+  isAuthenticated: boolean;
+  sessionEmail?: string;
+  sessionContactEmail?: string;
+  sellerConnected: boolean;
+  hasHiddenTiers: boolean;
+}
+
+function EventTicketsPanel(props: Readonly<EventTicketsPanelProps>) {
+  const {
+    canSeeTickets, canPurchaseTickets, status, requiredSurveyIds, surveysCompleted,
+    event, ticketTypesList, userOrders, hasTicket, inviteToken, etransferEnabled,
+    isAuthenticated, sessionEmail, sessionContactEmail, sellerConnected, hasHiddenTiers,
+  } = props;
+
+  if (!canSeeTickets) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-5xl mb-4">🔒</div>
+        <p className="text-lg font-semibold mb-2">This event is invite-only</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
+          You need a valid invite link to purchase tickets.
+        </p>
+      </div>
+    );
+  }
+
+  if (canPurchaseTickets) {
+    return (
+      <TicketsGate
+        surveysRequired={requiredSurveyIds.length > 0}
+        initialCompleted={surveysCompleted}
+        requiredSurveyIds={requiredSurveyIds}
+      >
+        <TicketsSection
+          eventId={event.id}
+          eventTitle={event.title}
+          tickets={ticketTypesList}
+          userOrders={userOrders}
+          hasTicket={hasTicket}
+          inviteToken={inviteToken}
+          etransferEnabled={etransferEnabled}
+          isAuthenticated={isAuthenticated}
+          sessionEmail={sessionEmail}
+          sessionContactEmail={sessionContactEmail}
+          sellerConnected={sellerConnected}
+          hasHiddenTiers={hasHiddenTiers}
+        />
+      </TicketsGate>
+    );
+  }
+
+  return (
+    <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+      {ticketSalesClosedMessage(status)}
+    </p>
+  );
+}
+
 export default async function EventPage({ params, searchParams }: Readonly<Props>) {
   const { eventId } = await params;
   const { invite: inviteToken } = await searchParams;
@@ -304,28 +691,15 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
   }
 
   const session = await getSession();
-  const did = session ? (resolveActingDid(session)) : null;
+  const did = session ? resolveActingDid(session) : null;
 
   // Issue #4: fetch canonical contact_email for the session DID
-  const sessionContactEmail = did
-    ? await getContactEmail(did, log)
-    : undefined;
-  const isCreator = did === event.creatorDid;
+  const sessionContactEmail = did ? await getContactEmail(did, log) : undefined;
 
-  // Check if user is a cohost
-  let isCohost = false;
-  if (session?.id && event.podId && !isCreator) {
-    try {
-      const [member] = await sql`
-        SELECT did FROM connections.pod_members
-        WHERE pod_id = ${event.podId} AND did = ${session.id} AND role = 'cohost' AND removed_at IS NULL
-        LIMIT 1
-      `;
-      isCohost = !!member;
-    } catch (err) {
-      log.error({ err: String(err) }, '[event] Failed to check cohost membership');
-    }
-  }
+  const isCreator = did === event.creatorDid;
+  const isCohost = !isCreator && session?.id && event.podId
+    ? await checkIsCohost(session.id, event.podId)
+    : false;
   const isOrganizer = isCreator || isCohost;
 
   // Status-based visibility
@@ -339,27 +713,10 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
   const hasHiddenTiers = allTicketTypes.some(t => !!t.accessCode);
   const canPurchaseTickets = status === 'published';
 
-  // Invite-only access check
-  let inviteValid = false;
-  if (event.accessMode === 'invite_only' && inviteToken) {
-    const [invite] = await db
-      .select()
-      .from(eventInvites)
-      .where(and(eq(eventInvites.eventId, event.id), eq(eventInvites.token, inviteToken)))
-      .limit(1);
-
-    if (
-      invite &&
-      (!invite.expiresAt || new Date(invite.expiresAt) > new Date()) &&
-      (invite.maxUses === null || invite.usedCount < invite.maxUses)
-    ) {
-      inviteValid = true;
-    }
-  }
+  const inviteValid = await checkInviteValid(event.id, inviteToken, event.accessMode);
 
   // Fetch user's orders (+ legacy tickets) if logged in
   const userOrders = session?.id ? await getUserOrders(event.id, session.id) : [];
-
   const hasTicket = userOrders.length > 0;
 
   // Whether we should show the ticket purchase section
@@ -373,127 +730,23 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
   const organizers: OrganizerProfile[] = [ownerProfile, ...cohosts];
 
   const etransferEnabled = !!(event as any).emtEmail;
-
-  // Check if seller has Stripe Connect enabled (server-side, no auth required)
-  let sellerConnected = true; // default true so free events / unknown states don't block
-  try {
-    const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
-    const checkRes = await fetch(
-      `${PAY_SERVICE_URL}/api/connect/check?did=${encodeURIComponent(event.creatorDid)}`,
-      { cache: 'no-store' }
-    );
-    if (checkRes.ok) {
-      const checkData = await checkRes.json();
-      sellerConnected = checkData.chargesEnabled ?? false;
-    }
-  } catch {
-    // If check fails, default to connected so we don't accidentally block payment
-  }
+  const sellerConnected = await checkSellerConnected(event.creatorDid);
 
   const metadata = (event.metadata || {}) as EventMetadata;
-  const theme = metadata.theme || {};
-  const themeColor = theme.color || 'orange';
-  const themeEmoji = theme.emoji || '🎉';
-  const gradient = theme.gradient || colorGradients[themeColor] || colorGradients.orange;
+  const { themeEmoji, gradient } = resolveEventTheme(metadata);
 
-  const eventDate = new Date(event.startsAt);
-  const eventEndDate = event.endsAt ? new Date(event.endsAt) : null;
-  const now = new Date();
-  const isEventDay = eventDate.toDateString() === now.toDateString() ||
-    (eventEndDate && now >= new Date(new Date(event.startsAt).setHours(0,0,0,0)) && now <= eventEndDate);
+  const timing = computeEventTiming(event);
+  const { eventDate, eventEndDate, isEventDay, isUpcoming, isOngoing, isCompleted } = timing;
   const canSeeVirtualUrl = (hasTicket || isOrganizer) && isEventDay;
-  const isUpcoming = eventDate > now;
-  const isOngoing = eventDate <= now && (!eventEndDate || eventEndDate > now);
-  const isCompleted = eventEndDate ? eventEndDate < now : false;
 
   // Fetch surveys from event metadata (source of truth for linked surveys)
-  const DYKIL_URL = buildPublicUrl('dykil');
-  const linkedSurveysMeta: Array<{ id: string; visibility: string; paywall: boolean; requiredForTickets: boolean }> = (event.metadata as any)?.linkedSurveys || [];
-  const linkedSurveySettings: Record<string, { visibility: string; paywall: boolean; requiredForTickets: boolean }> = {};
-  for (const ls of linkedSurveysMeta) {
-    linkedSurveySettings[ls.id] = { visibility: ls.visibility || 'always', paywall: ls.paywall || false, requiredForTickets: ls.requiredForTickets || false };
-  }
+  const { eventSurveys, linkedSurveySettings } = await fetchLinkedSurveys(event);
+  const { requiredSurveyIds, surveysCompleted } = await resolveSurveyCompletion(eventSurveys, linkedSurveySettings, session);
+  const visibleSurveys = filterVisibleSurveys(eventSurveys, linkedSurveySettings, { isUpcoming, isOngoing, isCompleted });
 
-  // Fetch survey details by ID from event metadata
-  let eventSurveys: any[] = [];
-  if (linkedSurveysMeta.length > 0) {
-    const surveyResults = await Promise.allSettled(
-      linkedSurveysMeta.map(async (ls) => {
-        const res = await fetch(`${DYKIL_URL}/api/surveys/${ls.id}`, { cache: 'no-store' });
-        if (!res.ok) return null;
-        return res.json();
-      })
-    );
-    eventSurveys = surveyResults
-      .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value !== null)
-      .map(r => r.value);
-  }
-
-  // Check if any surveys are required before ticket purchase
-  const requiredSurveyIds = eventSurveys
-    .filter((s: any) => linkedSurveySettings[s.id]?.requiredForTickets)
-    .map((s: any) => s.id);
-
-  let surveysCompleted = requiredSurveyIds.length === 0; // No required surveys = completed
-  if (!surveysCompleted && session) {
-    try {
-      const checks = await Promise.all(
-        requiredSurveyIds.map(async (surveyId: string) => {
-          const checkRes = await fetch(`${DYKIL_URL}/api/surveys/${surveyId}/responses/check?did=${encodeURIComponent(session.id)}`, {
-            cache: 'no-store',
-          });
-          if (checkRes.ok) {
-            const data = await checkRes.json();
-            return data.completed;
-          }
-          return false;
-        })
-      );
-      surveysCompleted = checks.every(Boolean);
-    } catch (err) {
-      log.error({ err: String(err) }, 'Failed to check survey completion');
-    }
-  }
-
-  // Filter surveys based on visibility settings and event state
-  const visibleSurveys = eventSurveys.filter((survey: any) => {
-    const settings = linkedSurveySettings[survey.id];
-    if (!settings) return true; // No settings = show always
-    
-    if (settings.visibility === 'pre-event' && !isUpcoming && !isOngoing) return false;
-    if (settings.visibility === 'post-event' && !isOngoing && !isCompleted) return false;
-    // paywall filtering would happen client-side based on ticket ownership
-    return true;
-  });
   // Use event timezone if available, otherwise fall back to UTC
   const eventTz = event.timezone || 'UTC';
-  const formattedDate = eventDate.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    timeZone: eventTz,
-  });
-  const formattedTime = eventDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-    timeZone: eventTz,
-  });
-  const formattedEndTime = eventEndDate ? eventEndDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-    timeZone: eventTz,
-  }) : null;
-  // If end date is a different day, show the full date too
-  const endIsNewDay = eventEndDate && eventEndDate.toLocaleDateString('en-US', { timeZone: eventTz }) !== eventDate.toLocaleDateString('en-US', { timeZone: eventTz });
-  const formattedEndDate = endIsNewDay ? eventEndDate.toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    timeZone: eventTz,
-  }) : null;
+  const { formattedDate, formattedTime, formattedEndTime, formattedEndDate } = formatEventSchedule(eventDate, eventEndDate, eventTz);
 
   return (
     <>
@@ -586,72 +839,7 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
               </div>
             </div>
 
-            {(() => {
-              const locType = getLocationType(event);
-              if (locType === 'hybrid') {
-                return (
-                  <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                    <div className="text-2xl">💻📍</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
-                      <div className="font-semibold truncate">{event.venue || 'Hybrid Event'}</div>
-                      {event.address && (
-                        <div className="text-sm text-gray-600 dark:text-gray-400">{event.address}</div>
-                      )}
-                      {event.city && (
-                        <div className="text-sm text-gray-500 dark:text-gray-500 truncate">{event.city}</div>
-                      )}
-                      {canSeeVirtualUrl && event.virtualUrl && (
-                        <a
-                          href={event.virtualUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-orange-500 hover:text-orange-600 truncate block mt-1"
-                        >
-                          Join online →
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-              if (locType === 'virtual') {
-                return (
-                  <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                    <div className="text-2xl">💻</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
-                      <div className="font-semibold">Virtual Event</div>
-                      {canSeeVirtualUrl && event.virtualUrl && (
-                        <a
-                          href={event.virtualUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-orange-500 hover:text-orange-600 truncate block"
-                        >
-                          {event.virtualUrl}
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-              return (
-                <div className="flex items-start gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                  <div className="text-2xl">📍</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-gray-500 dark:text-gray-400 mb-0.5">Location</div>
-                    <div className="font-semibold truncate">{event.venue || 'TBA'}</div>
-                    {event.address && (
-                      <div className="text-sm text-gray-600 dark:text-gray-400">{event.address}</div>
-                    )}
-                    {event.city && (
-                      <div className="text-sm text-gray-500 dark:text-gray-500 truncate">{event.city}</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
+            <EventLocationCard event={event} canSeeVirtualUrl={canSeeVirtualUrl} />
           </div>
 
           {/* Countdown */}
@@ -675,35 +863,7 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
             </div>
             <div className="flex flex-wrap gap-3">
               {organizers.map(org => (
-                <div key={org.did} className="flex items-center gap-2">
-                  {org.avatar ? (
-                    <img
-                      src={org.avatar}
-                      alt={org.name || org.handle || org.did}
-                      className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 text-sm font-semibold text-gray-500">
-                      {(org.name || org.handle || org.did).charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    {org.name && <p className="text-sm font-medium leading-none">{org.name}</p>}
-                    {org.handle && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-none mt-0.5">@{org.handle}</p>
-                    )}
-                    {!org.name && !org.handle && (
-                      <p className="text-xs text-gray-500 font-mono">{org.did.slice(0, 20)}...</p>
-                    )}
-                  </div>
-                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0 ${
-                    org.role === 'owner'
-                      ? 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300'
-                      : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
-                  }`}>
-                    {org.role === 'owner' ? 'Organizer' : 'Co-host'}
-                  </span>
-                </div>
+                <OrganizerBadge key={org.did} org={org} />
               ))}
             </div>
           </div>
@@ -777,56 +937,24 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
               {!session && <MagicLinkButton eventId={event.id} />}
             </div>
 
-            {(() => {
-              if (!canSeeTickets) {
-                return (
-                  <div className="text-center py-12">
-                    <div className="text-5xl mb-4">🔒</div>
-                    <p className="text-lg font-semibold mb-2">This event is invite-only</p>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">
-                      You need a valid invite link to purchase tickets.
-                    </p>
-                  </div>
-                );
-              }
-              if (canPurchaseTickets) {
-                return (
-                  <TicketsGate
-                    surveysRequired={requiredSurveyIds.length > 0}
-                    initialCompleted={surveysCompleted}
-                    requiredSurveyIds={requiredSurveyIds}
-                  >
-                    <TicketsSection
-                      eventId={event.id}
-                      eventTitle={event.title}
-                      tickets={ticketTypesList}
-                      userOrders={userOrders}
-                      hasTicket={hasTicket}
-                      inviteToken={inviteToken}
-                      etransferEnabled={etransferEnabled}
-                      isAuthenticated={!!session}
-                      sessionEmail={session?.email ?? undefined}
-                      sessionContactEmail={sessionContactEmail ?? undefined}
-                      sellerConnected={sellerConnected}
-                      hasHiddenTiers={hasHiddenTiers}
-                    />
-                  </TicketsGate>
-                );
-              }
-              let ticketStatusMessage: string;
-              if (status === 'cancelled') {
-                ticketStatusMessage = 'Ticket sales are closed — this event was cancelled.';
-              } else if (status === 'completed') {
-                ticketStatusMessage = 'This event has ended. Ticket sales are closed.';
-              } else {
-                ticketStatusMessage = 'Ticket sales are not currently available.';
-              }
-              return (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-                  {ticketStatusMessage}
-                </p>
-              );
-            })()}
+            <EventTicketsPanel
+              canSeeTickets={canSeeTickets}
+              canPurchaseTickets={canPurchaseTickets}
+              status={status}
+              requiredSurveyIds={requiredSurveyIds}
+              surveysCompleted={surveysCompleted}
+              event={event}
+              ticketTypesList={ticketTypesList}
+              userOrders={userOrders}
+              hasTicket={hasTicket}
+              inviteToken={inviteToken}
+              etransferEnabled={etransferEnabled}
+              isAuthenticated={!!session}
+              sessionEmail={session?.email ?? undefined}
+              sessionContactEmail={sessionContactEmail ?? undefined}
+              sellerConnected={sellerConnected}
+              hasHiddenTiers={hasHiddenTiers}
+            />
           </div>
         )}
       </div>

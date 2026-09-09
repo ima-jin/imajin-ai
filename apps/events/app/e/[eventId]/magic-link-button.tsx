@@ -16,6 +16,36 @@ type Status =
   | 'error'
   | 'hard-did';
 
+interface PollStatusResponse {
+  status: string;
+  handoffToken?: string;
+}
+
+type ClaimResult = { ok: true } | { ok: false; expired: boolean; message: string };
+
+function hasPollTimedOut(startedAt: number | null): boolean {
+  return startedAt !== null && Date.now() - startedAt > POLL_TIMEOUT_MS;
+}
+
+async function pollOnboardStatus(pollHandle: string): Promise<PollStatusResponse | null> {
+  const res = await fetch(`${AUTH_URL}/api/onboard/poll?handle=${encodeURIComponent(pollHandle)}`);
+  if (!res.ok) return null; // 429 etc. — keep polling; one bad poll isn't fatal.
+  return res.json();
+}
+
+async function claimHandoff(handoffToken: string): Promise<ClaimResult> {
+  const claimRes = await fetch(`${AUTH_URL}/api/onboard/claim`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ handoffToken }),
+  });
+  if (claimRes.ok) return { ok: true };
+
+  const errData = await claimRes.json().catch(() => ({}));
+  return { ok: false, expired: claimRes.status === 410, message: errData.error || 'Could not complete login.' };
+}
+
 export function MagicLinkButton({ eventId }: Readonly<{ eventId: string }>) {
   const [showForm, setShowForm] = useState(false);
   const [email, setEmail] = useState('');
@@ -78,56 +108,47 @@ export function MagicLinkButton({ eventId }: Readonly<{ eventId: string }>) {
     if (status !== 'sent-polling' || !pollHandle) return;
 
     let cancelled = false;
-    const interval = setInterval(async () => {
-      // Stop polling after the token TTL.
-      if (pollStartedAt.current && Date.now() - pollStartedAt.current > POLL_TIMEOUT_MS) {
-        clearInterval(interval);
-        if (!cancelled) {
-          setStatus('expired');
-          setErrorMessage('Login link expired. Send a new one.');
+    const applyExpired = () => {
+      setStatus('expired');
+      setErrorMessage('Login link expired. Send a new one.');
+    };
+    const finalizeSession = async (handoffToken: string) => {
+      const result = await claimHandoff(handoffToken);
+      if (!result.ok) {
+        if (result.expired) {
+          applyExpired();
+        } else {
+          setStatus('error');
+          setErrorMessage(result.message);
         }
         return;
       }
 
-      try {
-        const res = await fetch(
-          `${AUTH_URL}/api/onboard/poll?handle=${encodeURIComponent(pollHandle)}`,
-        );
-        if (!res.ok) {
-          // 429 etc. — keep polling; one bad poll isn't fatal.
-          return;
-        }
-        const data = await res.json();
-        if (cancelled) return;
+      globalThis.dispatchEvent(new Event('imajin:session-changed'));
+      setStatus('completed');
+      // Reload the event page so server components pick up the new session.
+      // Give the cookie a beat to settle before navigating.
+      setTimeout(() => globalThis.location.reload(), 800);
+    };
 
-        if (data.status === 'completed' && data.handoffToken) {
+    const interval = setInterval(async () => {
+      // Stop polling after the token TTL.
+      if (hasPollTimedOut(pollStartedAt.current)) {
+        clearInterval(interval);
+        if (!cancelled) applyExpired();
+        return;
+      }
+
+      try {
+        const pollStatus = await pollOnboardStatus(pollHandle);
+        if (!pollStatus || cancelled) return;
+
+        if (pollStatus.status === 'completed' && pollStatus.handoffToken) {
           clearInterval(interval);
-          const claimRes = await fetch(`${AUTH_URL}/api/onboard/claim`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ handoffToken: data.handoffToken }),
-          });
-          if (!claimRes.ok) {
-            const errData = await claimRes.json().catch(() => ({}));
-            if (claimRes.status === 410) {
-              setStatus('expired');
-              setErrorMessage('Login link expired. Send a new one.');
-            } else {
-              setStatus('error');
-              setErrorMessage(errData.error || 'Could not complete login.');
-            }
-            return;
-          }
-          globalThis.dispatchEvent(new Event('imajin:session-changed'));
-          setStatus('completed');
-          // Reload the event page so server components pick up the new session.
-          // Give the cookie a beat to settle before navigating.
-          setTimeout(() => globalThis.location.reload(), 800);
-        } else if (data.status === 'expired') {
+          await finalizeSession(pollStatus.handoffToken);
+        } else if (pollStatus.status === 'expired') {
           clearInterval(interval);
-          setStatus('expired');
-          setErrorMessage('Login link expired. Send a new one.');
+          applyExpired();
         }
       } catch {
         // Network blip — keep polling.

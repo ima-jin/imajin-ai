@@ -4,6 +4,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import type { Logger } from '@imajin/logger';
 import type { CartItem } from '@/src/lib/checkout-common';
 
 const MAX_QUANTITY = 20;
@@ -89,4 +90,82 @@ function checkAvailability(
     );
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Stripe line items
+// ---------------------------------------------------------------------------
+
+export interface StripeCheckoutItem {
+  name: string;
+  description?: string;
+  amount: number;
+  quantity: number;
+}
+
+/**
+ * Build the pay-service line items for a Stripe checkout cart.
+ */
+export function buildStripeCheckoutItems(
+  cart: CartItem[],
+  typesById: Map<string, { name: string; description?: string | null; price: number }>,
+  eventTitle: string,
+): StripeCheckoutItem[] {
+  return cart.map((c) => {
+    const tt = typesById.get(c.ticketTypeId)!;
+    return {
+      name: `${eventTitle} — ${tt.name}`,
+      description: tt.description || undefined,
+      amount: tt.price,
+      quantity: c.quantity,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Pay service checkout session
+// ---------------------------------------------------------------------------
+
+export interface RequestPayCheckoutSessionParams {
+  payServiceUrl: string;
+  items: StripeCheckoutItem[];
+  currency: string;
+  customerEmail?: string;
+  successUrl: string;
+  cancelUrl: string;
+  fairManifest: unknown;
+  sellerDid: string;
+  metadata: Record<string, unknown>;
+  log: Logger;
+}
+
+export interface PayCheckoutSession {
+  id: string;
+  url: string;
+}
+
+/**
+ * Request a checkout session from the pay service. Returns the session on
+ * success, or an `{ error, status }` descriptor the route can respond with
+ * directly.
+ */
+export async function requestPayCheckoutSession(
+  params: RequestPayCheckoutSessionParams,
+): Promise<{ checkout: PayCheckoutSession } | { error: string; status: number }> {
+  const { payServiceUrl, log, ...body } = params;
+
+  const payResponse = await fetch(`${payServiceUrl}/api/checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!payResponse.ok) {
+    const error = await payResponse.json();
+    log.error({ err: String(error) }, 'Pay service error');
+    return { error: error.error || 'Payment service error', status: 500 };
+  }
+
+  const checkout = await payResponse.json();
+  return { checkout };
 }

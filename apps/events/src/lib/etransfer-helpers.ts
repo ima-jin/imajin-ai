@@ -3,13 +3,14 @@
  * Extracted from app/api/checkout/etransfer/route.ts to reduce cognitive complexity.
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db, tickets, orders } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
 import { eventUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
-import type { CartItem } from '@/src/lib/checkout-common';
+import type { Logger } from '@imajin/logger';
+import { resolveCheckoutIdentity, type CartItem } from '@/src/lib/checkout-common';
 
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3001';
 const MAX_QUANTITY = 20;
@@ -68,6 +69,61 @@ function coalesceCartItems(rawItems: ETransferCartItem[]): NormalizedCart {
   }));
   const totalQuantity = cart.reduce((sum, c) => sum + c.quantity, 0);
   return { cart, cartMap, totalQuantity };
+}
+
+// ---------------------------------------------------------------------------
+// Buyer identity resolution
+// ---------------------------------------------------------------------------
+
+export interface EtransferBuyer {
+  ownerDid: string;
+  ownerEmail?: string;
+}
+
+/**
+ * Resolve the buyer identity for an e-Transfer checkout.
+ *
+ * - Authenticated (any tier): requires a resolvable email for ticket delivery.
+ * - Anonymous with an email: short-circuits to a magic-link verification
+ *   response (proves email ownership before reserving inventory).
+ * - Anonymous without an email: 401.
+ *
+ * Returns either the resolved buyer or a `NextResponse` the caller should
+ * return immediately.
+ */
+export async function resolveEtransferBuyer(
+  request: NextRequest,
+  body: { email?: string; name?: string; eventId: string; invite?: string },
+  totalQuantity: number,
+  log: Logger,
+): Promise<EtransferBuyer | NextResponse> {
+  const identity = await resolveCheckoutIdentity(request, { email: body.email }, log);
+
+  if (identity.did) {
+    if (!identity.email) {
+      return NextResponse.json(
+        { error: 'Email required to send your ticket', field: 'email' },
+        { status: 400 },
+      );
+    }
+    return { ownerDid: identity.did, ownerEmail: identity.email };
+  }
+
+  if (body.email) {
+    return handleAnonymousMagicLink({
+      email: body.email,
+      name: body.name,
+      eventId: body.eventId,
+      invite: body.invite,
+      totalQuantity,
+      log,
+    });
+  }
+
+  return NextResponse.json(
+    { error: 'Not authenticated. Please log in or provide an email address.' },
+    { status: 401 },
+  );
 }
 
 // ---------------------------------------------------------------------------

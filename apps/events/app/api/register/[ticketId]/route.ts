@@ -11,7 +11,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { withLogger } from '@imajin/logger';
+import { withLogger, type Logger } from '@imajin/logger';
 import { db, tickets, events, ticketTypes } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
@@ -21,12 +21,11 @@ import { eventUrl, buildPublicUrlAbsolute } from '@imajin/config';
 
 const EVENTS_URL = buildPublicUrlAbsolute('events');
 
-export const POST = withLogger('events', async (request, { log }) => {
-  const ticketId = request.nextUrl.pathname.split('/').pop()!;
+type RegistrationTicket = typeof tickets.$inferSelect;
+type RegistrationEvent = typeof events.$inferSelect;
 
-  log.info({ ticketId }, 'registration POST attempt');
-
-  // Load ticket
+/** Load the pending ticket to register, or the error response when it can't be registered. */
+async function loadPendingTicket(ticketId: string, log: Logger): Promise<RegistrationTicket | NextResponse> {
   const [ticket] = await db
     .select()
     .from(tickets)
@@ -48,7 +47,11 @@ export const POST = withLogger('events', async (request, { log }) => {
     );
   }
 
-  // Verify Dykil survey response exists for this ticket
+  return ticket;
+}
+
+/** Verify a Dykil survey response exists for the ticket, or the error response when it doesn't. */
+async function loadTicketSurveyResponse(ticketId: string, log: Logger): Promise<{ id: string; answers: Record<string, unknown> } | NextResponse> {
   const sql = getClient();
   const [surveyResponse] = await sql<
     { id: string; answers: Record<string, unknown> }[]
@@ -64,23 +67,113 @@ export const POST = withLogger('events', async (request, { log }) => {
     );
   }
 
-  await db
-    .update(tickets)
-    .set({ registrationStatus: 'complete' })
-    .where(eq(tickets.id, ticket.id));
+  return surveyResponse;
+}
 
-  log.info({ ticketId }, 'registration status updated to complete');
+function formatRegistrationEventDate(startsAt: string | Date) {
+  const eventDate = new Date(startsAt);
+  return {
+    eventDate: eventDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }),
+    eventTime: eventDate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    }),
+  };
+}
 
-  // Fire the post-registration notifications. The 'you're in' email for
-  // reg-required tickets travels via ticket.registration.completed; the
-  // event.registration / event.rsvp pair are for the broadcast + interest
-  // signal pipeline. All publishes are fire-and-forget — a notification
-  // failure must not roll back a successful registration.
-  const answers = (surveyResponse.answers ?? {}) as Record<string, unknown>;
-  const attendeeEmail =
-    typeof answers.email === 'string' ? answers.email.trim().toLowerCase() : null;
+function formatRegistrationPrice(pricePaid: number | null, currency: string | null): string {
+  if (pricePaid == null) return 'Included';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency || 'USD',
+  }).format(pricePaid / 100);
+}
 
-  let qrCodeDataUri: string | undefined;
+function resolveRegistrationEventImageUrl(imageUrl: string | null): string | undefined {
+  if (!imageUrl) return undefined;
+  return imageUrl.startsWith('http') ? imageUrl : `${EVENTS_URL}${imageUrl}`;
+}
+
+/** Publish the event.registration, event.rsvp (if owned), and ticket.registration.completed notifications. */
+function publishRegistrationCompletionEvents(params: {
+  ticket: RegistrationTicket;
+  event: RegistrationEvent;
+  ticketTypeName: string | undefined;
+  attendeeEmail: string;
+  eventImageUrl: string | undefined;
+  qrCodeDataUri: string;
+  log: Logger;
+}): void {
+  const { ticket, event, ticketTypeName, attendeeEmail, eventImageUrl, qrCodeDataUri, log } = params;
+  const ownerDid = ticket.ownerDid || '';
+
+  publish('event.registration', {
+    issuer: ownerDid,
+    subject: ownerDid,
+    scope: 'events',
+    payload: {
+      eventTitle: event.title,
+      email: attendeeEmail,
+      context_id: event.id,
+      context_type: 'event',
+    },
+  }).catch((err) => log.error({ err: String(err) }, 'event.registration publish failed'));
+
+  if (ticket.ownerDid) {
+    publish('event.rsvp', {
+      issuer: ticket.ownerDid,
+      subject: '',
+      scope: 'events',
+      payload: {
+        context_id: event.id,
+        context_type: 'event',
+        interestDids: [ticket.ownerDid],
+      },
+    }).catch((err) => log.error({ err: String(err) }, 'event.rsvp publish failed'));
+  }
+
+  const { eventDate, eventTime } = formatRegistrationEventDate(event.startsAt);
+
+  publish('ticket.registration.completed', {
+    issuer: ownerDid,
+    subject: ownerDid,
+    scope: 'events',
+    payload: {
+      email: attendeeEmail,
+      eventTitle: event.title,
+      ticketType: ticketTypeName ?? 'Ticket',
+      ticketId: ticket.id,
+      eventDate,
+      eventTime,
+      isVirtual: event.isVirtual ?? false,
+      venue: event.venue ?? undefined,
+      price: formatRegistrationPrice(ticket.pricePaid, ticket.currency),
+      magicLink: eventUrl(EVENTS_URL, event.id),
+      eventImageUrl,
+      eventUrl: eventUrl(EVENTS_URL, event.id),
+      qrCodeDataUri,
+      context_id: event.id,
+      context_type: 'event',
+    },
+  }).catch((err) =>
+    log.error({ err: String(err) }, 'ticket.registration.completed publish failed'),
+  );
+}
+
+/**
+ * Fire the post-registration notifications. The 'you're in' email for
+ * reg-required tickets travels via ticket.registration.completed; the
+ * event.registration / event.rsvp pair are for the broadcast + interest
+ * signal pipeline. All publishes are fire-and-forget — a notification
+ * failure must not roll back a successful registration.
+ */
+async function notifyRegistrationCompleted(ticket: RegistrationTicket, attendeeEmail: string | null, log: Logger): Promise<string | undefined> {
   try {
     const [event] = await db
       .select()
@@ -93,94 +186,64 @@ export const POST = withLogger('events', async (request, { log }) => {
       .where(eq(ticketTypes.id, ticket.ticketTypeId))
       .limit(1);
 
-    if (event && attendeeEmail) {
-      const eventDate = new Date(event.startsAt);
-      let eventImageUrl: string | undefined;
-      if (event.imageUrl) {
-        eventImageUrl = event.imageUrl.startsWith('http') ? event.imageUrl : `${EVENTS_URL}${event.imageUrl}`;
+    if (!event || !attendeeEmail) {
+      if (!attendeeEmail) {
+        log.info(
+          { ticketId: ticket.id },
+          'no attendee email in survey answers; skipping registration emails',
+        );
       }
-
-      qrCodeDataUri = await generateQRCode(ticket.id);
-
-      publish('event.registration', {
-        issuer: ticket.ownerDid || '',
-        subject: ticket.ownerDid || '',
-        scope: 'events',
-        payload: {
-          eventTitle: event.title,
-          email: attendeeEmail,
-          context_id: event.id,
-          context_type: 'event',
-        },
-      }).catch((err) => log.error({ err: String(err) }, 'event.registration publish failed'));
-
-      if (ticket.ownerDid) {
-        publish('event.rsvp', {
-          issuer: ticket.ownerDid,
-          subject: '',
-          scope: 'events',
-          payload: {
-            context_id: event.id,
-            context_type: 'event',
-            interestDids: [ticket.ownerDid],
-          },
-        }).catch((err) => log.error({ err: String(err) }, 'event.rsvp publish failed'));
-      }
-
-      publish('ticket.registration.completed', {
-        issuer: ticket.ownerDid || '',
-        subject: ticket.ownerDid || '',
-        scope: 'events',
-        payload: {
-          email: attendeeEmail,
-          eventTitle: event.title,
-          ticketType: ticketType?.name ?? 'Ticket',
-          ticketId: ticket.id,
-          eventDate: eventDate.toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }),
-          eventTime: eventDate.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            timeZoneName: 'short',
-          }),
-          isVirtual: event.isVirtual ?? false,
-          venue: event.venue ?? undefined,
-          price:
-            ticket.pricePaid == null
-              ? 'Included'
-              : new Intl.NumberFormat('en-US', {
-                  style: 'currency',
-                  currency: ticket.currency || 'USD',
-                }).format(ticket.pricePaid / 100),
-          magicLink: eventUrl(EVENTS_URL, event.id),
-          eventImageUrl,
-          eventUrl: eventUrl(EVENTS_URL, event.id),
-          qrCodeDataUri,
-          context_id: event.id,
-          context_type: 'event',
-        },
-      }).catch((err) =>
-        log.error({ err: String(err) }, 'ticket.registration.completed publish failed'),
-      );
-
-      log.info(
-        { ticketId, hasQr: !!qrCodeDataUri },
-        'registration completion events published',
-      );
-    } else if (!attendeeEmail) {
-      log.info(
-        { ticketId },
-        'no attendee email in survey answers; skipping registration emails',
-      );
+      return undefined;
     }
+
+    const eventImageUrl = resolveRegistrationEventImageUrl(event.imageUrl);
+    const qrCodeDataUri = await generateQRCode(ticket.id);
+
+    publishRegistrationCompletionEvents({
+      ticket,
+      event,
+      ticketTypeName: ticketType?.name,
+      attendeeEmail,
+      eventImageUrl,
+      qrCodeDataUri,
+      log,
+    });
+
+    log.info(
+      { ticketId: ticket.id, hasQr: !!qrCodeDataUri },
+      'registration completion events published',
+    );
+    return qrCodeDataUri;
   } catch (err) {
     // Non-fatal: registration is already 'complete' in the DB.
     log.error({ err: String(err) }, 'failed to publish registration completion events');
+    return undefined;
   }
+}
+
+export const POST = withLogger('events', async (request, { log }) => {
+  const ticketId = request.nextUrl.pathname.split('/').pop()!;
+
+  log.info({ ticketId }, 'registration POST attempt');
+
+  const ticket = await loadPendingTicket(ticketId, log);
+  if (ticket instanceof NextResponse) return ticket;
+
+  const surveyResponse = await loadTicketSurveyResponse(ticketId, log);
+  if (surveyResponse instanceof NextResponse) return surveyResponse;
+
+  await db
+    .update(tickets)
+    .set({ registrationStatus: 'complete' })
+    .where(eq(tickets.id, ticket.id));
+
+  log.info({ ticketId }, 'registration status updated to complete');
+
+  const answers = (surveyResponse.answers ?? {}) as Record<string, unknown>;
+  const attendeeEmail =
+    typeof answers.email === 'string' ? answers.email.trim().toLowerCase() : null;
+
+  const qrCodeDataUri = await notifyRegistrationCompleted(ticket, attendeeEmail, log);
 
   return NextResponse.json({ success: true, qrCodeDataUri });
 });
