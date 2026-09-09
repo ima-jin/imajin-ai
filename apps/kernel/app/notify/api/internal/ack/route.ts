@@ -16,6 +16,13 @@
  * row this kernel no longer considers pending must never surface as a
  * failure back to a WS message handler that has nowhere useful to report
  * one anyway.
+ *
+ * Requires `did`, the acking socket's own authenticated DID (PR #2101
+ * review): `ackNotificationDelivery` scopes its UPDATE to that DID, so an
+ * authenticated peer can only ever ack its own notifications, never an
+ * arbitrary id belonging to someone else -- `ws-server.js` passes
+ * `meta.did` from the socket that sent the frame, never a value read out
+ * of the frame itself.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ackNotificationDelivery } from '@/src/lib/notify/delivery';
@@ -34,11 +41,14 @@ export async function POST(request: NextRequest) {
   const idField = requireStringField(parsed.body, 'id');
   if (!idField.ok) return idField.response;
 
+  const didField = requireStringField(parsed.body, 'did');
+  if (!didField.ok) return didField.response;
+
   try {
-    const delivered = await ackNotificationDelivery(idField.value);
+    const delivered = await ackNotificationDelivery(idField.value, didField.value);
     return NextResponse.json({ ok: true, delivered });
   } catch (err) {
-    log.error({ id: idField.value, err: String(err) }, 'Notification ack failed');
+    log.error({ id: idField.value, did: didField.value, err: String(err) }, 'Notification ack failed');
     return NextResponse.json({ ok: false, error: 'Ack failed' }, { status: 500 });
   }
 }

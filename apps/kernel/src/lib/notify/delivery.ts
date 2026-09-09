@@ -123,14 +123,24 @@ export async function releaseWsClaimsForDid(did: string): Promise<void> {
 /**
  * Mark `id` delivered -- the only place `deliveredAt` is ever set (#2099).
  * Driven exclusively by the plugin's `{ type: 'notification_ack' }` frame,
- * never by a WS send merely reaching a live socket. A no-op, not a throw,
- * for an unknown id or a row that was already acked.
+ * never by a WS send merely reaching a live socket. Scoped to `did`, the
+ * acking socket's own authenticated DID (defense in depth, PR #2101
+ * review): the WHERE clause only ever matches a row addressed to that
+ * recipient, so an authenticated peer cannot ack -- and thus retire from
+ * backlog replay -- a notification it does not own, even given its id. A
+ * no-op, not a throw, for an unknown id, a row already acked, or a row
+ * belonging to a different DID -- all three look identical from here (zero
+ * rows matched) and are handled the same way.
  */
-export async function ackNotificationDelivery(id: string): Promise<boolean> {
+export async function ackNotificationDelivery(id: string, did: string): Promise<boolean> {
   const rows = await db
     .update(notifications)
     .set({ deliveredAt: new Date() })
-    .where(and(eq(notifications.id, id), isNull(notifications.deliveredAt)))
+    .where(and(
+      eq(notifications.id, id),
+      eq(notifications.recipientDid, did),
+      isNull(notifications.deliveredAt),
+    ))
     .returning({ id: notifications.id });
   return rows.length > 0;
 }

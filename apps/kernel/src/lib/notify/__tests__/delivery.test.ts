@@ -129,19 +129,36 @@ describe('releaseWsClaimsForDid', () => {
 });
 
 describe('ackNotificationDelivery', () => {
-  it('sets delivered_at and reports success for a pending row', async () => {
-    const delivered = await ackNotificationDelivery(ID);
+  it('sets delivered_at and reports success for a pending row owned by the acking DID', async () => {
+    const delivered = await ackNotificationDelivery(ID, DID);
 
     expect(delivered).toBe(true);
     expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ deliveredAt: expect.any(Date) }));
     expect(mockWhere).toHaveBeenCalledWith({
-      and: [{ eq: ['id', ID] }, { isNull: ['delivered_at'] }],
+      and: [{ eq: ['id', ID] }, { eq: ['recipient_did', DID] }, { isNull: ['delivered_at'] }],
     });
   });
 
   it('is a no-op, not a throw, for an unknown or already-delivered id', async () => {
     mockReturning.mockResolvedValueOnce([]);
 
-    await expect(ackNotificationDelivery(ID)).resolves.toBe(false);
+    await expect(ackNotificationDelivery(ID, DID)).resolves.toBe(false);
+  });
+
+  it('scopes the UPDATE to the acking DID, so an ack for a notification owned by a different DID leaves delivered_at untouched (#2101 review)', async () => {
+    // Postgres is what actually enforces recipient_did = did -- a mismatched
+    // DID matches zero rows there, exactly like an unknown id above. Here we
+    // pin both that the query includes the recipient_did condition for
+    // whichever DID is passed, and that a non-matching claim (simulated as
+    // zero rows) reports false rather than throwing or silently succeeding.
+    const otherDid = 'did:imajin:someone-else';
+    mockReturning.mockResolvedValueOnce([]);
+
+    const delivered = await ackNotificationDelivery(ID, otherDid);
+
+    expect(delivered).toBe(false);
+    expect(mockWhere).toHaveBeenCalledWith({
+      and: [{ eq: ['id', ID] }, { eq: ['recipient_did', otherDid] }, { isNull: ['delivered_at'] }],
+    });
   });
 });
