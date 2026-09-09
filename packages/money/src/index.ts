@@ -1,4 +1,4 @@
-export type { CurrencyCode, Money, MultiplyFactor } from './money';
+export type { Money, MultiplyFactor } from './money';
 export { add, subtract, multiply, equals, fromDecimalString, toDecimalString, format } from './money';
 
 export { minorUnitExponent } from './currency';
