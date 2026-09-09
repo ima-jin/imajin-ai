@@ -25,6 +25,7 @@
 import { randomBytes } from 'node:crypto';
 import { crypto } from '@imajin/auth';
 import type { MintedToken } from './types.js';
+import { stripTrailingSlashes } from './url-utils.js';
 
 const APP_TOKEN_SCOPE = 'infer:completions';
 
@@ -40,7 +41,7 @@ export async function mintAppToken(
   const challenge = `${appDid}:${attestationId}:${nonce}:${timestamp}`;
   const signature = crypto.signSync(challenge, privateKeyHex);
 
-  const res = await fetch(`${kernelBaseUrl.replace(/\/+$/, '')}/auth/api/apps/token`, {
+  const res = await fetch(`${stripTrailingSlashes(kernelBaseUrl)}/auth/api/apps/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ appDid, attestationId, scope, nonce, timestamp, signature }),

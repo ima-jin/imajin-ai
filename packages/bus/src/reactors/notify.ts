@@ -12,7 +12,7 @@ const log = createLogger('bus:notify');
  * Bounded character classes keep this linear — no nested quantifier for a
  * DB-sourced string to backtrack through.
  */
-const PLACEHOLDER = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+const PLACEHOLDER = /\{\{\s*(\w+)\s*\}\}/g;
 
 /**
  * Render a configured title/body against the event payload.

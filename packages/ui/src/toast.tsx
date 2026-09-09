@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useMemo } from 'react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -116,15 +116,20 @@ export function ToastProvider({ children }: Readonly<{ children: React.ReactNode
     dispatch({ type: 'ADD', toast: { id, type, message, sticky } });
   }, []);
 
-  const toast = {
-    success: (message: string) => add('success', message),
-    error: (message: string) => add('error', message),
-    warning: (message: string) => add('warning', message),
-    info: (message: string) => add('info', message),
-  };
+  const contextValue = useMemo<ToastContextValue>(
+    () => ({
+      toast: {
+        success: (message: string) => add('success', message),
+        error: (message: string) => add('error', message),
+        warning: (message: string) => add('warning', message),
+        info: (message: string) => add('info', message),
+      },
+    }),
+    [add],
+  );
 
   return (
-    <ToastContext.Provider value={{ toast }}>
+    <ToastContext.Provider value={contextValue}>
       {children}
       <div
         className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 items-end"

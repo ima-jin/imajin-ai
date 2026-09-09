@@ -5,7 +5,7 @@ import { APP_DISPLAY_NAME } from '@imajin/config';
 import { BuildInfo } from './BuildInfo';
 
 function getServiceFromPathname(pathname: string): string {
-  const segment = pathname.split('/').filter(Boolean)[0];
+  const segment = pathname.split('/').find(Boolean);
   if (!segment) return 'landing';
   return segment;
 }

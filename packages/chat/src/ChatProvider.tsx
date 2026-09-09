@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 
 interface ChatConfig {
   chatUrl: string;
@@ -25,9 +25,13 @@ export function ChatProvider({
   mediaUrl,
   connectionsUrl,
   children,
-}: ChatConfig & { children: React.ReactNode }) {
+}: Readonly<ChatConfig & { children: React.ReactNode }>) {
+  const value = useMemo(
+    () => ({ chatUrl, authUrl, inputUrl, mediaUrl, connectionsUrl }),
+    [chatUrl, authUrl, inputUrl, mediaUrl, connectionsUrl],
+  );
   return (
-    <ChatContext.Provider value={{ chatUrl, authUrl, inputUrl, mediaUrl, connectionsUrl }}>
+    <ChatContext.Provider value={value}>
       {children}
     </ChatContext.Provider>
   );

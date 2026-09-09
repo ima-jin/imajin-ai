@@ -84,7 +84,13 @@ function splitSetValue(value: unknown): string[] {
       .filter((item) => item.length > 0);
   }
   if (value === null || value === undefined) return [];
-  return [String(value).trim()].filter((item) => item.length > 0);
+  // Narrow to types with a meaningful (non-Object-default) `toString()`
+  // before stringifying (S6551); anything else (a plain object/function)
+  // renders via JSON.stringify instead of falling back to '[object Object]'.
+  const scalar = typeof value === 'number' || typeof value === 'boolean'
+    ? String(value)
+    : JSON.stringify(value);
+  return [scalar.trim()].filter((item) => item.length > 0);
 }
 
 function normalizeSet(field: string, value: unknown): string[] {
@@ -114,7 +120,7 @@ function compareOrdered(field: string, value: unknown, arg: unknown, predicate: 
     const valueTime = typeof value === 'string' ? Date.parse(value) : Number.NaN;
     const argTime = typeof arg === 'string' ? Date.parse(arg) : Number.NaN;
     if (Number.isNaN(valueTime) || Number.isNaN(argTime)) {
-      throw new Error(`Predicate ${predicate} requires ISO datetime strings for field ${field}`);
+      throw new TypeError(`Predicate ${predicate} requires ISO datetime strings for field ${field}`);
     }
     return predicate === 'gte' ? valueTime >= argTime : valueTime <= argTime;
   }
