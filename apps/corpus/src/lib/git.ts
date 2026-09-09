@@ -19,7 +19,14 @@ import { isAbsolute, join } from 'node:path';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const SYMBOLIC_REF_PATTERN = /^ref:\s*(\S+)$/;
-const GITDIR_POINTER_PATTERN = /^gitdir:\s*(.+)$/;
+// A lookahead pins the boundary between the leading `\s*` and the captured
+// group to the first non-whitespace character, so the two quantifiers can
+// never disagree on where whitespace ends and content begins. Without it,
+// `\s*` and `.+` both accept whitespace, giving the engine an exponential
+// number of equivalent ways to split a long run of spaces between them
+// (SonarCloud S8786 — super-linear backtracking). This does not change what
+// the pattern matches or captures.
+export const GITDIR_POINTER_PATTERN = /^gitdir:\s*(?=\S)(.+)$/;
 
 /**
  * Resolves the current commit sha of the git checkout rooted at

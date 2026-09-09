@@ -36,7 +36,7 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
       }
 
       if (!Array.isArray(body)) {
-        throw new Error('body must be a ThreadDocument[] or { source }');
+        throw new TypeError('body must be a ThreadDocument[] or { source }');
       }
 
       const result = engine.ingest(did, body as ThreadDocument[], undefined, ingesterDid);
@@ -360,7 +360,7 @@ interface ExpressRouteLayer {
 
 /** Converts an Express param path (`/corpus/:did/sync`) to its OpenAPI form (`/corpus/{did}/sync`). */
 export function toOpenApiPath(expressPath: string): string {
-  return expressPath.replace(/:([A-Za-z0-9_]+)/g, '{$1}');
+  return expressPath.replace(/:(\w+)/g, '{$1}');
 }
 
 /** Every method+path this router actually serves, in OpenAPI path syntax. */

@@ -390,7 +390,7 @@ function validateThreadDocument(document: ThreadDocument): void {
     throw new Error('ThreadDocument is missing required string fields');
   }
   if (!Array.isArray(document.labels) || !Array.isArray(document.linkedRefs) || !Array.isArray(document.comments)) {
-    throw new Error('ThreadDocument is missing required array fields');
+    throw new TypeError('ThreadDocument is missing required array fields');
   }
 }
 
