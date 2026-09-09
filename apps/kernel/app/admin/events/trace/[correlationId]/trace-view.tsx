@@ -132,64 +132,73 @@ export default function TraceView({ events, correlationId }: Readonly<{ events: 
                         : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800'
                     } shadow-sm`}
                   >
-                    <section
-                      className={`px-4 py-3 flex flex-wrap items-center gap-3 ${hasPayload ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-xl' : ''} transition-colors`}
-                      onClick={hasPayload ? () => toggle(evt.id) : undefined}
-                      onKeyDown={hasPayload ? (e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          toggle(evt.id);
-                        }
-                      } : undefined}
-                      tabIndex={hasPayload ? 0 : undefined}
-                      aria-label={hasPayload ? `Toggle ${evt.action} details` : undefined}
-                    >
-                      {/* Step number */}
-                      <span className="text-xs font-mono text-gray-400 dark:text-gray-600 w-5 text-right shrink-0">
-                        {idx + 1}
-                      </span>
+                    {(() => {
+                      const rowClassName = `px-4 py-3 flex flex-wrap items-center gap-3 w-full text-left ${hasPayload ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40 rounded-xl' : ''} transition-colors`;
+                      const rowContent = (
+                        <>
+                          {/* Step number */}
+                          <span className="text-xs font-mono text-gray-400 dark:text-gray-600 w-5 text-right shrink-0">
+                            {idx + 1}
+                          </span>
 
-                      {/* Service badge */}
-                      <span className={`text-xs px-2 py-0.5 rounded font-medium shrink-0 ${serviceBadgeClass(evt.service)}`}>
-                        {evt.service}
-                      </span>
+                          {/* Service badge */}
+                          <span className={`text-xs px-2 py-0.5 rounded font-medium shrink-0 ${serviceBadgeClass(evt.service)}`}>
+                            {evt.service}
+                          </span>
 
-                      {/* Action */}
-                      <span className="text-sm font-mono text-gray-800 dark:text-gray-200 flex-1 min-w-0">
-                        {evt.action}
-                      </span>
+                          {/* Action */}
+                          <span className="text-sm font-mono text-gray-800 dark:text-gray-200 flex-1 min-w-0">
+                            {evt.action}
+                          </span>
 
-                      {/* Duration bar + ms */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        {evt.duration_ms != null && (
-                          <>
-                            <div className="w-24 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${isFailed ? 'bg-red-400 dark:bg-red-500' : 'bg-orange-400 dark:bg-orange-500'}`}
-                                style={{
-                                  width: `${Math.min(100, (evt.duration_ms / Math.max(...events.map((e) => e.duration_ms ?? 0), 1)) * 100)}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 w-14 text-right font-mono">
-                              {evt.duration_ms}ms
+                          {/* Duration bar + ms */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            {evt.duration_ms != null && (
+                              <>
+                                <div className="w-24 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${isFailed ? 'bg-red-400 dark:bg-red-500' : 'bg-orange-400 dark:bg-orange-500'}`}
+                                    style={{
+                                      width: `${Math.min(100, (evt.duration_ms / Math.max(...events.map((e) => e.duration_ms ?? 0), 1)) * 100)}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span className="text-xs text-gray-500 dark:text-gray-400 w-14 text-right font-mono">
+                                  {evt.duration_ms}ms
+                                </span>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Timestamp */}
+                          <span className="text-xs font-mono text-gray-400 dark:text-gray-600 shrink-0">
+                            {formatTs(evt.created_at)}
+                          </span>
+
+                          {/* Expand chevron */}
+                          {hasPayload && (
+                            <span className="text-gray-400 dark:text-gray-600 text-xs shrink-0">
+                              {isExpanded ? '▲' : '▼'}
                             </span>
-                          </>
-                        )}
-                      </div>
-
-                      {/* Timestamp */}
-                      <span className="text-xs font-mono text-gray-400 dark:text-gray-600 shrink-0">
-                        {formatTs(evt.created_at)}
-                      </span>
-
-                      {/* Expand chevron */}
-                      {hasPayload && (
-                        <span className="text-gray-400 dark:text-gray-600 text-xs shrink-0">
-                          {isExpanded ? '▲' : '▼'}
-                        </span>
-                      )}
-                    </section>
+                          )}
+                        </>
+                      );
+                      // Only rows with a payload are actually interactive, so only those
+                      // render as a real <button> (native focus/keyboard for free); rows
+                      // without a payload stay a plain, non-interactive <div>.
+                      return hasPayload ? (
+                        <button
+                          type="button"
+                          className={rowClassName}
+                          onClick={() => toggle(evt.id)}
+                          aria-label={`Toggle ${evt.action} details`}
+                        >
+                          {rowContent}
+                        </button>
+                      ) : (
+                        <div className={rowClassName}>{rowContent}</div>
+                      );
+                    })()}
 
                     {/* DID */}
                     {evt.did && (

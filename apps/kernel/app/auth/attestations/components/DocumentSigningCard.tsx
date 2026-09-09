@@ -197,24 +197,26 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
       {/* Header */}
-      <div
-        className="px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-zinc-800/40 transition-colors"
-        onClick={() => setExpanded(!expanded)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setExpanded((prev) => !prev);
-          }
-        }}
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-      >
-        <span className={`text-xs px-2 py-0.5 rounded-full border shrink-0 ${badge.classes}`}>
+      <div className="relative px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-zinc-800/40 transition-colors">
+        {/* Full-row expand/collapse trigger. A real <button> (not a div+role) placed behind
+            the Sign/Decline buttons via z-index so it never blocks them. */}
+        <button
+          type="button"
+          className="absolute inset-0 z-0 w-full text-left"
+          onClick={() => setExpanded(!expanded)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setExpanded((prev) => !prev);
+            }
+          }}
+          aria-expanded={expanded}
+        />
+        <span className={`relative text-xs px-2 py-0.5 rounded-full border shrink-0 ${badge.classes}`}>
           {badge.label}
         </span>
 
-        <div className="flex-1 min-w-0">
+        <div className="relative flex-1 min-w-0">
           <div className="text-sm font-medium text-zinc-200 truncate">
             {title}
           </div>
@@ -229,7 +231,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="relative flex items-center gap-2 shrink-0">
           {canSign && (
             <button type="button"
               onClick={(e) => { e.stopPropagation(); handleSign(); }}

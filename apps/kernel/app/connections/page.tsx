@@ -77,8 +77,11 @@ function NicknameEditor({
   }
 
   if (editing) {
+    // No stopPropagation needed here: the row's own click-to-navigate trigger is a
+    // sibling <button> (see ConnectionsPage below), not an ancestor of this editor,
+    // so nothing above this element ever sees these mouse/keyboard events bubble.
     return (
-      <div className="flex items-center gap-1" role="presentation" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-1">
         <input
           ref={inputRef}
           value={value}
@@ -360,21 +363,26 @@ export default function ConnectionsPage() {
               {sortedConnections.map((conn) => (
                 <div
                   key={conn.did}
-                  onClick={() => globalThis.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      globalThis.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`;
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition"
+                  className="relative flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/10 transition"
                 >
-                  <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg">
+                  {/* Full-row navigate trigger. A real <button> (not a div+role) placed behind the
+                      Message link/Disconnect button via z-index so it never blocks them. */}
+                  <button
+                    type="button"
+                    className="absolute inset-0 z-0 w-full text-left"
+                    onClick={() => globalThis.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        globalThis.location.href = `${PROFILE_URL}/${conn.handle || conn.did}`;
+                      }
+                    }}
+                    aria-label={`Open profile for ${conn.nickname || conn.name || conn.handle || conn.did}`}
+                  />
+                  <div className="relative w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-lg">
                     👤
                   </div>
-                  <div className="flex-1 min-w-0 group">
+                  <div className="relative flex-1 min-w-0 group">
                     {conn.nickname ? (
                       <>
                         <div className="flex items-center gap-1">
@@ -406,7 +414,7 @@ export default function ConnectionsPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="relative flex items-center gap-2">
                     <a
                       href={`${buildPublicUrl('chat')}/start?did=${encodeURIComponent(conn.did)}`}
                       className="px-3 py-1.5 text-sm bg-white/10 hover:bg-white/20 text-white rounded-lg transition"

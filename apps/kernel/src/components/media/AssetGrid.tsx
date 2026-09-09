@@ -581,26 +581,30 @@ export function AssetGrid({
               return (
                 <div
                   key={asset.id}
-                  className={`group flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
+                  className={`relative group flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors ${
                     asset.id === selectedAssetId || isChecked
                       ? "border-orange-500 bg-orange-500/10"
                       : "border-transparent hover:bg-white/5"
                   }`}
-                  onClick={(e) => handleCardClick(e, asset, idx)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onSelectAsset(asset.id);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Select asset ${asset.filename}`}
                 >
+                  {/* Full-row select trigger. A real <button> (not a div+role) placed behind the
+                      checkbox via z-index so it never blocks it. */}
+                  <button
+                    type="button"
+                    className="absolute inset-0 z-0 w-full text-left"
+                    onClick={(e) => handleCardClick(e, asset, idx)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelectAsset(asset.id);
+                      }
+                    }}
+                    aria-label={`Select asset ${asset.filename}`}
+                  />
                   {/* Checkbox */}
                   <button
                     type="button"
-                    className={`shrink-0 transition-opacity ${isChecked || selectionActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                    className={`relative shrink-0 transition-opacity ${isChecked || selectionActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
                     onClick={(e) => handleCheckClick(e, asset.id, idx)}
                     aria-label={isChecked ? `Deselect asset ${asset.filename}` : `Select asset ${asset.filename}`}
                   >

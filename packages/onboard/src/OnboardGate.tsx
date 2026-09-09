@@ -96,19 +96,23 @@ export function OnboardGate({
     checkSession();
   }
 
-  // Idle state — show the trigger
+  // Idle state — show the trigger. `children` is documented as "the trigger element
+  // (e.g., a button)", so we attach the click handler directly to it via cloneElement
+  // instead of wrapping it in an extra div that would need an artificial role to stay
+  // accessible (that div+role combo is itself flagged by SonarCloud as "prefer the real
+  // element", and the real element here is whatever the caller already passed in).
   if (state === 'idle') {
-    return (
-      <div
-        onClick={handleTriggerClick}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTriggerClick(); } }}
-        role="button"
-        tabIndex={0}
-        style={{ cursor: 'pointer' }}
-      >
-        {children}
-      </div>
-    );
+    const trigger = React.Children.only(children) as React.ReactElement<{
+      onClick?: (e: React.MouseEvent) => void;
+      style?: React.CSSProperties;
+    }>;
+    return React.cloneElement(trigger, {
+      onClick: (e: React.MouseEvent) => {
+        trigger.props.onClick?.(e);
+        handleTriggerClick();
+      },
+      style: { ...trigger.props.style, cursor: 'pointer' },
+    });
   }
 
   // Checking session

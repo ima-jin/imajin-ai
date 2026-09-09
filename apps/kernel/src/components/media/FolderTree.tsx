@@ -82,27 +82,31 @@ function FolderRow({
   return (
     <>
       <div
-        className={`group flex items-center gap-1 px-2 py-1.5 rounded-md cursor-pointer select-none transition-colors ${
+        className={`relative group flex items-center gap-1 px-2 py-1.5 rounded-md cursor-pointer select-none transition-colors ${
           isSelected
             ? "bg-orange-500 text-white"
             : "text-gray-300 hover:bg-white/10"
         }`}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
-        onClick={() => onSelect(node.id)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelect(node.id);
-          }
-        }}
         onContextMenu={(e) => onContextMenu(e, node)}
-        role="button"
-        tabIndex={0}
-        aria-current={isSelected ? "true" : undefined}
       >
+        {/* Full-row select trigger. A real <button> (not a div+role) placed behind the
+            toggle/options buttons via z-index so it never blocks them. */}
         <button
           type="button"
-          className="w-4 h-4 flex items-center justify-center text-xs shrink-0"
+          className="absolute inset-0 z-0 w-full text-left"
+          onClick={() => onSelect(node.id)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onSelect(node.id);
+            }
+          }}
+          aria-current={isSelected ? "true" : undefined}
+        />
+        <button
+          type="button"
+          className="relative w-4 h-4 flex items-center justify-center text-xs shrink-0"
           onClick={(e) => {
             if (!hasChildren) return;
             e.stopPropagation();
@@ -121,11 +125,11 @@ function FolderRow({
         >
           {hasChildren && (isExpanded ? "▼" : "▶")}
         </button>
-        <span className="text-sm shrink-0">{icon}</span>
-        <span className="text-sm truncate flex-1">{node.name}</span>
+        <span className="relative text-sm shrink-0">{icon}</span>
+        <span className="relative text-sm truncate flex-1">{node.name}</span>
         {count !== undefined && count > 0 && (
           <span
-            className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${
+            className={`relative text-xs px-1.5 py-0.5 rounded-full shrink-0 ${
               isSelected ? "bg-white/20 text-white" : "bg-white/10 text-gray-400"
             }`}
           >
@@ -133,7 +137,7 @@ function FolderRow({
           </span>
         )}
         <button type="button"
-          className={`opacity-0 group-hover:opacity-100 p-0.5 rounded text-xs transition-opacity ${
+          className={`relative opacity-0 group-hover:opacity-100 p-0.5 rounded text-xs transition-opacity ${
             isSelected ? "text-white hover:bg-white/20" : "text-gray-400 hover:bg-white/10"
           }`}
           onClick={(e) => {
@@ -335,23 +339,24 @@ export function FolderTree({
 
       {/* Rename overlay */}
       {renamingId && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onClick={() => setRenamingId(null)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              setRenamingId(null);
-            }
-          }}
-          role="presentation"
-          aria-label="Close rename dialog"
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop is a real button (not a div+role) and a sibling of the dialog box
+              below, so the dialog box never needs to stop click/keydown propagation. */}
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/60 cursor-default"
+            onClick={() => setRenamingId(null)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setRenamingId(null);
+              }
+            }}
+            aria-label="Close rename dialog"
+          />
           <div
-            className="bg-[#2a2a2a] border border-white/10 rounded-lg shadow-xl p-4 w-72"
+            className="relative bg-[#2a2a2a] border border-white/10 rounded-lg shadow-xl p-4 w-72"
             aria-label="Rename folder"
-            role="presentation"
-            onMouseDown={(e) => e.stopPropagation()}
           >
             <p className="text-sm text-gray-300 mb-2">Rename folder</p>
             <input

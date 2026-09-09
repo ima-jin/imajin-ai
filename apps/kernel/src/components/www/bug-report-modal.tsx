@@ -42,14 +42,14 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
     { app: 'www', feature: 'bugs', access: 'public' }
   );
 
-  const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const onDrop = useCallback((e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setDragging(false);
     const file = e.dataTransfer.files?.[0] ?? null;
     handleFile(file);
   }, [handleFile]);
 
-  const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  const onDragOver = (e: React.DragEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setDragging(true);
   };
@@ -113,20 +113,22 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
   const busy = status === 'uploading' || status === 'submitting';
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClose();
-        }
-      }}
-      role="presentation"
-      aria-label="Close feedback modal"
-    >
-      <div className="w-full max-w-lg rounded-xl bg-[#111] border border-gray-800 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop is a real button (not a div+role) and a sibling of the dialog box
+          below, so the dialog box never needs to stop click/keydown propagation. */}
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/70 cursor-default"
+        onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+        aria-label="Close feedback modal"
+      />
+      <div className="relative w-full max-w-lg rounded-xl bg-[#111] border border-gray-800 shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
           <h2 className="text-lg font-semibold text-gray-100">Submit Feedback</h2>
           <button type="button"
@@ -191,20 +193,23 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
               <span className="block text-sm text-gray-400 mb-1">
                 Screenshot <span className="text-gray-600">(optional)</span>
               </span>
-              <div
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+                disabled={busy}
+              />
+              {/* Native button (not a div+role) so drag/click/keyboard activation all come for free. */}
+              <button
+                type="button"
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 onDragLeave={onDragLeave}
                 onClick={() => !busy && fileInputRef.current?.click()}
-                onKeyDown={(e) => {
-                  if (busy) return;
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    fileInputRef.current?.click();
-                  }
-                }}
                 aria-label="Upload screenshot"
-                className={`relative flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
+                className={`relative flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
                   dragging
                     ? 'border-orange-500 bg-orange-500/10'
                     : 'border-gray-700 bg-[#1a1a1a] hover:border-gray-500'
@@ -221,15 +226,7 @@ export function BugReportModal({ onClose }: Readonly<Props>) {
                     Drag & drop, paste (Ctrl+V), or <span className="text-orange-400">click to browse</span>
                   </p>
                 )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
-                  disabled={busy}
-                />
-              </div>
+              </button>
               {screenshotFile && (
                 <p className="mt-1 text-xs text-gray-500">{screenshotFile.name}</p>
               )}

@@ -59,32 +59,37 @@ function ResolvedDidChip({
 
   return (
     <div
-      className="flex-1 flex items-center gap-2 bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 min-w-0 cursor-pointer hover:border-gray-600 transition"
+      className="relative flex-1 flex items-center gap-2 bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 min-w-0 cursor-pointer hover:border-gray-600 transition"
       title={did}
-      onClick={handleCopy}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          handleCopy();
-        }
-      }}
-      role="button"
-      tabIndex={0}
     >
+      {/* Full-chip copy trigger. A real <button> (not a div+role) placed behind the
+          clear button via z-index so it never blocks it. */}
+      <button
+        type="button"
+        className="absolute inset-0 z-0 w-full text-left"
+        onClick={handleCopy}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleCopy();
+          }
+        }}
+        aria-label={`Copy DID ${did}`}
+      />
       {avatar ? (
         <img
           src={avatar}
           alt=""
-          className="w-5 h-5 rounded-full object-cover flex-shrink-0"
+          className="relative w-5 h-5 rounded-full object-cover flex-shrink-0"
         />
       ) : (
-        <div className="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 text-[10px] font-semibold flex-shrink-0">
+        <div className="relative w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-gray-400 text-[10px] font-semibold flex-shrink-0">
           {(displayName).charAt(0).toUpperCase()}
         </div>
       )}
-      <span className="text-xs text-gray-200 truncate">{displayName}</span>
+      <span className="relative text-xs text-gray-200 truncate">{displayName}</span>
       {handle && (
-        <span className="text-xs text-gray-500 truncate">@{handle}</span>
+        <span className="relative text-xs text-gray-500 truncate">@{handle}</span>
       )}
       {!readOnly && (
         <button
@@ -92,7 +97,7 @@ function ResolvedDidChip({
             e.stopPropagation();
             onClear();
           }}
-          className="ml-auto text-gray-600 hover:text-red-400 transition text-xs px-1"
+          className="relative ml-auto text-gray-600 hover:text-red-400 transition text-xs px-1"
           title="Clear"
           type="button"
         >
