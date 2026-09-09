@@ -99,13 +99,21 @@ export interface BalanceTransferParams {
  * Transfer the buyer's balance to the event creator via the pay service.
  * Returns the transaction id on success, or an `{ error, status }`
  * descriptor the route can respond with directly.
+ *
+ * `payServiceUrl` (PAY_SERVICE_URL) already includes the `/pay` path prefix
+ * — same convention every other cross-service call in this app follows
+ * (`requestPayCheckoutSession`'s `/api/checkout`, the order-refund route's
+ * `/api/refund`, campaign settle's `/api/charge-pledges`). This call site
+ * used to hardcode a duplicated `/pay` segment that pay.yaml never
+ * documented (#2002) — fixed to match the documented `/api/balance/transfer`
+ * path.
  */
 export async function transferBuyerBalance(
   params: BalanceTransferParams,
 ): Promise<{ transactionId: string } | { error: string; status: number }> {
   const { payServiceUrl, cookieHeader, fromDid, toDid, amountCents, eventId, cart, log } = params;
 
-  const payRes = await fetch(`${payServiceUrl}/pay/api/balance/transfer`, {
+  const payRes = await fetch(`${payServiceUrl}/api/balance/transfer`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

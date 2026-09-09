@@ -28,6 +28,9 @@ import {
   sendBalanceConfirmationEmails,
 } from '@/src/lib/balance-checkout-helpers';
 
+// PAY_SERVICE_URL already includes the /pay path prefix (kernel-hosted
+// service convention, e.g. http://localhost:3000/pay in dev) — callers
+// append only the endpoint path, e.g. /api/balance/transfer (#2002).
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 
 interface BalanceCheckoutRequest {
