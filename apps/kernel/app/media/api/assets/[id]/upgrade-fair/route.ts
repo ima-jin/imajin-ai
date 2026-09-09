@@ -21,7 +21,14 @@ function normalizeLegacyManifest(
   asset: { mimeType: string; ownerDid: string; id: string }
 ): { oldVersion: string; normalized: Record<string, unknown> } {
   const raw = manifest as unknown as Record<string, unknown>;
-  const oldVersion = String(raw.version ?? raw.fair ?? "1.0");
+  let oldVersion: string;
+  if (typeof raw.version === "string") {
+    oldVersion = raw.version;
+  } else if (typeof raw.fair === "string") {
+    oldVersion = raw.fair;
+  } else {
+    oldVersion = "1.0";
+  }
   let normalizedCreated: string;
   if (typeof raw.created === "string") {
     normalizedCreated = raw.created;

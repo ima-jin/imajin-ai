@@ -29,13 +29,12 @@ interface SeedFile {
   mimeType: string;
 }
 
-function getDefaultFiles(handle?: string): SeedFile[] {
-  const who = handle || "your";
+function getDefaultFiles(handle: string = "your"): SeedFile[] {
   return [
     {
       filename: "soul.md",
       mimeType: "text/markdown",
-      content: `# I'm ${who}'s presence
+      content: `# I'm ${handle}'s presence
 
 Edit this file to define who I am, how I speak, and what I care about.
 
@@ -158,7 +157,7 @@ export async function POST(request: NextRequest) {
   // Seed default files
   const didPath = didToPath(did);
   const dirPath = `${MEDIA_ROOT}/${didPath}/assets`;
-  const seedFiles = getDefaultFiles(handle);
+  const seedFiles = getDefaultFiles(handle || undefined);
   const assetIds: string[] = [];
 
   try {

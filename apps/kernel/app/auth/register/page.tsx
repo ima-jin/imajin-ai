@@ -35,7 +35,7 @@ function RegisterPage() {
   const redirectUrl = searchParams.get('redirect');
 
   const [handle, setHandle] = useState('');
-  const [name, setDisplayName] = useState('');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [optInUpdates, setOptInUpdates] = useState(false);
@@ -324,7 +324,7 @@ function RegisterPage() {
               id="register-display-name"
               type="text"
               value={name}
-              onChange={(e) => setDisplayName(e.target.value)}
+              onChange={(e) => setName(e.target.value)}
               placeholder="Your Name"
               required
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-transparent"

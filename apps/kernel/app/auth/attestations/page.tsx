@@ -14,8 +14,7 @@ interface SearchParams {
 }
 
 export default async function AttestationsPage(props: Readonly<{ searchParams: Promise<SearchParams> }>) {
-  const searchParams = await props.searchParams;
-  const resolvedSearchParams = await searchParams;
+  const resolvedSearchParams = await props.searchParams;
   const { sessionDid, effectiveDid } = await getEffectiveDid();
 
   if (!sessionDid || !effectiveDid) {

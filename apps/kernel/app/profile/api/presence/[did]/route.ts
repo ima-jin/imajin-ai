@@ -47,7 +47,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ did: 
 
     // Consider online if last_seen is null or within last 60 seconds
     const isOnline = !lastSeen ||
-      (new Date().getTime() - new Date(lastSeen).getTime() < 60000);
+      (Date.now() - new Date(lastSeen).getTime() < 60000);
 
     return NextResponse.json({
       online: isOnline,

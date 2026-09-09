@@ -217,9 +217,9 @@ export async function resolveAttestationHistory(attestationId: string): Promise<
     backward.push(predecessor);
     current = predecessor;
   }
-  const chain = backward.reverse();
+  const chain = backward.toReversed();
 
-  let tail = chain[chain.length - 1];
+  let tail = chain.at(-1)!;
   let openDisputes: Attestation[] = [];
   for (let hops = 0; hops < MAX_SUPERSESSION_CHAIN_HOPS; hops++) {
     const successors = await db.select().from(attestations).where(eq(attestations.supersedes, tail.id));

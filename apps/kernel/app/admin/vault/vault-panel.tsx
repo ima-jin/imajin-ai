@@ -29,7 +29,7 @@ function statusBadge(status: VaultSecretRow['status']): string {
   return status === 'confirmed' ? '🟢 confirmed' : '🟡 pending';
 }
 
-function CustodyCell({ row }: { row: VaultSecretRow }) {
+function CustodyCell({ row }: Readonly<{ row: VaultSecretRow }>) {
   const isDelegation = row.custodyScheme === 'delegation-grant';
   const isExpired = row.expiresAt ? new Date(row.expiresAt) < new Date() : false;
   const hasActiveGrant = isDelegation && row.grantStatus === 'active' && !isExpired;
