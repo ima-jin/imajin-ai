@@ -153,11 +153,6 @@ export function FileAttachment({
       ) : (
         <label
           htmlFor={fileInputId}
-          // Non-interactive element carrying mouse/keyboard handlers below
-          // (S6847) — role="button" declares it as the interactive widget it
-          // is deliberately being used as, alongside the manual tabIndex and
-          // onKeyDown activation this label already implements.
-          role="button"
           className={`p-2 text-gray-500 hover:text-orange-400 transition-colors cursor-pointer inline-block ${
             disabled ? 'opacity-40 cursor-not-allowed' : ''
           } ${isDragging ? 'text-orange-400' : ''}`}

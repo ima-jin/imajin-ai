@@ -42,8 +42,6 @@ function FairEditModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      role="button"
-      tabIndex={-1}
       onClick={onCancel}
       onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
       aria-label="Close fair manifest editor"
@@ -312,7 +310,6 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
               { }
               <audio controls className="w-full" style={{ colorScheme: "dark" }}>
                 <source src={assetUrl} type={asset.mimeType} />
-                <track kind="captions" />
               </audio>
             </div>
           )}
@@ -324,7 +321,6 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
               style={{ colorScheme: "dark" }}
             >
               <source src={assetUrl} type={asset.mimeType} />
-              <track kind="captions" />
             </video>
           )}
           {!isImage && !isAudio && !isVideo && showFileEditor && (
