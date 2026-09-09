@@ -50,6 +50,7 @@ fi
 
 FAILED=()
 SUCCEEDED=()
+PORT_REAP_FAILED=false
 
 echo "=== [$LABEL] Build started: $(date) ===" > "$REPORT"
 echo "Apps: ${APPS[*]}" >> "$REPORT"
@@ -153,17 +154,111 @@ pm2_name() {
 # services pm2 has never seen yet (e.g. a newly added app).
 ECOSYSTEM_FILE="$(dirname "$BASE_DIR")/ecosystem.config.js"
 
+# --- Orphan-port reaping (#2094) --------------------------------------------
+#
+# An orphaned `node server.js` from a prior deploy can survive `pm2 delete`
+# (reparented to init) and keep holding an app's port. When that happens, the
+# `pm2 restart` below starts a fresh process that immediately fails to bind
+# and crash-loops. Before restarting each app we:
+#   1. look up its port from the canonical service manifest
+#      (packages/config/src/services.ts — the same source scripts/check-env.ts
+#      already uses), so this script doesn't grow a second, divergent port
+#      table;
+#   2. check for a listener on that port pm2 doesn't own (same "not in
+#      `pm2 jlist`" rule scripts/reap-orphans.sh already uses) and kill it;
+#   3. re-check with a short bounded wait for the port to free up;
+#   4. if it's still held, fail loudly (naming the pid/cmd) and skip the
+#      restart for that app instead of handing pm2 a doomed process.
+
+# Print $app's port for the current $ENV, looked up from the canonical
+# manifest. Prints nothing (and never aborts the build) if the lookup can't
+# be made — the restart proceeds without the extra safety check in that case.
+service_port_for_app() {
+  local app="$1"
+  local script=""
+  script="$(mktemp "${TMPDIR:-/tmp}/build-sh-port.XXXXXX.mts" 2>/dev/null || true)"
+  if [[ -z "$script" ]]; then
+    return 0
+  fi
+  cat > "$script" <<EOF
+import { getPort } from "file://${BASE_DIR}/packages/config/src/services.ts";
+const env = process.env.BUILD_SH_PORT_ENV === "prod" ? "prod" : "dev";
+const port = getPort(process.env.BUILD_SH_PORT_APP || "", env);
+process.stdout.write(port ? String(port) : "");
+EOF
+  local port=""
+  port="$(BUILD_SH_PORT_APP="$app" BUILD_SH_PORT_ENV="$ENV" pnpm exec tsx "$script" 2>/dev/null || true)"
+  rm -f "$script"
+  printf '%s' "$port"
+}
+
+# Space-separated PIDs pm2 currently manages, snapshotted once before the
+# restart loop (mirrors scripts/reap-orphans.sh). A listener on a managed
+# port whose PID isn't in this list isn't a process pm2 is about to restart —
+# i.e. it's an orphan.
+pm2_managed_pids() {
+  pm2 jlist 2>/dev/null | node -e '
+    const procs = JSON.parse(require("fs").readFileSync(0) || "[]");
+    const pids = procs
+      .map((p) => (p && p.pid) ? String(p.pid) : "")
+      .filter(Boolean);
+    console.log(pids.join(" "));
+  ' 2>/dev/null || echo ""
+}
+
+is_pm2_pid() {
+  local pid="$1" managed_pids="$2" managed
+  for managed in $managed_pids; do
+    [[ "$pid" = "$managed" ]] && return 0
+  done
+  return 1
+}
+
+# Reap any listener on $port that pm2 doesn't own, then verify (short bounded
+# wait) that the port is actually free. Returns 1 without touching pm2 if a
+# non-pm2 process still holds the port afterwards.
+reap_orphan_port() {
+  local app="$1" port="$2" managed_pids="$3"
+  local pid cmd listeners stray
+
+  if ! command -v ss >/dev/null 2>&1; then
+    echo "ℹ️  ss not found — skipping orphan-port check for $app (:$port)" | tee -a "$REPORT"
+    return 0
+  fi
+
+  listeners="$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
+  for pid in $listeners; do
+    [[ -z "$pid" ]] && continue
+    is_pm2_pid "$pid" "$managed_pids" && continue
+    cmd="$(ps -o cmd= -p "$pid" 2>/dev/null || echo '?')"
+    echo "⚠️  Orphan on :$port ($app) — pid $pid ($cmd) not owned by pm2. Reaping." | tee -a "$REPORT"
+    kill "$pid" 2>/dev/null || true
+    sleep 2
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  done
+
+  for _ in 1 2 3 4 5; do
+    stray=""
+    listeners="$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
+    for pid in $listeners; do
+      [[ -z "$pid" ]] && continue
+      is_pm2_pid "$pid" "$managed_pids" || stray="$pid"
+    done
+    [[ -z "$stray" ]] && return 0
+    sleep 0.5
+  done
+
+  cmd="$(ps -o cmd= -p "$stray" 2>/dev/null || echo '?')"
+  echo "❌ Port $port ($app) still held by pid $stray ($cmd) after reaping — refusing to restart $app." | tee -a "$REPORT"
+  return 1
+}
+
 # Restart services that built successfully.
 # Restart each one individually so a single missing/unknown process can't abort
 # the whole batch. If pm2 has never seen the process (new service), fall back to
 # starting it from the ecosystem config.
-#
-# Known gap (Day 170 bug), tracked in #2094: an orphaned `node server.js` can
-# survive `pm2 delete` (reparented to init) and hold the app's port, so the
-# pm2 restart below starts a process that then fails to bind. Before
-# restarting, the restart path should reap any orphan holding the target port
-# (e.g. `fuser -k <port>/tcp` or match+kill the stray `node server.js`) and/or
-# verify the port is free.
 if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
   RESTART_LIST=""
   for app in "${SUCCEEDED[@]}"; do
@@ -171,9 +266,16 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
   done
   echo "=== Restarting: $RESTART_LIST ===" | tee -a "$REPORT"
 
+  PM2_PIDS="$(pm2_managed_pids)"
   RESTART_FAILED=()
   for app in "${SUCCEEDED[@]}"; do
     name="$(pm2_name "$app")"
+    port="$(service_port_for_app "$app")"
+    if [[ -n "$port" && "$port" != "0" ]] && ! reap_orphan_port "$app" "$port" "$PM2_PIDS"; then
+      RESTART_FAILED+=("$name")
+      PORT_REAP_FAILED=true
+      continue
+    fi
     if pm2 restart "$name" --update-env >> "$REPORT" 2>&1; then
       continue
     fi
@@ -198,5 +300,6 @@ echo "=== [$LABEL] Build finished: $(date) ===" >> "$REPORT"
 echo "✅ Succeeded: ${SUCCEEDED[*]:-none}" | tee -a "$REPORT"
 echo "❌ Failed: ${FAILED[*]:-none}" | tee -a "$REPORT"
 
-# Exit with error if anything failed
-[[ ${#FAILED[@]} -eq 0 ]]
+# Exit with error if anything failed, including apps skipped because an
+# orphaned process couldn't be cleared off their port (#2094).
+[[ ${#FAILED[@]} -eq 0 && "$PORT_REAP_FAILED" = false ]]
