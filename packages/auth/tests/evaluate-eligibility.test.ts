@@ -5,6 +5,13 @@
  * a stubbed global fetch, rather than mocking fetch generically.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  AUTH_SERVICE_URL,
+  INTERNAL_API_KEY as API_KEY,
+  requestBody,
+  setUpInternalPostEnv,
+  tearDownInternalPostEnv,
+} from './support/internal-post-test-env';
 
 const mocks = vi.hoisted(() => ({
   log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -14,29 +21,10 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => mocks.log,
 }));
 
-const AUTH_SERVICE_URL = 'https://auth.kernel.test';
-const API_KEY = 'attestation-internal-key';
 const DID = 'did:imajin:attendee';
 
-function requestBody(fetchMock: ReturnType<typeof vi.fn>): Record<string, unknown> {
-  const call = fetchMock.mock.calls[0];
-  return JSON.parse(call[1].body as string) as Record<string, unknown>;
-}
-
-beforeEach(() => {
-  vi.resetModules();
-  vi.clearAllMocks();
-  process.env.AUTH_SERVICE_URL = AUTH_SERVICE_URL;
-  process.env.ATTESTATION_INTERNAL_API_KEY = API_KEY;
-  delete process.env.AUTH_INTERNAL_API_KEY;
-});
-
-afterEach(() => {
-  delete process.env.AUTH_SERVICE_URL;
-  delete process.env.ATTESTATION_INTERNAL_API_KEY;
-  delete process.env.AUTH_INTERNAL_API_KEY;
-  vi.unstubAllGlobals();
-});
+beforeEach(setUpInternalPostEnv);
+afterEach(tearDownInternalPostEnv);
 
 describe('evaluateEligibility', () => {
   it('POSTs { did } with a Bearer ATTESTATION_INTERNAL_API_KEY and returns the parsed result', async () => {
