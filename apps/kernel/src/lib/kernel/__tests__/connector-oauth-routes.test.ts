@@ -211,28 +211,16 @@ describe('createConnectHandler', () => {
 
   // ── returnTo threading (#1529) ──────────────────────────────────────────────
 
-  it('signs a same-origin returnTo into the state', async () => {
+  it.each([
+    { label: 'signs a same-origin returnTo into the state', query: '?returnTo=%2Fauth%2Fconnectors%2Fgithub', expected: '/auth/connectors/github' },
+    { label: 'drops an off-origin returnTo rather than signing it', query: '?returnTo=https%3A%2F%2Fevil.com', expected: undefined },
+    { label: 'signs no returnTo when the param is absent', query: '', expected: undefined },
+  ])('$label', async ({ query, expected }) => {
     const signState = vi.fn(() => 'state123');
     const handler = createConnectHandler(async () => 'https://provider.test/authorize', signState);
 
-    await handler(makeRequest('https://kernel.test/connect?returnTo=%2Fauth%2Fconnectors%2Fgithub'));
-    expect(signState).toHaveBeenCalledWith('did:imajin:owner', '/auth/connectors/github');
-  });
-
-  it('drops an off-origin returnTo rather than signing it', async () => {
-    const signState = vi.fn(() => 'state123');
-    const handler = createConnectHandler(async () => 'https://provider.test/authorize', signState);
-
-    await handler(makeRequest('https://kernel.test/connect?returnTo=https%3A%2F%2Fevil.com'));
-    expect(signState).toHaveBeenCalledWith('did:imajin:owner', undefined);
-  });
-
-  it('signs no returnTo when the param is absent', async () => {
-    const signState = vi.fn(() => 'state123');
-    const handler = createConnectHandler(async () => 'https://provider.test/authorize', signState);
-
-    await handler(makeRequest('https://kernel.test/connect'));
-    expect(signState).toHaveBeenCalledWith('did:imajin:owner', undefined);
+    await handler(makeRequest(`https://kernel.test/connect${query}`));
+    expect(signState).toHaveBeenCalledWith('did:imajin:owner', expected);
   });
 
   // ── resolveConfigDid threading (#1704) ──────────────────────────────────────

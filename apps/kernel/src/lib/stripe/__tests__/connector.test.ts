@@ -146,6 +146,19 @@ describe('connectAndProvisionWebhook', () => {
     expect(upsertWebhookIndexMock).toHaveBeenCalledWith(result.routingId, OWNER, 'we_new');
   });
 
+  it('strips a trailing slash (or several) from webhookBaseUrl before building the endpoint URL (#2074 S8786)', async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }),
+    });
+
+    const result = await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, `${BASE_URL}///`);
+
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const body = init.body as string;
+    expect(body).toContain(`url=${encodeURIComponent(`${BASE_URL}/stripe/api/webhook/${result.routingId}`)}`);
+  });
+
   it('trims whitespace pasted around the key', async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,

@@ -283,6 +283,14 @@ describe('createProvision — partial-failure legibility', () => {
     expect(provision.handle).toMatch(/^agent-/);
   });
 
+  it('trims leading and trailing dashes produced by non-slug-safe characters at either end (#2074 S8786)', async () => {
+    const provision = await createProvision({
+      servingDid: SERVING_DID, name: '--Foo Bar!!--', harness: 'nanoclaw', placement: 'local', scopes: [],
+    });
+
+    expect(provision.handle).toMatch(/^foo-bar-[0-9a-f]+$/);
+  });
+
   it('leaves a legible failed row when grant issuance fails after identity mint succeeds, and does not re-mint on a later call with the same key', async () => {
     issueGrantMock.mockResolvedValueOnce({ error: 'Unknown capabilities: bogus', status: 400 });
 

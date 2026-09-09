@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { buildPublicUrl } from '@imajin/config';
 
 export interface Identity {
@@ -60,8 +60,10 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
     checkSession();
   }, []);
 
+  const value = useMemo(() => ({ identity, loading, error }), [identity, loading, error]);
+
   return (
-    <IdentityContext.Provider value={{ identity, loading, error }}>
+    <IdentityContext.Provider value={value}>
       {children}
     </IdentityContext.Provider>
   );
@@ -73,7 +75,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
 export function LoginPrompt() {
   const authUrl = process.env.NEXT_PUBLIC_AUTH_URL || 
     buildPublicUrl('auth');
-  const currentUrl = typeof globalThis.window !== 'undefined' ? globalThis.window.location.href : '';
+  const currentUrl = globalThis.window !== undefined ? globalThis.window.location.href : '';
 
   return (
     <div className="max-w-md mx-auto mt-20 text-center">

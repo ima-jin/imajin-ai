@@ -19,6 +19,7 @@ import { createLogger } from '@imajin/logger';
 import type { ResolvedBrain } from '../brain';
 import { fetchUpstream } from './errors';
 import { egressSafeFetch } from '@/src/lib/kernel/egress-fetch';
+import { stripTrailingSlashes } from '@/src/lib/kernel/utils';
 import type { ChatCompletionsRequestBody, CompletionsRequestMetadata } from './types';
 import { recordInferenceUsage } from '../usage-ledger';
 
@@ -56,7 +57,7 @@ export async function forwardOpenAiCompatible(
   const upstreamBody = stream
     ? { ...body, model: brain.modelId, stream_options: { include_usage: true } }
     : { ...body, model: brain.modelId };
-  const upstreamUrl = `${brain.baseURL.replace(/\/+$/, '')}/chat/completions`;
+  const upstreamUrl = `${stripTrailingSlashes(brain.baseURL)}/chat/completions`;
 
   log.info(
     {

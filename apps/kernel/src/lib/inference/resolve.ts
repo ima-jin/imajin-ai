@@ -114,7 +114,7 @@ export async function resolveIntent(
   };
   const signature = authCrypto.signSync(canonicalize(attestationPayload), signingIdentity.privateKeyHex);
 
-  const [attestation] = await db
+  await db
     .insert(inferenceAttestations)
     .values({
       id: attestationId,
@@ -134,8 +134,7 @@ export async function resolveIntent(
       // Inferred vs confirmed metadata delta (#1789)
       inferredMetadata,
       confirmedMetadata: confirmedMetadata ?? inferredMetadata,
-    })
-    .returning();
+    });
 
   log.info({ attestationId, senderPubkey: signingIdentity.senderPubkey }, 'inference attestation signed and written');
 

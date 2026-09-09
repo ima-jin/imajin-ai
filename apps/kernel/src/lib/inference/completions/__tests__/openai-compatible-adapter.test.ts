@@ -74,6 +74,17 @@ describe('forwardOpenAiCompatible', () => {
     expect(await res.json()).toEqual({ id: 'chatcmpl-1', choices: [] });
   });
 
+  it('strips a trailing slash (or several) from baseURL before appending /chat/completions (#2074 S8786)', async () => {
+    fetchMock.mockImplementation(async () => new Response('{}', { status: 200 }));
+
+    await forwardOpenAiCompatible({ ...XAI_BRAIN, baseURL: 'https://api.x.ai/v1/' }, { messages: [] }, {});
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.x.ai/v1/chat/completions');
+
+    fetchMock.mockClear();
+    await forwardOpenAiCompatible({ ...XAI_BRAIN, baseURL: 'https://api.x.ai/v1///' }, { messages: [] }, {});
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.x.ai/v1/chat/completions');
+  });
+
   it('never leaks the sealed key into the client-facing response', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }),

@@ -604,16 +604,20 @@ async function insertDoneRow(
  * 4b. No live grant OR any limit exceeded: insert pending proposal, publish
  *     action.proposed with the correct risk field, return pending.
  */
-async function requireWriteGate(
-  ownerDid: string,
-  scope: string,
-  tool: string,
-  risk: 'append' | 'mutate',
-  target: string,
-  argsSummary: string,
-  token: string,
-  agentDid?: string,
-): Promise<WriteGateResult> {
+interface RequireWriteGateParams {
+  ownerDid: string;
+  scope: string;
+  tool: string;
+  risk: 'append' | 'mutate';
+  target: string;
+  argsSummary: string;
+  token: string;
+  agentDid?: string;
+}
+
+async function requireWriteGate(params: RequireWriteGateParams): Promise<WriteGateResult> {
+  const { ownerDid, scope, tool, risk, target, argsSummary, token, agentDid } = params;
+
   // ── 1. Resolve a live approval grant for this exact risk tier ─────────────
   const liveGrant = await resolveLiveGrant(ownerDid, scope, risk);
 
@@ -706,7 +710,7 @@ export async function requireAppendGate(
   token: string,
   agentDid?: string,
 ): Promise<WriteGateResult> {
-  return requireWriteGate(ownerDid, scope, tool, 'append', target, argsSummary, token, agentDid);
+  return requireWriteGate({ ownerDid, scope, tool, risk: 'append', target, argsSummary, token, agentDid });
 }
 
 /**
@@ -722,7 +726,7 @@ export async function requireMutateGate(
   token: string,
   agentDid?: string,
 ): Promise<WriteGateResult> {
-  return requireWriteGate(ownerDid, scope, tool, 'mutate', target, argsSummary, token, agentDid);
+  return requireWriteGate({ ownerDid, scope, tool, risk: 'mutate', target, argsSummary, token, agentDid });
 }
 
 /**
