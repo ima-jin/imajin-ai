@@ -4,6 +4,7 @@ import { db, attestations } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { resolveEffectiveDid } from '@imajin/auth';
 import { checkSupersessionEligibility, SupersessionError } from '../attestation-helpers';
+import { verifyWitnessJws } from '@/src/lib/auth/witness-jws';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -71,9 +72,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // see: witness JWS is stored without verifying its signature matches the
-  // subject's chain key, or that its CID matches the attestation CID —
-  // crypto verification is a fast follow
+  // #2083: verify witnessJws for real before anything is persisted — a
+  // real Ed25519/EdDSA signature by the subject's (the witness's) resolved
+  // DID key, over a payload that names this exact attestation's id + CID.
+  // Fails closed: any rejection (alg not allow-listed, unresolvable
+  // witness DID, bad signature, or a CID/attestationId that doesn't match)
+  // returns 422 without ever reaching the update below.
+  const witnessVerification = await verifyWitnessJws({
+    witnessJws,
+    witnessDid: auth.effectiveDid,
+    attestationId,
+    cid: att.cid,
+  });
+  if (!witnessVerification.ok) {
+    return NextResponse.json({ error: witnessVerification.error }, { status: 422, headers: cors });
+  }
 
   // Amendment-by-supersession (#1790): when this attestation proposes to
   // amend an earlier one, flip both rows atomically — v1 (referenced by
