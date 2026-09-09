@@ -7,6 +7,7 @@ import { apiFetch, apiUrl } from '@imajin/config';
 import { Model } from 'survey-core';
 import { Survey } from 'survey-react-ui';
 import 'survey-core/survey-core.min.css';
+import { HTML_TAG_PATTERN } from '@/lib/embed-html';
 
 /** Apply dark-mode theme to a SurveyJS model */
 function applyDarkTheme(model: Model) {
@@ -40,7 +41,7 @@ function applyHtmlHandler(model: Model) {
   const allowed = new Set(['a', 'b', 'i', 'em', 'strong', 'br', 'ul', 'ol', 'li', 'p', 'span']);
   model.onTextMarkdown.add((_, options) => {
     const cleaned = options.text
-      .replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/gi, (match: string, tag: string) => {
+      .replace(HTML_TAG_PATTERN, (match: string, tag: string) => {
         if (allowed.has(tag.toLowerCase())) {
           if (tag.toLowerCase() === 'a') {
             return match
