@@ -17,6 +17,84 @@ export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
+/** Loosely-typed survey answers payload, keyed by field name */
+type SurveyAnswers = Record<string, any>;
+
+/** Extract the fields array from a survey's fields column (SurveyJS or legacy format) */
+function extractSurveyFields(survey: { fields: unknown }) {
+  const surveyFields = survey.fields as any;
+  return surveyFields?.elements || (Array.isArray(surveyFields) ? surveyFields : []);
+}
+
+/**
+ * Determine whether a conditionally-visible field's `visibleIf` condition is met,
+ * given the submitted answers. Fields without a `visibleIf` are always considered visible.
+ */
+function isFieldConditionMet(visibleIf: string | undefined, answers: SurveyAnswers): boolean {
+  if (!visibleIf) return true;
+
+  // Simple check: extract the referenced field from visibleIf (e.g. "{dietary} = \"Other\"")
+  const match = /\{(\w+)\}/.exec(visibleIf);
+  if (!match) return true;
+
+  const depField = match[1];
+  const depValue = answers[depField];
+  // If the dependency field doesn't match the condition, it's not visible
+  return visibleIf.includes(`"${depValue}"`) || visibleIf.includes(`'${depValue}'`);
+}
+
+/**
+ * Validate submitted answers against a survey's field definitions (support both legacy
+ * and SurveyJS formats). Returns an error message for the first missing required field,
+ * or null if all required fields are satisfied.
+ */
+function findMissingRequiredField(fields: any[], answers: SurveyAnswers): string | null {
+  for (const field of fields) {
+    // Support both SurveyJS (name, title, isRequired) and legacy (id, label, required)
+    const fieldName = field.name || field.id;
+    const fieldLabel = field.title || field.label;
+    const isRequired = field.isRequired || field.required;
+
+    // Skip validation for conditionally visible fields whose condition isn't met
+    // SurveyJS handles client-side validation; server just does basic checks
+    if (isRequired && field.visibleIf && !isFieldConditionMet(field.visibleIf, answers)) {
+      continue;
+    }
+
+    if (isRequired && !answers[fieldName]) {
+      return `Field "${fieldLabel}" is required`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find an existing response for this survey (upsert lookup). Skip upsert when `forceNew`
+ * is set (ticket-scoped: each ticket gets its own response). Ticket-scoped lookup takes
+ * priority over session-based lookup.
+ */
+async function findExistingResponse(
+  surveyId: string,
+  session: { id: string } | null,
+  forceNew: boolean,
+  ticketId: string | null
+) {
+  if (ticketId) {
+    return db.query.surveyResponses.findFirst({
+      where: (r, { eq, and }) => and(eq(r.surveyId, surveyId), eq(r.ticketId, ticketId)),
+    });
+  }
+
+  if (session?.id && !forceNew) {
+    return db.query.surveyResponses.findFirst({
+      where: (r, { eq, and }) => and(eq(r.surveyId, surveyId), eq(r.respondentDid, session.id)),
+    });
+  }
+
+  return null;
+}
+
 /**
  * POST /api/surveys/:id/respond - Submit a response to a survey
  */
@@ -50,48 +128,14 @@ export async function POST(request: NextRequest, props: RouteParams) {
     const session = await getSession();
 
     // Validate answers against fields (support both legacy and SurveyJS formats)
-    const surveyFields = survey.fields as any;
-    const fields = surveyFields?.elements || (Array.isArray(surveyFields) ? surveyFields : []);
-
-    for (const field of fields) {
-      // Support both SurveyJS (name, title, isRequired) and legacy (id, label, required)
-      const fieldName = field.name || field.id;
-      const fieldLabel = field.title || field.label;
-      const isRequired = field.isRequired || field.required;
-
-      // Skip validation for conditionally visible fields whose condition isn't met
-      // SurveyJS handles client-side validation; server just does basic checks
-      if (field.visibleIf && isRequired) {
-        // Simple check: extract the referenced field from visibleIf (e.g. "{dietary} = \"Other\"")
-        const match = field.visibleIf.match(/\{(\w+)\}/);
-        if (match) {
-          const depField = match[1];
-          const depValue = answers[depField];
-          // If the dependency field doesn't match the condition, skip this field
-          if (!field.visibleIf.includes(`"${depValue}"`) && !field.visibleIf.includes(`'${depValue}'`)) {
-            continue;
-          }
-        }
-      }
-
-      if (isRequired && !answers[fieldName]) {
-        return errorResponse(`Field "${fieldLabel}" is required`, 400, cors);
-      }
+    const fields = extractSurveyFields(survey);
+    const missingFieldError = findMissingRequiredField(fields, answers);
+    if (missingFieldError) {
+      return errorResponse(missingFieldError, 400, cors);
     }
 
     // Check for existing response (upsert: update if exists, create if not)
-    // Skip upsert when forceNew is set (ticket-scoped: each ticket gets its own response)
-    let existing: any = null;
-    if (ticketId) {
-      // Ticket-scoped lookup takes priority
-      existing = await db.query.surveyResponses.findFirst({
-        where: (r, { eq, and }) => and(eq(r.surveyId, survey.id), eq(r.ticketId, ticketId)),
-      });
-    } else if (session?.id && !forceNew) {
-      existing = await db.query.surveyResponses.findFirst({
-        where: (r, { eq, and }) => and(eq(r.surveyId, survey.id), eq(r.respondentDid, session.id)),
-      });
-    }
+    const existing = await findExistingResponse(survey.id, session, !!forceNew, ticketId);
 
     if (existing) {
       // Update existing response

@@ -76,6 +76,50 @@ function projectEntry(entry: CalendarEntry): ProjectedEntry {
 
 const NON_DISCLOSABLE = new Set(['private', 'sealed']);
 
+function disclosableEntry(entry: CalendarEntry, requesterDid: string): ProjectedEntry | null {
+  if (NON_DISCLOSABLE.has(entry.visibility)) return null;
+
+  if (entry.visibility === 'public') {
+    return projectEntry(entry);
+  }
+
+  if (entry.visibility === 'selective') {
+    return entry.visibilityDids?.includes(requesterDid) ? projectEntry(entry) : null;
+  }
+
+  return null;
+}
+
+async function gateConnectionsEntries(
+  connectionEntries: CalendarEntry[],
+  requesterDid: string,
+  subjectDid: string,
+  brokerEventType: string,
+  brokerPurpose: string,
+  log: Pick<Logger, 'error'>,
+): Promise<ProjectedEntry[]> {
+  if (connectionEntries.length === 0) return [];
+
+  try {
+    const result = await broker(brokerEventType, {
+      type: brokerEventType,
+      requester: requesterDid,
+      subject: subjectDid,
+      fields: ['entries'],
+      purpose: brokerPurpose,
+      scope: 'calendar',
+      data: { entries: connectionEntries.map(projectEntry) },
+    });
+    if (isBrokerRelease(result) && Array.isArray(result.data.entries)) {
+      return result.data.entries as ProjectedEntry[];
+    }
+    return [];
+  } catch (err: unknown) {
+    log.error({ err: String(err) }, `${brokerEventType} broker call failed`);
+    return [];
+  }
+}
+
 /**
  * Apply the full visibility pass logic for cross-DID calendar reads.
  *
@@ -98,41 +142,15 @@ export async function filterAndGateEntries(
   const disclosed: ProjectedEntry[] = [];
 
   for (const e of entries) {
-    if (NON_DISCLOSABLE.has(e.visibility)) continue;
-
-    if (e.visibility === 'public') {
-      disclosed.push(projectEntry(e));
-      continue;
-    }
-
-    if (e.visibility === 'selective') {
-      if (e.visibilityDids?.includes(requesterDid)) {
-        disclosed.push(projectEntry(e));
-      }
-      continue;
-    }
+    const projected = disclosableEntry(e, requesterDid);
+    if (projected) disclosed.push(projected);
   }
 
   // connections: broker-gate as a batch
   const connectionEntries = entries.filter((e) => e.visibility === 'connections');
-  if (connectionEntries.length > 0) {
-    try {
-      const result = await broker(brokerEventType, {
-        type: brokerEventType,
-        requester: requesterDid,
-        subject: subjectDid,
-        fields: ['entries'],
-        purpose: brokerPurpose,
-        scope: 'calendar',
-        data: { entries: connectionEntries.map(projectEntry) },
-      });
-      if (isBrokerRelease(result) && Array.isArray(result.data.entries)) {
-        disclosed.push(...(result.data.entries as ProjectedEntry[]));
-      }
-    } catch (err: unknown) {
-      log.error({ err: String(err) }, `${brokerEventType} broker call failed`);
-    }
-  }
+  disclosed.push(
+    ...(await gateConnectionsEntries(connectionEntries, requesterDid, subjectDid, brokerEventType, brokerPurpose, log)),
+  );
 
   return disclosed;
 }

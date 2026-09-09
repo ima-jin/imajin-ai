@@ -3,6 +3,13 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useToast } from './toast';
 
+type ToastActions = {
+  success: (message: string) => void;
+  error: (message: string) => void;
+  warning: (message: string) => void;
+  info: (message: string) => void;
+};
+
 export interface Notification {
   id: string;
   title: string;
@@ -32,6 +39,34 @@ const emptyValue: NotificationContextValue = {
   refresh: async () => {},
 };
 
+/**
+ * Fetch the most recently created notification and toast it, when it's new.
+ * Best-effort: any fetch failure is swallowed since this only augments the
+ * unread-count poll with a toast, and must never surface its own error.
+ */
+async function fetchLatestNotificationAndToast(
+  notifyUrl: string,
+  lastNewIdRef: React.MutableRefObject<string | null>,
+  toastRef: React.MutableRefObject<ToastActions>
+): Promise<void> {
+  try {
+    const listRes = await fetch(`${notifyUrl}/api/notifications?limit=1`, { credentials: 'include' });
+    if (!listRes.ok) return;
+    const listData = await listRes.json();
+    const latest: Notification | undefined = listData.notifications?.[0] ?? listData[0];
+    if (!latest || latest.id === lastNewIdRef.current) return;
+
+    lastNewIdRef.current = latest.id;
+    if (latest.urgency === 'urgent') {
+      toastRef.current.warning(latest.title);
+    } else {
+      toastRef.current.info(latest.title);
+    }
+  } catch {
+    // best-effort toast; ignore fetch failures
+  }
+}
+
 export function NotificationProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const notifyUrl = process.env.NEXT_PUBLIC_NOTIFY_URL;
   const [unreadCount, setUnreadCount] = useState(0);
@@ -53,23 +88,9 @@ export function NotificationProvider({ children }: Readonly<{ children: React.Re
       const data = await res.json();
       const count: number = data.count ?? 0;
 
+      // New notifications arrived — fetch the latest one and toast
       if (lastCountRef.current >= 0 && count > lastCountRef.current) {
-        // New notifications arrived — fetch the latest one and toast
-        try {
-          const listRes = await fetch(`${notifyUrl}/api/notifications?limit=1`, { credentials: 'include' });
-          if (listRes.ok) {
-            const listData = await listRes.json();
-            const latest: Notification | undefined = listData.notifications?.[0] ?? listData[0];
-            if (latest && latest.id !== lastNewIdRef.current) {
-              lastNewIdRef.current = latest.id;
-              if (latest.urgency === 'urgent') {
-                toastRef.current.warning(latest.title);
-              } else {
-                toastRef.current.info(latest.title);
-              }
-            }
-          }
-        } catch {}
+        await fetchLatestNotificationAndToast(notifyUrl, lastNewIdRef, toastRef);
       }
 
       lastCountRef.current = count;

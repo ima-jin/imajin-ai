@@ -2,13 +2,121 @@
 import { createLogger } from '@imajin/logger';
 const log = createLogger('market');
 import { db, listings } from '@/db';
+import type { Listing } from '@/db';
 import { requireAuth, getSession , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { resolveMediaRef } from '@imajin/media';
 import { buildFairManifest } from '@imajin/fair';
+import type { FairFeeManifest } from '@imajin/fair';
 import { getNodeSelf, getForestScopeConfig } from '@imajin/config';
 import { publish } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
+
+const STATUS_TRANSITIONS: Record<string, string[]> = {
+  active:      ['paused', 'sold', 'rented', 'unavailable'],
+  paused:      ['active', 'removed'],
+  unavailable: ['active', 'removed'],
+  sold:        ['removed'],
+  rented:      ['removed'],
+  removed:     [],
+};
+
+function validateStatusTransition(currentStatus: string, nextStatus: string): string | null {
+  const validNext = STATUS_TRANSITIONS[currentStatus] ?? [];
+  if (validNext.includes(nextStatus)) return null;
+  return `Cannot transition listing from '${currentStatus}' to '${nextStatus}'. Allowed: ${validNext.join(', ') || 'none'}`;
+}
+
+const UPDATABLE_LISTING_FIELDS = [
+  'title',
+  'description',
+  'price',
+  'currency',
+  'category',
+  'images',
+  'imageAssetIds',
+  'quantity',
+  'sellerTier',
+  'contactInfo',
+  'rangeKm',
+  'metadata',
+  'status',
+  'type',
+  'showContactInfo',
+] as const;
+
+type ListingPatchBody = Partial<{
+  title: string;
+  description: string;
+  price: number;
+  currency: string;
+  category: string;
+  images: string[];
+  imageAssetIds: string[];
+  quantity: number;
+  sellerTier: string;
+  contactInfo: Record<string, unknown>;
+  rangeKm: number;
+  metadata: Record<string, unknown>;
+  status: string;
+  type: string;
+  showContactInfo: boolean;
+  expiresAt: string;
+}>;
+
+function buildListingUpdates(body: ListingPatchBody) {
+  const updates: Record<string, any> = { updatedAt: new Date() };
+  for (const field of UPDATABLE_LISTING_FIELDS) {
+    if (body[field] !== undefined) {
+      updates[field] = body[field];
+    }
+  }
+  if (body.expiresAt !== undefined) {
+    updates.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
+  }
+  return updates;
+}
+
+async function recalculateFairManifest(params: {
+  did: string;
+  listing: Listing;
+  listingId: string;
+  price?: number;
+  sellerTier?: string;
+  actingAs?: string | null;
+}): Promise<FairFeeManifest | undefined> {
+  const { did, listing, listingId, price, sellerTier, actingAs } = params;
+  const priceChanged = price !== undefined && price !== listing.price;
+  const tierChanged = sellerTier !== undefined && sellerTier !== listing.sellerTier;
+  const sellerDidChanged = did !== listing.sellerDid;
+
+  if (!priceChanged && !tierChanged && !sellerDidChanged) {
+    return undefined;
+  }
+
+  try {
+    const nodeSelf = await getNodeSelf();
+    const scopeDid = listing.sellerDid === did ? (actingAs || null) : null;
+    let scopeFeeBps: number | null = null;
+    if (scopeDid) {
+      const forestConfig = await getForestScopeConfig(scopeDid);
+      scopeFeeBps = forestConfig?.scopeFeeBps ?? null;
+    }
+    return buildFairManifest({
+      creatorDid: did,
+      contentDid: listingId,
+      contentType: 'listing',
+      scopeDid,
+      scopeFeeBps,
+      nodeFeeBps: nodeSelf?.nodeFeeBps ?? undefined,
+      buyerCreditBps: nodeSelf?.buyerCreditBps ?? undefined,
+      nodeOperatorDid: nodeSelf?.nodeOperatorDid ?? undefined,
+    });
+  } catch (manifestErr) {
+    log.warn({ err: String(manifestErr) }, 'Failed to recalculate .fair manifest (non-fatal)');
+    return undefined;
+  }
+}
 
 /**
  * GET /api/listings/:id — Single listing detail
@@ -75,41 +183,13 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     }
 
     const body = await request.json();
-    const {
-      title,
-      description,
-      price,
-      currency,
-      category,
-      images,
-      imageAssetIds,
-      quantity,
-      sellerTier,
-      contactInfo,
-      rangeKm,
-      metadata,
-      status,
-      type,
-      showContactInfo,
-      expiresAt,
-    } = body;
+    const { price, sellerTier, images, status } = body;
 
     // Validate status transition
     if (status !== undefined) {
-      const currentStatus = listing.status ?? 'active';
-      const allowed: Record<string, string[]> = {
-        active:      ['paused', 'sold', 'rented', 'unavailable'],
-        paused:      ['active', 'removed'],
-        unavailable: ['active', 'removed'],
-        sold:        ['removed'],
-        rented:      ['removed'],
-        removed:     [],
-      };
-      const validNext = allowed[currentStatus] ?? [];
-      if (!validNext.includes(status)) {
-        return errorResponse(
-          `Cannot transition listing from '${currentStatus}' to '${status}'. Allowed: ${validNext.join(', ') || 'none'}`
-        );
+      const transitionError = validateStatusTransition(listing.status ?? 'active', status);
+      if (transitionError) {
+        return errorResponse(transitionError);
       }
     }
 
@@ -117,53 +197,19 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       return errorResponse('images must be an array with at most 8 items');
     }
 
-    const updates: Record<string, any> = { updatedAt: new Date() };
-
-    if (title !== undefined) updates.title = title;
-    if (description !== undefined) updates.description = description;
-    if (price !== undefined) updates.price = price;
-    if (currency !== undefined) updates.currency = currency;
-    if (category !== undefined) updates.category = category;
-    if (images !== undefined) updates.images = images;
-    if (imageAssetIds !== undefined) updates.imageAssetIds = imageAssetIds;
-    if (quantity !== undefined) updates.quantity = quantity;
-    if (sellerTier !== undefined) updates.sellerTier = sellerTier;
-    if (contactInfo !== undefined) updates.contactInfo = contactInfo;
-    if (rangeKm !== undefined) updates.rangeKm = rangeKm;
-    if (metadata !== undefined) updates.metadata = metadata;
-    if (status !== undefined) updates.status = status;
-    if (type !== undefined) updates.type = type;
-    if (showContactInfo !== undefined) updates.showContactInfo = showContactInfo;
-    if (expiresAt !== undefined) updates.expiresAt = expiresAt ? new Date(expiresAt) : null;
+    const updates = buildListingUpdates(body);
 
     // Recalculate .fair manifest if price, sellerTier, or seller DID changes
-    const priceChanged = price !== undefined && price !== listing.price;
-    const tierChanged = sellerTier !== undefined && sellerTier !== listing.sellerTier;
-    const currentDid = resolveActingDid(identity);
-    const sellerDidChanged = currentDid !== listing.sellerDid;
-
-    if (priceChanged || tierChanged || sellerDidChanged) {
-      try {
-        const nodeSelf = await getNodeSelf();
-        const scopeDid = listing.sellerDid === currentDid  ? (identity.actingAs || null) : null;
-        let scopeFeeBps: number | null = null;
-        if (scopeDid) {
-          const forestConfig = await getForestScopeConfig(scopeDid);
-          scopeFeeBps = forestConfig?.scopeFeeBps ?? null;
-        }
-        updates.fairManifest = buildFairManifest({
-          creatorDid: currentDid,
-          contentDid: params.id,
-          contentType: 'listing',
-          scopeDid,
-          scopeFeeBps,
-          nodeFeeBps: nodeSelf?.nodeFeeBps ?? undefined,
-          buyerCreditBps: nodeSelf?.buyerCreditBps ?? undefined,
-          nodeOperatorDid: nodeSelf?.nodeOperatorDid ?? undefined,
-        });
-      } catch (manifestErr) {
-        log.warn({ err: String(manifestErr) }, 'Failed to recalculate .fair manifest (non-fatal)');
-      }
+    const fairManifest = await recalculateFairManifest({
+      did,
+      listing,
+      listingId: params.id,
+      price,
+      sellerTier,
+      actingAs: identity.actingAs,
+    });
+    if (fairManifest !== undefined) {
+      updates.fairManifest = fairManifest;
     }
 
     const [updated] = await db.update(listings).set(updates).where(eq(listings.id, params.id)).returning();

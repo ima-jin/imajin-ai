@@ -5,6 +5,40 @@ import { db, surveys } from '@/db';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 
+type NormalizedFields = { elements: any[] };
+
+/**
+ * Accept both SurveyJS format { elements: [...] } and legacy array format, normalizing
+ * to SurveyJS shape. Returns an error message on invalid input, or the normalized fields.
+ */
+function normalizeSurveyFields(fields: any): { error: string } | { fields: NormalizedFields } {
+  if (fields && typeof fields === 'object' && 'elements' in fields) {
+    // Already in SurveyJS format
+    const elements = fields.elements;
+    if (!elements || !Array.isArray(elements) || elements.length === 0) {
+      return { error: 'fields.elements array is required' };
+    }
+    // Validate SurveyJS elements
+    for (const element of elements) {
+      if (!element.name || !element.type || !element.title) {
+        return { error: 'Each field must have name, type, and title' };
+      }
+    }
+    return { fields: fields as NormalizedFields };
+  }
+
+  if (Array.isArray(fields)) {
+    // Legacy format - convert to SurveyJS
+    if (fields.length === 0) {
+      return { error: 'fields array is required' };
+    }
+    // Wrap in SurveyJS structure
+    return { fields: { elements: fields } };
+  }
+
+  return { error: 'fields must be an array or SurveyJS schema' };
+}
+
 /**
  * POST /api/surveys - Create a new survey
  */
@@ -26,28 +60,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Accept both SurveyJS format { elements: [...] } and legacy array format
-    let surveyFields = fields;
-    if (fields && typeof fields === 'object' && 'elements' in fields) {
-      // Already in SurveyJS format
-      if (!fields.elements || !Array.isArray(fields.elements) || fields.elements.length === 0) {
-        return errorResponse('fields.elements array is required');
-      }
-      // Validate SurveyJS elements
-      for (const element of fields.elements) {
-        if (!element.name || !element.type || !element.title) {
-          return errorResponse('Each field must have name, type, and title');
-        }
-      }
-    } else if (Array.isArray(fields)) {
-      // Legacy format - convert to SurveyJS
-      if (fields.length === 0) {
-        return errorResponse('fields array is required');
-      }
-      // Wrap in SurveyJS structure
-      surveyFields = { elements: fields };
-    } else {
-      return errorResponse('fields must be an array or SurveyJS schema');
+    const normalized = normalizeSurveyFields(fields);
+    if ('error' in normalized) {
+      return errorResponse(normalized.error);
     }
+    const surveyFields = normalized.fields;
 
     const [survey] = await db.insert(surveys).values({
       id: generateId('survey'),

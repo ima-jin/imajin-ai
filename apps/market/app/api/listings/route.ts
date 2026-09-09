@@ -12,6 +12,91 @@ import { eq, ilike, and, desc, asc, sql, ne } from 'drizzle-orm';
 
 const VALID_SELLER_TIERS = ['public_offplatform', 'public_onplatform', 'trust_gated'] as const;
 
+function parseListingsQuery(searchParams: URLSearchParams) {
+  const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10));
+  const limit = Math.min(100, Math.max(1, Number.parseInt(searchParams.get('limit') || '20', 10)));
+  return {
+    category: searchParams.get('category'),
+    status: searchParams.get('status') || 'active',
+    currency: searchParams.get('currency'),
+    sellerTier: searchParams.get('seller_tier'),
+    sellerDid: searchParams.get('seller_did'),
+    exclude: searchParams.get('exclude'),
+    sort: searchParams.get('sort') || 'newest',
+    page,
+    limit,
+    offset: (page - 1) * limit,
+  };
+}
+
+function buildOwnerOrPublicStatusConditions(
+  searchParams: URLSearchParams,
+  status: string,
+  sellerDid: string | null,
+  authSellerDid: string | null
+) {
+  const conditions = [];
+  if (sellerDid && sellerDid === authSellerDid) {
+    // Authenticated seller viewing their own — respect explicit status filter if provided
+    if (searchParams.has('status')) {
+      conditions.push(eq(listings.status, status));
+    }
+    conditions.push(eq(listings.sellerDid, sellerDid));
+  } else {
+    conditions.push(eq(listings.status, status));
+    if (sellerDid) {
+      conditions.push(eq(listings.sellerDid, sellerDid));
+    }
+  }
+  return conditions;
+}
+
+function buildListingsWhereConditions(params: {
+  searchParams: URLSearchParams;
+  status: string;
+  sellerDid: string | null;
+  authSellerDid: string | null;
+  hasSession: boolean;
+  exclude: string | null;
+  category: string | null;
+  currency: string | null;
+  sellerTier: string | null;
+}) {
+  const { searchParams, status, sellerDid, authSellerDid, hasSession, exclude, category, currency, sellerTier } = params;
+
+  const conditions = buildOwnerOrPublicStatusConditions(searchParams, status, sellerDid, authSellerDid);
+
+  // Filter out trust_gated listings for unauthenticated users
+  if (!hasSession) {
+    conditions.push(sql`${listings.sellerTier} != 'trust_gated'`);
+  }
+
+  // Exclude a specific listing ID (e.g. for 'other items by seller' queries)
+  if (exclude) {
+    conditions.push(ne(listings.id, exclude));
+  }
+
+  if (category) {
+    conditions.push(ilike(listings.category, `%${category}%`));
+  }
+
+  if (currency) {
+    conditions.push(eq(listings.currency, currency.toUpperCase()));
+  }
+
+  if (sellerTier) {
+    conditions.push(eq(listings.sellerTier, sellerTier));
+  }
+
+  return conditions;
+}
+
+function resolveListingsSortOrder(sort: string) {
+  if (sort === 'price_asc') return asc(listings.price);
+  if (sort === 'price_desc') return desc(listings.price);
+  return desc(listings.createdAt);
+}
+
 /**
  * POST /api/listings — Create listing
  */
@@ -149,77 +234,29 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const category = searchParams.get('category');
-    const status = searchParams.get('status') || 'active';
-    const currency = searchParams.get('currency');
-    const sellerTier = searchParams.get('seller_tier');
-    const sellerDid = searchParams.get('seller_did');
-    const exclude = searchParams.get('exclude');
-    const sort = searchParams.get('sort') || 'newest';
-    const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10));
-    const limit = Math.min(100, Math.max(1, Number.parseInt(searchParams.get('limit') || '20', 10)));
-    const offset = (page - 1) * limit;
+    const query = parseListingsQuery(searchParams);
 
     // Check if requester is the seller (can see all their own statuses)
-    let authSellerDid: string | null = null;
     const session = await getSession();
-    if (session) {
-      authSellerDid = resolveActingDid(session);
-    }
+    const authSellerDid = session ? resolveActingDid(session) : null;
 
-    // Build where conditions
-    const conditions = [];
-
-    // Status filter: sellers see all their own listings, others only see active
-    if (sellerDid && sellerDid === authSellerDid) {
-      // Authenticated seller viewing their own — respect explicit status filter if provided
-      if (searchParams.has('status')) {
-        conditions.push(eq(listings.status, status));
-      }
-      conditions.push(eq(listings.sellerDid, sellerDid));
-    } else {
-      conditions.push(eq(listings.status, status));
-      if (sellerDid) {
-        conditions.push(eq(listings.sellerDid, sellerDid));
-      }
-    }
-
-    // Filter out trust_gated listings for unauthenticated users
-    if (!session) {
-      conditions.push(sql`${listings.sellerTier} != 'trust_gated'`);
-    }
-
-    // Exclude a specific listing ID (e.g. for 'other items by seller' queries)
-    if (exclude) {
-      conditions.push(ne(listings.id, exclude));
-    }
-
-    if (category) {
-      conditions.push(ilike(listings.category, `%${category}%`));
-    }
-
-    if (currency) {
-      conditions.push(eq(listings.currency, currency.toUpperCase()));
-    }
-
-    if (sellerTier) {
-      conditions.push(eq(listings.sellerTier, sellerTier));
-    }
+    const conditions = buildListingsWhereConditions({
+      searchParams,
+      status: query.status,
+      sellerDid: query.sellerDid,
+      authSellerDid,
+      hasSession: !!session,
+      exclude: query.exclude,
+      category: query.category,
+      currency: query.currency,
+      sellerTier: query.sellerTier,
+    });
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-    // Sort order
-    let orderBy;
-    if (sort === 'price_asc') {
-      orderBy = asc(listings.price);
-    } else if (sort === 'price_desc') {
-      orderBy = desc(listings.price);
-    } else {
-      orderBy = desc(listings.createdAt);
-    }
+    const orderBy = resolveListingsSortOrder(query.sort);
 
     const [rows, countResult] = await Promise.all([
-      db.select().from(listings).where(whereClause).orderBy(orderBy).limit(limit).offset(offset),
+      db.select().from(listings).where(whereClause).orderBy(orderBy).limit(query.limit).offset(query.offset),
       db.select({ count: sql<number>`count(*)` }).from(listings).where(whereClause),
     ]);
 
@@ -236,9 +273,9 @@ export async function GET(request: NextRequest) {
     return jsonResponse({
       listings: resolved,
       total,
-      page,
-      limit,
-      hasMore: offset + rows.length < total,
+      page: query.page,
+      limit: query.limit,
+      hasMore: query.offset + rows.length < total,
     });
   } catch (error) {
     log.error({ err: String(error) }, 'Failed to fetch listings');

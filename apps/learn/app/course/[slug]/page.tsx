@@ -60,6 +60,35 @@ const contentTypeIcons: Record<string, string> = {
   video: '🎬',
 };
 
+async function resolveCourseSellerConnected(price: number, creatorDid: string | null | undefined): Promise<boolean> {
+  if (!(price > 0 && creatorDid)) return true;
+  try {
+    const payUrl = buildPublicUrl('pay');
+    const connectRes = await fetch(
+      `${payUrl}/api/connect/check?did=${encodeURIComponent(creatorDid)}`
+    );
+    if (!connectRes.ok) return false;
+    const connectData = await connectRes.json();
+    return connectData.chargesEnabled ?? false;
+  } catch {
+    // Default to connected on error
+    return true;
+  }
+}
+
+async function fetchUpcomingCourseEvent(slug: string): Promise<UpcomingEvent | null> {
+  try {
+    const eventsUrl = buildPublicUrl('events');
+    const evRes = await fetch(`${eventsUrl}/api/events?courseSlug=${encodeURIComponent(slug)}&upcoming=true&limit=1`);
+    if (!evRes.ok) return null;
+    const evData = await evRes.json();
+    return evData.events?.[0] ?? null;
+  } catch {
+    // silently ignore — banner is non-critical
+    return null;
+  }
+}
+
 export default function CourseDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -76,40 +105,16 @@ export default function CourseDetailPage() {
     async function load() {
       try {
         const res = await apiFetch(`/api/courses/${slug}`, { credentials: 'include' });
-        if (res.ok) {
-          const data = await res.json();
-          setCourse(data);
+        if (!res.ok) return;
 
-          // Check if course creator has Stripe Connect enabled
-          if (data.price > 0 && data.creatorDid) {
-            try {
-              const payUrl = buildPublicUrl('pay');
-              const connectRes = await fetch(
-                `${payUrl}/api/connect/check?did=${encodeURIComponent(data.creatorDid)}`
-              );
-              if (connectRes.ok) {
-                const connectData = await connectRes.json();
-                setSellerConnected(connectData.chargesEnabled ?? false);
-              } else {
-                setSellerConnected(false);
-              }
-            } catch {
-              // Default to connected on error
-            }
-          }
+        const data = await res.json();
+        setCourse(data);
 
-          // Fetch next upcoming event for this course
-          const eventsUrl = buildPublicUrl('events');
-          try {
-            const evRes = await fetch(`${eventsUrl}/api/events?courseSlug=${encodeURIComponent(data.slug)}&upcoming=true&limit=1`);
-            if (evRes.ok) {
-              const evData = await evRes.json();
-              setUpcomingEvent(evData.events?.[0] ?? null);
-            }
-          } catch {
-            // silently ignore — banner is non-critical
-          }
-        }
+        // Check if course creator has Stripe Connect enabled
+        setSellerConnected(await resolveCourseSellerConnected(data.price, data.creatorDid));
+
+        // Fetch next upcoming event for this course
+        setUpcomingEvent(await fetchUpcomingCourseEvent(data.slug));
       } catch (e) {
         console.error(e);
       } finally {

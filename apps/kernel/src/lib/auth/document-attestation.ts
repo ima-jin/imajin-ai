@@ -48,12 +48,27 @@ export async function parseDocumentRequestBody(request: Request): Promise<Docume
   }
 }
 
-export async function validateDocumentRequestInput(params: {
-  body: Record<string, unknown>;
-  callerDid: string;
-}): Promise<DocumentValidationResult> {
-  const { body, callerDid } = params;
+interface RequiredDocumentFields {
+  title: string;
+  documentAssetId: string;
+  documentHash: string;
+  signerDids: string[];
+  authorJws: string;
+}
 
+type RequiredFieldsResult =
+  | { ok: true; fields: RequiredDocumentFields }
+  | { ok: false; failure: ValidationFailure };
+
+type AssetOwnershipResult =
+  | { ok: true; asset: { ownerDid: string; hash: string } }
+  | { ok: false; failure: ValidationFailure };
+
+type CallerIdentityResult =
+  | { ok: true; callerIdentity: CallerIdentity }
+  | { ok: false; failure: ValidationFailure };
+
+function parseRequiredDocumentFields(body: Record<string, unknown>): RequiredFieldsResult {
   const title = typeof body.title === 'string' ? body.title : '';
   if (!title.trim()) {
     return { ok: false, failure: { status: 400, error: 'title required' } };
@@ -84,6 +99,14 @@ export async function validateDocumentRequestInput(params: {
     return { ok: false, failure: { status: 400, error: 'All signers must be valid DIDs' } };
   }
 
+  return { ok: true, fields: { title, documentAssetId, documentHash, signerDids, authorJws } };
+}
+
+async function validateAssetOwnership(
+  documentAssetId: string,
+  documentHash: string,
+  callerDid: string,
+): Promise<AssetOwnershipResult> {
   const [asset] = await db
     .select()
     .from(assets)
@@ -100,6 +123,10 @@ export async function validateDocumentRequestInput(params: {
     return { ok: false, failure: { status: 400, error: 'Document hash mismatch' } };
   }
 
+  return { ok: true, asset };
+}
+
+async function loadCallerIdentityForDocument(callerDid: string): Promise<CallerIdentityResult> {
   const [callerIdentity] = await db
     .select({ publicKey: identities.publicKey, name: identities.name, handle: identities.handle })
     .from(identities)
@@ -110,6 +137,16 @@ export async function validateDocumentRequestInput(params: {
     return { ok: false, failure: { status: 400, error: 'Caller identity not found' } };
   }
 
+  return { ok: true, callerIdentity };
+}
+
+async function verifyAuthorJwsSignature(params: {
+  authorJws: string;
+  callerIdentity: CallerIdentity;
+  callerDid: string;
+  documentHash: string;
+}): Promise<ValidationFailure | null> {
+  const { authorJws, callerIdentity, callerDid, documentHash } = params;
   const signatureValid = await verifyDocumentSignatureToken({
     token: authorJws,
     signerPublicKeyHex: callerIdentity.publicKey,
@@ -117,13 +154,38 @@ export async function validateDocumentRequestInput(params: {
     documentHash,
   });
   if (!signatureValid) {
-    return { ok: false, failure: { status: 400, error: 'Invalid author JWS signature' } };
+    return { status: 400, error: 'Invalid author JWS signature' };
   }
+  return null;
+}
 
-  const payload =
-    body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
-      ? (body.payload as Record<string, unknown>)
-      : undefined;
+function parseOptionalDocumentPayload(body: Record<string, unknown>): Record<string, unknown> | undefined {
+  return body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
+    ? (body.payload as Record<string, unknown>)
+    : undefined;
+}
+
+export async function validateDocumentRequestInput(params: {
+  body: Record<string, unknown>;
+  callerDid: string;
+}): Promise<DocumentValidationResult> {
+  const { body, callerDid } = params;
+
+  const fieldsResult = parseRequiredDocumentFields(body);
+  if (!fieldsResult.ok) return fieldsResult;
+  const { title, documentAssetId, documentHash, signerDids, authorJws } = fieldsResult.fields;
+
+  const ownershipResult = await validateAssetOwnership(documentAssetId, documentHash, callerDid);
+  if (!ownershipResult.ok) return ownershipResult;
+
+  const identityResult = await loadCallerIdentityForDocument(callerDid);
+  if (!identityResult.ok) return identityResult;
+  const { callerIdentity } = identityResult;
+
+  const signatureFailure = await verifyAuthorJwsSignature({ authorJws, callerIdentity, callerDid, documentHash });
+  if (signatureFailure) {
+    return { ok: false, failure: signatureFailure };
+  }
 
   return {
     ok: true,
@@ -132,7 +194,7 @@ export async function validateDocumentRequestInput(params: {
       documentAssetId,
       documentHash,
       signerDids,
-      payload,
+      payload: parseOptionalDocumentPayload(body),
       authorJws,
       expiry: typeof body.expiry === 'string' ? body.expiry : undefined,
       callerIdentity,

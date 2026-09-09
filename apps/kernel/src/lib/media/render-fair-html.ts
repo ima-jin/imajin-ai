@@ -176,27 +176,44 @@ function renderDistribution(dist: FairManifestV1_1["distribution"]): string {
   return rows ? section("Distribution Rights", rows) : "";
 }
 
+type AllowedTransfer = NonNullable<FairManifest["transfer"]>;
+
+function transferResaleRoyaltyPills(transfer: AllowedTransfer): string[] {
+  if ("resaleRoyaltyBps" in transfer && transfer.resaleRoyaltyBps) {
+    return [pill("Resale Royalty", bpsToPercent(transfer.resaleRoyaltyBps), "#8b5cf6")];
+  }
+  if (transfer.resaleRoyalty) {
+    return [pill("Resale Royalty", `${(transfer.resaleRoyalty * 100).toFixed(1)}%`, "#8b5cf6")];
+  }
+  return [];
+}
+
+function transferAllowedPills(transfer: AllowedTransfer): string[] {
+  const rows: string[] = [];
+
+  if ("requiresAttribution" in transfer && transfer.requiresAttribution) {
+    rows.push(pill("Attribution", "Required", "#f59e0b"));
+  }
+  if ("price" in transfer && transfer.price) {
+    const p = transfer.price as { amount: number; currency: string };
+    rows.push(pill("Price", formatMoney(p.amount, p.currency), "#3b82f6"));
+  }
+  rows.push(...transferResaleRoyaltyPills(transfer));
+  if (transfer.refundable) rows.push(pill("Refundable", "Yes", "#22c55e"));
+  if (transfer.faceValueCap) rows.push(pill("Face-value cap", "Enabled", "#f59e0b"));
+
+  return rows;
+}
+
 function renderTransfer(transfer: FairManifest["transfer"]): string {
   if (!transfer) return "";
 
-  const rows: string[] = [];
-  rows.push(pill("Transfers", transfer.allowed ? "Allowed" : "Not allowed", transfer.allowed ? "#22c55e" : "#ef4444"));
+  const rows: string[] = [
+    pill("Transfers", transfer.allowed ? "Allowed" : "Not allowed", transfer.allowed ? "#22c55e" : "#ef4444"),
+  ];
 
   if (transfer.allowed) {
-    if ("requiresAttribution" in transfer && transfer.requiresAttribution) {
-      rows.push(pill("Attribution", "Required", "#f59e0b"));
-    }
-    if ("price" in transfer && transfer.price) {
-      const p = transfer.price as { amount: number; currency: string };
-      rows.push(pill("Price", formatMoney(p.amount, p.currency), "#3b82f6"));
-    }
-    if ("resaleRoyaltyBps" in transfer && transfer.resaleRoyaltyBps) {
-      rows.push(pill("Resale Royalty", bpsToPercent(transfer.resaleRoyaltyBps), "#8b5cf6"));
-    } else if (transfer.resaleRoyalty) {
-      rows.push(pill("Resale Royalty", `${(transfer.resaleRoyalty * 100).toFixed(1)}%`, "#8b5cf6"));
-    }
-    if (transfer.refundable) rows.push(pill("Refundable", "Yes", "#22c55e"));
-    if (transfer.faceValueCap) rows.push(pill("Face-value cap", "Enabled", "#f59e0b"));
+    rows.push(...transferAllowedPills(transfer));
   }
 
   return section("Transfer", `<div class="pills">${rows.join("")}</div>`);

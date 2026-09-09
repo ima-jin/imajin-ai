@@ -109,6 +109,61 @@ interface ServiceResult {
   warnings: number;
 }
 
+/** Keys present in .env.example but missing from .env.local */
+function findMissingKeys(example: Map<string, string>, local: Map<string, string>): string[] {
+  const missing: string[] = [];
+  for (const key of example.keys()) {
+    if (!local.has(key)) {
+      missing.push(key);
+    }
+  }
+  return missing;
+}
+
+/** Keys present in .env.local but not declared in .env.example */
+function findExtraKeys(example: Map<string, string>, local: Map<string, string>): string[] {
+  const extra: string[] = [];
+  for (const key of local.keys()) {
+    if (!example.has(key)) {
+      extra.push(key);
+    }
+  }
+  return extra;
+}
+
+/**
+ * Check a single .env.local key for a port mismatch — covers PORT=XXXX, *_SERVICE_URL,
+ * and NEXT_PUBLIC_*_URL keys. Returns null when the key isn't port-related or matches.
+ */
+function findWrongPortForKey(
+  key: string,
+  val: string,
+  svc: ServiceDefinition,
+  env: "dev" | "prod"
+): { key: string; expected: number; actual: number } | null {
+  if (key === "PORT") {
+    const expected = env === "prod" ? svc.prodPort : svc.devPort;
+    const actual = Number.parseInt(val, 10);
+    if (!Number.isNaN(actual) && actual !== expected) {
+      return { key, expected, actual };
+    }
+    return null;
+  }
+
+  // Check *_SERVICE_URL first, then NEXT_PUBLIC_*_URL
+  const svcName = serviceNameFromKey(key) ?? serviceNameFromPublicKey(key);
+  if (!svcName) return null;
+
+  const expected = expectedPort(svcName, env);
+  if (expected === null) return null;
+
+  const actual = extractPort(val);
+  if (actual !== null && actual !== expected) {
+    return { key, expected, actual };
+  }
+  return null;
+}
+
 function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResult {
   const appDir = path.join(ROOT, "apps", svc.name);
   const examplePath = path.join(appDir, ".env.example");
@@ -117,10 +172,6 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
   const example = parseEnvFile(examplePath);
   const local = parseEnvFile(localPath);
   const hasEnvLocal = fs.existsSync(localPath);
-
-  const missing: string[] = [];
-  const wrongPorts: { key: string; expected: number; actual: number }[] = [];
-  const extra: string[] = [];
 
   if (!hasEnvLocal) {
     // Daemon processes (devPort === 0) have no HTTP port and may not have .env.local
@@ -131,57 +182,19 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
   }
 
   // Check all keys from .env.example are present in .env.local
-  for (const key of example.keys()) {
-    if (!local.has(key)) {
-      missing.push(key);
-    }
-  }
+  const missing = findMissingKeys(example, local);
 
   // Validate port values in .env.local
+  const wrongPorts: { key: string; expected: number; actual: number }[] = [];
   for (const [key, val] of local.entries()) {
-    // Check PORT=XXXX
-    if (key === "PORT") {
-      const expected = env === "prod" ? svc.prodPort : svc.devPort;
-      const actual = Number.parseInt(val, 10);
-      if (!Number.isNaN(actual) && actual !== expected) {
-        wrongPorts.push({ key, expected, actual });
-      }
-      continue;
-    }
-
-    // Check *_SERVICE_URL
-    const svcName = serviceNameFromKey(key);
-    if (svcName) {
-      const expected = expectedPort(svcName, env);
-      if (expected !== null) {
-        const actual = extractPort(val);
-        if (actual !== null && actual !== expected) {
-          wrongPorts.push({ key, expected, actual });
-        }
-      }
-      continue;
-    }
-
-    // Check NEXT_PUBLIC_*_URL
-    const pubSvcName = serviceNameFromPublicKey(key);
-    if (pubSvcName) {
-      const expected = expectedPort(pubSvcName, env);
-      if (expected !== null) {
-        const actual = extractPort(val);
-        if (actual !== null && actual !== expected) {
-          wrongPorts.push({ key, expected, actual });
-        }
-      }
-      continue;
+    const wrongPort = findWrongPortForKey(key, val, svc, env);
+    if (wrongPort) {
+      wrongPorts.push(wrongPort);
     }
   }
 
   // Warn about extra keys in .env.local not in .env.example
-  for (const key of local.keys()) {
-    if (!example.has(key)) {
-      extra.push(key);
-    }
-  }
+  const extra = findExtraKeys(example, local);
 
   const errors = missing.length + wrongPorts.length;
   const warnings = extra.length;
@@ -246,30 +259,27 @@ function parseArgs(args: string[]): { env: "dev" | "prod"; names: string[] } {
   return { env, names };
 }
 
-function main(): void {
-  const { env, names } = parseArgs(process.argv.slice(2));
-
-  const services = names.length > 0
-    ? SERVICES.filter((s) => names.includes(s.name))
-    : [...SERVICES];
-
+/** Print the names of any requested services that aren't in the manifest and exit(1) if any */
+function exitIfUnknownServices(names: string[]): void {
   const unknown = names.filter((n) => !SERVICES.find((s) => s.name === n));
   if (unknown.length > 0) {
     console.error(`${sym.err} Unknown service(s): ${unknown.map(n => red(n)).join(", ")}`);
     console.error(`  Valid names: ${SERVICES.map((s) => s.name).join(", ")}`);
     process.exit(1);
   }
+}
 
+function printHeader(env: "dev" | "prod", serviceCount: number): void {
   console.log();
   const envLabel = `env=${env}`;
-  const checkingLabel = `checking ${services.length} service(s)`;
+  const checkingLabel = `checking ${serviceCount} service(s)`;
   console.log(`${bold("check-env")}  ${dim(envLabel)}  ${dim(checkingLabel)}`);
   console.log(dim("─".repeat(60)));
   console.log();
+}
 
-  const results = services.map((svc) => checkService(svc, env));
-
-  // Group by tier for readability
+/** Print results grouped by tier (core platform services, then imajin apps) */
+function printGroupedResults(results: ServiceResult[], env: "dev" | "prod"): void {
   const core = results.filter((r) => r.service.tier === "core");
   const imajin = results.filter((r) => r.service.tier === "imajin");
 
@@ -284,8 +294,10 @@ function main(): void {
     for (const r of imajin) printResult(r, env);
     console.log();
   }
+}
 
-  // Summary
+/** Print the final summary line and exit the process with the appropriate status code */
+function printSummaryAndExit(results: ServiceResult[]): void {
   const totalErrors   = results.reduce((n, r) => n + r.errors, 0);
   const totalWarnings = results.reduce((n, r) => n + r.warnings, 0);
   const noLocal       = results.filter((r) => !r.hasEnvLocal).length;
@@ -305,6 +317,24 @@ function main(): void {
   console.log(`\n  ${totalErrors > 0 ? sym.err : sym.warn}  ${parts.join("  ")}\n`);
 
   process.exit(totalErrors > 0 ? 1 : 0);
+}
+
+function main(): void {
+  const { env, names } = parseArgs(process.argv.slice(2));
+
+  const services = names.length > 0
+    ? SERVICES.filter((s) => names.includes(s.name))
+    : [...SERVICES];
+
+  exitIfUnknownServices(names);
+
+  printHeader(env, services.length);
+
+  const results = services.map((svc) => checkService(svc, env));
+
+  printGroupedResults(results, env);
+
+  printSummaryAndExit(results);
 }
 
 main();

@@ -208,6 +208,98 @@ async function validateActingAs(
 }
 
 /**
+ * Authenticate via session cookie first, falling back to a Bearer token.
+ */
+async function authenticateRequest(request: Request): Promise<AuthResult | AuthError> {
+  const cookieHeader = request.headers.get("cookie");
+  const sessionToken = extractSessionCookie(cookieHeader);
+  if (sessionToken) {
+    return validateSessionCookie(sessionToken);
+  }
+
+  const auth = request.headers.get("authorization");
+  if (auth?.startsWith("Bearer ")) {
+    return validateBearerToken(auth.slice(7));
+  }
+
+  return { error: "Not authenticated", status: 401 };
+}
+
+/**
+ * When requested, verify the identity's chain and record the result on it.
+ * Mutates `identity` in place; never fails the overall auth flow.
+ */
+async function applyChainVerification(identity: Identity): Promise<void> {
+  try {
+    const chainRes = await fetch(
+      `${getAuthUrl()}/api/identity/${encodeURIComponent(identity.id)}/verify`
+    );
+    if (chainRes.ok) {
+      const chainData = await chainRes.json();
+      identity.chainVerified = chainData.chain?.valid ?? false;
+    } else {
+      identity.chainVerified = false;
+    }
+  } catch (err) {
+    log.error({ err: String(err) }, "[AUTH] Chain verification failed");
+    identity.chainVerified = false;
+  }
+}
+
+/** Read the X-Acting-As value from header, NextRequest cookie API, or raw Cookie header. */
+function extractActingAsValue(request: Request): string | null {
+  return request.headers.get("x-acting-as")
+    || (request as { cookies?: { get?: (name: string) => { value?: string } | undefined } }).cookies?.get?.("x-acting-as")?.value
+    || parseCookieValue(request.headers.get("cookie"), "x-acting-as")
+    || null;
+}
+
+/**
+ * Handle X-Acting-As header/cookie for group identity impersonation.
+ * Mutates `identity` in place on success; returns an {@link AuthError} on rejection.
+ */
+async function applyActingAs(
+  request: Request,
+  identity: Identity,
+  options?: AuthOptions
+): Promise<AuthError | undefined> {
+  const actingAs = extractActingAsValue(request);
+  if (!actingAs) return undefined;
+
+  const actingAsResult = await validateActingAs(identity.id, actingAs, options?.service);
+  if (!actingAsResult.valid) {
+    return { error: "Not authorized to act as this group", status: 403 };
+  }
+
+  identity.actingAs = actingAs;
+  identity.actingAsRole = actingAsResult.role;
+  identity.actingAsServices = actingAsResult.allowedServices ?? undefined;
+  return undefined;
+}
+
+/**
+ * Handle X-Acting-For header for agent delegation (separate from group acting-as).
+ * Mutates `identity` in place on success; returns an {@link AuthError} on rejection.
+ */
+async function applyActingFor(
+  request: Request,
+  identity: Identity,
+  options?: AuthOptions
+): Promise<AuthError | undefined> {
+  const actingFor = request.headers.get("x-acting-for");
+  if (!actingFor) return undefined;
+
+  const authorized = await resolveAgentDelegationAuthority(identity.id, actingFor, options?.service);
+  if (!authorized) {
+    return { error: "Not authorized to act for this identity", status: 403 };
+  }
+
+  identity.actingFor = actingFor;
+  identity.actingForRole = 'agent';
+  return undefined;
+}
+
+/**
  * Require authentication. Checks session cookie first, then Bearer token.
  * Also handles X-Acting-As header for group identity impersonation.
  *
@@ -217,76 +309,20 @@ export async function requireAuth(
   request: Request,
   options?: AuthOptions
 ): Promise<AuthResult | AuthError> {
-  // Try session cookie first
-  const cookieHeader = request.headers.get("cookie");
-  const sessionToken = extractSessionCookie(cookieHeader);
-
-  let result: AuthResult | AuthError;
-  if (sessionToken) {
-    result = await validateSessionCookie(sessionToken);
-  } else {
-    // Fall back to Bearer token
-    const auth = request.headers.get("authorization");
-    if (auth?.startsWith("Bearer ")) {
-      result = await validateBearerToken(auth.slice(7));
-    } else {
-      return { error: "Not authenticated", status: 401 };
-    }
+  const result = await authenticateRequest(request);
+  if (!("identity" in result) || !result.identity) {
+    return result;
   }
 
-  if (options?.verifyChain && "identity" in result && result.identity) {
-    try {
-      const chainRes = await fetch(
-        `${getAuthUrl()}/api/identity/${encodeURIComponent(result.identity.id)}/verify`
-      );
-      if (chainRes.ok) {
-        const chainData = await chainRes.json();
-        result.identity.chainVerified = chainData.chain?.valid ?? false;
-      } else {
-        result.identity.chainVerified = false;
-      }
-    } catch (err) {
-      log.error({ err: String(err) }, "[AUTH] Chain verification failed");
-      result.identity.chainVerified = false;
-    }
+  if (options?.verifyChain) {
+    await applyChainVerification(result.identity);
   }
 
-  // Handle X-Acting-As header or cookie for group identity impersonation
-  if ("identity" in result && result.identity) {
-    const actingAs = request.headers.get("x-acting-as")
-      || (request as { cookies?: { get?: (name: string) => { value?: string } | undefined } }).cookies?.get?.("x-acting-as")?.value
-      || parseCookieValue(request.headers.get("cookie"), "x-acting-as");
-    if (actingAs) {
-      const actingAsResult = await validateActingAs(
-        result.identity.id,
-        actingAs,
-        options?.service
-      );
-      if (!actingAsResult.valid) {
-        return { error: "Not authorized to act as this group", status: 403 };
-      }
-      result.identity.actingAs = actingAs;
-      result.identity.actingAsRole = actingAsResult.role;
-      result.identity.actingAsServices = actingAsResult.allowedServices ?? undefined;
-    }
-  }
+  const actingAsError = await applyActingAs(request, result.identity, options);
+  if (actingAsError) return actingAsError;
 
-  // Handle X-Acting-For header for agent delegation (separate from group acting-as)
-  if ("identity" in result && result.identity) {
-    const actingFor = request.headers.get("x-acting-for");
-    if (actingFor) {
-      const authorized = await resolveAgentDelegationAuthority(
-        result.identity.id,
-        actingFor,
-        options?.service
-      );
-      if (!authorized) {
-        return { error: "Not authorized to act for this identity", status: 403 };
-      }
-      result.identity.actingFor = actingFor;
-      result.identity.actingForRole = 'agent';
-    }
-  }
+  const actingForError = await applyActingFor(request, result.identity, options);
+  if (actingForError) return actingForError;
 
   return result;
 }

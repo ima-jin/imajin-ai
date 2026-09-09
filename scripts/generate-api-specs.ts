@@ -322,10 +322,10 @@ function methodToOperationId(method: HttpMethod, urlPath: string): string {
   return `${verb[method]}${resource}`;
 }
 
-function buildPathsYaml(routes: Array<{ urlPath: string; methods: HttpMethod[]; source: string }>): string {
-  const lines: string[] = ['paths:'];
-
-  // Group by URL path
+/** Group routes by their URL path, flattening each route's methods into individual entries */
+function groupRoutesByPath(
+  routes: Array<{ urlPath: string; methods: HttpMethod[]; source: string }>
+): Map<string, Array<{ method: HttpMethod; source: string }>> {
   const byPath = new Map<string, Array<{ method: HttpMethod; source: string }>>();
   for (const route of routes) {
     if (!byPath.has(route.urlPath)) byPath.set(route.urlPath, []);
@@ -333,64 +333,84 @@ function buildPathsYaml(routes: Array<{ urlPath: string; methods: HttpMethod[]; 
       byPath.get(route.urlPath)!.push({ method: m, source: route.source });
     }
   }
+  return byPath;
+}
+
+/** Build the YAML lines for an operation's security section, if any schemes apply */
+function buildOperationSecurityYaml(security: string[]): string[] {
+  if (security.length === 0) return [];
+  return ['      security:', ...security.map((s) => `        - ${s}: []`)];
+}
+
+/** Build the YAML lines for an operation's requestBody section (mutation methods only) */
+function buildOperationRequestBodyYaml(method: HttpMethod): string[] {
+  if (!['POST', 'PUT', 'PATCH'].includes(method)) return [];
+  return [
+    '      requestBody:',
+    '        required: false',
+    '        content:',
+    '          application/json:',
+    '            schema:',
+    '              type: object',
+  ];
+}
+
+/** Build the YAML lines for an operation's responses section */
+function buildOperationResponsesYaml(method: HttpMethod): string[] {
+  const lines = [
+    '      responses:',
+    '        "200":',
+    '          description: OK',
+    '          content:',
+    '            application/json:',
+    '              schema:',
+    '                type: object',
+  ];
+
+  if (method === 'POST') {
+    lines.push(
+      '        "201":',
+      '          description: Created',
+    );
+  }
+
+  lines.push(
+    '        "400":',
+    '          description: Bad request',
+    '        "401":',
+    '          description: Unauthorized',
+    '        "500":',
+    '          description: Internal server error',
+  );
+
+  return lines;
+}
+
+/** Build the full YAML lines for a single operation (method + urlPath) */
+function buildOperationYaml(method: HttpMethod, urlPath: string, source: string): string[] {
+  const m = method.toLowerCase();
+  const operationId = methodToOperationId(method, urlPath);
+  const security = detectSecurity(source, method);
+
+  return [
+    `    ${m}:`,
+    `      operationId: ${operationId}`,
+    `      summary: "${method} ${urlPath}"`,
+    ...buildOperationSecurityYaml(security),
+    ...buildOperationRequestBodyYaml(method),
+    ...buildOperationResponsesYaml(method),
+  ];
+}
+
+function buildPathsYaml(routes: Array<{ urlPath: string; methods: HttpMethod[]; source: string }>): string {
+  const lines: string[] = ['paths:'];
+  const byPath = groupRoutesByPath(routes);
 
   for (const [urlPath, ops] of byPath) {
     lines.push(`  ${urlPath}:`);
     for (const { method, source } of ops) {
       if (method === 'OPTIONS') continue; // skip — standard CORS preflight
-      const m = method.toLowerCase();
-      const operationId = methodToOperationId(method, urlPath);
-      const security = detectSecurity(source, method);
-
-      lines.push(
-        `    ${m}:`,
-        `      operationId: ${operationId}`,
-        `      summary: "${method} ${urlPath}"`,
-      );
-
-      if (security.length > 0) {
-        lines.push('      security:');
-        for (const s of security) {
-          lines.push(`        - ${s}: []`);
-        }
-      }
-
-      // Generic request body for mutation methods
-      if (['POST', 'PUT', 'PATCH'].includes(method)) {
-        lines.push(
-          '      requestBody:',
-          '        required: false',
-          '        content:',
-          '          application/json:',
-          '            schema:',
-          '              type: object',
-        );
-      }
-
-      lines.push(
-        '      responses:',
-        '        "200":',
-        '          description: OK',
-        '          content:',
-        '            application/json:',
-        '              schema:',
-        '                type: object',
-      );
-
-      if (method === 'POST') {
-        lines.push(
-          '        "201":',
-          '          description: Created',
-        );
-      }
-      lines.push(
-        '        "400":',
-        '          description: Bad request',
-        '        "401":',
-        '          description: Unauthorized',
-        '        "500":',
-        '          description: Internal server error',
-      );
+      lines.push(...buildOperationYaml(method, urlPath, source));
     }
   }
 
