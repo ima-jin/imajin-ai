@@ -75,7 +75,7 @@ function EditableSurvey({ fields, answers, onSubmit }: Readonly<{ fields: any; a
     m.showCompletedPage = false;
     m.mergeData(answers);
     m.onComplete.add(async (sender) => {
-      const data = JSON.parse(JSON.stringify(sender.data));
+      const data = structuredClone(sender.data);
       await onSubmit(data);
     });
     modelRef.current = m;
@@ -292,7 +292,7 @@ export default function SurveyEmbedPage() {
 
       // Handle completion — clone data immediately since SurveyJS may mutate the reference
       model.onComplete.add(async (sender) => {
-        const answers = JSON.parse(JSON.stringify(sender.data));
+        const answers = structuredClone(sender.data);
         await submitResponse(answers);
       });
 
