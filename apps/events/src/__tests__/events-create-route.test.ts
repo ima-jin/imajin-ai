@@ -22,10 +22,11 @@ const mocks = vi.hoisted(() => {
   const requireAppAuthMock = vi.fn();
   const getNodeSelfMock = vi.fn();
   const publishMock = vi.fn().mockResolvedValue(undefined);
-  // Raw postgres client — only reached for the (unrelated) forest_config scope lookup.
-  const sqlMock = vi.fn().mockResolvedValue([]);
+  // Forest scope-fee lookup (#2001, /api/forest/{groupDid}/config/public) —
+  // only reached when actingAs is set, unrelated to the getNodeSelf() chain tests.
+  const getForestScopeConfigMock = vi.fn().mockResolvedValue(null);
 
-  return { returningMock, valuesMock, insertMock, requireHardDIDMock, requireAppAuthMock, getNodeSelfMock, publishMock, sqlMock };
+  return { returningMock, valuesMock, insertMock, requireHardDIDMock, requireAppAuthMock, getNodeSelfMock, publishMock, getForestScopeConfigMock };
 });
 
 function createStubLog() {
@@ -55,10 +56,7 @@ vi.mock('@imajin/auth', () => ({
 vi.mock('@imajin/config', () => ({
   corsHeaders: () => new Headers(),
   getNodeSelf: mocks.getNodeSelfMock,
-}));
-
-vi.mock('@imajin/db', () => ({
-  getClient: () => mocks.sqlMock,
+  getForestScopeConfig: mocks.getForestScopeConfigMock,
 }));
 
 vi.mock('@imajin/bus', () => ({
@@ -70,7 +68,13 @@ vi.mock('@imajin/bus', () => ({
 // ─── Subject ────────────────────────────────────────────────────────────────
 
 import { POST } from '../../app/api/events/route';
-import { REGISTRY_NODE_SELF, expectRegistrySourcedShares, expectDefaultShares } from '../../../../packages/fair/src/test-helpers';
+import {
+  REGISTRY_NODE_SELF,
+  expectRegistrySourcedShares,
+  expectDefaultShares,
+  itAppliesForestScopeFee,
+  type FairChainEntry,
+} from '../../../../packages/fair/src/test-helpers';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -83,6 +87,8 @@ function makeRequest(body: Record<string, unknown>): Parameters<typeof POST>[0] 
 }
 
 const VALID_BODY = { title: 'Test Meetup', startsAt: '2026-12-01T18:00:00.000Z' };
+const callRoute = () => POST(makeRequest(VALID_BODY));
+const getChain = (body: Record<string, unknown>) => (body.event as { metadata: { fair: { chain: FairChainEntry[] } } }).metadata.fair.chain;
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
@@ -94,7 +100,7 @@ describe('POST /api/events (#2000: node config sourced via getNodeSelf())', () =
       json: async () => ({ did: 'did:imajin:event123' }),
     }));
 
-    mocks.sqlMock.mockReset().mockResolvedValue([]);
+    mocks.getForestScopeConfigMock.mockReset().mockResolvedValue(null);
     mocks.publishMock.mockResolvedValue(undefined);
     mocks.returningMock.mockImplementation(async () => {
       const inserted = mocks.valuesMock.mock.calls.at(-1)?.[0];
@@ -128,5 +134,14 @@ describe('POST /api/events (#2000: node config sourced via getNodeSelf())', () =
 
     const body = await res.json();
     expectDefaultShares(body.event.metadata.fair.chain);
+  });
+
+  itAppliesForestScopeFee({
+    getForestScopeConfigMock: mocks.getForestScopeConfigMock,
+    getNodeSelfMock: mocks.getNodeSelfMock,
+    authMock: mocks.requireHardDIDMock,
+    callerId: 'did:imajin:creator',
+    callRoute,
+    getChain,
   });
 });

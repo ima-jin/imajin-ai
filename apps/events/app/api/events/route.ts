@@ -3,8 +3,7 @@ import { withLogger, type Logger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, events, ticketTypes } from '@/src/db';
 import { requireHardDID, requireAppAuth, resolveActingDid, type Identity } from '@imajin/auth';
-import { corsHeaders, getNodeSelf } from '@imajin/config';
-import { getClient } from '@imajin/db';
+import { corsHeaders, getNodeSelf, getForestScopeConfig } from '@imajin/config';
 import { buildFairManifest } from '@imajin/fair';
 import { and, asc, desc, eq, gt } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
@@ -91,17 +90,11 @@ async function registerEventDid(title: string, eventKeypair: { publicKey: string
   return { did: regData.did };
 }
 
-/** Look up the scope's fee-bps override (via forest_config), or null when there is no scope or override. */
+/** Look up the scope's fee-bps override (via the profile service's public forest route, #2001), or null when there is no scope or override. */
 async function resolveScopeFeeBps(scopeDid: string | null): Promise<number | null> {
   if (!scopeDid) return null;
-  const sql = getClient();
-  const [forestRow] = await sql`
-    SELECT scope_fee_bps
-    FROM profile.forest_config
-    WHERE group_did = ${scopeDid}
-    LIMIT 1
-  `;
-  return forestRow?.scope_fee_bps ?? null;
+  const forestConfig = await getForestScopeConfig(scopeDid);
+  return forestConfig?.scopeFeeBps ?? null;
 }
 
 /** Insert the ticket types provided at event-creation time, returning the created rows. */
