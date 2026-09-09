@@ -75,11 +75,12 @@ export function mapAssistantLine(raw: unknown): MappedUsageRow | undefined {
   const model = typeof message.model === 'string' ? message.model : undefined;
   if (!model || model === SYNTHETIC_MODEL) return undefined;
 
-  const externalId = typeof message.id === 'string' && message.id.length > 0
-    ? message.id
-    : typeof raw.uuid === 'string' && raw.uuid.length > 0
-      ? raw.uuid
-      : undefined;
+  let externalId: string | undefined;
+  if (typeof message.id === 'string' && message.id.length > 0) {
+    externalId = message.id;
+  } else if (typeof raw.uuid === 'string' && raw.uuid.length > 0) {
+    externalId = raw.uuid;
+  }
   if (!externalId) return undefined;
 
   const ts = typeof raw.timestamp === 'string' && raw.timestamp.length > 0 ? raw.timestamp : undefined;

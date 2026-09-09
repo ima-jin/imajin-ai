@@ -28,15 +28,16 @@ type FieldFormFieldProps = Readonly<{
 const CHOICE_FIELD_TYPES = new Set(['radiogroup', 'checkbox', 'dropdown']);
 
 function ChoicesEditor({ fieldForm, setFieldForm, isEditing }: FieldFormFieldProps) {
+  const idSuffix = isEditing ? 'edit' : 'new';
   return (
     <div>
-      <label htmlFor={`field-choice-0-${isEditing ? 'edit' : 'new'}`} className="block text-sm font-medium mb-1">Answer Choices</label>
+      <label htmlFor={`field-choice-0-${idSuffix}`} className="block text-sm font-medium mb-1">Answer Choices</label>
       {(fieldForm.choices || []).map((choice, i) => {
         const choiceText = typeof choice === 'string' ? choice : choice.text || '';
         return (
           <div key={`choice-${choiceText || i}`} className="flex gap-2 mb-2">
             <input
-              id={i === 0 ? `field-choice-0-${isEditing ? 'edit' : 'new'}` : undefined}
+              id={i === 0 ? `field-choice-0-${idSuffix}` : undefined}
               type="text"
               value={choiceText}
               onChange={(e) => {
