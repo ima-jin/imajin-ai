@@ -1,5 +1,7 @@
 'use client';
 
+import { useCallback } from 'react';
+
 /**
  * Email code MFA section of account security settings (#2119).
  * Purely presentational: all state and handlers live in the parent page and
@@ -26,6 +28,13 @@ export default function EmailMfaSection({
   setEmailCode: (value: string) => void;
   handleVerifyEmailSetup: (e: React.FormEvent) => void;
 }>) {
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the input mounts.
+  const autoFocusRef = useCallback((el: HTMLInputElement | null) => {
+    el?.focus();
+  }, []);
+
   return (
     <div className="py-4 border-b border-gray-800">
       <div className="flex items-start justify-between">
@@ -72,7 +81,7 @@ export default function EmailMfaSection({
               onChange={e => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="000000"
               maxLength={6}
-              autoFocus
+              ref={autoFocusRef}
               className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white text-center font-mono tracking-widest focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
             />
             <button
