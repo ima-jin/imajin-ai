@@ -194,7 +194,79 @@ meant to) catch existing runtime cross-schema queries. That would need a
 lint/static-analysis rule over application source, not a migration-file
 guard, and is a candidate for a later phase.
 
-## Deferred (explicitly out of scope for phase 1)
+## Shared migrations (#1991 phase 2a)
+
+A migration file is **shared** when its SQL — DDL or DML, see
+`scripts/lib/migration-schema-scan.mjs` — references more than one owner's
+schema. Three files in this repo are shared today:
+
+| File | Owners touched | Why |
+|---|---|---|
+| `0001_seed.sql` | coffee, dykil, events, kernel, learn, links, market | the historical monolithic seed — creates every schema at once |
+| `0025_backfill_survey_responses_for_orphan_registrations.sql` | dykil, events | backfills `dykil.survey_responses` by joining `events.ticket_registrations`/`events.tickets` |
+| `0026_clone_shared_survey_responses_per_ticket.sql` | dykil, events | clones `dykil.survey_responses` rows keyed off `events.ticket_registrations` |
+
+These are listed in `ownership.json`'s `sharedMigrationAllowlist`, which
+serves two purposes:
+
+1. **CI guard grandfathering.** `scripts/check-migration-ownership.mjs`
+   now additionally fails a *newly added* migration that touches more than
+   one owner's schema (DDL or DML), unless it's on this allowlist. The
+   three files above predate the check; the allowlist is what keeps them
+   from being retroactively flagged, and is also where a future genuinely-
+   necessary cross-owner migration would be added as a deliberate,
+   reviewed exception (see the guard's own header comment).
+2. **Documentation.** `0025`/`0026` are a concrete, in-repo example of why
+   `dykil` was *not* picked over `links` as the #1991 phase-2 first mover:
+   despite scoring 0 entanglement in the #1983 *application-code* audit,
+   `dykil`'s own migrations directly join and update `events` tables —
+   entanglement the app-level audit couldn't see.
+
+Note that this detection is broader than the per-table check earlier in
+this document: `parseStatements` (the per-table check's parser) only
+recognizes DDL, so it doesn't see `0025`/`0026` touching `events` at all
+(they contain zero DDL, only `UPDATE`/`INSERT`/`JOIN`). The shared-file
+scan exists precisely to catch that class of cross-owner reference too.
+
+## Per-owner migration runner mode (#1991 phase 2a)
+
+`scripts/migrate.mjs --owner <app>` filters the existing root
+`migrations/` file list down to files owned solely by `<app>`, using the
+same shared/single-owner classification described above. A shared file is
+included automatically under `--owner kernel`; for any other `--owner`, it
+only runs when `--include-shared` is also passed. No flags at all keeps
+the original, unfiltered behavior byte-for-byte — this is strictly a
+filter layered on top, not a replacement.
+
+This does **not** give any owner true migration isolation today: every
+owner's earliest tables (or, for `dykil`/`events`, some later ones too)
+are created inside a shared file, so running e.g. `--owner links` alone
+against a fresh database will apply nothing for `links` at all unless
+`0001_seed.sql` also runs (as `kernel`, or via `--include-shared`). See
+`migrations/BASELINE.md`'s "Per-app migration directories" section for why
+that's a structural gate on real per-app migration directories, not just a
+runner feature.
+
+It also does not give owners *order* independence: `0025` (shared,
+`dykil`/`events`) reads a column that `0008` (`dykil`-only) adds, so
+running `--owner kernel --include-shared` against a fresh database before
+`--owner dykil` has run fails outright on `0025` (a real SQL error, not a
+skip — the transaction rolls back and nothing is marked applied). Running
+`--owner dykil` and then retrying `--owner kernel --include-shared`
+succeeds, because the retry is idempotent — see `scripts/migrate.mjs`'s
+header comment for the full explanation and why the plain no-flag command
+remains the right choice for bootstrapping a database from empty.
+
+Tracking stays in the single, shared `public._migrations` table regardless
+of mode. This was verified against a real Postgres instance, not just
+argued: a fresh database migrated with the plain no-flag command, and a
+fresh database migrated by running `--owner kernel/coffee/dykil/events/
+learn/links/market --include-shared` in that sequence, produce
+byte-identical `pg_dump --schema-only` output and the same 132-row
+`public._migrations` count. See `scripts/migrate.mjs`'s header comment for
+the full convergence argument.
+
+## Deferred (explicitly out of scope for phase 1 and phase 2a)
 
 Per the issue decision (2026-09-09): baseline squash of the 131 existing
 migration files into a clean per-schema baseline, and splitting
@@ -204,7 +276,16 @@ migration split (0 entanglement per the #1983 audit — no internal imports,
 no DB couplings, no internal routes), but no such split happens in this
 phase.
 
+Phase 2a (this round) intentionally does not lift that deferral: it adds a
+`--owner` filter and a stricter CI guard over the *existing* root
+`migrations/` directory, and ships `migrations/BASELINE.md` as a dry-run-
+only plan. No migration file is moved, and no `apps/<app>/migrations/`
+directory is created. See #1991's phase-2 pre-work comment for the full
+blocker writeup (why `links`'s only migration, `0001_seed.sql`, can't be
+moved without either editing an existing migration's SQL or duplicating
+its DDL under a second filename).
+
 ## For the migration runner
 
 See `docs/MIGRATIONS.md` for the `scripts/migrate.mjs` quick reference; it
-now links here for the ownership rule.
+now links here for the ownership rule and the per-owner filter mode.

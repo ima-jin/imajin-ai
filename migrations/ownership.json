@@ -946,5 +946,10 @@
       "firstMigration": "0010_logs_cleanup.sql",
       "notes": ""
     }
-  }
+  },
+  "sharedMigrationAllowlist": [
+    "0001_seed.sql",
+    "0025_backfill_survey_responses_for_orphan_registrations.sql",
+    "0026_clone_shared_survey_responses_per_ticket.sql"
+  ]
 }
