@@ -104,6 +104,59 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('googleApiFetch / googleApiRequest (#2144 review — shared REST fetch helper)', () => {
+  it('attaches the bearer token and returns parsed JSON on success', async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({ hello: 'world' }) });
+
+    const result = await googleApiFetch({ baseUrl: 'https://api.test/v1', path: '/things', token: 'tok', apiLabel: 'Test' });
+
+    expect(result).toEqual({ hello: 'world' });
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('https://api.test/v1/things');
+    expect(init.headers.Authorization).toBe('Bearer tok');
+    expect(init.method).toBe('GET');
+  });
+
+  it('replays an absolute path verbatim instead of prefixing baseUrl', async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({}) });
+
+    await googleApiFetch({ baseUrl: 'https://api.test/v1', path: 'https://api.test/v2/other', token: 'tok', apiLabel: 'Test' });
+
+    const [url] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('https://api.test/v2/other');
+  });
+
+  it('JSON-encodes a body and sets Content-Type when one is provided', async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({}) });
+
+    await googleApiFetch({ baseUrl: 'https://api.test/v1', path: '/things', token: 'tok', method: 'POST', body: { a: 1 }, apiLabel: 'Test' });
+
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(init.method).toBe('POST');
+    expect(init.headers['Content-Type']).toBe('application/json');
+    expect(JSON.parse(init.body as string)).toEqual({ a: 1 });
+  });
+
+  it('throws a labelled error on a non-2xx response, without parsing JSON', async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false, status: 404, statusText: 'Not Found', text: async () => 'not found',
+    });
+
+    await expect(
+      googleApiFetch({ baseUrl: 'https://api.test/v1', path: '/missing', token: 'tok', apiLabel: 'Test' }),
+    ).rejects.toThrow(/Test API error 404 Not Found: not found/);
+  });
+
+  it('googleApiRequest returns the raw Response instead of parsed JSON (Drive content reads)', async () => {
+    const fakeResponse = { ok: true, arrayBuffer: async () => new ArrayBuffer(0) };
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(fakeResponse);
+
+    const res = await googleApiRequest({ baseUrl: 'https://api.test/v1', path: '/file', token: 'tok', apiLabel: 'Test' });
+
+    expect(res).toBe(fakeResponse);
+  });
+});
+
 describe('GOOGLE_OAUTH_SCOPES (#2144)', () => {
   it('declares one Google API scope per v1 imajin scope', () => {
     expect(Object.keys(GOOGLE_OAUTH_SCOPES).sort()).toEqual([
