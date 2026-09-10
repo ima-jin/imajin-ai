@@ -11,14 +11,18 @@
  */
 import { and, desc, eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 import * as bus from '@imajin/bus';
 import { db, operatorApprovals, type OperatorApprovalRow } from '@/src/db';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import type {
-  ApprovalDecision,
-  OperatorApprovalDecidedPayload,
+import {
+  effectiveContentHash,
+  isOperatorCountersignRequired,
+  type ApprovalDecision,
+  type OperatorApprovalDecidedPayload,
+  type OperatorCountersignature,
 } from './operator-approvals';
+import { verifyOperatorCountersignature } from './operator-countersign';
 
 const log = createLogger('kernel:operator-approvals');
 
@@ -52,7 +56,10 @@ function toCard(row: OperatorApprovalRow): OperatorApprovalCard {
     summary: row.summary,
     keysTouched: (row.keysTouched as string[] | null) ?? [],
     detail: (row.detail as Record<string, unknown> | null) ?? null,
-    contentHash: row.contentHash ?? null,
+    // Always the effective hash (recomputed for a legacy row with no
+    // stored contentHash) — #2082: this is what a client signs against,
+    // so it must never be null once there's a countersignature to build.
+    contentHash: effectiveContentHash(row),
     status: row.status,
     decision: decisionRecord?.payload ?? null,
     appliedAt: row.appliedAt ? row.appliedAt.toISOString() : null,
@@ -130,6 +137,30 @@ export interface DecideOperatorApprovalParams {
   /** Opaque, source-adapter-chosen refinement of `decision` (e.g. 'allow-once') — kernel never interprets it (#2152). */
   mode?: string;
   reason?: string;
+  /** The operator's own countersignature over `{contentHash, decision, decidedAt}` (#2082). */
+  operatorSignature?: OperatorCountersignature;
+  /**
+   * Client-claimed decision timestamp (#2082) — REQUIRED and verified
+   * (clock-skew bounded, then checked against `operatorSignature`) when
+   * `operatorSignature` is present, since that's exactly the `decidedAt`
+   * the client signed over. Ignored (the kernel assigns its own) when no
+   * `operatorSignature` is supplied.
+   */
+  decidedAt?: string;
+}
+
+/**
+ * Bounds-check a client-claimed `decidedAt` (#2082) the same way
+ * `@imajin/auth`'s `verify.ts` bounds a signed message's timestamp —
+ * reusing `SIGNED_MESSAGE_MAX_AGE`/`FUTURE_TOLERANCE` rather than
+ * inventing new constants for what is, structurally, the same clock-skew
+ * problem.
+ */
+function isDecidedAtWithinClockSkew(decidedAt: string): boolean {
+  const claimed = Date.parse(decidedAt);
+  if (Number.isNaN(claimed)) return false;
+  const age = Date.now() - claimed;
+  return age <= SIGNED_MESSAGE_MAX_AGE && age >= -FUTURE_TOLERANCE;
 }
 
 /** The status a proposal must be in for a given decision to be legal. */
@@ -155,7 +186,7 @@ function nextStatusFor(decision: ApprovalDecision): OperatorApprovalRow['status'
 export async function decideOperatorApproval(
   params: DecideOperatorApprovalParams,
 ): Promise<DecideOperatorApprovalResult> {
-  const { proposalId, operatorDid, decision, mode, reason } = params;
+  const { proposalId, operatorDid, decision, mode, reason, operatorSignature, decidedAt: claimedDecidedAt } = params;
 
   const row = await loadApproval(proposalId);
   if (!row) {
@@ -174,8 +205,36 @@ export async function decideOperatorApproval(
     };
   }
 
+  // #2082: once the per-node flag is on, a decision with no operator
+  // countersignature is rejected before any state mutation or witness
+  // signature is produced — this is the "kernel-forged decision" guard.
+  if (isOperatorCountersignRequired() && !operatorSignature) {
+    return { ok: false, error: 'Operator countersignature is required on this node', status: 400 };
+  }
+
+  let decidedAt = new Date().toISOString();
+  if (operatorSignature) {
+    if (!claimedDecidedAt || !isDecidedAtWithinClockSkew(claimedDecidedAt)) {
+      return {
+        ok: false,
+        error: 'decidedAt must be supplied and within the accepted clock-skew window when operatorSignature is present',
+        status: 400,
+      };
+    }
+    const contentHash = effectiveContentHash(row);
+    const verification = await verifyOperatorCountersignature(
+      operatorDid,
+      { contentHash, decision, decidedAt: claimedDecidedAt },
+      operatorSignature,
+    );
+    if (!verification.ok) {
+      log.warn({ proposalId, operatorDid, reason: verification.error }, 'operator countersignature rejected');
+      return { ok: false, error: verification.error, status: 400 };
+    }
+    decidedAt = claimedDecidedAt;
+  }
+
   const identity = getNodeSigningIdentity();
-  const decidedAt = new Date().toISOString();
   const payload: OperatorApprovalDecidedPayload = {
     proposalId,
     source: row.source,
@@ -185,6 +244,7 @@ export async function decideOperatorApproval(
     decidedBy: operatorDid,
     decidedAt,
     ...(reason ? { reason } : {}),
+    ...(operatorSignature ? { operatorSignature } : {}),
   };
   const signature = authCrypto.signSync(canonicalize(payload), identity.privateKeyHex);
   const signedDecision = { payload, signature, senderPubkey: identity.senderPubkey };

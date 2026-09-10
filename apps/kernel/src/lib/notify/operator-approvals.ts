@@ -63,6 +63,41 @@ const LEGACY_BARE_KINDS = new Set(['restart', 'config-mutation', 'other']);
 export type ApprovalRequestAction = 'approve' | 'reject';
 export type ApprovalDecision = 'approve' | 'reject' | 'withdrawn';
 
+/**
+ * Operator countersignature (#2082) — a signature by the operator's OWN
+ * key over `canonicalize({contentHash, decision, decidedAt})`, produced
+ * client-side on /jin (see `apps/kernel/app/jin/operator-approvals-
+ * panel.tsx`) and verified by the kernel against the operator DID's
+ * *current* registered key (`apps/kernel/src/lib/notify/operator-
+ * countersign.ts`) before the decision is persisted. This is what turns
+ * the kernel's own witness signature (unchanged, still recorded
+ * alongside) from "the only claim" into a genuine two-party receipt: a
+ * compromised kernel can no longer forge an approval, only (at most)
+ * misrecord a timestamp.
+ *
+ * `keyId` is the exact hex-encoded Ed25519 public key that produced
+ * `sig` — deliberately hex (this repo's canonical `identities.publicKey`
+ * encoding), not multibase/DID-document shaped, since verification
+ * resolves the operator's *current* single key the same way the existing
+ * `witness-jws.ts` precedent does (see module docs on
+ * `verifyOperatorCountersignature`). Multi-key/DFOS-chain-history-aware
+ * resolution is #2081's separate, not-yet-built follow-up.
+ */
+export interface OperatorCountersignature {
+  /** Hex-encoded Ed25519 public key that produced `sig`. */
+  keyId: string;
+  alg: 'ed25519';
+  /** Hex-encoded Ed25519 signature over canonicalize({contentHash, decision, decidedAt}). */
+  sig: string;
+}
+
+/** The exact fields the operator's countersignature covers, in the order `canonicalize` will sort them. */
+export interface OperatorCountersignFields {
+  contentHash: string;
+  decision: ApprovalDecision;
+  decidedAt: string;
+}
+
 /** The `operator.approval.requested` notification payload (the /jin card). */
 export interface OperatorApprovalRequestedPayload {
   proposalId: string;
@@ -91,6 +126,16 @@ export interface OperatorApprovalDecidedPayload {
   decidedBy: string;
   decidedAt: string;
   reason?: string;
+  /**
+   * The operator's own countersignature over `{contentHash, decision,
+   * decidedAt}` (#2082) — absent when `OPERATOR_COUNTERSIGN_REQUIRED` is
+   * off and the client didn't supply one, or for decisions recorded before
+   * this field existed. The kernel's own witness signature (this whole
+   * payload, signed with the node's key) is unaffected and stored
+   * alongside — see `decideOperatorApproval` in operator-approvals-
+   * service.ts.
+   */
+  operatorSignature?: OperatorCountersignature;
 }
 
 export const REQUEST_ACTIONS: readonly ApprovalRequestAction[] = ['approve', 'reject'] as const;
@@ -202,7 +247,7 @@ function validateDetail(detail: unknown): DetailResult {
   return { ok: true, detail: detail as Record<string, unknown> };
 }
 
-interface ContentHashFields {
+export interface ContentHashFields {
   proposalId: string;
   source: string;
   kind: string;
@@ -221,6 +266,30 @@ interface ContentHashFields {
  */
 export function computeApprovalContentHash(fields: ContentHashFields): string {
   return createHash('sha256').update(canonicalize(fields)).digest('hex');
+}
+
+/**
+ * The `contentHash` a stored proposal row is effectively bound to (#2082):
+ * the ingested value when present, otherwise recomputed on the fly from
+ * the row's own durable fields. A legacy bare-kind request (#2152) never
+ * required `contentHash` at ingest, so its row has `contentHash: null` —
+ * but the fields it's built from are stored regardless, so a canonical
+ * hash is always derivable. This is the single source of truth both the
+ * /jin card (what the operator signs) and `decideOperatorApproval` (what
+ * the kernel verifies against) use, so the two can never drift apart.
+ */
+export function effectiveContentHash(row: ContentHashFields & { contentHash?: string | null }): string {
+  return (
+    row.contentHash ??
+    computeApprovalContentHash({
+      proposalId: row.proposalId,
+      source: row.source,
+      kind: row.kind,
+      summary: row.summary,
+      keysTouched: row.keysTouched,
+      detail: row.detail,
+    })
+  );
 }
 
 function normalizeContentHash(value: unknown): string | null {
@@ -345,4 +414,19 @@ export async function getOperatorDid(): Promise<string | null> {
  */
 export function isOperatorIdentity(identity: Identity, operatorDid: string): boolean {
   return identity.id === operatorDid && !identity.actingFor;
+}
+
+/**
+ * Per-node feature flag (#2082): once on, `decideOperatorApproval` rejects
+ * (400) any decision that doesn't carry an `operatorSignature` — the
+ * "kernel-forged decision" guard. Default OFF so this node's kernel half
+ * can ship, and the plugin (ima-jin/openclaw-imajin-plugin#24) can be
+ * built and tested against real verification, before flipping this on
+ * requires every future decision to be operator-signed. Verification of a
+ * *supplied* `operatorSignature` happens unconditionally regardless of
+ * this flag — it only gates whether one is REQUIRED. See the rollout
+ * order in docs/notify-operator-approvals-contract.md.
+ */
+export function isOperatorCountersignRequired(): boolean {
+  return process.env.OPERATOR_COUNTERSIGN_REQUIRED === 'true';
 }

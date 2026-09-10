@@ -56,8 +56,11 @@ components:
           description: "Optional, bounded (<=16KB) per-source structured payload — e.g. skill-workshop's diff summary."
         contentHash:
           type: string
-          nullable: true
-          description: "sha256 hex digest covering {proposalId,source,kind,summary,keysTouched,detail}, when the source supplied one."
+          description: >-
+            sha256 hex digest covering {proposalId,source,kind,summary,keysTouched,detail}
+            (#2082: always present — the effective hash, recomputed on the
+            fly for a legacy row that never stored one — since this is what
+            an operator countersignature signs over).
         status: { $ref: "#/components/schemas/ApprovalStatus" }
         decision:
           type: object
@@ -66,9 +69,27 @@ components:
             decidedBy: { type: string }
             decidedAt: { type: string, format: date-time }
             reason: { type: string }
+            operatorSignature:
+              $ref: "#/components/schemas/OperatorCountersignature"
         appliedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    OperatorCountersignature:
+      type: object
+      nullable: true
+      description: >-
+        The operator's OWN countersignature (#2082) over
+        canonicalize({contentHash, decision, decidedAt}), produced
+        client-side on /jin with the same Ed25519 key already used for
+        login/registration. Verified by the kernel against the operator
+        DID's current registered key before the decision is persisted;
+        stored and republished alongside (never replacing) the kernel's own
+        node-key witness signature.
+      required: [keyId, alg, sig]
+      properties:
+        keyId: { type: string, description: "Hex-encoded Ed25519 public key that produced sig." }
+        alg: { type: string, enum: [ed25519] }
+        sig: { type: string, description: "Hex-encoded Ed25519 signature." }
     Error:
       type: object
       required: [error]
@@ -129,7 +150,10 @@ paths:
         with the proposal's own `source` + `kind` — on the
         `operator.approval.decided` bus event. `mode` is likewise opaque
         (e.g. 'allow-once'), chosen by whatever source-adapter interprets
-        the decision downstream.
+        the decision downstream. `operatorSignature` + `decidedAt` (#2082):
+        the operator's own countersignature, produced client-side; required
+        (400 otherwise) once the per-node `OPERATOR_COUNTERSIGN_REQUIRED`
+        flag is on, verified whenever supplied regardless of the flag.
       security:
         - cookieAuth: []
       parameters:
@@ -148,6 +172,12 @@ paths:
                 decision: { type: string, enum: [approve, reject, withdrawn] }
                 mode: { type: string, maxLength: 128, description: "Opaque source-adapter-chosen refinement of decision, e.g. 'allow-once'." }
                 reason: { type: string }
+                operatorSignature:
+                  $ref: "#/components/schemas/OperatorCountersignature"
+                decidedAt:
+                  type: string
+                  format: date-time
+                  description: "Required when operatorSignature is present — the exact decidedAt the client signed over. Verified for clock skew."
       responses:
         "200":
           description: Decision recorded

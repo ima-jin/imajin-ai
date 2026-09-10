@@ -61,6 +61,11 @@ export {
   DID_WEB_RESOLUTION_TIMEOUT_MS,
   EVENT_SUBSCRIPTION_RETENTION,
   EVENT_SUBSCRIPTION_CATCHUP_PAGE_SIZE,
+  // #2082: the same signed-message clock-skew bounds `verify.ts` already
+  // enforces, reused (not reinvented) for bounding a client-claimed
+  // `decidedAt` on an operator countersignature.
+  SIGNED_MESSAGE_MAX_AGE,
+  FUTURE_TOLERANCE,
 } from "./constants";
 export type { NodeHeartbeat, NodeRegistration, NodeRegistrationRequest, NodeRegistrationResponse, NodeAttestation } from "./types/node";
 export { getEmailForDid, getDidForEmail, resolveDidForEmail, resolveEmailForDid, resolveIdentitiesForDids } from "./credentials";

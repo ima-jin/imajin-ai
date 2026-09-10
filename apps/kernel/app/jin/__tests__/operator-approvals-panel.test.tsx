@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { crypto as authCrypto } from '@imajin/auth';
 import { OperatorApprovalsPanel } from '../operator-approvals-panel';
 import { installIntervalSpy } from './panel-test-support';
 
@@ -266,6 +267,49 @@ describe('manual refresh', () => {
 
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('Restart the gateway to load the updated plugin.')).toBeDefined();
+  });
+});
+
+describe('operator countersignature (#2082)', () => {
+  it('signs the decision client-side and includes operatorSignature + decidedAt when a local keypair is present', async () => {
+    const { privateKey, publicKey } = authCrypto.generateKeypair();
+    localStorage.setItem('imajin_keypair', JSON.stringify({ privateKey, publicKey }));
+
+    const spy = installFetch(
+      [{ isOperator: true, approvals: [approval()] }, { isOperator: true, approvals: [approval({ status: 'approved' })] }],
+      { ok: true, body: { approval: approval({ status: 'approved' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    const sentBody = JSON.parse((decisionCall?.[1] as { body: string }).body) as {
+      decision: string;
+      decidedAt: string;
+      operatorSignature: { keyId: string; alg: string; sig: string };
+    };
+    expect(sentBody.decision).toBe('approve');
+    expect(typeof sentBody.decidedAt).toBe('string');
+    expect(sentBody.operatorSignature).toEqual({ keyId: publicKey, alg: 'ed25519', sig: expect.stringMatching(/^[0-9a-f]{128}$/) });
+
+    localStorage.removeItem('imajin_keypair');
+  });
+
+  it('omits operatorSignature when no local keypair is present (unchanged pre-#2082 behavior)', async () => {
+    expect(localStorage.getItem('imajin_keypair')).toBeNull();
+
+    const spy = installFetch([{ isOperator: true, approvals: [approval()] }, { isOperator: true, approvals: [approval({ status: 'approved' })] }]);
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'approve' }) });
   });
 });
 
