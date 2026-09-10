@@ -57,33 +57,93 @@ function runGuard(dir, extraArgs = []) {
   }
 }
 
+/** Runs the guard against `dir` and asserts it exits 0 with a PASS message. */
+function expectPass(dir) {
+  const result = runGuard(dir);
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain('PASS');
+}
+
+/** Runs the guard against `dir` and asserts it exits 1, reporting FAIL and every expected substring. */
+function expectFail(dir, ...expectedSubstrings) {
+  const result = runGuard(dir);
+  const output = result.stdout + result.stderr;
+  expect(result.status).toBe(1);
+  expect(output).toContain('FAIL');
+  for (const substring of expectedSubstrings) {
+    expect(output).toContain(substring);
+  }
+  return output;
+}
+
+// Table-driven: every case here writes exactly one source file and asserts a
+// simple pass/fail outcome. Kept as data (not individual `it` bodies) so the
+// near-identical "write one file, assert pass/fail" shape isn't duplicated
+// per case.
+const SINGLE_FILE_CASES = [
+  {
+    name: 'passes when an app only queries its own schema',
+    file: 'apps/learn/app/api/route.ts',
+    content: "const rows = await sql`SELECT * FROM learn.courses WHERE id = ${id}`;",
+    expectedFailSubstrings: null,
+  },
+  {
+    name: "fails when an app reads another owner's schema via raw SQL",
+    file: 'apps/learn/app/api/route.ts',
+    content: "const rows = await sql`SELECT did FROM profile.profiles WHERE did = ANY(${dids})`;",
+    expectedFailSubstrings: ['profile.profiles'],
+  },
+  {
+    name: 'exempts apps/kernel entirely',
+    file: 'apps/kernel/app/route.ts',
+    content: "const rows = await sql`SELECT * FROM profile.profiles WHERE did = ${did}`;",
+    expectedFailSubstrings: null,
+  },
+  {
+    name: 'does not flag plain property access that happens to look like schema.table',
+    file: 'apps/learn/app/api/route.ts',
+    content: "if ('error' in authResult) { return errorResponse(authResult.error, authResult.status); }",
+    expectedFailSubstrings: null,
+  },
+  {
+    name: 'ignores a schema reference inside a comment',
+    file: 'apps/learn/app/api/route.ts',
+    content: '// this used to read FROM profile.profiles directly\nconst x = 1;',
+    expectedFailSubstrings: null,
+  },
+  {
+    name: 'excludes test files from scanning',
+    file: 'apps/learn/app/api/__tests__/route.test.ts',
+    content: "const rows = await sql`SELECT * FROM profile.profiles WHERE did = ${did}`;",
+    expectedFailSubstrings: null,
+  },
+  {
+    name: 'flags a Drizzle pgSchema() declaration for a schema the app does not own',
+    file: 'apps/learn/src/db/foreign-schema.ts',
+    content: "import { pgSchema } from 'drizzle-orm/pg-core';\nexport const authSchema = pgSchema('auth');",
+    expectedFailSubstrings: ['pgSchema("auth")'],
+  },
+  {
+    name: "does not flag a Drizzle pgSchema() declaration for the app's own schema",
+    file: 'apps/learn/src/db/schema.ts',
+    content: "import { pgSchema } from 'drizzle-orm/pg-core';\nexport const learnSchema = pgSchema('learn');",
+    expectedFailSubstrings: null,
+  },
+];
+
 describe('ci-guard-cross-schema-reads', () => {
-  it('passes when an app only queries its own schema', () => {
-    const dir = makeTempRepo();
-    writeSource(
-      dir,
-      'apps/learn/app/api/route.ts',
-      "const rows = await sql`SELECT * FROM learn.courses WHERE id = ${id}`;",
-    );
+  for (const testCase of SINGLE_FILE_CASES) {
+    it(testCase.name, () => {
+      const dir = makeTempRepo();
+      writeSource(dir, testCase.file, testCase.content);
 
-    const result = runGuard(dir);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
-  });
-
-  it('fails when an app reads another owner\'s schema via raw SQL', () => {
-    const dir = makeTempRepo();
-    writeSource(
-      dir,
-      'apps/learn/app/api/route.ts',
-      "const rows = await sql`SELECT did FROM profile.profiles WHERE did = ANY(${dids})`;",
-    );
-
-    const result = runGuard(dir);
-    expect(result.status).toBe(1);
-    expect(result.stdout + result.stderr).toContain('FAIL');
-    expect(result.stdout + result.stderr).toContain('profile.profiles');
-  });
+      if (testCase.expectedFailSubstrings) {
+        expectFail(dir, ...testCase.expectedFailSubstrings);
+      } else {
+        expectPass(dir);
+      }
+    });
+  }
 
   it('detects INTO/UPDATE/JOIN keywords, not just FROM', () => {
     const dir = makeTempRepo();
@@ -98,62 +158,7 @@ describe('ci-guard-cross-schema-reads', () => {
       "await sql`UPDATE connections.pod_members SET role = 'x' WHERE did = ${did}`;",
     );
 
-    const result = runGuard(dir);
-    expect(result.status).toBe(1);
-    expect(result.stdout + result.stderr).toContain('auth.identities');
-    expect(result.stdout + result.stderr).toContain('connections.pod_members');
-  });
-
-  it('exempts apps/kernel entirely', () => {
-    const dir = makeTempRepo();
-    writeSource(
-      dir,
-      'apps/kernel/app/route.ts',
-      "const rows = await sql`SELECT * FROM profile.profiles WHERE did = ${did}`;",
-    );
-
-    const result = runGuard(dir);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
-  });
-
-  it('does not flag plain property access that happens to look like schema.table', () => {
-    const dir = makeTempRepo();
-    writeSource(
-      dir,
-      'apps/learn/app/api/route.ts',
-      "if ('error' in authResult) { return errorResponse(authResult.error, authResult.status); }",
-    );
-
-    const result = runGuard(dir);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
-  });
-
-  it('ignores a schema reference inside a comment', () => {
-    const dir = makeTempRepo();
-    writeSource(
-      dir,
-      'apps/learn/app/api/route.ts',
-      "// this used to read FROM profile.profiles directly\nconst x = 1;",
-    );
-
-    const result = runGuard(dir);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
-  });
-
-  it('excludes test files from scanning', () => {
-    const dir = makeTempRepo();
-    writeSource(
-      dir,
-      'apps/learn/app/api/__tests__/route.test.ts',
-      "const rows = await sql`SELECT * FROM profile.profiles WHERE did = ${did}`;",
-    );
-
-    const result = runGuard(dir);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
+    expectFail(dir, 'auth.identities', 'connections.pod_members');
   });
 
   it('passes when the only violation is in the allowlist', () => {
@@ -165,9 +170,7 @@ describe('ci-guard-cross-schema-reads', () => {
     );
     writeAllowlist(dir, [{ file: 'apps/learn/app/api/route.ts', schema: 'profile', table: 'profiles' }]);
 
-    const result = runGuard(dir);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
+    expectPass(dir);
   });
 
   it('still fails on a NEW violation in the same file even when a different table is allowlisted', () => {
@@ -180,35 +183,7 @@ describe('ci-guard-cross-schema-reads', () => {
     );
     writeAllowlist(dir, [{ file: 'apps/learn/app/api/route.ts', schema: 'profile', table: 'profiles' }]);
 
-    const result = runGuard(dir);
-    expect(result.status).toBe(1);
-    expect(result.stdout + result.stderr).toContain('auth.identities');
-  });
-
-  it('flags a Drizzle pgSchema() declaration for a schema the app does not own', () => {
-    const dir = makeTempRepo();
-    writeSource(
-      dir,
-      'apps/learn/src/db/foreign-schema.ts',
-      "import { pgSchema } from 'drizzle-orm/pg-core';\nexport const authSchema = pgSchema('auth');",
-    );
-
-    const result = runGuard(dir);
-    expect(result.status).toBe(1);
-    expect(result.stdout + result.stderr).toContain('pgSchema("auth")');
-  });
-
-  it('does not flag a Drizzle pgSchema() declaration for the app\'s own schema', () => {
-    const dir = makeTempRepo();
-    writeSource(
-      dir,
-      'apps/learn/src/db/schema.ts',
-      "import { pgSchema } from 'drizzle-orm/pg-core';\nexport const learnSchema = pgSchema('learn');",
-    );
-
-    const result = runGuard(dir);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('PASS');
+    expectFail(dir, 'auth.identities');
   });
 
   it('--list prints every violation as JSON regardless of the allowlist', () => {
