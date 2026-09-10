@@ -1542,15 +1542,24 @@ export interface BusEventMap {
   };
   /**
    * The operator's signed decision on a pending `operator.approval.requested`
-   * /jin card (#2059) — approve, deny, or withdraw (only legal while the
-   * prior approval is still "pending-apply", i.e. not yet applied). Published
-   * once the kernel mints the attestation (`decideOperatorApproval`,
-   * apps/kernel/src/lib/notify/operator-approvals-service.ts) so the OpenClaw
-   * plugin — the Gateway-side owner of this proposal — can apply or discard
-   * it. Delivered live to any agent DID holding an active `operator:approvals`
-   * grant via the #1884 event-subscription fan-out (see
-   * packages/auth/src/grant-scopes.ts); always durable on
-   * `kernel.event_subscription_log` for catch-up otherwise.
+   * /jin card (#2059, generalized #2152) — approve, reject, or withdraw
+   * (only legal while the prior approval is still "pending-apply", i.e. not
+   * yet applied). Published once the kernel mints the attestation
+   * (`decideOperatorApproval`,
+   * apps/kernel/src/lib/notify/operator-approvals-service.ts) so the owning
+   * source (e.g. the OpenClaw plugin's system-agent or skill-workshop
+   * adapter) can apply or discard it. Delivered live to any agent DID
+   * holding an active `operator:approvals` grant via the #1884
+   * event-subscription fan-out (see packages/auth/src/grant-scopes.ts);
+   * always durable on `kernel.event_subscription_log` for catch-up
+   * otherwise.
+   *
+   * `source` + `kind` (#2152, open vocabulary — e.g. `system-agent`/
+   * `system-agent:restart`, `skill-workshop`/`skill-workshop:update`) are
+   * carried through unchanged from the request so the receiving adapter can
+   * route the decision without the kernel ever branching on either value.
+   * `mode` is an opaque, source-adapter-chosen refinement of `decision`
+   * (e.g. `allow-once`) the kernel stores and forwards but never interprets.
    *
    * issuer = subject = the operator DID who decided (this event has no
    * separate "requester" to attribute — the proposal came from outside the
@@ -1558,7 +1567,10 @@ export interface BusEventMap {
    */
   'operator.approval.decided': {
     proposalId: string;
-    decision: 'approve' | 'deny' | 'withdrawn';
+    source: string;
+    kind: string;
+    decision: 'approve' | 'reject' | 'withdrawn';
+    mode?: string;
     decidedBy: string;
     decidedAt: string;
     reason?: string;

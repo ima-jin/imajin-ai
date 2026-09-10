@@ -1,0 +1,184 @@
+openapi: "3.1.0"
+info:
+  title: imajin jin
+  version: "2.0.0"
+  description: |
+    The `/jin` kernel dashboard's own API surface — the operator-approvals
+    confirm-card rail (#2059, generalized to an open source/kind vocabulary
+    by #2152). A source (e.g. the OpenClaw plugin's system-agent or
+    skill-workshop adapter) stages a proposal via `POST /notify/api/send`
+    (scope `operator.approval.requested`, documented in notify.yaml); these
+    two routes are how the node operator lists and decides them from /jin.
+    Runs as a kernel service at /{service}/api/... on a shared node domain.
+servers:
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: jin
+  - url: http://localhost:3000/{service}
+    description: local development
+
+tags:
+  - name: jin
+    description: /jin kernel dashboard — operator approvals
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+  schemas:
+    ApprovalStatus:
+      type: string
+      enum: [pending, approved, denied, withdrawn, applied]
+    OperatorApprovalCard:
+      type: object
+      description: >-
+        One proposal's lifecycle record. `kind` is namespaced
+        "<source>:<subkind>" (#2152) — legacy bare kinds (`restart` |
+        `config-mutation` | `other`) are normalized onto `system-agent:*`
+        at ingest, so `kind` here is always namespaced regardless of which
+        vocabulary the source used when it published the proposal.
+      properties:
+        proposalId: { type: string }
+        operatorDid: { type: string }
+        source: { type: string, example: "skill-workshop", description: "Open vocabulary namespace." }
+        kind: { type: string, example: "skill-workshop:update", description: "'<source>:<subkind>'." }
+        summary: { type: string }
+        keysTouched: { type: array, items: { type: string } }
+        detail:
+          type: object
+          nullable: true
+          description: "Optional, bounded (<=16KB) per-source structured payload — e.g. skill-workshop's diff summary."
+        contentHash:
+          type: string
+          nullable: true
+          description: "sha256 hex digest covering {proposalId,source,kind,summary,keysTouched,detail}, when the source supplied one."
+        status: { $ref: "#/components/schemas/ApprovalStatus" }
+        decision:
+          type: object
+          nullable: true
+          properties:
+            decidedBy: { type: string }
+            decidedAt: { type: string, format: date-time }
+            reason: { type: string }
+        appliedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/operator-approvals:
+    get:
+      tags: [jin]
+      operationId: listOperatorApprovals
+      summary: List operator approval proposals across every connected source
+      description: >-
+        A non-operator identity — including `@jin` itself, or anyone else
+        authenticated on this node — gets `{isOperator: false, approvals:
+        []}`: no card, no data, indistinguishable from "nothing pending" so
+        this endpoint never confirms whether a proposal exists to a caller
+        who isn't allowed to see it. Optional `?source=` scopes the list to
+        one source (#2152) — a view filter only, never a security boundary.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: source
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Filter to one open-vocabulary source, e.g. 'skill-workshop'."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  isOperator: { type: boolean }
+                  approvals:
+                    type: array
+                    items: { $ref: "#/components/schemas/OperatorApprovalCard" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/operator-approvals/{proposalId}/decision:
+    post:
+      tags: [jin]
+      operationId: decideOperatorApproval
+      summary: Approve, reject, or withdraw a pending operator approval proposal
+      description: >-
+        Requires `requireAuth` to resolve the exact HUMAN operator identity
+        directly — never `X-Acting-For`/`onBehalfOf`. A non-operator
+        identity (including `@jin` acting for the operator) gets 403
+        without ever learning whether `proposalId` exists. `decision` is
+        the open, source-agnostic vocabulary (#2152): the kernel never
+        interprets it, only witnesses it and republishes it — together
+        with the proposal's own `source` + `kind` — on the
+        `operator.approval.decided` bus event. `mode` is likewise opaque
+        (e.g. 'allow-once'), chosen by whatever source-adapter interprets
+        the decision downstream.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: proposalId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject, withdrawn] }
+                mode: { type: string, maxLength: 128, description: "Opaque source-adapter-chosen refinement of decision, e.g. 'allow-once'." }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  approval: { $ref: "#/components/schemas/OperatorApprovalCard" }
+        "400":
+          description: Malformed body, or decision not one of approve | reject | withdrawn
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Caller is not the node operator (never reveals whether proposalId exists)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Proposal not found (or not addressed to this operator)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Proposal is not in the status this decision requires
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Failed to record decision
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }

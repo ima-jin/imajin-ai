@@ -32,6 +32,7 @@ vi.mock('@/src/db', () => ({
   operatorApprovals: {
     proposalId: 'proposal_id',
     operatorDid: 'operator_did',
+    source: 'source',
     status: 'status',
     createdAt: 'created_at',
   },
@@ -73,9 +74,12 @@ function row(overrides: Record<string, unknown> = {}) {
   return {
     proposalId: PROPOSAL_ID,
     operatorDid: OPERATOR_DID,
-    kind: 'restart',
+    source: 'system-agent',
+    kind: 'system-agent:restart',
     summary: 'Restart the gateway to load the updated plugin.',
     keysTouched: [],
+    detail: null,
+    contentHash: null,
     notificationId: 'ntf_1',
     status: 'pending',
     decision: null,
@@ -101,14 +105,44 @@ describe('recordApprovalRequested', () => {
     await recordApprovalRequested({
       proposalId: PROPOSAL_ID,
       operatorDid: OPERATOR_DID,
-      kind: 'restart',
+      source: 'system-agent',
+      kind: 'system-agent:restart',
       summary: 'Restart the gateway.',
       keysTouched: ['gateway.version'],
+      detail: null,
+      contentHash: null,
       notificationId: 'ntf_1',
     });
 
     expect(mockInsertValues).toHaveBeenCalledWith(
-      expect.objectContaining({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, status: 'pending' }),
+      expect.objectContaining({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        source: 'system-agent',
+        kind: 'system-agent:restart',
+        status: 'pending',
+      }),
+    );
+  });
+
+  it('inserts a new pending row with a source-specific detail and contentHash (#2152)', async () => {
+    mockSelectLimit.mockResolvedValueOnce([]);
+    const detail = { skillName: 'weather-lookup', kind: 'update', scan: 'clean' };
+
+    await recordApprovalRequested({
+      proposalId: 'opap_sw_1',
+      operatorDid: OPERATOR_DID,
+      source: 'skill-workshop',
+      kind: 'skill-workshop:update',
+      summary: 'Update the weather-lookup skill.',
+      keysTouched: [],
+      detail,
+      contentHash: 'a'.repeat(64),
+      notificationId: 'ntf_2',
+    });
+
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'skill-workshop', kind: 'skill-workshop:update', detail, contentHash: 'a'.repeat(64) }),
     );
   });
 
@@ -118,9 +152,12 @@ describe('recordApprovalRequested', () => {
     await recordApprovalRequested({
       proposalId: PROPOSAL_ID,
       operatorDid: OPERATOR_DID,
-      kind: 'restart',
+      source: 'system-agent',
+      kind: 'system-agent:restart',
       summary: 'Restart the gateway.',
       keysTouched: [],
+      detail: null,
+      contentHash: null,
       notificationId: 'ntf_1',
     });
 
@@ -129,7 +166,7 @@ describe('recordApprovalRequested', () => {
 });
 
 describe('decideOperatorApproval', () => {
-  it('approves a pending proposal, signs a decision, and publishes operator.approval.decided', async () => {
+  it('approves a pending proposal, signs a decision, and publishes operator.approval.decided with source + kind carried through', async () => {
     mockSelectLimit
       .mockResolvedValueOnce([row({ status: 'pending' })]) // loadApproval before decide
       .mockResolvedValueOnce([row({ status: 'approved' })]); // loadApproval after update
@@ -145,13 +182,32 @@ describe('decideOperatorApproval', () => {
       expect.objectContaining({
         issuer: OPERATOR_DID,
         subject: OPERATOR_DID,
-        payload: expect.objectContaining({ proposalId: PROPOSAL_ID, decision: 'approve', decidedBy: OPERATOR_DID }),
+        payload: expect.objectContaining({
+          proposalId: PROPOSAL_ID,
+          source: 'system-agent',
+          kind: 'system-agent:restart',
+          decision: 'approve',
+          decidedBy: OPERATOR_DID,
+        }),
       }),
     );
   });
 
+  it('includes an opaque mode when the caller supplies one, without interpreting it (#2152)', async () => {
+    mockSelectLimit
+      .mockResolvedValueOnce([row({ status: 'pending' })])
+      .mockResolvedValueOnce([row({ status: 'approved' })]);
+
+    await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve', mode: 'allow-once' });
+
+    expect(mockPublish).toHaveBeenCalledWith(
+      'operator.approval.decided',
+      expect.objectContaining({ payload: expect.objectContaining({ mode: 'allow-once' }) }),
+    );
+  });
+
   it.each([
-    { decision: 'deny' as const, fromStatus: 'pending' as const, toStatus: 'denied' as const },
+    { decision: 'reject' as const, fromStatus: 'pending' as const, toStatus: 'denied' as const },
     { decision: 'withdrawn' as const, fromStatus: 'approved' as const, toStatus: 'withdrawn' as const },
   ])('transitions $fromStatus -> $toStatus for decision=$decision', async ({ decision, fromStatus, toStatus }) => {
     mockSelectLimit
@@ -251,5 +307,25 @@ describe('listApprovalsForOperator', () => {
 
     expect(result).toHaveLength(2);
     expect(result[0]).toMatchObject(pendingApprovalCard({ createdAt: rows[0].createdAt.toISOString(), updatedAt: rows[0].updatedAt.toISOString() }));
+  });
+
+  it('scopes the query by source when one is given (#2152)', async () => {
+    const rows = [row({ source: 'skill-workshop', kind: 'skill-workshop:update' })];
+    const orderByMock = vi.fn().mockResolvedValue(rows);
+    const whereMock = vi.fn(() => ({ orderBy: orderByMock }));
+    const { db } = await import('@/src/db');
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: () => ({ where: whereMock }),
+    } as unknown as ReturnType<typeof db.select>);
+
+    const result = await listApprovalsForOperator(OPERATOR_DID, { source: 'skill-workshop' });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].source).toBe('skill-workshop');
+    // and(...) is mocked to collect its args — both the operator and source conditions must be present.
+    const { operatorApprovals } = await import('@/src/db');
+    expect(whereMock).toHaveBeenCalledWith({
+      and: [{ eq: [operatorApprovals.operatorDid, OPERATOR_DID] }, { eq: [operatorApprovals.source, 'skill-workshop'] }],
+    });
   });
 });

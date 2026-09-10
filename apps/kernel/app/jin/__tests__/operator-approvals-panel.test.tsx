@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /**
- * Component tests for the /jin operator-approvals panel (#2059): the
- * operator-only visibility gate, the empty/pending/approved render states,
- * and the Approve/Deny/Withdraw click paths against `GET`/`POST
- * /jin/api/operator-approvals`.
+ * Component tests for the /jin operator-approvals panel (#2059, per-source
+ * renderer registry #2152): the operator-only visibility gate, the
+ * empty/pending/approved render states, the Approve/Reject/Withdraw click
+ * paths against `GET`/`POST /jin/api/operator-approvals`, and the
+ * per-source renderer registry (default vs. skill-workshop).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
@@ -12,9 +13,11 @@ import { installIntervalSpy } from './panel-test-support';
 
 interface ApprovalFixture {
   proposalId: string;
-  kind: 'restart' | 'config-mutation' | 'other';
+  source: string;
+  kind: string;
   summary: string;
   keysTouched: string[];
+  detail: Record<string, unknown> | null;
   status: 'pending' | 'approved' | 'denied' | 'withdrawn' | 'applied';
   decision: null;
   appliedAt: string | null;
@@ -24,15 +27,35 @@ interface ApprovalFixture {
 function approval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
   return {
     proposalId: 'opap_1',
-    kind: 'restart',
+    source: 'system-agent',
+    kind: 'system-agent:restart',
     summary: 'Restart the gateway to load the updated plugin.',
     keysTouched: ['gateway.plugins.openclaw.version'],
+    detail: null,
     status: 'pending',
     decision: null,
     appliedAt: null,
     createdAt: new Date('2026-09-08T00:00:00.000Z').toISOString(),
     ...overrides,
   };
+}
+
+function skillWorkshopApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
+  return approval({
+    proposalId: 'opap_sw_1',
+    source: 'skill-workshop',
+    kind: 'skill-workshop:update',
+    summary: 'Update the weather-lookup skill.',
+    keysTouched: [],
+    detail: {
+      skillName: 'weather-lookup',
+      kind: 'update',
+      scan: 'clean',
+      description: 'Adds a 5-day forecast endpoint.',
+      diffSummary: '+12 -3 lines in src/weather.ts',
+    },
+    ...overrides,
+  });
 }
 
 /** Installs a fetch stub: GET list responses come from `listResponses` in order; any POST decision call resolves with `decisionResponse`. */
@@ -92,13 +115,13 @@ describe('operator — empty state', () => {
   });
 });
 
-describe('operator — pending proposal', () => {
-  it('renders the summary, kind badge, keys touched, and Approve/Deny controls', async () => {
+describe('operator — pending proposal (legacy/system-agent, default renderer)', () => {
+  it('renders the summary, namespaced kind badge, keys touched, and Approve/Deny controls (#2152: normalized to system-agent:*)', async () => {
     installFetch([{ isOperator: true, approvals: [approval()] }]);
     render(<OperatorApprovalsPanel />);
 
     expect(await screen.findByText('Restart the gateway to load the updated plugin.')).toBeDefined();
-    expect(screen.getByText('restart')).toBeDefined();
+    expect(screen.getByText('system-agent:restart')).toBeDefined();
     expect(screen.getByText('gateway.plugins.openclaw.version')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Approve' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
@@ -140,12 +163,15 @@ describe('operator — approved (pending-apply) proposal', () => {
   });
 });
 
-// Approve/Deny/Withdraw share the same request/refresh shape (post the
+// Approve/Reject/Withdraw share the same request/refresh shape (post the
 // decision, flash "Proposal <decision>.", then show the refreshed status) —
-// parameterized instead of three near-identical test bodies.
+// parameterized instead of three near-identical test bodies. The default
+// renderer's Deny BUTTON LABEL is unchanged (#2152 only widens the wire
+// vocabulary from 'deny' to 'reject'; decisionLabels.reject still reads
+// 'Deny' for system-agent).
 describe.each([
   { buttonName: 'Approve', decision: 'approve', from: approval(), to: approval({ status: 'approved' }), resultingStatusText: 'approved — pending apply' },
-  { buttonName: 'Deny', decision: 'deny', from: approval(), to: approval({ status: 'denied' }), resultingStatusText: 'denied' },
+  { buttonName: 'Deny', decision: 'reject', from: approval(), to: approval({ status: 'denied' }), resultingStatusText: 'denied' },
   { buttonName: 'Withdraw', decision: 'withdrawn', from: approval({ status: 'approved' }), to: approval({ status: 'withdrawn' }), resultingStatusText: 'withdrawn' },
 ])('operator — $buttonName action', ({ buttonName, decision, from, to, resultingStatusText }) => {
   it(`posts decision=${decision} and refreshes to the new state`, async () => {
@@ -240,5 +266,57 @@ describe('manual refresh', () => {
 
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('Restart the gateway to load the updated plugin.')).toBeDefined();
+  });
+});
+
+// Per-source renderer registry (#2152): a source with no registry entry
+// (including 'system-agent') falls back to the default renderer above;
+// 'skill-workshop' gets its own detail rendering and Apply/Reject labels.
+describe('per-source renderer registry — skill-workshop', () => {
+  it('renders skill name, create/update, scan status, description, and diff summary instead of the default card body', async () => {
+    installFetch([{ isOperator: true, approvals: [skillWorkshopApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('weather-lookup')).toBeDefined();
+    expect(screen.getByText('— update')).toBeDefined();
+    expect(screen.getByText('clean')).toBeDefined();
+    expect(screen.getByText('Adds a 5-day forecast endpoint.')).toBeDefined();
+    expect(screen.getByText('+12 -3 lines in src/weather.ts')).toBeDefined();
+    // The default renderer's own fields must not leak through for this source.
+    expect(screen.queryByText('Keys touched')).toBeNull();
+  });
+
+  it('shows Apply/Reject button labels instead of the default Approve/Deny', async () => {
+    installFetch([{ isOperator: true, approvals: [skillWorkshopApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByRole('button', { name: 'Apply' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
+  });
+
+  it('posts decision=approve when Apply is clicked (labels are cosmetic only — the wire vocabulary stays approve|reject)', async () => {
+    const spy = installFetch(
+      [{ isOperator: true, approvals: [skillWorkshopApproval()] }, { isOperator: true, approvals: [skillWorkshopApproval({ status: 'approved' })] }],
+      { ok: true, body: { approval: skillWorkshopApproval({ status: 'approved' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Apply' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'approve' }) });
+  });
+
+  it('falls back to the default renderer for an unregistered source', async () => {
+    installFetch([{ isOperator: true, approvals: [approval({ source: 'some-future-source', kind: 'some-future-source:thing' })] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByRole('button', { name: 'Approve' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
+    expect(screen.getByText('some-future-source:thing')).toBeDefined();
   });
 });

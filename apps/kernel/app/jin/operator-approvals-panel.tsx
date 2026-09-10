@@ -1,15 +1,24 @@
 'use client';
 
 /**
- * Operator approvals panel for the `/jin` kernel dashboard (#2059).
+ * Operator approvals panel for the `/jin` kernel dashboard (#2059,
+ * generalized to a per-source renderer registry by #2152).
  *
- * Renders pending `operator.approval.requested` proposals (gateway restart /
- * config mutation) as a confirm card, mirroring the proposals table in
- * page.tsx and the polling/silent-refresh conventions of
- * usage-feed-panel.tsx. Tapping Approve/Deny signs and publishes an
- * `operator.approval.decided` event through `POST /jin/api/operator-
- * approvals/:proposalId/decision` — the kernel is the one that signs, this
- * component only makes the authenticated tap.
+ * Renders pending `operator.approval.requested` proposals as a confirm
+ * card, mirroring the proposals table in page.tsx and the
+ * polling/silent-refresh conventions of usage-feed-panel.tsx. Tapping
+ * Approve/Reject signs and publishes an `operator.approval.decided` event
+ * through `POST /jin/api/operator-approvals/:proposalId/decision` — the
+ * kernel is the one that signs, this component only makes the
+ * authenticated tap.
+ *
+ * `source` (open vocabulary, e.g. 'system-agent', 'skill-workshop') keys a
+ * small renderer registry (#2152): each entry supplies its own detail
+ * rendering and Approve/Reject button labels (`decisionLabels`), so a new
+ * source needs only a registry entry here — never a change to the polling,
+ * auth, or decision-post plumbing below. The default renderer (used for
+ * 'system-agent' and any unregistered source) reproduces the original
+ * #2059 card exactly: summary + keys-touched, Approve/Deny labels.
  *
  * Renders NOTHING (not even a header) when the signed-in identity is not
  * the node operator — `GET /jin/api/operator-approvals` reports
@@ -17,19 +26,23 @@
  * takes that at face value rather than trying to distinguish "no data" from
  * "not allowed".
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 const POLL_INTERVAL_MS = 5000;
 
 type ApprovalStatus = 'pending' | 'approved' | 'denied' | 'withdrawn' | 'applied';
-type ApprovalKind = 'restart' | 'config-mutation' | 'other';
-type DecisionAction = 'approve' | 'deny' | 'withdrawn';
+type DecisionAction = 'approve' | 'reject' | 'withdrawn';
 
 interface OperatorApprovalCard {
   proposalId: string;
-  kind: ApprovalKind;
+  /** Open vocabulary namespace, e.g. 'system-agent', 'skill-workshop' (#2152). */
+  source: string;
+  /** '<source>:<subkind>', e.g. 'system-agent:restart' (#2152). */
+  kind: string;
   summary: string;
   keysTouched: string[];
+  /** Optional per-source structured detail (#2152) — e.g. skill-workshop's diff summary. */
+  detail: Record<string, unknown> | null;
   status: ApprovalStatus;
   decision: { decidedBy: string; decidedAt: string; reason?: string } | null;
   appliedAt: string | null;
@@ -63,6 +76,86 @@ function KeysTouched({ keys }: Readonly<{ keys: string[] }>) {
   );
 }
 
+// ── per-source renderer registry (#2152) ────────────────────────────────────
+// A new source (e.g. a future OpenClaw source adapter) needs one entry here
+// and nothing else in this file — polling, auth, and the decision POST are
+// all source-agnostic already.
+
+interface DecisionLabels {
+  approve: string;
+  reject: string;
+}
+
+interface SourceRenderer {
+  decisionLabels: DecisionLabels;
+  renderDetail: (approval: OperatorApprovalCard) => ReactNode;
+}
+
+const DEFAULT_DECISION_LABELS: DecisionLabels = { approve: 'Approve', reject: 'Deny' };
+
+/** The original #2059 card body — summary + keys touched. */
+function renderDefaultDetail(approval: OperatorApprovalCard): ReactNode {
+  return (
+    <>
+      <p className="text-sm text-gray-200">{approval.summary}</p>
+      <div className="text-xs text-gray-500">
+        <span className="uppercase tracking-wide mr-2">Keys touched</span>
+        <KeysTouched keys={approval.keysTouched} />
+      </div>
+    </>
+  );
+}
+
+const DEFAULT_RENDERER: SourceRenderer = {
+  decisionLabels: DEFAULT_DECISION_LABELS,
+  renderDetail: renderDefaultDetail,
+};
+
+/** Read a string field out of `detail`, falling back when absent/mistyped — `detail` is untrusted, adapter-supplied JSON. */
+function detailString(detail: Record<string, unknown> | null, key: string, fallback: string): string {
+  const value = detail?.[key];
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+/** `skill-workshop` renderer (#2152): skill name, create/update, scan status, description, and a bounded diff-summary block. */
+function renderSkillWorkshopDetail(approval: OperatorApprovalCard): ReactNode {
+  const { detail } = approval;
+  const skillName = detailString(detail, 'skillName', 'Unknown skill');
+  const kind = detailString(detail, 'kind', 'update');
+  const scan = detailString(detail, 'scan', 'unknown');
+  const description = detailString(detail, 'description', '');
+  const diffSummary = detailString(detail, 'diffSummary', '');
+  return (
+    <div className="space-y-2">
+      <div className="text-sm text-gray-200">
+        <span className="font-medium text-gray-100">{skillName}</span>
+        <span className="text-gray-500"> — {kind}</span>
+      </div>
+      <div className="text-xs text-gray-500">
+        <span className="uppercase tracking-wide mr-2">Scan</span>
+        <span className={scan === 'clean' ? 'text-green-400' : 'text-yellow-400'}>{scan}</span>
+      </div>
+      {description && <p className="text-sm text-gray-300">{description}</p>}
+      {diffSummary && (
+        <pre className="text-xs text-gray-400 bg-gray-900/60 rounded p-2 overflow-x-auto whitespace-pre-wrap">{diffSummary}</pre>
+      )}
+    </div>
+  );
+}
+
+const SKILL_WORKSHOP_RENDERER: SourceRenderer = {
+  decisionLabels: { approve: 'Apply', reject: 'Reject' },
+  renderDetail: renderSkillWorkshopDetail,
+};
+
+const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
+  'skill-workshop': SKILL_WORKSHOP_RENDERER,
+};
+
+function rendererFor(source: string): SourceRenderer {
+  return SOURCE_RENDERERS[source] ?? DEFAULT_RENDERER;
+}
+
 function ApprovalCardRow({
   approval,
   onDecide,
@@ -72,6 +165,7 @@ function ApprovalCardRow({
   onDecide: (proposalId: string, decision: DecisionAction) => void;
   busy: boolean;
 }>) {
+  const renderer = rendererFor(approval.source);
   return (
     <div className="rounded-lg border border-gray-800 p-4 space-y-2">
       <div className="flex items-center justify-between gap-3">
@@ -83,20 +177,16 @@ function ApprovalCardRow({
         </div>
         <span className="text-xs text-gray-500">{new Date(approval.createdAt).toLocaleString()}</span>
       </div>
-      <p className="text-sm text-gray-200">{approval.summary}</p>
-      <div className="text-xs text-gray-500">
-        <span className="uppercase tracking-wide mr-2">Keys touched</span>
-        <KeysTouched keys={approval.keysTouched} />
-      </div>
+      {renderer.renderDetail(approval)}
       {approval.status === 'pending' && (
         <div className="flex items-center gap-2 pt-1">
           <button
             type="button"
-            onClick={() => onDecide(approval.proposalId, 'deny')}
+            onClick={() => onDecide(approval.proposalId, 'reject')}
             disabled={busy}
             className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            Deny
+            {renderer.decisionLabels.reject}
           </button>
           <button
             type="button"
@@ -105,7 +195,7 @@ function ApprovalCardRow({
             autoFocus
             className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
           >
-            {busy ? '…' : 'Approve'}
+            {busy ? '…' : renderer.decisionLabels.approve}
           </button>
         </div>
       )}
@@ -140,7 +230,7 @@ function renderPanelBody(
       <div className="text-center py-10 rounded-lg border border-gray-800">
         <p className="text-gray-500 text-sm">No operator approvals yet.</p>
         <p className="text-gray-700 text-xs mt-1">
-          Gateway restart and config proposals from OpenClaw appear here.
+          Proposals from any connected source — gateway restart, config, and skill updates — appear here.
         </p>
       </div>
     );
@@ -226,7 +316,7 @@ export function OperatorApprovalsPanel() {
       <div className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-base font-semibold text-gray-100">Operator approvals</h2>
-          <p className="text-xs text-gray-500">Gateway restart / config proposals — approve from anywhere</p>
+          <p className="text-xs text-gray-500">Pending approvals across every connected source — approve from anywhere</p>
         </div>
         <button
           type="button"

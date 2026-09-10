@@ -1,6 +1,7 @@
 /**
- * POST /jin/api/operator-approvals/:proposalId/decision — approve, deny, or
- * withdraw an operator approval proposal (#2059).
+ * POST /jin/api/operator-approvals/:proposalId/decision — approve, reject,
+ * or withdraw an operator approval proposal (#2059, generalized vocabulary
+ * #2152).
  *
  * The load-bearing auth rule: this route requires `requireAuth` to resolve
  * the exact HUMAN operator identity — never `resolveActingDid`, never
@@ -11,7 +12,13 @@
  * for. A non-operator identity — including a genuinely different human —
  * gets 403 without ever learning whether `proposalId` exists.
  *
- * Body (JSON): { decision: 'approve' | 'deny' | 'withdrawn', reason?: string }
+ * `decision` is the open, source-agnostic vocabulary (#2152): the kernel
+ * never interprets it, only witnesses it and carries it (plus `source` +
+ * `kind` from the stored proposal) through on `operator.approval.decided`.
+ * An optional `mode` (e.g. 'allow-once') is likewise opaque — chosen by
+ * whatever source-adapter interprets the decision downstream.
+ *
+ * Body (JSON): { decision: 'approve' | 'reject' | 'withdrawn', mode?: string, reason?: string }
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
@@ -24,7 +31,8 @@ const log = createLogger('kernel:operator-approvals:decision');
 
 export const dynamic = 'force-dynamic';
 
-const VALID_DECISIONS = new Set(['approve', 'deny', 'withdrawn']);
+const VALID_DECISIONS = new Set(['approve', 'reject', 'withdrawn']);
+const MAX_MODE_LENGTH = 128;
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -54,7 +62,7 @@ export async function POST(
     body = (await request.json()) as Record<string, unknown>;
   } catch {
     return NextResponse.json(
-      { error: "Request body must be JSON with a decision field ('approve' | 'deny' | 'withdrawn')" },
+      { error: "Request body must be JSON with a decision field ('approve' | 'reject' | 'withdrawn')" },
       { status: 400, headers: cors },
     );
   }
@@ -62,17 +70,25 @@ export async function POST(
   const decision = body.decision;
   if (typeof decision !== 'string' || !VALID_DECISIONS.has(decision)) {
     return NextResponse.json(
-      { error: "decision must be 'approve', 'deny', or 'withdrawn'" },
+      { error: "decision must be 'approve', 'reject', or 'withdrawn'" },
       { status: 400, headers: cors },
     );
   }
   const reason = typeof body.reason === 'string' ? body.reason : undefined;
+  const mode = typeof body.mode === 'string' ? body.mode : undefined;
+  if (mode !== undefined && mode.length > MAX_MODE_LENGTH) {
+    return NextResponse.json(
+      { error: `mode must be at most ${MAX_MODE_LENGTH} chars` },
+      { status: 400, headers: cors },
+    );
+  }
 
   try {
     const result = await decideOperatorApproval({
       proposalId,
       operatorDid,
-      decision: decision as 'approve' | 'deny' | 'withdrawn',
+      decision: decision as 'approve' | 'reject' | 'withdrawn',
+      mode,
       reason,
     });
     if (!result.ok) {

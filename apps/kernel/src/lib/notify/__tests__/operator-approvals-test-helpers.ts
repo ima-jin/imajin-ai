@@ -35,9 +35,12 @@ export function pendingApprovalCard(overrides: Record<string, unknown> = {}) {
   return {
     proposalId: PROPOSAL_ID,
     operatorDid: OPERATOR_DID,
-    kind: 'restart' as const,
+    source: 'system-agent',
+    kind: 'system-agent:restart',
     summary: 'Restart the gateway to load the updated plugin.',
     keysTouched: [] as string[],
+    detail: null,
+    contentHash: null,
     status: 'pending' as const,
     decision: null,
     appliedAt: null,

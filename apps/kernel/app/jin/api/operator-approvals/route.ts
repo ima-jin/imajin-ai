@@ -1,11 +1,16 @@
 /**
- * GET /jin/api/operator-approvals — list operator approval proposals (#2059).
+ * GET /jin/api/operator-approvals — list operator approval proposals (#2059,
+ * open source/kind vocabulary #2152).
  *
  * Powers the /jin operator-approvals confirm-card panel. A non-operator
  * identity — including `@jin` itself, or anyone else authenticated on this
  * node — gets `{ isOperator: false, approvals: [] }`: no card, no data,
  * indistinguishable from "nothing pending" so this endpoint never confirms
  * whether a proposal exists to a caller who isn't allowed to see it.
+ *
+ * Optional `?source=` query param scopes the list to one source (#2152) —
+ * a view filter only, never a security boundary, since every returned row
+ * already belongs to this operator.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
@@ -32,6 +37,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ isOperator: false, approvals: [] }, { headers: cors });
   }
 
-  const approvals = await listApprovalsForOperator(operatorDid);
+  const { searchParams } = new URL(request.url);
+  const source = searchParams.get('source');
+  const approvals = await listApprovalsForOperator(operatorDid, source ? { source } : {});
   return NextResponse.json({ isOperator: true, approvals }, { headers: cors });
 }
