@@ -42,6 +42,14 @@ vi.mock('@imajin/logger', () => ({
 // load the real (pure) validator/isOperatorIdentity code without a DB.
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeSelfInfo: vi.fn() }));
 
+// operator-countersign.ts (imported directly by the route for the real,
+// pure parseOperatorSignature) imports `db`/`identities` from `@/src/db` at
+// module scope, and `@/src/db`'s own index.ts calls `createDb()` — requires
+// DATABASE_URL — at ITS module scope. Nothing in this route test ever
+// calls verifyOperatorCountersignature (that's the service's job, fully
+// mocked below), so a bare stub is enough to satisfy the import graph.
+vi.mock('@/src/db', () => ({ db: {}, identities: {} }));
+
 vi.mock('@/src/lib/notify/operator-approvals', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/src/lib/notify/operator-approvals')>();
   return { ...actual, getOperatorDid: mockGetOperatorDid };
@@ -225,5 +233,69 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe('Failed to record decision');
     expect(body.error).not.toContain('db unavailable');
+  });
+
+  // #2082: the route shape-validates operatorSignature/decidedAt and passes
+  // them through unchanged — cryptographic verification is the service's job.
+  describe('operatorSignature (#2082)', () => {
+    const VALID_SIG = { keyId: 'a'.repeat(64), alg: 'ed25519', sig: 'b'.repeat(128) };
+    const DECIDED_AT = '2026-09-10T18:00:00.000Z';
+
+    it('passes a well-shaped operatorSignature + decidedAt through to the service', async () => {
+      const res = await POST(
+        makeReq({ decision: 'approve', operatorSignature: VALID_SIG, decidedAt: DECIDED_AT }) as Parameters<typeof POST>[0],
+        paramsFor(PROPOSAL_ID),
+      );
+
+      expect(mockDecide).toHaveBeenCalledWith(
+        expect.objectContaining({ operatorSignature: VALID_SIG, decidedAt: DECIDED_AT }),
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('rejects (400) a malformed operatorSignature without calling the service', async () => {
+      const res = await POST(
+        makeReq({ decision: 'approve', operatorSignature: { keyId: 'too-short', alg: 'ed25519', sig: 'b'.repeat(128) } }) as Parameters<typeof POST>[0],
+        paramsFor(PROPOSAL_ID),
+      );
+
+      expect(res.status).toBe(400);
+      expect(mockDecide).not.toHaveBeenCalled();
+    });
+
+    it('rejects (400) an operatorSignature with no decidedAt without calling the service', async () => {
+      const res = await POST(
+        makeReq({ decision: 'approve', operatorSignature: VALID_SIG }) as Parameters<typeof POST>[0],
+        paramsFor(PROPOSAL_ID),
+      );
+
+      expect(res.status).toBe(400);
+      expect(mockDecide).not.toHaveBeenCalled();
+    });
+
+    it('omits operatorSignature/decidedAt from the service call when neither is supplied (unchanged pre-#2082 shape)', async () => {
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockDecide).toHaveBeenCalledWith({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        mode: undefined,
+        reason: undefined,
+        operatorSignature: undefined,
+        decidedAt: undefined,
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it('propagates a 400 from the service when it rejects the countersignature (e.g. required-but-missing, or invalid)', async () => {
+      mockDecide.mockResolvedValueOnce({ ok: false, error: 'Operator countersignature is required on this node', status: 400 });
+
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('Operator countersignature is required on this node');
+    });
   });
 });

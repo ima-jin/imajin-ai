@@ -25,8 +25,86 @@
  * `isOperator: false` with an empty list for anyone else, and this panel
  * takes that at face value rather than trying to distinguish "no data" from
  * "not allowed".
+ *
+ * #2082: before POSTing a decision, this component signs `canonicalize({
+ * contentHash, decidedAt, decision})` with the operator's OWN key — the
+ * same Ed25519 keypair already held client-side in `localStorage.
+ * imajin_keypair` for login/registration (see `../auth/login/components/
+ * KeyAuthTab.tsx`, the pattern this mirrors: a dynamic `@noble/ed25519`
+ * import rather than pulling the server-oriented `@imajin/auth` package
+ * into a client bundle). This is a genuine second signature alongside the
+ * kernel's own witness signature — the whole point of #2082 is that the
+ * kernel is no longer the only party whose signature the decision carries.
+ * If no local keypair is found (e.g. this browser only ever used a
+ * cookie session), the decision POSTs without `operatorSignature`; the
+ * kernel accepts that unless `OPERATOR_COUNTERSIGN_REQUIRED` is on, in
+ * which case the resulting 400 surfaces through the existing error flash.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+
+interface StoredKeypair {
+  privateKey: string;
+  publicKey: string;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+/**
+ * Canonical JSON for exactly `{contentHash, decidedAt, decision}` — sorted
+ * alphabetically to match `@imajin/auth`'s `canonicalize` (contentHash <
+ * decidedAt < decision), inlined rather than imported so this client
+ * bundle never pulls in the server-oriented `@imajin/auth` package (see
+ * module docs above).
+ */
+function canonicalizeCountersignFields(fields: { contentHash: string; decidedAt: string; decision: string }): string {
+  return `{"contentHash":${JSON.stringify(fields.contentHash)},"decidedAt":${JSON.stringify(fields.decidedAt)},"decision":${JSON.stringify(fields.decision)}}`;
+}
+
+interface OperatorSignature {
+  keyId: string;
+  alg: 'ed25519';
+  sig: string;
+}
+
+/**
+ * Sign `{contentHash, decidedAt, decision}` with the operator's local
+ * keypair, if one is present. Returns `null` (never throws) when there's
+ * no local keypair or signing fails for any reason — the caller falls
+ * back to submitting without `operatorSignature`.
+ */
+async function signOperatorDecision(fields: {
+  contentHash: string;
+  decidedAt: string;
+  decision: string;
+}): Promise<OperatorSignature | null> {
+  if (typeof window === 'undefined') return null;
+  const stored = localStorage.getItem('imajin_keypair');
+  if (!stored) return null;
+
+  try {
+    const { privateKey, publicKey } = JSON.parse(stored) as Partial<StoredKeypair>;
+    if (!privateKey || !publicKey) return null;
+
+    const ed = await import('@noble/ed25519');
+    const { sha512 } = await import('@noble/hashes/sha2.js');
+    (ed.etc as { sha512Sync?: (...m: Uint8Array[]) => Uint8Array }).sha512Sync = (...m: Uint8Array[]) => sha512(ed.etc.concatBytes(...m));
+
+    const canonical = canonicalizeCountersignFields(fields);
+    const msgBytes = new TextEncoder().encode(canonical);
+    const sigBytes = await ed.signAsync(msgBytes, hexToBytes(privateKey));
+    const sig = Array.from(sigBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return { keyId: publicKey, alg: 'ed25519', sig };
+  } catch {
+    return null;
+  }
+}
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -43,6 +121,8 @@ interface OperatorApprovalCard {
   keysTouched: string[];
   /** Optional per-source structured detail (#2152) — e.g. skill-workshop's diff summary. */
   detail: Record<string, unknown> | null;
+  /** sha256 hex digest the operator's countersignature covers (#2082) — always present. */
+  contentHash: string;
   status: ApprovalStatus;
   decision: { decidedBy: string; decidedAt: string; reason?: string } | null;
   appliedAt: string | null;
@@ -162,7 +242,7 @@ function ApprovalCardRow({
   busy,
 }: Readonly<{
   approval: OperatorApprovalCard;
-  onDecide: (proposalId: string, decision: DecisionAction) => void;
+  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction) => void;
   busy: boolean;
 }>) {
   const renderer = rendererFor(approval.source);
@@ -186,7 +266,7 @@ function ApprovalCardRow({
         <div className="flex items-center gap-2 pt-1">
           <button
             type="button"
-            onClick={() => onDecide(approval.proposalId, 'reject')}
+            onClick={() => onDecide(approval, 'reject')}
             disabled={busy}
             className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -194,7 +274,7 @@ function ApprovalCardRow({
           </button>
           <button
             type="button"
-            onClick={() => onDecide(approval.proposalId, 'approve')}
+            onClick={() => onDecide(approval, 'approve')}
             disabled={busy}
             ref={autoFocusRef}
             className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
@@ -207,7 +287,7 @@ function ApprovalCardRow({
         <div className="flex items-center gap-2 pt-1">
           <button
             type="button"
-            onClick={() => onDecide(approval.proposalId, 'withdrawn')}
+            onClick={() => onDecide(approval, 'withdrawn')}
             disabled={busy}
             className="px-3 py-1.5 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -223,7 +303,7 @@ function ApprovalCardRow({
 function renderPanelBody(
   loading: boolean,
   approvals: OperatorApprovalCard[],
-  onDecide: (proposalId: string, decision: DecisionAction) => void,
+  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction) => void,
   busyId: string,
 ) {
   if (loading) {
@@ -289,14 +369,24 @@ export function OperatorApprovalsPanel() {
     };
   }, [load]);
 
-  const handleDecide = useCallback(async (proposalId: string, decision: DecisionAction) => {
+  const handleDecide = useCallback(async (approval: OperatorApprovalCard, decision: DecisionAction) => {
+    const { proposalId } = approval;
     setBusyId(proposalId);
     try {
+      // #2082: decidedAt is chosen client-side, since it's exactly the
+      // timestamp the operator's signature below covers — the kernel
+      // verifies it (clock-skew bounds + the signature itself) rather than
+      // substituting its own.
+      const decidedAt = new Date().toISOString();
+      const operatorSignature = await signOperatorDecision({ contentHash: approval.contentHash, decidedAt, decision });
+
       const res = await fetch(`/jin/api/operator-approvals/${encodeURIComponent(proposalId)}/decision`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify(
+          operatorSignature ? { decision, decidedAt, operatorSignature } : { decision },
+        ),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };

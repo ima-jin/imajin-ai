@@ -15,12 +15,18 @@ const {
   mockUpdateWhere,
   mockPublish,
   mockSignSync,
+  mockVerifyOperatorCountersignature,
+  mockIsOperatorCountersignRequired,
 } = vi.hoisted(() => ({
   mockSelectLimit: vi.fn(),
   mockInsertValues: vi.fn().mockResolvedValue(undefined),
   mockUpdateWhere: vi.fn().mockResolvedValue(undefined),
   mockPublish: vi.fn().mockResolvedValue(undefined),
   mockSignSync: vi.fn(() => 'sig_fake'),
+  mockVerifyOperatorCountersignature: vi.fn(),
+  // #2082: default OFF, same as production default — individual tests flip
+  // this on to exercise the "kernel-forged decision" rejection path.
+  mockIsOperatorCountersignRequired: vi.fn(() => false),
 }));
 
 vi.mock('@/src/db', () => ({
@@ -48,10 +54,20 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
-vi.mock('@imajin/auth', () => ({
-  canonicalize: (x: unknown) => JSON.stringify(x),
-  crypto: { signSync: mockSignSync },
-}));
+// Real `canonicalize` (not a trivial JSON.stringify stand-in) so the hash
+// this test file's `pendingApprovalCard` fixture computes and the hash
+// `effectiveContentHash`/`computeApprovalContentHash` (loaded for real via
+// the `../operator-approvals` importOriginal mock below) compute can never
+// silently diverge.
+vi.mock('@imajin/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@imajin/auth')>();
+  return {
+    canonicalize: actual.canonicalize,
+    crypto: { signSync: mockSignSync },
+    SIGNED_MESSAGE_MAX_AGE: 5 * 60 * 1000,
+    FUTURE_TOLERANCE: 30 * 1000,
+  };
+});
 
 vi.mock('@imajin/bus', () => ({ publish: mockPublish }));
 
@@ -60,6 +76,19 @@ vi.mock('@/src/lib/vault/sealing', () => ({
 }));
 
 vi.mock('nanoid', () => ({ nanoid: () => 'fixedid1234' }));
+
+// operator-approvals.ts imports node-identity.ts, which calls getClient() at
+// module scope (requires DATABASE_URL) — stub it so importOriginal() below
+// can load the real (pure) effectiveContentHash/computeApprovalContentHash
+// without a DB, exactly like the route tests already do.
+vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeSelfInfo: vi.fn() }));
+
+vi.mock('../operator-countersign', () => ({ verifyOperatorCountersignature: mockVerifyOperatorCountersignature }));
+
+vi.mock('../operator-approvals', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../operator-approvals')>();
+  return { ...actual, isOperatorCountersignRequired: mockIsOperatorCountersignRequired };
+});
 
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
@@ -264,6 +293,161 @@ describe('decideOperatorApproval', () => {
     const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
 
     expect(result.ok).toBe(true);
+  });
+
+  // #2082: operator countersignature — the "kernel-forged decision" guard,
+  // verification wiring, and the withdraw path all funnel through this same
+  // function, so they're covered here rather than only at the route layer.
+  describe('operator countersignature (#2082)', () => {
+    const OPERATOR_SIG = { keyId: 'a'.repeat(64), alg: 'ed25519' as const, sig: 'b'.repeat(128) };
+    // Must be within the mocked SIGNED_MESSAGE_MAX_AGE/FUTURE_TOLERANCE
+    // window of the real clock at test-run time — computed fresh per call
+    // rather than a fixed literal, which would eventually age out.
+    const recentDecidedAt = () => new Date().toISOString();
+
+    it('rejects (400) a decision with no operatorSignature once the per-node flag is on — before any state mutation', async () => {
+      mockIsOperatorCountersignRequired.mockReturnValueOnce(true);
+      mockSelectLimit.mockResolvedValueOnce([row({ status: 'pending' })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result).toEqual({ ok: false, error: 'Operator countersignature is required on this node', status: 400 });
+      expect(mockVerifyOperatorCountersignature).not.toHaveBeenCalled();
+      expect(mockSignSync).not.toHaveBeenCalled();
+      expect(mockUpdateWhere).not.toHaveBeenCalled();
+      expect(mockPublish).not.toHaveBeenCalled();
+    });
+
+    it('accepts a decision with no operatorSignature while the flag is off (unchanged v1 behavior)', async () => {
+      mockSelectLimit
+        .mockResolvedValueOnce([row({ status: 'pending' })])
+        .mockResolvedValueOnce([row({ status: 'approved' })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result.ok).toBe(true);
+      expect(mockVerifyOperatorCountersignature).not.toHaveBeenCalled();
+    });
+
+    it('verifies a supplied operatorSignature even while the flag is off, and rejects (400) on failure', async () => {
+      mockVerifyOperatorCountersignature.mockResolvedValueOnce({ ok: false, error: 'Invalid operator signature' });
+      mockSelectLimit.mockResolvedValueOnce([row({ status: 'pending' })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        operatorSignature: OPERATOR_SIG,
+        decidedAt: recentDecidedAt(),
+      });
+
+      expect(result).toEqual({ ok: false, error: 'Invalid operator signature', status: 400 });
+      expect(mockSignSync).not.toHaveBeenCalled();
+      expect(mockUpdateWhere).not.toHaveBeenCalled();
+      expect(mockPublish).not.toHaveBeenCalled();
+    });
+
+    it('rejects (400) a mismatched/unknown/revoked key surfaced by verifyOperatorCountersignature', async () => {
+      mockVerifyOperatorCountersignature.mockResolvedValueOnce({
+        ok: false,
+        error: "operatorSignature.keyId does not match the operator DID's current registered key (unknown or revoked key)",
+      });
+      mockSelectLimit.mockResolvedValueOnce([row({ status: 'pending' })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        operatorSignature: OPERATOR_SIG,
+        decidedAt: recentDecidedAt(),
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.status).toBe(400);
+      expect(result.error).toMatch(/revoked key/);
+    });
+
+    it('rejects (400) when operatorSignature is supplied without decidedAt', async () => {
+      mockSelectLimit.mockResolvedValueOnce([row({ status: 'pending' })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        operatorSignature: OPERATOR_SIG,
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.status).toBe(400);
+      expect(mockVerifyOperatorCountersignature).not.toHaveBeenCalled();
+    });
+
+    it('rejects (400) when decidedAt is outside the accepted clock-skew window', async () => {
+      mockSelectLimit.mockResolvedValueOnce([row({ status: 'pending' })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        operatorSignature: OPERATOR_SIG,
+        decidedAt: '2000-01-01T00:00:00.000Z', // far outside SIGNED_MESSAGE_MAX_AGE
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.status).toBe(400);
+      expect(mockVerifyOperatorCountersignature).not.toHaveBeenCalled();
+    });
+
+    // Happy path for both approve and withdrawn — parameterized (rather than
+    // two near-identical bodies) to keep this under SonarCloud's duplicated-
+    // lines guard on new code.
+    it.each([
+      { decision: 'approve' as const, fromStatus: 'pending' as const, toStatus: 'approved' as const },
+      { decision: 'withdrawn' as const, fromStatus: 'approved' as const, toStatus: 'withdrawn' as const },
+    ])(
+      'verifies, persists, and publishes a valid operatorSignature for decision=$decision using the client-claimed decidedAt',
+      async ({ decision, fromStatus, toStatus }) => {
+        const decidedAt = recentDecidedAt();
+        mockVerifyOperatorCountersignature.mockResolvedValueOnce({ ok: true });
+        mockSelectLimit
+          .mockResolvedValueOnce([row({ status: fromStatus })])
+          .mockResolvedValueOnce([row({ status: toStatus })]);
+
+        const result = await decideOperatorApproval({
+          proposalId: PROPOSAL_ID,
+          operatorDid: OPERATOR_DID,
+          decision,
+          operatorSignature: OPERATOR_SIG,
+          decidedAt,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(mockVerifyOperatorCountersignature).toHaveBeenCalledWith(
+          OPERATOR_DID,
+          expect.objectContaining({ decision, decidedAt }),
+          OPERATOR_SIG,
+        );
+        expect(mockPublish).toHaveBeenCalledWith(
+          'operator.approval.decided',
+          expect.objectContaining({
+            payload: expect.objectContaining({ decidedAt, operatorSignature: OPERATOR_SIG }),
+          }),
+        );
+      },
+    );
+
+    it('rejects (400) a kernel-forged withdrawal with no operatorSignature once the flag is on', async () => {
+      mockIsOperatorCountersignRequired.mockReturnValueOnce(true);
+      mockSelectLimit.mockResolvedValueOnce([row({ status: 'approved' })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'withdrawn' });
+
+      expect(result).toEqual({ ok: false, error: 'Operator countersignature is required on this node', status: 400 });
+      expect(mockUpdateWhere).not.toHaveBeenCalled();
+    });
   });
 });
 

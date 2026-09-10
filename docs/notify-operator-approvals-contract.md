@@ -1,4 +1,4 @@
-# Operator approvals — notification contract (#2059, open source/kind vocabulary #2152)
+# Operator approvals — notification contract (#2059, open source/kind vocabulary #2152, operator countersignature #2082)
 
 Kernel half of "operator approvals appear as a signed confirm on /jin —
 approve from anywhere". #2059 shipped a single hard-coded vocabulary (the
@@ -140,6 +140,11 @@ once the operator taps Approve, Reject, or Withdraw on `/jin`
   decidedBy: string;    // the operator DID — always the human, never an agent
   decidedAt: string;    // ISO 8601
   reason?: string;
+  operatorSignature?: {  // the operator's OWN countersignature (#2082) — see below
+    keyId: string;        // hex-encoded Ed25519 public key that produced `sig`
+    alg: 'ed25519';
+    sig: string;           // hex-encoded Ed25519 signature
+  };
 }
 ```
 
@@ -152,6 +157,78 @@ identity. See **Auth invariant** below. The kernel never interprets
 `decision` or `mode` — it only witnesses and republishes them; a source's
 adapter is responsible for mapping `approve`/`reject` (+ optional `mode`)
 onto whatever vocabulary its own underlying store expects.
+
+### Operator countersignature (#2082)
+
+The kernel's node signature above is a **witness record** of an
+authenticated operator decision — it is signed by the *kernel's* key, so a
+kernel compromise could forge one. `operatorSignature` is a second,
+independent signature by the **operator's own key**, produced client-side
+on `/jin` (`apps/kernel/app/jin/operator-approvals-panel.tsx`) using the
+same Ed25519 keypair already held in the operator's browser
+(`localStorage.imajin_keypair`, the same key used for login/registration).
+It covers exactly:
+
+```ts
+canonicalize({ contentHash, decision, decidedAt })
+```
+
+where `contentHash` is the effective content hash of the *request* this
+decision answers (see `effectiveContentHash` in `apps/kernel/src/lib/
+notify/operator-approvals.ts` — always present on the `GET /jin/api/
+operator-approvals` card, recomputed on the fly for a legacy row that
+never stored one), and `decidedAt` is the same ISO-8601 timestamp on the
+payload above (client-chosen, not kernel-assigned, since it's exactly what
+the operator signed over).
+
+**Verification** (`verifyOperatorCountersignature` in `apps/kernel/src/
+lib/notify/operator-countersign.ts`), run on every decide request that
+supplies `operatorSignature`, regardless of the feature flag below:
+1. `decidedAt` must parse and be within the same clock-skew window
+   `@imajin/auth`'s message verification already uses (`SIGNED_MESSAGE_MAX_AGE`
+   = 5 minutes back, `FUTURE_TOLERANCE` = 30 seconds forward).
+2. `operatorSignature.keyId` must equal the operator DID's **current**
+   registered `identities.publicKey` exactly (resolved the same way the
+   existing `attestations/countersign` route resolves a witness key) —
+   this single check rejects an unknown key, a mismatched key, AND a
+   revoked/rotated key uniformly, since a rotated-away key is no longer
+   "current" either.
+3. `crypto.verifySync(sig, canonicalize({contentHash, decision, decidedAt}), keyId)`
+   must pass.
+Any failure returns 400 **before** the decision is persisted or the
+kernel's own witness signature is produced.
+
+### Feature flag: `OPERATOR_COUNTERSIGN_REQUIRED`
+
+Per-node environment variable, default unset (**off**). While off, a
+decision with no `operatorSignature` is still accepted (today's v1
+behavior) — but any `operatorSignature` that IS supplied is still fully
+verified per the rules above, so the plugin side
+(`ima-jin/openclaw-imajin-plugin#24`) can be built and tested against real
+verification before the flag ever flips. Once `OPERATOR_COUNTERSIGN_REQUIRED=true`
+on a node, `decideOperatorApproval` rejects (400, before any state
+mutation) any decision — including a withdrawal — that doesn't carry a
+valid `operatorSignature`. This is what closes the "kernel-forged
+decision" gap: a compromised kernel alone can no longer produce an
+accepted decision.
+
+**Rollout order**: (1) this kernel PR ships with the flag off — nothing
+changes for an unmigrated plugin. (2) `openclaw-imajin-plugin#24`
+implements plugin-side verification of `operatorSignature` against the
+operator DID's public key (not the kernel's witness signature) and the
+`/jin` client already starts sending `operatorSignature` on every decision
+(this PR ships that too). (3) once #24 is confirmed live and verifying
+correctly, an operator flips `OPERATOR_COUNTERSIGN_REQUIRED=true` on their
+node to require it going forward.
+
+### Wire-contract table
+
+| Field | Who signs it | Who verifies it | Covered by which hash/signature |
+|---|---|---|---|
+| `contentHash` (on the request) | n/a — computed by the source's adapter | Kernel, at ingest (`validateApprovalRequestedPayload`) | sha256 over `{proposalId, source, kind, summary, keysTouched, detail}` |
+| Kernel witness `signature` (on the decision row) | Kernel's own node key (`getNodeSigningIdentity`) | Anyone holding the node's public key (legacy v1 trust anchor) | Ed25519 over `canonicalize(payload)` (the whole decided-event payload) |
+| `operatorSignature.sig` | The operator's own key (client-side on `/jin`) | Kernel, at decide time (`verifyOperatorCountersignature`); the plugin, per `#24`, against the operator DID's public key directly | Ed25519 over `canonicalize({contentHash, decision, decidedAt})` |
+| `operatorSignature.keyId` | — (identifies the signer) | Kernel: must equal the operator DID's current `identities.publicKey` | n/a |
 
 ### Delivery
 

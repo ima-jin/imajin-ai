@@ -18,7 +18,16 @@
  * An optional `mode` (e.g. 'allow-once') is likewise opaque — chosen by
  * whatever source-adapter interprets the decision downstream.
  *
- * Body (JSON): { decision: 'approve' | 'reject' | 'withdrawn', mode?: string, reason?: string }
+ * Body (JSON): { decision: 'approve' | 'reject' | 'withdrawn', mode?: string, reason?: string,
+ *   operatorSignature?: { keyId: string; alg: 'ed25519'; sig: string }, decidedAt?: string }
+ *
+ * `operatorSignature` + `decidedAt` (#2082): the operator's own
+ * countersignature over `canonicalize({contentHash, decision, decidedAt})`,
+ * produced client-side on /jin. `decidedAt` is REQUIRED whenever
+ * `operatorSignature` is present (it's exactly what the client signed
+ * over) and is verified for clock skew + against the signature in
+ * `decideOperatorApproval`. Optional while `OPERATOR_COUNTERSIGN_REQUIRED`
+ * is off; once that per-node flag is on, omitting it is rejected with 400.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
@@ -26,6 +35,7 @@ import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
 import { decideOperatorApproval } from '@/src/lib/notify/operator-approvals-service';
+import { parseOperatorSignature } from '@/src/lib/notify/operator-countersign';
 
 const log = createLogger('kernel:operator-approvals:decision');
 
@@ -83,6 +93,20 @@ export async function POST(
     );
   }
 
+  // #2082: shape-validate the optional operator countersignature here;
+  // the service does the (async, DB-backed) cryptographic verification.
+  const operatorSignatureResult = parseOperatorSignature(body.operatorSignature);
+  if (!operatorSignatureResult.ok) {
+    return NextResponse.json({ error: operatorSignatureResult.error }, { status: 400, headers: cors });
+  }
+  const decidedAt = typeof body.decidedAt === 'string' ? body.decidedAt : undefined;
+  if (operatorSignatureResult.value && !decidedAt) {
+    return NextResponse.json(
+      { error: 'decidedAt is required when operatorSignature is present' },
+      { status: 400, headers: cors },
+    );
+  }
+
   try {
     const result = await decideOperatorApproval({
       proposalId,
@@ -90,6 +114,8 @@ export async function POST(
       decision: decision as 'approve' | 'reject' | 'withdrawn',
       mode,
       reason,
+      operatorSignature: operatorSignatureResult.value,
+      decidedAt,
     });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
