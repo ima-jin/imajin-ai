@@ -12,6 +12,10 @@ import { messagesTools } from './messages';
 import { warpTools } from './warp';
 import { discoveryTools } from './discovery';
 import { corpusTools } from './corpus';
+import { gmailTools } from './google-gmail';
+import { calendarTools as googleCalendarTools } from './google-calendar';
+import { driveTools as googleDriveTools } from './google-drive';
+import { meetTools as googleMeetTools } from './google-meet';
 
 /**
  * The MCP tool registry. To add a tool: create `./<tool>.ts` exporting an
@@ -49,6 +53,10 @@ export const ALL_TOOLS: McpTool[] = [
   ...warpTools,
   ...discoveryTools,
   ...corpusTools,
+  ...gmailTools,
+  ...googleCalendarTools,
+  ...googleDriveTools,
+  ...googleMeetTools,
 ];
 
 const TOOLS_BY_NAME = new Map<string, McpTool>(ALL_TOOLS.map((t) => [t.name, t]));
