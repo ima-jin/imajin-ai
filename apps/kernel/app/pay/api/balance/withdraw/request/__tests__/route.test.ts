@@ -3,6 +3,7 @@
  * unit row's amount/withdrawalsEnabled exclusively.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { jsonPostRequest, resetMockDbCallState } from '@/src/lib/pay/__tests__/mock-drizzle-table';
 
 const state = vi.hoisted(() => ({
   insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
@@ -10,12 +11,6 @@ const state = vi.hoisted(() => ({
   balanceRowQueue: [] as Array<{ did: string; unit: string; amount: string; withdrawalsEnabled: boolean } | undefined>,
   requireAuthMock: vi.fn(),
 }));
-
-function resetState() {
-  state.insertCalls = [];
-  state.updateCalls = [];
-  state.balanceRowQueue = [];
-}
 
 vi.mock('@imajin/logger', async () => {
   const { withLoggerPassthrough } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
@@ -28,19 +23,8 @@ vi.mock('@imajin/auth', () => ({
 }));
 
 vi.mock('@/src/db', async () => {
-  const { createMockDb, tableTag } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
-  function limitResultFor(table: unknown) {
-    if (tableTag(table) !== 'balances') return Promise.resolve([]);
-    const row = state.balanceRowQueue.shift();
-    return Promise.resolve(row ? [row] : []);
-  }
-  const { select, insert, update } = createMockDb(state, limitResultFor);
-  return {
-    db: { select, insert, update, transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert, update }) },
-    balances: { __table: 'balances', did: 'did', unit: 'unit', amount: 'amount' },
-    transactions: {},
-    withdrawalRequests: {},
-  };
+  const { balanceRouteDbModule } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  return balanceRouteDbModule(state, { balanceRowQueue: state.balanceRowQueue, extra: { withdrawalRequests: {} } });
 });
 
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
@@ -51,16 +35,12 @@ import { POST } from '../route';
 const DID = 'did:imajin:owner';
 
 function makeRequest(body: Record<string, unknown>): Request {
-  return new Request('https://kernel.test/api/balance/withdraw/request', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  return jsonPostRequest('https://kernel.test/api/balance/withdraw/request', body);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetState();
+  resetMockDbCallState(state);
   state.requireAuthMock.mockResolvedValue({ identity: { id: DID } });
 });
 

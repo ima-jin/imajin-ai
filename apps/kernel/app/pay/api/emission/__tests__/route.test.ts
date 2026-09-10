@@ -7,16 +7,12 @@
  * the transaction's first-class `attestationId` column.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { jsonPostRequest, resetMockDbCallState } from '@/src/lib/pay/__tests__/mock-drizzle-table';
 
 const state = vi.hoisted(() => ({
   insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
   updateCalls: [] as Array<{ table: string; values: Record<string, unknown> }>,
 }));
-
-function resetState() {
-  state.insertCalls = [];
-  state.updateCalls = [];
-}
 
 vi.mock('@imajin/logger', async () => {
   const { withLoggerPassthrough } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
@@ -29,13 +25,8 @@ vi.mock('@imajin/config', () => ({
 }));
 
 vi.mock('@/src/db', async () => {
-  const { createMockDb } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
-  const { insert } = createMockDb(state, () => Promise.resolve([]));
-  return {
-    db: { insert },
-    balances: { did: 'did', unit: 'unit', amount: 'amount' },
-    transactions: {},
-  };
+  const { balanceRouteDbModule } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  return balanceRouteDbModule(state);
 });
 
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
@@ -46,16 +37,12 @@ import { POST } from '../route';
 const API_KEY = 'test-pay-api-key';
 
 function makeRequest(body: Record<string, unknown>): Request {
-  return new Request('https://kernel.test/api/emission', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
-    body: JSON.stringify(body),
-  });
+  return jsonPostRequest('https://kernel.test/api/emission', body, { Authorization: `Bearer ${API_KEY}` });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetState();
+  resetMockDbCallState(state);
   process.env.PAY_SERVICE_API_KEY = API_KEY;
 });
 

@@ -2,6 +2,7 @@
  * Tests for /api/admin/deposits (#2016) — manual EMT deposits credit MJN.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { jsonPostRequest, resetMockDbCallState } from '@/src/lib/pay/__tests__/mock-drizzle-table';
 
 const state = vi.hoisted(() => ({
   insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
@@ -10,22 +11,12 @@ const state = vi.hoisted(() => ({
   pgSqlMock: vi.fn().mockResolvedValue([]),
 }));
 
-function resetState() {
-  state.insertCalls = [];
-  state.updateCalls = [];
-}
-
 vi.mock('@imajin/auth', () => ({ requireAdmin: state.requireAdminMock }));
 vi.mock('@imajin/db', () => ({ getClient: () => state.pgSqlMock }));
 
 vi.mock('@/src/db', async () => {
-  const { createMockDb } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
-  const { insert } = createMockDb(state, () => Promise.resolve([]));
-  return {
-    db: { insert, transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert }) },
-    balances: { did: 'did', unit: 'unit', amount: 'amount' },
-    transactions: {},
-  };
+  const { balanceRouteDbModule } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  return balanceRouteDbModule(state);
 });
 
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
@@ -33,16 +24,12 @@ vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefi
 import { GET, POST } from '../route';
 
 function makeRequest(body: Record<string, unknown>): Request {
-  return new Request('https://kernel.test/api/admin/deposits', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  return jsonPostRequest('https://kernel.test/api/admin/deposits', body);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetState();
+  resetMockDbCallState(state);
   state.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
   state.pgSqlMock.mockResolvedValue([]);
 });
