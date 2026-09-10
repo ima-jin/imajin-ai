@@ -7,41 +7,40 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mocks = vi.hoisted(() => {
-  const whereMock = vi.fn();
-  const fromMock = vi.fn(() => ({ where: whereMock }));
-  const selectMock = vi.fn(() => ({ from: fromMock }));
+const state = vi.hoisted(() => ({
+  insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
+  updateCalls: [] as Array<{ table: string; values: Record<string, unknown> }>,
+  balanceRowQueue: [] as Array<{ did: string; unit: string; amount: string; currency: string } | undefined>,
+  resolveEffectiveDidMock: vi.fn(),
+}));
 
-  const onConflictDoUpdateMock = vi.fn().mockResolvedValue(undefined);
-  const insertValuesMock = vi.fn(() => ({ onConflictDoUpdate: onConflictDoUpdateMock }));
-  const insertMock = vi.fn(() => ({ values: insertValuesMock }));
+function resetState() {
+  state.insertCalls = [];
+  state.updateCalls = [];
+  state.balanceRowQueue = [];
+}
 
-  const updateWhereMock = vi.fn().mockResolvedValue(undefined);
-  const setMock = vi.fn(() => ({ where: updateWhereMock }));
-  const updateMock = vi.fn(() => ({ set: setMock }));
-
-  const resolveEffectiveDidMock = vi.fn();
-
-  return { whereMock, fromMock, selectMock, insertValuesMock, insertMock, onConflictDoUpdateMock, updateWhereMock, setMock, updateMock, resolveEffectiveDidMock };
+vi.mock('@imajin/logger', async () => {
+  const { withLoggerPassthrough } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  return { withLogger: withLoggerPassthrough() };
 });
 
-vi.mock('@imajin/logger', () => ({
-  withLogger: (_service: string, handler: (req: unknown, ctx: { log: unknown }) => Promise<Response>) =>
-    (req: unknown) => handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }),
-}));
+vi.mock('@imajin/auth', () => ({ resolveEffectiveDid: state.resolveEffectiveDidMock }));
 
-vi.mock('@imajin/auth', () => ({ resolveEffectiveDid: mocks.resolveEffectiveDidMock }));
-
-vi.mock('@/src/db', () => ({
-  db: {
-    select: mocks.selectMock,
-    insert: mocks.insertMock,
-    update: mocks.updateMock,
-    transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert: mocks.insertMock, update: mocks.updateMock }),
-  },
-  balances: { did: 'did', unit: 'unit', amount: 'amount' },
-  transactions: {},
-}));
+vi.mock('@/src/db', async () => {
+  const { createMockDb, tableTag } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  function limitResultFor(table: unknown) {
+    if (tableTag(table) !== 'balances') return Promise.resolve([]);
+    const row = state.balanceRowQueue.shift();
+    return Promise.resolve(row ? [row] : []);
+  }
+  const { select, insert, update } = createMockDb(state, limitResultFor);
+  return {
+    db: { select, insert, update, transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert, update }) },
+    balances: { __table: 'balances', did: 'did', unit: 'unit', amount: 'amount' },
+    transactions: {},
+  };
+});
 
 vi.mock('@/src/lib/kernel/id', () => {
   let n = 0;
@@ -61,13 +60,10 @@ function makeRequest(body: Record<string, unknown>): Request {
   });
 }
 
-function mockSenderBalance(row: { did: string; unit: string; amount: string; currency: string } | undefined) {
-  mocks.whereMock.mockImplementationOnce(() => ({ limit: vi.fn().mockResolvedValue(row ? [row] : []) }));
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.resolveEffectiveDidMock.mockResolvedValue({ ok: true, effectiveDid: FROM_DID });
+  resetState();
+  state.resolveEffectiveDidMock.mockResolvedValue({ ok: true, effectiveDid: FROM_DID });
 });
 
 describe('POST /api/balance/gift — per-unit balance writes (#2016)', () => {
@@ -89,7 +85,7 @@ describe('POST /api/balance/gift — per-unit balance writes (#2016)', () => {
   });
 
   it('rejects insufficient MJN balance', async () => {
-    mockSenderBalance({ did: FROM_DID, unit: 'MJN', amount: '1', currency: 'CAD' });
+    state.balanceRowQueue.push({ did: FROM_DID, unit: 'MJN', amount: '1', currency: 'CAD' });
     const res = await POST(
       makeRequest({ from_did: FROM_DID, recipients: [{ did: 'did:imajin:r1', cash_amount: 10 }] }) as never,
     );
@@ -97,7 +93,7 @@ describe('POST /api/balance/gift — per-unit balance writes (#2016)', () => {
   });
 
   it('writes an MJN transaction + balance credit for the cash leg only', async () => {
-    mockSenderBalance({ did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' });
+    state.balanceRowQueue.push({ did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' });
     const res = await POST(
       makeRequest({ from_did: FROM_DID, recipients: [{ did: 'did:imajin:r1', cash_amount: 10 }] }) as never,
     );
@@ -106,14 +102,14 @@ describe('POST /api/balance/gift — per-unit balance writes (#2016)', () => {
     const body = await res.json();
     expect(body.transactions).toHaveLength(1);
 
-    const txValues = mocks.insertValuesMock.mock.calls.find((c) => c[0]?.type === 'gift')?.[0];
+    const txValues = state.insertCalls.find((c) => c.values.type === 'gift')?.values;
     expect(txValues).toMatchObject({ unit: 'MJN', sourceKind: 'transfer', toDid: 'did:imajin:r1' });
-    const balanceValues = mocks.insertValuesMock.mock.calls.find((c) => c[0]?.did === 'did:imajin:r1')?.[0];
+    const balanceValues = state.insertCalls.find((c) => c.values.did === 'did:imajin:r1')?.values;
     expect(balanceValues).toMatchObject({ unit: 'MJN', amount: '10' });
   });
 
   it('writes both an MJN row and an MJNx row when both legs are nonzero', async () => {
-    mockSenderBalance({ did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' });
+    state.balanceRowQueue.push({ did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' });
     const res = await POST(
       makeRequest({
         from_did: FROM_DID,
@@ -125,7 +121,7 @@ describe('POST /api/balance/gift — per-unit balance writes (#2016)', () => {
     const body = await res.json();
     expect(body.transactions).toHaveLength(2);
 
-    const txInserts = mocks.insertValuesMock.mock.calls.filter((c) => c[0]?.type === 'gift').map((c) => c[0]);
+    const txInserts = state.insertCalls.filter((c) => c.values.type === 'gift').map((c) => c.values);
     expect(txInserts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ unit: 'MJN', amount: '10' }),
@@ -135,7 +131,7 @@ describe('POST /api/balance/gift — per-unit balance writes (#2016)', () => {
   });
 
   it('skips a recipient whose gift amounts are both zero', async () => {
-    mockSenderBalance({ did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' });
+    state.balanceRowQueue.push({ did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' });
     const res = await POST(
       makeRequest({ from_did: FROM_DID, recipients: [{ did: 'did:imajin:r1', cash_amount: 0, credit_amount: 0 }] }) as never,
     );

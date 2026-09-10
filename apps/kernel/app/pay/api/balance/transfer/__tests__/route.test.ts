@@ -6,47 +6,41 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mocks = vi.hoisted(() => {
-  const whereMock = vi.fn();
-  const fromMock = vi.fn(() => ({ where: whereMock }));
-  const selectMock = vi.fn(() => ({ from: fromMock }));
+const state = vi.hoisted(() => ({
+  insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
+  updateCalls: [] as Array<{ table: string; values: Record<string, unknown> }>,
+  // Consumed in call order: sender balance first, then recipient balance.
+  balanceRowQueue: [] as Array<{ did: string; unit: string; amount: string; currency: string } | undefined>,
+  resolveEffectiveDidMock: vi.fn(),
+}));
 
-  const onConflictDoUpdateMock = vi.fn().mockResolvedValue(undefined);
-  const insertValuesMock = vi.fn(() => ({ onConflictDoUpdate: onConflictDoUpdateMock }));
-  const insertMock = vi.fn(() => ({ values: insertValuesMock }));
+function resetState() {
+  state.insertCalls = [];
+  state.updateCalls = [];
+  state.balanceRowQueue = [];
+}
 
-  const updateWhereMock = vi.fn().mockResolvedValue(undefined);
-  const setMock = vi.fn(() => ({ where: updateWhereMock }));
-  const updateMock = vi.fn(() => ({ set: setMock }));
-
-  const resolveEffectiveDidMock = vi.fn();
-
-  return {
-    whereMock,
-    fromMock,
-    selectMock,
-    insertValuesMock,
-    insertMock,
-    onConflictDoUpdateMock,
-    updateWhereMock,
-    setMock,
-    updateMock,
-    resolveEffectiveDidMock,
-  };
+vi.mock('@imajin/logger', async () => {
+  const { withLoggerPassthrough } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  return { withLogger: withLoggerPassthrough() };
 });
 
-vi.mock('@imajin/logger', () => ({
-  withLogger: (_service: string, handler: (req: unknown, ctx: { log: unknown }) => Promise<Response>) =>
-    (req: unknown) => handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }),
-}));
+vi.mock('@imajin/auth', () => ({ resolveEffectiveDid: state.resolveEffectiveDidMock }));
 
-vi.mock('@imajin/auth', () => ({ resolveEffectiveDid: mocks.resolveEffectiveDidMock }));
-
-vi.mock('@/src/db', () => ({
-  db: { select: mocks.selectMock, insert: mocks.insertMock, update: mocks.updateMock, transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert: mocks.insertMock, update: mocks.updateMock }) },
-  balances: { did: 'did', unit: 'unit', amount: 'amount' },
-  transactions: {},
-}));
+vi.mock('@/src/db', async () => {
+  const { createMockDb, tableTag } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  function limitResultFor(table: unknown) {
+    if (tableTag(table) !== 'balances') return Promise.resolve([]);
+    const row = state.balanceRowQueue.shift();
+    return Promise.resolve(row ? [row] : []);
+  }
+  const { select, insert, update } = createMockDb(state, limitResultFor);
+  return {
+    db: { select, insert, update, transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert, update }) },
+    balances: { __table: 'balances', did: 'did', unit: 'unit', amount: 'amount' },
+    transactions: {},
+  };
+});
 
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
@@ -64,13 +58,10 @@ function makeRequest(body: Record<string, unknown>): Request {
   });
 }
 
-function mockBalanceRow(row: { did: string; unit: string; amount: string; currency: string } | undefined) {
-  mocks.whereMock.mockImplementationOnce(() => ({ limit: vi.fn().mockResolvedValue(row ? [row] : []) }));
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.resolveEffectiveDidMock.mockResolvedValue({ ok: true, effectiveDid: FROM_DID });
+  resetState();
+  state.resolveEffectiveDidMock.mockResolvedValue({ ok: true, effectiveDid: FROM_DID });
 });
 
 describe('POST /api/balance/transfer — unit-aware (#2016)', () => {
@@ -80,12 +71,11 @@ describe('POST /api/balance/transfer — unit-aware (#2016)', () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toMatch(/Unknown unit/);
-    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(state.insertCalls).toHaveLength(0);
   });
 
   it('defaults to MJN when unit is omitted', async () => {
-    mockBalanceRow({ did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' });
-    mockBalanceRow(undefined); // recipient has no existing row
+    state.balanceRowQueue.push({ did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' }, undefined);
 
     const res = await POST(makeRequest({ from_did: FROM_DID, to_did: TO_DID, amount: 10 }) as never);
 
@@ -95,8 +85,7 @@ describe('POST /api/balance/transfer — unit-aware (#2016)', () => {
   });
 
   it('transfers MJNx to MJNx — both legs touch the same unit row, never laundered into MJN', async () => {
-    mockBalanceRow({ did: FROM_DID, unit: 'MJNx', amount: '50', currency: 'CAD' });
-    mockBalanceRow(undefined);
+    state.balanceRowQueue.push({ did: FROM_DID, unit: 'MJNx', amount: '50', currency: 'CAD' }, undefined);
 
     const res = await POST(makeRequest({ from_did: FROM_DID, to_did: TO_DID, amount: 20, unit: 'MJNx' }) as never);
 
@@ -104,15 +93,15 @@ describe('POST /api/balance/transfer — unit-aware (#2016)', () => {
     const body = await res.json();
     expect(body).toMatchObject({ unit: 'MJNx', source: 'credit' });
 
-    const txValues = mocks.insertValuesMock.mock.calls.find((c) => c[0]?.type === 'transfer')?.[0];
+    const txValues = state.insertCalls.find((c) => c.values.type === 'transfer')?.values;
     expect(txValues).toMatchObject({ unit: 'MJNx', sourceKind: 'transfer' });
 
-    const balanceCredit = mocks.insertValuesMock.mock.calls.find((c) => c[0]?.did === TO_DID)?.[0];
+    const balanceCredit = state.insertCalls.find((c) => c.values.did === TO_DID)?.values;
     expect(balanceCredit).toMatchObject({ unit: 'MJNx', amount: '20' });
   });
 
   it('rejects when the requested unit balance is insufficient', async () => {
-    mockBalanceRow({ did: FROM_DID, unit: 'MJN', amount: '5', currency: 'CAD' });
+    state.balanceRowQueue.push({ did: FROM_DID, unit: 'MJN', amount: '5', currency: 'CAD' });
 
     const res = await POST(makeRequest({ from_did: FROM_DID, to_did: TO_DID, amount: 10, unit: 'MJN' }) as never);
 

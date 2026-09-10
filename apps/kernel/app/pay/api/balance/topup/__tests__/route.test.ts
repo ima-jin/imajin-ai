@@ -3,26 +3,30 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mocks = vi.hoisted(() => {
-  const onConflictDoUpdateMock = vi.fn().mockResolvedValue(undefined);
-  const insertValuesMock = vi.fn(() => ({ onConflictDoUpdate: onConflictDoUpdateMock }));
-  const insertMock = vi.fn(() => ({ values: insertValuesMock }));
-  return { onConflictDoUpdateMock, insertValuesMock, insertMock };
+const state = vi.hoisted(() => ({
+  insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
+  updateCalls: [] as Array<{ table: string; values: Record<string, unknown> }>,
+}));
+
+function resetState() {
+  state.insertCalls = [];
+  state.updateCalls = [];
+}
+
+vi.mock('@imajin/logger', async () => {
+  const { withLoggerPassthrough } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  return { withLogger: withLoggerPassthrough() };
 });
 
-vi.mock('@imajin/logger', () => ({
-  withLogger: (_service: string, handler: (req: unknown, ctx: { log: unknown }) => Promise<Response>) =>
-    (req: unknown) => handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }),
-}));
-
-vi.mock('@/src/db', () => ({
-  db: {
-    insert: mocks.insertMock,
-    transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert: mocks.insertMock }),
-  },
-  balances: { did: 'did', unit: 'unit', amount: 'amount' },
-  transactions: {},
-}));
+vi.mock('@/src/db', async () => {
+  const { createMockDb } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  const { insert } = createMockDb(state, () => Promise.resolve([]));
+  return {
+    db: { insert, transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert }) },
+    balances: { did: 'did', unit: 'unit', amount: 'amount' },
+    transactions: {},
+  };
+});
 
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
@@ -41,6 +45,7 @@ function makeRequest(body: Record<string, unknown>): Request {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetState();
   process.env.PAY_SERVICE_API_KEY = API_KEY;
 });
 
@@ -65,9 +70,9 @@ describe('POST /api/balance/topup — always MJN (#2016)', () => {
     const res = await POST(makeRequest({ did: 'did:imajin:x', amount: 25, service: 'coffee', type: 'topup' }) as never);
 
     expect(res.status).toBe(200);
-    const txValues = mocks.insertValuesMock.mock.calls.find((c) => c[0]?.toDid === 'did:imajin:x')?.[0];
+    const txValues = state.insertCalls.find((c) => c.values.toDid === 'did:imajin:x')?.values;
     expect(txValues).toMatchObject({ unit: 'MJN', sourceKind: 'receipt' });
-    const balanceValues = mocks.insertValuesMock.mock.calls.find((c) => c[0]?.did === 'did:imajin:x')?.[0];
+    const balanceValues = state.insertCalls.find((c) => c.values.did === 'did:imajin:x')?.values;
     expect(balanceValues).toMatchObject({ unit: 'MJN', amount: '25' });
   });
 });

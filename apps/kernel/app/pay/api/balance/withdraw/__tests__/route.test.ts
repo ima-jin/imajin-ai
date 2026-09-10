@@ -4,48 +4,48 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mocks = vi.hoisted(() => {
-  const whereMock = vi.fn();
-  const fromMock = vi.fn(() => ({ where: whereMock }));
-  const selectMock = vi.fn(() => ({ from: fromMock }));
-
-  const updateWhereMock = vi.fn().mockResolvedValue(undefined);
-  const setMock = vi.fn(() => ({ where: updateWhereMock }));
-  const updateMock = vi.fn(() => ({ set: setMock }));
-
-  const insertValuesMock = vi.fn().mockResolvedValue(undefined);
-  const insertMock = vi.fn(() => ({ values: insertValuesMock }));
-
-  const requireAuthMock = vi.fn();
-  const transferCreateMock = vi.fn();
-
-  return { whereMock, fromMock, selectMock, updateWhereMock, setMock, updateMock, insertValuesMock, insertMock, requireAuthMock, transferCreateMock };
-});
-
-vi.mock('@imajin/logger', () => ({
-  withLogger: (_service: string, handler: (req: unknown, ctx: { log: unknown }) => Promise<Response>) =>
-    (req: unknown) => handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }),
+const state = vi.hoisted(() => ({
+  insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
+  updateCalls: [] as Array<{ table: string; values: Record<string, unknown> }>,
+  balanceRowQueue: [] as Array<{ did: string; unit: string; amount: string; currency: string } | undefined>,
+  requireAuthMock: vi.fn(),
+  transferCreateMock: vi.fn(),
 }));
 
+function resetState() {
+  state.insertCalls = [];
+  state.updateCalls = [];
+  state.balanceRowQueue = [];
+}
+
+vi.mock('@imajin/logger', async () => {
+  const { withLoggerPassthrough } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  return { withLogger: withLoggerPassthrough() };
+});
+
 vi.mock('@imajin/auth', () => ({
-  requireAuth: mocks.requireAuthMock,
+  requireAuth: state.requireAuthMock,
   resolveActingDid: (identity: { id: string }) => identity.id,
 }));
 
-vi.mock('@/src/db', () => ({
-  db: {
-    select: mocks.selectMock,
-    update: mocks.updateMock,
-    insert: mocks.insertMock,
-    transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert: mocks.insertMock, update: mocks.updateMock }),
-  },
-  balances: { did: 'did', unit: 'unit', amount: 'amount' },
-  transactions: {},
-}));
+vi.mock('@/src/db', async () => {
+  const { createMockDb, tableTag } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  function limitResultFor(table: unknown) {
+    if (tableTag(table) !== 'balances') return Promise.resolve([]);
+    const row = state.balanceRowQueue.shift();
+    return Promise.resolve(row ? [row] : []);
+  }
+  const { select, insert, update } = createMockDb(state, limitResultFor);
+  return {
+    db: { select, insert, update, transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert, update }) },
+    balances: { __table: 'balances', did: 'did', unit: 'unit', amount: 'amount' },
+    transactions: {},
+  };
+});
 
 vi.mock('stripe', () => ({
   default: class {
-    transfers = { create: mocks.transferCreateMock };
+    transfers = { create: state.transferCreateMock };
   },
 }));
 
@@ -64,15 +64,12 @@ function makeRequest(body: Record<string, unknown>): Request {
   });
 }
 
-function mockBalance(row: { did: string; unit: string; amount: string; currency: string } | undefined) {
-  mocks.whereMock.mockImplementationOnce(() => ({ limit: vi.fn().mockResolvedValue(row ? [row] : []) }));
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
+  resetState();
   process.env.STRIPE_SECRET_KEY = 'sk_test';
-  mocks.requireAuthMock.mockResolvedValue({ identity: { id: DID } });
-  mocks.transferCreateMock.mockResolvedValue({ id: 'tr_test' });
+  state.requireAuthMock.mockResolvedValue({ identity: { id: DID } });
+  state.transferCreateMock.mockResolvedValue({ id: 'tr_test' });
 });
 
 describe('POST /api/balance/withdraw — MJN-only (#2016)', () => {
@@ -82,19 +79,19 @@ describe('POST /api/balance/withdraw — MJN-only (#2016)', () => {
   });
 
   it('rejects insufficient MJN balance', async () => {
-    mockBalance({ did: DID, unit: 'MJN', amount: '0.50', currency: 'CAD' });
+    state.balanceRowQueue.push({ did: DID, unit: 'MJN', amount: '0.50', currency: 'CAD' });
     const res = await POST(makeRequest({ amount: 500, account_id: 'acct_1' }) as never);
     expect(res.status).toBe(400);
   });
 
   it('debits the MJN row and records a receipt-kind transaction on success', async () => {
-    mockBalance({ did: DID, unit: 'MJN', amount: '100', currency: 'CAD' });
+    state.balanceRowQueue.push({ did: DID, unit: 'MJN', amount: '100', currency: 'CAD' });
     const res = await POST(makeRequest({ amount: 500, account_id: 'acct_1' }) as never);
 
     expect(res.status).toBe(200);
-    expect(mocks.transferCreateMock).toHaveBeenCalled();
-    const txValues = mocks.insertValuesMock.mock.calls[0][0];
+    expect(state.transferCreateMock).toHaveBeenCalled();
+    const txValues = state.insertCalls[0].values;
     expect(txValues).toMatchObject({ unit: 'MJN', sourceKind: 'receipt', type: 'withdrawal' });
-    expect(mocks.updateMock).toHaveBeenCalled();
+    expect(state.updateCalls).toHaveLength(1);
   });
 });

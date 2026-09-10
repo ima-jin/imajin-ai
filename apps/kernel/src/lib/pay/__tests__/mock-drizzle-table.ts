@@ -40,10 +40,25 @@ export function tableTag(table: unknown): string {
  * chained call shape Drizzle's query builder has, recording insert/update
  * calls into `state` and delegating `.limit()` results to the caller via
  * `limitResultFor(table)`.
+ *
+ * The where-clause result is both directly awaitable (mirrors
+ * `getBalances()`, which never calls `.limit()`) and chainable with
+ * `.limit()` (mirrors `getBalanceRow()`), matching how real Drizzle's
+ * query builder behaves either way.
  */
 export function createMockDb(state: MockDbCallState, limitResultFor: (table: unknown) => Promise<unknown[]>) {
   function whereClauseFor(table: unknown) {
-    return { limit: (_n: number) => limitResultFor(table) };
+    // Lazy + cached: `limitResultFor(table)` must run at most once per
+    // where-clause, whether the caller awaits the clause directly or calls
+    // `.limit(n)` on it (or, in principle, both) — eagerly invoking it here
+    // would double-consume any queue-shaped `limitResultFor` the caller supplies.
+    let cached: Promise<unknown[]> | undefined;
+    const getResult = () => (cached ??= limitResultFor(table));
+    return {
+      limit: (_n: number) => getResult(),
+      then: (onFulfilled?: ((value: unknown[]) => unknown) | null, onRejected?: ((reason: unknown) => unknown) | null) =>
+        getResult().then(onFulfilled, onRejected),
+    };
   }
   function fromClauseFor() {
     return (table: unknown) => ({ where: (_cond?: unknown) => whereClauseFor(table) });
@@ -82,4 +97,14 @@ export function createMockDb(state: MockDbCallState, limitResultFor: (table: unk
   }
 
   return { select, update, insert };
+}
+
+/**
+ * Shared `@imajin/logger` `withLogger` mock: a transparent pass-through so
+ * `POST`/`GET` route handlers wrapped in `withLogger('kernel', handler)`
+ * are callable directly in tests, matching every pay route's shape.
+ */
+export function withLoggerPassthrough() {
+  return (_service: string, handler: (req: unknown, ctx: { log: unknown }) => Promise<Response>) =>
+    (req: unknown) => handler(req, { log: { error: () => {}, info: () => {}, warn: () => {} } });
 }

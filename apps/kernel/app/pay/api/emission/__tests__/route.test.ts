@@ -8,28 +8,35 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mocks = vi.hoisted(() => {
-  const onConflictDoUpdateMock = vi.fn().mockResolvedValue(undefined);
-  const insertValuesMock = vi.fn(() => ({ onConflictDoUpdate: onConflictDoUpdateMock }));
-  const insertMock = vi.fn(() => ({ values: insertValuesMock }));
-  return { onConflictDoUpdateMock, insertValuesMock, insertMock };
-});
-
-vi.mock('@imajin/logger', () => ({
-  withLogger: (_service: string, handler: (req: unknown, ctx: { log: unknown }) => Promise<Response>) =>
-    (req: unknown) => handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }),
+const state = vi.hoisted(() => ({
+  insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
+  updateCalls: [] as Array<{ table: string; values: Record<string, unknown> }>,
 }));
+
+function resetState() {
+  state.insertCalls = [];
+  state.updateCalls = [];
+}
+
+vi.mock('@imajin/logger', async () => {
+  const { withLoggerPassthrough } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  return { withLogger: withLoggerPassthrough() };
+});
 
 vi.mock('@imajin/config', () => ({
   rateLimit: () => ({ limited: false }),
   getClientIP: () => '127.0.0.1',
 }));
 
-vi.mock('@/src/db', () => ({
-  db: { insert: mocks.insertMock },
-  balances: { did: 'did', unit: 'unit', amount: 'amount' },
-  transactions: {},
-}));
+vi.mock('@/src/db', async () => {
+  const { createMockDb } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
+  const { insert } = createMockDb(state, () => Promise.resolve([]));
+  return {
+    db: { insert },
+    balances: { did: 'did', unit: 'unit', amount: 'amount' },
+    transactions: {},
+  };
+});
 
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
@@ -48,6 +55,7 @@ function makeRequest(body: Record<string, unknown>): Request {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetState();
   process.env.PAY_SERVICE_API_KEY = API_KEY;
 });
 
@@ -58,7 +66,7 @@ describe('POST /api/emission — MJNx-only enforcement (#2016)', () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toMatch(/MJNx/);
-    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(state.insertCalls).toHaveLength(0);
   });
 
   it('rejects a missing/unknown unit', async () => {
@@ -70,12 +78,12 @@ describe('POST /api/emission — MJNx-only enforcement (#2016)', () => {
     const res = await POST(makeRequest({ to_did: 'did:imajin:x', amount: 10, unit: 'MJNx', reason: 'Welcome' }) as never);
 
     expect(res.status).toBe(201);
-    expect(mocks.insertMock).toHaveBeenCalledTimes(2); // balance credit + transaction row
+    expect(state.insertCalls).toHaveLength(2); // balance credit + transaction row
 
-    const balanceValues = mocks.insertValuesMock.mock.calls[0][0];
+    const balanceValues = state.insertCalls[0].values;
     expect(balanceValues).toMatchObject({ did: 'did:imajin:x', unit: 'MJNx', amount: '10' });
 
-    const txValues = mocks.insertValuesMock.mock.calls[1][0];
+    const txValues = state.insertCalls[1].values;
     expect(txValues).toMatchObject({ unit: 'MJNx', sourceKind: 'emission', toDid: 'did:imajin:x' });
     expect(txValues.attestationId).toBeNull();
   });
@@ -91,7 +99,7 @@ describe('POST /api/emission — MJNx-only enforcement (#2016)', () => {
       }) as never,
     );
 
-    const txValues = mocks.insertValuesMock.mock.calls[1][0];
+    const txValues = state.insertCalls[1].values;
     expect(txValues.attestationId).toBe('att_123');
   });
 
