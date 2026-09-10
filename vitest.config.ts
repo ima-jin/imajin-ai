@@ -88,6 +88,22 @@ export default defineConfig({
       { find: '@imajin/ui', replacement: resolve(__dirname, 'packages/ui/src/index.ts') },
       { find: '@imajin/pay/providers', replacement: resolve(__dirname, 'packages/pay/src/providers/index.ts') },
       { find: '@imajin/pay', replacement: resolve(__dirname, 'packages/pay/src/index.ts') },
+      // #1011 phase 2 (#2142): newly built packages, same rationale as above —
+      // vitest runs before build in CI, so every package that now ships a
+      // real dist build needs to be aliased straight to source for tests.
+      { find: '@imajin/bus', replacement: resolve(__dirname, 'packages/bus/src/index.ts') },
+      { find: '@imajin/claw-provisioner', replacement: resolve(__dirname, 'packages/claw-provisioner/src/index.ts') },
+      { find: '@imajin/claw-envelope', replacement: resolve(__dirname, 'packages/claw-envelope/src/index.ts') },
+      { find: '@imajin/dfos', replacement: resolve(__dirname, 'packages/dfos/src/index.ts') },
+      { find: '@imajin/emit', replacement: resolve(__dirname, 'packages/emit/src/index.ts') },
+      { find: '@imajin/input', replacement: resolve(__dirname, 'packages/input/src/index.ts') },
+      { find: '@imajin/llm', replacement: resolve(__dirname, 'packages/llm/src/index.ts') },
+      { find: '@imajin/media', replacement: resolve(__dirname, 'packages/media/src/index.ts') },
+      { find: '@imajin/nanoclaw-imajin-channel', replacement: resolve(__dirname, 'packages/nanoclaw-imajin-channel/src/index.ts') },
+      { find: '@imajin/notify', replacement: resolve(__dirname, 'packages/notify/src/index.ts') },
+      { find: '@imajin/onboard', replacement: resolve(__dirname, 'packages/onboard/src/index.tsx') },
+      { find: '@imajin/trust-graph', replacement: resolve(__dirname, 'packages/trust-graph/src/index.ts') },
+      { find: '@imajin/usage-emitter-claude-code', replacement: resolve(__dirname, 'packages/usage-emitter-claude-code/src/index.ts') },
     ],
   },
 });
