@@ -82,7 +82,7 @@ function matchDollarQuoteTag(sql, i) {
   const closingDollar = sql.indexOf('$', i + 1);
   if (closingDollar === -1) return null;
   const tagBody = sql.slice(i + 1, closingDollar);
-  const isValidTag = tagBody === '' || /^[A-Za-z_][A-Za-z0-9_]*$/.test(tagBody);
+  const isValidTag = tagBody === '' || /^[A-Za-z_]\w*$/.test(tagBody);
   return isValidTag ? sql.slice(i, closingDollar + 1) : null;
 }
 
