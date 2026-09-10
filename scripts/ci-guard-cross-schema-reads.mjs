@@ -112,7 +112,43 @@ function listScannableApps() {
     .map((d) => d.name);
 }
 
-// ── comment stripping (so a comment mentioning a schema name never flags) ───
+// ── stripJsComments: one small helper per token kind (so a comment ────────
+// mentioning a schema name never flags) ─────────────────────────────────────
+//
+// Same decomposition `scripts/lib/migration-ownership-parser.mjs`'s
+// `stripSqlComments` uses (#2140): each helper "consumes" exactly one kind
+// of token starting at index `i` and returns where to resume from, so the
+// dispatcher itself stays a flat sequence of independent `if`s (no nesting)
+// and each helper is a single, easily-verified state machine.
+
+/** Consumes a `"..."` / `'...'` / `` `...` `` string or template literal (backslash-escaped). Returns the consumed text and the index to resume from. */
+function consumeQuoted(source, i, quote) {
+  let j = i + 1;
+  while (j < source.length && source[j] !== quote) {
+    if (source[j] === '\\') j += 1;
+    j += 1;
+  }
+  j = Math.min(j + 1, source.length);
+  return { text: source.slice(i, j), next: j };
+}
+
+/** Consumes a `// ...` line comment through end-of-line (exclusive). Returns the resume index; the comment text itself is discarded. */
+function consumeLineComment(source, i) {
+  let j = i;
+  while (j < source.length && source[j] !== '\n') j += 1;
+  return j;
+}
+
+/** Consumes a `/* ... *\/` block comment. Newlines inside are preserved (as blank text) so line numbers stay accurate. */
+function consumeBlockComment(source, i) {
+  let j = i + 2;
+  let text = '';
+  while (j < source.length && source.slice(j, j + 2) !== '*/') {
+    if (source[j] === '\n') text += '\n';
+    j += 1;
+  }
+  return { text, next: Math.min(j + 2, source.length) };
+}
 
 /**
  * Strips `//` and `/* *\/` comments from TS/TSX source while passing
@@ -125,47 +161,40 @@ function listScannableApps() {
 function stripJsComments(source) {
   let out = '';
   let i = 0;
+
   while (i < source.length) {
     const ch = source[i];
-    const two = source.slice(i, i + 2);
 
     if (ch === '"' || ch === "'" || ch === '`') {
-      let j = i + 1;
-      while (j < source.length && source[j] !== ch) {
-        if (source[j] === '\\') j += 1;
-        j += 1;
-      }
-      j = Math.min(j + 1, source.length);
-      out += source.slice(i, j);
-      i = j;
+      const { text, next } = consumeQuoted(source, i, ch);
+      out += text;
+      i = next;
       continue;
     }
 
-    if (two === '//') {
-      while (i < source.length && source[i] !== '\n') i += 1;
+    if (ch === '/' && source[i + 1] === '/') {
+      i = consumeLineComment(source, i);
       continue;
     }
 
-    if (two === '/*') {
-      i += 2;
-      while (i < source.length && source.slice(i, i + 2) !== '*/') {
-        if (source[i] === '\n') out += '\n';
-        i += 1;
-      }
-      i = Math.min(i + 2, source.length);
+    if (ch === '/' && source[i + 1] === '*') {
+      const { text, next } = consumeBlockComment(source, i);
+      out += text;
+      i = next;
       continue;
     }
 
     out += ch;
     i += 1;
   }
+
   return out;
 }
 
 // ── detection ────────────────────────────────────────────────────────────────
 
-const SQL_REF_RE = /\b(?:FROM|JOIN|INTO|UPDATE)\s+"?([A-Za-z_][A-Za-z0-9_]*)"?\s*\.\s*"?([A-Za-z_][A-Za-z0-9_]*)"?/g;
-const PG_SCHEMA_RE = /\bpgSchema\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\)/g;
+const SQL_REF_RE = /\b(?:FROM|JOIN|INTO|UPDATE)\s+"?([A-Za-z_]\w*)"?\s*\.\s*"?([A-Za-z_]\w*)"?/g;
+const PG_SCHEMA_RE = /\bpgSchema\(\s*['"]([A-Za-z_]\w*)['"]\s*\)/g;
 
 /** Finds every `schema.table` reference following a SQL keyword. Returns `{ kind: 'sql', schema, table }[]`, lowercased. */
 function findSqlRefs(text) {
@@ -224,7 +253,7 @@ function scanFile(filePath, appOwner, schemaOwners) {
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 
-    violations.push({ file: relative(ROOT, filePath).split('\\').join('/'), kind: ref.kind, schema: ref.schema, table: ref.table, owner, appOwner });
+    violations.push({ file: relative(ROOT, filePath).replaceAll('\\', '/'), kind: ref.kind, schema: ref.schema, table: ref.table, owner, appOwner });
   }
   return violations;
 }
