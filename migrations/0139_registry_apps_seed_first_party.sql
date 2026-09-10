@@ -1,7 +1,7 @@
--- 0134_registry_apps_seed_first_party.sql
+-- 0139_registry_apps_seed_first_party.sql
 -- owner: kernel
 -- Register every first-party app as the first consumers of the #1990
--- registry (0133_registry_apps_registry_fields.sql) — same path a
+-- registry (0138_registry_apps_registry_fields.sql) — same path a
 -- third-party app would go through: a registry.apps row with a tier,
 -- token audience(s), and allowed redirect host(s).
 --

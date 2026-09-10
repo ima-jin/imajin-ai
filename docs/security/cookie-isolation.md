@@ -129,7 +129,7 @@ session instead of an app DID + attestation:
 
 **Update (#1990):** `aud` is no longer an arbitrary caller-supplied string.
 Both the mint and verify routes now resolve it against `registry.apps`
-(`token_audiences`, extended by `0133_registry_apps_registry_fields.sql`) and
+(`token_audiences`, extended by `0138_registry_apps_registry_fields.sql`) and
 require an ACTIVE, non-revoked row — an unregistered or revoked `aud` gets a
 stable `403 { error: "app_not_registered" }` instead of a token. This makes
 "no DB hit" apply only to the signature/expiry checks; the registry lookup is

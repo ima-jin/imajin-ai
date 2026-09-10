@@ -2,7 +2,7 @@
  * App registry lookups (#1990) — "apps are identities the kernel refuses to
  * serve unregistered."
  *
- * `registry.apps` (Issue #244, extended by 0133_registry_apps_registry_fields.sql)
+ * `registry.apps` (Issue #244, extended by 0138_registry_apps_registry_fields.sql)
  * is the kernel's one app-identity table. This module is the single place
  * every scoped app-token mint/verify route (#1069) resolves an `aud` or
  * `appDid` against it, so the enforcement rule and its 403 error body stay
@@ -46,7 +46,7 @@ export async function resolveActiveAppByAudience(aud: string | null | undefined)
       .from(registryApps)
       .where(arrayContains(registryApps.tokenAudiences, [aud]))
       .limit(1);
-    if (!row || row.status !== 'active') return null;
+    if (row?.status !== 'active') return null;
     return row;
   } catch (err) {
     log.error({ err: String(err), aud }, 'resolveActiveAppByAudience: lookup failed');

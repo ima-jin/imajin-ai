@@ -1,4 +1,4 @@
--- 0133_registry_apps_registry_fields.sql
+-- 0138_registry_apps_registry_fields.sql
 -- owner: kernel
 -- App registry as a first-class table (#1990): apps become identities the
 -- kernel refuses to serve unregistered. Extends the existing registry.apps
@@ -8,7 +8,7 @@
 -- allowed redirect hosts, and token audience(s). Additive only.
 --
 -- `tier` distinguishes first-party apps (coffee, dykil, links, learn, events,
--- market, jin — seeded in 0134) from third-party apps (OAuth DCR clients,
+-- market, jin — seeded in 0139) from third-party apps (OAuth DCR clients,
 -- Delegated App Sessions registrations).
 --
 -- `allowed_redirect_hosts` is the SET of origins (scheme://host[:port]) this

@@ -300,7 +300,7 @@ export type SystemEvent = typeof systemEvents.$inferSelect;
  * by #1990 into "apps are identities the kernel refuses to serve
  * unregistered"). Covers both third-party apps (OAuth DCR clients,
  * Delegated App Sessions registrations) and first-party apps (coffee, dykil,
- * links, learn, events, market, jin — seeded in 0134, tier = 'first_party').
+ * links, learn, events, market, jin — seeded in 0139, tier = 'first_party').
  */
 export const registryApps = registrySchema.table('apps', {
   id: text('id').primaryKey(),                           // app_<nanoid(16)>
@@ -317,7 +317,7 @@ export const registryApps = registrySchema.table('apps', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-  // #1990 registry fields (0133_registry_apps_registry_fields.sql):
+  // #1990 registry fields (0138_registry_apps_registry_fields.sql):
   /** 'first_party' | 'third_party' — see registry-apps constants for the literal union. */
   tier: text('tier').notNull().default('third_party'),
   /** Origins (scheme://host[:port]) this app may redirect a user back to — folds in #1348's "full set" fix. */
