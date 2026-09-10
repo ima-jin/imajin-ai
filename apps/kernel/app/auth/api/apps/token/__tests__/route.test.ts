@@ -28,7 +28,8 @@ const mocks = vi.hoisted(() => {
   // these spies let tests assert the route never reaches for a mutation path.
   const insertMock = vi.fn();
   const updateMock = vi.fn();
-  return { whereMock, selectMock, verifySignatureMock, createAppTokenMock, insertMock, updateMock };
+  const resolveActiveAppByAudienceMock = vi.fn();
+  return { whereMock, selectMock, verifySignatureMock, createAppTokenMock, insertMock, updateMock, resolveActiveAppByAudienceMock };
 });
 
 function nextSelect(rows: unknown[]): void {
@@ -59,6 +60,14 @@ vi.mock('drizzle-orm', () => ({
 vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
 vi.mock('@/src/lib/auth/crypto', () => ({ verifySignature: mocks.verifySignatureMock }));
 vi.mock('@/src/lib/auth/jwt', () => ({ createAppToken: mocks.createAppTokenMock }));
+vi.mock('@/src/lib/kernel/app-registry', () => ({
+  resolveActiveAppByAudience: mocks.resolveActiveAppByAudienceMock,
+  appNotRegisteredResponse: () =>
+    new Response(JSON.stringify({ error: 'app_not_registered', error_description: 'not registered' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+}));
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
@@ -101,6 +110,13 @@ beforeEach(() => {
   mocks.whereMock.mockReset();
   mocks.verifySignatureMock.mockResolvedValue(true);
   mocks.createAppTokenMock.mockResolvedValue('signed.app.jwt');
+  mocks.resolveActiveAppByAudienceMock.mockReset().mockResolvedValue({
+    id: 'app_first_party_coffee',
+    appDid: 'did:imajin:app-coffee',
+    ownerDid: 'did:imajin:platform',
+    tier: 'first_party',
+    status: 'active',
+  });
 });
 
 describe('POST /auth/api/apps/token — registry.apps PoP lookup (#1739)', () => {
@@ -159,6 +175,40 @@ describe('POST /auth/api/apps/token — registry.apps PoP lookup (#1739)', () =>
     const res = await POST(makeRequest(VALID_BODY) as never);
 
     expect(res.status).toBe(401);
+  });
+});
+
+describe('POST /auth/api/apps/token — explicit aud must be registered (#1990)', () => {
+  it('mints normally when no aud is requested (unchanged default behavior)', async () => {
+    nextSelect([REGISTRY_APP_ROW]);
+    nextSelect([ATTESTATION_ROW]);
+
+    const res = await POST(makeRequest(VALID_BODY) as never);
+
+    expect(res.status).toBe(200);
+    expect(mocks.resolveActiveAppByAudienceMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 app_not_registered when the requested aud has no active registry.apps row', async () => {
+    nextSelect([REGISTRY_APP_ROW]);
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(null);
+
+    const res = await POST(makeRequest({ ...VALID_BODY, aud: 'evil.example.com' }) as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe('app_not_registered');
+    expect(mocks.createAppTokenMock).not.toHaveBeenCalled();
+  });
+
+  it('mints when the requested aud IS a registered, active app', async () => {
+    nextSelect([REGISTRY_APP_ROW]);
+    nextSelect([ATTESTATION_ROW]);
+
+    const res = await POST(makeRequest({ ...VALID_BODY, aud: 'coffee' }) as never);
+
+    expect(res.status).toBe(200);
+    expect(mocks.resolveActiveAppByAudienceMock).toHaveBeenCalledWith('coffee');
   });
 });
 

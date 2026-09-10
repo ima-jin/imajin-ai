@@ -119,6 +119,13 @@ export async function POST(request: NextRequest) {
   const placeholderKey = `dcr_${nanoid(60)}`; // unique, non-functional (public client)
   const callbackUrl = redirectUris[0];
 
+  // #1990: persist the FULL set of distinct redirect-URI origins, not just
+  // callbackUrl's single origin — folds #1348's "store the set, not just
+  // redirect_uris[0]" fix in at origin granularity. /oauth/authorize checks
+  // an incoming redirect_uri's origin against this set in addition to the
+  // existing exact/loopback callbackUrl match.
+  const allowedRedirectHosts = [...new Set(redirectUris.map((uri) => new URL(uri).origin))];
+
   try {
     await db.insert(registryApps).values({
       id: clientId,
@@ -132,6 +139,8 @@ export async function POST(request: NextRequest) {
       logoUrl,
       requestedScopes: scopes,
       status: 'active',
+      tier: 'third_party',
+      allowedRedirectHosts,
     });
   } catch (err) {
     log.error({ err, ip }, 'oauth/register: failed to persist dynamic client');

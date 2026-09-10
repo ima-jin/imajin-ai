@@ -127,6 +127,18 @@ session instead of an app DID + attestation:
   signature, expiry, token type, and (when supplied) exact `aud` match, all
   checked locally with no DB hit.
 
+**Update (#1990):** `aud` is no longer an arbitrary caller-supplied string.
+Both the mint and verify routes now resolve it against `registry.apps`
+(`token_audiences`, extended by `0133_registry_apps_registry_fields.sql`) and
+require an ACTIVE, non-revoked row — an unregistered or revoked `aud` gets a
+stable `403 { error: "app_not_registered" }` instead of a token. This makes
+"no DB hit" apply only to the signature/expiry checks; the registry lookup is
+a deliberate, documented exception for this route (unlike the third-party
+`/auth/api/apps/token/verify` path below, which keeps its no-DB-hit
+contract — see that route's own docblock for why). First-party apps
+(coffee, dykil, links, learn, events, market, jin) are pre-registered with
+their own scope id as both `token_audiences` and `allowed_redirect_hosts`.
+
 `@imajin/auth` exports a verifier apps call directly:
 
 ```ts

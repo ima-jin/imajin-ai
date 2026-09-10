@@ -45,6 +45,15 @@ export const dynamic = 'force-dynamic';
  * flow, and for deployments that only set MCP_PUBLIC_URL), then the forwarded
  * host, then request.url as a last resort for local dev.
  */
+/** Parse a redirect_uri's origin, or null if it doesn't parse as an absolute URI (#1990). */
+function safeOrigin(uri: string): string | null {
+  try {
+    return new URL(uri).origin;
+  } catch {
+    return null;
+  }
+}
+
 function publicOrigin(request: NextRequest): string {
   const nodeOrigin = toOrigin(process.env.APP_URL) ?? toOrigin(process.env.NEXT_PUBLIC_BASE_URL);
   if (nodeOrigin) return nodeOrigin;
@@ -111,6 +120,7 @@ export async function GET(request: NextRequest) {
       appDid: registryApps.appDid,
       callbackUrl: registryApps.callbackUrl,
       requestedScopes: registryApps.requestedScopes,
+      allowedRedirectHosts: registryApps.allowedRedirectHosts,
     })
     .from(registryApps)
     .where(and(eq(registryApps.id, clientId), eq(registryApps.status, 'active')))
@@ -122,8 +132,16 @@ export async function GET(request: NextRequest) {
 
   // 2. redirect_uri must match the registered callbackUrl exactly, OR be a
   //    same-origin loopback redirect (path may differ — DCR stored only the
-  //    first of several loopback callbacks). See redirectUriMatches().
-  if (!redirectUriMatches(redirectUri, client.callbackUrl)) {
+  //    first of several loopback callbacks). See redirectUriMatches(). #1990
+  //    additionally accepts an origin registered in allowed_redirect_hosts
+  //    (the FULL set of redirect_uri origins recorded at DCR time) — folds
+  //    #1348 in without narrowing the pre-existing exact/loopback match.
+  if (!redirectUri) {
+    return NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri required' }, { status: 400 });
+  }
+  const redirectOrigin = safeOrigin(redirectUri);
+  const hostRegistered = redirectOrigin ? (client.allowedRedirectHosts ?? []).includes(redirectOrigin) : false;
+  if (!redirectUriMatches(redirectUri, client.callbackUrl) && !hostRegistered) {
     return NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri mismatch' }, { status: 400 });
   }
 
@@ -254,6 +272,7 @@ async function validateConsentRequest(
       requestedScopes: registryApps.requestedScopes,
       name: registryApps.name,
       logoUrl: registryApps.logoUrl,
+      allowedRedirectHosts: registryApps.allowedRedirectHosts,
     })
     .from(registryApps)
     .where(and(eq(registryApps.id, clientId), eq(registryApps.status, 'active')))
@@ -262,7 +281,15 @@ async function validateConsentRequest(
   if (!client) {
     return { error: NextResponse.json({ error: 'unauthorized_client', error_description: 'Unknown or inactive client' }, { status: 400 }) };
   }
-  if (!redirectUriMatches(redirectUri, client.callbackUrl)) {
+  if (!redirectUri) {
+    return { error: NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri required' }, { status: 400 }) };
+  }
+  // #1990: mirrors the GET gate's allowed_redirect_hosts fold-in, so a
+  // redirect_uri the GET step accepted can never be rejected here at commit
+  // time.
+  const redirectOrigin = safeOrigin(redirectUri);
+  const hostRegistered = redirectOrigin ? (client.allowedRedirectHosts ?? []).includes(redirectOrigin) : false;
+  if (!redirectUriMatches(redirectUri, client.callbackUrl) && !hostRegistered) {
     return { error: NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri mismatch' }, { status: 400 }) };
   }
   if (!codeChallenge || codeChallengeMethod !== 'S256') {
