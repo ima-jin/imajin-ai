@@ -258,6 +258,14 @@ jobs:
       - name: Swallowed-assertion guard
         run: node scripts/ci-guard-no-swallowed-assertions.mjs
 
+      # Runtime schema-boundary guard (#2155 item 3): fails when an app under
+      # apps/<x> (x != kernel) contains a SQL string or Drizzle pgSchema()
+      # reference to a schema it doesn't own per migrations/ownership.json.
+      # Ships with migrations/cross-schema-allowlist.json listing the known
+      # remaining violations so it lands green — see migrations/OWNERSHIP.md.
+      - name: Cross-schema query guard
+        run: node scripts/ci-guard-cross-schema-reads.mjs
+
   sonarcloud:
     name: SonarCloud
     runs-on: imajin-self-hosted
