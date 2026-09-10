@@ -1,33 +1,26 @@
 import { describe, it, expect, vi } from 'vitest';
+import { scopeManifestCoreMockFactory } from '../../kernel/__tests__/scope-manifest-core-mock';
 
-// ─── Google scope-manifest wrapper tests (#2144) ────────────────────────────
+// ─── Google scope-manifest wrapper tests (#2144) ──────────────────────────
 //
 // Tests the Google-specific layer: descriptor values, constants, and that the
 // wrapper functions delegate to scope-manifest-core with the right parameters.
 // The core logic (DB queries, consent grant sync, publish orchestration) is
 // tested in kernel/__tests__/scope-manifest-core.test.ts.
-
-const { mockBuild, mockFind, mockReadActive, mockSync, mockPublish } = vi.hoisted(() => ({
-  mockBuild: vi.fn(() => 'yaml-content'),
-  mockFind: vi.fn(async () => null),
-  mockReadActive: vi.fn(async () => []),
-  mockSync: vi.fn(async () => undefined),
-  mockPublish: vi.fn(async () => 'asset_google'),
-}));
-
-vi.mock('@/src/lib/kernel/scope-manifest-core', () => ({
-  buildConnectorManifestContent: mockBuild,
-  findConnectorManifestAsset: mockFind,
-  readActiveConnectorScopes: mockReadActive,
-  syncConnectorConsentGrants: mockSync,
-  publishConnectorScopeManifest: mockPublish,
-}));
+vi.mock('@/src/lib/kernel/scope-manifest-core', () => scopeManifestCoreMockFactory());
 
 // Avoids loading the real connector.ts's db/bus/vault/connector-oauth import
 // graph — this suite only needs the connector DID constant.
 vi.mock('../connector', () => ({ GOOGLE_CONNECTOR_DID: 'did:imajin:google-connector' }));
 vi.mock('../constants', () => ({ GOOGLE_CONNECTOR_DID: 'did:imajin:google-connector' }));
 
+import {
+  buildConnectorManifestContent as mockBuild,
+  findConnectorManifestAsset as mockFind,
+  readActiveConnectorScopes as mockReadActive,
+  syncConnectorConsentGrants as mockSync,
+  publishConnectorScopeManifest as mockPublish,
+} from '@/src/lib/kernel/scope-manifest-core';
 import {
   buildManifestContent,
   findGoogleManifestAsset,
@@ -74,7 +67,7 @@ describe('GOOGLE_SCOPE_DESCRIPTORS (#2144)', () => {
 describe('buildManifestContent', () => {
   it('calls buildConnectorManifestContent with Google DID, channel, descriptors', () => {
     buildManifestContent(['google:gmail:read']);
-    expect(mockBuild).toHaveBeenCalledWith(
+    expect(vi.mocked(mockBuild)).toHaveBeenCalledWith(
       GOOGLE_CONNECTOR_DID, 'google', GOOGLE_SCOPE_DESCRIPTORS, ['google:gmail:read'],
     );
   });
@@ -83,14 +76,14 @@ describe('buildManifestContent', () => {
 describe('findGoogleManifestAsset', () => {
   it('calls findConnectorManifestAsset with the Google DID', async () => {
     await findGoogleManifestAsset('did:owner');
-    expect(mockFind).toHaveBeenCalledWith('did:owner', GOOGLE_CONNECTOR_DID);
+    expect(vi.mocked(mockFind)).toHaveBeenCalledWith('did:owner', GOOGLE_CONNECTOR_DID);
   });
 });
 
 describe('readActiveGoogleScopes', () => {
   it('calls readActiveConnectorScopes with the google channel and DID', async () => {
     await readActiveGoogleScopes('did:owner');
-    expect(mockReadActive).toHaveBeenCalledWith('did:owner', 'google', GOOGLE_CONNECTOR_DID);
+    expect(vi.mocked(mockReadActive)).toHaveBeenCalledWith('did:owner', 'google', GOOGLE_CONNECTOR_DID);
   });
 });
 
@@ -102,7 +95,7 @@ describe('syncConsentGrants', () => {
    */
   it('records a consent row for every v1 scope', async () => {
     await syncConsentGrants('did:owner', 'asset_x', V1_SCOPES);
-    const [, connDid, , , isOnConsent] = mockSync.mock.calls[0];
+    const [, connDid, , , isOnConsent] = vi.mocked(mockSync).mock.calls[0];
     expect(connDid).toBe(GOOGLE_CONNECTOR_DID);
     for (const scope of V1_SCOPES) {
       expect(isOnConsent(scope)).toBe(true);
@@ -111,7 +104,7 @@ describe('syncConsentGrants', () => {
 
   it('fails closed for a scope the Google connector does not own', async () => {
     await syncConsentGrants('did:owner', 'asset_x', []);
-    const [, , , , isOnConsent] = mockSync.mock.calls[0];
+    const [, , , , isOnConsent] = vi.mocked(mockSync).mock.calls[0];
     expect(isOnConsent('gemini:infer')).toBe(false);
   });
 });
@@ -119,7 +112,7 @@ describe('syncConsentGrants', () => {
 describe('publishGoogleScopeManifest', () => {
   it('calls publishConnectorScopeManifest with correct Google opts', async () => {
     await publishGoogleScopeManifest('did:owner', ['google:gmail:read']);
-    const opts = mockPublish.mock.calls[0][0] as Record<string, unknown>;
+    const opts = vi.mocked(mockPublish).mock.calls[0][0] as Record<string, unknown>;
     expect(opts.connectorDid).toBe(GOOGLE_CONNECTOR_DID);
     expect(opts.channel).toBe('google');
     expect(opts.filename).toBe('google-scope-manifest.md');

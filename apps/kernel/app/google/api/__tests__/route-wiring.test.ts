@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { nextServerMockFactory, makeRequest } from '@/src/lib/kernel/__tests__/next-route-test-utils';
 
 // ─── Google connector route wiring (#2144) ──────────────────────────────────
 //
@@ -133,17 +134,7 @@ vi.mock('@/src/lib/kernel/connector-oauth-routes', () => ({
   createDisconnectHandler: createDisconnectHandlerMock,
 }));
 
-vi.mock('next/server', () => ({
-  NextResponse: {
-    json: vi.fn((body: unknown, init?: { status?: number }) => ({ status: init?.status ?? 200, json: async () => body })),
-    redirect: vi.fn((url: string | URL) => ({ status: 307, headers: { location: String(url) } })),
-  },
-  NextRequest: class {},
-}));
-
-function makeRequest(url: string, headers: Record<string, string> = {}) {
-  return { url, headers: new Headers(headers) } as unknown as import('next/server').NextRequest;
-}
+vi.mock('next/server', () => nextServerMockFactory());
 
 beforeEach(() => {
   requireAuthMock.mockReset();

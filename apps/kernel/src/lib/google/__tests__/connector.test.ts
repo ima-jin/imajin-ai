@@ -37,6 +37,7 @@ vi.mock('@imajin/bus', () => ({ publish: publishMock }));
 vi.mock('../../kernel/connector-registry-store', () => ({ revokeConnectorRegistration: revokeRegistrationMock }));
 
 import { VaultDelegationError } from '@/src/lib/vault/errors';
+import { describeActiveGrantContract } from '../../kernel/__tests__/connector-active-grant-contract';
 import {
   buildAuthorizeUrl,
   exchangeCodeAndStore,
@@ -48,6 +49,8 @@ import {
   configField,
   oauthVaultField,
   readConfigFlow,
+  googleApiFetch,
+  googleApiRequest,
   GOOGLE_CONNECTOR_DID,
   GOOGLE_OAUTH_SCOPES,
 } from '../connector';
@@ -152,27 +155,14 @@ describe('exchangeCodeAndStore (#2144)', () => {
   });
 });
 
-describe('resolveActiveGrant (#2144)', () => {
-  it('is true when an active row includes the scope', async () => {
-    grant(['google:gmail:read']);
-    expect(await resolveActiveGrant(OWNER, 'google:gmail:read')).toBe(true);
-  });
-
-  it('is false when no active row includes the scope', async () => {
-    grant(['other:scope']);
-    expect(await resolveActiveGrant(OWNER, 'google:gmail:read')).toBe(false);
-  });
-});
-
-describe('listActiveGrantOwners (#2144)', () => {
-  it('returns distinct owner DIDs whose active row includes the scope', async () => {
-    whereMock.mockResolvedValue([
-      { did: OWNER, scopes: ['google:gmail:read'] },
-      { did: 'did:imajin:other', scopes: ['google:calendar:read'] },
-      { did: OWNER, scopes: ['google:gmail:read'] },
-    ]);
-    expect(await listActiveGrantOwners('google:gmail:read')).toEqual([OWNER]);
-  });
+describeActiveGrantContract({
+  connectorLabel: 'google',
+  owner: OWNER,
+  scope: 'google:gmail:read',
+  otherScope: 'google:calendar:read',
+  whereMock,
+  resolveActiveGrant,
+  listActiveGrantOwners,
 });
 
 describe('requireGrantAndToken (#2144, fail-closed)', () => {
