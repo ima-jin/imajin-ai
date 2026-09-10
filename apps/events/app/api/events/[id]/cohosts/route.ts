@@ -5,7 +5,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 
 const log = createLogger('events');
 import { eq } from 'drizzle-orm';
-import { resolveCoHostDid } from '@/src/lib/cohost-helpers';
+import { resolveCoHostDid, type ResolveCoHostResult } from '@/src/lib/cohost-helpers';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL || 'http://localhost:3003';
@@ -87,6 +87,78 @@ async function addPodMember(podId: string, did: string, cookie: string): Promise
 }
 
 /**
+ * Resolves and validates the DID to add as a cohost — requires either `did`
+ * or `handle`, resolves a handle to a DID via the profile service, and
+ * rejects the two disallowed cohost targets (self, and the existing owner).
+ * Extracted from the POST handler to keep its cognitive complexity down.
+ */
+async function resolveCohostTarget(
+  didParam: unknown,
+  handle: unknown,
+  callerDid: string,
+  event: { creatorDid: string },
+): Promise<ResolveCoHostResult> {
+  if (!didParam && !handle) {
+    return { error: 'did or handle is required', status: 400 };
+  }
+
+  const resolved = await resolveCoHostDid(didParam, handle);
+  if ('error' in resolved) {
+    return resolved;
+  }
+
+  if (resolved.coHostDid === callerDid) {
+    return { error: 'Cannot add yourself as cohost', status: 400 };
+  }
+  if (resolved.coHostDid === event.creatorDid) {
+    return { error: 'Event creator is already the owner', status: 400 };
+  }
+
+  return resolved;
+}
+
+type EnsureMembershipResult = { error: string; status: number } | { addedAt: string };
+
+/**
+ * Adds `coHostDid` to `podId` as a cohost, unless already a member. The
+ * kernel's `addPodMember` is a plain insert with no `ON CONFLICT` handling,
+ * unlike the raw upsert this route used to run — so membership is checked
+ * first to keep the same idempotent "re-adding an existing cohost is a
+ * no-op success" behavior. Extracted from the POST handler to keep its
+ * cognitive complexity down.
+ */
+async function ensurePodMembership(podId: string, coHostDid: string, cookie: string): Promise<EnsureMembershipResult> {
+  const existingMembers = await fetchPodMembers(podId, cookie);
+  const existingMember = existingMembers.find((member) => member.did === coHostDid);
+  if (existingMember) {
+    return { addedAt: existingMember.joinedAt };
+  }
+
+  const addResult = await addPodMember(podId, coHostDid, cookie);
+  if (!addResult.ok) {
+    return { error: addResult.error, status: addResult.status };
+  }
+  return { addedAt: addResult.member.joinedAt };
+}
+
+/** Best-effort: adds the new cohost to the event's chat conversation as an admin. Non-fatal on failure. */
+async function syncCohostToChat(coHostDid: string, eventDid: string | null): Promise<void> {
+  const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
+  if (!CHAT_URL || !eventDid) return;
+
+  try {
+    await fetch(`${CHAT_URL}/api/d/${encodeURIComponent(eventDid)}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberDid: coHostDid, role: 'admin' }),
+    });
+    log.info({ coHostDid, eventDid }, 'Added cohost to event chat');
+  } catch (chatError) {
+    log.warn({ err: String(chatError) }, 'Cohost chat sync failed (non-fatal)');
+  }
+}
+
+/**
  * GET /api/events/[id]/cohosts — list cohosts for an event
  */
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -159,61 +231,19 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const body = await request.json();
     const { handle, did: didParam } = body;
 
-    if (!didParam && !handle) {
-      return NextResponse.json({ error: 'did or handle is required' }, { status: 400 });
+    const target = await resolveCohostTarget(didParam, handle, did, event);
+    if ('error' in target) {
+      return NextResponse.json({ error: target.error }, { status: target.status });
     }
+    const { coHostDid, profileData } = target;
 
-    // Look up DID from handle via profile service (or use did directly)
-    const resolvedCoHost = await resolveCoHostDid(didParam, handle);
-    if ('error' in resolvedCoHost) {
-      return NextResponse.json({ error: resolvedCoHost.error }, { status: resolvedCoHost.status });
-    }
-    const { coHostDid, profileData } = resolvedCoHost;
-
-    // Can't add yourself
-    if (coHostDid === did) {
-      return NextResponse.json({ error: 'Cannot add yourself as cohost' }, { status: 400 });
-    }
-
-    // Can't add the existing owner
-    if (coHostDid === event.creatorDid) {
-      return NextResponse.json({ error: 'Event creator is already the owner' }, { status: 400 });
-    }
-
-    // Add to pod as cohost. The kernel's addPodMember route is a plain
-    // insert with no ON CONFLICT handling, unlike the raw upsert this route
-    // used to run — so an already-a-member add is checked for explicitly
-    // first to keep the same idempotent "re-adding an existing cohost is a
-    // no-op success" behavior instead of surfacing the kernel's insert error.
     const cookie = request.headers.get('cookie') || '';
-    const existingMembers = await fetchPodMembers(event.podId, cookie);
-    const existingMember = existingMembers.find((member) => member.did === coHostDid);
-
-    let addedAt: string;
-    if (existingMember) {
-      addedAt = existingMember.joinedAt;
-    } else {
-      const addResult = await addPodMember(event.podId, coHostDid, cookie);
-      if (!addResult.ok) {
-        return NextResponse.json({ error: addResult.error }, { status: addResult.status });
-      }
-      addedAt = addResult.member.joinedAt;
+    const membership = await ensurePodMembership(event.podId, coHostDid, cookie);
+    if ('error' in membership) {
+      return NextResponse.json({ error: membership.error }, { status: membership.status });
     }
 
-    // Also add cohost to event chat as admin
-    const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
-    if (CHAT_URL && event.did) {
-      try {
-        await fetch(`${CHAT_URL}/api/d/${encodeURIComponent(event.did)}/members`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ memberDid: coHostDid, role: 'admin' }),
-        });
-        log.info({ coHostDid, eventDid: event.did }, 'Added cohost to event chat');
-      } catch (chatError) {
-        log.warn({ err: String(chatError) }, 'Cohost chat sync failed (non-fatal)');
-      }
-    }
+    await syncCohostToChat(coHostDid, event.did);
 
     const cohost = {
       did: coHostDid,
@@ -221,7 +251,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       handle: profileData.handle || (handle ? handle.replace(/^@/, '') : null),
       avatar: profileData.avatarUrl || profileData.avatar || null,
       role: 'cohost',
-      addedAt,
+      addedAt: membership.addedAt,
     };
 
     return NextResponse.json({ cohost }, { status: 201 });
