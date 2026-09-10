@@ -1,0 +1,171 @@
+{
+  "note": "Ratchet, NOT a general allowlist. These are the pre-existing runtime cross-schema violations that already existed in apps/events when scripts/ci-guard-cross-schema-reads.mjs (#2155 item 3) was introduced \u2014 all tracked under migrations/OWNERSHIP.md Gaps #4/#5 and the #1983 audit. The guard fails on any NEW (file, schema, table) triple not listed here, so this file only ever shrinks. Remove an entry once its call site is migrated to the owning schema kernel API; regenerate the full current list with `node scripts/ci-guard-cross-schema-reads.mjs --list` to check nothing was missed. Do not add an entry to make CI pass without migrating the call site or getting sign-off that it is genuinely deferred.",
+  "issue": "https://github.com/ima-jin/imajin-ai/issues/2155",
+  "violations": [
+    {
+      "file": "apps/events/app/admin/[eventId]/page.tsx",
+      "schema": "connections",
+      "table": "pod_members"
+    },
+    {
+      "file": "apps/events/app/api/attending/[did]/route.ts",
+      "schema": "connections",
+      "table": "pod_members"
+    },
+    {
+      "file": "apps/events/app/api/events/[id]/guests/export.csv/route.ts",
+      "schema": "dykil",
+      "table": "survey_responses"
+    },
+    {
+      "file": "apps/events/app/api/events/[id]/guests/route.ts",
+      "schema": "dykil",
+      "table": "survey_responses"
+    },
+    {
+      "file": "apps/events/app/api/events/[id]/my-ticket/route.ts",
+      "schema": "connections",
+      "table": "pod_members"
+    },
+    {
+      "file": "apps/events/app/api/events/[id]/sales/route.ts",
+      "schema": "dykil",
+      "table": "survey_responses"
+    },
+    {
+      "file": "apps/events/app/api/events/[id]/sales/route.ts",
+      "schema": "pay",
+      "table": "transactions"
+    },
+    {
+      "file": "apps/events/app/api/events/[id]/tickets/[ticketId]/refund/route.ts",
+      "schema": "dykil",
+      "table": "survey_responses"
+    },
+    {
+      "file": "apps/events/app/api/events/[id]/tickets/[ticketId]/registration/route.ts",
+      "schema": "dykil",
+      "table": "survey_responses"
+    },
+    {
+      "file": "apps/events/app/api/events/[id]/tickets/[ticketId]/registration/route.ts",
+      "schema": "dykil",
+      "table": "surveys"
+    },
+    {
+      "file": "apps/events/app/api/events/[id]/tickets/[ticketId]/resend-email/route.ts",
+      "schema": "auth",
+      "table": "onboard_tokens"
+    },
+    {
+      "file": "apps/events/app/api/events/[id]/tickets/[ticketId]/resend-email/route.ts",
+      "schema": "dykil",
+      "table": "survey_responses"
+    },
+    {
+      "file": "apps/events/app/api/events/route.ts",
+      "schema": "chat",
+      "table": "conversations_v2"
+    },
+    {
+      "file": "apps/events/app/api/migrate-tickets/route.ts",
+      "schema": "auth",
+      "table": "identities"
+    },
+    {
+      "file": "apps/events/app/api/register/[ticketId]/route.ts",
+      "schema": "dykil",
+      "table": "survey_responses"
+    },
+    {
+      "file": "apps/events/app/api/webhook/payment/route.ts",
+      "schema": "profile",
+      "table": "profiles"
+    },
+    {
+      "file": "apps/events/app/checkout/success/page.tsx",
+      "schema": "auth",
+      "table": "onboard_tokens"
+    },
+    {
+      "file": "apps/events/app/dashboard/page.tsx",
+      "schema": "profile",
+      "table": "profiles"
+    },
+    {
+      "file": "apps/events/app/e/[eventId]/edit/page.tsx",
+      "schema": "connections",
+      "table": "pod_members"
+    },
+    {
+      "file": "apps/events/app/e/[eventId]/page.tsx",
+      "schema": "connections",
+      "table": "pod_members"
+    },
+    {
+      "file": "apps/events/app/page.tsx",
+      "schema": "connections",
+      "table": "pod_members"
+    },
+    {
+      "file": "apps/events/src/lib/balance-checkout-helpers.ts",
+      "schema": "auth",
+      "table": "identities"
+    },
+    {
+      "file": "apps/events/src/lib/checkout-common.ts",
+      "schema": "profile",
+      "table": "profiles"
+    },
+    {
+      "file": "apps/events/src/lib/confirm-payment.ts",
+      "schema": "auth",
+      "table": "credentials"
+    },
+    {
+      "file": "apps/events/src/lib/confirm-payment.ts",
+      "schema": "auth",
+      "table": "identities"
+    },
+    {
+      "file": "apps/events/src/lib/confirm-payment.ts",
+      "schema": "auth",
+      "table": "onboard_tokens"
+    },
+    {
+      "file": "apps/events/src/lib/contact-email.ts",
+      "schema": "auth",
+      "table": "identities"
+    },
+    {
+      "file": "apps/events/src/lib/etransfer-helpers.ts",
+      "schema": "auth",
+      "table": "identities"
+    },
+    {
+      "file": "apps/events/src/lib/free-checkout-helpers.ts",
+      "schema": "auth",
+      "table": "onboard_tokens"
+    },
+    {
+      "file": "apps/events/src/lib/guest-export-helpers.ts",
+      "schema": "dykil",
+      "table": "survey_responses"
+    },
+    {
+      "file": "apps/events/src/lib/guest-export-helpers.ts",
+      "schema": "dykil",
+      "table": "surveys"
+    },
+    {
+      "file": "apps/events/src/lib/organizer.ts",
+      "schema": "connections",
+      "table": "pod_members"
+    },
+    {
+      "file": "apps/events/src/lib/webhook-payment-helpers.ts",
+      "schema": "auth",
+      "table": "onboard_tokens"
+    }
+  ]
+}
