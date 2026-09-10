@@ -32,7 +32,7 @@ const PASTE_ENTRIES = CONNECTOR_REGISTRY.filter(
  * `OAUTH_CARDS` in ConnectorDetail.tsx: a new OAuth connector must either land in
  * that map or arrive with the consolidation, and this test is what says so.
  */
-const OAUTH_CARD_IDS = ['github', 'quickbooks'];
+const OAUTH_CARD_IDS = ['github', 'quickbooks', 'google'];
 
 describe('every live connector resolves to a non-pending card', () => {
   it('has at least one live entry to check', () => {
@@ -62,6 +62,7 @@ describe('card kind is derived from the ingestion pattern', () => {
     ['mcp', 'native'],
     ['github', 'oauth'],
     ['quickbooks', 'oauth'],
+    ['google', 'oauth'],
     ['discord', 'credential-paste'],
     // #1604 regression: Gemini shipped in #1432 and rendered "Coming soon".
     ['gemini', 'credential-paste'],

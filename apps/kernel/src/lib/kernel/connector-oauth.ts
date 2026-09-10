@@ -281,6 +281,16 @@ export interface ConnectorOAuthOptions<
    */
   tokenAuth: 'basic' | 'body';
   /**
+   * Extra query params merged into the authorize URL, verbatim (#2144).
+   *
+   * Opt-in and additive — every existing connector omits this and is
+   * unaffected. Exists because some providers need authorize-time params
+   * beyond the RFC 6749 basics: Google requires `access_type=offline` +
+   * `prompt=consent` to guarantee a `refresh_token` comes back on every
+   * consent, not just the first one.
+   */
+  extraAuthorizeParams?: Record<string, string>;
+  /**
    * Parse a raw JSON value (from the vault) into a typed config. Throw on
    * invalid input; a simple cast is fine when the configure route validates.
    */
@@ -529,6 +539,9 @@ export function createConnectorOAuth<
       redirect_uri: config.redirectUri,
       state,
     });
+    for (const [key, value] of Object.entries(opts.extraAuthorizeParams ?? {})) {
+      params.set(key, value);
+    }
     return `${opts.authorizeUrl}?${params.toString()}`;
   }
 

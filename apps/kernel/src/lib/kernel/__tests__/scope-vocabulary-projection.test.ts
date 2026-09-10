@@ -31,7 +31,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'gcp', 'quickbooks', 'warp', 'stripe'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'gcp', 'quickbooks', 'warp', 'stripe', 'google'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -149,6 +149,11 @@ describe('pinned scope sets (change these deliberately)', () => {
     ['QuickBooks', 'quickbooks', ['quickbooks:read', 'quickbooks:write']],
     ['Warp', 'warp', ['warp:dispatch']],
     ['Stripe', 'stripe', ['stripe:events']],
+    ['Google Workspace', 'google', [
+      'google:gmail:read', 'google:gmail:send',
+      'google:calendar:read', 'google:calendar:write',
+      'google:drive:read', 'google:meet:records',
+    ]],
   ] satisfies Array<[string, ConnectorId, string[]]>)('pins the %s connector card toggles', (_label, id, expected) => {
     expect(connectorUiScopes(id).map((s) => s.name)).toEqual(expected);
   });
@@ -183,6 +188,13 @@ describe('pinned scope sets (change these deliberately)', () => {
       'github:org',
       'github:actions',
       'warp:dispatch',
+      // #2144 — Google Workspace connector tools.
+      'google:gmail:read',
+      'google:gmail:send',
+      'google:calendar:read',
+      'google:calendar:write',
+      'google:drive:read',
+      'google:meet:records',
       'discovery:read',
       'inference:read',
       'inference:write',

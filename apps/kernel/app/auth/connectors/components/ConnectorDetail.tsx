@@ -37,7 +37,16 @@ import { buildConnectHref, readConnectOutcome } from '@/src/lib/kernel/connect-o
 
 // ── Types ─────────────────────────────────────────────────────
 
-interface GitHubStatus {
+/**
+ * Shared status shape for every Pattern A (OAuth) connector card:
+ * GitHub, QuickBooks, and Google Workspace all seal a per-DID OAuth app config
+ * plus a per-DID token bundle, and all three report the identical five fields
+ * back from their `GET .../scope-manifest` route. GitHub's extra `flow` field
+ * (#1391 BYO device-vs-authorization-code discriminator) is the only
+ * connector-specific addition, so it stays on `GitHubStatus` rather than
+ * widening the shared shape for one connector.
+ */
+interface OAuthConnectorStatus {
   manifestAssetId: string | null;
   activeScopes: string[];
   validScopes: string[];
@@ -45,15 +54,18 @@ interface GitHubStatus {
   tokenSealed: boolean;
   /** Sealed but awaiting owner grant approval (Tier 1, #1521) — not the same as "not configured". */
   credentialPending?: boolean;
+}
+
+/** The two BYO GitHub auth paths (#1391). Both use the owner's own OAuth App. */
+type GitHubAuthFlow = 'device' | 'authorization_code';
+
+interface GitHubStatus extends OAuthConnectorStatus {
   /**
    * Which BYO auth path the sealed config is for (#1391), or null when nothing
    * is sealed yet. Non-secret — the discriminator only.
    */
   flow?: GitHubAuthFlow | null;
 }
-
-/** The two BYO GitHub auth paths (#1391). Both use the owner's own OAuth App. */
-type GitHubAuthFlow = 'device' | 'authorization_code';
 
 /**
  * Status shape for paste-a-credential connectors (Discord, Gemini, Warp).
@@ -66,16 +78,6 @@ interface CredentialPasteStatus extends CredentialSealedFlags {
   manifestAssetId: string | null;
   activeScopes: string[];
   validScopes: string[];
-  credentialPending?: boolean;
-}
-
-/** Same shape as GitHubStatus — QuickBooks is also Pattern A (OAuth). */
-interface QuickBooksStatus {
-  manifestAssetId: string | null;
-  activeScopes: string[];
-  validScopes: string[];
-  configSealed: boolean;
-  tokenSealed: boolean;
   credentialPending?: boolean;
 }
 
@@ -1537,199 +1539,304 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
   );
 }
 
-// ── QuickBooks card (Pattern A — OAuth, like GitHub) ─────────────────────────────────────────────────────
+// ── Shared OAuth connector card (Pattern A) ─ GitHub's own card predates this
+// factory and keeps its extra device-flow/PAT-fallback complexity separate;
+// QuickBooks and Google Workspace are structurally identical apart from copy
+// strings and QuickBooks' one extra `environment` field ──────────────────────────
 
-function QuickBooksConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
-  const [status, setStatus] = useState<QuickBooksStatus | null>(null);
-  const [statusLoading, setStatusLoading] = useState(true);
-  const [statusError, setStatusError] = useState<string | null>(null);
+/** Copy strings that differ between the two `createOAuthConnectorCard` instances. */
+interface OAuthConnectorCardCopy {
+  /** Step-1 heading, e.g. `'OAuth App (Intuit)'` | `'OAuth Client (Google Cloud Console)'`. */
+  configStepLabel: string;
+  /** Sealed-state label under step 1, e.g. `'Intuit app config sealed'`. */
+  configSealedLabel: string;
+  /** Step-2 heading, e.g. `'QuickBooks Account'` | `'Google Account'`. */
+  accountStepLabel: string;
+  /** Connect-button label, e.g. `'Connect QuickBooks Account →'`. */
+  connectLabel: string;
+  /** Disconnect-button label, e.g. `'Disconnect QuickBooks'`. */
+  disconnectLabel: string;
+  /** Confirm-dialog copy for the disconnect action. */
+  disconnectConfirmMessage: string;
+}
 
-  const [showConfigure, setShowConfigure] = useState(false);
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
-  const [redirectUri, setRedirectUri] = useState('');
-  const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox');
-  const [configuring, setConfiguring] = useState(false);
-  const [configError, setConfigError] = useState<string | null>(null);
+/**
+ * Hook for one extra config field beyond the base `clientId` / `clientSecret`
+ * / `redirectUri` triple every OAuth card seals — QuickBooks' `environment`
+ * picker is the only current user. Omit entirely for connectors with nothing
+ * extra to configure (Google).
+ */
+interface OAuthConnectorCardExtraField<TExtra> {
+  initial: TExtra;
+  /** Render the extra field(s) inside the step-1 form. */
+  render(value: TExtra, setValue: Dispatch<SetStateAction<TExtra>>): React.ReactNode;
+  /** Merge the extra value into the configure POST body. */
+  toBody(value: TExtra): Record<string, unknown>;
+}
 
-  useEffect(() => { setRedirectUri(`${window.location.origin}/quickbooks/api/callback`); }, []);
+interface OAuthConnectorCardOptions<TExtra = undefined> {
+  /** POST route that seals `{ clientId, clientSecret, redirectUri, ...extra }`. */
+  configureRoute: string;
+  /** Callback path appended to `window.location.origin` to prefill the default redirect URI. */
+  callbackPath: string;
+  /** Scope name whose presence (alongside both credential booleans) marks the card "connected". */
+  readyScope: string;
+  copy: OAuthConnectorCardCopy;
+  extra?: OAuthConnectorCardExtraField<TExtra>;
+}
 
-  const fetchStatus = useCallback(async () => {
-    setStatusLoading(true); setStatusError(null);
-    try {
-      const r = await fetch(entry.statusEndpoint!);
-      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
-      setStatus(await r.json() as QuickBooksStatus);
-    } catch (err: unknown) { setStatusError(String(err)); }
-    finally { setStatusLoading(false); }
-  }, [entry.statusEndpoint]);
+/**
+ * Build a Pattern A (OAuth) connector card. Extracted from the near-identical
+ * `QuickBooksConnectorCard` / `GoogleConnectorCard` literals (#2144 review) —
+ * every OAuth connector after GitHub is a one-call registration here rather
+ * than a ~185-line clone.
+ */
+function createOAuthConnectorCard<TExtra = undefined>(
+  opts: Readonly<OAuthConnectorCardOptions<TExtra>>,
+): (props: Readonly<{ entry: ConnectorEntry }>) => React.ReactElement {
+  return function OAuthConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+    const [status, setStatus] = useState<OAuthConnectorStatus | null>(null);
+    const [statusLoading, setStatusLoading] = useState(true);
+    const [statusError, setStatusError] = useState<string | null>(null);
 
-  const refreshStatus = useCallback(async () => {
-    try {
-      const r = await fetch(entry.statusEndpoint!);
-      if (!r.ok) return;
-      setStatus(await r.json() as QuickBooksStatus);
-      setStatusError(null);
-    } catch { /* non-fatal */ }
-  }, [entry.statusEndpoint]);
+    const [showConfigure, setShowConfigure] = useState(false);
+    const [clientId, setClientId] = useState('');
+    const [clientSecret, setClientSecret] = useState('');
+    const [redirectUri, setRedirectUri] = useState('');
+    const [extraValue, setExtraValue] = useState<TExtra>(opts.extra?.initial as TExtra);
+    const [configuring, setConfiguring] = useState(false);
+    const [configError, setConfigError] = useState<string | null>(null);
 
-  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+    useEffect(() => { setRedirectUri(`${window.location.origin}${opts.callbackPath}`); }, []);
 
-  const { disconnecting, disconnectError, handleDisconnect } = useDisconnect(
-    entry.disconnectRoute!,
-    'Disconnect QuickBooks? This will revoke the grant and delete all sealed credentials.',
-    () => { void fetchStatus(); },
-  );
+    const fetchStatus = useCallback(async () => {
+      setStatusLoading(true); setStatusError(null);
+      try {
+        const r = await fetch(entry.statusEndpoint!);
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        setStatus(await r.json() as OAuthConnectorStatus);
+      } catch (err: unknown) { setStatusError(String(err)); }
+      finally { setStatusLoading(false); }
+    }, [entry.statusEndpoint]);
 
-  const { grantingScope, grantError, handleToggleScope } = useScopeToggle(
-    entry.statusEndpoint,
-    () => status?.activeScopes ?? [],
-    setStatus,
-  );
+    const refreshStatus = useCallback(async () => {
+      try {
+        const r = await fetch(entry.statusEndpoint!);
+        if (!r.ok) return;
+        setStatus(await r.json() as OAuthConnectorStatus);
+        setStatusError(null);
+      } catch { /* non-fatal */ }
+    }, [entry.statusEndpoint]);
 
-  const activeSet = new Set(status?.activeScopes ?? []);
-  const readyForRead = status !== null && status.configSealed && status.tokenSealed && activeSet.has('quickbooks:read');
+    useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
-  async function handleConfigure(e: React.FormEvent) {
-    e.preventDefault(); setConfiguring(true); setConfigError(null);
-    try {
-      const r = await fetch('/quickbooks/api/configure', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId: clientId.trim(), clientSecret: clientSecret.trim(), redirectUri: redirectUri.trim(), environment }),
-      });
-      if (!r.ok) { const d = await r.json().catch(() => ({})) as { error?: string }; throw new Error(d.error ?? `${r.status}`); }
-      setShowConfigure(false); setClientId(''); setClientSecret('');
-      void refreshStatus();
-    } catch (err: unknown) { setConfigError(String(err)); }
-    finally { setConfiguring(false); }
-  }
+    const { disconnecting, disconnectError, handleDisconnect } = useDisconnect(
+      entry.disconnectRoute!,
+      opts.copy.disconnectConfirmMessage,
+      () => { void fetchStatus(); },
+    );
 
-  return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-      <div className="flex items-start justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">{entry.icon}</span>
-          <div><h2 className="text-lg font-semibold text-white">{entry.name}</h2>
-            <p className="text-sm text-gray-400">{entry.description}</p></div>
+    const { grantingScope, grantError, handleToggleScope } = useScopeToggle(
+      entry.statusEndpoint,
+      () => status?.activeScopes ?? [],
+      setStatus,
+    );
+
+    const activeSet = new Set(status?.activeScopes ?? []);
+    const readyForRead = status !== null && status.configSealed && status.tokenSealed && activeSet.has(opts.readyScope);
+
+    async function handleConfigure(e: React.FormEvent) {
+      e.preventDefault(); setConfiguring(true); setConfigError(null);
+      try {
+        const r = await fetch(opts.configureRoute, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientId: clientId.trim(), clientSecret: clientSecret.trim(), redirectUri: redirectUri.trim(),
+            ...(opts.extra ? opts.extra.toBody(extraValue) : {}),
+          }),
+        });
+        if (!r.ok) { const d = await r.json().catch(() => ({})) as { error?: string }; throw new Error(d.error ?? `${r.status}`); }
+        setShowConfigure(false); setClientId(''); setClientSecret('');
+        void refreshStatus();
+      } catch (err: unknown) { setConfigError(String(err)); }
+      finally { setConfiguring(false); }
+    }
+
+    return (
+      <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+        <div className={`flex items-start justify-between ${entry.custodyNotice ? 'mb-4' : 'mb-6'}`}>
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">{entry.icon}</span>
+            <div><h2 className="text-lg font-semibold text-white">{entry.name}</h2>
+              <p className="text-sm text-gray-400">{entry.description}</p></div>
+          </div>
+          <ConnectorStatusBadge
+            loading={statusLoading}
+            error={!!statusError}
+            ready={readyForRead}
+            pending={status?.credentialPending}
+          />
         </div>
-        <ConnectorStatusBadge
-          loading={statusLoading}
-          error={!!statusError}
-          ready={readyForRead}
-          pending={status?.credentialPending}
-        />
-      </div>
 
-      <ConnectOutcomeBanner connectorId={entry.id} onConnected={refreshStatus} />
+        {/* Custody disclosure (#2144) — verbatim, said plainly rather than implied, when the connector declares one. */}
+        {entry.custodyNotice && (
+          <p className="text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 mb-6">
+            {entry.custodyNotice}
+          </p>
+        )}
 
-      {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
-      {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
+        <ConnectOutcomeBanner connectorId={entry.id} onConnected={refreshStatus} />
 
-      {!statusLoading && !statusError && status && (
-        <div className="space-y-6">
-          {/* Step 1: Configure OAuth App */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
-                  status.configSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                  {status.configSealed ? '✓' : '1'}
-                </span>
-                {' '}OAuth App (Intuit)
-              </h3>
-              {status.configSealed && !showConfigure && (
-                <button type="button" onClick={() => setShowConfigure(true)} className="text-xs text-gray-600 hover:text-gray-400 transition">Update</button>
+        {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
+        {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
+
+        {!statusLoading && !statusError && status && (
+          <div className="space-y-6">
+            {/* Step 1: Configure OAuth App */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                  <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                    status.configSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                    {status.configSealed ? '✓' : '1'}
+                  </span>
+                  {' '}{opts.copy.configStepLabel}
+                </h3>
+                {status.configSealed && !showConfigure && (
+                  <button type="button" onClick={() => setShowConfigure(true)} className="text-xs text-gray-600 hover:text-gray-400 transition">Update</button>
+                )}
+              </div>
+              {!status.configSealed || showConfigure ? (
+                <form onSubmit={(e) => { void handleConfigure(e); }} className="space-y-2">
+                  <input type="text" value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID" required
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50" />
+                  <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder="Client Secret" required
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50" />
+                  <input type="url" value={redirectUri} onChange={(e) => setRedirectUri(e.target.value)} placeholder="Redirect URI" required
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50" />
+                  {opts.extra?.render(extraValue, setExtraValue)}
+                  {configError && <p className="text-red-400 text-xs">{configError}</p>}
+                  <div className="flex gap-2 pt-1">
+                    <button type="submit" disabled={configuring || !clientId.trim() || !clientSecret.trim()}
+                      className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition">
+                      {configuring ? 'Saving…' : configSaveButtonLabel(status.configSealed)}
+                    </button>
+                    {showConfigure && (
+                      <button type="button" onClick={() => { setShowConfigure(false); setConfigError(null); }}
+                        className="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-gray-400 text-sm rounded-lg transition">Cancel</button>
+                    )}
+                  </div>
+                </form>
+              ) : (
+                <StatusDot ok={true} label={opts.copy.configSealedLabel} />
               )}
             </div>
-            {!status.configSealed || showConfigure ? (
-              <form onSubmit={(e) => { void handleConfigure(e); }} className="space-y-2">
-                <input type="text" value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID" required
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50" />
-                <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder="Client Secret" required
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50" />
-                <input type="url" value={redirectUri} onChange={(e) => setRedirectUri(e.target.value)} placeholder="Redirect URI" required
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50" />
-                <select value={environment} onChange={(e) => setEnvironment(e.target.value as 'sandbox' | 'production')}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50">
-                  <option value="sandbox">Sandbox</option>
-                  <option value="production">Production</option>
-                </select>
-                {configError && <p className="text-red-400 text-xs">{configError}</p>}
-                <div className="flex gap-2 pt-1">
-                  <button type="submit" disabled={configuring || !clientId.trim() || !clientSecret.trim()}
-                    className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition">
-                    {configuring ? 'Saving…' : configSaveButtonLabel(status.configSealed)}
-                  </button>
-                  {showConfigure && (
-                    <button type="button" onClick={() => { setShowConfigure(false); setConfigError(null); }}
-                      className="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-gray-400 text-sm rounded-lg transition">Cancel</button>
-                  )}
+
+            {/* Step 2: Connect account */}
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
+                <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
+                  status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                  {status.tokenSealed ? '✓' : '2'}
+                </span>
+                {' '}{opts.copy.accountStepLabel}
+              </h3>
+              {status.tokenSealed ? (
+                <div className="flex items-center justify-between text-sm">
+                  <StatusDot ok={true} label="Account connected" />
+                  <a href={connectHref(entry)} className="text-xs text-gray-600 hover:text-gray-400 transition">Reconnect</a>
                 </div>
-              </form>
-            ) : (
-              <StatusDot ok={true} label="Intuit app config sealed" />
-            )}
-          </div>
-
-          {/* Step 2: Connect QuickBooks Account */}
-          <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
-              <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
-                status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                {status.tokenSealed ? '✓' : '2'}
-              </span>
-              {' '}QuickBooks Account
-            </h3>
-            {status.tokenSealed ? (
-              <div className="flex items-center justify-between text-sm">
-                <StatusDot ok={true} label="Account connected" />
-                <a href={connectHref(entry)} className="text-xs text-gray-600 hover:text-gray-400 transition">Reconnect</a>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <a href={connectHref(entry)}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
-                    status.configSealed ? 'bg-amber-500 hover:bg-amber-600 text-black' : 'bg-white/5 text-gray-600 cursor-not-allowed pointer-events-none'
-                  }`} aria-disabled={!status.configSealed}>
-                  Connect QuickBooks Account →
-                </a>
-                {!status.configSealed && <p className="text-xs text-gray-600">Complete step 1 first.</p>}
-              </div>
-            )}
-          </div>
-
-          {/* Step 3: Scope grants */}
-          <ScopeGrantSection
-            entry={entry}
-            activeSet={activeSet}
-            stepNumber={3}
-            grantingScope={grantingScope}
-            grantError={grantError}
-            tokenSealed={status.tokenSealed}
-            noTokenHint="Connect your account (step 2) to enable scope grants."
-            onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
-          />
-
-          {status.manifestAssetId && (
-            <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
-              manifest: {status.manifestAssetId}
+              ) : (
+                <div className="space-y-2">
+                  <a href={connectHref(entry)}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                      status.configSealed ? 'bg-amber-500 hover:bg-amber-600 text-black' : 'bg-white/5 text-gray-600 cursor-not-allowed pointer-events-none'
+                    }`} aria-disabled={!status.configSealed}>
+                    {opts.copy.connectLabel}
+                  </a>
+                  {!status.configSealed && <p className="text-xs text-gray-600">Complete step 1 first.</p>}
+                </div>
+              )}
             </div>
-          )}
 
-          {/* Disconnect */}
-          {(status.configSealed || status.tokenSealed) && (
-            <DisconnectSection
-              label="Disconnect QuickBooks"
-              disconnecting={disconnecting}
-              disconnectError={disconnectError}
-              onDisconnect={() => { void handleDisconnect(); }}
+            {/* Step 3: Scope grants */}
+            <ScopeGrantSection
+              entry={entry}
+              activeSet={activeSet}
+              stepNumber={3}
+              grantingScope={grantingScope}
+              grantError={grantError}
+              tokenSealed={status.tokenSealed}
+              noTokenHint="Connect your account (step 2) to enable scope grants."
+              onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
             />
-          )}
-        </div>
-      )}
-    </div>
-  );
+
+            {status.manifestAssetId && (
+              <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
+                manifest: {status.manifestAssetId}
+              </div>
+            )}
+
+            {/* Disconnect */}
+            {(status.configSealed || status.tokenSealed) && (
+              <DisconnectSection
+                label={opts.copy.disconnectLabel}
+                disconnecting={disconnecting}
+                disconnectError={disconnectError}
+                onDisconnect={() => { void handleDisconnect(); }}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 }
+
+// ── QuickBooks card (Pattern A — OAuth, like GitHub) ─────────────────────────
+
+const QuickBooksConnectorCard = createOAuthConnectorCard<{ environment: 'sandbox' | 'production' }>({
+  configureRoute: '/quickbooks/api/configure',
+  callbackPath: '/quickbooks/api/callback',
+  readyScope: 'quickbooks:read',
+  copy: {
+    configStepLabel: 'OAuth App (Intuit)',
+    configSealedLabel: 'Intuit app config sealed',
+    accountStepLabel: 'QuickBooks Account',
+    connectLabel: 'Connect QuickBooks Account →',
+    disconnectLabel: 'Disconnect QuickBooks',
+    disconnectConfirmMessage: 'Disconnect QuickBooks? This will revoke the grant and delete all sealed credentials.',
+  },
+  extra: {
+    initial: { environment: 'sandbox' },
+    toBody: (value) => ({ environment: value.environment }),
+    render: (value, setValue) => (
+      <select value={value.environment} onChange={(e) => setValue({ environment: e.target.value as 'sandbox' | 'production' })}
+        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50">
+        <option value="sandbox">Sandbox</option>
+        <option value="production">Production</option>
+      </select>
+    ),
+  },
+});
+
+// ── Google Workspace card (Pattern A — OAuth, like QuickBooks) — #2144 ──────
+
+const GoogleConnectorCard = createOAuthConnectorCard({
+  configureRoute: '/google/api/configure',
+  callbackPath: '/google/api/callback',
+  readyScope: 'google:gmail:read',
+  copy: {
+    configStepLabel: 'OAuth Client (Google Cloud Console)',
+    configSealedLabel: 'OAuth client config sealed',
+    accountStepLabel: 'Google Account',
+    connectLabel: 'Connect Google Account →',
+    disconnectLabel: 'Disconnect Google Workspace',
+    disconnectConfirmMessage:
+      'Disconnect Google Workspace? This revokes the grant at Google, deletes the sealed refresh token, ' +
+      'and stops every google_* tool from acting on your behalf.',
+  },
+});
 
 // ── Native connector card (scope toggles + revoke-all — no credential step) — #1397, #1592 ─────
 
@@ -1907,6 +2014,7 @@ function PendingConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
 const OAUTH_CARDS: Record<string, (props: Readonly<{ entry: ConnectorEntry }>) => React.ReactElement> = {
   github: GitHubConnectorCard,
   quickbooks: QuickBooksConnectorCard,
+  google: GoogleConnectorCard,
 };
 
 /**

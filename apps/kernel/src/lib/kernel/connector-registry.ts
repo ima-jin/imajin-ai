@@ -190,6 +190,16 @@ export interface ConnectorEntry {
    * route rather than a `ConnectorSettingField`.
    */
   modelsRoute: string | null;
+  /**
+   * Verbatim custody disclosure shown on the card when present (#2144).
+   *
+   * Most connectors' custody story is implicit in "you seal a credential and
+   * we use it" and needs no separate callout. This exists for connectors
+   * whose credential lets the kernel act while the owner is away in a way
+   * that is worth saying plainly rather than leaving implicit — e.g. holding
+   * a Gmail/Calendar refresh token. `undefined` (the default) renders nothing.
+   */
+  custodyNotice?: string;
 }
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -556,6 +566,29 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     credentialUi: null,
     settings: null,
     modelsRoute: null,
+  },
+  {
+    id: 'google',
+    name: 'Google Workspace',
+    description: 'Read and send Gmail, manage Calendar events, read Drive files, and pull Meet recordings/transcripts on your behalf.',
+    icon: '📨',
+    ingestionPattern: 'oauth',
+    channel: 'google',
+    connectorDid: 'did:imajin:google-connector',
+    scopes: connectorUiScopes('google'),
+    statusEndpoint: '/google/api/scope-manifest',
+    backendPending: false,
+    connectRoute: '/google/api/connect',
+    configureRoute: '/google/api/configure',
+    tokenRoute: null,
+    disconnectRoute: '/google/api/disconnect',
+    credentialUi: null,
+    settings: null,
+    modelsRoute: null,
+    // #2144 — verbatim from the issue's "Custody — say it plainly" section.
+    custodyNotice:
+      'Kernel holds the refresh token = "Imajin can act on your mailbox while you are away." ' +
+      'Law of custody; disclose, don\u2019t pretend zero-custody.',
   },
   {
     id: 'warp',
