@@ -24,6 +24,28 @@ formats, one shim — see [imajin-ai#1959](https://github.com/ima-jin/imajin-ai/
 > break-glass tested in prod) are the operator's to tick after rollout, using this
 > runbook.
 
+## Gap audit — 2026-09-10 scoping (#1926)
+
+Jin's [2026-09-10 scoping comment](https://github.com/ima-jin/imajin-ai/issues/1926#issuecomment-5621228797)
+narrowed #1926 to five concrete checks for the first delegated-seat model,
+`gpt-6-astra` via the OpenAI connector (#1927). All five are already satisfied
+by the existing, provider-agnostic implementation below — nothing about them
+is OpenAI-specific, so standing up this one seat needed no new proxy or
+kernel code, only the operator runbook this change adds (see "Worked example"
+below) plus the routes-config/OpenClaw-config values an operator supplies.
+
+| # | Check | Status | Where |
+|---|---|---|---|
+| a | Mint/refresh the 10-min app-token JWT for the AGENT DID via challenge-response with the agent's own keypair | Done | `src/token-provider.ts` (`mintAppToken`, `RouteTokenProvider`) — challenge shape matches `apps/kernel/app/auth/api/apps/token/route.ts` byte for byte; works for whichever DID is configured as `OPENCLAW_APP_DID`, including the agent's own |
+| b | `/:providerId/v1/chat/completions` maps `openai` → the kernel's OpenAI connector and passes `model: gpt-6-astra` through unchanged | Done | `src/router.ts` (`resolveRoute`) + `src/upstream.ts` (`forwardToKernel`, raw byte passthrough) on this side; `apps/kernel/src/lib/inference/brain.ts`'s `openai` `BRAIN_CONNECTORS` entry (#1927) + `openai-compatible-adapter.ts` resolve and forward the sealed model kernel-side — see `tests/openai-seat.test.ts` |
+| c | Streaming (SSE) works end-to-end | Done | `src/dispatch.ts`/`src/upstream.ts` (byte-for-byte body passthrough) + `src/server.ts` (`writeProxyResponse`, Node/Web stream bridge); the kernel tees the stream for metering without altering client bytes (`openai-compatible-adapter.ts`'s `meterStreamForUsage`) — see "streams an SSE response through untouched" in `tests/handle-completions.test.ts` |
+| d | `usage` surfaced so the kernel meter records `usage.incurred` under the agent DID, connector=openai, model=gpt-6-astra | Done (kernel-side, #1925/#1923) | `apps/kernel/src/lib/inference/completions/openai-compatible-adapter.ts` (`recordInferenceUsage`, `agentDid: meta.agentDid`) — this proxy only forwards the `X-Session-Id`/`X-Turn-Id` headers that metadata is keyed on (`src/upstream.ts`) |
+| e | Spend-cap 4xx surfaced as a clean provider error, not a hang | Done | `src/dispatch.ts` (`dispatchWithBreakGlass`: only a ≥500 status or a TTFB timeout triggers fallback; every 4xx — including the kernel's `402 spend_cap_exceeded` from `brain-http-errors.ts` — is forwarded verbatim) — see the `402` case in `tests/openai-seat.test.ts` |
+
+No `apps/kernel` changes were needed or made for this deliverable — the
+passthrough and spend-cap plumbing already generalize to every
+`BRAIN_CONNECTORS` entry, OpenAI included.
+
 ## Why a proxy, not a native OpenClaw provider
 
 OpenClaw's custom-provider mechanism (the same surface `openclaw.plugin.json` /
@@ -263,6 +285,159 @@ Per-provider flip procedure (repeat for each provider in the order above):
 
 Phase 5 (#1929, blocked until Phase 4 has soaked) is where static provider keys are
 finally purged from OpenClaw's own config/.env — **not** part of this ticket.
+
+## Worked example: the gpt-6-astra delegated seat (`imajin-openai`) — #1926 first deliverable
+
+This is the concrete instance of the "OpenAI" flip in the runbook above — the
+first seat Ryan asked to see live
+([2026-09-10 scoping](https://github.com/ima-jin/imajin-ai/issues/1926#issuecomment-5621228797)).
+The kernel side is already done per that comment: the OpenAI brain connector
+(#1927) already has a sealed per-DID key, `openai:infer`/`openai:billing`
+scopes active, a spend cap, and `gpt-6-astra` selectable and set as the sealed
+default. Nothing below is OpenAI-specific code — it is the operator steps for
+this one route.
+
+### 1. Run the proxy on the gateway host
+
+Either supervisor works; use whichever the gateway host already runs its
+other services under (see `docs/ENVIRONMENTS.md`'s pm2 convention) — this
+proxy does not need its own daemon-management approach.
+
+**pm2** (matches the host's existing `dev-*`/bare-name convention):
+
+```js
+// ecosystem.config.js — add an entry alongside the host's other pm2 processes
+{
+  name: 'infer-passthrough', // 'dev-infer-passthrough' in dev
+  cwd: '/path/to/imajin-ai',
+  script: 'node_modules/.bin/tsx',
+  args: 'packages/openclaw-infer-passthrough/src/server.ts',
+  env_file: '/etc/imajin/infer-passthrough.env', // secrets live here, not inline — see step 2
+  env: {
+    INFER_PROXY_HOST: '127.0.0.1',
+    INFER_PROXY_PORT: '8787',
+    INFER_PROXY_ROUTES_CONFIG: '/path/to/imajin-ai/packages/openclaw-infer-passthrough/config/routes.prod.json',
+  },
+}
+```
+
+```bash
+pm2 start ecosystem.config.js --only infer-passthrough
+pm2 save
+```
+
+**systemd** (if this process runs outside pm2 — it is a plain `node`/`tsx`
+process, so a unit needs nothing special beyond a normal Node service):
+
+```ini
+# /etc/systemd/system/infer-passthrough.service
+[Unit]
+Description=OpenClaw kernel-inference passthrough (imajin-ai#1926)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/imajin-ai
+ExecStart=/usr/bin/node node_modules/.bin/tsx packages/openclaw-infer-passthrough/src/server.ts
+# OPENCLAW_APP_PRIVATE_KEY and OPENAI_DIRECT_API_KEY live in this file,
+# root-only-readable — never inline in the unit file itself:
+EnvironmentFile=/etc/imajin/infer-passthrough.env
+Restart=on-failure
+RestartSec=5
+User=imajin
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now infer-passthrough
+```
+
+### 2. Environment values for this seat
+
+| Variable | Value for this seat |
+|---|---|
+| `KERNEL_BASE_URL` | The kernel's prod **front door** origin as served by Caddy (see `docs/ENVIRONMENTS.md`), e.g. `https://jin.imajin.ai` — **never** `http://127.0.0.1:7000` or any other raw port. The raw port is bound for local/reverse-proxy use on the kernel host itself; reaching it directly skips TLS termination and Caddy's routing, and the gateway host should not need direct network access to it. |
+| `OPENCLAW_APP_DID` | The agent's own registered DID (`registry.apps`) — in prod this is OpenClaw's own app identity (referred to as `@jin` in the 2026-09-10 scoping note). |
+| `OPENCLAW_APP_PRIVATE_KEY` | That DID's Ed25519 private key (hex seed). **Never** commit it, echo it, or put it directly in a world-readable ecosystem/unit file — source it from the root-only secrets file referenced by `env_file`/`EnvironmentFile=` above. |
+| `INFER_PROXY_ROUTES_CONFIG` | Path to a routes JSON file (not committed with real values — copy `config/routes.example.json`) containing at least the `"openai"` entry below. |
+
+### 3. The `"openai"` routes-config entry
+
+```json
+{
+  "id": "openai",
+  "principalDid": "did:imajin:REPLACE_WITH_DID_THAT_SEALED_OPENAI",
+  "attestationId": "REPLACE_WITH_APP_AUTHORIZED_ATTESTATION_ID",
+  "modelPrefixes": ["gpt-", "o1-", "o3-"],
+  "directBaseUrl": "https://api.openai.com/v1",
+  "directApiKeyEnvVar": "OPENAI_DIRECT_API_KEY"
+}
+```
+
+- `attestationId` must be an `app.authorized` attestation issued to
+  `OPENCLAW_APP_DID`, granting `infer:completions`, whose issuer
+  (`principalDid`) is the DID whose OpenAI connector card has `gpt-6-astra`
+  sealed — per the 2026-09-10 finding, that is already true in prod for the
+  account Jin checked. Obtain/issue it the same way as any other route
+  (Migration runbook step 2 above).
+- `directBaseUrl`/`directApiKeyEnvVar` are optional break-glass — omit both
+  to disable direct-key fallback for this seat entirely (a kernel outage then
+  surfaces the kernel's own error to OpenClaw rather than silently spending
+  on an unmetered key).
+
+### 4. The OpenClaw custom-provider config block
+
+Add this to the gateway's `models.providers` config, alongside — not
+replacing — any other providers:
+
+```json
+{
+  "providers": {
+    "imajin-openai": {
+      "type": "openai-compatible",
+      "baseUrl": "http://127.0.0.1:8787/openai/v1",
+      "apiKey": "unused-placeholder",
+      "models": ["gpt-6-astra"]
+    }
+  }
+}
+```
+
+- `imajin-openai` is the provider id a `sessions_spawn(model: …)` call
+  references to use this seat.
+- The `/openai/v1` path segment in `baseUrl` is what selects the `"openai"`
+  route entry above (`resolveRoute`, `src/router.ts`) — the recommended,
+  unambiguous wiring; it does not depend on `modelPrefixes` matching.
+- `apiKey` is the same "required by schema, never checked" placeholder every
+  other route in this README uses — real auth is the minted app-token JWT,
+  not this value. **This is the whole point: it contains no OpenAI key.**
+
+### 5. Acceptance check
+
+> Spawn a sub-agent on that seat, it completes a task, kernel meter shows the
+> turn under the agent DID with connector=openai model=gpt-6-astra, spend cap
+> enforced when set, OpenClaw config contains no OpenAI key.
+
+How to verify each clause:
+
+- **it completes a task** — from the OpenClaw main session, `sessions_spawn`
+  a sub-agent on `imajin-openai`/`gpt-6-astra` and let it run a small real
+  task to completion.
+- **kernel meter shows the turn under the agent DID with connector=openai
+  model=gpt-6-astra** — see "Verifying a call was metered kernel-side" below;
+  the `inference.usage` row's `agentDid` is `OPENCLAW_APP_DID`, `provider` is
+  `openai`, `model` is `gpt-6-astra`.
+- **spend cap enforced when set** — set a low spend cap on the OpenAI
+  connector card, spawn another sub-agent turn past it, and confirm the
+  proxy returns the kernel's `402 spend_cap_exceeded` body verbatim (see the
+  `402` case in `tests/openai-seat.test.ts` for the exact shape) rather than
+  hanging or silently falling back to the direct key.
+- **OpenClaw config contains no OpenAI key** — grep the gateway's config and
+  env files for the shape of a real OpenAI key; the only credential present
+  for this seat is the `unused-placeholder` string in step 4.
 
 ## Verifying a call was metered kernel-side
 
