@@ -310,6 +310,18 @@ describe('add-capability control (#2108)', () => {
   });
 });
 
+describe('create-agent form (S9379 focus-on-mount)', () => {
+  it('renders the handle input, focusing it on mount, once "+ Create Agent" is clicked', async () => {
+    await renderAgentsPage([agent()]);
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Create Agent' }));
+
+    const input = screen.getByLabelText('Handle');
+    expect(input).toBeDefined();
+    expect(document.activeElement).toBe(input);
+  });
+});
+
 describe('no grants yet', () => {
   it('shows an empty-state message for an agent with zero grants and no legacy fallback', async () => {
     await renderAgentsPage([agent({ grants: [], hasLegacyMembership: false })]);
