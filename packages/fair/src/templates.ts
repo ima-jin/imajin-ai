@@ -1,4 +1,4 @@
-import type { FairManifestV1_1, Money } from './types';
+import type { FairManifestV11, Money } from './types';
 import {
   PROTOCOL_FEE_BPS,
   PROTOCOL_DID,
@@ -27,7 +27,7 @@ export interface TemplateConfig {
     terms: boolean;
     distributions: boolean;
   };
-  defaults?: Partial<FairManifestV1_1>;
+  defaults?: Partial<FairManifestV11>;
 }
 
 export const templates: Record<FairTemplate, TemplateConfig> = {
@@ -148,15 +148,15 @@ function mimeBucket(mimeType: string): 'text' | 'image' | 'audio' | 'video' | 'o
  *
  * @param mimeType — e.g. "image/png", "audio/mpeg", "text/markdown"
  * @param ownerDid — the uploader's DID
- * @returns a complete FairManifestV1_1
+ * @returns a complete FairManifestV11
  */
-export function getDefaultManifest(mimeType: string, ownerDid: string): FairManifestV1_1 {
+export function getDefaultManifest(mimeType: string, ownerDid: string): FairManifestV11 {
   const bucket = mimeBucket(mimeType);
   const now = new Date().toISOString();
 
   const transferPrice: Money = { amount: 100000, currency: 'USD' };
 
-  const distribution: NonNullable<FairManifestV1_1['distribution']> = {
+  const distribution: NonNullable<FairManifestV11['distribution']> = {
     reproduction: { mode: 'allowed' },
     streaming: { mode: 'allowed', price: { amount: 1, currency: 'USD' } },
     derivative: { mode: 'allow-with-attribution' },
@@ -195,7 +195,7 @@ export function getDefaultManifest(mimeType: string, ownerDid: string): FairMani
   const platformShare = PLATFORM_FEE_BPS / 10000;
   const sellerShare = 1 - protocolShare - nodeShare - buyerCreditShare - platformShare;
 
-  const manifest: FairManifestV1_1 = {
+  const manifest: FairManifestV11 = {
     fair: '1.1',
     version: '1.1',
     id: '', // caller fills this after asset ID is generated

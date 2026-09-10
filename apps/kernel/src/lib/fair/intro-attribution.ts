@@ -22,7 +22,7 @@ import {
   isIntroAttributionManifest,
   type IntroAttributionSplitBps,
   type AttestationFact,
-  type FairManifestV1_1,
+  type FairManifestV11,
 } from '@imajin/fair';
 
 export interface LibError {
@@ -217,12 +217,12 @@ export type SettlementVerification = { ok: true } | { ok: false; error: string }
  * further corroboration; a `value_realized` ref must be countersigned).
  */
 export async function verifyIntroAttributionManifestForSettlement(
-  fairManifest: Partial<FairManifestV1_1> | null | undefined,
+  fairManifest: Partial<FairManifestV11> | null | undefined,
 ): Promise<SettlementVerification> {
   if (!isIntroAttributionManifest(fairManifest ?? null)) {
     return { ok: true };
   }
-  const manifest = fairManifest as FairManifestV1_1;
+  const manifest = fairManifest as FairManifestV11;
   const provenance = manifest.provenance ?? [];
   if (provenance.length === 0) {
     return { ok: false, error: 'intro-attribution manifest requires a non-empty provenance[]' };

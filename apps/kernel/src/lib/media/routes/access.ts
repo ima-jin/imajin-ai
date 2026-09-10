@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
-import { isFairManifestV1_1 } from "@imajin/fair";
-import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
+import { isFairManifestV11 } from "@imajin/fair";
+import type { FairManifest, FairManifestV11 } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 import { updateManifestFlow } from "@/src/lib/media/manifest-helpers";
 import { corsHeaders } from "@/src/lib/kernel/cors";
@@ -74,14 +74,14 @@ export async function patchAccess(
   }
 
   // 4. Build updated manifest
-  let manifest: FairManifestV1_1;
+  let manifest: FairManifestV11;
   if (
     asset.fairManifest &&
     typeof asset.fairManifest === "object" &&
     Object.keys(asset.fairManifest as object).length > 0 &&
-    isFairManifestV1_1(asset.fairManifest as FairManifest)
+    isFairManifestV11(asset.fairManifest as FairManifest)
   ) {
-    manifest = { ...(asset.fairManifest as FairManifestV1_1) };
+    manifest = { ...(asset.fairManifest as FairManifestV11) };
   } else {
     // Fallback: create a minimal v1.1 manifest from asset metadata
     manifest = {

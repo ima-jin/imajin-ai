@@ -6,8 +6,8 @@ export type {
   FairIntegrity,
   FairIntent,
   FairManifest,
-  FairManifestV1_0,
-  FairManifestV1_1,
+  FairManifestV10,
+  FairManifestV11,
   FairSignature,
   // v1.1 new types
   Money,
@@ -15,15 +15,15 @@ export type {
   FairDistributionRight,
   FairTraining,
   FairCommercial,
-  FairTransferV1_1,
-  FairAccessV1_1,
+  FairTransferV11,
+  FairAccessV11,
   Signature,
   SignedFairManifest,
   SettlementScheme,
   SettlementConfig,
   FairProvenanceRef,
 } from './types';
-export { isFairManifestV1_1 } from './types';
+export { isFairManifestV11 } from './types';
 
 export type { FairTemplate, TemplateConfig } from './templates';
 export { templates, getDefaultManifest } from './templates';

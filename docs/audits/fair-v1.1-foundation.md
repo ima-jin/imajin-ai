@@ -12,7 +12,7 @@ Date: 2026-05-10
 
 | File | What exists | Decision |
 |------|-------------|----------|
-| `types.ts` | `FairManifest` (v1.0), `FairEntry`, `FairFee`, `FairTransfer`, `FairAccess`, `FairIntegrity`, `FairIntent`, `FairSignature` | **Extend** — add `Money`, `DidShareList`, `FairDistributionRight`, `FairTraining`, `FairCommercial`, `Signature`, `SignedFairManifest`, `FairManifestV1_0`, `FairManifestV1_1`, union `FairManifest` |
+| `types.ts` | `FairManifest` (v1.0), `FairEntry`, `FairFee`, `FairTransfer`, `FairAccess`, `FairIntegrity`, `FairIntent`, `FairSignature` | **Extend** — add `Money`, `DidShareList`, `FairDistributionRight`, `FairTraining`, `FairCommercial`, `Signature`, `SignedFairManifest`, `FairManifestV10`, `FairManifestV11`, union `FairManifest` |
 | `canonical.ts` | Private `canonicalize()` (sorted keys, no whitespace) + public `canonicalizeForSigning()` (strips signatures) | **Extend** — export generic `canonicalize(value): string`. Existing logic is already JCS-equivalent. No replacement needed. |
 | `validate.ts` | `validateManifest()` + `isValidManifest()` — v1.0 only. Share sum check only validates `≤ 1.0001`, not exact `1.0`. | **Extend** — add v1.1 validation path. Keep v1.0 path untouched. New return shape: `{ ok, errors[] }` (aligns with v1.1 convention while preserving old `{ valid, errors[] }` for v1.0). |
 | `create.ts` | `createManifest()` — emits v1.0 manifest | **Leave** — not in scope for D1-D3. Could extend later. |
@@ -24,9 +24,9 @@ Date: 2026-05-10
 ### Key type decisions
 
 - `FairEntry.did` made **optional** (was required) so platform entries (no DID, just `name`) work in both v1.0 display code and v1.1 manifests. `DidShareEntry` is structurally identical to `FairEntry` — TypeScript structural typing makes them interchangeable, which keeps `FairAccordion` and `FairEditor` compiling without major rewrites.
-- `FairTransfer` and `FairTransferV1_1` both get each other's optional fields as **backward-compat padding** so the union's `.transfer` property doesn't break component code.
-- `FairManifestV1_0` keeps all original fields including `distributions?: FairEntry[]` (event splits) and `chain?: FairEntry[]` (alias).
-- `FairManifestV1_1` adds `distribution?: { reproduction?, streaming?, derivative?, syndication? }` (rights object) — note singular vs plural to avoid collision with v1.0 `distributions`.
+- `FairTransfer` and `FairTransferV11` both get each other's optional fields as **backward-compat padding** so the union's `.transfer` property doesn't break component code.
+- `FairManifestV10` keeps all original fields including `distributions?: FairEntry[]` (event splits) and `chain?: FairEntry[]` (alias).
+- `FairManifestV11` adds `distribution?: { reproduction?, streaming?, derivative?, syndication? }` (rights object) — note singular vs plural to avoid collision with v1.0 `distributions`.
 
 ---
 
@@ -54,7 +54,7 @@ Date: 2026-05-10
 
 | File | What exists | Decision |
 |------|-------------|----------|
-| `templates.ts` | `TemplateConfig` with UI section flags + `templates` record. No `getDefaultManifest()`. | **Replace/extend** — repurpose `templates.ts` to also export `getDefaultManifest(mimeType: string, ownerDid: string): FairManifestV1_1`. The existing `TemplateConfig` and `templates` record stay for UI use. Add a new `defaultManifest.ts`-like behavior within `templates.ts` to keep exports centralized. |
+| `templates.ts` | `TemplateConfig` with UI section flags + `templates` record. No `getDefaultManifest()`. | **Replace/extend** — repurpose `templates.ts` to also export `getDefaultManifest(mimeType: string, ownerDid: string): FairManifestV11`. The existing `TemplateConfig` and `templates` record stay for UI use. Add a new `defaultManifest.ts`-like behavior within `templates.ts` to keep exports centralized. |
 | `apps/kernel/app/media/api/assets/route.ts:224` | Hand-rolls v1.0 manifest JSON inline | **Replace** — call `getDefaultManifest(mimeType, ownerDid)` from `@imajin/fair`. Remove inline JSON. |
 
 ### Default manifest decisions

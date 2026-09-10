@@ -28,7 +28,7 @@ vi.mock('@imajin/auth', () => ({
 }));
 
 vi.mock('@imajin/fair', () => ({
-  isFairManifestV1_1: vi.fn((m: unknown) => !!(m && typeof m === 'object' && 'version' in m && (m as { version: string }).version === '1.1')),
+  isFairManifestV11: vi.fn((m: unknown) => !!(m && typeof m === 'object' && 'version' in m && (m as { version: string }).version === '1.1')),
 }));
 
 vi.mock('@/src/lib/media/manifest-helpers', () => ({

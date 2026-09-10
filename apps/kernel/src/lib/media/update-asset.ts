@@ -2,8 +2,8 @@ import { writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { db, assets, type Asset } from "@/src/db";
 import { eq, sql } from "drizzle-orm";
-import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
-import { isFairManifestV1_1 } from "@imajin/fair";
+import type { FairManifest, FairManifestV11 } from "@imajin/fair";
+import { isFairManifestV11 } from "@imajin/fair";
 import { computeCid } from "@imajin/cid";
 import { contentSigner } from "@/src/lib/media/content-signer";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
@@ -86,10 +86,10 @@ export type UpdateAssetContentResult =
 async function resignFairManifest(asset: Asset, assetId: string): Promise<Record<string, unknown> | undefined> {
   const current = asset.fairManifest as Record<string, unknown> | undefined;
   const rawManifest = asset.fairManifest as FairManifest | null;
-  if (!rawManifest || !isFairManifestV1_1(rawManifest)) return current;
+  if (!rawManifest || !isFairManifestV11(rawManifest)) return current;
 
   return contentSigner
-    .sign(rawManifest as FairManifestV1_1)
+    .sign(rawManifest as FairManifestV11)
     .then(async (signed) => {
       if (asset.fairPath) {
         await writeFile(asset.fairPath, JSON.stringify(signed, null, 2)).catch((err: unknown) =>

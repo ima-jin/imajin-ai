@@ -1,9 +1,9 @@
-import type { FairManifestV1_1, SettlementScheme } from './types';
+import type { FairManifestV11, SettlementScheme } from './types';
 
 export type FairAction = 'reproduction' | 'streaming' | 'derivative' | 'syndication';
 
 export interface Build402ResponseOpts {
-  manifest: FairManifestV1_1;
+  manifest: FairManifestV11;
   assetId: string;
   action: FairAction;
   supportedSchemes: SettlementScheme[];

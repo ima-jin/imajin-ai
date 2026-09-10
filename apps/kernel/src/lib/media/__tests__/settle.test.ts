@@ -23,16 +23,16 @@ const {
   mockBuild402Response,
   mockVerifyReceipt,
   mockLoadVerifyKey,
-  mockIsFairManifestV1_1,
+  mockIsFairManifestV11,
 } = vi.hoisted(() => ({
   mockBuild402Response: vi.fn(),
   mockVerifyReceipt: vi.fn(),
   mockLoadVerifyKey: vi.fn(),
-  mockIsFairManifestV1_1: vi.fn(),
+  mockIsFairManifestV11: vi.fn(),
 }));
 
 vi.mock('@imajin/fair', () => ({
-  isFairManifestV1_1: mockIsFairManifestV1_1,
+  isFairManifestV11: mockIsFairManifestV11,
   build402Response: mockBuild402Response,
   verifyReceipt: mockVerifyReceipt,
   loadVerifyKey: mockLoadVerifyKey,
@@ -116,7 +116,7 @@ function setupDbForSettlementAndReplay(settlement: unknown, replayCount: number)
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockIsFairManifestV1_1.mockReturnValue(true);
+  mockIsFairManifestV11.mockReturnValue(true);
   process.env.AUTH_PRIVATE_KEY = undefined;
 });
 
@@ -156,8 +156,8 @@ describe('handleSettlement — no price', () => {
     expect(result).toBeNull();
   });
 
-  it('returns null when isFairManifestV1_1 returns false', async () => {
-    mockIsFairManifestV1_1.mockReturnValue(false);
+  it('returns null when isFairManifestV11 returns false', async () => {
+    mockIsFairManifestV11.mockReturnValue(false);
     const result = await handleSettlement(makeRequest(), ASSET_ID, {} as never, 'reproduction');
     expect(result).toBeNull();
   });

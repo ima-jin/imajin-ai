@@ -1,4 +1,4 @@
-import type { FairManifestV1_1 } from "@imajin/fair";
+import type { FairManifestV11 } from "@imajin/fair";
 import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
 
 /**
@@ -31,7 +31,7 @@ export interface ContentSigner {
    * fresh. Throws if signing fails — callers should decide whether to treat
    * that as fatal or non-fatal based on context.
    */
-  sign(manifest: FairManifestV1_1): Promise<FairManifestV1_1>;
+  sign(manifest: FairManifestV11): Promise<FairManifestV11>;
 }
 
 /**
@@ -45,7 +45,7 @@ export interface ContentSigner {
  * See the sovereignty tradeoff note on `ContentSigner` above.
  */
 export class KernelDelegatedSigner implements ContentSigner {
-  async sign(manifest: FairManifestV1_1): Promise<FairManifestV1_1> {
+  async sign(manifest: FairManifestV11): Promise<FairManifestV11> {
     const result = await signFairAsNode(manifest);
     if (!result.ok) {
       throw new Error(`ContentSigner (kernel-delegated) failed: ${result.error}`);

@@ -20,7 +20,7 @@
  * `FairEntry`.
  */
 import { describe, it, expectTypeOf } from 'vitest';
-import type { FairEntry, DidShareList, FairManifestV1_0, FairManifestV1_1 } from '../src/types';
+import type { FairEntry, DidShareList, FairManifestV10, FairManifestV11 } from '../src/types';
 import type { FairSettlementEntry } from '../src/settlement';
 
 describe('.fair entry shape (#1712)', () => {
@@ -29,9 +29,9 @@ describe('.fair entry shape (#1712)', () => {
   });
 
   it('both manifest versions carry the same entry shape in attribution/chain/distributions', () => {
-    expectTypeOf<FairManifestV1_0['attribution']>().toEqualTypeOf<FairEntry[]>();
-    expectTypeOf<NonNullable<FairManifestV1_0['chain']>>().toEqualTypeOf<FairEntry[]>();
-    expectTypeOf<FairManifestV1_1['attribution']>().toEqualTypeOf<FairEntry[]>();
+    expectTypeOf<FairManifestV10['attribution']>().toEqualTypeOf<FairEntry[]>();
+    expectTypeOf<NonNullable<FairManifestV10['chain']>>().toEqualTypeOf<FairEntry[]>();
+    expectTypeOf<FairManifestV11['attribution']>().toEqualTypeOf<FairEntry[]>();
   });
 
   it('FairSettlementEntry (used by apps/market and packages/bus settle.ts) is assignable from a resolved FairEntry', () => {

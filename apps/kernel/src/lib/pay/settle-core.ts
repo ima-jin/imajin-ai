@@ -18,7 +18,7 @@ import { db, balances, transactions, identities, identityChains } from '@/src/db
 import { eq, inArray, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { verifyManifest } from '@imajin/fair';
-import type { FairManifest, FairManifestV1_1 } from '@imajin/fair';
+import type { FairManifest, FairManifestV11 } from '@imajin/fair';
 import { createDbResolver } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -126,7 +126,7 @@ async function validateSettlementRequest(params: {
   // claim, or an expired attribution window all refuse the settlement
   // outright, before any balance is touched).
   const introAttributionCheck = await verifyIntroAttributionManifestForSettlement(
-    fair_manifest as unknown as Partial<FairManifestV1_1>,
+    fair_manifest as unknown as Partial<FairManifestV11>,
   );
   if (!introAttributionCheck.ok) {
     return { error: introAttributionCheck.error, status: 400 };

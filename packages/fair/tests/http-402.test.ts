@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { build402Response } from '../src/http-402';
-import type { FairManifestV1_1, SettlementScheme } from '../src';
+import type { FairManifestV11, SettlementScheme } from '../src';
 
-function makeManifest(overrides?: Partial<FairManifestV1_1>): FairManifestV1_1 {
+function makeManifest(overrides?: Partial<FairManifestV11>): FairManifestV11 {
   return {
     fair: '1.1',
     version: '1.1',

@@ -29,7 +29,7 @@ import { buildFairManifest } from "@imajin/fair";
 
 const SHARE_EPSILON = 1e-9;
 
-/** Shape shared by both `FairManifestV1_0` and `FairManifestV1_1` for the fields this guard protects. */
+/** Shape shared by both `FairManifestV10` and `FairManifestV11` for the fields this guard protects. */
 export interface FairFeeCarrier {
   chain?: FairEntry[];
   fees?: FairFee[];

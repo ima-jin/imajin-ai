@@ -2,10 +2,10 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type {
-  FairManifestV1_1,
+  FairManifestV11,
   FairDistributionRight,
-  FairTransferV1_1,
-  FairAccessV1_1,
+  FairTransferV11,
+  FairAccessV11,
 } from '@imajin/fair';
 import { validateManifest } from '@imajin/fair';
 import { DidShareListEditor, MoneyInput } from '@imajin/ui';
@@ -245,9 +245,9 @@ function useDebouncedCallback<T extends (...args: any[]) => void>(
 // ─── FairManifestEditor ────────────────────────────────────────────────────
 
 export interface FairManifestEditorProps {
-  manifest: FairManifestV1_1;
+  manifest: FairManifestV11;
   mimeType?: string;
-  onChange: (manifest: FairManifestV1_1) => void;
+  onChange: (manifest: FairManifestV11) => void;
   onSave?: () => void;
   readOnly?: boolean;
   currentUserDid?: string;
@@ -265,7 +265,7 @@ export function FairManifestEditor({
   connectionsUrl = CONNECTIONS_API_URL,
   resolveProfile: resolveProfileProp = resolveProfile,
 }: Readonly<FairManifestEditorProps>) {
-  const [local, setLocal] = useState<FairManifestV1_1>(manifest);
+  const [local, setLocal] = useState<FairManifestV11>(manifest);
   const [validation, setValidation] = useState<{ ok: boolean; errors: string[] }>({
     ok: true,
     errors: [],
@@ -277,7 +277,7 @@ export function FairManifestEditor({
   }, [manifest]);
 
   const update = useCallback(
-    (patch: Partial<FairManifestV1_1>) => {
+    (patch: Partial<FairManifestV11>) => {
       const next = { ...local, ...patch };
       setLocal(next);
       onChange(next);
@@ -285,7 +285,7 @@ export function FairManifestEditor({
     [local, onChange]
   );
 
-  const debouncedValidate = useDebouncedCallback((m: FairManifestV1_1) => {
+  const debouncedValidate = useDebouncedCallback((m: FairManifestV11) => {
     const result = validateManifest(m);
     setValidation(result);
 
@@ -315,8 +315,8 @@ export function FairManifestEditor({
   const transfer = local.transfer ?? { allowed: false };
   const access =
     typeof local.access === 'string'
-      ? ({ type: local.access } as FairAccessV1_1)
-      : local.access ?? ({ type: 'private' } as FairAccessV1_1);
+      ? ({ type: local.access } as FairAccessV11)
+      : local.access ?? ({ type: 'private' } as FairAccessV11);
 
   // Signed manifest display
   const isSigned = !!local.signature;
@@ -451,7 +451,7 @@ export function FairManifestEditor({
             label="Transfers allowed"
             checked={transfer.allowed}
             onChange={(allowed) =>
-              update({ transfer: { ...transfer, allowed } as FairTransferV1_1 })
+              update({ transfer: { ...transfer, allowed } as FairTransferV11 })
             }
             readOnly={readOnly}
           />
@@ -462,7 +462,7 @@ export function FairManifestEditor({
                 checked={transfer.requiresAttribution ?? false}
                 onChange={(requiresAttribution) =>
                   update({
-                    transfer: { ...transfer, requiresAttribution } as FairTransferV1_1,
+                    transfer: { ...transfer, requiresAttribution } as FairTransferV11,
                   })
                 }
                 readOnly={readOnly}
@@ -472,7 +472,7 @@ export function FairManifestEditor({
                 <MoneyInput
                   value={transfer.price}
                   onChange={(price) =>
-                    update({ transfer: { ...transfer, price } as FairTransferV1_1 })
+                    update({ transfer: { ...transfer, price } as FairTransferV11 })
                   }
                   readOnly={readOnly}
                 />
@@ -483,7 +483,7 @@ export function FairManifestEditor({
                   <DidShareListEditor
                     value={transfer.splits ?? [{ role: 'creator', share: 1 }]}
                     onChange={(splits) =>
-                      update({ transfer: { ...transfer, splits } as FairTransferV1_1 })
+                      update({ transfer: { ...transfer, splits } as FairTransferV11 })
                     }
                     readOnly={readOnly}
                     defaultDid={currentUserDid}

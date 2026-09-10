@@ -20,11 +20,11 @@ import {
   parseSubjectGates,
   type FairDisclosureOverlay,
 } from '../disclosure';
-import type { FairManifestV1_1 } from '../types';
+import type { FairManifestV11 } from '../types';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
-const BASE_MANIFEST: FairManifestV1_1 = {
+const BASE_MANIFEST: FairManifestV11 = {
   fair: '1.1',
   version: '1.1',
   id: 'fair_test_001',

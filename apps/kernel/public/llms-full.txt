@@ -833,7 +833,7 @@ splits the payment. No human intervention. No invoice. No accounts receivable.
 ### Manifest Format (v1.1)
 
 ```typescript
-interface FairManifestV1_1 {
+interface FairManifestV11 {
   fair: "1.1";
   version: "1.1";
   id: string;
@@ -841,8 +841,8 @@ interface FairManifestV1_1 {
   owner: string;               // DID
   created: string;             // ISO 8601
   source?: string;
-  access: FairAccessV1_1 | "public" | "private";
-  transfer?: FairTransferV1_1;
+  access: FairAccessV11 | "public" | "private";
+  transfer?: FairTransferV11;
   fees?: FairFee[];
   attribution: DidShareList;   // who gets paid
   distribution?: {             // usage rights
