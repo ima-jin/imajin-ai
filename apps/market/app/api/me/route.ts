@@ -1,6 +1,5 @@
 ﻿import { NextRequest } from 'next/server';
-import { requireAuth , resolveActingDid } from '@imajin/auth';
-import { getClient } from '@imajin/db';
+import { requireAuth , resolveActingDid, resolveIdentitiesForDids } from '@imajin/auth';
 import { jsonResponse } from '@/lib/utils';
 
 /**
@@ -14,12 +13,14 @@ export async function GET(request: NextRequest) {
   const { identity } = authResult;
   const did = resolveActingDid(identity);
 
-  // If acting as a scope, resolve its display name
+  // If acting as a scope, resolve its display name via the kernel profile
+  // service's batched /api/resolve route (#1998) — replaces the raw
+  // cross-schema profiles-table read this app used to run directly (#2155).
   let scopeLabel: string | null = null;
   if (identity.actingAs) {
-    const sql = getClient();
-    const [profile] = await sql`SELECT display_name, handle FROM profile.profiles WHERE did = ${identity.actingAs} LIMIT 1`.catch(() => []);
-    scopeLabel = profile?.display_name || (profile?.handle ? `@${profile.handle}` : null);
+    const resolved = await resolveIdentitiesForDids([identity.actingAs]);
+    const profile = resolved.get(identity.actingAs);
+    scopeLabel = profile?.displayName || (profile?.handle ? `@${profile.handle}` : null);
   }
 
   return jsonResponse({ did, scopeLabel });

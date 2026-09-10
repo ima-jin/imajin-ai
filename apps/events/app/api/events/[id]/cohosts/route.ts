@@ -5,12 +5,10 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 
 const log = createLogger('events');
 import { eq } from 'drizzle-orm';
-import { getClient } from '@imajin/db';
 import { resolveCoHostDid } from '@/src/lib/cohost-helpers';
 
-const sql = getClient();
-
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL || 'http://localhost:3003';
 
 async function resolveProfile(did: string): Promise<{ did: string; name: string | null; handle: string | null; avatar: string | null }> {
   try {
@@ -29,10 +27,69 @@ async function resolveProfile(did: string): Promise<{ did: string; name: string 
   return { did, name: null, handle: null, avatar: null };
 }
 
+interface PodMemberRow {
+  podId: string;
+  did: string;
+  role: string;
+  addedBy: string | null;
+  joinedAt: string;
+  removedAt: string | null;
+}
+
+/**
+ * Fetch a pod's current (non-removed) members via the kernel connections
+ * service's `GET /api/pods/{id}` (#2155) — replaces the raw
+ * `connections.pod_members` read this route used to run directly. Forwards
+ * the caller's session cookie, since the kernel route requires cookieAuth.
+ * Fails soft (empty list) on an unreachable service or non-2xx response,
+ * matching this route's existing fail-soft posture for profile lookups.
+ */
+async function fetchPodMembers(podId: string, cookie: string): Promise<PodMemberRow[]> {
+  try {
+    const res = await fetch(`${CONNECTIONS_SERVICE_URL}/api/pods/${encodeURIComponent(podId)}`, {
+      headers: { cookie },
+      cache: 'no-store',
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const members = (data.members ?? []) as PodMemberRow[];
+    return members.filter((member) => !member.removedAt);
+  } catch {
+    return [];
+  }
+}
+
+type AddPodMemberResult = { ok: true; member: PodMemberRow } | { ok: false; status: number; error: string };
+
+/**
+ * Add a pod member via the kernel connections service's
+ * `POST /api/pods/{id}/members` (#2155) — replaces the raw
+ * `INSERT INTO connections.pod_members` this route used to run directly.
+ * Forwards the caller's session cookie so the kernel's owner-only chain-
+ * verified check applies exactly as before (only the event owner could
+ * reach this far in the route already).
+ */
+async function addPodMember(podId: string, did: string, cookie: string): Promise<AddPodMemberResult> {
+  try {
+    const res = await fetch(`${CONNECTIONS_SERVICE_URL}/api/pods/${encodeURIComponent(podId)}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie },
+      body: JSON.stringify({ did, role: 'cohost' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, status: res.status, error: typeof data.error === 'string' ? data.error : 'Failed to add cohost' };
+    }
+    return { ok: true, member: data.member as PodMemberRow };
+  } catch {
+    return { ok: false, status: 502, error: 'Failed to reach connections service' };
+  }
+}
+
 /**
  * GET /api/events/[id]/cohosts — list cohosts for an event
  */
-export async function GET(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id } = params;
 
@@ -46,20 +103,18 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
       return NextResponse.json({ cohosts: [] });
     }
 
-    const rows = await sql`
-      SELECT did, role, added_by, joined_at
-      FROM connections.pod_members
-      WHERE pod_id = ${event.podId} AND role = 'cohost'
-      ORDER BY joined_at ASC
-    `;
+    const cookie = request.headers.get('cookie') || '';
+    const members = (await fetchPodMembers(event.podId, cookie))
+      .filter((member) => member.role === 'cohost')
+      .sort((a, b) => new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime());
 
     const cohosts = await Promise.all(
-      rows.map(async (row) => {
-        const profile = await resolveProfile(row.did as string);
+      members.map(async (member) => {
+        const profile = await resolveProfile(member.did);
         return {
           ...profile,
           role: 'cohost',
-          addedAt: row.joined_at,
+          addedAt: member.joinedAt,
         };
       })
     );
@@ -125,12 +180,25 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return NextResponse.json({ error: 'Event creator is already the owner' }, { status: 400 });
     }
 
-    // Add to pod as cohost
-    await sql`
-      INSERT INTO connections.pod_members (pod_id, did, role, added_by, joined_at)
-      VALUES (${event.podId}, ${coHostDid}, 'cohost', ${did}, NOW())
-      ON CONFLICT (pod_id, did) DO NOTHING
-    `;
+    // Add to pod as cohost. The kernel's addPodMember route is a plain
+    // insert with no ON CONFLICT handling, unlike the raw upsert this route
+    // used to run — so an already-a-member add is checked for explicitly
+    // first to keep the same idempotent "re-adding an existing cohost is a
+    // no-op success" behavior instead of surfacing the kernel's insert error.
+    const cookie = request.headers.get('cookie') || '';
+    const existingMembers = await fetchPodMembers(event.podId, cookie);
+    const existingMember = existingMembers.find((member) => member.did === coHostDid);
+
+    let addedAt: string;
+    if (existingMember) {
+      addedAt = existingMember.joinedAt;
+    } else {
+      const addResult = await addPodMember(event.podId, coHostDid, cookie);
+      if (!addResult.ok) {
+        return NextResponse.json({ error: addResult.error }, { status: addResult.status });
+      }
+      addedAt = addResult.member.joinedAt;
+    }
 
     // Also add cohost to event chat as admin
     const CHAT_URL = process.env.CHAT_SERVICE_URL || process.env.CHAT_URL;
@@ -153,7 +221,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       handle: profileData.handle || (handle ? handle.replace(/^@/, '') : null),
       avatar: profileData.avatarUrl || profileData.avatar || null,
       role: 'cohost',
-      addedAt: new Date().toISOString(),
+      addedAt,
     };
 
     return NextResponse.json({ cohost }, { status: 201 });
