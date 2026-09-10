@@ -2,16 +2,35 @@
   "name": "@imajin/auth",
   "version": "0.1.0",
   "private": true,
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./broker-consent-vocabulary": "./src/broker-consent-vocabulary.ts",
-    "./scope-vocabulary": "./src/scope-vocabulary.ts",
-    "./grant-scopes": "./src/grant-scopes.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./broker-consent-vocabulary": {
+      "types": "./dist/broker-consent-vocabulary.d.ts",
+      "import": "./dist/broker-consent-vocabulary.js"
+    },
+    "./scope-vocabulary": {
+      "types": "./dist/scope-vocabulary.d.ts",
+      "import": "./dist/scope-vocabulary.js"
+    },
+    "./grant-scopes": {
+      "types": "./dist/grant-scopes.d.ts",
+      "import": "./dist/grant-scopes.js"
+    }
   },
+  "files": [
+    "dist/",
+    "src/"
+  ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@imajin/config": "workspace:*",
@@ -23,6 +42,7 @@
   "devDependencies": {
     "drizzle-orm": "^0.45.1",
     "typescript": "^5",
+    "tsup": "^8.0.0",
     "@types/node": "^22.0.0"
   },
   "peerDependencies": {
