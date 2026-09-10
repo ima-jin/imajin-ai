@@ -39,6 +39,17 @@ components:
       type: apiKey
       in: cookie
       name: imajin_session
+    pushToken:
+      type: apiKey
+      in: query
+      name: token
+      description: >-
+        Shared secret Google's Pub/Sub push subscription appends to the
+        webhook URL, checked against GOOGLE_GMAIL_PUBSUB_PUSH_TOKEN.
+    cronBearer:
+      type: http
+      scheme: bearer
+      description: CRON_SECRET, shared by every /api/cron/* route in this repo.
   schemas:
     GoogleScopeManifestStatus:
       type: object
@@ -263,3 +274,78 @@ paths:
       responses:
         "204":
           description: No content
+  /api/webhook/gmail:
+    post:
+      tags: [google]
+      operationId: googleGmailWebhook
+      summary: Gmail Pub/Sub push notification receiver
+      description: >-
+        Decodes the Pub/Sub push envelope, resolves the mailbox's owner DID
+        from the reverse index populated by `google_gmail_watch`, diffs
+        `users.history.list` since the last-seen historyId, and emits a
+        `mail.received` signed event per newly-added message. Always answers
+        204 once authenticated (even for an unknown mailbox or an internal
+        processing failure) so Pub/Sub does not retry into a state retrying
+        cannot fix.
+      security:
+        - pushToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: object
+                  properties:
+                    data: { type: string, description: "Base64-encoded { emailAddress, historyId } JSON" }
+                    messageId: { type: string }
+                    publishTime: { type: string }
+                subscription: { type: string }
+      responses:
+        "204":
+          description: Acknowledged (processed, dropped, or failed internally — Pub/Sub should not retry)
+        "400":
+          description: Invalid JSON body
+        "401":
+          description: Push token missing or wrong
+  # Served at the top-level /api/cron/... path (not under /google), hence the
+  # per-path `servers` override below, which replaces (not appends to) the
+  # top-level servers block for this one path — OpenAPI 3.1 §4.8.9.1.
+  /api/cron/google-gmail-watch-renew:
+    servers:
+      - url: https://{node}.imajin.ai
+        description: production node
+        variables:
+          node:
+            default: jin
+      - url: http://localhost:3000
+        description: local development
+    get:
+      tags: [google]
+      operationId: googleGmailWatchRenewCron
+      summary: Renew Gmail push subscriptions before Google's ~7-day expiry
+      description: >-
+        Enumerates every DID with an active google:gmail:read grant and calls
+        `users.watch` again for any whose subscription has no row yet or
+        expires within 24 hours. Scheduled daily — see vercel.json.
+      security:
+        - cronBearer: []
+      responses:
+        "200":
+          description: Sweep summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  owners: { type: integer }
+                  renewed: { type: integer }
+                  results: { type: array, items: { type: object, properties: { ownerDid: { type: string } } } }
+                  failures: { type: array, items: { type: object, properties: { ownerDid: { type: string }, error: { type: string } } } }
+        "401":
+          description: Missing or wrong CRON_SECRET bearer
+        "500":
+          description: Internal server error

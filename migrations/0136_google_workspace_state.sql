@@ -1,5 +1,7 @@
--- Migration: 0133_google_workspace_state
+-- Migration: 0136_google_workspace_state
 -- owner: kernel
+-- Renumbered from 0133 (#2144 hotfix): 0133 collided with the independently
+-- merged 0133_pay_balance_units.sql once both PRs landed on main.
 -- Google Workspace connector operational state (#2144).
 --
 -- One row per connecting DID. Distinct from auth.channel_links (authoritative
