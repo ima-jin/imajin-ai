@@ -1,6 +1,6 @@
 import pino from 'pino';
 import type { Logger, LogContext } from '../types';
-import { randomUUID } from 'node:crypto';
+import { getLogSink } from '../sink';
 
 const REDACT_PATHS = [
   'password',
@@ -24,23 +24,12 @@ function shouldPersist(level: string): boolean {
   return (LEVEL_PRIORITY[level] ?? 0) >= (LEVEL_PRIORITY[MIN_PERSIST_LEVEL] ?? 30);
 }
 
-// Opportunistic cleanup — at most once per hour per process
-let lastCleanupAt = 0;
-
-function runLogCleanup(): void {
-  const now = Date.now();
-  if (now - lastCleanupAt < 60 * 60 * 1000) return;
-  lastCleanupAt = now;
-  import('@imajin/db')
-    .then(({ getClient }) => {
-      const sql = getClient();
-      return sql`SELECT registry.cleanup_old_logs()`;
-    })
-    .catch(() => {
-      // Never block or surface errors from the log sink
-    });
-}
-
+/**
+ * Fire-and-forget handoff to the registered log sink (source='app').
+ * Only runs above `shouldPersist`'s threshold and when a sink has been
+ * registered (see `@imajin/logger/db` — core `@imajin/logger` has no DB
+ * dependency).
+ */
 function writeAppLog(entry: {
   service: string;
   level: string;
@@ -54,28 +43,11 @@ function writeAppLog(entry: {
 }): void {
   if (!shouldPersist(entry.level)) return;
 
-  import('@imajin/db')
-    .then(({ getClient }) => {
-      const sql = getClient();
-      const id = `log_${Date.now().toString(36)}_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
-      return sql`
-        INSERT INTO registry.logs
-          (id, source, service, level, message, correlation_id, did, method, path, error_message, metadata, created_at)
-        VALUES
-          (${id}, 'app', ${entry.service}, ${entry.level}, ${entry.message},
-           ${entry.correlationId ?? null}, ${entry.did ?? null},
-           ${entry.method ?? null}, ${entry.path ?? null},
-           ${entry.errorMessage ?? null},
-           ${entry.metadata ? JSON.stringify(entry.metadata) : null}::jsonb,
-           now())
-      `;
-    })
-    .then(() => {
-      runLogCleanup();
-    })
-    .catch(() => {
-      // Never block or surface errors from the log sink
-    });
+  try {
+    getLogSink()?.writeAppLog?.(entry);
+  } catch {
+    // Never block or surface errors from the log sink
+  }
 }
 
 function formatErrorMessage(source: unknown): string | undefined {

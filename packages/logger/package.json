@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./db": {
+      "types": "./dist/db.d.ts",
+      "import": "./dist/db.js"
     }
   },
   "files": [
@@ -21,16 +25,22 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@imajin/db": "workspace:*",
     "nanoid": "^5",
     "pino": "^9"
   },
   "devDependencies": {
+    "@imajin/db": "workspace:*",
     "typescript": "^5",
     "tsup": "^8.0.0",
     "@types/node": "^22.0.0"
   },
   "peerDependencies": {
-    "next": ">=15.5.24"
+    "next": ">=15.5.24",
+    "@imajin/db": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@imajin/db": {
+      "optional": true
+    }
   }
 }
