@@ -405,7 +405,7 @@
     "kernel.google_workspace_state": {
       "owner": "kernel",
       "schema": "kernel",
-      "firstMigration": "0133_google_workspace_state.sql",
+      "firstMigration": "0136_google_workspace_state.sql",
       "notes": ""
     },
     "kernel.identity_aliases": {
