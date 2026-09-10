@@ -4,26 +4,36 @@
   "private": true,
   "description": "Harness-agnostic RFC-31 context-envelope generator (imajin-ai#1932/#1933): agent DID + owner DID + intent in, workspace files/config/delegation-grant refs/bus routes out — plus a NanoClaw renderer and the agent identity bootstrap CLI.",
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "bin": {
-    "claw-envelope": "./src/cli.ts"
+    "claw-envelope": "./dist/cli.js"
   },
+  "files": [
+    "dist/",
+    "src/"
+  ],
   "scripts": {
+    "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
     "render": "tsx src/cli.ts",
-    "bootstrap-identity": "tsx src/bootstrap-identity.ts"
+    "bootstrap-identity": "tsx src/bootstrap-identity.ts",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@imajin/auth": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5",
     "vitest": "^2.1.9"

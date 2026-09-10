@@ -6,7 +6,7 @@
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
-    "build:types": "pnpm --filter @imajin/cid --filter @imajin/vault-core --filter @imajin/db --filter @imajin/logger --filter @imajin/config --filter @imajin/auth --filter @imajin/money --filter @imajin/fair --filter @imajin/ui --filter @imajin/pay build",
+    "build:types": "pnpm --filter @imajin/cid --filter @imajin/vault-core --filter @imajin/db --filter @imajin/logger --filter @imajin/config --filter @imajin/auth --filter @imajin/money --filter @imajin/fair --filter @imajin/ui --filter @imajin/pay --filter @imajin/notify --filter @imajin/emit --filter @imajin/input --filter @imajin/llm --filter @imajin/media --filter @imajin/onboard --filter @imajin/trust-graph --filter @imajin/dfos --filter @imajin/claw-envelope --filter @imajin/claw-provisioner --filter @imajin/nanoclaw-imajin-channel --filter @imajin/usage-emitter-claude-code --filter @imajin/bus --filter @imajin/chat build",
     "typecheck": "pnpm build:types && pnpm typecheck:only",
     "typecheck:only": "pnpm -r --if-present typecheck",
     "clean": "pnpm -r clean",
