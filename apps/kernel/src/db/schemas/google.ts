@@ -1,4 +1,4 @@
-import { pgSchema, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgSchema, text, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
 /**
  * Google Workspace connector operational state (#2144).
@@ -11,6 +11,9 @@ import { pgSchema, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
  *   - `gmailHistoryId` / `gmailWatchExpiration`: the Gmail `users.watch` push
  *     subscription's last-seen `historyId` and renewal deadline (Google expires
  *     a watch after 7 days; the renewal cron reads this column).
+ *   - `gmailEmailAddress`: the Gmail address `users.watch` is registered for.
+ *     Google's Pub/Sub push payload names the mailbox by address, not by DID,
+ *     so this is the reverse index the webhook route resolves `ownerDid` from.
  *   - `drivePageToken`: the Drive `changes.list` page token for the on-demand
  *     `google_drive_list_changes` tool, so each call resumes where the last
  *     one left off instead of re-walking the whole change feed.
@@ -28,12 +31,15 @@ export const googleWorkspaceState = googleSchema.table('google_workspace_state',
   gmailHistoryId: text('gmail_history_id'),
   /** When the current Gmail push subscription expires; null before the first watch. */
   gmailWatchExpiration: timestamp('gmail_watch_expiration', { withTimezone: true }),
+  /** Gmail address `users.watch` is registered for; null before the first watch. */
+  gmailEmailAddress: text('gmail_email_address'),
   /** Drive `changes.list` page token cursor, or null before the first call. */
   drivePageToken: text('drive_page_token'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   ownerDidUniq: uniqueIndex('uniq_google_workspace_state_owner').on(table.ownerDid),
+  gmailEmailIdx: index('idx_google_workspace_state_gmail_email').on(table.gmailEmailAddress),
 }));
 
 export type GoogleWorkspaceStateRow = typeof googleWorkspaceState.$inferSelect;
