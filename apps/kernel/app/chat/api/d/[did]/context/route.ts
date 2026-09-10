@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 import { db, conversationsV2 } from '@/src/db';
 import { eq, sql } from 'drizzle-orm';
-import { requireAuth } from '@imajin/auth';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from '@/src/lib/kernel/cors';
+import { checkAccess } from '@/src/lib/kernel/access';
 
 /**
  * OPTIONS /api/d/:did/context - CORS preflight
@@ -35,6 +36,17 @@ export async function PATCH(
     const authResult = await requireAuth(request);
     if ('error' in authResult) {
       return errorResponse(authResult.error, authResult.status, cors);
+    }
+
+    // Session callers must be authorized against the conversation itself —
+    // otherwise any authenticated session could rewrite any conversation's
+    // context (#2136). The internal-key path above is unaffected: sibling
+    // apps (e.g. events) still sync context server-to-server without a
+    // per-caller check, same trust level as before.
+    const effectiveDid = resolveActingDid(authResult.identity);
+    const hasAccess = await checkAccess(effectiveDid, did);
+    if (!hasAccess.allowed) {
+      return errorResponse('Access denied', 403, cors);
     }
   }
 
