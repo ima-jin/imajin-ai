@@ -87,9 +87,7 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: R
   // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
   // finding. Shared by the identifier and password inputs below since only
   // one of them is ever mounted at a time (gated by `step`).
-  const autoFocusRef = useCallback((el: HTMLInputElement | null) => {
-    el?.focus();
-  }, []);
+  const autoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
 
   async function handleIdentifierSubmit(e: React.FormEvent) {
     e.preventDefault();

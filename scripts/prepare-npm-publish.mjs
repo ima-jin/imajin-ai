@@ -82,13 +82,21 @@ export function fail(message) {
 // field is missing or doesn't match its expected shape. Called right before
 // each log statement (rather than once, up front) so it always reflects the
 // in-progress rewrites (e.g. the @imajin/* -> @ima-jin/* scope rename).
+//
+// The failure messages below deliberately don't interpolate the offending
+// `name`/`version` value itself: both come from parsing package.json, which
+// static analysis treats as a potentially sensitive source no differently
+// from a secret read off disk, and flags any log statement it can reach as a
+// confidential-data leak (jssecurity:S8689) — even routed through `fail()`,
+// whose own call sites are otherwise limited to CLI-argument text. Naming
+// which field is wrong is already enough to fix a malformed package.json.
 export function packageLabel(pkg) {
   const { name, version } = pkg;
   if (typeof name !== "string" || !NPM_PACKAGE_NAME_RE.test(name)) {
-    fail(`package.json has an invalid "name" field: ${JSON.stringify(name)}`);
+    fail('package.json has an invalid "name" field (expected an npm package name)');
   }
   if (typeof version !== "string" || !SEMVER_RE.test(version)) {
-    fail(`package.json has an invalid "version" field: ${JSON.stringify(version)}`);
+    fail('package.json has an invalid "version" field (expected a semver string)');
   }
   return `${name}@${version}`;
 }

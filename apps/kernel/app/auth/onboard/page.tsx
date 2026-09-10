@@ -59,9 +59,7 @@ function OnboardContent() {
   // S9379: an imperative focus-on-mount ref instead of the declarative
   // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
   // finding. Stable across renders so it only fires when the input mounts.
-  const emailAutoFocusRef = useCallback((el: HTMLInputElement | null) => {
-    el?.focus();
-  }, []);
+  const emailAutoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
 
   // Check session
   useEffect(() => {

@@ -169,9 +169,7 @@ function ApprovalCardRow({
   // S9379: an imperative focus-on-mount ref instead of the declarative
   // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
   // finding. Stable across renders so it only fires when the button mounts.
-  const autoFocusRef = useCallback((el: HTMLButtonElement | null) => {
-    el?.focus();
-  }, []);
+  const autoFocusRef = useCallback((el: HTMLButtonElement | null) => el?.focus(), []);
   return (
     <div className="rounded-lg border border-gray-800 p-4 space-y-2">
       <div className="flex items-center justify-between gap-3">

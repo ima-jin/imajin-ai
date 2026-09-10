@@ -24,9 +24,7 @@ export default function RecoverPage() {
   // S9379: an imperative focus-on-mount ref instead of the declarative
   // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
   // finding. Stable across renders so it only fires when the input mounts.
-  const autoFocusRef = useCallback((el: HTMLInputElement | null) => {
-    el?.focus();
-  }, []);
+  const autoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

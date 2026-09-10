@@ -130,9 +130,7 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
   // S9379: an imperative focus-on-mount ref instead of the declarative
   // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
   // finding. Stable across renders so it only fires when the textarea mounts.
-  const autoFocusRef = useCallback((el: HTMLTextAreaElement | null) => {
-    el?.focus();
-  }, []);
+  const autoFocusRef = useCallback((el: HTMLTextAreaElement | null) => el?.focus(), []);
 
   async function handleKeyLogin(keyHex: string) {
     const result = await loginWithKeypair(keyHex.trim());
