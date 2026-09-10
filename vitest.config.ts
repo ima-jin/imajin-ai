@@ -77,6 +77,7 @@ export default defineConfig({
       { find: '@imajin/chat', replacement: resolve(__dirname, 'packages/chat/src/index.ts') },
       { find: '@imajin/cid', replacement: resolve(__dirname, 'packages/cid/src/index.ts') },
       { find: '@imajin/config', replacement: resolve(__dirname, 'packages/config/src/index.ts') },
+      { find: '@imajin/logger/db', replacement: resolve(__dirname, 'packages/logger/src/db.ts') },
       { find: '@imajin/logger', replacement: resolve(__dirname, 'packages/logger/src/index.ts') },
       { find: '@imajin/money', replacement: resolve(__dirname, 'packages/money/src/index.ts') },
       { find: '@imajin/vault-core', replacement: resolve(__dirname, 'packages/vault-core/src/index.ts') },
