@@ -1,21 +1,24 @@
 /**
- * Golden characterization tests for POST /pay/api/settle (#1073).
+ * Golden characterization tests for POST /pay/api/settle (#1073, updated #2016).
  *
  * These capture the CURRENT behaviour of the canonical settlement route
- * across a fixture set (simple manifest, multi-party split, mixed
- * credit+cash source, funded/Stripe settlement, unsigned manifest,
- * invalid signature) before the #1073 `settlePayment()` extraction.
+ * across a fixture set (simple manifest, multi-party split, MJNx opt-in,
+ * unit-not-accepted rejection, funded/Stripe settlement, unsigned manifest,
+ * invalid signature).
  *
  * They exercise the route as a black box (`POST(request)`), so they keep
- * passing across the extraction refactor as long as `settlePayment()`'s
- * observable behaviour (response body, `balances`/`transactions` writes,
- * emitted attestations) is unchanged. They must pass unmodified on `main`
- * before any refactor commit.
+ * passing across future refactors as long as `settlePayment()`'s observable
+ * behaviour (response body, `balances`/`transactions` writes, emitted
+ * attestations) is unchanged for MJN-only flows (#2016's explicit
+ * requirement that the #1977 golden tests keep passing for those flows).
+ * The former "mixed credit+cash source" case is replaced below by two
+ * cases that reflect #2016's fungibility kill: single-unit-only settlement
+ * (MJNx opt-in) and a hard 400 when the unit isn't in `accepted_units`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const state = vi.hoisted(() => ({
-  senderBalanceRow: undefined as { did: string; cashAmount: string; creditAmount: string; currency: string } | undefined,
+  senderBalanceRow: undefined as { did: string; unit: string; amount: string; currency: string } | undefined,
   chainVerified: true,
   insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
   updateCalls: [] as Array<{ table: string; values: Record<string, unknown> }>,
@@ -36,7 +39,7 @@ vi.mock('@/src/db', async () => {
   // call above the file's own imports (#1073 dedup fix).
   const { createMockDb, tableTag } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
 
-  const balances = { __table: 'balances', did: 'did', cashAmount: 'cashAmount', creditAmount: 'creditAmount' };
+  const balances = { __table: 'balances', did: 'did', unit: 'unit', amount: 'amount' };
   const transactions = { __table: 'transactions', id: 'id' };
   const identities = { __table: 'identities' };
   const identityChains = { __table: 'identityChains', did: 'did' };
@@ -114,9 +117,9 @@ beforeEach(() => {
   verifyManifestMock.mockResolvedValue({ valid: true });
 });
 
-describe('POST /pay/api/settle — golden characterization (#1073)', () => {
-  it('simple manifest: single recipient paid from credit balance, unsigned manifest allowed', async () => {
-    state.senderBalanceRow = { did: 'did:imajin:buyer', cashAmount: '0', creditAmount: '100', currency: 'CAD' };
+describe('POST /pay/api/settle — golden characterization (#1073, MJN-only flows per #2016)', () => {
+  it('simple manifest: single recipient paid from MJN balance, unsigned manifest allowed', async () => {
+    state.senderBalanceRow = { did: 'did:imajin:buyer', unit: 'MJN', amount: '100', currency: 'CAD' };
 
     const res = await POST(
       makeRequest({
@@ -131,28 +134,26 @@ describe('POST /pay/api/settle — golden characterization (#1073)', () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toMatchObject({ settled: true, total_amount: 100, recipients: 1, source: 'credit' });
+    expect(body).toMatchObject({ settled: true, total_amount: 100, recipients: 1, source: 'fiat' });
 
-    // Debit the payer, credit the one recipient.
+    // Debit the payer, credit the one recipient — both touch the same MJN unit row.
     const balanceDebits = state.updateCalls.filter((c) => c.table === 'balances');
-    expect(balanceDebits).toEqual([
-      { table: 'balances', values: expect.objectContaining({ creditAmount: expect.anything(), cashAmount: expect.anything() }) },
-    ]);
+    expect(balanceDebits).toHaveLength(1);
     const balanceCredits = state.insertCalls.filter((c) => c.table === 'balances');
     expect(balanceCredits).toHaveLength(1);
-    expect(balanceCredits[0].values).toMatchObject({ did: 'did:imajin:seller', cashAmount: '100' });
+    expect(balanceCredits[0].values).toMatchObject({ did: 'did:imajin:seller', unit: 'MJN', amount: '100' });
 
     const txInserts = state.insertCalls.filter((c) => c.table === 'transactions');
     expect(txInserts).toHaveLength(1);
-    expect(txInserts[0].values).toMatchObject({ toDid: 'did:imajin:seller', amount: '100' });
+    expect(txInserts[0].values).toMatchObject({ toDid: 'did:imajin:seller', amount: '100', unit: 'MJN', sourceKind: 'transfer' });
     // Unsigned manifest: signature_verified recorded as false, settlement still proceeds.
     expect((txInserts[0].values.metadata as Record<string, unknown>).signature_verified).toBe(false);
 
-    expect(publishMock).toHaveBeenCalledWith('transaction.settled', expect.objectContaining({ payload: expect.objectContaining({ total_amount: 100, source: 'credit' }) }));
+    expect(publishMock).toHaveBeenCalledWith('transaction.settled', expect.objectContaining({ payload: expect.objectContaining({ total_amount: 100, source: 'fiat' }) }));
   });
 
   it('multi-party split: three recipients, each credited their own amount', async () => {
-    state.senderBalanceRow = { did: 'did:imajin:buyer', cashAmount: '0', creditAmount: '1000', currency: 'CAD' };
+    state.senderBalanceRow = { did: 'did:imajin:buyer', unit: 'MJN', amount: '1000', currency: 'CAD' };
 
     const chain = [
       { did: 'did:imajin:seller', amount: 70, role: 'seller' },
@@ -177,16 +178,16 @@ describe('POST /pay/api/settle — golden characterization (#1073)', () => {
     const balanceCredits = state.insertCalls.filter((c) => c.table === 'balances');
     expect(balanceCredits.map((c) => c.values)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ did: 'did:imajin:seller', cashAmount: '70' }),
-        expect.objectContaining({ did: 'did:imajin:node', cashAmount: '20' }),
-        expect.objectContaining({ did: 'did:imajin:platform', cashAmount: '10' }),
+        expect.objectContaining({ did: 'did:imajin:seller', unit: 'MJN', amount: '70' }),
+        expect.objectContaining({ did: 'did:imajin:node', unit: 'MJN', amount: '20' }),
+        expect.objectContaining({ did: 'did:imajin:platform', unit: 'MJN', amount: '10' }),
       ]),
     );
     expect(state.insertCalls.filter((c) => c.table === 'transactions')).toHaveLength(3);
   });
 
-  it('mixed credit+cash source: burns all credit then remainder from cash', async () => {
-    state.senderBalanceRow = { did: 'did:imajin:buyer', cashAmount: '80', creditAmount: '30', currency: 'CAD' };
+  it('MJNx opt-in: settlement target declares accepted_units and settles from the MJNx balance only', async () => {
+    state.senderBalanceRow = { did: 'did:imajin:buyer', unit: 'MJNx', amount: '100', currency: 'CAD' };
 
     const res = await POST(
       makeRequest({
@@ -194,19 +195,39 @@ describe('POST /pay/api/settle — golden characterization (#1073)', () => {
         total_amount: 100,
         service: 'market',
         type: 'sale',
+        unit: 'MJNx',
+        accepted_units: ['MJN', 'MJNx'],
         fair_manifest: { chain: [{ did: 'did:imajin:seller', amount: 100, role: 'seller' }] },
       }),
     );
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.source).toBe('mixed');
+    expect(body).toMatchObject({ settled: true, source: 'credit' });
 
-    const balanceDebits = state.updateCalls.filter((c) => c.table === 'balances');
-    expect(balanceDebits[0].values).toMatchObject({});
-    // creditBurn = min(30, 100) = 30; cashBurn = 100 - 30 = 70
-    // Values are drizzle `sql` templates, not plain numbers — assert shape only.
-    expect(balanceDebits).toHaveLength(1);
+    const balanceCredits = state.insertCalls.filter((c) => c.table === 'balances');
+    expect(balanceCredits[0].values).toMatchObject({ did: 'did:imajin:seller', unit: 'MJNx', amount: '100' });
+  });
+
+  it('#2016 fungibility kill: unit not in accepted_units is a hard 400, never a conversion, no balance touched', async () => {
+    state.senderBalanceRow = { did: 'did:imajin:buyer', unit: 'MJNx', amount: '100', currency: 'CAD' };
+
+    const res = await POST(
+      makeRequest({
+        from_did: 'did:imajin:buyer',
+        total_amount: 100,
+        service: 'market',
+        type: 'sale',
+        unit: 'MJNx', // accepted_units omitted -> defaults MJN-only
+        fair_manifest: { chain: [{ did: 'did:imajin:seller', amount: 100, role: 'seller' }] },
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/not accepted/);
+    expect(state.insertCalls).toHaveLength(0);
+    expect(state.updateCalls).toHaveLength(0);
   });
 
   it('funded (Stripe) settlement: skips balance debit; sellers skip balance credit', async () => {
@@ -236,7 +257,7 @@ describe('POST /pay/api/settle — golden characterization (#1073)', () => {
     // Seller balance credit is skipped (Stripe already paid them); node still credited.
     const balanceCredits = state.insertCalls.filter((c) => c.table === 'balances');
     expect(balanceCredits).toHaveLength(1);
-    expect(balanceCredits[0].values).toMatchObject({ did: 'did:imajin:node', cashAmount: '15' });
+    expect(balanceCredits[0].values).toMatchObject({ did: 'did:imajin:node', unit: 'MJN', amount: '15' });
 
     const txInserts = state.insertCalls.filter((c) => c.table === 'transactions');
     const sellerTx = txInserts.find((t) => t.values.toDid === 'did:imajin:seller')!;
@@ -245,7 +266,7 @@ describe('POST /pay/api/settle — golden characterization (#1073)', () => {
 
   it('invalid signature: rejected with 400, no db.transaction touched', async () => {
     verifyManifestMock.mockResolvedValue({ valid: false, error: 'bad signature' });
-    state.senderBalanceRow = { did: 'did:imajin:buyer', cashAmount: '0', creditAmount: '100', currency: 'CAD' };
+    state.senderBalanceRow = { did: 'did:imajin:buyer', unit: 'MJN', amount: '100', currency: 'CAD' };
 
     const res = await POST(
       makeRequest({

@@ -3,7 +3,9 @@ import { createLogger } from '@imajin/logger';
 const log = createLogger('bus:mjn');
 
 /**
- * MJN Emission Schedule
+ * MJN Emission Schedule (#2016: mints MJNx — the emitted, non-withdrawable
+ * unit, never MJN, and never at any MJN<->MJNx rate; field/type names below
+ * still say "MJN" for historical reasons).
  *
  * Defines MJN emissions triggered by attestations.
  * Gas burns MJN. Attestations prove. .fair defines. Chains record.
@@ -12,7 +14,7 @@ const log = createLogger('bus:mjn');
  * Phase 2: .fair cascade (root → identity → record)
  * Phase 3: DFOS chain entries
  *
- * Valuation: 1 MJN = 0.01 CHF (≈1¢). 100 MJN = 1 MJNx.
+ * Valuation: 1 MJN = 0.01 CHF (≈1¢).
  */
 
 export interface EmissionRule {

@@ -15,11 +15,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, balances, transactions } from '@/src/db';
-import { sql } from 'drizzle-orm';
+import { db, transactions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
+import { MJN, creditUnit } from '@/src/lib/pay/ledger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -59,7 +59,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     const txId = generateId('tx');
 
-    // Atomic operation: insert transaction + update cash balance (real money)
+    // Atomic operation: insert transaction + credit MJN balance (real money)
     await db.transaction(async (tx) => {
       // Insert transaction
       await tx.insert(transactions).values({
@@ -70,28 +70,14 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         toDid: did,
         amount: amount.toString(),
         currency,
+        unit: MJN,
+        sourceKind: 'receipt',
         status: 'completed',
         source: 'fiat',
         metadata,
       });
 
-      // Update or insert cash balance
-      await tx
-        .insert(balances)
-        .values({
-          did,
-          cashAmount: amount.toString(),
-          creditAmount: '0',
-          currency,
-          updatedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: balances.did,
-          set: {
-            cashAmount: sql`${balances.cashAmount} + ${amount}`,
-            updatedAt: new Date(),
-          },
-        });
+      await creditUnit(tx, did, MJN, amount, { currency });
     });
 
     return NextResponse.json(

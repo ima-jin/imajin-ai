@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@imajin/auth';
 import { getClient } from '@imajin/db';
-import { db, balances, transactions } from '@/src/db';
-import { sql } from 'drizzle-orm';
+import { db, transactions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
+import { MJN, creditUnit } from '@/src/lib/pay/ledger';
 
 const pgSql = getClient();
 
@@ -63,27 +63,14 @@ export async function POST(request: NextRequest) {
       toDid: did,
       amount: amount.toString(),
       currency,
+      unit: MJN,
+      sourceKind: 'receipt',
       status: 'completed',
       source: 'fiat',
       metadata: { memo, adminDid: session.actingAs },
     });
 
-    await tx
-      .insert(balances)
-      .values({
-        did,
-        cashAmount: amount.toString(),
-        creditAmount: '0',
-        currency,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: balances.did,
-        set: {
-          cashAmount: sql`${balances.cashAmount} + ${amount}`,
-          updatedAt: new Date(),
-        },
-      });
+    await creditUnit(tx, did, MJN, amount, { currency });
   });
 
   return NextResponse.json({ success: true, transactionId: txId });

@@ -50,14 +50,15 @@ export async function emitAttestation(params: {
    * pending-signature notification must pass it explicitly.
    */
   originUrl?: string;
-}): Promise<void> {
+}): Promise<{ attestationId?: string }> {
   // 1. Write attestation to DB via the internal API
   let issuedAt: string | undefined;
+  let attestationId: string | undefined;
   try {
     const outcome = await postInternal<Record<string, unknown>>('/api/attestations/internal', params);
     if (!outcome) {
       log.warn({}, 'Attestation skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
-      return;
+      return {};
     }
     if (!outcome.ok) {
       forwardFailureCount += 1;
@@ -67,13 +68,17 @@ export async function emitAttestation(params: {
         { type: params.type, status: outcome.status, route: '/api/attestations/internal' },
         `Attestation (${params.type}) forward rejected`,
       );
-      return;
+      return {};
     }
     // Capture issuedAt from the response for accurate chain timestamp
     issuedAt = typeof outcome.data?.['issuedAt'] === 'string' ? (outcome.data['issuedAt'] as string) : undefined;
+    // #2016: capture the created attestation's id so callers (the `mjn`
+    // reactor, via `attestationReactor`) can link an emission mint back to
+    // the attestation that justified it.
+    attestationId = typeof outcome.data?.['id'] === 'string' ? (outcome.data['id'] as string) : undefined;
   } catch (err) {
     log.error({ err: String(err) }, `Attestation (${params.type}) error`);
-    return;
+    return {};
   }
 
   // 2. Emit DFOS content chain entry — fire-and-forget, non-fatal
@@ -89,4 +94,6 @@ export async function emitAttestation(params: {
   }).catch((err: unknown) => {
     log.warn({ err: String(err), type: params.type }, `Attestation chain-emit (${params.type}) error`);
   });
+
+  return { attestationId };
 }

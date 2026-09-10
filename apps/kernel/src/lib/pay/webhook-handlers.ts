@@ -9,7 +9,7 @@
  */
 
 import Stripe from 'stripe';
-import { db, feeLedger, balances, balanceRollups, transactions } from '@/src/db';
+import { db, feeLedger, balanceRollups, transactions } from '@/src/db';
 import { sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
@@ -17,6 +17,7 @@ import { publish } from '@imajin/bus';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
 import { getStripe } from './stripe';
 import { verifySettlementSignature } from './settle-core';
+import { MJN, MJNX, creditUnit } from './ledger';
 
 const log = createLogger('kernel');
 
@@ -148,16 +149,9 @@ async function applyFeeRebate({
     status: 'accrued',
   });
 
-  await db
-    .insert(balances)
-    .values({ did: sellerDid, cashAmount: '0', creditAmount: (diffCents / 100).toFixed(8), currency })
-    .onConflictDoUpdate({
-      target: balances.did,
-      set: {
-        creditAmount: sql`${balances.creditAmount} + ${(diffCents / 100).toFixed(8)}`,
-        updatedAt: new Date(),
-      },
-    });
+  // #2016: a processing-fee rebate credits MJNx (the emitted, in-platform
+  // unit) — it is not a fresh fiat receipt.
+  await creditUnit(db, sellerDid, MJNX, (diffCents / 100).toFixed(8), { currency });
 
   log.info(
     { transactionId: tx.id, sellerDid, rebateCents: diffCents, estimatedFeeCents, actualFeeCents },
@@ -184,16 +178,8 @@ async function applyFeeSurcharge({
     status: 'accrued',
   });
 
-  await db
-    .insert(balances)
-    .values({ did: sellerDid, cashAmount: '0', creditAmount: (-diffCents / 100).toFixed(8), currency })
-    .onConflictDoUpdate({
-      target: balances.did,
-      set: {
-        creditAmount: sql`${balances.creditAmount} + ${(-diffCents / 100).toFixed(8)}`,
-        updatedAt: new Date(),
-      },
-    });
+  // #2016: mirrors applyFeeRebate — the surcharge debits the same MJNx row.
+  await creditUnit(db, sellerDid, MJNX, (-diffCents / 100).toFixed(8), { currency });
 
   log.info(
     { transactionId: tx.id, sellerDid, surchargeCents: diffCents, estimatedFeeCents, actualFeeCents },
@@ -329,29 +315,14 @@ async function updateRecipientBalance({
   const amountStr = (amountCents / 100).toFixed(8);
 
   if (isBuyerCredit) {
-    // Buyer credit → creditAmount (virtual MJN token)
-    await db
-      .insert(balances)
-      .values({ did: recipientDid, cashAmount: '0', creditAmount: amountStr, currency })
-      .onConflictDoUpdate({
-        target: balances.did,
-        set: {
-          creditAmount: sql`${balances.creditAmount} + ${amountStr}`,
-          updatedAt: new Date(),
-        },
-      });
+    // #2016: buyer credit → MJNx (the emitted, in-platform, non-withdrawable
+    // unit — this WAS a "virtual MJN token" bucket, now the correctly
+    // labelled MJNx row).
+    await creditUnit(db, recipientDid, MJNX, amountStr, { currency });
   } else {
-    // Fee beneficiary (protocol, node, scope) → cashAmount held in Imajin account
-    await db
-      .insert(balances)
-      .values({ did: recipientDid, cashAmount: amountStr, creditAmount: '0', currency })
-      .onConflictDoUpdate({
-        target: balances.did,
-        set: {
-          cashAmount: sql`${balances.cashAmount} + ${amountStr}`,
-          updatedAt: new Date(),
-        },
-      });
+    // Fee beneficiary (protocol, node, scope) → MJN (real Stripe money held
+    // in the Imajin account).
+    await creditUnit(db, recipientDid, MJN, amountStr, { currency });
   }
 }
 
@@ -412,28 +383,15 @@ export async function handleTopupCheckout(session: Stripe.Checkout.Session): Pro
       toDid: buyerDid,
       amount: topupAmount.toString(),
       currency,
+      unit: MJN,
+      sourceKind: 'receipt',
       status: 'completed',
       stripeId: session.id,
       source: 'fiat',
       metadata: { ...session.metadata, checkoutSessionId: session.id },
     });
 
-    await tx
-      .insert(balances)
-      .values({
-        did: buyerDid,
-        cashAmount: topupAmount.toString(),
-        creditAmount: '0',
-        currency,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: balances.did,
-        set: {
-          cashAmount: sql`${balances.cashAmount} + ${topupAmount}`,
-          updatedAt: new Date(),
-        },
-      });
+    await creditUnit(tx, buyerDid, MJN, topupAmount, { currency });
   });
 
   log.info(

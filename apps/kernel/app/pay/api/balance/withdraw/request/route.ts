@@ -11,12 +11,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, balances, transactions, withdrawalRequests } from '@/src/db';
-import { eq, sql } from 'drizzle-orm';
+import { db, transactions, withdrawalRequests } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
+import { MJN, amountOf, debitUnit, getBalanceRow } from '@/src/lib/pay/ledger';
 
 const MIN_WITHDRAWAL = 10; // $10.00 minimum
 
@@ -58,11 +58,9 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     );
   }
 
-  // Check balance exists and withdrawals enabled
-  const [balance] = await db
-    .select()
-    .from(balances)
-    .where(eq(balances.did, did));
+  // Check MJN balance exists and withdrawals enabled — the only unit
+  // withdraw rails may ever read (#2016).
+  const balance = await getBalanceRow(db, did, MJN);
 
   if (!balance) {
     return NextResponse.json({ error: 'No balance found' }, { status: 404, headers });
@@ -75,7 +73,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     );
   }
 
-  const cashAvailable = Number.parseFloat(balance.cashAmount);
+  const cashAvailable = amountOf(balance);
   if (cashAvailable < amount) {
     return NextResponse.json(
       { error: 'Insufficient cash balance', available: cashAvailable },
@@ -88,14 +86,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   const txId = generateId('tx');
 
   await db.transaction(async (tx) => {
-    // Deduct cash balance
-    await tx
-      .update(balances)
-      .set({
-        cashAmount: sql`${balances.cashAmount} - ${amount.toString()}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(balances.did, did));
+    await debitUnit(tx, did, MJN, amount);
 
     // Insert withdrawal request
     await tx.insert(withdrawalRequests).values({
@@ -116,6 +107,8 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
       toDid: 'platform',
       amount: amount.toString(),
       currency: 'CAD',
+      unit: MJN,
+      sourceKind: 'receipt',
       status: 'pending',
       source: 'fiat',
       metadata: { emt_email, withdrawal_request_id: requestId },

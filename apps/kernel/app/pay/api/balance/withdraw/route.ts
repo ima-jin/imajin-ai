@@ -15,12 +15,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { db, balances, transactions } from '@/src/db';
-import { eq, sql } from 'drizzle-orm';
+import { db, transactions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
+import { MJN, amountOf, debitUnit, getBalanceRow } from '@/src/lib/pay/ledger';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
 
@@ -80,14 +80,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    // Check cash balance
-    const [balance] = await db
-      .select()
-      .from(balances)
-      .where(eq(balances.did, did))
-      .limit(1);
+    // Check MJN balance — the only unit withdraw rails may ever read (#2016).
+    const balance = await getBalanceRow(db, did, MJN);
 
-    const cashAmount = balance ? Number.parseFloat(balance.cashAmount) : 0;
+    const cashAmount = amountOf(balance);
     // Convert cents to dollars for comparison (balance is stored in dollars)
     const withdrawalDollars = amount / 100;
 
@@ -113,7 +109,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     const txId = generateId('tx');
 
-    // Atomic: deduct cash balance + record transaction
+    // Atomic: deduct MJN balance + record transaction
     await db.transaction(async (tx) => {
       await tx.insert(transactions).values({
         id: txId,
@@ -123,6 +119,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         toDid: account_id,
         amount: withdrawalDollars.toString(),
         currency: currency.toUpperCase(),
+        unit: MJN,
+        sourceKind: 'receipt',
         status: 'completed',
         source: 'fiat',
         stripeId: transfer.id,
@@ -132,13 +130,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         },
       });
 
-      await tx
-        .update(balances)
-        .set({
-          cashAmount: sql`${balances.cashAmount} - ${withdrawalDollars}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(balances.did, did));
+      await debitUnit(tx, did, MJN, withdrawalDollars);
     });
 
     return NextResponse.json(

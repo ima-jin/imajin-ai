@@ -224,9 +224,15 @@ export function NavBar({
     fetch(`${payUrl}/api/balance/${encodeURIComponent(effectiveDid)}`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data) {
-          setCashBalance(data.cashAmount == null  ? null : Number.parseFloat(data.cashAmount));
-          setMjnBalance(data.creditAmount == null  ? null : Number.parseFloat(data.creditAmount));
+        // #2016: the balance endpoint now returns an explicit per-unit array
+        // — MJN (withdrawable) and MJNx (emitted, never withdrawable) are
+        // always distinct entries.
+        const balances = Array.isArray(data?.balances) ? data.balances as Array<{ unit: string; amount: number }> : null;
+        const mjnRow = balances?.find(b => b.unit === 'MJN');
+        const mjnxRow = balances?.find(b => b.unit === 'MJNx');
+        if (balances) {
+          setCashBalance(mjnRow?.amount ?? null);
+          setMjnBalance(mjnxRow?.amount ?? null);
         } else {
           setCashBalance(null);
           setMjnBalance(null);

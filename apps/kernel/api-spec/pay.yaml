@@ -40,12 +40,24 @@ components:
   schemas:
     Balance:
       type: object
+      description: |
+        #2016: balances is an explicit array of one entry per wallet unit —
+        MJN (receipt-backed, fiat-minted, withdrawable) and MJNx (emitted
+        platform unit, in-platform only, never withdrawable, never silently
+        convertible to MJN). `total`/`currency` are kept for backward
+        compatibility with the events/coffee/market/learn app proxies.
       properties:
         did: { type: string }
-        cashAmount: { type: number, description: "Real money balance (USD)" }
-        creditAmount: { type: number, description: "Platform credit balance (non-withdrawable)" }
-        total: { type: number }
-        currency: { type: string, default: USD }
+        balances:
+          type: array
+          items:
+            type: object
+            properties:
+              unit: { type: string, enum: [MJN, MJNx] }
+              amount: { type: number }
+              withdrawable: { type: boolean, description: "true only for the MJN entry" }
+        total: { type: number, description: "MJN amount + MJNx amount" }
+        currency: { type: string, default: USD, description: "The MJN row's fiat reference currency" }
         updatedAt: { type: string, format: date-time }
     Transaction:
       type: object
@@ -99,7 +111,10 @@ paths:
       tags: [pay]
       operationId: getBalance
       summary: Get current balance for a DID
-      description: Returns cash and credit balances. The authenticated identity must match the requested DID.
+      description: |
+        Returns the MJN (withdrawable) and MJNx (emitted, never withdrawable)
+        balances as an explicit array (#2016). The authenticated identity
+        must match the requested DID.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -293,9 +308,13 @@ paths:
       operationId: transferBalance
       summary: Transfer balance from one DID to another
       description: |
-        Burns credits first, then cash. The transfer recipient receives cash (real value earned).
-        The authenticated identity must match `from_did`. Accepts either a session cookie or a
-        Bearer token (app token or session JWT) — the route resolves the caller via
+        Moves a single wallet unit (#2016) — `unit` defaults to `MJN` and must be
+        `MJN` or `MJNx`; both legs of the transfer touch the SAME unit, so
+        cross-unit movement (e.g. sending MJNx and having it arrive as MJN)
+        is impossible by construction. An unknown unit is a 400, never a
+        conversion. The authenticated identity must match `from_did`.
+        Accepts either a session cookie or a Bearer token (app token or
+        session JWT) — the route resolves the caller via
         `resolveEffectiveDid`, same as `GET /api/balance/{did}` (#2002).
       security:
         - cookieAuth: []
@@ -310,7 +329,8 @@ paths:
               properties:
                 from_did: { type: string }
                 to_did: { type: string }
-                amount: { type: number, description: "Amount in dollars (combined cash+credit)" }
+                amount: { type: number, description: "Amount in the given unit" }
+                unit: { type: string, enum: [MJN, MJNx], default: MJN }
                 metadata: { type: object }
       responses:
         "200":
@@ -324,6 +344,7 @@ paths:
                   fromDid: { type: string }
                   toDid: { type: string }
                   amount: { type: number }
+                  unit: { type: string, enum: [MJN, MJNx] }
         "400":
           description: Insufficient balance
           content:
@@ -513,11 +534,19 @@ paths:
       operationId: fairSettle
       summary: Execute a .fair multi-party settlement
       description: |
-        Validates `from_did` has sufficient balance, then atomically:
-        - Debits `from_did` (credits first, then cash)
-        - Credits each recipient in the fair_manifest chain (as cash — real value earned)
+        Validates `from_did` has sufficient balance in the settlement's `unit`
+        (#2016 — defaults to `MJN`, no more mixed credit-then-cash burn), then
+        atomically:
+        - Debits `from_did` in that single unit
+        - Credits each recipient in the fair_manifest chain in that same unit
         - Logs all transactions
         - Emits attestations (customer + transaction.settled)
+
+        `unit` must be present in `accepted_units` (default MJN-only) or the
+        settlement is rejected with a 400 before any balance is touched —
+        never silently converted. Externally-funded settlements (`funded:
+        true`) are hard-pinned to `unit: MJN`: there is no receipt for an
+        externally-funded MJNx mint.
 
         Set `funded: true` for externally-funded payments (e.g. Stripe) to skip the balance
         check and debit step.
@@ -537,7 +566,12 @@ paths:
                 total_amount: { type: number }
                 service: { type: string }
                 type: { type: string }
-                funded: { type: boolean, description: "true = externally funded (Stripe etc.) — skip balance check" }
+                unit: { type: string, enum: [MJN, MJNx], default: MJN }
+                accepted_units:
+                  type: array
+                  items: { type: string, enum: [MJN, MJNx] }
+                  default: [MJN]
+                funded: { type: boolean, description: "true = externally funded (Stripe etc.) — skip balance check, unit must be MJN" }
                 funded_provider: { type: string, description: "stripe | solana — for audit log" }
                 fair_manifest:
                   type: object
@@ -951,6 +985,46 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Unauthorized
+
+  /api/admin/reconciliation:
+    get:
+      tags: [pay]
+      operationId: payReconciliation
+      summary: MJN/MJNx reconciliation report (#2016 decision 4)
+      description: |
+        Circulating MJNx (emitted, in-platform unit), backed MJN (withdrawable
+        liability), and per-DID lifetime emitted vs receipted totals. Adapted
+        from the #2012 audit's §6 SQL sketch to the row-per-(did, unit)
+        `pay.balances` shape. Single-node only — no cross-node breakdown
+        (#738 Decision 2).
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Reconciliation totals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  circulatingMjnx: { type: number }
+                  backedMjn: { type: number }
+                  perDid:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        did: { type: string }
+                        currency: { type: string }
+                        mjn_amount: { type: number }
+                        mjnx_amount: { type: number }
+                        lifetime_emitted: { type: number }
+                        lifetime_receipted: { type: number }
+        "401":
+          description: Unauthorized (not an admin)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/spec:
     get:

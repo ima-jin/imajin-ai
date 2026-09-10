@@ -93,12 +93,11 @@ export default async function AdminUserDetailPage({
     LIMIT 1
   `;
 
-  // Balance
-  const [balance] = await sql`
-    SELECT cash_amount, credit_amount, currency
+  // Balance (#2016: row-per-unit — up to one MJN + one MJNx row)
+  const balanceRows = await sql`
+    SELECT unit, amount, currency
     FROM pay.balances
     WHERE did = ${decodedDid}
-    LIMIT 1
   `;
 
   // Connections count
@@ -157,7 +156,7 @@ export default async function AdminUserDetailPage({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <ProfileCard profile={profile} />
         <div className="space-y-4">
-          <AccountBalanceCard balance={balance} />
+          <AccountBalanceCard balances={balanceRows} />
           <ConnectionsCard total={connCount?.total} />
         </div>
       </div>
@@ -309,22 +308,24 @@ function ProfileCard({ profile }: Readonly<{ profile: DbRow | undefined }>) {
   );
 }
 
-function AccountBalanceCard({ balance }: Readonly<{ balance: DbRow | undefined }>) {
+function AccountBalanceCard({ balances }: Readonly<{ balances: DbRow[] }>) {
+  const mjnRow = balances.find((b) => b.unit === 'MJN');
+  const mjnxRow = balances.find((b) => b.unit === 'MJNx');
   return (
     <div className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-5">
       <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Balance</h2>
-      {balance ? (
+      {balances.length > 0 ? (
         <div className="space-y-1 text-sm">
           <div className="flex justify-between">
-            <span className="text-gray-500 dark:text-gray-400">Cash</span>
+            <span className="text-gray-500 dark:text-gray-400">MJN (withdrawable)</span>
             <span className="font-medium text-gray-900 dark:text-white font-mono">
-              {balance.cash_amount as string} {balance.currency as string}
+              {(mjnRow?.amount as string) ?? '0'} {(mjnRow?.currency as string) ?? 'CAD'}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500 dark:text-gray-400">Credit</span>
+            <span className="text-gray-500 dark:text-gray-400">MJNx (not withdrawable)</span>
             <span className="font-medium text-gray-900 dark:text-white font-mono">
-              {balance.credit_amount as string} {balance.currency as string}
+              {(mjnxRow?.amount as string) ?? '0'} {(mjnxRow?.currency as string) ?? 'CAD'}
             </span>
           </div>
         </div>

@@ -14,8 +14,8 @@
  * to `feeLedger`/`balanceRollups`) and intentionally keeps that mechanism
  * separate — see `docs/guide/canonical-patterns.md` "Known divergences".
  */
-import { db, balances, transactions, identities, identityChains } from '@/src/db';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { db, transactions, identities, identityChains } from '@/src/db';
+import { eq, inArray } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { verifyManifest } from '@imajin/fair';
 import type { FairManifest, FairManifestV11 } from '@imajin/fair';
@@ -23,6 +23,16 @@ import { createDbResolver } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { verifyIntroAttributionManifestForSettlement } from '@/src/lib/fair/intro-attribution';
+import {
+  ACCEPTED_UNITS_DEFAULT,
+  MJN,
+  amountOf,
+  assertUnitAccepted,
+  creditUnit,
+  debitUnit,
+  getBalanceRow,
+  type Unit,
+} from './ledger';
 
 const log = createLogger('kernel');
 
@@ -137,46 +147,39 @@ async function validateSettlementRequest(params: {
 }
 
 interface SettlementSource {
-  source: 'credit' | 'fiat' | 'mixed' | 'external';
-  creditBurn: number;
-  cashBurn: number;
+  source: 'credit' | 'fiat' | 'external';
+  burnAmount: number;
   settleCurrency: string;
 }
 
-function sourceFromBurn(creditBurn: number, cashBurn: number): 'credit' | 'fiat' | 'mixed' {
-  if (cashBurn === 0) return 'credit';
-  if (creditBurn === 0) return 'fiat';
-  return 'mixed';
+/** 'MJN' settles from the withdrawable/receipt-backed bucket (legacy 'fiat' source label); 'MJNx' settles from the emitted bucket (legacy 'credit' source label). */
+function sourceLabelForUnit(unit: Unit): 'credit' | 'fiat' {
+  return unit === MJN ? 'fiat' : 'credit';
 }
 
 /**
- * Resolve how a non-funded settlement is paid for (credit balance, cash
- * balance, or a mix), and how much of each to debit. Externally funded
- * (e.g. Stripe) settlements skip this entirely — no balance check, no
- * debit — and the caller never invokes this function for that case.
+ * Resolve how a non-funded settlement is paid for: the sender's balance in
+ * the single requested `unit` (#2016 — no more credit-then-cash mixed
+ * burn). Externally funded (e.g. Stripe) settlements skip this entirely —
+ * no balance check, no debit — and the caller never invokes this function
+ * for that case.
  */
 async function resolveInternalSettlementSource(params: {
   from_did: string;
   total_amount: number;
   currency: string;
+  unit: Unit;
 }): Promise<SettlementSource | { error: string; status: number }> {
-  const { from_did, total_amount, currency } = params;
-  const senderBalanceRows = await db.select().from(balances).where(eq(balances.did, from_did)).limit(1);
-
-  const senderBalance = senderBalanceRows[0];
-  const currentCash = senderBalance ? Number.parseFloat(senderBalance.cashAmount) : 0;
-  const currentCredit = senderBalance ? Number.parseFloat(senderBalance.creditAmount) : 0;
-  const totalBalance = currentCash + currentCredit;
+  const { from_did, total_amount, currency, unit } = params;
+  const senderBalance = await getBalanceRow(db, from_did, unit);
+  const available = amountOf(senderBalance);
   const settleCurrency = senderBalance?.currency || currency;
 
-  if (totalBalance < total_amount) {
-    return { error: `Insufficient balance: ${totalBalance} < ${total_amount}`, status: 400 };
+  if (available < total_amount) {
+    return { error: `Insufficient ${unit} balance: ${available} < ${total_amount}`, status: 400 };
   }
 
-  const creditBurn = Math.min(currentCredit, total_amount);
-  const cashBurn = total_amount - creditBurn;
-
-  return { source: sourceFromBurn(creditBurn, cashBurn), creditBurn, cashBurn, settleCurrency };
+  return { source: sourceLabelForUnit(unit), burnAmount: total_amount, settleCurrency };
 }
 
 interface EmitAttestationsParams {
@@ -249,6 +252,10 @@ export interface SettlePaymentParams {
   funded_provider?: string;
   metadata?: Record<string, unknown>;
   currency?: string;
+  /** The wallet unit this settlement moves. Defaults to 'MJN' (preserves every existing caller's behavior — none pass a unit today). */
+  unit?: string;
+  /** Units this settlement target (service/type) accepts. Defaults to MJN-only (#2016 decision 2) — pass e.g. ['MJN','MJNx'] to opt a line item into MJNx. */
+  acceptedUnits?: readonly string[];
 }
 
 export type SettlePaymentResult =
@@ -267,7 +274,8 @@ export type SettlePaymentResult =
  * #1886 intro-attribution guard, and (for non-funded settlements) the
  * manifest's Ed25519 signature; then atomically debits `from_did` (skipped
  * for externally-funded settlements) and credits each chain recipient's
- * `balances.cashAmount`, logging one `transactions` row per recipient.
+ * balance row in the settlement's `unit` (#2016 — single-unit only, no
+ * mixed-bucket burn), logging one `transactions` row per recipient.
  * Fires `customer` + `transaction.settled` attestations asynchronously.
  *
  * This is the canonical settlement primitive from `docs/guide/canonical-patterns.md`.
@@ -285,7 +293,23 @@ export async function settlePayment(params: SettlePaymentParams): Promise<Settle
     funded_provider,
     metadata = {},
     currency = 'CAD',
+    unit: rawUnit = MJN,
+    acceptedUnits = ACCEPTED_UNITS_DEFAULT,
   } = params;
+
+  const unitCheck = assertUnitAccepted(rawUnit, acceptedUnits);
+  if ('error' in unitCheck) {
+    return { error: unitCheck.error, status: unitCheck.status };
+  }
+  const unit = unitCheck.unit;
+
+  // Externally funded (e.g. Stripe) settlements mint no new ledger unit —
+  // Stripe already collected real fiat money, so the only unit that can be
+  // credited here is MJN. There is no receipt path for an externally-funded
+  // MJNx mint (#2016 decision 1/2).
+  if (funded && unit !== MJN) {
+    return { error: `Externally funded settlements must use unit '${MJN}' (got '${unit}')`, status: 400 };
+  }
 
   const validation = await validateSettlementRequest({ fair_manifest, total_amount, from_did, service, funded });
   if ('error' in validation) {
@@ -294,14 +318,14 @@ export async function settlePayment(params: SettlePaymentParams): Promise<Settle
   const { signatureVerified } = validation;
 
   // Externally funded (e.g. Stripe checkout) skips balance check/debit
-  // entirely; an internal settlement resolves which balance(s) to burn.
+  // entirely; an internal settlement resolves which single-unit balance to burn.
   const sourceResolution: SettlementSource | { error: string; status: number } = funded
-    ? { source: 'external', creditBurn: 0, cashBurn: 0, settleCurrency: currency }
-    : await resolveInternalSettlementSource({ from_did, total_amount, currency });
+    ? { source: 'external', burnAmount: 0, settleCurrency: currency }
+    : await resolveInternalSettlementSource({ from_did, total_amount, currency, unit });
   if ('error' in sourceResolution) {
     return { error: sourceResolution.error, status: sourceResolution.status };
   }
-  const { source, creditBurn, cashBurn, settleCurrency } = sourceResolution;
+  const { source, burnAmount, settleCurrency } = sourceResolution;
 
   // Verify chain status for payer and all payees (non-blocking — don't fail payment)
   const payeeDids = [...new Set(fair_manifest.chain.map((r) => r.did))];
@@ -314,21 +338,19 @@ export async function settlePayment(params: SettlePaymentParams): Promise<Settle
   const batchId = generateId('batch');
   const txIds: string[] = [];
 
+  // Externally funded settlements are backed by a real Stripe receipt;
+  // internal (from an existing balance) settlements are pure ledger moves.
+  const sourceKind = funded ? 'receipt' : 'transfer';
+
   // Atomic settlement
   await db.transaction(async (tx) => {
-    // Debit from_did (skip for externally funded)
+    // Debit from_did's single-unit balance (skip for externally funded)
     if (!funded) {
-      await tx
-        .update(balances)
-        .set({
-          creditAmount: sql`${balances.creditAmount} - ${creditBurn}`,
-          cashAmount: sql`${balances.cashAmount} - ${cashBurn}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(balances.did, from_did));
+      await debitUnit(tx, from_did, unit, burnAmount);
     }
 
-    // Credit each recipient (earnings go to cash — real value created)
+    // Credit each recipient in the SAME unit as the settlement (#2016 — no
+    // more forced "earnings go to cash" laundering into a different bucket).
     // For externally-funded payments (Stripe), the seller already received money
     // via Stripe Connect. Only credit platform/node/buyer_credit balances — NOT the seller.
     const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
@@ -348,6 +370,8 @@ export async function settlePayment(params: SettlePaymentParams): Promise<Settle
         toDid: recipient.did,
         amount: recipient.amount.toString(),
         currency: settleCurrency,
+        unit,
+        sourceKind,
         status: 'completed',
         source,
         fairManifest: fair_manifest,
@@ -361,25 +385,11 @@ export async function settlePayment(params: SettlePaymentParams): Promise<Settle
         },
       });
 
-      // Credit recipient cash balance — skip for sellers on funded payments
-      // (money already went to their Stripe Connected account)
+      // Credit recipient's balance in the settlement's unit — skip for
+      // sellers on funded payments (money already went to their Stripe
+      // Connected account).
       if (!skipBalanceCredit) {
-        await tx
-          .insert(balances)
-          .values({
-            did: recipient.did,
-            cashAmount: recipient.amount.toString(),
-            creditAmount: '0',
-            currency: settleCurrency,
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: balances.did,
-            set: {
-              cashAmount: sql`${balances.cashAmount} + ${recipient.amount}`,
-              updatedAt: new Date(),
-            },
-          });
+        await creditUnit(tx, recipient.did, unit, recipient.amount, { currency: settleCurrency });
       }
     }
   });

@@ -13,6 +13,19 @@ export const transactions = paySchema.table('transactions', {
   toDid: text('to_did').notNull(),                       // who received
   amount: numeric('amount', { precision: 20, scale: 8 }).notNull(),
   currency: text('currency').notNull().default('CAD'),
+  // #2016: the wallet unit this row moves — 'MJN' (receipt-backed,
+  // withdrawable) | 'MJNx' (emitted, in-platform, never withdrawable) | a
+  // reserved ISO-4217-shaped code for a future fiat-native row. Distinct
+  // from `currency` above, which stays the fiat reference/denomination.
+  unit: text('unit').notNull().default('MJN'),
+  // #2016: provenance kind — 'receipt' (backed by a rail receipt, minted or
+  // burned), 'emission' (protocol mint against an attestation), or
+  // 'transfer' (internal ledger movement, no new receipt or mint).
+  sourceKind: text('source_kind').notNull().default('transfer'),
+  // #2016: the auth.attestations row an emission was minted against. Only
+  // ever populated for sourceKind='emission' rows going forward — historical
+  // rows and non-emission rows are NULL (never captured before this issue).
+  attestationId: text('attestation_id'),
   status: text('status').notNull().default('pending'),   // pending | completed | failed | refunded | partially_refunded
   source: text('source').notNull().default('fiat'),      // 'fiat' | 'credit' | 'mixed'
   stripeId: text('stripe_id'),                           // payment intent / invoice / checkout session
@@ -28,19 +41,39 @@ export const transactions = paySchema.table('transactions', {
   statusIdx: index('idx_transactions_status').on(table.status),
   createdIdx: index('idx_transactions_created').on(table.createdAt),
   stripeIdIdx: index('idx_transactions_stripe_id').on(table.stripeId),
+  unitIdx: index('idx_transactions_unit').on(table.unit),
+  attestationIdIdx: index('idx_transactions_attestation_id').on(table.attestationId),
 }));
 
 /**
- * Balances - current balance for each DID
+ * Balances - one row per (did, unit) (#2016).
+ *
+ * Before #2016 this table had one row per DID with `cashAmount` (fiat,
+ * withdrawable) and `creditAmount` (emitted, spendable) sharing one
+ * `currency` column. It is now row-per-(did, unit): a DID has up to one
+ * 'MJN' row (receipt-backed, withdrawable) and one 'MJNx' row (emitted,
+ * in-platform, never withdrawable, never silently convertible to MJN).
+ * See migrations 0133/0134 for the additive backfill + destructive
+ * column-drop split.
  */
 export const balances = paySchema.table('balances', {
-  did: text('did').primaryKey(),
-  cashAmount: numeric('cash_amount', { precision: 20, scale: 8 }).notNull().default('0'),
-  creditAmount: numeric('credit_amount', { precision: 20, scale: 8 }).notNull().default('0'),
+  did: text('did').notNull(),
+  // 'MJN' | 'MJNx' | a reserved ISO-4217-shaped code (ADD'l fiat-native unit,
+  // not populated today). See migration 0133's CHECK constraint.
+  unit: text('unit').notNull(),
+  amount: numeric('amount', { precision: 20, scale: 8 }).notNull().default('0'),
+  // Fiat reference currency this balance is denominated/pegged against.
+  // Meaningful on the MJN row; carried on the MJNx row too for schema
+  // simplicity but not used in any MJNx code path.
   currency: text('currency').notNull().default('CAD'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  // Only ever true on the MJN row — MJNx can never be withdrawn regardless
+  // of this flag's value on that row.
   withdrawalsEnabled: boolean('withdrawals_enabled').notNull().default(false),
-});
+}, (table) => ({
+  pk: primaryKey({ columns: [table.did, table.unit] }),
+  unitIdx: index('idx_balances_unit').on(table.unit),
+}));
 
 /**
  * Balance Rollups - daily aggregated stats per DID per service

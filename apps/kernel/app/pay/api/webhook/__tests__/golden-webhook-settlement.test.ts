@@ -191,11 +191,11 @@ describe('Webhook checkout.session.completed — golden characterization (#1073)
     expect(byRole.buyer_credit).toMatchObject({ amountCents: 300, recipientDid: 'did:imajin:buyer', status: 'accrued' });
 
     const balanceInserts = state.insertCalls.filter((c) => c.table === 'balances');
-    expect(balanceInserts).toHaveLength(2); // node (cash) + buyer_credit (credit); seller skipped
+    expect(balanceInserts).toHaveLength(2); // node (MJN) + buyer_credit (MJNx); seller skipped
     const nodeBalance = balanceInserts.find((c) => c.values.did === 'did:imajin:node')!;
-    expect(nodeBalance.values).toMatchObject({ cashAmount: '7.00000000', creditAmount: '0' });
+    expect(nodeBalance.values).toMatchObject({ unit: 'MJN', amount: '7.00000000' });
     const buyerBalance = balanceInserts.find((c) => c.values.did === 'did:imajin:buyer')!;
-    expect(buyerBalance.values).toMatchObject({ creditAmount: '3.00000000', cashAmount: '0' });
+    expect(buyerBalance.values).toMatchObject({ unit: 'MJNx', amount: '3.00000000' });
 
     expect(state.insertCalls.filter((c) => c.table === 'balanceRollups')).toHaveLength(2);
   });
@@ -242,7 +242,7 @@ describe('Webhook checkout.session.completed — golden characterization (#1073)
     const rebateBalance = state.insertCalls.find(
       (c) => c.table === 'balances' && c.values.did === 'did:imajin:seller',
     )!;
-    expect(rebateBalance.values.creditAmount).toBe('0.50000000');
+    expect(rebateBalance.values).toMatchObject({ unit: 'MJNx', amount: '0.50000000' });
 
     expect(publishMock).toHaveBeenCalledWith('fee.rebate', expect.objectContaining({ subject: 'did:imajin:seller' }));
   });
@@ -268,7 +268,7 @@ describe('Webhook checkout.session.completed — golden characterization (#1073)
     const surchargeBalance = state.insertCalls.find(
       (c) => c.table === 'balances' && c.values.did === 'did:imajin:seller',
     )!;
-    expect(surchargeBalance.values.creditAmount).toBe('-0.50000000');
+    expect(surchargeBalance.values).toMatchObject({ unit: 'MJNx', amount: '-0.50000000' });
 
     expect(publishMock).toHaveBeenCalledWith('fee.surcharge', expect.objectContaining({ subject: 'did:imajin:seller' }));
   });

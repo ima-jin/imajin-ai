@@ -1,14 +1,16 @@
 /**
  * POST /api/emission
  *
- * Credit MJN to a DID's balance and log the transaction.
+ * Credit MJNx (the emitted, in-platform, never-withdrawable unit — #2016)
+ * to a DID's balance and log the transaction. An emission can never mint
+ * MJN (the receipt-backed, withdrawable unit) — `unit` must be 'MJNx'.
  * Service-to-service endpoint — requires PAY_SERVICE_API_KEY.
  *
  * Request:
  * {
  *   to_did: string,
  *   amount: number,
- *   currency: 'MJN',
+ *   unit: 'MJNx',
  *   reason: string,
  *   metadata?: {
  *     attestation_id?: string,
@@ -28,12 +30,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, balances, transactions } from '@/src/db';
-import { sql } from 'drizzle-orm';
+import { db, transactions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
+import { MJNX, creditUnit } from '@/src/lib/pay/ledger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -65,7 +67,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
   try {
     const body = await request.json();
-    const { to_did, amount, currency, reason, metadata = {} } = body;
+    const { to_did, amount, unit, reason, metadata = {} } = body;
 
     // Validate required fields
     if (!to_did || typeof to_did !== 'string') {
@@ -82,9 +84,12 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    if (currency !== 'MJN') {
+    // #2016: an emission can NEVER mint the withdrawable unit. This is a
+    // hard rejection, not a conversion — MJNx is the only unit this route
+    // is allowed to credit.
+    if (unit !== MJNX) {
       return NextResponse.json(
-        { error: 'currency must be MJN' },
+        { error: `unit must be ${MJNX}` },
         { status: 400, headers: cors }
       );
     }
@@ -96,24 +101,16 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
+    // #2016: the attestation this emission was minted against, when the
+    // caller (the bus's mjn reactor) supplied one. Lifted out of the
+    // freeform metadata bag into a first-class column.
+    const attestationId: string | null =
+      typeof metadata.attestation_id === 'string' ? metadata.attestation_id : null;
+
     const txId = generateId('tx');
 
-    // Upsert balance — increment credit_amount
-    await db
-      .insert(balances)
-      .values({
-        did: to_did,
-        creditAmount: String(amount),
-        cashAmount: '0',
-        currency: 'MJN',
-      })
-      .onConflictDoUpdate({
-        target: balances.did,
-        set: {
-          creditAmount: sql`${balances.creditAmount}::numeric + ${amount}`,
-          updatedAt: new Date(),
-        },
-      });
+    // Upsert the MJNx balance row.
+    await creditUnit(db, to_did, MJNX, amount, { currency: 'MJNx' });
 
     // Log the emission transaction
     await db.insert(transactions).values({
@@ -123,7 +120,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       fromDid: null, // protocol mint, no sender
       toDid: to_did,
       amount: String(amount),
-      currency: 'MJN',
+      currency: 'MJNx',
+      unit: MJNX,
+      sourceKind: 'emission',
+      attestationId,
       status: 'completed',
       source: 'emission',
       metadata: {
@@ -134,7 +134,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     log.info(
       { amount, toDid: to_did.slice(0, 20), reason, txId },
-      '[emission] MJN credited'
+      '[emission] MJNx credited'
     );
 
     return NextResponse.json(

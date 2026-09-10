@@ -1,7 +1,8 @@
-import { db, transactions, balances } from '@/src/db';
+import { db, transactions } from '@/src/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import type { Logger } from '@imajin/logger';
+import { MJN, creditUnit, debitUnit } from './ledger';
 
 type LoggerLike = Pick<Logger, 'error'>;
 type TransactionRow = typeof transactions.$inferSelect;
@@ -102,7 +103,12 @@ export async function checkRefundEligibility(
   return { ok: true, txAmountDollars, requestedRefundDollars, totalRefundedDollars };
 }
 
-/** Adjust cash balances for a refund: debit the recipient, credit the payer. */
+/**
+ * Adjust MJN balances for a refund: debit the recipient, credit the payer.
+ * Refunds only ever move MJN (the receipt-backed unit) — #2016 does not
+ * change the pre-existing gap that a refund never claws back the MJNx
+ * emitted on the original sale (see the #2012 audit).
+ */
 async function adjustBalancesForRefund(
   toDid: string | null,
   fromDid: string | null,
@@ -110,20 +116,11 @@ async function adjustBalancesForRefund(
   currency: string,
 ): Promise<void> {
   if (toDid) {
-    await db
-      .update(balances)
-      .set({ cashAmount: sql`GREATEST(${balances.cashAmount} - ${refundedDollars}, 0)`, updatedAt: new Date() })
-      .where(eq(balances.did, toDid));
+    await debitUnit(db, toDid, MJN, refundedDollars, { clampAtZero: true });
   }
 
   if (fromDid) {
-    await db
-      .insert(balances)
-      .values({ did: fromDid, cashAmount: refundedDollars.toString(), creditAmount: '0', currency, updatedAt: new Date() })
-      .onConflictDoUpdate({
-        target: balances.did,
-        set: { cashAmount: sql`${balances.cashAmount} + ${refundedDollars}`, updatedAt: new Date() },
-      });
+    await creditUnit(db, fromDid, MJN, refundedDollars, { currency });
   }
 }
 
@@ -162,6 +159,8 @@ export async function applyRefundLedgerUpdates(params: {
     toDid: originalTx.fromDid ?? 'unknown',
     amount: refundedDollars.toString(),
     currency: originalTx.currency,
+    unit: MJN,
+    sourceKind: 'receipt',
     status: 'completed',
     source: 'fiat',
     stripeId: refundStripeId,
@@ -223,6 +222,8 @@ export async function reverseSettlementEntries(params: {
       toDid: stx.fromDid ?? 'unknown',
       amount: stxReversalAmount.toString(),
       currency: stx.currency,
+      unit: MJN,
+      sourceKind: 'receipt',
       status: 'completed',
       source: 'fiat',
       batchId: stx.batchId,
@@ -234,10 +235,7 @@ export async function reverseSettlementEntries(params: {
     });
 
     if (stx.toDid) {
-      await db
-        .update(balances)
-        .set({ cashAmount: sql`GREATEST(${balances.cashAmount} - ${stxReversalAmount}, 0)`, updatedAt: new Date() })
-        .where(eq(balances.did, stx.toDid));
+      await debitUnit(db, stx.toDid, MJN, stxReversalAmount, { clampAtZero: true });
     }
   }
 }
