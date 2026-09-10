@@ -75,6 +75,59 @@ const GOOGLE_OAUTH_SCOPE = Object.values(GOOGLE_OAUTH_SCOPES).join(' ');
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
 
+// ── Shared REST fetch helper (#2144 review) ─────────────────────────────────────
+//
+// Gmail, Calendar, Drive, and Meet each had their own near-identical
+// `call*Api` wrapper (build the URL, attach the bearer token, JSON-encode an
+// optional body, throw a labelled error on a non-2xx response). Collapsed
+// into one helper here so the four action libraries (./gmail, ./calendar,
+// ./drive, ./meet) import it instead of each carrying their own copy.
+
+export interface GoogleApiRequest {
+  /** API origin + version prefix, e.g. `'https://gmail.googleapis.com/gmail/v1/users/me'`. */
+  baseUrl: string;
+  /**
+   * Either a path relative to `baseUrl` (`/messages/send`) or an absolute
+   * URL, in case a future caller ever needs to replay a provider-returned
+   * link verbatim (mirrors the same allowance in the GitHub connector).
+   */
+  path: string;
+  token: string;
+  method?: 'GET' | 'POST';
+  body?: Record<string, unknown>;
+  /** Human label used in the thrown error message, e.g. `'Gmail'`, `'Drive'`. */
+  apiLabel: string;
+}
+
+/**
+ * Call a Google REST API and return the raw, status-checked `Response`.
+ *
+ * Returns the `Response` rather than parsed JSON because Drive's file-content
+ * read needs the raw body (`arrayBuffer()`), not `.json()` — see
+ * {@link googleApiFetch} for the common "I just want the JSON" case.
+ */
+export async function googleApiRequest(opts: Readonly<GoogleApiRequest>): Promise<Response> {
+  const url = opts.path.startsWith('http') ? opts.path : `${opts.baseUrl}${opts.path}`;
+  const headers: Record<string, string> = { Authorization: `Bearer ${opts.token}` };
+  const init: RequestInit = { method: opts.method ?? 'GET', headers };
+  if (opts.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(opts.body);
+  }
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`${opts.apiLabel} API error ${res.status} ${res.statusText}: ${text}`);
+  }
+  return res;
+}
+
+/** {@link googleApiRequest}, parsed as JSON — the common case for every call except Drive's raw content read. */
+export async function googleApiFetch<T = unknown>(opts: Readonly<GoogleApiRequest>): Promise<T> {
+  const res = await googleApiRequest(opts);
+  return (await res.json()) as T;
+}
+
 // ── Google-specific types ────────────────────────────────────────────────────
 
 /** Google OAuth app config — always the owner's own OAuth client (BYO-app). */
