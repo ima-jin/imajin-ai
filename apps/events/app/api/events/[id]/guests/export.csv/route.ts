@@ -8,23 +8,11 @@ import {
   warnDuplicateSurveyResponses,
   loadSurveyFormData,
   buildSurveyValues,
+  csvRow,
 } from '@/src/lib/guest-export-helpers';
 
 const log = createLogger('events');
 const sql = getClient();
-
-function csvEscape(v: unknown): string {
-  if (v == null) return '';
-  const s = typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
-    ? String(v)
-    : JSON.stringify(v);
-  if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
-  return s;
-}
-
-function csvRow(values: unknown[]): string {
-  return values.map(csvEscape).join(',') + '\r\n';
-}
 
 function buildProofOfPayment(
   paymentMethod: string | null,

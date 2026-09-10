@@ -6,6 +6,27 @@
 import type postgres from 'postgres';
 
 // ---------------------------------------------------------------------------
+// CSV field escaping (shared by every CSV export route — events/sales,
+// events/sales/export, admin/events, and guests — to avoid four copies of
+// the same 6 lines drifting apart)
+// ---------------------------------------------------------------------------
+
+/** Escape one CSV field value, quoting it when it contains a comma, quote, or newline. */
+export function csvEscape(v: unknown): string {
+  if (v == null) return '';
+  const s = typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+    ? String(v)
+    : JSON.stringify(v);
+  if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
+  return s;
+}
+
+/** Build one CSV row (with trailing CRLF) from a list of field values. */
+export function csvRow(values: unknown[]): string {
+  return values.map(csvEscape).join(',') + '\r\n';
+}
+
+// ---------------------------------------------------------------------------
 // Duplicate survey detection
 // ---------------------------------------------------------------------------
 
