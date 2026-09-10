@@ -3,6 +3,7 @@ import { db, conversationReadsV2 } from '@/src/db';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
+import { checkAccess } from '@/src/lib/kernel/access';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -30,6 +31,14 @@ export async function POST(
   const { identity } = authResult;
   const effectiveDid = resolveActingDid(identity);
   const { did } = await params;
+
+  // Session callers must be authorized against the conversation itself —
+  // otherwise any authenticated session could write a read-receipt row for
+  // a conversation it was never part of (#2145, same shape as #2136/#2138).
+  const access = await checkAccess(effectiveDid, did);
+  if (!access.allowed) {
+    return errorResponse('Access denied', 403, cors);
+  }
 
   try {
     await db.insert(conversationReadsV2).values({
