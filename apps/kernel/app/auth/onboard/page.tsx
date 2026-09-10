@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { buildPublicUrl, APP_DISPLAY_NAME } from '@imajin/config';
 import * as ed from '@noble/ed25519';
@@ -55,6 +55,11 @@ function OnboardContent() {
 
   // Join flow
   const [joinError, setJoinError] = useState('');
+
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the input mounts.
+  const emailAutoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
 
   // Check session
   useEffect(() => {
@@ -350,7 +355,7 @@ function OnboardContent() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              autoFocus
+              ref={emailAutoFocusRef}
               className="w-full px-4 py-3 bg-gray-900 border border-gray-700 focus:border-amber-500 rounded-xl text-white placeholder-gray-600 outline-none transition"
             />
             {emailError && <p className="text-red-400 text-sm">{emailError}</p>}

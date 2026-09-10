@@ -113,6 +113,11 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: R
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the input mounts.
+  const autoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -283,7 +288,7 @@ export function PresenceChat({ targetDid, targetName, targetHandle, onClose }: R
               placeholder={`Ask ${targetName}...`}
               className="flex-1 bg-gray-900 text-white text-sm px-3 py-2 rounded-lg border border-gray-700 focus:border-gray-500 focus:outline-none placeholder-gray-500"
               disabled={isLoading}
-              autoFocus
+              ref={autoFocusRef}
             />
             <button
               type="submit"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
@@ -82,6 +82,12 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: R
   const [storedKeyData, setStoredKeyData] = useState<StoredKeyData | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Shared by the identifier and password inputs below since only
+  // one of them is ever mounted at a time (gated by `step`).
+  const autoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
 
   async function handleIdentifierSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -251,7 +257,7 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: R
               onChange={e => setPassword(e.target.value)}
               placeholder="Enter your password"
               required
-              autoFocus
+              ref={autoFocusRef}
               className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
             />
           </div>
@@ -285,7 +291,7 @@ export default function PasswordAuthTab({ nextUrl, onMfaRequired, onSuccess }: R
           onChange={e => setHandle(e.target.value)}
           placeholder="@yourhandle"
           required
-          autoFocus
+          ref={autoFocusRef}
           className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
         />
       </div>

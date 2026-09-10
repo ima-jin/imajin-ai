@@ -57,7 +57,7 @@ function asFiniteNumber(value: unknown, fallback: number): number {
  */
 function extractAssistantTurn(rawLine: unknown): AssistantTurn | undefined {
   const line = asObject(rawLine);
-  if (!line || line.type !== 'assistant') return undefined;
+  if (line?.type !== 'assistant') return undefined;
 
   const message = asObject(line.message);
   const usage = asObject(message?.usage);

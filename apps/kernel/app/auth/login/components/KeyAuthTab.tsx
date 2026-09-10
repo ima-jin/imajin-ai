@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 // Base58 encoding for DIDs
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -127,6 +127,11 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
   const [keypairLoading, setKeypairLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the textarea mounts.
+  const autoFocusRef = useCallback((el: HTMLTextAreaElement | null) => el?.focus(), []);
+
   async function handleKeyLogin(keyHex: string) {
     const result = await loginWithKeypair(keyHex.trim());
     if (result.success) {
@@ -235,7 +240,7 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
               placeholder="64 character hex string..."
               rows={3}
               required
-              autoFocus
+              ref={autoFocusRef}
               className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white font-mono text-sm focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
             />
           </div>

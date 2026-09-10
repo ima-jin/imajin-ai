@@ -24,10 +24,18 @@ const helperMocks = vi.hoisted(() => ({
   buildSurveyValuesMock: vi.fn().mockReturnValue([]),
 }));
 
+// `csvRow`/`csvEscape` are given their real (simple, dependency-free)
+// implementation here rather than pulled in via `importOriginal` — this
+// module is resolved through the `@/` alias, which this vitest config points
+// at apps/kernel, so a real cross-package import would fail to resolve.
 vi.mock('@/src/lib/guest-export-helpers', () => ({
   warnDuplicateSurveyResponses: helperMocks.warnDuplicateSurveyResponsesMock,
   loadSurveyFormData: helperMocks.loadSurveyFormDataMock,
   buildSurveyValues: helperMocks.buildSurveyValuesMock,
+  csvRow: (values: unknown[]) =>
+    values
+      .map((v) => (v == null ? '' : String(v)))
+      .join(',') + '\r\n',
 }));
 
 import { GET } from '../../app/api/events/[id]/guests/export.csv/route';

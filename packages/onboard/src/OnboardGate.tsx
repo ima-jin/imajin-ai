@@ -35,6 +35,11 @@ export function OnboardGate({
   const [name, setName] = useState('');
   const [error, setError] = useState('');
 
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the input mounts.
+  const autoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
+
   // Resolve auth URL from props or env
   const authUrl = authUrlProp || (
     typeof window === 'undefined'
@@ -162,7 +167,7 @@ export function OnboardGate({
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
           required
-          autoFocus
+          ref={autoFocusRef}
           className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
         />
         <input

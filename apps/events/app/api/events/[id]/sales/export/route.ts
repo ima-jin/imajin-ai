@@ -3,20 +3,10 @@ import { createLogger } from '@imajin/logger';
 import { requireAuth , resolveActingDid, resolveIdentitiesForDids } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { getClient } from '@imajin/db';
+import { csvRow } from '../../../../../../src/lib/guest-export-helpers';
 
 const log = createLogger('events');
 const sql = getClient();
-
-function csvEscape(v: unknown): string {
-  if (v == null) return '';
-  const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-  if (/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
-  return s;
-}
-
-function csvRow(values: unknown[]): string {
-  return values.map(csvEscape).join(',') + '\r\n';
-}
 
 function computeOrderStatus(tickets: { status: string }[]): string {
   if (tickets.length === 0) return 'unknown';

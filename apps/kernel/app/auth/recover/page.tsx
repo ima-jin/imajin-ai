@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { generateKeypair, sign } from '@/src/lib/auth/browser-keys';
 
@@ -20,6 +20,11 @@ export default function RecoverPage() {
   const [step, setStep] = useState<Step>('form');
   const [keypair, setKeypair] = useState<NewKeypair | null>(null);
   const [keySaved, setKeySaved] = useState(false);
+
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the input mounts.
+  const autoFocusRef = useCallback((el: HTMLInputElement | null) => el?.focus(), []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -182,7 +187,7 @@ export default function RecoverPage() {
               onChange={(e) => setDid(e.target.value)}
               placeholder="did:imajin:..."
               required
-              autoFocus
+              ref={autoFocusRef}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 font-mono text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
           </div>

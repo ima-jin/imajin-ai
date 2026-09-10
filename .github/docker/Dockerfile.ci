@@ -1,12 +1,5 @@
 FROM ubuntu:24.04
 
-# SonarCloud docker:S6471 (running as root): accepted risk, not fixed here.
-# This image only ever runs as an ephemeral, single-tenant CI container — it
-# holds no persistent user data and is never exposed to a network — so the
-# usual privilege-escalation/blast-radius concerns of a long-lived root
-# container don't apply. See #2064 for the sign-off to mark this won't-fix in
-# SonarCloud.
-
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Core tools + Node 22.
@@ -36,5 +29,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && apt-get update && apt-get install -y --no-install-recommends nodejs \
   && npm install -g --ignore-scripts pnpm@9.15.0 \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# docker:S6471 (running as root): switch the image's default user away from
+# root. `ci.yml` and the deploy/publish workflows that reference this image
+# use it as a GitHub Actions `container:` (not a Docker container *action*),
+# so the default user only affects `docker exec` steps, not artifact-upload
+# machinery. USER_UID/USER_GID are build args (rather than a hardcoded id) so
+# whoever re-pins the digest in those workflows (see ci.yml's comment on this
+# file) can rebuild with `--build-arg USER_UID=$(id -u)` matching the actual
+# imajin-self-hosted runner account if the default below doesn't line up,
+# without editing this file. NOPASSWD sudo keeps any step that still needs
+# root (e.g. an ad-hoc apt-get) working without reintroducing root-by-default.
+ARG USER_NAME=ci
+ARG USER_UID=1000
+ARG USER_GID=1000
+RUN groupadd --gid "${USER_GID}" "${USER_NAME}" \
+  && useradd --create-home --shell /bin/bash --uid "${USER_UID}" --gid "${USER_GID}" "${USER_NAME}" \
+  && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USER_NAME}" \
+  && chmod 440 "/etc/sudoers.d/${USER_NAME}"
+
+USER ${USER_NAME}
 
 CMD ["bash"]
