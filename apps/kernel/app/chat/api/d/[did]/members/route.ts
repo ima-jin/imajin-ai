@@ -5,6 +5,7 @@ import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils'
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { publish } from '@imajin/bus';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
+import { checkAccess } from '@/src/lib/kernel/access';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -136,6 +137,16 @@ export async function GET(
   }
 
   const { did } = await params;
+
+  // Session callers must be authorized against the conversation itself —
+  // otherwise any authenticated session could list the membership (DIDs,
+  // names, handles) of any conversation, including private DMs and groups
+  // they have never been part of (#2145, same shape as #2136/#2138).
+  const effectiveDid = resolveActingDid(authResult.identity);
+  const access = await checkAccess(effectiveDid, did);
+  if (!access.allowed) {
+    return errorResponse('Access denied', 403, cors);
+  }
 
   try {
     // Get members from chat.conversation_members

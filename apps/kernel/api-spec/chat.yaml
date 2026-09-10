@@ -933,6 +933,10 @@ paths:
       tags: [chat]
       operationId: getDConversationMembers
       summary: Get members of a DID-keyed conversation via pod membership — resolves names from auth service
+      description: >-
+        Session caller must be authorized against the conversation itself
+        (owner/participant/actingFor the subject DID), matching the pattern
+        used across the /api/d/{did}/* family (#2145).
       security:
         - cookieAuth: []
       parameters:
@@ -952,12 +956,26 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Member" }
                   count: { type: integer }
+        "401":
+          description: Unauthorized (no valid session)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Session caller is not authorized for this conversation (not owner/participant/actingFor the subject DID)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/d/{did}/read:
     post:
       tags: [chat]
       operationId: markDRead
       summary: Mark a DID-keyed conversation as read
+      description: >-
+        Session caller must be authorized against the conversation itself
+        (owner/participant/actingFor the subject DID), matching the pattern
+        used across the /api/d/{did}/* family (#2145).
       security:
         - cookieAuth: []
       parameters:
@@ -974,6 +992,16 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
+        "401":
+          description: Unauthorized (no valid session)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Session caller is not authorized for this conversation (not owner/participant/actingFor the subject DID)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/messages/{msgId}/reactions:
     get:
