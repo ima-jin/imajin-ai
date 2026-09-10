@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'local' | 'gcp' | 'quickbooks' | 'warp' | 'stripe';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'local' | 'gcp' | 'quickbooks' | 'warp' | 'stripe' | 'google';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -55,6 +55,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   quickbooks: 'did:imajin:quickbooks-connector',
   warp: 'did:imajin:warp-connector',
   stripe: 'did:imajin:stripe-connector',
+  google: 'did:imajin:google-connector',
 };
 
 /** Channel label used in `auth.channel_links`. Currently always the id. */
@@ -73,6 +74,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   quickbooks: 'quickbooks',
   warp: 'warp',
   stripe: 'stripe',
+  google: 'google',
 };
 
 // ── Release tiers (#1196 consent 2×2) ─────────────────────────────────────────
@@ -451,6 +453,32 @@ export const SCOPE_VOCABULARY = [
   { scope: 'stripe:events', connector: 'stripe', verb: 'events', surface: 'payments', classification: SELF_SENSITIVE,
     label: 'Publish your Stripe payment events (payments, invoices, payouts) to your reactor chains',
     manifestLabel: 'Publish your own Stripe payment events onto the bus' },
+
+  // ── Google Workspace connector (#2144) — Gmail/Calendar/Drive/Meet via
+  // OAuth2 authorization-code with offline access. One consent screen issues
+  // one sealed refresh token that every google:* scope below gates use of;
+  // the token is consumed server-side on every call and never released to a
+  // third party → SELF_SENSITIVE → owner-only, same quadrant as gcp:* /
+  // warp:dispatch. `surfaces: MCP_TOKENS` because google_* tools ride MCP
+  // access tokens the same way github:* does.
+  //
+  // v1 (Artifact day one) is exactly the six rows below. v2 — deliberately
+  // NOT declared here yet — adds `google:contacts:read` (claimable-stub
+  // candidates), `google:admin:reports` (Admin audit-log ingestion +
+  // proactive revocation propagation), and `google:sheets:write` (only if a
+  // consumer needs it). See #2144 for the split.
+  { scope: 'google:gmail:read', connector: 'google', verb: 'gmail:read', surface: 'google-api', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Read your Gmail threads, labels, and search results' },
+  { scope: 'google:gmail:send', connector: 'google', verb: 'gmail:send', surface: 'google-api', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Send and draft Gmail messages on your behalf' },
+  { scope: 'google:calendar:read', connector: 'google', verb: 'calendar:read', surface: 'google-api', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Read your Google Calendar events and free/busy' },
+  { scope: 'google:calendar:write', connector: 'google', verb: 'calendar:write', surface: 'google-api', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Create and update Google Calendar events (with Meet links) on your behalf' },
+  { scope: 'google:drive:read', connector: 'google', verb: 'drive:read', surface: 'google-api', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Read your Google Drive file metadata and content' },
+  { scope: 'google:meet:records', connector: 'google', verb: 'meet:records', surface: 'google-api', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Read your Google Meet conference records, recordings, and transcripts' },
 
   // ── Discovery (#1636, re-homed onto `mcp` by #1679)
   //

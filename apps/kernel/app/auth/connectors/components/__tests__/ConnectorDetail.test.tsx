@@ -1075,3 +1075,174 @@ describe('GitHub device connect round-trip (#1391)', () => {
     expect(spy.mock.calls.some(([input]) => String(input) === '/github/api/device/start')).toBe(false);
   });
 });
+
+// ── Shared OAuth card factory (#2144 review) ────────────────────────────────────────
+//
+// QuickBooks and Google Workspace both render through `createOAuthConnectorCard`
+// (extracted from two ~185-line near-identical literals to fix the SonarCloud
+// duplication finding on #2151). These tests exercise both instantiations —
+// including QuickBooks' one extra `environment` field, which is why the factory
+// has an `extra` hook at all — so the shared component itself is covered, not
+// just asserted-identical to its predecessors by inspection.
+
+describe('QuickBooks connector card (createOAuthConnectorCard)', () => {
+  const STATUS = '/quickbooks/api/scope-manifest';
+
+  function quickbooksStatus(overrides: StatusBody = {}): StatusBody {
+    return {
+      manifestAssetId: null,
+      activeScopes: [],
+      validScopes: ['quickbooks:read', 'quickbooks:write'],
+      configSealed: false,
+      tokenSealed: false,
+      ...overrides,
+    };
+  }
+
+  it('renders the Intuit-specific step-1 copy and the environment picker', async () => {
+    installFetch({ [STATUS]: quickbooksStatus() });
+
+    render(<ConnectorDetail entry={entryFor('quickbooks')} />);
+
+    expect(await screen.findByText('OAuth App (Intuit)')).toBeDefined();
+    expect(screen.getByPlaceholderText('Client ID')).toBeDefined();
+    expect(screen.getByPlaceholderText('Client Secret')).toBeDefined();
+    expect(screen.getByPlaceholderText('Redirect URI')).toBeDefined();
+    expect(screen.getByRole('combobox')).toBeDefined();
+    // No custody notice on this connector's registry entry.
+    expect(screen.queryByText(/Imajin can act on your/)).toBeNull();
+  });
+
+  it('posts clientId/clientSecret/redirectUri plus the selected environment', async () => {
+    const spy = installFetch({ [STATUS]: quickbooksStatus() });
+
+    render(<ConnectorDetail entry={entryFor('quickbooks')} />);
+    fireEvent.change(await screen.findByPlaceholderText('Client ID'), { target: { value: 'cid' } });
+    fireEvent.change(screen.getByPlaceholderText('Client Secret'), { target: { value: 'csecret' } });
+    fireEvent.change(screen.getByPlaceholderText('Redirect URI'), { target: { value: 'https://imajin.test/quickbooks/api/callback' } });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'production' } });
+    fireEvent.submit(screen.getByPlaceholderText('Client ID').closest('form') as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(requestBody(spy, '/quickbooks/api/configure')).toEqual({
+        clientId: 'cid',
+        clientSecret: 'csecret',
+        redirectUri: 'https://imajin.test/quickbooks/api/callback',
+        environment: 'production',
+      });
+    });
+  });
+
+  it('shows the connect step and scope grants once both credential steps are sealed', async () => {
+    installFetch({
+      [STATUS]: quickbooksStatus({ configSealed: true, tokenSealed: true, activeScopes: ['quickbooks:read'] }),
+    });
+
+    render(<ConnectorDetail entry={entryFor('quickbooks')} />);
+
+    expect(await screen.findByText('Account connected')).toBeDefined();
+    expect(screen.getByText('● Connected')).toBeDefined();
+    expect(screen.getByText('quickbooks:write')).toBeDefined();
+  });
+
+  it('disconnects with POST on the QuickBooks disconnect route', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const spy = installFetch({
+      [STATUS]: quickbooksStatus({ configSealed: true, tokenSealed: true }),
+    });
+
+    render(<ConnectorDetail entry={entryFor('quickbooks')} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect QuickBooks' }));
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith('/quickbooks/api/disconnect', { method: 'POST' });
+    });
+  });
+});
+
+describe('Google Workspace connector card (createOAuthConnectorCard, #2144)', () => {
+  const STATUS = '/google/api/scope-manifest';
+
+  function googleStatus(overrides: StatusBody = {}): StatusBody {
+    return {
+      manifestAssetId: null,
+      activeScopes: [],
+      validScopes: ['google:gmail:read', 'google:gmail:send'],
+      configSealed: false,
+      tokenSealed: false,
+      ...overrides,
+    };
+  }
+
+  it('renders the Google-specific step-1 copy with no extra fields', async () => {
+    installFetch({ [STATUS]: googleStatus() });
+
+    render(<ConnectorDetail entry={entryFor('google')} />);
+
+    expect(await screen.findByText('OAuth Client (Google Cloud Console)')).toBeDefined();
+    expect(screen.getByPlaceholderText('Client ID')).toBeDefined();
+    expect(screen.getByPlaceholderText('Client Secret')).toBeDefined();
+    expect(screen.getByPlaceholderText('Redirect URI')).toBeDefined();
+    // No `environment`-style extra field on this connector.
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('shows the custody notice verbatim from the registry entry', async () => {
+    installFetch({ [STATUS]: googleStatus() });
+
+    render(<ConnectorDetail entry={entryFor('google')} />);
+
+    expect(await screen.findByText(entryFor('google').custodyNotice!)).toBeDefined();
+  });
+
+  it('posts clientId/clientSecret/redirectUri with no extra fields', async () => {
+    const spy = installFetch({ [STATUS]: googleStatus() });
+
+    render(<ConnectorDetail entry={entryFor('google')} />);
+    fireEvent.change(await screen.findByPlaceholderText('Client ID'), { target: { value: 'gcid' } });
+    fireEvent.change(screen.getByPlaceholderText('Client Secret'), { target: { value: 'gsecret' } });
+    fireEvent.change(screen.getByPlaceholderText('Redirect URI'), { target: { value: 'https://imajin.test/google/api/callback' } });
+    fireEvent.submit(screen.getByPlaceholderText('Client ID').closest('form') as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(requestBody(spy, '/google/api/configure')).toEqual({
+        clientId: 'gcid',
+        clientSecret: 'gsecret',
+        redirectUri: 'https://imajin.test/google/api/callback',
+      });
+    });
+  });
+
+  it('shows the connect step and scope grants once both credential steps are sealed', async () => {
+    installFetch({
+      [STATUS]: googleStatus({ configSealed: true, tokenSealed: true, activeScopes: ['google:gmail:read'] }),
+    });
+
+    render(<ConnectorDetail entry={entryFor('google')} />);
+
+    expect(await screen.findByText('Account connected')).toBeDefined();
+    expect(screen.getByText('● Connected')).toBeDefined();
+  });
+
+  it('disconnects with POST on the Google disconnect route', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const spy = installFetch({
+      [STATUS]: googleStatus({ configSealed: true, tokenSealed: true }),
+    });
+
+    render(<ConnectorDetail entry={entryFor('google')} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Google Workspace' }));
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith('/google/api/disconnect', { method: 'POST' });
+    });
+  });
+
+  it('shows the credential-pending state without implying nothing was configured', async () => {
+    installFetch({ [STATUS]: googleStatus({ configSealed: true, credentialPending: true }) });
+
+    render(<ConnectorDetail entry={entryFor('google')} />);
+
+    expect(await screen.findByText(/Waiting for owner approval/)).toBeDefined();
+  });
+});

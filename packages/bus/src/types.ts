@@ -1265,6 +1265,55 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  /**
+   * Google Workspace connector signed events (#2144). One per v1 action, each
+   * non-fatal (bus.publish, try/catch at the call site — same convention as
+   * `github.issue.created`). `onBehalfOf` is always `ownerDid`, the connecting
+   * DID whose sealed refresh token was spent — recorded explicitly on every
+   * write per the issue's `onBehalfOf` requirement even though `issuer`/
+   * `subject` already carry it, so a consumer never has to infer custody from
+   * the envelope alone.
+   *
+   * `calendar.event.created` is deliberately NOT declared here: Calendar
+   * writes land in the existing intention-model store (#1788,
+   * `kernel.calendar_entries`) and reuse its own `calendar.entry.created`
+   * event instead of forking a second calendar event vocabulary — see
+   * `apps/kernel/src/lib/google/calendar.ts`.
+   */
+  'mail.received': {
+    ownerDid: string;
+    onBehalfOf: string;
+    messageId: string;
+    threadId: string;
+    historyId: string;
+    context_id: string;
+    context_type: 'google';
+  };
+  'mail.sent': {
+    ownerDid: string;
+    onBehalfOf: string;
+    messageId: string;
+    threadId: string;
+    context_id: string;
+    context_type: 'google';
+  };
+  'drive.file.changed': {
+    ownerDid: string;
+    onBehalfOf: string;
+    fileId: string;
+    /** Drive's own change type, e.g. 'update' | 'remove'. */
+    changeType: string;
+    context_id: string;
+    context_type: 'google';
+  };
+  'meet.transcript.available': {
+    ownerDid: string;
+    onBehalfOf: string;
+    conferenceRecordId: string;
+    transcriptId: string;
+    context_id: string;
+    context_type: 'google';
+  };
   // #1205 — authored-document change trigger (the control-plane "button").
   // issuer=ownerDid, subject=<assetId/doc-id>, scope=<service scope>.
   // Emitted only for tracked authored doc classes, never hot-state writes.

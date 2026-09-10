@@ -402,6 +402,12 @@
       "firstMigration": "0103_event_subscription_log.sql",
       "notes": ""
     },
+    "kernel.google_workspace_state": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0133_google_workspace_state.sql",
+      "notes": ""
+    },
     "kernel.identity_aliases": {
       "owner": "kernel",
       "schema": "kernel",

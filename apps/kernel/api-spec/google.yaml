@@ -1,0 +1,265 @@
+openapi: "3.1.0"
+info:
+  title: imajin google
+  version: "1.0.0"
+  description: |
+    Google Workspace connector (#2144, v1): Gmail/Calendar/Drive/Meet via
+    OAuth2 authorization-code with offline access. One consent screen requests
+    all six v1 `google:*` scopes at once; the resulting refresh token is
+    sealed per-DID in the vault and never returned by any route below.
+
+    Scopes are declared in `packages/auth/src/scope-vocabulary.ts` and gate
+    which `google_*` MCP tools (a follow-up PR) may act on the connecting
+    DID's behalf. Every scope is `owner-only`: the sealed refresh token is
+    consumed server-side on every call and never released to a third party.
+
+    Revocation works both directions: `POST /google/api/disconnect` revokes
+    at Google's own revoke endpoint before purging the local grant; a
+    Google-side revoke (detected as `invalid_grant` on the next refresh)
+    tombstones the local grant reactively — see the connector library's class
+    doc for the v1/v2 split on proactive revoke-propagation.
+servers:
+  - url: https://{node}.imajin.ai/{service}
+    description: production node
+    variables:
+      node:
+        default: jin
+      service:
+        default: google
+  - url: http://localhost:3000/{service}
+    description: local development
+
+tags:
+  - name: google
+    description: Google Workspace connector
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+  schemas:
+    GoogleScopeManifestStatus:
+      type: object
+      properties:
+        manifestAssetId: { type: string, nullable: true }
+        activeScopes: { type: array, items: { type: string } }
+        validScopes: { type: array, items: { type: string } }
+        configSealed: { type: boolean, description: "OAuth client (clientId/clientSecret/redirectUri) sealed for this DID." }
+        tokenSealed: { type: boolean, description: "A Google OAuth token bundle (refresh + access token) is sealed for this DID." }
+        credentialPending: { type: boolean, description: "Sealed but awaiting owner grant approval (Tier 1)." }
+        flow:
+          type: string
+          nullable: true
+          enum: [authorization_code]
+          description: "Always authorization_code — Google has no RFC 8628 device-authorization endpoint."
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/connect:
+    get:
+      tags: [google]
+      operationId: googleConnect
+      summary: Begin the Google OAuth2 authorization-code flow
+      description: >-
+        Session-gated. Redirects to Google's consent screen with
+        `access_type=offline&prompt=consent` so a refresh token is always
+        issued. An optional `?returnTo=` query param carries the browser back
+        to its starting page after the callback.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "307":
+          description: Redirect to Google's authorize endpoint
+        "400":
+          description: No OAuth client configured for this DID yet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Config sealed but awaiting owner grant approval
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/callback:
+    get:
+      tags: [google]
+      operationId: googleCallback
+      summary: OAuth2 callback — Google redirects here with code + state
+      description: >-
+        Not a session-authenticated route: the signed `state` param
+        authenticates the owner DID. Exchanges the code, seals the token
+        bundle, then redirects into the app with `?connected=google` on
+        success or `?error=<code>&connector=google` on failure.
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "307":
+          description: Redirect back into the app (success or failure)
+  /api/configure:
+    post:
+      tags: [google]
+      operationId: googleConfigure
+      summary: Seal the per-DID Google OAuth client config
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientId, clientSecret, redirectUri]
+              properties:
+                clientId: { type: string }
+                clientSecret: { type: string }
+                redirectUri: { type: string }
+      responses:
+        "201":
+          description: Config sealed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured: { type: boolean }
+                  flow: { type: string, enum: [authorization_code] }
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    options:
+      tags: [google]
+      operationId: googleConfigureOptions
+      summary: CORS pre-flight
+      responses:
+        "204":
+          description: No content
+  /api/disconnect:
+    post:
+      tags: [google]
+      operationId: googleDisconnect
+      summary: Revoke the Google grant, both directions
+      description: >-
+        Revokes the sealed refresh token at Google's own revoke endpoint
+        (best-effort), then purges the sealed vault fields, revokes the
+        active `channel_links` row, and publishes `connector.disconnected`.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connected: { type: boolean, enum: [false] }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/scope-manifest:
+    get:
+      tags: [google]
+      operationId: googleScopeManifestStatus
+      summary: Read the current scope-manifest + credential status
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Current state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GoogleScopeManifestStatus" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    post:
+      tags: [google]
+      operationId: googlePublishScopeManifest
+      summary: Publish the scope-manifest with the given scope set
+      description: >-
+        Grant-by-edit / revoke-by-delete (#1204): the request body is the
+        FULL desired scope set, not a delta. An empty array revokes every
+        `google:*` scope. Unknown scope names are rejected 400 (fail-closed).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scopes]
+              properties:
+                scopes:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - "google:gmail:read"
+                      - "google:gmail:send"
+                      - "google:calendar:read"
+                      - "google:calendar:write"
+                      - "google:drive:read"
+                      - "google:meet:records"
+      responses:
+        "200":
+          description: Published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  published: { type: boolean }
+                  assetId: { type: string }
+                  activeScopes: { type: array, items: { type: string } }
+        "400":
+          description: Unknown scope(s) requested
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    options:
+      tags: [google]
+      operationId: googleScopeManifestOptions
+      summary: CORS pre-flight
+      responses:
+        "204":
+          description: No content
