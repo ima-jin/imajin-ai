@@ -40,8 +40,8 @@ vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
 
 import { GET, OPTIONS } from '../route';
 
-function makeReq(): Request {
-  return new Request('https://test.imajin.ai/jin/api/operator-approvals');
+function makeReq(query = ''): Request {
+  return new Request(`https://test.imajin.ai/jin/api/operator-approvals${query}`);
 }
 
 beforeEach(() => {
@@ -74,7 +74,7 @@ describe('GET /jin/api/operator-approvals (#2059)', () => {
     expect(res.status).toBe(200);
     expect(body.isOperator).toBe(true);
     expect(body.approvals).toHaveLength(1);
-    expect(mockList).toHaveBeenCalledWith(OPERATOR_DID);
+    expect(mockList).toHaveBeenCalledWith(OPERATOR_DID, {});
   });
 
   it('returns an empty list for a non-operator human — no card, no data (#2059 acceptance (c))', async () => {
@@ -106,5 +106,21 @@ describe('GET /jin/api/operator-approvals (#2059)', () => {
     const body = (await res.json()) as { isOperator: boolean; approvals: unknown[] };
 
     expect(body).toEqual({ isOperator: false, approvals: [] });
+  });
+
+  it('passes ?source= through to listApprovalsForOperator as a filter (#2152)', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: operatorIdentity() });
+
+    await GET(makeReq('?source=skill-workshop') as Parameters<typeof GET>[0]);
+
+    expect(mockList).toHaveBeenCalledWith(OPERATOR_DID, { source: 'skill-workshop' });
+  });
+
+  it('omits the source filter when no ?source= query param is given', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: operatorIdentity() });
+
+    await GET(makeReq() as Parameters<typeof GET>[0]);
+
+    expect(mockList).toHaveBeenCalledWith(OPERATOR_DID, {});
   });
 });

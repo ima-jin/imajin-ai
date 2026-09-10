@@ -1,10 +1,12 @@
 /**
- * Tests for POST /jin/api/operator-approvals/:proposalId/decision (#2059).
+ * Tests for POST /jin/api/operator-approvals/:proposalId/decision (#2059,
+ * generalized decision vocabulary #2152).
  *
- * Covers the full acceptance list: operator approve/deny, non-operator and
- * agent (`X-Acting-For`) rejection, unknown-proposal 404, and bad-body 400.
- * `isOperatorIdentity` runs for real here (only `getOperatorDid` is mocked)
- * so these tests exercise the actual load-bearing auth check, not a stand-in.
+ * Covers the full acceptance list: operator approve/reject, non-operator
+ * and agent (`X-Acting-For`) rejection, unknown-proposal 404, and bad-body
+ * 400. `isOperatorIdentity` runs for real here (only `getOperatorDid` is
+ * mocked) so these tests exercise the actual load-bearing auth check, not
+ * a stand-in.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
@@ -93,6 +95,7 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
       proposalId: PROPOSAL_ID,
       operatorDid: OPERATOR_DID,
       decision: 'approve',
+      mode: undefined,
       reason: undefined,
     });
     expect(res.status).toBe(200);
@@ -100,22 +103,45 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
     expect(body.approval.status).toBe('approved');
   });
 
-  it('denies and forwards the deny decision with an optional reason', async () => {
+  it('rejects and forwards the reject decision with an optional reason', async () => {
     mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({ status: 'denied' }) });
 
     const res = await POST(
-      makeReq({ decision: 'deny', reason: 'not tonight' }) as Parameters<typeof POST>[0],
+      makeReq({ decision: 'reject', reason: 'not tonight' }) as Parameters<typeof POST>[0],
       paramsFor(PROPOSAL_ID),
     );
 
     expect(mockDecide).toHaveBeenCalledWith({
       proposalId: PROPOSAL_ID,
       operatorDid: OPERATOR_DID,
-      decision: 'deny',
+      decision: 'reject',
+      mode: undefined,
       reason: 'not tonight',
     });
     const body = (await res.json()) as { approval: { status: string } };
     expect(body.approval.status).toBe('denied');
+  });
+
+  it('forwards an optional opaque mode alongside the decision (#2152)', async () => {
+    const res = await POST(
+      makeReq({ decision: 'approve', mode: 'allow-once' }) as Parameters<typeof POST>[0],
+      paramsFor(PROPOSAL_ID),
+    );
+
+    expect(mockDecide).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: 'approve', mode: 'allow-once' }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects a mode longer than 128 chars', async () => {
+    const res = await POST(
+      makeReq({ decision: 'approve', mode: 'x'.repeat(129) }) as Parameters<typeof POST>[0],
+      paramsFor(PROPOSAL_ID),
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockDecide).not.toHaveBeenCalled();
   });
 
   it('forwards a withdrawn decision', async () => {
@@ -162,8 +188,14 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
     expect(mockDecide).not.toHaveBeenCalled();
   });
 
-  it("returns 400 when decision is not one of 'approve' | 'deny' | 'withdrawn'", async () => {
+  it("returns 400 when decision is not one of 'approve' | 'reject' | 'withdrawn'", async () => {
     const res = await POST(makeReq({ decision: 'maybe' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    expect(res.status).toBe(400);
+    expect(mockDecide).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for the retired legacy 'deny' decision value (#2152 widened the vocabulary to 'reject')", async () => {
+    const res = await POST(makeReq({ decision: 'deny' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
     expect(res.status).toBe(400);
     expect(mockDecide).not.toHaveBeenCalled();
   });

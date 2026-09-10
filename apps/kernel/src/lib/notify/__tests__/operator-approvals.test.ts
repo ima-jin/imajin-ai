@@ -1,7 +1,10 @@
 /**
- * Tests for the operator-approvals contract module (#2059): payload
- * validation (including the secret-redaction boundary, acceptance (e)) and
- * the load-bearing `isOperatorIdentity` auth invariant.
+ * Tests for the operator-approvals contract module (#2059, generalized to
+ * an open source/kind vocabulary by #2152): payload validation (legacy
+ * bare-kind normalization, open-vocabulary source/kind, the bounded
+ * `detail` object, the hash-covers-detail invariant, and the
+ * secret-redaction boundary, acceptance (e)), plus the load-bearing
+ * `isOperatorIdentity` auth invariant.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -11,6 +14,7 @@ vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeSelfInfo: mockGetNodeS
 
 import {
   validateApprovalRequestedPayload,
+  computeApprovalContentHash,
   looksLikeSecretValue,
   isOperatorIdentity,
   getOperatorDid,
@@ -32,13 +36,54 @@ function validPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('validateApprovalRequestedPayload', () => {
-  it('accepts a well-formed payload', () => {
-    expect(validateApprovalRequestedPayload(validPayload())).toEqual({ ok: true });
+/** A well-formed open-vocabulary payload (explicit source, namespaced kind, detail, valid contentHash). */
+function openVocabPayload(overrides: Record<string, unknown> = {}) {
+  const base = {
+    proposalId: 'opap_sw_1',
+    source: 'skill-workshop',
+    kind: 'skill-workshop:update',
+    summary: 'Update the weather-lookup skill.',
+    keysTouched: [] as string[],
+    detail: { skillName: 'weather-lookup', kind: 'update', scan: 'clean' },
+  };
+  const merged = { ...base, ...overrides };
+  const contentHash = 'contentHash' in overrides
+    ? overrides.contentHash
+    : computeApprovalContentHash({
+      proposalId: merged.proposalId,
+      source: merged.source,
+      kind: merged.kind,
+      summary: merged.summary,
+      keysTouched: merged.keysTouched,
+      detail: merged.detail,
+    });
+  return { ...merged, contentHash };
+}
+
+describe('validateApprovalRequestedPayload — legacy bare kinds (#2152 backward compat)', () => {
+  it('accepts a well-formed legacy payload and normalizes onto system-agent:*', () => {
+    expect(validateApprovalRequestedPayload(validPayload())).toEqual({
+      ok: true,
+      source: 'system-agent',
+      kind: 'system-agent:restart',
+      detail: null,
+      contentHash: null,
+    });
+  });
+
+  it.each(['restart', 'config-mutation', 'other'])('normalizes legacy bare kind %s onto system-agent:%s', (kind) => {
+    const result = validateApprovalRequestedPayload(validPayload({ kind }));
+    expect(result).toEqual(expect.objectContaining({ ok: true, source: 'system-agent', kind: `system-agent:${kind}` }));
   });
 
   it('accepts an empty keysTouched array', () => {
-    expect(validateApprovalRequestedPayload(validPayload({ keysTouched: [] }))).toEqual({ ok: true });
+    expect(validateApprovalRequestedPayload(validPayload({ keysTouched: [] })).ok).toBe(true);
+  });
+
+  it('does not require contentHash for a legacy bare-kind request', () => {
+    const result = validateApprovalRequestedPayload(validPayload());
+    expect(result.ok).toBe(true);
+    expect(result.contentHash).toBeNull();
   });
 
   it.each([
@@ -102,6 +147,94 @@ describe('validateApprovalRequestedPayload', () => {
       validPayload({ keysTouched: ['gateway.plugins.openclaw-imajin.token', 'gateway/restart-required'] }),
     );
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('validateApprovalRequestedPayload — open vocabulary (#2152)', () => {
+  it('accepts a well-formed open-vocabulary payload with source, namespaced kind, detail, and a matching contentHash', () => {
+    const result = validateApprovalRequestedPayload(openVocabPayload());
+    expect(result).toEqual({
+      ok: true,
+      source: 'skill-workshop',
+      kind: 'skill-workshop:update',
+      detail: { skillName: 'weather-lookup', kind: 'update', scan: 'clean' },
+      contentHash: expect.any(String),
+    });
+  });
+
+  it('accepts the sha256: prefixed contentHash form', () => {
+    const payload = openVocabPayload();
+    const result = validateApprovalRequestedPayload({ ...payload, contentHash: `sha256:${payload.contentHash}` });
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects a kind not namespaced under the declared source', () => {
+    const result = validateApprovalRequestedPayload(openVocabPayload({ kind: 'system-agent:restart' }));
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/namespaced/);
+  });
+
+  it('rejects an invalid source identifier', () => {
+    const result = validateApprovalRequestedPayload(openVocabPayload({ source: 'Skill Workshop!' }));
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects detail that is not a JSON object', () => {
+    const result = validateApprovalRequestedPayload(openVocabPayload({ detail: ['not', 'an', 'object'] }));
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/JSON object/);
+  });
+
+  it('rejects detail larger than 16KB', () => {
+    const detail = { diffSummary: 'x'.repeat(17 * 1024) };
+    const result = validateApprovalRequestedPayload(openVocabPayload({ detail, contentHash: undefined }));
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/16384 bytes/);
+  });
+
+  it('requires contentHash when source is present, even with no detail', () => {
+    const result = validateApprovalRequestedPayload(
+      openVocabPayload({ detail: undefined, contentHash: undefined }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/contentHash is required/);
+  });
+
+  it('rejects a malformed contentHash', () => {
+    const result = validateApprovalRequestedPayload(openVocabPayload({ contentHash: 'not-a-hash' }));
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/sha256 hex digest/);
+  });
+
+  // The hash-covers-detail invariant (#2152): the whole point of contentHash
+  // is "what the operator saw is what gets applied" — a payload whose detail
+  // was tampered with after the hash was computed must never validate.
+  describe('hash-covers-detail invariant', () => {
+    it('rejects when detail is tampered with after the hash was computed', () => {
+      const payload = openVocabPayload();
+      const tampered = { ...payload, detail: { ...payload.detail, scan: 'failed' } };
+      const result = validateApprovalRequestedPayload(tampered);
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/does not match the canonical payload/);
+    });
+
+    it('rejects when detail is dropped entirely but the original hash is reused', () => {
+      const payload = openVocabPayload();
+      const stripped = { ...payload, detail: undefined };
+      const result = validateApprovalRequestedPayload(stripped);
+      expect(result.ok).toBe(false);
+    });
+
+    it('accepts two different detail payloads each with their own correctly-computed hash', () => {
+      const first = validateApprovalRequestedPayload(openVocabPayload({ detail: { scan: 'clean' } }));
+      const second = validateApprovalRequestedPayload(
+        openVocabPayload({ proposalId: 'opap_sw_2', detail: { scan: 'failed' } }),
+      );
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      // Different detail must never collide onto the same accepted hash.
+      expect(first.contentHash).not.toBe(second.contentHash);
+    });
   });
 });
 

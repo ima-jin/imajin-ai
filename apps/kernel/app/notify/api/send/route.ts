@@ -112,35 +112,56 @@ async function resolveAndSendEmail(
   }
 }
 
+/** Normalized fields {@link rejectInvalidOperatorApprovalRequest} hands back on success (#2152). */
+interface OperatorApprovalNormalized {
+  source: string;
+  kind: string;
+  detail: Record<string, unknown> | null;
+  contentHash: string | null;
+}
+
 /**
- * Guard for the `operator.approval.requested` scope (#2059): validates the
- * payload and confirms the recipient is the configured operator DID.
- * Returns the 400 response to return immediately, or null when the request
- * may proceed. Extracted out of POST so its cognitive complexity stays
- * under the SonarCloud threshold (S3776) — no behavior change.
+ * Guard for the `operator.approval.requested` scope (#2059, generalized
+ * #2152): validates the payload (open source/kind vocabulary, bounded
+ * detail, hash-covers-detail invariant) and confirms the recipient is the
+ * configured operator DID. Returns the 400 response to return immediately,
+ * or the normalized source/kind/detail/contentHash when the request may
+ * proceed (`normalized` is null for any other scope). Extracted out of
+ * POST so its cognitive complexity stays under the SonarCloud threshold
+ * (S3776) — no behavior change beyond the #2152 vocabulary widening.
  */
 async function rejectInvalidOperatorApprovalRequest(
   scope: string,
   data: Record<string, unknown>,
   to: string,
   cors: Record<string, string>,
-): Promise<NextResponse | null> {
-  if (scope !== OPERATOR_APPROVAL_REQUESTED_SCOPE) return null;
+): Promise<{ response: NextResponse; normalized?: never } | { response: null; normalized: OperatorApprovalNormalized | null }> {
+  if (scope !== OPERATOR_APPROVAL_REQUESTED_SCOPE) return { response: null, normalized: null };
 
   const validation = validateApprovalRequestedPayload(data);
   if (!validation.ok) {
-    return NextResponse.json({ error: validation.error }, { status: 400, headers: cors });
+    return { response: NextResponse.json({ error: validation.error }, { status: 400, headers: cors }) };
   }
 
   const operatorDid = await getOperatorDid();
   if (!operatorDid || to !== operatorDid) {
-    return NextResponse.json(
-      { error: 'operator.approval.requested must be addressed to the configured operator DID' },
-      { status: 400, headers: cors },
-    );
+    return {
+      response: NextResponse.json(
+        { error: 'operator.approval.requested must be addressed to the configured operator DID' },
+        { status: 400, headers: cors },
+      ),
+    };
   }
 
-  return null;
+  return {
+    response: null,
+    normalized: {
+      source: validation.source as string,
+      kind: validation.kind as string,
+      detail: validation.detail ?? null,
+      contentHash: validation.contentHash ?? null,
+    },
+  };
 }
 
 /**
@@ -269,9 +290,11 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   // #2059 — operator.approval.requested carries a proposal that must never
   // include secret values, and must be addressed to the configured operator
   // DID (never an arbitrary recipient) so the /jin confirm card can only
-  // ever reach the one identity allowed to decide it.
-  const operatorApprovalRejection = await rejectInvalidOperatorApprovalRequest(scope, data, to, cors);
-  if (operatorApprovalRejection) return operatorApprovalRejection;
+  // ever reach the one identity allowed to decide it. #2152 widens the
+  // vocabulary (open source/kind, bounded detail, hash-covers-detail) but
+  // the guard still normalizes before POST proceeds.
+  const operatorApprovalGuard = await rejectInvalidOperatorApprovalRequest(scope, data, to, cors);
+  if (operatorApprovalGuard.response) return operatorApprovalGuard.response;
 
   // Resolve template
   const template = getTemplate(scope);
@@ -333,14 +356,18 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   }
 
   // #2059 — persist the proposal lifecycle row alongside the notification.
-  // Validated above, so `data` is known-shaped here.
-  if (scope === OPERATOR_APPROVAL_REQUESTED_SCOPE) {
+  // Validated + normalized above (#2152: open source/kind, bounded detail,
+  // verified contentHash), so `operatorApprovalGuard.normalized` is known-shaped here.
+  if (scope === OPERATOR_APPROVAL_REQUESTED_SCOPE && operatorApprovalGuard.normalized) {
     await recordApprovalRequested({
       proposalId: data.proposalId as string,
       operatorDid: to,
-      kind: data.kind as 'restart' | 'config-mutation' | 'other',
+      source: operatorApprovalGuard.normalized.source,
+      kind: operatorApprovalGuard.normalized.kind,
       summary: data.summary as string,
       keysTouched: (data.keysTouched as string[] | undefined) ?? [],
+      detail: operatorApprovalGuard.normalized.detail,
+      contentHash: operatorApprovalGuard.normalized.contentHash,
       notificationId: id,
     });
   }

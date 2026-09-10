@@ -199,3 +199,32 @@ describe('auth.yaml documents the app-token, verify-delegation, and onboard poll
     expect(delegationBlock).toContain('internalKeyAuth');
   });
 });
+
+/**
+ * Route <-> spec parity for the /jin operator-approvals rail (#2152): both
+ * the list route and the decision route must have both a live route file
+ * on disk AND a documented path in jin.yaml, so the two never drift.
+ */
+describe('jin.yaml documents both operator-approvals routes (#2152)', () => {
+  const DOCUMENTED_ROUTES: ReadonlyArray<{ path: string; routeFile: string }> = [
+    { path: '/api/operator-approvals', routeFile: 'app/jin/api/operator-approvals/route.ts' },
+    {
+      path: '/api/operator-approvals/{proposalId}/decision',
+      routeFile: 'app/jin/api/operator-approvals/[proposalId]/decision/route.ts',
+    },
+  ];
+
+  it.each(DOCUMENTED_ROUTES)('$path has both a live route file and a documented spec path', ({ path, routeFile }) => {
+    pinCwdToKernel();
+    expect(existsSync(join(KERNEL_ROOT, routeFile)), routeFile).toBe(true);
+
+    const jin = listApiSpecs().find((s) => s.service === 'jin');
+    expect(jin?.paths, path).toContain(path);
+  });
+
+  it('resolves the jin label from the SERVICES manifest', () => {
+    pinCwdToKernel();
+    const jin = listApiSpecs().find((s) => s.service === 'jin');
+    expect(jin?.label).toBe('Jin');
+  });
+});

@@ -176,7 +176,13 @@ beforeEach(() => {
   // so rejectInvalidOperatorApprovalRequest short-circuits before touching these;
   // defaults here only matter for the dedicated describe block below.
   mockGetOperatorDid.mockResolvedValue(RECIPIENT);
-  mockValidateApprovalRequestedPayload.mockReturnValue({ ok: true });
+  mockValidateApprovalRequestedPayload.mockReturnValue({
+    ok: true,
+    source: 'system-agent',
+    kind: 'system-agent:restart',
+    detail: null,
+    contentHash: null,
+  });
   mockRecordApprovalRequested.mockResolvedValue(undefined);
 });
 
@@ -455,8 +461,8 @@ function operatorApprovalBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('operator.approval.requested boundary (#2059)', () => {
-  it('accepts a well-formed proposal, stores the notification, and records the lifecycle row', async () => {
+describe('operator.approval.requested boundary (#2059, generalized #2152)', () => {
+  it('accepts a well-formed legacy-kind proposal, stores the notification, and records the normalized lifecycle row', async () => {
     const res = await POST(makeReq(operatorApprovalBody()));
 
     expect(res.status).toBe(200);
@@ -464,11 +470,32 @@ describe('operator.approval.requested boundary (#2059)', () => {
     expect(mockRecordApprovalRequested).toHaveBeenCalledWith({
       proposalId: PROPOSAL_ID,
       operatorDid: RECIPIENT,
-      kind: 'restart',
+      source: 'system-agent',
+      kind: 'system-agent:restart',
       summary: 'Restart the gateway to load the updated plugin.',
       keysTouched: ['gateway.plugins.openclaw.version'],
+      detail: null,
+      contentHash: null,
       notificationId: NOTIFICATION_ID,
     });
+  });
+
+  it('records the source-normalized detail and contentHash for an open-vocabulary proposal (#2152)', async () => {
+    const detail = { skillName: 'weather-lookup', kind: 'update', scan: 'clean' };
+    mockValidateApprovalRequestedPayload.mockReturnValueOnce({
+      ok: true,
+      source: 'skill-workshop',
+      kind: 'skill-workshop:update',
+      detail,
+      contentHash: 'a'.repeat(64),
+    });
+
+    const res = await POST(makeReq(operatorApprovalBody({ source: 'skill-workshop', kind: 'skill-workshop:update', detail, contentHash: 'a'.repeat(64) })));
+
+    expect(res.status).toBe(200);
+    expect(mockRecordApprovalRequested).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'skill-workshop', kind: 'skill-workshop:update', detail, contentHash: 'a'.repeat(64) }),
+    );
   });
 
   it('rejects (400) a payload the validator flags, without touching the db', async () => {

@@ -17,7 +17,6 @@ import { db, operatorApprovals, type OperatorApprovalRow } from '@/src/db';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import type {
   ApprovalDecision,
-  ApprovalProposalKind,
   OperatorApprovalDecidedPayload,
 } from './operator-approvals';
 
@@ -26,9 +25,16 @@ const log = createLogger('kernel:operator-approvals');
 export interface OperatorApprovalCard {
   proposalId: string;
   operatorDid: string;
-  kind: ApprovalProposalKind;
+  /** Open vocabulary namespace, e.g. 'system-agent', 'skill-workshop' (#2152). */
+  source: string;
+  /** '<source>:<subkind>', e.g. 'system-agent:restart' (#2152). */
+  kind: string;
   summary: string;
   keysTouched: string[];
+  /** Optional, bounded per-source structured detail (#2152). */
+  detail: Record<string, unknown> | null;
+  /** sha256 hex digest covering the payload including detail, when supplied (#2152). */
+  contentHash: string | null;
   status: OperatorApprovalRow['status'];
   decision: OperatorApprovalDecidedPayload | null;
   appliedAt: string | null;
@@ -41,9 +47,12 @@ function toCard(row: OperatorApprovalRow): OperatorApprovalCard {
   return {
     proposalId: row.proposalId,
     operatorDid: row.operatorDid,
-    kind: row.kind as ApprovalProposalKind,
+    source: row.source,
+    kind: row.kind,
     summary: row.summary,
     keysTouched: (row.keysTouched as string[] | null) ?? [],
+    detail: (row.detail as Record<string, unknown> | null) ?? null,
+    contentHash: row.contentHash ?? null,
     status: row.status,
     decision: decisionRecord?.payload ?? null,
     appliedAt: row.appliedAt ? row.appliedAt.toISOString() : null,
@@ -55,9 +64,12 @@ function toCard(row: OperatorApprovalRow): OperatorApprovalCard {
 export interface RecordApprovalRequestedParams {
   proposalId: string;
   operatorDid: string;
-  kind: ApprovalProposalKind;
+  source: string;
+  kind: string;
   summary: string;
   keysTouched: string[];
+  detail: Record<string, unknown> | null;
+  contentHash: string | null;
   notificationId: string;
 }
 
@@ -69,7 +81,7 @@ export interface RecordApprovalRequestedParams {
  * arrives after the operator already decided leaves the decision alone).
  */
 export async function recordApprovalRequested(params: RecordApprovalRequestedParams): Promise<void> {
-  const { proposalId, operatorDid, kind, summary, keysTouched, notificationId } = params;
+  const { proposalId, operatorDid, source, kind, summary, keysTouched, detail, contentHash, notificationId } = params;
 
   const [existing] = await db
     .select({ status: operatorApprovals.status })
@@ -85,14 +97,17 @@ export async function recordApprovalRequested(params: RecordApprovalRequestedPar
   await db.insert(operatorApprovals).values({
     proposalId,
     operatorDid,
+    source,
     kind,
     summary,
     keysTouched,
+    detail,
+    contentHash,
     notificationId,
     status: 'pending',
   });
 
-  log.info({ proposalId, operatorDid, kind }, 'operator approval requested');
+  log.info({ proposalId, operatorDid, source, kind }, 'operator approval requested');
 }
 
 async function loadApproval(proposalId: string): Promise<OperatorApprovalRow | undefined> {
@@ -112,6 +127,8 @@ export interface DecideOperatorApprovalParams {
   proposalId: string;
   operatorDid: string;
   decision: ApprovalDecision;
+  /** Opaque, source-adapter-chosen refinement of `decision` (e.g. 'allow-once') — kernel never interprets it (#2152). */
+  mode?: string;
   reason?: string;
 }
 
@@ -123,7 +140,7 @@ function requiredStatusFor(decision: ApprovalDecision): OperatorApprovalRow['sta
 /** The status a proposal moves to once a given decision is recorded. */
 function nextStatusFor(decision: ApprovalDecision): OperatorApprovalRow['status'] {
   if (decision === 'approve') return 'approved';
-  if (decision === 'deny') return 'denied';
+  if (decision === 'reject') return 'denied';
   return 'withdrawn';
 }
 
@@ -138,7 +155,7 @@ function nextStatusFor(decision: ApprovalDecision): OperatorApprovalRow['status'
 export async function decideOperatorApproval(
   params: DecideOperatorApprovalParams,
 ): Promise<DecideOperatorApprovalResult> {
-  const { proposalId, operatorDid, decision, reason } = params;
+  const { proposalId, operatorDid, decision, mode, reason } = params;
 
   const row = await loadApproval(proposalId);
   if (!row) {
@@ -161,7 +178,10 @@ export async function decideOperatorApproval(
   const decidedAt = new Date().toISOString();
   const payload: OperatorApprovalDecidedPayload = {
     proposalId,
+    source: row.source,
+    kind: row.kind,
     decision,
+    ...(mode ? { mode } : {}),
     decidedBy: operatorDid,
     decidedAt,
     ...(reason ? { reason } : {}),
@@ -215,12 +235,23 @@ export async function markApplied(proposalId: string): Promise<{ ok: boolean }> 
   return { ok: true };
 }
 
-/** List every proposal ever addressed to `operatorDid`, newest first. */
-export async function listApprovalsForOperator(operatorDid: string): Promise<OperatorApprovalCard[]> {
+/**
+ * List every proposal ever addressed to `operatorDid`, newest first.
+ * Optionally scoped to one `source` (#2152), e.g. the /jin panel's own
+ * `?source=` filter — never a security boundary, just a view filter, since
+ * every row here already belongs to this operator.
+ */
+export async function listApprovalsForOperator(
+  operatorDid: string,
+  options: { source?: string } = {},
+): Promise<OperatorApprovalCard[]> {
+  const conditions = [eq(operatorApprovals.operatorDid, operatorDid)];
+  if (options.source) conditions.push(eq(operatorApprovals.source, options.source));
+
   const rows = await db
     .select()
     .from(operatorApprovals)
-    .where(eq(operatorApprovals.operatorDid, operatorDid))
+    .where(and(...conditions))
     .orderBy(desc(operatorApprovals.createdAt));
   return rows.map(toCard);
 }
