@@ -14,6 +14,12 @@ node scripts/migrate.mjs
 
 # Or via wrapper
 ./scripts/migrate.sh
+
+# Run only one owner's migrations (#1991 phase 2a) — see migrations/OWNERSHIP.md
+# for what "owned solely by <app>" and "shared" mean, and why this doesn't
+# yet give any app true isolation (most owners still depend on 0001_seed.sql).
+node scripts/migrate.mjs --owner <app>
+node scripts/migrate.mjs --owner <app> --include-shared
 ```
 
 ### Adding a Migration
@@ -52,6 +58,14 @@ node scripts/migrate.mjs
 ### Tracking
 
 `public._migrations` table with filename + SHA-256 checksum. Runner warns but skips on changed checksums (DDL is idempotent, so re-running is safe).
+
+This table is shared across every mode: `--owner <app>` only changes which
+files a given run reads from disk, never how a run records what it
+applied. A database migrated exclusively with the plain no-flag command
+and a database migrated by running every owner's `--owner` slice once each
+(plus `--owner kernel` for shared files) converge to the same rows in
+`public._migrations`, because both apply the same files under the same
+filenames/checksums.
 
 ### Ownership
 

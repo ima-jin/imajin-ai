@@ -56,8 +56,14 @@ export function inferOwnerForSchema(schema) {
 // flat sequence of independent `if`s (no nesting) and each helper is a
 // single, easily-verified state machine.
 
-/** Consumes a `'...'` string literal (with `''` as an escaped quote). Copied verbatim — never scanned for comments. */
-function consumeStringLiteral(sql, i) {
+/**
+ * Consumes a `'...'` string literal (with `''` as an escaped quote).
+ * Returned verbatim by default — never scanned for comments. Pass
+ * `blank: true` to return `''` instead of the literal's real contents (used
+ * by `migration-schema-scan.mjs`, where a data value like `'market.sale'`
+ * would otherwise false-positive as a schema-qualified table reference).
+ */
+function consumeStringLiteral(sql, i, blank) {
   let j = i + 1;
   while (j < sql.length) {
     if (sql[j] === "'" && sql[j + 1] === "'") {
@@ -70,7 +76,7 @@ function consumeStringLiteral(sql, i) {
     }
     j += 1;
   }
-  return { text: sql.slice(i, j), next: j };
+  return { text: blank ? "''" : sql.slice(i, j), next: j };
 }
 
 /**
@@ -123,14 +129,21 @@ function consumeBlockComment(sql, i) {
  * through untouched (so a comment marker inside either is never mistaken
  * for a real comment). Newlines are preserved so downstream line-number
  * reporting stays accurate.
+ *
+ * `{ blankStringLiterals: true }` additionally replaces every `'...'`
+ * literal's *contents* with `''` (dollar-quoted bodies are still passed
+ * through verbatim either way) — used by `migration-schema-scan.mjs`'s
+ * broader schema-reference scan, which must not mistake a dot-namespaced
+ * data value for a table reference. Defaults to `false`, so every existing
+ * caller (the ownership-map builder and the CI guard) is unaffected.
  */
-export function stripSqlComments(sql) {
+export function stripSqlComments(sql, { blankStringLiterals = false } = {}) {
   let out = '';
   let i = 0;
 
   while (i < sql.length) {
     if (sql[i] === "'") {
-      const { text, next } = consumeStringLiteral(sql, i);
+      const { text, next } = consumeStringLiteral(sql, i, blankStringLiterals);
       out += text;
       i = next;
       continue;

@@ -17,6 +17,7 @@ const BASE_OWNERSHIP = {
   views: {},
   types: {},
   functions: {},
+  sharedMigrationAllowlist: ['0001_seed.sql'],
 };
 
 function git(dir, args) {
@@ -165,5 +166,60 @@ describe('check-migration-ownership', () => {
     const { dir, baseRef } = makeBaseRepo();
     addMigration(dir, '0002_bad_owner.sql', '-- owner: not-a-real-app\nCREATE TABLE IF NOT EXISTS events.foo (id SERIAL PRIMARY KEY);\n');
     expectFail(runGuard(dir, baseRef), 'not a known owner');
+  });
+
+  it('fails a new migration whose DDL touches more than one owner\'s schema', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    addMigration(
+      dir,
+      '0002_two_owners.sql',
+      '-- owner: events\nCREATE TABLE IF NOT EXISTS events.foo (id SERIAL PRIMARY KEY);\nCREATE TABLE IF NOT EXISTS coffee.bar (id SERIAL PRIMARY KEY);\n',
+    );
+    expectFail(runGuard(dir, baseRef), 'touches more than one', 'coffee', 'events');
+  });
+
+  it('fails a new migration whose only cross-owner reference is DML (no DDL at all)', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    // Mirrors migrations/0025_backfill_survey_responses_for_orphan_registrations.sql:
+    // zero DDL, but a real cross-schema UPDATE/JOIN — must still be caught.
+    addMigration(
+      dir,
+      '0002_dml_only_cross_owner.sql',
+      '-- owner: coffee\nUPDATE coffee.pages p SET id = a.id FROM auth.identities a WHERE p.id = a.id;\n',
+    );
+    expectFail(runGuard(dir, baseRef), 'touches more than one');
+  });
+
+  it('passes a new shared migration that is explicitly on the sharedMigrationAllowlist', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    // DML-only, like the real 0025/0026 exception shape: no DDL touch at all,
+    // so the per-table check (which only looks at parsed DDL) has nothing to
+    // say — only the new shared-schema check applies, and the allowlist is
+    // what lets it pass.
+    writeMigration(
+      dir,
+      '0002_cross_owner_backfill.sql',
+      '-- owner: coffee\nUPDATE coffee.pages p SET id = a.id FROM auth.identities a WHERE p.id = a.id;\n',
+    );
+    writeOwnership(dir, {
+      ...BASE_OWNERSHIP,
+      sharedMigrationAllowlist: [...BASE_OWNERSHIP.sharedMigrationAllowlist, '0002_cross_owner_backfill.sql'],
+    });
+    commitAll(dir, 'deliberate cross-owner backfill, allowlisted');
+    expectPass(runGuard(dir, baseRef));
+  });
+
+  it('reports both a shared-schema violation and a per-table violation when a single new file has both', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    // Declared owner 'coffee', creates a table it legitimately owns (coffee.new_thing)
+    // but also touches a kernel-owned table (auth.identities) — both the
+    // shared-schema check and the per-table check should fire independently.
+    addMigration(
+      dir,
+      '0002_mixed_violation.sql',
+      '-- owner: coffee\nCREATE TABLE IF NOT EXISTS coffee.new_thing (id SERIAL PRIMARY KEY);\nALTER TABLE auth.identities ADD COLUMN foo TEXT;\n',
+    );
+    const result = runGuard(dir, baseRef);
+    expectFail(result, 'touches more than one', 'owned by "kernel"');
   });
 });

@@ -32,6 +32,18 @@
  * onto history is not this guard's job. Files the PR does not change at all
  * are never inspected.
  *
+ * ## Shared-schema check (#1991 phase 2a)
+ *
+ * Separately from the per-table checks above, a NEW migration file whose
+ * SQL (DDL or DML — see `lib/migration-schema-scan.mjs`) references more
+ * than one owner's schema anywhere fails, unless it's listed in
+ * `migrations/ownership.json`'s `sharedMigrationAllowlist`. This is a
+ * stricter, forward-looking rule: existing shared files (`0001_seed.sql`,
+ * and two `dykil` data migrations that join `events` tables) predate it
+ * and are grandfathered there. New cross-owner migrations should not
+ * happen at all — split them into one file per owner — but the allowlist
+ * exists as a documented, reviewed escape hatch rather than a hard block.
+ *
  * ## Running inside a container-based CI job
  *
  * `actions/checkout` registers `safe.directory` in the *runner host's*
@@ -62,9 +74,10 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseStatements, ALL_OWNERS, BUCKET_FOR_KIND } from './lib/migration-ownership-parser.mjs';
+import { detectTouchedOwners } from './lib/migration-schema-scan.mjs';
 
 const ROOT = process.env.CI_GUARD_WORKDIR
   ? resolve(process.env.CI_GUARD_WORKDIR)
@@ -174,6 +187,17 @@ function loadOwnershipMap() {
   return JSON.parse(readFileSync(OWNERSHIP_PATH, 'utf8'));
 }
 
+/**
+ * Filenames explicitly permitted to touch more than one owner's schema —
+ * pre-existing shared files grandfathered at the time this check was
+ * introduced (#1991 phase 2a), or a later deliberate, reviewed exception
+ * added in the same PR that adds it. See `migrations/OWNERSHIP.md`'s
+ * "Shared migrations" section.
+ */
+function loadSharedMigrationAllowlist(ownershipMap) {
+  return new Set(ownershipMap.sharedMigrationAllowlist ?? []);
+}
+
 // ── per-file checks ──────────────────────────────────────────────────────────
 
 function extractDeclaredOwner(sql) {
@@ -256,19 +280,48 @@ function checkTouch(filePath, touch, ownershipMap, declaredOwner) {
   );
 }
 
-function checkFile(filePath, status, ownershipMap) {
+/**
+ * A brand-new migration file (git status `A`) that references more than
+ * one owner's schema anywhere in its SQL (DDL or DML — see
+ * `migration-schema-scan.mjs`) is a violation unless it's in the explicit
+ * `sharedMigrationAllowlist`. Pre-existing shared files (e.g.
+ * `0001_seed.sql`) are grandfathered via that allowlist rather than by the
+ * `isNew` check alone, so they stay clean even if a future PR legitimately
+ * re-touches one (a `git status` other than `A` at that point, but the
+ * allowlist keeps the intent documented and enforceable either way).
+ */
+function checkSharedSchemaViolation(filePath, sql, isNew, allowlist) {
+  if (!isNew) return null;
+  if (allowlist.has(basename(filePath))) return null;
+
+  const owners = detectTouchedOwners(sql);
+  if (owners.size <= 1) return null;
+
+  return (
+    `${filePath}: new migration touches more than one owner's schema ` +
+    `(${[...owners].sort((a, b) => a.localeCompare(b)).join(', ')}). A migration may only create, alter, or otherwise touch one ` +
+    `owner's schema — split this into one file per owner. If this is a deliberate, reviewed exception ` +
+    `(e.g. a one-time cross-owner data migration), add "${basename(filePath)}" to migrations/ownership.json's ` +
+    `"sharedMigrationAllowlist" in this same PR.`
+  );
+}
+
+function checkFile(filePath, status, ownershipMap, sharedMigrationAllowlist) {
   const sql = readFileSync(join(ROOT, filePath), 'utf8');
   const isNew = status === 'A';
 
+  const sharedViolation = checkSharedSchemaViolation(filePath, sql, isNew, sharedMigrationAllowlist);
+
   const { declaredOwner, violation: headerViolation } = resolveDeclaredOwner(filePath, sql, isNew);
-  if (headerViolation) return [headerViolation];
-  if (!declaredOwner) return []; // grandfathered
+  if (headerViolation) return [sharedViolation, headerViolation].filter(Boolean);
+  if (!declaredOwner) return [sharedViolation].filter(Boolean); // grandfathered
 
   const ownerViolation = checkOwnerIsKnown(filePath, declaredOwner);
-  if (ownerViolation) return [ownerViolation];
+  if (ownerViolation) return [sharedViolation, ownerViolation].filter(Boolean);
 
   const touches = collectTouches(parseStatements(sql));
-  return touches.map((touch) => checkTouch(filePath, touch, ownershipMap, declaredOwner)).filter(Boolean);
+  const touchViolations = touches.map((touch) => checkTouch(filePath, touch, ownershipMap, declaredOwner)).filter(Boolean);
+  return [sharedViolation, ...touchViolations].filter(Boolean);
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
@@ -298,9 +351,11 @@ function main() {
     return;
   }
 
+  const sharedMigrationAllowlist = loadSharedMigrationAllowlist(ownershipMap);
+
   const violations = changedFiles
     .filter(({ status }) => status !== 'D') // deleted files have nothing left to parse
-    .flatMap(({ status, filePath }) => checkFile(filePath, status, ownershipMap));
+    .flatMap(({ status, filePath }) => checkFile(filePath, status, ownershipMap, sharedMigrationAllowlist));
 
   reportAndExit(violations);
 }
