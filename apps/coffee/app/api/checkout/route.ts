@@ -10,7 +10,10 @@ const log = createLogger('coffee');
 import { rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
 
 const BASE_URL = buildPublicUrlAbsolute('coffee');
-const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3004';
+// Pay is a kernel service reached through the kernel's port with the /pay
+// path prefix (#2046) — the previous localhost:3004 fallback predated the
+// kernel consolidation and pointed at nothing real (#2137).
+const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3000/pay';
 
 export async function POST(request: NextRequest) {
   const ip = getClientIP(request);
