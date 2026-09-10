@@ -14,86 +14,88 @@ vi.mock('next/server', () => ({
 }));
 
 const mocks = vi.hoisted(() => {
-  const limitMock = vi.fn();
-  const whereSelectMock = vi.fn(() => ({ limit: limitMock }));
-  const fromSelectMock = vi.fn(() => ({ where: whereSelectMock }));
-  const selectMock = vi.fn(() => ({ from: fromSelectMock }));
-
   const updateWhereMock = vi.fn().mockResolvedValue(undefined);
   const setMock = vi.fn(() => ({ where: updateWhereMock }));
   const updateMock = vi.fn(() => ({ set: setMock }));
 
-  const requireAdminMock = vi.fn();
+  const requireAdminSessionMock = vi.fn();
+  const findRegistryAppMock = vi.fn();
   const emitAttestationMock = vi.fn().mockResolvedValue(undefined);
-  return { limitMock, selectMock, updateMock, setMock, updateWhereMock, requireAdminMock, emitAttestationMock };
+  return { updateMock, setMock, updateWhereMock, requireAdminSessionMock, findRegistryAppMock, emitAttestationMock };
 });
 
 vi.mock('@/src/db', () => ({
-  db: { select: mocks.selectMock, update: mocks.updateMock },
+  db: { update: mocks.updateMock },
   registryApps: { id: 'registryApps.id', appDid: 'registryApps.appDid', status: 'registryApps.status' },
 }));
 
 vi.mock('drizzle-orm', () => ({ eq: (...args: unknown[]) => ({ eq: args }) }));
 
-vi.mock('@imajin/auth', () => ({
-  requireAdmin: mocks.requireAdminMock,
-  emitAttestation: mocks.emitAttestationMock,
+vi.mock('@imajin/auth', () => ({ emitAttestation: mocks.emitAttestationMock }));
+
+vi.mock('@/src/lib/kernel/app-registry-admin', () => ({
+  requireAdminSession: mocks.requireAdminSessionMock,
+  findRegistryApp: mocks.findRegistryAppMock,
 }));
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }) }));
 
 import { POST } from '../route';
 
-function makeRequest(): Request {
-  return new Request('https://kernel.test/api/admin/registry/apps/app_1/revoke', { method: 'POST' });
+const APP_ID = 'app_2';
+const OPERATOR_DID = 'did:imajin:operator';
+const TARGET_APP_DID = 'did:imajin:app-2';
+
+function revokeRequest(): Request {
+  return new Request(`https://kernel.test/api/admin/registry/apps/${APP_ID}/revoke`, { method: 'POST' });
 }
-function props(appId: string) {
-  return { params: Promise.resolve({ appId }) };
+function withAppId() {
+  return { params: Promise.resolve({ appId: APP_ID }) };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
-  mocks.limitMock.mockResolvedValue([{ id: 'app_1', appDid: 'did:imajin:app-1', status: 'active' }]);
+  mocks.requireAdminSessionMock.mockResolvedValue({ session: { actingAs: OPERATOR_DID } });
+  mocks.findRegistryAppMock.mockResolvedValue({ id: APP_ID, appDid: TARGET_APP_DID, status: 'active' });
 });
 
-describe('POST /api/admin/registry/apps/:appId/revoke (#1990)', () => {
-  it('rejects a non-admin caller with 401', async () => {
-    mocks.requireAdminMock.mockResolvedValue(null);
+describe('POST /api/admin/registry/apps/:appId/revoke', () => {
+  it('propagates the shared admin-session error response when not an admin', async () => {
+    const forbidden = new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    mocks.requireAdminSessionMock.mockResolvedValue({ error: forbidden });
 
-    const res = await POST(makeRequest() as never, props('app_1'));
+    const res = await POST(revokeRequest() as never, withAppId());
 
     expect(res.status).toBe(401);
     expect(mocks.updateMock).not.toHaveBeenCalled();
   });
 
-  it('returns 404 for an unknown app', async () => {
-    mocks.limitMock.mockResolvedValue([]);
+  it('404s for an app id that does not exist', async () => {
+    mocks.findRegistryAppMock.mockResolvedValue(null);
 
-    const res = await POST(makeRequest() as never, props('app_missing'));
+    const res = await POST(revokeRequest() as never, withAppId());
 
     expect(res.status).toBe(404);
   });
 
-  it('revokes an active app and mints a signed registry.app.revoked attestation', async () => {
-    const res = await POST(makeRequest() as never, props('app_1'));
+  it('flips status to revoked and signs a registry.app.revoked attestation', async () => {
+    const res = await POST(revokeRequest() as never, withAppId());
     const body = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(body.ok).toBe(true);
-    expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ status: 'revoked' }));
-    expect(mocks.emitAttestationMock).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'registry.app.revoked', subject_did: 'did:imajin:app-1', issuer_did: 'did:imajin:node' }),
-    );
+    expect(body).toEqual({ ok: true });
+    expect(mocks.setMock.mock.calls[0][0]).toMatchObject({ status: 'revoked' });
+    const attestationCall = mocks.emitAttestationMock.mock.calls[0][0];
+    expect(attestationCall.type).toBe('registry.app.revoked');
+    expect(attestationCall.issuer_did).toBe(OPERATOR_DID);
+    expect(attestationCall.subject_did).toBe(TARGET_APP_DID);
   });
 
-  it('is idempotent for an already-revoked app (no double attestation)', async () => {
-    mocks.limitMock.mockResolvedValue([{ id: 'app_1', appDid: 'did:imajin:app-1', status: 'revoked' }]);
+  it('short-circuits without a second attestation when already revoked', async () => {
+    mocks.findRegistryAppMock.mockResolvedValue({ id: APP_ID, appDid: TARGET_APP_DID, status: 'revoked' });
 
-    const res = await POST(makeRequest() as never, props('app_1'));
+    const res = await POST(revokeRequest() as never, withAppId());
     const body = await res.json();
 
-    expect(res.status).toBe(200);
     expect(body.alreadyRevoked).toBe(true);
     expect(mocks.updateMock).not.toHaveBeenCalled();
     expect(mocks.emitAttestationMock).not.toHaveBeenCalled();

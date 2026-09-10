@@ -16,25 +16,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, registryApps } from '@/src/db';
-import { requireAdmin, generateKeypair, emitAttestation } from '@imajin/auth';
+import { generateKeypair, emitAttestation } from '@imajin/auth';
+import { requireAdminSession, findRegistryApp } from '@/src/lib/kernel/app-registry-admin';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
 export async function POST(_request: NextRequest, props: { params: Promise<{ appId: string }> }) {
-  const session = await requireAdmin();
-  if (!session?.actingAs) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authResult = await requireAdminSession();
+  if ('error' in authResult) return authResult.error;
+  const { session } = authResult;
 
   const { appId } = await props.params;
 
-  const [existing] = await db
-    .select({ id: registryApps.id, appDid: registryApps.appDid, status: registryApps.status })
-    .from(registryApps)
-    .where(eq(registryApps.id, appId))
-    .limit(1);
-
+  const existing = await findRegistryApp(appId);
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
