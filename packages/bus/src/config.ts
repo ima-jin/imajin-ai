@@ -24,18 +24,26 @@ function emitAndNotify(title: string, body: string): ReactorConfig[] {
 
 // Hardcoded defaults for Phase 1
 // DB-backed config is Phase 2 (future work order)
+// #2016: chains that run BOTH `attestation` and `mjn` mark the `attestation`
+// entry `await: true` so it fully completes (including mutating the shared
+// event object with the created attestation's id — see
+// `reactors/attestation.ts`) before `mjn` reads it and forwards it as the
+// emission's `attestation_id`. `publish()`'s reactor loop only guarantees
+// this ordering when the earlier reactor is awaited; every other chain
+// (no `mjn` reactor) is unaffected and keeps firing `attestation`
+// fire-and-forget.
 const DEFAULTS: Record<string, ReactorConfig[]> = {
   'identity.created': [
-    { type: 'attestation', config: { attestationType: 'identity.created' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'identity.created' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'identity.created' }, enabled: true },
     { type: 'emit', config: {}, enabled: true },
   ],
   'identity.verified.preliminary': [
-    { type: 'attestation', config: { attestationType: 'identity.verified.preliminary' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'identity.verified.preliminary' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'identity.verified.preliminary' }, enabled: true },
   ],
   'identity.verified.hard': [
-    { type: 'attestation', config: { attestationType: 'identity.verified.hard' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'identity.verified.hard' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'identity.verified.hard' }, enabled: true },
   ],
   'identity.verified.steward': [
@@ -45,16 +53,16 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'attestation', config: { attestationType: 'identity.verified.operator' }, enabled: true },
   ],
   'connection.accepted': [
-    { type: 'attestation', config: { attestationType: 'connection.accepted' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'connection.accepted' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'connection.accepted' }, enabled: true },
     { type: 'notify', config: { template: 'invite_accepted' }, enabled: true },
   ],
   'vouch': [
-    { type: 'attestation', config: { attestationType: 'vouch' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'vouch' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'vouch' }, enabled: true },
   ],
   'tip.granted': [
-    { type: 'attestation', config: { attestationType: 'tip.granted' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'tip.granted' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'tip.granted' }, enabled: true },
     { type: 'notify', config: { scope: 'coffee:tip' }, enabled: true },
   ],
@@ -62,7 +70,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'notify', config: { scope: 'coffee:tip-sent' }, enabled: true },
   ],
   'ticket.purchased': [
-    { type: 'attestation', config: { attestationType: 'ticket.purchased' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'ticket.purchased' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'ticket.purchased' }, enabled: true },
     { type: 'notify', config: { scope: 'event:ticket' }, enabled: true },
   ],
@@ -103,7 +111,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     },
   ],
   'listing.purchased': [
-    { type: 'attestation', config: { attestationType: 'listing.purchased' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'listing.purchased' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'listing.purchased' }, enabled: true },
     { type: 'settle', config: {}, await: true, enabled: true },
     { type: 'notify', config: { scope: 'market:purchase' }, enabled: true },
@@ -119,7 +127,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'attestation-notify', config: {}, enabled: true },
   ],
   'group.created': [
-    { type: 'attestation', config: { attestationType: 'group.created' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'group.created' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'group.created' }, enabled: true },
   ],
   'group.controller.added': [
@@ -135,7 +143,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'emit', config: {}, enabled: true },
   ],
   'scope.onboard': [
-    { type: 'attestation', config: { attestationType: 'scope.onboard' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'scope.onboard' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'scope.onboard' }, enabled: true },
   ],
   'message.send': [
@@ -201,7 +209,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   // signal, not an action trigger.
   'settlement.manifest.unverified': attestationOnly('settlement.manifest.unverified'),
   'handle.claimed': [
-    { type: 'attestation', config: { attestationType: 'handle.claimed' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'handle.claimed' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'handle.claimed' }, enabled: true },
   ],
   'profile.update': [
@@ -244,11 +252,11 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'emit', config: {}, enabled: true },
   ],
   'event.created': [
-    { type: 'attestation', config: { attestationType: 'event.created' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'event.created' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'event.created' }, enabled: true },
   ],
   'event.attendance': [
-    { type: 'attestation', config: { attestationType: 'event.attendance' }, enabled: true },
+    { type: 'attestation', config: { attestationType: 'event.attendance' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'event.attendance' }, enabled: true },
   ],
   'event.registration': [

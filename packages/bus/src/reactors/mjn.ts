@@ -27,6 +27,13 @@ export const mjnReactor: ReactorHandler = async (event, config) => {
     nodeDid: null as string | null, // see: not yet resolved from config
   };
 
+  // #2016: the id of the attestation the `attestation` reactor created for
+  // this same event, when one exists. Only populated when the chain config
+  // runs `attestation` with `await: true` ahead of `mjn` (see
+  // packages/bus/src/config.ts) so `attestationReactor` has already
+  // mutated this shared event object by the time we read it here.
+  const attestationId = typeof event.payload?.attestationId === 'string' ? event.payload.attestationId : undefined;
+
   for (const rule of spec.emit) {
     const targetDid = resolveTarget(rule, context);
     if (!targetDid) {
@@ -47,10 +54,14 @@ export const mjnReactor: ReactorHandler = async (event, config) => {
         body: JSON.stringify({
           to_did: targetDid,
           amount,
-          currency: 'MJN',
+          // #2016: emissions mint MJNx (emitted, in-platform, never
+          // withdrawable) — never MJN. This bucket used to be mislabeled
+          // `currency: 'MJN'`.
+          unit: 'MJNx',
           reason: rule.reason,
           metadata: {
             attestation_type: attestationType,
+            ...(attestationId && { attestation_id: attestationId }),
             to_role: rule.to,
             event_type: event.type,
             issuer: event.issuer,

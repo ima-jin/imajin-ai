@@ -1,13 +1,22 @@
 import Link from 'next/link';
 
+/** One wallet unit's balance (#2016 — replaces the old cashAmount/creditAmount pair). */
+export interface WalletBalance {
+  unit: 'MJN' | 'MJNx';
+  amount: number;
+  withdrawable: boolean;
+}
+
 interface BalanceCardProps {
-  cashAmount: number;
-  creditAmount: number;
+  balances: WalletBalance[];
   currency?: string;
   updatedAt?: Date | null;
 }
 
-export function BalanceCard({ cashAmount, creditAmount, currency = 'CAD', updatedAt }: Readonly<BalanceCardProps>) {
+export function BalanceCard({ balances, currency = 'CAD', updatedAt }: Readonly<BalanceCardProps>) {
+  const mjn = balances.find((b) => b.unit === 'MJN')?.amount ?? 0;
+  const mjnx = balances.find((b) => b.unit === 'MJNx')?.amount ?? 0;
+
   const fmtCash = (n: number) =>
     new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -27,18 +36,18 @@ export function BalanceCard({ cashAmount, creditAmount, currency = 'CAD', update
         </Link>
       </div>
 
-      <div className="text-4xl font-bold text-white mb-6">{fmtCash(cashAmount)}</div>
+      <div className="text-4xl font-bold text-white mb-6">{fmtCash(mjn)}</div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-black/40 border border-zinc-800 rounded-lg p-4">
-          <div className="text-xs text-zinc-500 mb-1">Cash</div>
-          <div className="text-xl font-semibold text-white">{fmtCash(cashAmount)}</div>
+          <div className="text-xs text-zinc-500 mb-1">MJN</div>
+          <div className="text-xl font-semibold text-white">{fmtCash(mjn)}</div>
           <div className="text-xs text-zinc-600 mt-1">Withdrawable</div>
         </div>
         <div className="bg-black/40 border border-amber-900/40 rounded-lg p-4">
-          <div className="text-xs text-amber-600 mb-1">MJN</div>
-          <div className="text-xl font-semibold text-amber-400">人{Math.round(creditAmount)}</div>
-          <div className="text-xs text-zinc-600 mt-1">Earned through participation</div>
+          <div className="text-xs text-amber-600 mb-1">MJNx</div>
+          <div className="text-xl font-semibold text-amber-400">人{Math.round(mjnx)}</div>
+          <div className="text-xs text-zinc-600 mt-1">Earned in-platform · not withdrawable</div>
         </div>
       </div>
 

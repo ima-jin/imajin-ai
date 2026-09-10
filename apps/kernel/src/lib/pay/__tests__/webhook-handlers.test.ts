@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => {
 vi.mock('@/src/db', () => ({
   db: { insert: mocks.insertMock },
   feeLedger: { id: 'fl_col' },
-  balances: { did: 'bal_did_col', creditAmount: 'bal_credit_col', cashAmount: 'bal_cash_col' },
+  balances: { did: 'bal_did_col', unit: 'bal_unit_col', amount: 'bal_amount_col' },
   balanceRollups: {
     did: 'rollup_did_col',
     date: 'rollup_date_col',
@@ -278,7 +278,7 @@ describe('processChainDistribution', () => {
     expect(mocks.insertMock).toHaveBeenCalledTimes(1);
   });
 
-  it('writes creditAmount for buyer_credit role', async () => {
+  it('writes an MJNx balance row for buyer_credit role (#2016)', async () => {
     const chain = [{ did: 'did:imajin:buyer', role: 'buyer_credit', share: 0.02 }];
     await processChainDistribution({ tx, totalAmountCents: 10000, currency, buyerDid: null, chain });
 
@@ -287,11 +287,11 @@ describe('processChainDistribution', () => {
 
     const balanceRow = mocks.insertValuesMock.mock.calls[1][0];
     // 10000 * 0.02 = 200 cents → 200/100 = 2.0
-    expect(balanceRow.creditAmount).toBe('2.00000000');
-    expect(balanceRow.cashAmount).toBe('0');
+    expect(balanceRow.unit).toBe('MJNx');
+    expect(balanceRow.amount).toBe('2.00000000');
   });
 
-  it('writes cashAmount for non-buyer_credit fee beneficiary', async () => {
+  it('writes an MJN balance row for non-buyer_credit fee beneficiary (#2016)', async () => {
     const chain = [{ did: 'did:imajin:node', role: 'node', share: 0.03 }];
     await processChainDistribution({ tx, totalAmountCents: 10000, currency, buyerDid: null, chain });
 
@@ -299,8 +299,8 @@ describe('processChainDistribution', () => {
 
     const balanceRow = mocks.insertValuesMock.mock.calls[1][0];
     // 10000 * 0.03 = 300 cents → 300/100 = 3.0
-    expect(balanceRow.cashAmount).toBe('3.00000000');
-    expect(balanceRow.creditAmount).toBe('0');
+    expect(balanceRow.unit).toBe('MJN');
+    expect(balanceRow.amount).toBe('3.00000000');
   });
 
   it('publishes fee.record for every chain entry', async () => {

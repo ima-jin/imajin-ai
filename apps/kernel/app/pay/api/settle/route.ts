@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { from_did, total_amount, service, type, fair_manifest, funded, funded_provider, metadata, currency } = body;
+    const { from_did, total_amount, service, type, fair_manifest, funded, funded_provider, metadata, currency, unit, accepted_units } = body;
 
     if (!from_did || !total_amount || !service || !type || !fair_manifest) {
       return NextResponse.json(
@@ -62,7 +62,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await settlePayment({ from_did, total_amount, service, type, fair_manifest, funded, funded_provider, metadata, currency });
+    const result = await settlePayment({
+      from_did,
+      total_amount,
+      service,
+      type,
+      fair_manifest,
+      funded,
+      funded_provider,
+      metadata,
+      currency,
+      unit,
+      acceptedUnits: accepted_units,
+    });
     if ('error' in result) {
       return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
     }

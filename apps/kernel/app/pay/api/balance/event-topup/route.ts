@@ -22,11 +22,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances, transactions } from '@/src/db';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
+import { MJN, MJNX, amountOf, creditUnit, getBalanceRow } from '@/src/lib/pay/ledger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -87,15 +88,11 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     const totalCashDebit = cashPerRecipient * recipient_dids.length;
 
-    // Check from_did has sufficient cash
-    const senderRows = await db
-      .select()
-      .from(balances)
-      .where(eq(balances.did, from_did))
-      .limit(1);
-
-    const senderBalance = senderRows[0];
-    const currentCash = senderBalance ? Number.parseFloat(senderBalance.cashAmount) : 0;
+    // Check from_did has sufficient MJN cash — only the cash (refund) leg is
+    // ever debited from the sender, matching pre-#2016 behavior; making this
+    // a real funded transfer is #2018, out of scope here.
+    const senderBalance = await getBalanceRow(db, from_did, MJN);
+    const currentCash = amountOf(senderBalance);
     const topupCurrency = senderBalance?.currency || 'CAD';
 
     if (currentCash < totalCashDebit) {
@@ -109,59 +106,61 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const txIds: string[] = [];
 
     await db.transaction(async (tx) => {
-      // Debit from_did's cash
+      // Debit from_did's MJN cash
       await tx
         .update(balances)
         .set({
-          cashAmount: sql`${balances.cashAmount} - ${totalCashDebit}`,
+          amount: sql`${balances.amount} - ${totalCashDebit}`,
           updatedAt: new Date(),
         })
-        .where(eq(balances.did, from_did));
+        .where(and(eq(balances.did, from_did), eq(balances.unit, MJN)));
 
-      // Credit each recipient
+      // Credit each recipient. #2016: the cash (refund) leg and credit
+      // (bonus) leg now land on separate per-unit balance rows (MJN / MJNx),
+      // so each nonzero leg gets its own transaction row instead of one row
+      // spanning both buckets — a mechanical adaptation, not a policy change.
       for (const recipientDid of recipient_dids) {
-        const txId = generateId('tx');
-        txIds.push(txId);
-
-        const totalGift = cashPerRecipient + creditPerRecipient;
-
-        await tx.insert(transactions).values({
-          id: txId,
-          service: 'events',
-          type: 'event-topup',
-          fromDid: from_did,
-          toDid: recipientDid,
-          amount: totalGift.toString(),
-          currency: topupCurrency,
-          status: 'completed',
-          source: 'fiat',
-          batchId,
-          metadata: {
-            ...metadata,
-            event_id,
-            multiplier,
-            cash_amount: cashPerRecipient,
-            credit_amount: creditPerRecipient,
-          },
-        });
-
-        await tx
-          .insert(balances)
-          .values({
-            did: recipientDid,
-            cashAmount: cashPerRecipient.toString(),
-            creditAmount: creditPerRecipient.toString(),
+        if (cashPerRecipient > 0) {
+          const txId = generateId('tx');
+          txIds.push(txId);
+          await tx.insert(transactions).values({
+            id: txId,
+            service: 'events',
+            type: 'event-topup',
+            fromDid: from_did,
+            toDid: recipientDid,
+            amount: cashPerRecipient.toString(),
             currency: topupCurrency,
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: balances.did,
-            set: {
-              cashAmount: sql`${balances.cashAmount} + ${cashPerRecipient}`,
-              creditAmount: sql`${balances.creditAmount} + ${creditPerRecipient}`,
-              updatedAt: new Date(),
-            },
+            unit: MJN,
+            sourceKind: 'transfer',
+            status: 'completed',
+            source: 'fiat',
+            batchId,
+            metadata: { ...metadata, event_id, multiplier, cash_amount: cashPerRecipient, credit_amount: creditPerRecipient },
           });
+          await creditUnit(tx, recipientDid, MJN, cashPerRecipient, { currency: topupCurrency });
+        }
+
+        if (creditPerRecipient > 0) {
+          const txId = generateId('tx');
+          txIds.push(txId);
+          await tx.insert(transactions).values({
+            id: txId,
+            service: 'events',
+            type: 'event-topup',
+            fromDid: from_did,
+            toDid: recipientDid,
+            amount: creditPerRecipient.toString(),
+            currency: topupCurrency,
+            unit: MJNX,
+            sourceKind: 'transfer',
+            status: 'completed',
+            source: 'credit',
+            batchId,
+            metadata: { ...metadata, event_id, multiplier, cash_amount: cashPerRecipient, credit_amount: creditPerRecipient },
+          });
+          await creditUnit(tx, recipientDid, MJNX, creditPerRecipient, { currency: topupCurrency });
+        }
       }
     });
 

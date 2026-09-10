@@ -16,11 +16,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, balances, transactions } from '@/src/db';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { resolveEffectiveDid } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
+import { MJN, MJNX, amountOf, creditUnit, getBalanceRow } from '@/src/lib/pay/ledger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -76,15 +77,12 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     // Total cash deducted from from_did is the sum of all cash_amount gifts
     const totalCashDebit = recipients.reduce((sum: number, r: { cash_amount?: number }) => sum + (r.cash_amount ?? 0), 0);
 
-    // Check from_did has sufficient cash
-    const senderRows = await db
-      .select()
-      .from(balances)
-      .where(eq(balances.did, from_did))
-      .limit(1);
-
-    const senderBalance = senderRows[0];
-    const currentCash = senderBalance ? Number.parseFloat(senderBalance.cashAmount) : 0;
+    // Check from_did has sufficient MJN cash — only the cash leg is ever
+    // debited from the sender (the credit leg has no offsetting debit
+    // anywhere, matching pre-#2016 behavior; making this a real funded
+    // transfer is #2018, out of scope here).
+    const senderBalance = await getBalanceRow(db, from_did, MJN);
+    const currentCash = amountOf(senderBalance);
     const giftCurrency = senderBalance?.currency || 'CAD';
 
     if (currentCash < totalCashDebit) {
@@ -98,63 +96,69 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const txIds: string[] = [];
 
     await db.transaction(async (tx) => {
-      // Debit from_did's cash
+      // Debit from_did's MJN cash
       if (totalCashDebit > 0) {
         await tx
           .update(balances)
           .set({
-            cashAmount: sql`${balances.cashAmount} - ${totalCashDebit}`,
+            amount: sql`${balances.amount} - ${totalCashDebit}`,
             updatedAt: new Date(),
           })
-          .where(eq(balances.did, from_did));
+          .where(and(eq(balances.did, from_did), eq(balances.unit, MJN)));
       }
 
-      // Credit each recipient
+      // Credit each recipient. #2016: the cash leg and credit leg now land
+      // on separate per-unit balance rows (MJN / MJNx), so each nonzero leg
+      // gets its own transaction row instead of one row spanning both
+      // buckets — a mechanical adaptation to the new shape, not a policy
+      // change (#2018 owns turning this into a real funded transfer).
       for (const recipient of recipients) {
         const cashGift = recipient.cash_amount ?? 0;
         const creditGift = recipient.credit_amount ?? 0;
-        const totalGift = cashGift + creditGift;
 
-        if (totalGift === 0) continue;
+        if (cashGift === 0 && creditGift === 0) continue;
 
-        const txId = generateId('tx');
-        txIds.push(txId);
-
-        await tx.insert(transactions).values({
-          id: txId,
-          service: 'gift',
-          type: 'gift',
-          fromDid: from_did,
-          toDid: recipient.did,
-          amount: totalGift.toString(),
-          currency: giftCurrency,
-          status: 'completed',
-          source: 'fiat',
-          batchId,
-          metadata: {
-            ...metadata,
-            cash_amount: cashGift,
-            credit_amount: creditGift,
-          },
-        });
-
-        await tx
-          .insert(balances)
-          .values({
-            did: recipient.did,
-            cashAmount: cashGift.toString(),
-            creditAmount: creditGift.toString(),
+        if (cashGift > 0) {
+          const txId = generateId('tx');
+          txIds.push(txId);
+          await tx.insert(transactions).values({
+            id: txId,
+            service: 'gift',
+            type: 'gift',
+            fromDid: from_did,
+            toDid: recipient.did,
+            amount: cashGift.toString(),
             currency: giftCurrency,
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: balances.did,
-            set: {
-              cashAmount: sql`${balances.cashAmount} + ${cashGift}`,
-              creditAmount: sql`${balances.creditAmount} + ${creditGift}`,
-              updatedAt: new Date(),
-            },
+            unit: MJN,
+            sourceKind: 'transfer',
+            status: 'completed',
+            source: 'fiat',
+            batchId,
+            metadata: { ...metadata, cash_amount: cashGift, credit_amount: creditGift },
           });
+          await creditUnit(tx, recipient.did, MJN, cashGift, { currency: giftCurrency });
+        }
+
+        if (creditGift > 0) {
+          const txId = generateId('tx');
+          txIds.push(txId);
+          await tx.insert(transactions).values({
+            id: txId,
+            service: 'gift',
+            type: 'gift',
+            fromDid: from_did,
+            toDid: recipient.did,
+            amount: creditGift.toString(),
+            currency: giftCurrency,
+            unit: MJNX,
+            sourceKind: 'transfer',
+            status: 'completed',
+            source: 'credit',
+            batchId,
+            metadata: { ...metadata, cash_amount: cashGift, credit_amount: creditGift },
+          });
+          await creditUnit(tx, recipient.did, MJNX, creditGift, { currency: giftCurrency });
+        }
       }
     });
 

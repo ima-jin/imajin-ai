@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { mockEmitAttestation } = vi.hoisted(() => ({
-  mockEmitAttestation: vi.fn().mockResolvedValue(undefined),
+  mockEmitAttestation: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock('@imajin/auth', () => ({ emitAttestation: mockEmitAttestation }));
@@ -32,7 +32,7 @@ function makeEvent(overrides: Partial<BusEvent> = {}): BusEvent {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockEmitAttestation.mockResolvedValue(undefined);
+  mockEmitAttestation.mockResolvedValue({});
 });
 
 describe('attestationReactor pending/originUrl threading (#1820)', () => {
@@ -75,5 +75,26 @@ describe('attestationReactor pending/originUrl threading (#1820)', () => {
 
     const params = mockEmitAttestation.mock.calls[0][0];
     expect(params.originUrl).toBeUndefined();
+  });
+});
+
+describe('attestationReactor attestationId passthrough (#2016)', () => {
+  it('stashes the created attestation id onto the shared event.payload for a later reactor (e.g. mjn) to read', async () => {
+    mockEmitAttestation.mockResolvedValue({ attestationId: 'att_123' });
+    const event = makeEvent();
+
+    await attestationReactor(event, { attestationType: 'identity.created' });
+
+    expect(event.payload).toMatchObject({ attestationId: 'att_123' });
+  });
+
+  it('leaves event.payload untouched when emitAttestation returns no id (e.g. attestation forwarding is disabled)', async () => {
+    mockEmitAttestation.mockResolvedValue({});
+    const event = makeEvent();
+    const originalPayload = event.payload;
+
+    await attestationReactor(event, { attestationType: 'identity.created' });
+
+    expect(event.payload).toBe(originalPayload);
   });
 });

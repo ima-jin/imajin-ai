@@ -15,12 +15,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, balances, transactions } from '@/src/db';
-import { eq, sql } from 'drizzle-orm';
+import { db, transactions } from '@/src/db';
 import { resolveEffectiveDid } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
+import { MJN, amountOf, assertKnownUnit, creditUnit, debitUnit, getBalanceRow } from '@/src/lib/pay/ledger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -40,7 +40,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const effectiveDid = auth.effectiveDid;
 
     const body = await request.json();
-    const { from_did, to_did, amount, metadata = {} } = body;
+    const { from_did, to_did, amount, metadata = {}, unit: rawUnit = MJN } = body;
 
     if (!from_did || !to_did || !amount) {
       return NextResponse.json(
@@ -71,35 +71,30 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    // Check sender has sufficient balance (cash + credit)
-    const senderBalanceRows = await db
-      .select()
-      .from(balances)
-      .where(eq(balances.did, from_did))
-      .limit(1);
+    // #2016: a transfer moves a single wallet unit — no more "burn credit
+    // then cash" cascade, and never a cross-unit conversion. Unknown unit is
+    // a hard 400, not a fallback.
+    const unitCheck = assertKnownUnit(rawUnit);
+    if ('error' in unitCheck) {
+      return NextResponse.json({ error: unitCheck.error }, { status: unitCheck.status, headers: cors });
+    }
+    const unit = unitCheck.unit;
 
-    const senderBalance = senderBalanceRows[0];
-    const currentCash = senderBalance ? Number.parseFloat(senderBalance.cashAmount) : 0;
-    const currentCredit = senderBalance ? Number.parseFloat(senderBalance.creditAmount) : 0;
-    const totalBalance = currentCash + currentCredit;
+    // Check sender has sufficient balance in the requested unit
+    const senderBalance = await getBalanceRow(db, from_did, unit);
+    const available = amountOf(senderBalance);
 
-    if (totalBalance < amount) {
+    if (available < amount) {
       return NextResponse.json(
-        { error: 'Insufficient balance' },
+        { error: `Insufficient ${unit} balance` },
         { status: 400, headers: cors }
       );
     }
 
     const transferCurrency = senderBalance?.currency || 'CAD';
 
-    // Check recipient balance currency (if exists)
-    const recipientBalanceRows = await db
-      .select()
-      .from(balances)
-      .where(eq(balances.did, to_did))
-      .limit(1);
-
-    const recipientBalance = recipientBalanceRows[0];
+    // Check recipient balance currency (if a row already exists for this unit)
+    const recipientBalance = await getBalanceRow(db, to_did, unit);
     if (recipientBalance && recipientBalance.currency !== transferCurrency) {
       return NextResponse.json(
         { error: 'Currency mismatch' },
@@ -107,25 +102,15 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    // Determine how much to burn from each bucket (credits first)
-    const creditBurn = Math.min(currentCredit, amount);
-    const cashBurn = amount - creditBurn;
-
-    // Determine source label
-    let source: 'credit' | 'fiat' | 'mixed';
-    if (cashBurn === 0) {
-      source = 'credit';
-    } else if (creditBurn === 0) {
-      source = 'fiat';
-    } else {
-      source = 'mixed';
-    }
+    // Source label mirrors the unit 1:1 now that there is no mixed burn.
+    const source: 'credit' | 'fiat' = unit === MJN ? 'fiat' : 'credit';
 
     const txId = generateId('tx');
 
-    // Atomic operation: debit sender, credit recipient, log transaction
+    // Atomic operation: debit sender, credit recipient, log transaction —
+    // both legs touch the SAME unit row, so cross-unit movement is
+    // impossible by construction (#2016 decision 2).
     await db.transaction(async (tx) => {
-      // Insert transaction
       await tx.insert(transactions).values({
         id: txId,
         service: 'transfer',
@@ -134,38 +119,15 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         toDid: to_did,
         amount: amount.toString(),
         currency: transferCurrency,
+        unit,
+        sourceKind: 'transfer',
         status: 'completed',
         source,
         metadata,
       });
 
-      // Debit sender (credits first, then cash)
-      await tx
-        .update(balances)
-        .set({
-          creditAmount: sql`${balances.creditAmount} - ${creditBurn}`,
-          cashAmount: sql`${balances.cashAmount} - ${cashBurn}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(balances.did, from_did));
-
-      // Credit recipient cash bucket (transfers go to cash — real value)
-      await tx
-        .insert(balances)
-        .values({
-          did: to_did,
-          cashAmount: amount.toString(),
-          creditAmount: '0',
-          currency: transferCurrency,
-          updatedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: balances.did,
-          set: {
-            cashAmount: sql`${balances.cashAmount} + ${amount}`,
-            updatedAt: new Date(),
-          },
-        });
+      await debitUnit(tx, from_did, unit, amount);
+      await creditUnit(tx, to_did, unit, amount, { currency: transferCurrency });
     });
 
     return NextResponse.json(
@@ -175,6 +137,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         from_did,
         to_did,
         amount,
+        unit,
         source,
       },
       { headers: cors }

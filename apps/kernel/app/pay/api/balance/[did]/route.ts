@@ -6,11 +6,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, balances } from '@/src/db';
-import { eq } from 'drizzle-orm';
+import { db } from '@/src/db';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
+import { MJN, MJNX, amountOf, getBalances } from '@/src/lib/pay/ledger';
 
 const log = createLogger('kernel');
 
@@ -61,24 +61,30 @@ export async function GET(
   }
 
   try {
-    const [row] = await db
-      .select()
-      .from(balances)
-      .where(eq(balances.did, decoded))
-      .limit(1);
+    const rows = await getBalances(db, decoded);
+    const mjnRow = rows.find((r) => r.unit === MJN);
+    const mjnxRow = rows.find((r) => r.unit === MJNX);
 
-    const cashAmount = row ? Number.parseFloat(row.cashAmount) : 0;
-    const creditAmount = row ? Number.parseFloat(row.creditAmount) : 0;
+    const mjnAmount = amountOf(mjnRow);
+    const mjnxAmount = amountOf(mjnxRow);
+    const updatedAt = mjnRow?.updatedAt ?? mjnxRow?.updatedAt ?? null;
 
+    // #2016: balances is now an explicit per-unit array (decision 5) — MJN
+    // (receipt-backed, withdrawable) and MJNx (emitted, in-platform, never
+    // withdrawable) are always distinct entries, never summed into one
+    // ambiguous number. `total`/`currency` are kept for the handful of
+    // downstream app proxies (coffee/events/market/learn) that only ever
+    // read those two fields — see the #2016 wire-contract table in the PR.
     return NextResponse.json(
       {
         did: decoded,
-        cashAmount,
-        creditAmount,
-        mjnBalance: creditAmount,
-        total: cashAmount + creditAmount,
-        currency: row?.currency || 'CAD',
-        updatedAt: row?.updatedAt?.toISOString() || new Date().toISOString(),
+        balances: [
+          { unit: MJN, amount: mjnAmount, withdrawable: true },
+          { unit: MJNX, amount: mjnxAmount, withdrawable: false },
+        ],
+        total: mjnAmount + mjnxAmount,
+        currency: mjnRow?.currency || 'CAD',
+        updatedAt: updatedAt?.toISOString() || new Date().toISOString(),
       },
       { headers: cors }
     );

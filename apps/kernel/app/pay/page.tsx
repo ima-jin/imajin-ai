@@ -1,11 +1,12 @@
 ﻿import { redirect } from 'next/navigation';
 import { getSession , resolveActingDid } from '@imajin/auth';
 import { buildPublicUrl } from '@imajin/config';
-import { db, balances, transactions } from '@/src/db';
+import { db, transactions } from '@/src/db';
 import { eq, or, desc } from 'drizzle-orm';
 import Link from 'next/link';
 import { BalanceCard } from './components/BalanceCard';
 import { PayoutSetupBanner } from './components/PayoutSetupBanner';
+import { MJN, MJNX, amountOf, getBalances } from '@/src/lib/pay/ledger';
 
 const SERVICE_ICONS: Record<string, string> = {
   coffee: '☕',
@@ -29,7 +30,7 @@ export default async function Home() {
   const did = resolveActingDid(session);
 
   const [balanceRows, recentTxs] = await Promise.all([
-    db.select().from(balances).where(eq(balances.did, did)).limit(1),
+    getBalances(db, did),
     db
       .select()
       .from(transactions)
@@ -38,9 +39,12 @@ export default async function Home() {
       .limit(5),
   ]);
 
-  const balance = balanceRows[0];
-  const cashAmount = balance ? Number.parseFloat(balance.cashAmount) : 0;
-  const creditAmount = balance ? Number.parseFloat(balance.creditAmount) : 0;
+  const mjnRow = balanceRows.find((r) => r.unit === MJN);
+  const mjnxRow = balanceRows.find((r) => r.unit === MJNX);
+  const wallet: { unit: 'MJN' | 'MJNx'; amount: number; withdrawable: boolean }[] = [
+    { unit: MJN, amount: amountOf(mjnRow), withdrawable: true },
+    { unit: MJNX, amount: amountOf(mjnxRow), withdrawable: false },
+  ];
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -57,10 +61,9 @@ export default async function Home() {
 
       {/* Balance */}
       <BalanceCard
-        cashAmount={cashAmount}
-        creditAmount={creditAmount}
-        currency={balance?.currency || 'CAD'}
-        updatedAt={balance?.updatedAt ?? null}
+        balances={wallet}
+        currency={mjnRow?.currency || 'CAD'}
+        updatedAt={mjnRow?.updatedAt ?? mjnxRow?.updatedAt ?? null}
       />
 
       {/* Quick Navigation */}
@@ -142,10 +145,10 @@ export default async function Home() {
                     </div>
                   </div>
                   <div
-                    className={`text-base font-semibold shrink-0 ${(() => { if (tx.currency === 'MJN') { return 'text-amber-400'; } if (isIncoming) { return 'text-green-400'; } return 'text-red-400'; })()}`}
+                    className={`text-base font-semibold shrink-0 ${(() => { if (tx.unit === 'MJNx') { return 'text-amber-400'; } if (isIncoming) { return 'text-green-400'; } return 'text-red-400'; })()}`}
                   >
                     {isIncoming ? '+' : '-'}
-                    {tx.currency === 'MJN'
+                    {tx.unit === 'MJNx'
                       ? `人${Math.round(amount)}`
                       : new Intl.NumberFormat('en-US', {
                           style: 'currency',

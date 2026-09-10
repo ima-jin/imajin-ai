@@ -14,7 +14,7 @@ export const attestationReactor: ReactorHandler = async (event, config) => {
   const attestationType = (config.attestationType as string) || event.type;
   const originUrl = typeof event.payload?.originUrl === 'string' ? event.payload.originUrl : undefined;
 
-  await emitAttestation({
+  const result = await emitAttestation({
     issuer_did: event.issuer,
     subject_did: event.subject,
     type: attestationType,
@@ -24,4 +24,14 @@ export const attestationReactor: ReactorHandler = async (event, config) => {
     pending: config.pending === true,
     originUrl,
   });
+
+  // #2016: stash the created attestation's id onto the SHARED event object
+  // so a later reactor in the same chain (e.g. `mjn`, run with `await: true`
+  // ahead of this one on `mjn`-bearing chains — see config.ts) can link its
+  // emission mint back to the attestation that justified it. `publish()`'s
+  // reactor loop reuses this exact object reference across every reactor
+  // invocation for the event, so this mutation is visible downstream.
+  if (result.attestationId) {
+    event.payload = { ...event.payload, attestationId: result.attestationId };
+  }
 };

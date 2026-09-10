@@ -81,7 +81,7 @@ vi.mock('@/src/db', () => ({
     metadata: 'col_metadata',
     status: 'col_status',
   },
-  balances: { did: 'col_did', cashAmount: 'col_cashAmount' },
+  balances: { did: 'col_did', unit: 'col_unit', amount: 'col_amount' },
 }));
 
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: () => 'tx_reversal_test' }));
