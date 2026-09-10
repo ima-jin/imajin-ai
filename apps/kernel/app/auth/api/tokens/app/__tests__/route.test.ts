@@ -21,6 +21,7 @@ vi.mock('next/server', () => ({
 const mocks = vi.hoisted(() => ({
   verifySessionTokenMock: vi.fn(),
   createSessionAppTokenMock: vi.fn().mockResolvedValue('signed.session-app.jwt'),
+  resolveActiveAppByAudienceMock: vi.fn(),
 }));
 
 vi.mock('@imajin/config', () => ({
@@ -36,6 +37,14 @@ vi.mock('@imajin/auth', () => ({
 vi.mock('@/src/lib/auth/jwt', () => ({
   verifySessionToken: mocks.verifySessionTokenMock,
   createSessionAppToken: mocks.createSessionAppTokenMock,
+}));
+vi.mock('@/src/lib/kernel/app-registry', () => ({
+  resolveActiveAppByAudience: mocks.resolveActiveAppByAudienceMock,
+  appNotRegisteredResponse: () =>
+    new Response(JSON.stringify({ error: 'app_not_registered', error_description: 'not registered' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    }),
 }));
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
@@ -61,6 +70,9 @@ function makeRequest(body: Record<string, unknown> | undefined, cookieValue?: st
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.createSessionAppTokenMock.mockResolvedValue('signed.session-app.jwt');
+  // Default every test to an aud that IS registered — #1990 enforcement
+  // tests below override this to exercise the unregistered path.
+  mocks.resolveActiveAppByAudienceMock.mockResolvedValue({ id: 'app_first_party_coffee', appDid: 'did:imajin:app-coffee', ownerDid: 'did:imajin:platform', tier: 'first_party', status: 'active' });
 });
 
 describe('POST /auth/api/tokens/app — requires a valid session (#1069 Phase 1)', () => {
@@ -124,5 +136,23 @@ describe('POST /auth/api/tokens/app — minting (#1069 Phase 1)', () => {
 
     expect(res.status).toBe(200);
     expect(body.scopes).toEqual([]);
+  });
+});
+
+describe('POST /auth/api/tokens/app — refuses an unregistered audience (#1990)', () => {
+  beforeEach(() => {
+    mocks.verifySessionTokenMock.mockResolvedValue({ sub: USER_DID });
+  });
+
+  it('returns 403 app_not_registered when aud resolves to no active registry.apps row', async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(null);
+
+    const res = await POST(makeRequest({ aud: 'evil.example.com' }, 'good-token') as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe('app_not_registered');
+    expect(mocks.createSessionAppTokenMock).not.toHaveBeenCalled();
+    expect(mocks.resolveActiveAppByAudienceMock).toHaveBeenCalledWith('evil.example.com');
   });
 });

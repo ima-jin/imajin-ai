@@ -131,6 +131,19 @@ export const ATTESTATION_TYPES = [
   // (source/corpusDid/ingesterDid/contentHash/threadCount/timestamp) and
   // spikes/corpus-identity/README.md's "Ingestion attestation schema" section.
   'corpus.ingested',
+
+  // App registry admin mutations (#1990) — minted by the platform node
+  // identity when an admin registers, rotates the keypair of, or revokes an
+  // app's registry.apps row (POST/PATCH/DELETE /api/admin/registry/apps/**).
+  // System-class (see MECHANICAL_ATTESTATION_TYPES below): this is the
+  // signed audit trail for the mutation itself, never a bilateral/
+  // human-countersigned claim. Distinct from the pre-existing
+  // 'app.authorized' / 'app.revoked', which record a USER's own consent
+  // grant to (or withdrawal from) a third-party app — these three record
+  // the ADMIN's registry action on the app record itself.
+  'registry.app.registered',
+  'registry.app.rotated',
+  'registry.app.revoked',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -170,6 +183,11 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // every ingestion batch, never a bilateral/human-signed claim. See
   // ATTESTATION_TYPES above.
   'corpus.ingested',
+  // #1990 — minted mechanically by the platform node identity on every
+  // admin registry mutation. See ATTESTATION_TYPES above.
+  'registry.app.registered',
+  'registry.app.rotated',
+  'registry.app.revoked',
 ] as const;
 
 /**

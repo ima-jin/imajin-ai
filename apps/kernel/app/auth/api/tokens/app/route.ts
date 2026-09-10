@@ -24,6 +24,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, getSessionCookieOptions } from '@imajin/config';
 import { validateScopes } from '@imajin/auth';
 import { verifySessionToken, createSessionAppToken } from '@/src/lib/auth/jwt';
+import { resolveActiveAppByAudience, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -56,6 +57,16 @@ export async function POST(request: NextRequest) {
   const { aud, scopes } = body as { aud?: string; scopes?: string[] };
   if (!aud || typeof aud !== 'string') {
     return NextResponse.json({ error: 'aud is required' }, { status: 400, headers: cors });
+  }
+
+  // #1990: the kernel refuses to mint a token for an audience nobody
+  // registered. `aud` must resolve to an active registry.apps row's
+  // token_audiences — an arbitrary caller-supplied string is no longer
+  // sufficient, closing the gap this Phase 1 primitive originally shipped
+  // with (any authenticated session could mint a token for any `aud`).
+  const registeredApp = await resolveActiveAppByAudience(aud);
+  if (!registeredApp) {
+    return appNotRegisteredResponse(request);
   }
 
   const { valid: grantedScopes } = validateScopes(Array.isArray(scopes) ? scopes : []);

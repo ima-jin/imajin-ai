@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
 import { verifySessionAppTokenLocal } from '@/src/lib/auth/jwt';
+import { resolveActiveAppByAudience, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -42,6 +43,16 @@ export async function POST(request: NextRequest) {
       { error: 'Invalid, expired, or mismatched-audience token' },
       { status: 401, headers: cors }
     );
+  }
+
+  // #1990: re-check the token's own `aud` against the registry on every
+  // verify call, not just at mint time. This is what makes revoking an app
+  // take effect within one verify cycle — a token minted before revocation
+  // stops verifying on its very next use, rather than staying valid for the
+  // rest of its (short) TTL.
+  const registeredApp = await resolveActiveAppByAudience(claims.aud);
+  if (!registeredApp) {
+    return appNotRegisteredResponse(request);
   }
 
   if (body.scope && !claims.scopes.includes(body.scope)) {

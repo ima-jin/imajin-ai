@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { db, registryApps } from '@/src/db';
 import { eq, desc, and } from 'drizzle-orm';
-import { requireAuth, generateKeypair, isValidPublicKey, resolveActingDid } from '@imajin/auth';
+import { requireAuth, generateKeypair, isValidPublicKey, resolveActingDid, validateScopes } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { withLogger } from '@imajin/logger';
 
@@ -60,6 +60,21 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   // Derive DID from public key
   const appDid = didFromPublicKey(publicKey);
 
+  // #1990: no ad-hoc scope strings — clamp to the declarative SCOPE_VOCABULARY
+  // (#1253), the same clamp every scoped-token mint route already applies.
+  const { valid: scopes } = validateScopes(Array.isArray(requestedScopes) ? requestedScopes : []);
+
+  // #1990: self-service registration always yields a third_party app.
+  // first_party is reserved for the admin surface (POST /api/admin/registry/apps).
+  // allowedRedirectHosts seeds from callbackUrl's own origin — a developer can
+  // register additional hosts later via the admin surface.
+  let allowedRedirectHosts: string[] = [];
+  try {
+    allowedRedirectHosts = [new URL(callbackUrl).origin];
+  } catch {
+    return NextResponse.json({ error: 'callbackUrl must be an absolute URL' }, { status: 400 });
+  }
+
   const [app] = await db.insert(registryApps).values({
     id: `app_${nanoid(16)}`,
     ownerDid: resolveActingDid(identity),
@@ -70,7 +85,9 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     callbackUrl,
     homepageUrl: typeof homepageUrl === 'string' ? homepageUrl || null : null,
     logoUrl: typeof logoUrl === 'string' ? logoUrl || null : null,
-    requestedScopes: Array.isArray(requestedScopes) ? requestedScopes : [],
+    requestedScopes: scopes,
+    tier: 'third_party',
+    allowedRedirectHosts,
   }).returning();
 
   // Include keypair in response only when server-generated (shown once, never stored)

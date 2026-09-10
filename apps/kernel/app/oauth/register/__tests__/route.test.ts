@@ -76,6 +76,22 @@ describe('POST /oauth/register — open DCR (#1878)', () => {
     expect(mockDbInsert).toHaveBeenCalledOnce();
     const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
     expect(insertedRow.callbackUrl).toBe('https://www.typingmind.com/api/mcp/oauth/callback');
+    // #1990: DCR registers as third_party and records the FULL redirect-uri
+    // origin set, not just callbackUrl's single origin.
+    expect(insertedRow.tier).toBe('third_party');
+    expect(insertedRow.allowedRedirectHosts).toEqual(['https://www.typingmind.com']);
+  });
+
+  it('records every distinct redirect_uri origin in allowedRedirectHosts (#1990)', async () => {
+    const res = await POST(
+      makeRequest({
+        redirect_uris: ['https://a.example.com/cb', 'https://b.example.com/cb'],
+      }) as never,
+    );
+
+    expect(res.status).toBe(201);
+    const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.allowedRedirectHosts).toEqual(['https://a.example.com', 'https://b.example.com']);
   });
 
   it('still registers Claude Desktop\u2019s known callbacks (no regression)', async () => {
