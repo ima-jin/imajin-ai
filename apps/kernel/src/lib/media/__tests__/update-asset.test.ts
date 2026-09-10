@@ -38,7 +38,7 @@ vi.mock('@imajin/cid', () => ({
 
 // v1.1 guard returns false so the .fair re-sign path is skipped in tests.
 vi.mock('@imajin/fair', () => ({
-  isFairManifestV1_1: vi.fn(() => false),
+  isFairManifestV11: vi.fn(() => false),
 }));
 
 vi.mock('@/src/lib/media/content-signer', () => ({

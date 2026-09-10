@@ -14,8 +14,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, assets, settlements } from "@/src/db";
 import { requireAuth, canonicalize, resolveActingDid } from "@imajin/auth";
 import { and, eq, gte, sql } from "drizzle-orm";
-import { isFairManifestV1_1 } from "@imajin/fair";
-import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
+import { isFairManifestV11 } from "@imajin/fair";
+import type { FairManifest, FairManifestV11 } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
@@ -73,14 +73,14 @@ export async function POST(
   }
 
   // 3. Resolve manifest
-  let manifest: FairManifestV1_1 | null = null;
+  let manifest: FairManifestV11 | null = null;
   if (
     asset.fairManifest &&
     typeof asset.fairManifest === "object" &&
     Object.keys(asset.fairManifest as object).length > 0 &&
-    isFairManifestV1_1(asset.fairManifest as FairManifest)
+    isFairManifestV11(asset.fairManifest as FairManifest)
   ) {
-    manifest = asset.fairManifest as unknown as FairManifestV1_1;
+    manifest = asset.fairManifest as unknown as FairManifestV11;
   }
 
   if (!manifest) {

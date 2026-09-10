@@ -3,12 +3,12 @@ import { db, settlements, accessLog } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq, and, sql } from "drizzle-orm";
 import {
-  isFairManifestV1_1,
+  isFairManifestV11,
   build402Response,
   verifyReceipt,
   loadVerifyKey,
   type FairManifest,
-  type FairManifestV1_1,
+  type FairManifestV11,
   type FairAction,
 } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
@@ -18,8 +18,8 @@ const log = createLogger("kernel");
 
 /** Returns true when the manifest carries a priced distribution right for the given action. */
 function hasPricedDistributionRight(manifest: FairManifest | null, action: FairAction): boolean {
-  if (!manifest || !isFairManifestV1_1(manifest)) return false;
-  const right = (manifest as FairManifestV1_1).distribution?.[action];
+  if (!manifest || !isFairManifestV11(manifest)) return false;
+  const right = (manifest as FairManifestV11).distribution?.[action];
   return !!right?.price && right.price.amount > 0;
 }
 
@@ -96,7 +96,7 @@ export async function handleSettlement(
         process.env.MEDIA_PUBLIC_URL ||
         new URL(request.url).origin;
       const resp = build402Response({
-        manifest: manifest as FairManifestV1_1,
+        manifest: manifest as FairManifestV11,
         assetId,
         action,
         supportedSchemes: ["mjnx-direct"],

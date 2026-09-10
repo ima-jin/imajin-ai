@@ -24,12 +24,12 @@ import {
   parseSubjectGates,
   type FairDisclosureOverlay,
 } from "../fair-disclosure-policy";
-import type { FairManifestV1_1 } from "@imajin/fair";
+import type { FairManifestV11 } from "@imajin/fair";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 /** Minimal v1.1 manifest with all field groups represented. */
-const BASE_MANIFEST: FairManifestV1_1 = {
+const BASE_MANIFEST: FairManifestV11 = {
   fair: "1.1",
   version: "1.1",
   id: "fair_test_001",

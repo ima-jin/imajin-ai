@@ -1,4 +1,4 @@
-import type { FairManifestV1_0, FairManifestV1_1, FairDistributionRight, Money } from './types';
+import type { FairManifestV10, FairManifestV11, FairDistributionRight, Money } from './types';
 
 import { PLATFORM_DID, PROTOCOL_DID } from './constants';
 
@@ -16,19 +16,19 @@ function mimeBucket(mimeType: string | undefined | null): 'text' | 'image' | 'au
 }
 
 function buildDefaults(mimeType: string, ownerDid: string): {
-  distribution: NonNullable<FairManifestV1_1['distribution']>;
-  transfer: NonNullable<FairManifestV1_1['transfer']>;
-  training: NonNullable<FairManifestV1_1['training']>;
-  commercial: NonNullable<FairManifestV1_1['commercial']>;
-  fees: NonNullable<FairManifestV1_1['fees']>;
-  tipping: NonNullable<FairManifestV1_1['tipping']>;
-  chain: NonNullable<FairManifestV1_1['chain']>;
+  distribution: NonNullable<FairManifestV11['distribution']>;
+  transfer: NonNullable<FairManifestV11['transfer']>;
+  training: NonNullable<FairManifestV11['training']>;
+  commercial: NonNullable<FairManifestV11['commercial']>;
+  fees: NonNullable<FairManifestV11['fees']>;
+  tipping: NonNullable<FairManifestV11['tipping']>;
+  chain: NonNullable<FairManifestV11['chain']>;
 } {
   const bucket = mimeBucket(mimeType);
 
   const transferPrice: Money = { amount: 100000, currency: 'USD' };
 
-  const distribution: NonNullable<FairManifestV1_1['distribution']> = {
+  const distribution: NonNullable<FairManifestV11['distribution']> = {
     reproduction: { mode: 'allowed' },
     streaming: { mode: 'allowed', price: { amount: 1, currency: 'USD' } },
     derivative: { mode: 'allow-with-attribution' },
@@ -61,14 +61,14 @@ function buildDefaults(mimeType: string, ownerDid: string): {
     };
   }
 
-  const fees: NonNullable<FairManifestV1_1['fees']> = [
+  const fees: NonNullable<FairManifestV11['fees']> = [
     { role: 'protocol', name: 'MJN', rateBps: 100, fixedCents: 0 },
     { role: 'node', name: 'Node', rateBps: 50, fixedCents: 0 },
     { role: 'buyer_credit', name: 'Buyer Credit', rateBps: 25, fixedCents: 0 },
     { role: 'scope', name: 'Scope', rateBps: 25, fixedCents: 0 },
   ];
 
-  const chain: NonNullable<FairManifestV1_1['chain']> = [
+  const chain: NonNullable<FairManifestV11['chain']> = [
     { did: PROTOCOL_DID, role: 'protocol', share: 0.01 },
     { did: 'NODE_PLACEHOLDER', role: 'node', share: 0.005 },
     { did: 'BUYER_PLACEHOLDER', role: 'buyer_credit', share: 0.0025 },
@@ -111,8 +111,8 @@ const EPSILON = 0.001;
  *      ensuring the manifest validates.
  */
 function convertAttribution(
-  v1_0: FairManifestV1_0,
-): FairManifestV1_1['attribution'] {
+  v1_0: FairManifestV10,
+): FairManifestV11['attribution'] {
   const entries = v1_0.attribution?.length ? v1_0.attribution : (v1_0.chain ?? []);
 
   // Filter out platform entries — platform belongs in chain, not attribution
@@ -159,8 +159,8 @@ function convertAttribution(
  * Convert v1.0 distribution strings to v1.1 distribution rights.
  */
 function convertDistribution(
-  v1_0: FairManifestV1_0,
-): NonNullable<FairManifestV1_1['distribution']> {
+  v1_0: FairManifestV10,
+): NonNullable<FairManifestV11['distribution']> {
   const oldDist = (v1_0 as { distribution?: Record<string, string> }).distribution;
   const defaults = buildDefaults(v1_0.type, v1_0.owner);
 
@@ -184,16 +184,16 @@ function convertDistribution(
  * Upgrade a v1.0 manifest to v1.1.
  * Idempotent: passing an already-v1.1 manifest returns it unchanged.
  */
-export function upgradeToV1_1(manifest: FairManifestV1_0 | FairManifestV1_1): FairManifestV1_1 {
+export function upgradeToV1_1(manifest: FairManifestV10 | FairManifestV11): FairManifestV11 {
   // Idempotency
   if ('version' in manifest && manifest.version === '1.1') {
-    return manifest as FairManifestV1_1;
+    return manifest as FairManifestV11;
   }
 
-  const v1_0 = manifest as FairManifestV1_0;
+  const v1_0 = manifest as FairManifestV10;
   const defaults = buildDefaults(v1_0.type, v1_0.owner);
 
-  const upgraded: FairManifestV1_1 = {
+  const upgraded: FairManifestV11 = {
     fair: '1.1',
     version: '1.1',
     id: v1_0.id,

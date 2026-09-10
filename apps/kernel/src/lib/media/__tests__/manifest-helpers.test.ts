@@ -18,7 +18,7 @@ vi.mock('fs/promises', () => ({
 vi.mock('@imajin/fair', () => ({
   signManifest: (...args: unknown[]) => mockSignManifest(...args),
   canonicalize: (v: unknown) => mockCanonicalize(v),
-  isFairManifestV1_1: vi.fn(),
+  isFairManifestV11: vi.fn(),
 }));
 
 vi.mock('@imajin/dfos', () => ({
@@ -66,7 +66,7 @@ afterEach(() => {
   Object.assign(process.env, originalEnv);
 });
 
-function makeManifest(): import('@imajin/fair').FairManifestV1_1 {
+function makeManifest(): import('@imajin/fair').FairManifestV11 {
   return {
     fair: '1.1',
     version: '1.1',

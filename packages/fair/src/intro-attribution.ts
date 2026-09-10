@@ -24,7 +24,7 @@
  * guard, an admin tool, a future reactor) that has already resolved the
  * attestation facts it needs to check.
  */
-import type { FairEntry, FairManifestV1_1, FairProvenanceRef } from './types';
+import type { FairEntry, FairManifestV11, FairProvenanceRef } from './types';
 
 /** The off-platform "value happened" fact (#1886) — registered in #1885's attestation-type registry. */
 export const VALUE_REALIZED_ATTESTATION_TYPE = 'value_realized';
@@ -206,7 +206,7 @@ export interface BuildIntroAttributionManifestParams {
  * `templates.ts` — this one has no asset to attach to, so it lives as its
  * own builder rather than an entry in that upload-defaults map.
  */
-export function buildIntroAttributionManifest(params: BuildIntroAttributionManifestParams): FairManifestV1_1 {
+export function buildIntroAttributionManifest(params: BuildIntroAttributionManifestParams): FairManifestV11 {
   const split = params.split ?? DEFAULT_INTRO_ATTRIBUTION_SPLIT_BPS;
   const splitCheck = validateIntroAttributionSplitBps(split);
   if (!splitCheck.ok) {
@@ -268,7 +268,7 @@ export function introAttributionSettlementChain(params: {
 
 /** True when a manifest is (or claims to be) an intro-attribution manifest. */
 export function isIntroAttributionManifest(
-  manifest: Partial<Pick<FairManifestV1_1, 'type'>> | null | undefined,
+  manifest: Partial<Pick<FairManifestV11, 'type'>> | null | undefined,
 ): boolean {
   return !!manifest && manifest.type === INTRO_ATTRIBUTION_MANIFEST_TYPE;
 }

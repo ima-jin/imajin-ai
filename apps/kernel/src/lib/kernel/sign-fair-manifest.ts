@@ -1,4 +1,4 @@
-import type { FairManifestV1_1 } from "@imajin/fair";
+import type { FairManifestV11 } from "@imajin/fair";
 import { signManifest } from "@imajin/fair";
 import { getNodeDid } from "./node-identity";
 import { createLogger } from "@imajin/logger";
@@ -11,7 +11,7 @@ const log = createLogger("kernel");
  *   - ok=false  → caller decides whether to fall back, surface error, etc.
  */
 export type SignFairResult =
-  | { ok: true; signed: FairManifestV1_1 }
+  | { ok: true; signed: FairManifestV11 }
   | { ok: false; error: string; status: number };
 
 /**
@@ -30,7 +30,7 @@ export type SignFairResult =
  * caller can short-circuit with NextResponse.json.
  */
 export async function signFairAsNode(
-  manifest: FairManifestV1_1,
+  manifest: FairManifestV11,
 ): Promise<SignFairResult> {
   const privateKeyHex = process.env.AUTH_PRIVATE_KEY;
   if (!privateKeyHex) {
@@ -57,7 +57,7 @@ export async function signFairAsNode(
 
   try {
     // Strip any existing signature so we re-sign over current content.
-    const stripped = { ...manifest } as FairManifestV1_1 & {
+    const stripped = { ...manifest } as FairManifestV11 & {
       signature?: unknown;
     };
     delete stripped.signature;
@@ -65,7 +65,7 @@ export async function signFairAsNode(
       did: nodeDid,
       privateKey: seedBytes,
     });
-    return { ok: true, signed: signed as FairManifestV1_1 };
+    return { ok: true, signed: signed as FairManifestV11 };
   } catch (err) {
     log.error({ err: String(err) }, "Failed to sign manifest");
     return { ok: false, error: "Signing failed", status: 500 };
@@ -73,4 +73,4 @@ export async function signFairAsNode(
 }
 
 /** Re-export for callers that need to gate on v1.1-ness before signing. */
-export { isFairManifestV1_1 } from "@imajin/fair";
+export { isFairManifestV11 } from "@imajin/fair";

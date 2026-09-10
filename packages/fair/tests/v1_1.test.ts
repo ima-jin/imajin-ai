@@ -8,7 +8,7 @@ import {
   signManifest,
   verifyManifest,
 } from '../src';
-import type { FairManifestV1_1, SignedFairManifest } from '../src';
+import type { FairManifestV11, SignedFairManifest } from '../src';
 import * as ed from '@noble/ed25519';
 
 // ─── Deterministic test keys ────────────────────────────────────────────────
@@ -19,7 +19,7 @@ async function generateTestKeypair(): Promise<{ privateKey: Uint8Array; publicKe
   return { privateKey, publicKey, did: `did:imajin:${Array.from(publicKey).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32)}` };
 }
 
-function makeValidV1_1(overrides?: Partial<FairManifestV1_1>): FairManifestV1_1 {
+function makeValidV1_1(overrides?: Partial<FairManifestV11>): FairManifestV11 {
   return {
     fair: '1.1',
     version: '1.1',

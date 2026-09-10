@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import type { Asset } from "@/src/db/schemas/media";
 import { FairEditor } from "@imajin/fair/react";
-import { isFairManifestV1_1 } from "@imajin/fair";
-import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
+import { isFairManifestV11 } from "@imajin/fair";
+import type { FairManifest, FairManifestV11 } from "@imajin/fair";
 import { FairManifestEditor } from "./FairManifestEditor";
 
 const PROFILE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX
@@ -63,10 +63,10 @@ function FairEditModal({
             ✕
           </button>
         </div>
-        {isFairManifestV1_1(draft) ? (
+        {isFairManifestV11(draft) ? (
           <FairManifestEditor
             manifest={draft}
-            mimeType={(draft as FairManifestV1_1).type}
+            mimeType={(draft as FairManifestV11).type}
             onChange={(m) => setDraft(m)}
             onSave={() => { setSaving(true); onSave(draft); setSaving(false); onCancel(); }}
             readOnly={false}
@@ -80,7 +80,7 @@ function FairEditModal({
             sections={["attribution", "access", "transfer"]}
           />
         )}
-        {!isFairManifestV1_1(draft) && (
+        {!isFairManifestV11(draft) && (
           <div className="flex justify-end gap-2 mt-3">
             <button type="button"
               onClick={onCancel}
@@ -278,7 +278,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
   // The owner can always edit their own manifest (server re-signs on save with
   // the node key). Non-owners get a read-only view whenever the manifest is
   // signed — they have nothing to gain from local edits.
-  const isV1_1 = fairManifest ? isFairManifestV1_1(fairManifest) : false;
+  const isV1_1 = fairManifest ? isFairManifestV11(fairManifest) : false;
   const isSigned = !!fairManifest && 'signature' in fairManifest && !!fairManifest.signature;
   const readOnlyEditor = isSigned && !isOwner;
 
@@ -533,7 +533,7 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
             );
             if (isV1_1) return (
               <FairManifestEditor
-                manifest={fairManifest as FairManifestV1_1}
+                manifest={fairManifest as FairManifestV11}
                 mimeType={asset.mimeType}
                 onChange={(m) => setFairManifest(m)}
                 onSave={() => handleSaveFair(fairManifest)}

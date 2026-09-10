@@ -10,7 +10,7 @@ export interface FairSignature {
 
 /**
  * A single `.fair` attribution/distribution/chain entry — shared by both
- * `FairManifestV1_0` and `FairManifestV1_1` (#1712: this used to also be
+ * `FairManifestV10` and `FairManifestV11` (#1712: this used to also be
  * declared separately as `DidShareEntry`; the two were never structurally
  * different, so this is now the single canonical shape for both versions).
  */
@@ -61,7 +61,8 @@ export interface FairIntent {
   constraints?: Record<string, unknown>;
 }
 
-export interface FairManifestV1_0 {
+/** .fair manifest schema v1.0 — see `version` field */
+export interface FairManifestV10 {
   fair: string; // "1.0"
   id: string;
   type: string;
@@ -101,7 +102,7 @@ export type { Money };
 // (#1712) — same six fields (`did?`, `role`, `share`, `name?`, `note?`,
 // `chainProof?`), just declared a second time for the v1.1 manifest. There
 // was never a v1.0/v1.1 distinction at the *entry* level — only at the
-// *manifest* level (`FairManifestV1_0` vs `FairManifestV1_1` genuinely
+// *manifest* level (`FairManifestV10` vs `FairManifestV11` genuinely
 // differ) — so `FairEntry` is now the one shape both versions share.
 export type DidShareList = FairEntry[];
 
@@ -124,7 +125,8 @@ export interface FairCommercial {
   contactRequired?: boolean;
 }
 
-export interface FairTransferV1_1 {
+/** .fair manifest schema v1.1 — see `version` field */
+export interface FairTransferV11 {
   allowed: boolean;
   requiresAttribution?: boolean;
   price?: Money;
@@ -136,7 +138,8 @@ export interface FairTransferV1_1 {
   resaleRoyalty?: number;
 }
 
-export interface FairAccessV1_1 {
+/** .fair manifest schema v1.1 — see `version` field */
+export interface FairAccessV11 {
   type: "public" | "private" | "trust-graph" | "conversation";
   allowedDids?: string[];
   conversationDid?: string;
@@ -149,7 +152,7 @@ export interface Signature {
   signedAt: string; // ISO 8601
 }
 
-export interface SignedFairManifest extends FairManifestV1_1 {
+export interface SignedFairManifest extends FairManifestV11 {
   signature: Signature;
 }
 
@@ -174,7 +177,8 @@ export interface FairProvenanceRef {
   type: string;
 }
 
-export interface FairManifestV1_1 {
+/** .fair manifest schema v1.1 — see `version` field */
+export interface FairManifestV11 {
   fair: string; // "1.1"
   version: '1.1';
   id: string;
@@ -182,8 +186,8 @@ export interface FairManifestV1_1 {
   owner: string;
   created: string;
   source?: string;
-  access: FairAccessV1_1 | "public" | "private";
-  transfer?: FairTransferV1_1;
+  access: FairAccessV11 | "public" | "private";
+  transfer?: FairTransferV11;
   fees?: FairFee[];
   attribution: DidShareList;
   distribution?: {
@@ -211,12 +215,12 @@ export interface FairManifestV1_1 {
 }
 
 /** Union type — narrow with `'version' in m && m.version === '1.1'` */
-export type FairManifest = FairManifestV1_0 | FairManifestV1_1;
+export type FairManifest = FairManifestV10 | FairManifestV11;
 
 // ============================================================================
 // Type guards
 // ============================================================================
 
-export function isFairManifestV1_1(m: FairManifest | null | undefined): m is FairManifestV1_1 {
+export function isFairManifestV11(m: FairManifest | null | undefined): m is FairManifestV11 {
   return !!m && typeof m === 'object' && 'version' in m && m.version === '1.1';
 }

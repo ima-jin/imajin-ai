@@ -11,7 +11,7 @@ import { signManifest, canonicalize } from "@imajin/fair";
 import { publishContentEvent } from "@imajin/dfos";
 import { hexToBytes } from "@imajin/auth";
 import { createLogger } from "@imajin/logger";
-import type { FairManifest, FairManifestV1_1 } from "@imajin/fair";
+import type { FairManifest, FairManifestV11 } from "@imajin/fair";
 import { db, assets } from "@/src/db";
 import { eq } from "drizzle-orm";
 
@@ -38,8 +38,8 @@ export function getPlatformSigner(): PlatformSigner | null {
  * Falls back to the unsigned manifest if signing fails.
  */
 export async function signManifestWithPlatformKey(
-  manifest: FairManifestV1_1
-): Promise<FairManifestV1_1> {
+  manifest: FairManifestV11
+): Promise<FairManifestV11> {
   const signer = getPlatformSigner();
   if (!signer) {
     log.warn({}, "Platform signer not configured — manifest will be unsigned");
@@ -109,9 +109,9 @@ export async function updateManifestFlow(
     fairPath: string | null;
     fairDfosEventId: string | null;
   },
-  manifest: FairManifestV1_1,
+  manifest: FairManifestV11,
   baseUrl: string
-): Promise<{ signedManifest: FairManifestV1_1; dfosEventId: string | null }> {
+): Promise<{ signedManifest: FairManifestV11; dfosEventId: string | null }> {
   // 1. Sign
   const signedManifest = await signManifestWithPlatformKey(manifest);
 

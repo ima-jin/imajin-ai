@@ -3,7 +3,7 @@ import { sha512 } from '@noble/hashes/sha512';
 import { concatBytes } from '@noble/hashes/utils';
 import type {
   FairManifest,
-  FairManifestV1_1,
+  FairManifestV11,
   FairSignature,
   SignedFairManifest,
   Signature,
@@ -63,7 +63,7 @@ function base64urlToBytes(b64: string): Uint8Array {
 
 /** Sign a v1.1 manifest with a Uint8Array private key. */
 export async function signManifest(
-  manifest: FairManifestV1_1,
+  manifest: FairManifestV11,
   signer: { did: string; privateKey: Uint8Array },
 ): Promise<SignedFairManifest>;
 

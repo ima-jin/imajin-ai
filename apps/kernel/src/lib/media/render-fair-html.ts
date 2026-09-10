@@ -4,8 +4,8 @@
  * Used by the GET /api/assets/[id]/fair route when the client sends
  * Accept: text/html (i.e. a browser). API consumers still get JSON.
  */
-import type { FairManifest, FairManifestV1_1, FairFee, FairDistributionRight } from "@imajin/fair";
-import { isFairManifestV1_1 } from "@imajin/fair";
+import type { FairManifest, FairManifestV11, FairFee, FairDistributionRight } from "@imajin/fair";
+import { isFairManifestV11 } from "@imajin/fair";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -88,7 +88,7 @@ function renderAttribution(manifest: FairManifest): string {
   if (manifest.attribution?.length) {
     entries = manifest.attribution;
   } else if ("chain" in manifest) {
-    entries = (manifest as FairManifestV1_1).chain ?? [];
+    entries = (manifest as FairManifestV11).chain ?? [];
   } else {
     entries = [];
   }
@@ -143,7 +143,7 @@ function renderFees(fees: FairFee[]): string {
   );
 }
 
-function renderDistribution(dist: FairManifestV1_1["distribution"]): string {
+function renderDistribution(dist: FairManifestV11["distribution"]): string {
   if (!dist) return "";
 
   const channels: [string, FairDistributionRight | undefined][] = [
@@ -219,7 +219,7 @@ function renderTransfer(transfer: FairManifest["transfer"]): string {
   return section("Transfer", `<div class="pills">${rows.join("")}</div>`);
 }
 
-function renderCommercial(commercial: FairManifestV1_1["commercial"]): string {
+function renderCommercial(commercial: FairManifestV11["commercial"]): string {
   if (!commercial) return "";
   const items: string[] = [];
   items.push(pill("Commercial Use", commercial.allowed ? "Allowed" : "Not allowed", commercial.allowed ? "#22c55e" : "#ef4444"));
@@ -227,7 +227,7 @@ function renderCommercial(commercial: FairManifestV1_1["commercial"]): string {
   return section("Commercial", `<div class="pills">${items.join("")}</div>`);
 }
 
-function renderTraining(training: FairManifestV1_1["training"]): string {
+function renderTraining(training: FairManifestV11["training"]): string {
   if (!training) return "";
   const items: string[] = [];
   items.push(pill("AI Training", training.allowed ? "Allowed" : "Not allowed", training.allowed ? "#22c55e" : "#ef4444"));
@@ -292,7 +292,7 @@ function pill(label: string, value: string, color: string): string {
 // ── Main renderer ───────────────────────────────────────────────────────────
 
 export function renderFairHtml(manifest: FairManifest, assetId: string, baseUrl: string): string {
-  const v11 = isFairManifestV1_1(manifest);
+  const v11 = isFairManifestV11(manifest);
   const { label: accessLbl, color: accessColor } = accessLabel(manifest.access);
 
   const sections: string[] = [];
@@ -302,7 +302,7 @@ export function renderFairHtml(manifest: FairManifest, assetId: string, baseUrl:
   <header>
     <div class="header-top">
       <div class="fair-badge">.fair</div>
-      <span class="version">v${esc(manifest.fair || (manifest as FairManifestV1_1).version || "1.0")}</span>
+      <span class="version">v${esc(manifest.fair || (manifest as FairManifestV11).version || "1.0")}</span>
       <span class="access-badge" style="border-color:${accessColor};color:${accessColor}">${esc(accessLbl)}</span>
     </div>
     <div class="meta">
@@ -335,7 +335,7 @@ export function renderFairHtml(manifest: FairManifest, assetId: string, baseUrl:
 
   // Distribution rights (v1.1)
   if (v11) {
-    sections.push(renderDistribution((manifest as FairManifestV1_1).distribution));
+    sections.push(renderDistribution((manifest as FairManifestV11).distribution));
   }
 
   // Fees
@@ -348,17 +348,17 @@ export function renderFairHtml(manifest: FairManifest, assetId: string, baseUrl:
 
   // Commercial (v1.1)
   if (v11) {
-    sections.push(renderCommercial((manifest as FairManifestV1_1).commercial));
+    sections.push(renderCommercial((manifest as FairManifestV11).commercial));
   }
 
   // Training (v1.1)
   if (v11) {
-    sections.push(renderTraining((manifest as FairManifestV1_1).training));
+    sections.push(renderTraining((manifest as FairManifestV11).training));
   }
 
   // Tipping (v1.1)
-  if (v11 && (manifest as FairManifestV1_1).tipping) {
-    const tipping = (manifest as FairManifestV1_1).tipping!;
+  if (v11 && (manifest as FairManifestV11).tipping) {
+    const tipping = (manifest as FairManifestV11).tipping!;
     sections.push(
       section("Tipping", `<div class="pills">${pill("Tipping", tipping.enabled ? "Enabled" : "Disabled", tipping.enabled ? "#22c55e" : "#6b7280")}</div>`)
     );

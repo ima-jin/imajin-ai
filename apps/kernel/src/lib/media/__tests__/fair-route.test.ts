@@ -7,7 +7,7 @@ import { buildFairManifest } from '@imajin/fair';
 // PUT /media/api/assets/[id]/fair (#1937 / A08): the node must sign only
 // manifests whose protocol/platform/node fee split matches what the node
 // itself derives for the asset. `@imajin/fair` is NOT mocked here — the real
-// `buildFairManifest`, `validateManifest`, and `isFairManifestV1_1` are
+// `buildFairManifest`, `validateManifest`, and `isFairManifestV11` are
 // exercised so the guard's actual behavior is covered, not a stand-in.
 
 const mockFrom = vi.fn();

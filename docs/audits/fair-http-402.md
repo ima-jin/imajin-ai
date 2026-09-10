@@ -140,7 +140,7 @@ The manifest-level override `manifest.settlement?.endpoint` takes precedence if 
 
 ## Dependencies
 
-- #896 — `Money`, `DidShareList`, `FairManifestV1_1` with per-action `price` + `splits` ✅ (on base branch)
+- #896 — `Money`, `DidShareList`, `FairManifestV11` with per-action `price` + `splits` ✅ (on base branch)
 - #897 — `publishContentEvent()` from `@imajin/dfos` — feature-detected, guarded with try/catch
 
 ---

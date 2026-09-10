@@ -4,7 +4,7 @@ import { db, assets } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import type { FairManifest } from "@imajin/fair";
-import { isFairManifestV1_1, validateManifest } from "@imajin/fair";
+import { isFairManifestV11, validateManifest } from "@imajin/fair";
 import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
 import {
   applyProtectedFairFields,
@@ -214,7 +214,7 @@ export async function PUT(
   // manifests are written through as-is for now (they are never node-signed
   // by this route).
   let toPersist: FairManifest = merged;
-  if (isFairManifestV1_1(merged)) {
+  if (isFairManifestV11(merged)) {
     const result = await signFairAsNode(merged);
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
