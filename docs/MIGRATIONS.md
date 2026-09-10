@@ -52,3 +52,14 @@ node scripts/migrate.mjs
 ### Tracking
 
 `public._migrations` table with filename + SHA-256 checksum. Runner warns but skips on changed checksums (DDL is idempotent, so re-running is safe).
+
+### Ownership
+
+Every table/view/type/function created in `migrations/` is owned by exactly
+one app (or the kernel), tracked in `migrations/ownership.json` and
+documented in `migrations/OWNERSHIP.md`. A new migration must declare its
+owner with a `-- owner: <name>` header; `scripts/check-migration-ownership.mjs`
+enforces in CI that a migration only touches tables its declared owner
+actually owns, and that any new table it creates is registered in the map.
+See `migrations/OWNERSHIP.md` for the full rule, the current map, and the
+known cross-owner gaps that predate this guard and are not yet fixed.

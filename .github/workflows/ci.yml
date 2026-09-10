@@ -96,6 +96,12 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so `check-migration-ownership.mjs` can diff against
+          # origin/main with `git diff origin/main...HEAD` — a shallow (depth-1)
+          # PR-merge-ref checkout has no shared ancestry with a depth-1 origin/main,
+          # so a triple-dot diff would have no merge base to compute from.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2
         with:
@@ -120,6 +126,21 @@ jobs:
       # before fair — fair re-exports money's Money type.
       - name: Typecheck
         run: pnpm typecheck
+
+      # actions/checkout registers safe.directory in the RUNNER HOST's global
+      # git config. This job's steps run inside the ci-runner container,
+      # which has its own separate git config/HOME, so it never sees that —
+      # git then refuses to touch the checked-out repo at all
+      # ("Could not access 'origin/main...HEAD'"). Register it again here,
+      # inside the container, before anything needs to run git.
+      - name: Allow git to operate on the checked-out repo inside the container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # Schema-boundary guard (#1991 phase 1): a migration may only touch
+      # tables its declared "-- owner:" header actually owns, per
+      # migrations/ownership.json. See migrations/OWNERSHIP.md.
+      - name: Migration ownership guard
+        run: pnpm check:migration-ownership
 
   test:
     name: Test
