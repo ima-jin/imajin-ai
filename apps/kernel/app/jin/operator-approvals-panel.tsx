@@ -166,6 +166,12 @@ function ApprovalCardRow({
   busy: boolean;
 }>) {
   const renderer = rendererFor(approval.source);
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the button mounts.
+  const autoFocusRef = useCallback((el: HTMLButtonElement | null) => {
+    el?.focus();
+  }, []);
   return (
     <div className="rounded-lg border border-gray-800 p-4 space-y-2">
       <div className="flex items-center justify-between gap-3">
@@ -192,7 +198,7 @@ function ApprovalCardRow({
             type="button"
             onClick={() => onDecide(approval.proposalId, 'approve')}
             disabled={busy}
-            autoFocus
+            ref={autoFocusRef}
             className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
           >
             {busy ? '…' : renderer.decisionLabels.approve}

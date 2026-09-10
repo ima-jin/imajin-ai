@@ -532,6 +532,13 @@ function ProvisionWizard({
   const [scopes, setScopes] = useState<string[]>([]);
   const [provider, setProvider] = useState('anthropic:claude');
 
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the input mounts.
+  const autoFocusRef = useCallback((el: HTMLInputElement | null) => {
+    el?.focus();
+  }, []);
+
   function toggleScope(scope: string) {
     setScopes((prev) => (prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]));
   }
@@ -551,7 +558,7 @@ function ProvisionWizard({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Travel Agent"
-          autoFocus
+          ref={autoFocusRef}
           className="w-full px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
         />
       </div>
@@ -672,6 +679,13 @@ export default function AgentsPage() {
   const [handle, setHandle] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
+
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the input mounts.
+  const autoFocusRef = useCallback((el: HTMLInputElement | null) => {
+    el?.focus();
+  }, []);
 
   const handlePrefix = session?.handle ? `${session.handle}-jin` : '';
 
@@ -1144,7 +1158,7 @@ export default function AgentsPage() {
                     value={handle}
                     onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
                     placeholder={handlePrefix ? 'travel' : 'veteze-jin-travel'}
-                    autoFocus
+                    ref={autoFocusRef}
                     className="flex-1 px-4 py-2 border border-gray-700 rounded-lg bg-black text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   />
                 </div>

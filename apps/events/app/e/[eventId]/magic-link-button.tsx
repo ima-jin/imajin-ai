@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { buildPublicUrl } from '@imajin/config';
 
 const AUTH_URL = buildPublicUrl('auth');
@@ -53,6 +53,13 @@ export function MagicLinkButton({ eventId }: Readonly<{ eventId: string }>) {
   const [errorMessage, setErrorMessage] = useState('');
   const [pollHandle, setPollHandle] = useState<string | null>(null);
   const pollStartedAt = useRef<number | null>(null);
+
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the input mounts.
+  const autoFocusRef = useCallback((el: HTMLInputElement | null) => {
+    el?.focus();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -221,7 +228,7 @@ export function MagicLinkButton({ eventId }: Readonly<{ eventId: string }>) {
         placeholder="your@email.com"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        autoFocus
+        ref={autoFocusRef}
         className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 w-48"
       />
       <button

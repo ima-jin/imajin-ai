@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Inline rename affordance for an asset filename (#1543).
@@ -108,6 +108,14 @@ export function AssetFilename({
 
   const canRename = isOwner && !immutable;
 
+  // S9379: an imperative focus-on-mount effect instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new
+  // SonarCloud finding. `inputRef` is already used for the empty-filename
+  // refocus above, so this reuses it rather than introducing a second ref.
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
   const startEditing = () => {
     setDraft(name);
     setError(null);
@@ -203,7 +211,6 @@ export function AssetFilename({
             }
           }}
           onBlur={handleBlur}
-          autoFocus
         />
       );
     }

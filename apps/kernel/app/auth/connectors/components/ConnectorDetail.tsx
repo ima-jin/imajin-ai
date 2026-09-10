@@ -883,6 +883,7 @@ function GitHubFlowSelector({ value, onChange }: Readonly<{
             id={`github-auth-flow-${option.flow}`}
             type="radio"
             name="github-auth-flow"
+            aria-label={option.title}
             value={option.flow}
             checked={value === option.flow}
             onChange={() => onChange(option.flow)}

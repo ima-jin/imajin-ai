@@ -42,12 +42,10 @@ const REWRITABLE_EXTENSIONS = new Set([
 // credential can never reach a log line, this module reads no environment
 // variables at all — every value it logs below comes only from explicit,
 // non-secret sources: the CLI path arguments (already validated against an
-// allowed root before use), and fields read from the package's own
-// package.json (name, version, files, dependencies). Redacting secret values
-// after the fact (e.g. scanning log text for known token strings) was
-// deliberately rejected: it still requires reading the secret on the path to
-// the log sink, which is exactly the taint flow static analysis flags as a
-// leak risk regardless of the string replacement performed afterwards.
+// allowed root before use), and the package name/version fields, which are
+// re-validated against strict npm-name/semver patterns (see `packageLabel`)
+// immediately before every log line so no other package.json field can ever
+// reach a log sink.
 
 // True when `target` (already resolved/canonicalized) is `root` itself or a
 // descendant of it. Used to confine CLI-supplied paths to an allowed root
@@ -55,6 +53,28 @@ const REWRITABLE_EXTENSIONS = new Set([
 export function isPathWithin(root, target) {
   const rel = relative(root, target);
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+// Validated immediately before every log call (see `packageLabel`) so a
+// malformed or unexpected package.json can never put arbitrary content on
+// stdout — only a string already proven to look like a real npm package
+// name/version is ever interpolated into a log message.
+const NPM_PACKAGE_NAME_RE = /^(@[a-z0-9-][a-z0-9-._~]*\/)?[a-z0-9-][a-z0-9-._~]*$/;
+const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
+
+// Returns a `name@version` string safe to log, throwing instead if either
+// field is missing or doesn't match its expected shape. Called right before
+// each log statement (rather than once, up front) so it always reflects the
+// in-progress rewrites (e.g. the @imajin/* -> @ima-jin/* scope rename).
+function packageLabel(pkg) {
+  const { name, version } = pkg;
+  if (typeof name !== "string" || !NPM_PACKAGE_NAME_RE.test(name)) {
+    throw new Error(`package.json has an invalid "name" field: ${JSON.stringify(name)}`);
+  }
+  if (typeof version !== "string" || !SEMVER_RE.test(version)) {
+    throw new Error(`package.json has an invalid "version" field: ${JSON.stringify(version)}`);
+  }
+  return `${name}@${version}`;
 }
 
 function rewriteScopeInTree(dir) {
@@ -78,169 +98,180 @@ function rewriteScopeInTree(dir) {
   return rewritten;
 }
 
-const [, , pkgDir, outDir] = process.argv;
-if (!pkgDir || !outDir) {
-  console.error(
-    "Usage: node scripts/prepare-npm-publish.mjs <package-dir> <output-dir>"
-  );
-  process.exit(1);
-}
-
-// Allowed roots for CLI-supplied paths. Both are canonicalized once up front
-// so every later use of srcDir/destDir is guaranteed to already be validated,
-// rather than re-checked (or forgotten) at each call site.
-const REPO_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const PACKAGES_ROOT = join(REPO_ROOT, "packages");
-
-// The source is always a workspace package under packages/<name> (see the
-// module docstring and scripts/publish-package.sh) — never an arbitrary path.
-const srcDir = resolve(pkgDir);
-if (!isPathWithin(PACKAGES_ROOT, srcDir)) {
-  console.error(
-    `Refusing to read package dir outside ${PACKAGES_ROOT}: ${pkgDir}`
-  );
-  process.exit(1);
-}
-
-// The output dir is caller-chosen (scripts/publish-package.sh uses a fresh
-// `mktemp -d`), so it must stay within either the repo or the OS temp
-// directory rather than being trusted verbatim.
-const destDir = resolve(outDir);
-const ALLOWED_OUTPUT_ROOTS = [REPO_ROOT, resolve(tmpdir())];
-if (!ALLOWED_OUTPUT_ROOTS.some((root) => isPathWithin(root, destDir))) {
-  console.error(
-    `Refusing to write output outside allowed roots (${ALLOWED_OUTPUT_ROOTS.join(
-      ", "
-    )}): ${outDir}`
-  );
-  process.exit(1);
-}
-
-const packagesDir = resolve(srcDir, "..");
-
-// Read source package.json
-const pkg = JSON.parse(readFileSync(join(srcDir, "package.json"), "utf8"));
-
-console.log(`Preparing ${pkg.name}@${pkg.version} for npm publish...`);
-
-// Create output directory
-mkdirSync(destDir, { recursive: true });
-
-// Copy files listed in "files" field, plus common extras
-const filesToCopy = pkg.files || ["dist", "src"];
-for (const f of filesToCopy) {
-  const srcPath = join(srcDir, f);
-  if (existsSync(srcPath)) {
-    cpSync(srcPath, join(destDir, f), { recursive: true });
-    console.log(`  Copied ${f}`);
-  } else {
-    console.warn(`  Warning: ${f} not found, skipping`);
+// The path-containment checks below `throw` (rather than calling
+// `process.exit()` directly) so that every guarded read/write of
+// srcDir/destDir is provably unreachable with an unvalidated path from a
+// control-flow analysis perspective — `main()`'s caller is the only place
+// that turns a thrown error into a process exit.
+function main() {
+  const [, , pkgDir, outDir] = process.argv;
+  if (!pkgDir || !outDir) {
+    throw new Error(
+      "Usage: node scripts/prepare-npm-publish.mjs <package-dir> <output-dir>"
+    );
   }
-}
 
-// Copy extra files if they exist
-for (const extra of ["README.md", "LICENSE", "CHANGELOG.md"]) {
-  const p = join(srcDir, extra);
-  if (existsSync(p)) {
-    cpSync(p, join(destDir, extra));
-    console.log(`  Copied ${extra}`);
+  // Allowed roots for CLI-supplied paths. Both are canonicalized once up
+  // front so every later use of srcDir/destDir is guaranteed to already be
+  // validated, rather than re-checked (or forgotten) at each call site.
+  const REPO_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
+  const PACKAGES_ROOT = join(REPO_ROOT, "packages");
+
+  // The source is always a workspace package under packages/<name> (see the
+  // module docstring and scripts/publish-package.sh) — never an arbitrary path.
+  const srcDir = resolve(pkgDir);
+  if (!isPathWithin(PACKAGES_ROOT, srcDir)) {
+    throw new Error(
+      `Refusing to read package dir outside ${PACKAGES_ROOT}: ${pkgDir}`
+    );
   }
-}
 
-// Rewrite @imajin/* → @ima-jin/* inside the copied sources and build output
-const rewrittenFileCount = rewriteScopeInTree(destDir);
-console.log(`  Rewrote @imajin/ → @ima-jin/ in ${rewrittenFileCount} file(s)`);
+  // The output dir is caller-chosen (scripts/publish-package.sh uses a fresh
+  // `mktemp -d`), so it must stay within either the repo or the OS temp
+  // directory rather than being trusted verbatim.
+  const destDir = resolve(outDir);
+  const ALLOWED_OUTPUT_ROOTS = [REPO_ROOT, resolve(tmpdir())];
+  if (!ALLOWED_OUTPUT_ROOTS.some((root) => isPathWithin(root, destDir))) {
+    throw new Error(
+      `Refusing to write output outside allowed roots (${ALLOWED_OUTPUT_ROOTS.join(
+        ", "
+      )}): ${outDir}`
+    );
+  }
 
-// Rewrite package name: @imajin/* → @ima-jin/*
-pkg.name = pkg.name.replaceAll("@imajin/", "@ima-jin/");
+  const packagesDir = resolve(srcDir, "..");
 
-// Remove private flag
-delete pkg.private;
+  // Read source package.json
+  const pkg = JSON.parse(readFileSync(join(srcDir, "package.json"), "utf8"));
 
-// Set publishConfig
-pkg.publishConfig = { access: "public" };
+  console.log(`Preparing ${packageLabel(pkg)} for npm publish...`);
 
-// Remove scripts (not needed by consumers)
-delete pkg.scripts;
+  // Create output directory
+  mkdirSync(destDir, { recursive: true });
 
-// Remove devDependencies (not needed by consumers)
-delete pkg.devDependencies;
-
-// Rewrite exports/main/types to point to dist/ instead of src/
-if (pkg.main?.startsWith("./src/")) {
-  pkg.main = pkg.main.replaceAll("./src/", "./dist/").replaceAll(".ts", ".js");
-}
-if (pkg.types?.startsWith("./src/")) {
-  pkg.types = pkg.types.replaceAll("./src/", "./dist/").replaceAll(".ts", ".d.ts");
-}
-if (pkg.exports) {
-  for (const [key, value] of Object.entries(pkg.exports)) {
-    if (typeof value === "string" && value.startsWith("./src/")) {
-      // For tsup-built packages, provide proper ESM/CJS exports
-      // "types" must come first — export conditions are matched in order, so a
-      // later "types" entry is unreachable for resolvers that match on import/require.
-      const base = value.replaceAll("./src/", "./dist/").replace(/\.tsx?$/, "");
-      pkg.exports[key] = {
-        types: base + ".d.ts",
-        import: base + ".mjs",
-        require: base + ".js",
-      };
+  // Copy files listed in "files" field, plus common extras
+  const filesToCopy = pkg.files || ["dist", "src"];
+  for (const f of filesToCopy) {
+    const srcPath = join(srcDir, f);
+    if (existsSync(srcPath)) {
+      cpSync(srcPath, join(destDir, f), { recursive: true });
+      console.log(`  Copied ${f}`);
+    } else {
+      console.warn(`  Warning: ${f} not found, skipping`);
     }
   }
-}
-// Also rewrite @imajin/* in external references within exports
-if (pkg.exports) {
-  const newExports = {};
-  for (const [key, value] of Object.entries(pkg.exports)) {
-    const newKey = key.replaceAll("@imajin/", "@ima-jin/");
-    newExports[newKey] = value;
-  }
-  pkg.exports = newExports;
-}
 
-// Rewrite workspace:* dependencies
-for (const depType of ["dependencies", "peerDependencies"]) {
-  if (!pkg[depType]) continue;
-  const newDeps = {};
-  for (const [dep, ver] of Object.entries(pkg[depType])) {
-    if (typeof ver === "string" && ver.startsWith("workspace:")) {
-      // Resolve to @ima-jin scope and actual version
-      const depLocalName = dep.replaceAll("@imajin/", "");
-      try {
-        const depPkg = JSON.parse(
-          readFileSync(
-            join(packagesDir, depLocalName, "package.json"),
-            "utf8"
-          )
-        );
-        const npmName = dep.replaceAll("@imajin/", "@ima-jin/");
-        newDeps[npmName] = "^" + depPkg.version;
-        console.log(`  Rewrote dep ${dep}@${ver} → ${npmName}@^${depPkg.version}`);
-      } catch {
-        console.warn(`  Warning: could not resolve ${dep}, keeping as-is`);
+  // Copy extra files if they exist
+  for (const extra of ["README.md", "LICENSE", "CHANGELOG.md"]) {
+    const p = join(srcDir, extra);
+    if (existsSync(p)) {
+      cpSync(p, join(destDir, extra));
+      console.log(`  Copied ${extra}`);
+    }
+  }
+
+  // Rewrite @imajin/* → @ima-jin/* inside the copied sources and build output
+  const rewrittenFileCount = rewriteScopeInTree(destDir);
+  console.log(`  Rewrote @imajin/ → @ima-jin/ in ${rewrittenFileCount} file(s)`);
+
+  // Rewrite package name: @imajin/* → @ima-jin/*
+  pkg.name = pkg.name.replaceAll("@imajin/", "@ima-jin/");
+
+  // Remove private flag
+  delete pkg.private;
+
+  // Set publishConfig
+  pkg.publishConfig = { access: "public" };
+
+  // Remove scripts (not needed by consumers)
+  delete pkg.scripts;
+
+  // Remove devDependencies (not needed by consumers)
+  delete pkg.devDependencies;
+
+  // Rewrite exports/main/types to point to dist/ instead of src/
+  if (pkg.main?.startsWith("./src/")) {
+    pkg.main = pkg.main.replaceAll("./src/", "./dist/").replaceAll(".ts", ".js");
+  }
+  if (pkg.types?.startsWith("./src/")) {
+    pkg.types = pkg.types.replaceAll("./src/", "./dist/").replaceAll(".ts", ".d.ts");
+  }
+  if (pkg.exports) {
+    for (const [key, value] of Object.entries(pkg.exports)) {
+      if (typeof value === "string" && value.startsWith("./src/")) {
+        // For tsup-built packages, provide proper ESM/CJS exports
+        // "types" must come first — export conditions are matched in order, so a
+        // later "types" entry is unreachable for resolvers that match on import/require.
+        const base = value.replaceAll("./src/", "./dist/").replace(/\.tsx?$/, "");
+        pkg.exports[key] = {
+          types: base + ".d.ts",
+          import: base + ".mjs",
+          require: base + ".js",
+        };
+      }
+    }
+  }
+  // Also rewrite @imajin/* in external references within exports
+  if (pkg.exports) {
+    const newExports = {};
+    for (const [key, value] of Object.entries(pkg.exports)) {
+      const newKey = key.replaceAll("@imajin/", "@ima-jin/");
+      newExports[newKey] = value;
+    }
+    pkg.exports = newExports;
+  }
+
+  // Rewrite workspace:* dependencies
+  for (const depType of ["dependencies", "peerDependencies"]) {
+    if (!pkg[depType]) continue;
+    const newDeps = {};
+    for (const [dep, ver] of Object.entries(pkg[depType])) {
+      if (typeof ver === "string" && ver.startsWith("workspace:")) {
+        // Resolve to @ima-jin scope and actual version
+        const depLocalName = dep.replaceAll("@imajin/", "");
+        try {
+          const depPkg = JSON.parse(
+            readFileSync(
+              join(packagesDir, depLocalName, "package.json"),
+              "utf8"
+            )
+          );
+          const npmName = dep.replaceAll("@imajin/", "@ima-jin/");
+          newDeps[npmName] = "^" + depPkg.version;
+          console.log(`  Rewrote dep ${dep}@${ver} → ${npmName}@^${depPkg.version}`);
+        } catch {
+          console.warn(`  Warning: could not resolve ${dep}, keeping as-is`);
+          newDeps[dep] = ver;
+        }
+      } else {
         newDeps[dep] = ver;
       }
-    } else {
-      newDeps[dep] = ver;
     }
+    pkg[depType] = newDeps;
   }
-  pkg[depType] = newDeps;
+
+  // peerDependenciesMeta keys must match the rewritten peerDependencies keys
+  // exactly (e.g. "optional: true" for @ima-jin/auth), or npm silently stops
+  // treating that peer as optional since the meta entry no longer matches
+  // anything in peerDependencies.
+  if (pkg.peerDependenciesMeta) {
+    const newMeta = {};
+    for (const [dep, meta] of Object.entries(pkg.peerDependenciesMeta)) {
+      newMeta[dep.replaceAll("@imajin/", "@ima-jin/")] = meta;
+    }
+    pkg.peerDependenciesMeta = newMeta;
+  }
+
+  // Write modified package.json to output
+  writeFileSync(join(destDir, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
+
+  console.log(`\nReady to publish: ${packageLabel(pkg)}`);
+  console.log(`Output: ${destDir}`);
 }
 
-// peerDependenciesMeta keys must match the rewritten peerDependencies keys
-// exactly (e.g. "optional: true" for @ima-jin/auth), or npm silently stops
-// treating that peer as optional since the meta entry no longer matches
-// anything in peerDependencies.
-if (pkg.peerDependenciesMeta) {
-  const newMeta = {};
-  for (const [dep, meta] of Object.entries(pkg.peerDependenciesMeta)) {
-    newMeta[dep.replaceAll("@imajin/", "@ima-jin/")] = meta;
-  }
-  pkg.peerDependenciesMeta = newMeta;
+try {
+  main();
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
 }
-
-// Write modified package.json to output
-writeFileSync(join(destDir, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
-
-console.log(`\nReady to publish: ${pkg.name}@${pkg.version}`);
-console.log(`Output: ${destDir}`);

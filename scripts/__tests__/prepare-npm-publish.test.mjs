@@ -134,6 +134,44 @@ describe('prepare-npm-publish.mjs — path validation', () => {
   });
 });
 
+describe('prepare-npm-publish.mjs — package.json field validation (S6551/S8689)', () => {
+  it('refuses to publish when package.json has an invalid "name" field', () => {
+    const srcDir = mkdtempSync(join(PACKAGES_ROOT, '.tmp-prepare-npm-publish-src-'));
+    const outDir = mkdtempSync(join(tmpdir(), 'prepare-npm-publish-out-'));
+    try {
+      // Object dropped in place of a string: without the typeof-narrowing
+      // guard, this would fall through to Object's default toString()
+      // ('[object Object]') when logged instead of being rejected outright.
+      writePackageFixture(srcDir, { name: { nested: 'not-a-string' }, version: '1.0.0' });
+
+      const { status, output } = runScript([srcDir, outDir]);
+
+      expect(status).toBe(1);
+      expect(output).toContain('invalid "name" field');
+      expect(output).not.toContain('[object Object]');
+    } finally {
+      rmSync(srcDir, { recursive: true, force: true });
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to publish when package.json has a non-semver "version" field', () => {
+    const srcDir = mkdtempSync(join(PACKAGES_ROOT, '.tmp-prepare-npm-publish-src-'));
+    const outDir = mkdtempSync(join(tmpdir(), 'prepare-npm-publish-out-'));
+    try {
+      writePackageFixture(srcDir, { name: '@imajin/fixture', version: 'not-a-version' });
+
+      const { status, output } = runScript([srcDir, outDir]);
+
+      expect(status).toBe(1);
+      expect(output).toContain('invalid "version" field');
+    } finally {
+      rmSync(srcDir, { recursive: true, force: true });
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('prepare-npm-publish.mjs — secret isolation', () => {
   it.each([
     ['NODE_AUTH_TOKEN', 'npm_totallyFakeTestToken1234567890'],

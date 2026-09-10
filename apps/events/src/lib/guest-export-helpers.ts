@@ -121,7 +121,10 @@ export function buildSurveyValues(
     if (field && field.name in surveyAnswers) {
       const ans = (surveyAnswers as Record<string, unknown>)[field.name];
       if (ans === null || ans === undefined) return '';
-      return typeof ans === 'object' ? JSON.stringify(ans) : String(ans);
+      if (typeof ans === 'string' || typeof ans === 'number' || typeof ans === 'boolean') {
+        return String(ans);
+      }
+      return JSON.stringify(ans);
     }
     return '';
   });

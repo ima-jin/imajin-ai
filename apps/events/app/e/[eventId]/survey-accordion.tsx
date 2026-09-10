@@ -81,19 +81,6 @@ export function SurveyAccordion({
     // built the iframe's src, rather than assuming window.location.origin.
     const expectedOrigin = new URL(DYKIL_URL, window.location.href).origin;
 
-    // Reject anything not posted from the Dykil origin, from this
-    // accordion's own iframe. We previously checked
-    // event.origin.includes('dykil'), but Dykil is deployed under a path
-    // (e.g. dev-jin.imajin.ai/dykil/...) not a dedicated subdomain, so the
-    // origin doesn't contain 'dykil' and every postMessage was getting
-    // silently dropped — which is why ticket registrations stayed 'pending'
-    // even after the user submitted the survey. The origin check is the real
-    // security boundary; comparing event.source to the iframe's
-    // contentWindow additionally scopes accepted messages to this specific
-    // accordion's iframe.
-    const isTrustedMessage = (event: MessageEvent) =>
-      event.origin === expectedOrigin && event.source === iframeRef.current?.contentWindow;
-
     // Store hint for optimistic UI on other components
     const persistCompletionHint = () => {
       try { localStorage.setItem(storageKey, 'true'); } catch {}
@@ -147,7 +134,20 @@ export function SurveyAccordion({
     };
 
     const handleMessage = (event: MessageEvent) => {
-      if (!isTrustedMessage(event)) return;
+      // Reject anything not posted from the Dykil origin, from this
+      // accordion's own iframe. We previously checked
+      // event.origin.includes('dykil'), but Dykil is deployed under a path
+      // (e.g. dev-jin.imajin.ai/dykil/...) not a dedicated subdomain, so the
+      // origin doesn't contain 'dykil' and every postMessage was getting
+      // silently dropped — which is why ticket registrations stayed 'pending'
+      // even after the user submitted the survey. The origin comparison here
+      // (checked directly in the listener, not via a helper) is the real
+      // security boundary; comparing event.source to the iframe's
+      // contentWindow additionally scopes accepted messages to this specific
+      // accordion's iframe.
+      if (event.origin !== expectedOrigin || event.source !== iframeRef.current?.contentWindow) {
+        return;
+      }
 
       if (event.data.type === 'survey-height') {
         setIframeHeight(event.data.height + 40); // Add some padding
