@@ -37,7 +37,9 @@ export function parseArgs(argv) {
     throw new Error('--include-shared requires --owner <name>.');
   }
   if (owner && !ALL_OWNERS.has(owner)) {
-    throw new Error(`unknown owner "${owner}". Valid owners: ${[...ALL_OWNERS].sort().join(', ')}.`);
+    throw new Error(
+      `unknown owner "${owner}". Valid owners: ${[...ALL_OWNERS].sort((a, b) => a.localeCompare(b)).join(', ')}.`,
+    );
   }
 
   return { owner, includeShared };
@@ -61,7 +63,7 @@ export function scopeForOwner(content, owner, includeShared) {
 
   // Shared: touches more than one owner's schema (or none — the
   // conservative "unrecognized" case from classifyMigrationFile).
-  const owners = [...classification.owners].sort().join(', ') || '(none detected)';
+  const owners = [...classification.owners].sort((a, b) => a.localeCompare(b)).join(', ') || '(none detected)';
   if (owner === 'kernel' || includeShared) return { include: true };
   return {
     include: false,

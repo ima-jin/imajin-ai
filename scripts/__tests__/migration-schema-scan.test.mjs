@@ -10,9 +10,38 @@ import {
 import { APP_SCHEMAS } from '../lib/migration-ownership-parser.mjs';
 
 describe('detectTouchedSchemas', () => {
-  it('finds a schema referenced by a plain CREATE TABLE', () => {
-    const schemas = detectTouchedSchemas('CREATE TABLE IF NOT EXISTS links.pages (id INT);');
-    expect(schemas).toEqual(new Set(['links']));
+  it.each([
+    ['finds a schema referenced by a plain CREATE TABLE', 'CREATE TABLE IF NOT EXISTS links.pages (id INT);', ['links']],
+    [
+      'handles double-quoted schema-qualified identifiers',
+      'CREATE TABLE IF NOT EXISTS "relay"."relay_revocations" (cid text);',
+      ['relay'],
+    ],
+    [
+      // Regression test: 'market.sale' / 'learn.enrolled' are event_type data
+      // values in migrations/0039_seed_bus_chain_configs.sql, not table refs.
+      'does not treat a dot-namespaced string literal value as a schema reference',
+      `INSERT INTO kernel.bus_chain_configs (event_type) VALUES ('market.sale');`,
+      ['kernel'],
+    ],
+    [
+      'still scans inside a DO $$ ... $$ block (idempotent ALTER guards)',
+      `DO $$ BEGIN ALTER TABLE ONLY links.clicks ADD CONSTRAINT link_clicks_pkey PRIMARY KEY (id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      ['links'],
+    ],
+    [
+      'ignores a schema-like word inside a -- comment',
+      '-- references dykil.survey_responses for context\nCREATE TABLE IF NOT EXISTS events.real (id INT);',
+      ['events'],
+    ],
+    [
+      'ignores a schema-like word inside a block comment',
+      '/* auth.identities mentioned here */\nCREATE TABLE IF NOT EXISTS events.real (id INT);',
+      ['events'],
+    ],
+    ['returns an empty set when nothing schema-qualified is present', 'SELECT 1;', []],
+  ])('%s', (_name, sql, expected) => {
+    expect(detectTouchedSchemas(sql)).toEqual(new Set(expected));
   });
 
   it('finds a schema referenced only by DML (no DDL at all)', () => {
@@ -27,11 +56,6 @@ describe('detectTouchedSchemas', () => {
     expect(detectTouchedSchemas(sql)).toEqual(new Set(['dykil', 'events']));
   });
 
-  it('handles double-quoted schema-qualified identifiers', () => {
-    const sql = 'CREATE TABLE IF NOT EXISTS "relay"."relay_revocations" (cid text);';
-    expect(detectTouchedSchemas(sql)).toEqual(new Set(['relay']));
-  });
-
   it('does not treat a table alias as a schema reference', () => {
     // "tr" and "sr" are aliases, not schemas — must not appear in the result.
     const sql = 'SELECT tr.ticket_id, sr.id FROM events.ticket_registrations tr, dykil.survey_responses sr;';
@@ -39,32 +63,6 @@ describe('detectTouchedSchemas', () => {
     expect(schemas).toEqual(new Set(['events', 'dykil']));
     expect(schemas.has('tr')).toBe(false);
     expect(schemas.has('sr')).toBe(false);
-  });
-
-  it('does not treat a dot-namespaced string literal value as a schema reference', () => {
-    // Regression test: 'market.sale' / 'learn.enrolled' are event_type data
-    // values in migrations/0039_seed_bus_chain_configs.sql, not table refs.
-    const sql = `INSERT INTO kernel.bus_chain_configs (event_type) VALUES ('market.sale');`;
-    expect(detectTouchedSchemas(sql)).toEqual(new Set(['kernel']));
-  });
-
-  it('still scans inside a DO $$ ... $$ block (idempotent ALTER guards)', () => {
-    const sql = `DO $$ BEGIN ALTER TABLE ONLY links.clicks ADD CONSTRAINT link_clicks_pkey PRIMARY KEY (id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`;
-    expect(detectTouchedSchemas(sql)).toEqual(new Set(['links']));
-  });
-
-  it('ignores a schema-like word inside a -- comment', () => {
-    const sql = '-- references dykil.survey_responses for context\nCREATE TABLE IF NOT EXISTS events.real (id INT);';
-    expect(detectTouchedSchemas(sql)).toEqual(new Set(['events']));
-  });
-
-  it('ignores a schema-like word inside a block comment', () => {
-    const sql = '/* auth.identities mentioned here */\nCREATE TABLE IF NOT EXISTS events.real (id INT);';
-    expect(detectTouchedSchemas(sql)).toEqual(new Set(['events']));
-  });
-
-  it('returns an empty set when nothing schema-qualified is present', () => {
-    expect(detectTouchedSchemas('SELECT 1;')).toEqual(new Set());
   });
 });
 

@@ -299,7 +299,7 @@ function checkSharedSchemaViolation(filePath, sql, isNew, allowlist) {
 
   return (
     `${filePath}: new migration touches more than one owner's schema ` +
-    `(${[...owners].sort().join(', ')}). A migration may only create, alter, or otherwise touch one ` +
+    `(${[...owners].sort((a, b) => a.localeCompare(b)).join(', ')}). A migration may only create, alter, or otherwise touch one ` +
     `owner's schema — split this into one file per owner. If this is a deliberate, reviewed exception ` +
     `(e.g. a one-time cross-owner data migration), add "${basename(filePath)}" to migrations/ownership.json's ` +
     `"sharedMigrationAllowlist" in this same PR.`

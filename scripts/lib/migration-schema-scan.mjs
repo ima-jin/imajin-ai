@@ -40,7 +40,7 @@
  * caught by `scripts/__tests__/migration-schema-scan.test.mjs`.
  */
 
-import { APP_SCHEMAS, inferOwnerForSchema } from './migration-ownership-parser.mjs';
+import { APP_SCHEMAS, inferOwnerForSchema, stripSqlComments } from './migration-ownership-parser.mjs';
 
 /**
  * Every schema that belongs to the kernel monolith (see
@@ -77,99 +77,18 @@ const SCHEMA_ALTERNATION = [...ALL_SCHEMAS].join('|');
 // Group 1: the character before the match (or start-of-string), kept out of
 // the schema name itself so e.g. "mykernel.foo" doesn't match "kernel".
 // Group 2: the schema name. Quotes around it are optional and not captured.
-const SCHEMA_REF_RE = new RegExp(`(^|[^A-Za-z0-9_])"?(${SCHEMA_ALTERNATION})"?\\.`, 'gi');
-
-// ── comment + string-literal stripping (schema-scan variant) ───────────────
-//
-// Structurally the same state machine as `stripSqlComments`, except
-// single-quoted string literal *contents* are blanked (replaced with `''`)
-// instead of preserved — see the module doc comment for why.
-
-function consumeStringLiteralBlanked(sql, i) {
-  let j = i + 1;
-  while (j < sql.length) {
-    if (sql[j] === "'" && sql[j + 1] === "'") {
-      j += 2;
-      continue;
-    }
-    if (sql[j] === "'") {
-      j += 1;
-      break;
-    }
-    j += 1;
-  }
-  return { text: "''", next: j };
-}
-
-function matchDollarQuoteTag(sql, i) {
-  if (sql[i] !== '$') return null;
-  const closingDollar = sql.indexOf('$', i + 1);
-  if (closingDollar === -1) return null;
-  const tagBody = sql.slice(i + 1, closingDollar);
-  const isValidTag = tagBody === '' || /^[A-Za-z_]\w*$/.test(tagBody);
-  return isValidTag ? sql.slice(i, closingDollar + 1) : null;
-}
-
-/** Dollar-quoted bodies are passed through untouched — they routinely contain real schema-qualified SQL (see module doc comment). */
-function consumeDollarQuotedString(sql, i, tag) {
-  const closeIndex = sql.indexOf(tag, i + tag.length);
-  const end = closeIndex === -1 ? sql.length : closeIndex + tag.length;
-  return { text: sql.slice(i, end), next: end };
-}
-
-function consumeLineComment(sql, i) {
-  let j = i;
-  while (j < sql.length && sql[j] !== '\n') j += 1;
-  return j;
-}
-
-function consumeBlockComment(sql, i) {
-  let j = i + 2;
-  while (j < sql.length && !(sql[j] === '*' && sql[j + 1] === '/')) j += 1;
-  return Math.min(j + 2, sql.length);
-}
+const SCHEMA_REF_RE = new RegExp(String.raw`(^|[^A-Za-z0-9_])"?(${SCHEMA_ALTERNATION})"?\.`, 'gi');
 
 /**
  * Strips `--`/`/* *\/` comments and blanks single-quoted string literal
- * contents, while passing `$$...$$` dollar-quoted bodies through verbatim.
- * Exported for testing; `detectTouchedSchemas`/`detectTouchedOwners` are
- * the intended public entry points.
+ * contents, while passing `$$...$$` dollar-quoted bodies through verbatim
+ * — a thin wrapper over the shared
+ * `stripSqlComments(sql, { blankStringLiterals: true })`. Exported for
+ * testing; `detectTouchedSchemas`/`detectTouchedOwners` are the intended
+ * public entry points.
  */
 export function maskForSchemaScan(sql) {
-  let out = '';
-  let i = 0;
-
-  while (i < sql.length) {
-    if (sql[i] === "'") {
-      const { text, next } = consumeStringLiteralBlanked(sql, i);
-      out += text;
-      i = next;
-      continue;
-    }
-
-    const dollarTag = matchDollarQuoteTag(sql, i);
-    if (dollarTag) {
-      const { text, next } = consumeDollarQuotedString(sql, i, dollarTag);
-      out += text;
-      i = next;
-      continue;
-    }
-
-    if (sql[i] === '-' && sql[i + 1] === '-') {
-      i = consumeLineComment(sql, i);
-      continue;
-    }
-
-    if (sql[i] === '/' && sql[i + 1] === '*') {
-      i = consumeBlockComment(sql, i);
-      continue;
-    }
-
-    out += sql[i];
-    i += 1;
-  }
-
-  return out;
+  return stripSqlComments(sql, { blankStringLiterals: true });
 }
 
 /** Every distinct schema name (lowercased) referenced anywhere in `sql`, DDL or DML. */
