@@ -401,57 +401,43 @@ describe('decideOperatorApproval', () => {
       expect(mockVerifyOperatorCountersignature).not.toHaveBeenCalled();
     });
 
-    it('verifies, persists, and publishes a valid operatorSignature using the client-claimed decidedAt (happy path)', async () => {
-      const decidedAt = recentDecidedAt();
-      mockVerifyOperatorCountersignature.mockResolvedValueOnce({ ok: true });
-      mockSelectLimit
-        .mockResolvedValueOnce([row({ status: 'pending' })])
-        .mockResolvedValueOnce([row({ status: 'approved' })]);
+    // Happy path for both approve and withdrawn — parameterized (rather than
+    // two near-identical bodies) to keep this under SonarCloud's duplicated-
+    // lines guard on new code.
+    it.each([
+      { decision: 'approve' as const, fromStatus: 'pending' as const, toStatus: 'approved' as const },
+      { decision: 'withdrawn' as const, fromStatus: 'approved' as const, toStatus: 'withdrawn' as const },
+    ])(
+      'verifies, persists, and publishes a valid operatorSignature for decision=$decision using the client-claimed decidedAt',
+      async ({ decision, fromStatus, toStatus }) => {
+        const decidedAt = recentDecidedAt();
+        mockVerifyOperatorCountersignature.mockResolvedValueOnce({ ok: true });
+        mockSelectLimit
+          .mockResolvedValueOnce([row({ status: fromStatus })])
+          .mockResolvedValueOnce([row({ status: toStatus })]);
 
-      const result = await decideOperatorApproval({
-        proposalId: PROPOSAL_ID,
-        operatorDid: OPERATOR_DID,
-        decision: 'approve',
-        operatorSignature: OPERATOR_SIG,
-        decidedAt,
-      });
+        const result = await decideOperatorApproval({
+          proposalId: PROPOSAL_ID,
+          operatorDid: OPERATOR_DID,
+          decision,
+          operatorSignature: OPERATOR_SIG,
+          decidedAt,
+        });
 
-      expect(result.ok).toBe(true);
-      expect(mockVerifyOperatorCountersignature).toHaveBeenCalledWith(
-        OPERATOR_DID,
-        expect.objectContaining({ decision: 'approve', decidedAt }),
-        OPERATOR_SIG,
-      );
-      expect(mockPublish).toHaveBeenCalledWith(
-        'operator.approval.decided',
-        expect.objectContaining({
-          payload: expect.objectContaining({ decidedAt, operatorSignature: OPERATOR_SIG }),
-        }),
-      );
-    });
-
-    it('verifies operatorSignature on the withdraw path too', async () => {
-      const decidedAt = recentDecidedAt();
-      mockVerifyOperatorCountersignature.mockResolvedValueOnce({ ok: true });
-      mockSelectLimit
-        .mockResolvedValueOnce([row({ status: 'approved' })])
-        .mockResolvedValueOnce([row({ status: 'withdrawn' })]);
-
-      const result = await decideOperatorApproval({
-        proposalId: PROPOSAL_ID,
-        operatorDid: OPERATOR_DID,
-        decision: 'withdrawn',
-        operatorSignature: OPERATOR_SIG,
-        decidedAt,
-      });
-
-      expect(result.ok).toBe(true);
-      expect(mockVerifyOperatorCountersignature).toHaveBeenCalledWith(
-        OPERATOR_DID,
-        expect.objectContaining({ decision: 'withdrawn' }),
-        OPERATOR_SIG,
-      );
-    });
+        expect(result.ok).toBe(true);
+        expect(mockVerifyOperatorCountersignature).toHaveBeenCalledWith(
+          OPERATOR_DID,
+          expect.objectContaining({ decision, decidedAt }),
+          OPERATOR_SIG,
+        );
+        expect(mockPublish).toHaveBeenCalledWith(
+          'operator.approval.decided',
+          expect.objectContaining({
+            payload: expect.objectContaining({ decidedAt, operatorSignature: OPERATOR_SIG }),
+          }),
+        );
+      },
+    );
 
     it('rejects (400) a kernel-forged withdrawal with no operatorSignature once the flag is on', async () => {
       mockIsOperatorCountersignRequired.mockReturnValueOnce(true);
