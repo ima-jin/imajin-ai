@@ -124,6 +124,28 @@ changed or added in a PR (`git diff origin/main...HEAD -- migrations/`):
 Wired into CI as `pnpm check:migration-ownership`, a step in the
 `lint-and-typecheck` job in `.github/workflows/ci.yml`.
 
+### Environment variables
+
+The guard (`scripts/check-migration-ownership.mjs`) reads two optional
+environment variables; neither is set by CI today, since the defaults are
+already correct for how `ci.yml` checks out a PR:
+
+- `MIGRATION_OWNERSHIP_BASE_REF` — the git ref to diff `HEAD` against.
+  Defaults to `origin/main`, which is what every PR in this repo targets, so
+  CI never needs to set it. Override it for local runs against a different
+  base branch, or in tests that diff between two commits in a scratch repo
+  (see `scripts/__tests__/check-migration-ownership.test.mjs`).
+- `GIT_BIN` — absolute path to the `git` binary. Defaults to the first of
+  `/usr/bin/git`, `/usr/local/bin/git`, `/opt/homebrew/bin/git`, `/bin/git`
+  that exists (git is resolved to an absolute path rather than found via
+  `PATH` — SonarCloud S4036). Override only if `git` lives somewhere else
+  entirely.
+
+`CI_GUARD_WORKDIR` (repo root, defaults to two directories up from the
+script) is the same override every other `scripts/ci-guard-*.mjs` in this
+repo already supports, for the same reason: tests point it at a scratch
+directory instead of the real checkout.
+
 ## Gaps
 
 Ownership assignment above was unambiguous for every table (all names are

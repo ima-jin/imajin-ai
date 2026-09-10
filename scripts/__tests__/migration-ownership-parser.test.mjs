@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   parseStatements,
   stripSqlComments,
   inferOwnerForSchema,
+  buildOwnershipMap,
   ALL_OWNERS,
   APP_SCHEMAS,
   BUCKET_FOR_KIND,
@@ -94,6 +98,34 @@ describe('stripSqlComments', () => {
     expect(cleaned).toContain("'a--b'");
     expect(cleaned).toContain('CREATE TABLE events.real');
   });
+
+  it('treats $$...$$ as an opaque string, preserving -- and /* */ markers inside it verbatim', () => {
+    const sql =
+      'CREATE OR REPLACE FUNCTION registry.f() RETURNS INT LANGUAGE plpgsql AS $$\n' +
+      '-- not a real comment\n' +
+      '/* not a real block comment */\n' +
+      'BEGIN RETURN 1; END;\n' +
+      '$$;\n' +
+      'CREATE TABLE events.real (id INT);';
+
+    const cleaned = stripSqlComments(sql);
+    expect(cleaned).toContain('-- not a real comment');
+    expect(cleaned).toContain('/* not a real block comment */');
+
+    const statements = parseStatements(sql);
+    expect(statements.map((s) => s.name)).toEqual(expect.arrayContaining(['f', 'real']));
+  });
+
+  it('supports a tagged dollar-quote delimiter ($tag$...$tag$)', () => {
+    const cleaned = stripSqlComments('SELECT $tag$literal -- text$tag$;');
+    expect(cleaned).toContain('literal -- text');
+  });
+
+  it('does not misidentify a bare "$" as a dollar-quote delimiter', () => {
+    const cleaned = stripSqlComments("SELECT '$' || col FROM t; -- trailing comment\nCREATE TABLE events.real (id INT);");
+    expect(cleaned).not.toContain('trailing comment');
+    expect(cleaned).toContain('CREATE TABLE events.real');
+  });
 });
 
 describe('inferOwnerForSchema', () => {
@@ -106,6 +138,56 @@ describe('inferOwnerForSchema', () => {
   it('maps every other schema to kernel', () => {
     expect(inferOwnerForSchema('auth')).toBe('kernel');
     expect(inferOwnerForSchema('public')).toBe('kernel');
+  });
+});
+
+describe('buildOwnershipMap', () => {
+  function makeMigrationsDir(files) {
+    const dir = mkdtempSync(join(tmpdir(), 'ownership-map-'));
+    for (const [filename, content] of Object.entries(files)) {
+      writeFileSync(join(dir, filename), content, 'utf8');
+    }
+    return dir;
+  }
+
+  it('registers a created table with its first migration and inferred owner', () => {
+    const dir = makeMigrationsDir({ '0001_seed.sql': 'CREATE TABLE IF NOT EXISTS coffee.pages (id INT);' });
+    const entries = buildOwnershipMap(dir);
+    expect(entries.get('table:coffee.pages')).toMatchObject({ owner: 'coffee', firstMigration: '0001_seed.sql' });
+  });
+
+  it('removes a table from the map once a later migration drops it', () => {
+    const dir = makeMigrationsDir({
+      '0001_seed.sql': 'CREATE TABLE IF NOT EXISTS events.old_table (id INT);',
+      '0002_drop.sql': 'DROP TABLE IF EXISTS events.old_table;',
+    });
+    const entries = buildOwnershipMap(dir);
+    expect(entries.has('table:events.old_table')).toBe(false);
+  });
+
+  it('carries a renamed table forward under its new name, keeping the original firstMigration', () => {
+    const dir = makeMigrationsDir({
+      '0001_seed.sql': 'CREATE TABLE IF NOT EXISTS coffee.old_name (id INT);',
+      '0002_rename.sql': 'ALTER TABLE coffee.old_name RENAME TO new_name;',
+    });
+    const entries = buildOwnershipMap(dir);
+    expect(entries.has('table:coffee.old_name')).toBe(false);
+    expect(entries.get('table:coffee.new_name')).toMatchObject({ owner: 'coffee', firstMigration: '0001_seed.sql' });
+  });
+
+  it('treats a rename of an unregistered table as a no-op', () => {
+    const dir = makeMigrationsDir({ '0001_rename.sql': 'ALTER TABLE coffee.ghost RENAME TO renamed_ghost;' });
+    const entries = buildOwnershipMap(dir);
+    expect(entries.size).toBe(0);
+  });
+
+  it('keeps the first CREATE when the same table is (idempotently) created again later', () => {
+    const dir = makeMigrationsDir({
+      '0001_seed.sql': 'CREATE TABLE IF NOT EXISTS coffee.pages (id INT);',
+      '0002_seed_again.sql': 'CREATE TABLE IF NOT EXISTS coffee.pages (id INT, extra TEXT);',
+    });
+    const entries = buildOwnershipMap(dir);
+    expect(entries.get('table:coffee.pages').firstMigration).toBe('0001_seed.sql');
   });
 });
 

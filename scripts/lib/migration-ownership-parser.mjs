@@ -49,56 +49,121 @@ export function inferOwnerForSchema(schema) {
   return 'kernel';
 }
 
+// ── stripSqlComments: one small helper per token kind ───────────────────────
+//
+// Each helper below "consumes" exactly one kind of token starting at index
+// `i` and returns where to resume from, so the dispatcher itself stays a
+// flat sequence of independent `if`s (no nesting) and each helper is a
+// single, easily-verified state machine.
+
+/** Consumes a `'...'` string literal (with `''` as an escaped quote). Copied verbatim — never scanned for comments. */
+function consumeStringLiteral(sql, i) {
+  let j = i + 1;
+  while (j < sql.length) {
+    if (sql[j] === "'" && sql[j + 1] === "'") {
+      j += 2;
+      continue;
+    }
+    if (sql[j] === "'") {
+      j += 1;
+      break;
+    }
+    j += 1;
+  }
+  return { text: sql.slice(i, j), next: j };
+}
+
 /**
- * Strip `--` line comments and block comments from SQL text while tracking
- * single-quoted string state, so a comment marker inside a string literal
- * (e.g. a default value) is never mistaken for a real comment. Newlines are
- * preserved so downstream line-number reporting stays accurate.
+ * Matches a dollar-quote delimiter (`$$` or `$tag$`) starting at `sql[i]`.
+ * Returns the full delimiter string, or `null` if `i` isn't one.
+ */
+function matchDollarQuoteTag(sql, i) {
+  if (sql[i] !== '$') return null;
+  const closingDollar = sql.indexOf('$', i + 1);
+  if (closingDollar === -1) return null;
+  const tagBody = sql.slice(i + 1, closingDollar);
+  const isValidTag = tagBody === '' || /^[A-Za-z_][A-Za-z0-9_]*$/.test(tagBody);
+  return isValidTag ? sql.slice(i, closingDollar + 1) : null;
+}
+
+/**
+ * Consumes a `$$...$$` / `$tag$...$tag$` dollar-quoted string (e.g. a
+ * plpgsql function body). Copied verbatim, unscanned — to the outer SQL
+ * lexer this is one opaque string token, exactly like `'...'`, so a `--` or
+ * `/* *\/` written inside a function body is never treated as a comment by
+ * this preprocessor.
+ */
+function consumeDollarQuotedString(sql, i, tag) {
+  const closeIndex = sql.indexOf(tag, i + tag.length);
+  const end = closeIndex === -1 ? sql.length : closeIndex + tag.length;
+  return { text: sql.slice(i, end), next: end };
+}
+
+/** Consumes a `-- ...` line comment through end-of-line (exclusive). Returns the resume index. */
+function consumeLineComment(sql, i) {
+  let j = i;
+  while (j < sql.length && sql[j] !== '\n') j += 1;
+  return j;
+}
+
+/** Consumes a `/* ... *\/` block comment. Newlines inside are preserved (as blank text) so line numbers stay accurate. */
+function consumeBlockComment(sql, i) {
+  let j = i + 2;
+  let text = '';
+  while (j < sql.length && !(sql[j] === '*' && sql[j + 1] === '/')) {
+    if (sql[j] === '\n') text += '\n';
+    j += 1;
+  }
+  return { text, next: Math.min(j + 2, sql.length) };
+}
+
+/**
+ * Strips `--` line comments and `/* *\/` block comments from SQL text,
+ * while passing `'...'` string literals and `$$...$$` dollar-quoted strings
+ * through untouched (so a comment marker inside either is never mistaken
+ * for a real comment). Newlines are preserved so downstream line-number
+ * reporting stays accurate.
  */
 export function stripSqlComments(sql) {
   let out = '';
   let i = 0;
-  let inString = false;
+
   while (i < sql.length) {
-    const ch = sql[i];
-    const next = sql[i + 1];
-    if (inString) {
-      out += ch;
-      if (ch === "'" && next === "'") {
-        out += next;
-        i += 2;
-        continue;
-      }
-      if (ch === "'") inString = false;
-      i += 1;
+    if (sql[i] === "'") {
+      const { text, next } = consumeStringLiteral(sql, i);
+      out += text;
+      i = next;
       continue;
     }
-    if (ch === "'") {
-      inString = true;
-      out += ch;
-      i += 1;
+
+    const dollarTag = matchDollarQuoteTag(sql, i);
+    if (dollarTag) {
+      const { text, next } = consumeDollarQuotedString(sql, i, dollarTag);
+      out += text;
+      i = next;
       continue;
     }
-    if (ch === '-' && next === '-') {
-      while (i < sql.length && sql[i] !== '\n') i += 1;
+
+    if (sql[i] === '-' && sql[i + 1] === '-') {
+      i = consumeLineComment(sql, i);
       continue;
     }
-    if (ch === '/' && next === '*') {
-      i += 2;
-      while (i < sql.length && !(sql[i] === '*' && sql[i + 1] === '/')) {
-        if (sql[i] === '\n') out += '\n';
-        i += 1;
-      }
-      i += 2;
+
+    if (sql[i] === '/' && sql[i + 1] === '*') {
+      const { text, next } = consumeBlockComment(sql, i);
+      out += text;
+      i = next;
       continue;
     }
-    out += ch;
+
+    out += sql[i];
     i += 1;
   }
+
   return out;
 }
 
-const NAME = String.raw`"?([A-Za-z_][A-Za-z0-9_]*)"?`;
+const NAME = '"?([A-Za-z_][A-Za-z0-9_]*)"?';
 const QUALIFIED = String.raw`${NAME}(?:\.${NAME})?`;
 const OPTIONAL_IF_NOT_EXISTS = String.raw`(?:IF\s+NOT\s+EXISTS\s+)?`;
 const OPTIONAL_IF_EXISTS = String.raw`(?:IF\s+EXISTS\s+)?`;
@@ -205,6 +270,54 @@ export function listMigrationFiles(dir) {
     .sort();
 }
 
+/** Builds the `${kind}:${schema}.${name}` key an entry is stored under (kind-prefixed so a table and a same-named function never collide). */
+function keyFor(kind, schema, name) {
+  return `${kind}:${schema}.${name}`;
+}
+
+/** Registers a newly-created identity, unless one is already registered under this key (first CREATE wins — matches migration application order). */
+function applyCreate(entries, stmt, filename, key) {
+  if (entries.has(key)) return;
+  entries.set(key, {
+    kind: stmt.kind,
+    schema: stmt.schema,
+    name: stmt.name,
+    owner: inferOwnerForSchema(stmt.schema),
+    firstMigration: filename,
+    notes: '',
+  });
+}
+
+/** Removes a dropped identity from the map, if it was registered. */
+function applyDrop(entries, key) {
+  entries.delete(key);
+}
+
+/** Moves a renamed identity to its new key, preserving its original `firstMigration`. A no-op if the old name wasn't registered. */
+function applyRename(entries, stmt, key) {
+  const existing = entries.get(key);
+  if (!existing) return;
+  const newKey = keyFor(stmt.kind, stmt.schema, stmt.renameTo);
+  entries.delete(key);
+  entries.set(newKey, { ...existing, name: stmt.renameTo });
+}
+
+/** Classifies one parsed statement and applies its effect (create/drop/rename) to `entries`. */
+function applyStatement(entries, stmt, filename) {
+  const key = keyFor(stmt.kind, stmt.schema, stmt.name);
+  if (stmt.action === 'create') return applyCreate(entries, stmt, filename, key);
+  if (stmt.action === 'drop') return applyDrop(entries, key);
+  if (stmt.action === 'rename') return applyRename(entries, stmt, key);
+}
+
+/** Parses one migration file and applies every statement it contains to `entries`, in source order. */
+function applyMigrationFile(entries, migrationsDir, filename) {
+  const sql = readFileSync(join(migrationsDir, filename), 'utf8');
+  for (const stmt of parseStatements(sql)) {
+    applyStatement(entries, stmt, filename);
+  }
+}
+
 /**
  * Build the full ownership map by replaying every migration file in order.
  * Returns a Map keyed by `${kind}:${schema}.${name}` (kind-prefixed so a
@@ -213,43 +326,8 @@ export function listMigrationFiles(dir) {
 export function buildOwnershipMap(migrationsDir, files = listMigrationFiles(migrationsDir)) {
   const entries = new Map();
 
-  const keyFor = (kind, schema, name) => `${kind}:${schema}.${name}`;
-
   for (const filename of files) {
-    const sql = readFileSync(join(migrationsDir, filename), 'utf8');
-    const statements = parseStatements(sql);
-
-    for (const stmt of statements) {
-      const key = keyFor(stmt.kind, stmt.schema, stmt.name);
-
-      if (stmt.action === 'create') {
-        if (!entries.has(key)) {
-          entries.set(key, {
-            kind: stmt.kind,
-            schema: stmt.schema,
-            name: stmt.name,
-            owner: inferOwnerForSchema(stmt.schema),
-            firstMigration: filename,
-            notes: '',
-          });
-        }
-        continue;
-      }
-
-      if (stmt.action === 'drop') {
-        entries.delete(key);
-        continue;
-      }
-
-      if (stmt.action === 'rename') {
-        const existing = entries.get(key);
-        if (existing) {
-          const newKey = keyFor(stmt.kind, stmt.schema, stmt.renameTo);
-          entries.delete(key);
-          entries.set(newKey, { ...existing, name: stmt.renameTo });
-        }
-      }
-    }
+    applyMigrationFile(entries, migrationsDir, filename);
   }
 
   return entries;
