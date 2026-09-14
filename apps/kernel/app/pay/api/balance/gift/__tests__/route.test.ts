@@ -16,7 +16,24 @@
  * guard passed, `[]` means it failed (insufficient balance).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { jsonPostRequest, resetMockDbCallState } from '@/src/lib/pay/__tests__/mock-drizzle-table';
+
+const dialect = new PgDialect();
+
+/**
+ * Decode the numeric amount actually bound into a guarded UPDATE's SET
+ * clause (`sql\`${balances.amount} - ${amountStr}\``) — the amount is the
+ * last bound param regardless of whether `balances.amount` resolves to a
+ * real Drizzle column or (as in this shared mock) a plain string; either
+ * way the interpolated value itself is preserved as a bind param. Used to
+ * assert the debited amount is supply-neutral: exactly what recipients
+ * were credited, not just "some debit happened" (#2018 review round 2).
+ */
+function decodedDebitAmount(values: Record<string, unknown>): string {
+  const { params } = dialect.sqlToQuery(values.amount as Parameters<PgDialect['sqlToQuery']>[0]);
+  return String(params[params.length - 1]);
+}
 
 const state = vi.hoisted(() => ({
   insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
@@ -87,7 +104,10 @@ describe('POST /api/balance/gift — per-unit balance writes (#2016)', () => {
     const body = await res.json();
     expect(body.error).toMatch(/Insufficient MJN balance/);
     expect(state.updateCalls).toHaveLength(1);
-    expect(state.insertCalls).toHaveLength(0);
+    // Rollback evidence: no balance credit and no transaction row were ever
+    // issued — the throw happens before the recipient-credit loop runs.
+    expect(state.insertCalls.filter((c) => c.table === 'balances')).toHaveLength(0);
+    expect(state.insertCalls.filter((c) => c.table !== 'balances')).toHaveLength(0);
   });
 
   it('rejects insufficient MJNx balance with a 402, never a mint, rolling back the already-succeeded MJN debit (#2018)', async () => {
@@ -105,7 +125,11 @@ describe('POST /api/balance/gift — per-unit balance writes (#2016)', () => {
     // Both guarded UPDATEs were attempted (MJN passed, MJNx failed), but the
     // throw happens before any recipient row is written.
     expect(state.updateCalls).toHaveLength(2);
-    expect(state.insertCalls).toHaveLength(0);
+    // Rollback evidence: no credit statement (balance insert) and no
+    // transaction row exist for this request — not even for the MJN leg
+    // whose guarded UPDATE alone had succeeded.
+    expect(state.insertCalls.filter((c) => c.table === 'balances')).toHaveLength(0);
+    expect(state.insertCalls.filter((c) => c.table !== 'balances')).toHaveLength(0);
   });
 
   it('writes an MJN transaction + balance credit for the cash leg only', async () => {
@@ -161,6 +185,50 @@ describe('POST /api/balance/gift — per-unit balance writes (#2016)', () => {
         expect.objectContaining({ unit: 'MJNx', amount: '5' }),
       ]),
     );
+
+    // Supply-neutral: the actual numeric amount bound into each guarded
+    // UPDATE's SET clause (not just "an update happened") equals exactly
+    // what was credited in that unit. `debitFundedLegs` always attempts MJN
+    // before MJNx, so update index 0/1 map to those legs in order.
+    expect(decodedDebitAmount(state.updateCalls[0].values)).toBe('10');
+    expect(decodedDebitAmount(state.updateCalls[1].values)).toBe('5');
+  });
+
+  it('debits the business by exactly the SUM of what all recipients receive, per unit (supply-neutral across multiple recipients) (#2018 review round 2)', async () => {
+    state.returningQueue.push(
+      [{ did: FROM_DID, unit: 'MJN', amount: '75', currency: 'CAD' }],
+      [{ did: FROM_DID, unit: 'MJNx', amount: '92', currency: 'CAD' }],
+    );
+    const res = await POST(
+      makeRequest({
+        from_did: FROM_DID,
+        recipients: [
+          { did: 'did:imajin:r1', cash_amount: 10, credit_amount: 5 },
+          { did: 'did:imajin:r2', cash_amount: 15, credit_amount: 3 },
+        ],
+      }) as never,
+    );
+
+    expect(res.status).toBe(200);
+    expect(state.updateCalls).toHaveLength(2);
+
+    const mjnDebit = decodedDebitAmount(state.updateCalls[0].values);
+    const mjnxDebit = decodedDebitAmount(state.updateCalls[1].values);
+
+    const balanceCredits = state.insertCalls.filter((c) => c.table === 'balances');
+    const mjnCredited = balanceCredits
+      .filter((c) => c.values.unit === 'MJN')
+      .reduce((sum, c) => sum + Number(c.values.amount), 0);
+    const mjnxCredited = balanceCredits
+      .filter((c) => c.values.unit === 'MJNx')
+      .reduce((sum, c) => sum + Number(c.values.amount), 0);
+
+    // The number actually debited equals the SUM credited across BOTH
+    // recipients — not just one recipient's amount — in each unit.
+    expect(Number(mjnDebit)).toBe(mjnCredited);
+    expect(Number(mjnxDebit)).toBe(mjnxCredited);
+    expect(mjnDebit).toBe('25');
+    expect(mjnxDebit).toBe('8');
   });
 
   it('skips a recipient whose gift amounts are both zero', async () => {

@@ -4,13 +4,25 @@
  * These exercise the pure validation helpers directly, and the DB-touching
  * helpers (`getBalanceRow`, `getBalances`, `creditUnit`, `debitUnit`)
  * against a minimal fake Drizzle-style executor.
+ *
+ * #2018 review (round 2): the mocked `balances` below is the REAL schema
+ * table (real `Column` objects), not a `{ did: 'did', unit: 'unit', ... }`
+ * plain-string stand-in. That distinction matters here: `eq`/`gte`/`and`
+ * only emit real column-referencing SQL (`"amount" >= $3`) when given real
+ * `Column`s — with plain strings, both sides of every comparison get bound
+ * as opaque params and the WHERE clause text says nothing about which
+ * columns or operators were used. `debitUnitIfSufficient`'s guard tests
+ * below decode the actual WHERE clause via `PgDialect().sqlToQuery()` and
+ * assert its exact text/params, so the guard predicate itself — not just
+ * "an UPDATE happened" — is under test.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
-vi.mock('@/src/db', () => ({
-  db: {},
-  balances: { did: 'did', unit: 'unit', amount: 'amount' },
-}));
+vi.mock('@/src/db', async () => {
+  const { balances } = await import('@/src/db/schemas/pay');
+  return { db: {}, balances };
+});
 
 import {
   MJN,
@@ -95,7 +107,10 @@ function makeExecutor(
   returningRows?: Array<Array<Record<string, unknown>>>,
 ) {
   const insertCalls: Array<{ values: Record<string, unknown>; conflict?: unknown }> = [];
-  const updateCalls: Array<{ values: Record<string, unknown> }> = [];
+  // `where` captures the actual condition object passed to `.where(...)` —
+  // needed to decode the guard predicate itself (see the `debitUnitIfSufficient`
+  // WHERE-clause tests below), not just record that an UPDATE happened.
+  const updateCalls: Array<{ values: Record<string, unknown>; where?: unknown }> = [];
   const returningQueue = returningRows ? [...returningRows] : undefined;
 
   const executor = {
@@ -124,9 +139,13 @@ function makeExecutor(
     }),
     update: () => ({
       set: (values: Record<string, unknown>) => {
-        updateCalls.push({ values });
+        const record: { values: Record<string, unknown>; where?: unknown } = { values };
+        updateCalls.push(record);
         return {
-          where: () => guardedUpdateResult(returningQueue ? (returningQueue.shift() ?? []) : [{}]),
+          where: (cond?: unknown) => {
+            record.where = cond;
+            return guardedUpdateResult(returningQueue ? (returningQueue.shift() ?? []) : [{}]);
+          },
         };
       },
     }),
@@ -134,6 +153,8 @@ function makeExecutor(
 
   return { executor, insertCalls, updateCalls };
 }
+
+const dialect = new PgDialect();
 
 describe('getBalanceRow / getBalances', () => {
   it('returns undefined when no row matches', async () => {
@@ -215,6 +236,33 @@ describe('debitUnitIfSufficient (#2018: guarded conditional UPDATE, closes the T
     // The guarded UPDATE is still issued — the guard lives IN the statement,
     // not as a separate pre-check.
     expect(updateCalls).toHaveLength(1);
+  });
+
+  it("the guarded UPDATE's WHERE clause is did AND unit AND amount >= the requested amount — the guard lives in the statement's predicate, not a separate JS comparison (#2018 review round 2)", async () => {
+    const { executor, updateCalls } = makeExecutor([], [[{}]]);
+    // @ts-expect-error minimal fake executor
+    await debitUnitIfSufficient(executor, 'did:imajin:x', MJNX, '12.5');
+
+    expect(updateCalls).toHaveLength(1);
+    const where = dialect.sqlToQuery(updateCalls[0].where as Parameters<PgDialect['sqlToQuery']>[0]);
+
+    // Exact text + params, not a loose substring match. This is the
+    // regression guard the review asked for: if `gte(balances.amount,
+    // amountStr)` were ever dropped from `debitUnitIfSufficient` (reverting
+    // to "read the balance in JS, then debit unconditionally" — the TOCTOU
+    // shape #2018 exists to close), the WHERE clause collapses from three
+    // conditions to two and this exact-match assertion fails.
+    expect(where.sql).toBe(
+      '("pay"."balances"."did" = $1 and "pay"."balances"."unit" = $2 and "pay"."balances"."amount" >= $3)',
+    );
+    expect(where.params).toEqual(['did:imajin:x', 'MJNx', '12.5']);
+
+    // The SET clause debits exactly the requested amount — same statement,
+    // same guarded amount, so a caller can never observe a debit larger than
+    // what the WHERE clause just proved was available.
+    const set = dialect.sqlToQuery(updateCalls[0].values.amount as Parameters<PgDialect['sqlToQuery']>[0]);
+    expect(set.sql).toBe('"pay"."balances"."amount" - $1');
+    expect(set.params).toEqual(['12.5']);
   });
 });
 
