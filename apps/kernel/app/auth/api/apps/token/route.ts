@@ -27,6 +27,7 @@ import { eq, and } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { verifySignature } from '@/src/lib/auth/crypto';
 import { createAppToken } from '@/src/lib/auth/jwt';
+import { resolveActiveAppByAudience, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -91,6 +92,14 @@ export async function POST(request: NextRequest) {
   }
   if (app.status !== 'active') {
     return NextResponse.json({ error: 'App is not active' }, { status: 403, headers: cors });
+  }
+
+  // #1990: when the caller names a specific resource audience, it must
+  // itself be a registered, active app — an arbitrary string can no longer
+  // stand in for a resource server. Omitting `aud` keeps the pre-existing
+  // generic 'imajin:apps' default (createAppToken's fallback) untouched.
+  if (aud && !(await resolveActiveAppByAudience(aud))) {
+    return appNotRegisteredResponse(request);
   }
 
   const challenge = `${appDid}:${attestationId}:${nonce}:${timestamp}`;

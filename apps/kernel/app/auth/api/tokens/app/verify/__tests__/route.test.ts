@@ -4,7 +4,7 @@
  * Stateless verification counterpart to POST /auth/api/tokens/app. This is
  * the endpoint @imajin/auth's `verifyAppToken` calls into.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('next/server', () => ({
   NextResponse: {
@@ -16,6 +16,16 @@ vi.mock('next/server', () => ({
   },
 }));
 vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
+
+const mocks = vi.hoisted(() => ({ resolveActiveAppByAudienceMock: vi.fn() }));
+vi.mock('@/src/lib/kernel/app-registry', () => ({
+  resolveActiveAppByAudience: mocks.resolveActiveAppByAudienceMock,
+  appNotRegisteredResponse: () =>
+    new Response(JSON.stringify({ error: 'app_not_registered', error_description: 'not registered' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+}));
 
 import { createSessionAppToken } from '@/src/lib/auth/jwt';
 import { POST } from '../route';
@@ -30,6 +40,16 @@ function verifyRequest(body: Record<string, unknown>): Request {
     body: JSON.stringify(body),
   });
 }
+
+beforeEach(() => {
+  mocks.resolveActiveAppByAudienceMock.mockReset().mockResolvedValue({
+    id: 'app_first_party_coffee',
+    appDid: 'did:imajin:app-coffee',
+    ownerDid: 'did:imajin:platform',
+    tier: 'first_party',
+    status: 'active',
+  });
+});
 
 describe('POST /auth/api/tokens/app/verify — success (#1069 Phase 1)', () => {
   it('returns sub/aud/scopes for a valid token', async () => {
@@ -88,5 +108,19 @@ describe('POST /auth/api/tokens/app/verify — malformed input (#1069 Phase 1)',
   it('rejects a request with no token with 400', async () => {
     const res = await POST(verifyRequest({}) as never);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /auth/api/tokens/app/verify — registry revocation recheck (#1990)', () => {
+  it('rejects with 403 app_not_registered once the audience is no longer registered/active', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: ['profile:read'] });
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(null);
+
+    const res = await POST(verifyRequest({ token }) as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe('app_not_registered');
+    expect(mocks.resolveActiveAppByAudienceMock).toHaveBeenCalledWith(APP_HOST);
   });
 });

@@ -14,6 +14,19 @@
  * Note: this is the interim transport for the local fast-path. Verification can
  * later move fully in-process in @imajin/auth (jose + published public key) to
  * remove this round-trip — tracked in #1069.
+ *
+ * #1990 follow-up (deliberately NOT done here): re-checking `registry.apps`
+ * status on every verify call — the same pattern applied to the #1069 Phase 1
+ * session-app-token verify route — would make a revoked app's already-minted
+ * app+jwt/app-service+jwt tokens stop verifying immediately instead of at
+ * their (short, 10min) TTL. It is deliberately deferred here: this route is
+ * the shared, "no DB hit" fast path `requireAppAuth()` calls on every scoped
+ * request across the codebase, and adding a hard DB dependency broke unit
+ * tests in unrelated subsystems (supply, attestation countersign, ...) whose
+ * fixtures mint tokens for DIDs that were never meant to be registry.apps
+ * rows. Revocation for this token family stays bounded by its existing
+ * short TTL, as already documented above — see the issue comment for the
+ * options considered.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

@@ -296,7 +296,11 @@ export const systemEvents = registrySchema.table('system_events', {
 export type SystemEvent = typeof systemEvents.$inferSelect;
 
 /**
- * Registered third-party apps — for delegated session access (Issue #244)
+ * Registered apps — the kernel's app-identity registry (Issue #244, extended
+ * by #1990 into "apps are identities the kernel refuses to serve
+ * unregistered"). Covers both third-party apps (OAuth DCR clients,
+ * Delegated App Sessions registrations) and first-party apps (coffee, dykil,
+ * links, learn, events, market, jin — seeded in 0139, tier = 'first_party').
  */
 export const registryApps = registrySchema.table('apps', {
   id: text('id').primaryKey(),                           // app_<nanoid(16)>
@@ -313,13 +317,25 @@ export const registryApps = registrySchema.table('apps', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+  // #1990 registry fields (0138_registry_apps_registry_fields.sql):
+  /** 'first_party' | 'third_party' — see registry-apps constants for the literal union. */
+  tier: text('tier').notNull().default('third_party'),
+  /** Origins (scheme://host[:port]) this app may redirect a user back to — folds in #1348's "full set" fix. */
+  allowedRedirectHosts: text('allowed_redirect_hosts').array().notNull().default(sql`'{}'::text[]`),
+  /** `aud` values this app may have scoped app-tokens (#1069) minted or verified for. */
+  tokenAudiences: text('token_audiences').array().notNull().default(sql`'{}'::text[]`),
 }, (table) => ({
   ownerIdx: index('idx_registry_apps_owner').on(table.ownerDid),
   statusIdx: index('idx_registry_apps_status').on(table.status),
+  tierIdx: index('idx_registry_apps_tier').on(table.tier),
 }));
 
 export type RegistryApp = typeof registryApps.$inferSelect;
 export type NewRegistryApp = typeof registryApps.$inferInsert;
+
+/** Literal union for registry.apps.tier (#1990). */
+export type RegistryAppTier = 'first_party' | 'third_party';
+export const REGISTRY_APP_TIERS: readonly RegistryAppTier[] = ['first_party', 'third_party'];
 
 /**
  * Application log entries — written by @imajin/logger Pino adapter when ENABLE_APP_LOG=true

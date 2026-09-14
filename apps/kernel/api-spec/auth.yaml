@@ -133,6 +133,18 @@ components:
         scopes:
           type: array
           items: { type: string }
+    AppNotRegisteredError:
+      type: object
+      description: |
+        Stable 403 body (#1990) returned by every scoped app-token mint/verify
+        route when an `aud` does not resolve to an active `registry.apps` row —
+        "apps are identities the kernel refuses to serve unregistered." The
+        `error` value is always the literal string `app_not_registered`, so
+        callers can branch on it without parsing `error_description`.
+      required: [error, error_description]
+      properties:
+        error: { type: string, enum: [app_not_registered] }
+        error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
   /api/health:
@@ -778,10 +790,17 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: App is not active, the app.authorized attestation was revoked, or the requested scope was not granted
+          description: |
+            App is not active, the app.authorized attestation was revoked, the
+            requested scope was not granted, or (#1990) an explicitly supplied
+            `aud` does not resolve to an active registry.apps row — in the
+            latter case the body is the stable AppNotRegisteredError shape.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/Error" }
+                  - { $ref: "#/components/schemas/AppNotRegisteredError" }
         "404":
           description: Unknown app DID, or no matching app.authorized attestation found
           content:
@@ -943,6 +962,14 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: |
+            (#1990) `aud` does not resolve to an active `registry.apps` row —
+            the kernel refuses to mint a token for an unregistered or revoked
+            audience. Stable body: `{ error: "app_not_registered", error_description }`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppNotRegisteredError" }
 
   /api/tokens/app/verify:
     post:
@@ -987,10 +1014,17 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: scope was not granted
+          description: |
+            scope was not granted, or (#1990) the token's `aud` no longer
+            resolves to an active `registry.apps` row — in the latter case
+            the body is the stable AppNotRegisteredError shape, making
+            revocation take effect within one verify cycle.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/Error" }
+                  - { $ref: "#/components/schemas/AppNotRegisteredError" }
 
   /api/verify:
     post:

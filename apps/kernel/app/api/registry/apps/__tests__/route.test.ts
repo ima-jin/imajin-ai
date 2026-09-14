@@ -69,6 +69,7 @@ vi.mock('@imajin/auth', () => ({
   isValidPublicKey: () => true,
   resolveActingDid: (identity: { id: string; actingFor?: string; actingAs?: string }) =>
     identity.actingFor ?? identity.actingAs ?? identity.id,
+  validateScopes: (scopes: string[]) => ({ valid: scopes, invalid: [] }),
 }));
 
 vi.mock('@/src/lib/auth/crypto', () => ({
@@ -127,5 +128,34 @@ describe('POST /api/registry/apps (#1739)', () => {
     const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
     expect(insertedRow.ownerDid).toBe('did:imajin:business');
     expect(insertedRow.publicKey).not.toMatch(/^agent_/);
+  });
+});
+
+describe('POST /api/registry/apps — registry fields (#1990)', () => {
+  it('always registers as tier: third_party, regardless of request body', async () => {
+    const res = await POST(
+      makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback', tier: 'first_party' }) as never,
+    );
+
+    expect(res.status).toBe(201);
+    const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.tier).toBe('third_party');
+  });
+
+  it('derives allowedRedirectHosts from the callbackUrl origin', async () => {
+    const res = await POST(
+      makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback/path' }) as never,
+    );
+
+    expect(res.status).toBe(201);
+    const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.allowedRedirectHosts).toEqual(['https://example.com']);
+  });
+
+  it('rejects a non-absolute callbackUrl', async () => {
+    const res = await POST(makeRequest({ name: 'Test App', callbackUrl: 'not-a-url' }) as never);
+
+    expect(res.status).toBe(400);
+    expect(mockDbInsert).not.toHaveBeenCalled();
   });
 });
