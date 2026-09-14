@@ -57,10 +57,12 @@ async function main(): Promise<void> {
 // Only run when invoked directly (`tsx src/index.ts` / `pnpm start`), not
 // when imported — keeps this module import-safe for tooling/tests.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((err: unknown) => {
+  try {
+    await main();
+  } catch (err: unknown) {
     console.error('usage-emitter-claude-code: fatal error', err);
     process.exitCode = 1;
-  });
+  }
 }
 
 export { main };
