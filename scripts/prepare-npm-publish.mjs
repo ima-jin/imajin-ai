@@ -17,7 +17,7 @@ import {
   mkdirSync,
   readdirSync,
 } from "node:fs";
-import { join, resolve, relative, sep, extname } from "node:path";
+import { join, resolve, sep, extname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -53,27 +53,16 @@ const REWRITABLE_EXTENSIONS = new Set([
 // `startsWith` check is required: without it a root of `/a/b` would
 // incorrectly accept a sibling like `/a/b-evil`, since that is a plain
 // string comparison rather than a path-segment one.
+//
+// Deliberately kept as a plain boolean predicate rather than a helper that
+// resolves-and-returns-or-null: SonarCloud's taint tracker recognizes an
+// inline `if (!isPathWithin(root, target)) fail(...)` guarded directly in
+// front of a sink as sanitizing `target` (jssecurity:S8707), but loses that
+// recognition once the resolve+check+return-or-null logic is wrapped in one
+// more layer of function indirection between the CLI argument and the sink
+// (confirmed against a live SonarCloud analysis — see resolveValidatedDirs).
 export function isPathWithin(root, target) {
   return target === root || target.startsWith(root + sep);
-}
-
-// Resolves `candidate` and validates it against `roots` (root itself or a
-// descendant of one) in a single step, so both CLI-path sinks below
-// (srcDir/destDir) run through one shared resolve-then-check helper instead
-// of each re-deriving the same two-step "resolve, then separately check"
-// shape (jssecurity:S8707 — path traversal via unchecked CLI arguments).
-//
-// Returns a value re-derived from the matched (trusted) root, rather than
-// the resolved candidate itself: SonarCloud's taint tracker keeps treating
-// a merely-validated value as tainted at every downstream fs sink, since
-// it's still the same reference the CLI argument flowed into. Rebuilding it
-// via resolve(root, relative(root, candidate)) produces a value derived
-// fresh from a known-safe root, which is what clears the sink for good.
-export function resolveWithinRoots(candidate, roots) {
-  const resolvedCandidate = resolve(candidate);
-  const matchedRoot = roots.find((root) => isPathWithin(root, resolvedCandidate));
-  if (!matchedRoot) return null;
-  return resolve(matchedRoot, relative(matchedRoot, resolvedCandidate));
 }
 
 // Validated immediately before every log call (see `packageLabel`) so a
@@ -154,32 +143,30 @@ export function parseCliArgs() {
 // The path-containment checks below call `fail()` (which throws) rather than
 // calling `process.exit()` directly, so that every guarded read/write of
 // srcDir/destDir is provably unreachable with an unvalidated path from a
-// control-flow analysis perspective.
+// control-flow analysis perspective. Each check is also written inline,
+// directly against the resolved variable it guards, rather than through a
+// shared resolve-and-validate helper — see `isPathWithin`'s comment for why.
 export function resolveValidatedDirs(pkgDir, outDir) {
   // Allowed roots for CLI-supplied paths. Both are canonicalized once up
   // front so every later use of srcDir/destDir is guaranteed to already be
   // validated, rather than re-checked (or forgotten) at each call site.
   const REPO_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
   const PACKAGES_ROOT = join(REPO_ROOT, "packages");
+  const TMP_ROOT = resolve(tmpdir());
 
   // The source is always a workspace package under packages/<name> (see the
   // module docstring and scripts/publish-package.sh) — never an arbitrary path.
-  const srcDir = resolveWithinRoots(pkgDir, [PACKAGES_ROOT]);
-  if (srcDir === null) {
+  const srcDir = resolve(pkgDir);
+  if (!isPathWithin(PACKAGES_ROOT, srcDir)) {
     fail(`Refusing to read package dir outside ${PACKAGES_ROOT}: ${pkgDir}`);
   }
 
   // The output dir is caller-chosen (scripts/publish-package.sh uses a fresh
   // `mktemp -d`), so it must stay within either the repo or the OS temp
   // directory rather than being trusted verbatim.
-  const ALLOWED_OUTPUT_ROOTS = [REPO_ROOT, resolve(tmpdir())];
-  const destDir = resolveWithinRoots(outDir, ALLOWED_OUTPUT_ROOTS);
-  if (destDir === null) {
-    fail(
-      `Refusing to write output outside allowed roots (${ALLOWED_OUTPUT_ROOTS.join(
-        ", "
-      )}): ${outDir}`
-    );
+  const destDir = resolve(outDir);
+  if (!isPathWithin(REPO_ROOT, destDir) && !isPathWithin(TMP_ROOT, destDir)) {
+    fail(`Refusing to write output outside allowed roots (${REPO_ROOT}, ${TMP_ROOT}): ${outDir}`);
   }
 
   return { srcDir, destDir, packagesDir: resolve(srcDir, "..") };
