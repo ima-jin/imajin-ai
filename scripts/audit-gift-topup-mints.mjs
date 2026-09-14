@@ -63,7 +63,10 @@ function fmt(n) {
 
 async function run() {
   console.log(`\n=== Gift / event-topup unbacked-mint audit (#2018 -> #2012) ===`);
-  console.log(`database: ${new URL(databaseUrl).hostname}`);
+  // Deliberately do NOT log the hostname (or any other part of
+  // DATABASE_URL) — this script is meant to be safe to run against prod,
+  // and its output may end up pasted into a public issue comment.
+  console.log(`database: <connection configured via DATABASE_URL>`);
   if (since) console.log(`scope: rows created before ${since}`);
 
   const cutoverClause = since ? sql`AND created_at < ${since}` : sql``;

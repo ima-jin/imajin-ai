@@ -7,8 +7,14 @@
  *
  * #2018: event-topup is a FUNDED TRANSFER, never a mint — from_did's MJN
  * balance backs the refund leg and its MJNx balance backs the bonus leg.
- * Insufficient balance in either unit is a 402, and neither leg is written
- * unless both legs can be funded.
+ * Funding sufficiency is enforced by a single guarded conditional UPDATE
+ * per unit (`debitFundedLegs` / `debitUnitIfSufficient` in
+ * `src/lib/pay/ledger.ts`), not a pre-transaction `getBalanceRow` read
+ * compared in JS — the latter is a TOCTOU race that lets two concurrent
+ * top-ups both pass a stale balance read and drive the ledger negative.
+ * `state.returningQueue` simulates the `.returning()` result of each
+ * guarded UPDATE: a non-empty array means the guard passed, `[]` means it
+ * failed (insufficient balance).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { jsonPostRequest, resetMockDbCallState } from '@/src/lib/pay/__tests__/mock-drizzle-table';
@@ -17,6 +23,7 @@ const state = vi.hoisted(() => ({
   insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
   updateCalls: [] as Array<{ table: string; values: Record<string, unknown> }>,
   balanceRowQueue: [] as Array<{ did: string; unit: string; amount: string; currency: string } | undefined>,
+  returningQueue: [] as Array<Record<string, unknown>[]>,
   requireAuthMock: vi.fn(),
 }));
 
@@ -32,7 +39,7 @@ vi.mock('@imajin/auth', () => ({
 
 vi.mock('@/src/db', async () => {
   const { balanceRouteDbModule } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
-  return balanceRouteDbModule(state, { balanceRowQueue: state.balanceRowQueue });
+  return balanceRouteDbModule(state, { balanceRowQueue: state.balanceRowQueue, returningQueue: state.returningQueue });
 });
 
 vi.mock('@/src/lib/kernel/id', () => {
@@ -83,38 +90,30 @@ describe('POST /api/balance/event-topup — per-unit balance writes (#2016)', ()
     expect(res.status).toBe(403);
   });
 
-  it('rejects insufficient MJN balance with a 402, never a mint', async () => {
-    state.balanceRowQueue.push({ did: FROM_DID, unit: 'MJN', amount: '1', currency: 'CAD' });
+  it('rejects insufficient MJN balance with a 402, never a mint (#2018 guarded UPDATE)', async () => {
+    state.returningQueue.push([]);
     const res = await POST(makeRequest({ ...BASE_BODY, multiplier: 2 }) as never);
     expect(res.status).toBe(402);
     const body = await res.json();
     expect(body.error).toMatch(/Insufficient MJN balance/);
+    expect(state.updateCalls).toHaveLength(1);
     expect(state.insertCalls).toHaveLength(0);
-    expect(state.updateCalls).toHaveLength(0);
   });
 
-  it('rejects insufficient MJNx balance with a 402, never a mint (#2018)', async () => {
-    state.balanceRowQueue.push(
-      { did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' },
-      { did: FROM_DID, unit: 'MJNx', amount: '5', currency: 'CAD' },
-    );
-    // ticket_price 10, multiplier 10 => bonus leg is 90 per recipient, far
-    // beyond the business's 5 MJNx on hand.
+  it('rejects insufficient MJNx balance with a 402, never a mint, rolling back the already-succeeded MJN debit (#2018)', async () => {
+    // MJN (refund) leg's guard passes, MJNx (bonus) leg's guard fails.
+    state.returningQueue.push([{ did: FROM_DID, unit: 'MJN', amount: '90', currency: 'CAD' }], []);
+    // ticket_price 10, multiplier 10 => bonus leg is 90 per recipient.
     const res = await POST(makeRequest({ ...BASE_BODY, multiplier: 10 }) as never);
     expect(res.status).toBe(402);
     const body = await res.json();
     expect(body.error).toMatch(/Insufficient MJNx balance/);
-    // Atomic: the MJN refund leg must not be written either, even though it
-    // alone was sufficiently funded.
+    expect(state.updateCalls).toHaveLength(2);
     expect(state.insertCalls).toHaveLength(0);
-    expect(state.updateCalls).toHaveLength(0);
   });
 
   it('multiplier 1.0: only the MJN refund leg is written, no MJNx bonus', async () => {
-    state.balanceRowQueue.push(
-      { did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' },
-      { did: FROM_DID, unit: 'MJNx', amount: '0', currency: 'CAD' },
-    );
+    state.returningQueue.push([{ did: FROM_DID, unit: 'MJN', amount: '90', currency: 'CAD' }]);
     const res = await POST(makeRequest({ ...BASE_BODY, multiplier: 1.0 }) as never);
 
     expect(res.status).toBe(200);
@@ -123,14 +122,14 @@ describe('POST /api/balance/event-topup — per-unit balance writes (#2016)', ()
 
     const txValues = state.insertCalls.find((c) => c.values.type === 'event-topup')?.values;
     expect(txValues).toMatchObject({ unit: 'MJN', sourceKind: 'transfer' });
-    // Only the cash leg's debit runs — no MJNx debit when the bonus is 0.
+    // Only the refund leg's guarded debit runs — no MJNx debit when the bonus is 0.
     expect(state.updateCalls).toHaveLength(1);
   });
 
   it('multiplier > 1.0: writes both an MJN refund row and an MJNx bonus row, debiting from_did in both units (#2018)', async () => {
-    state.balanceRowQueue.push(
-      { did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' },
-      { did: FROM_DID, unit: 'MJNx', amount: '100', currency: 'CAD' },
+    state.returningQueue.push(
+      [{ did: FROM_DID, unit: 'MJN', amount: '90', currency: 'CAD' }],
+      [{ did: FROM_DID, unit: 'MJNx', amount: '10', currency: 'CAD' }],
     );
     const res = await POST(makeRequest({ ...BASE_BODY, multiplier: 10 }) as never);
 
@@ -148,7 +147,36 @@ describe('POST /api/balance/event-topup — per-unit balance writes (#2016)', ()
     );
 
     // Total supply is conserved: the business is debited exactly what the
-    // recipient receives in each unit — one debit per unit.
+    // recipient receives in each unit — one guarded debit per unit.
     expect(state.updateCalls).toHaveLength(2);
+  });
+});
+
+describe('POST /api/balance/event-topup — concurrent debit race (#2018 review: TOCTOU)', () => {
+  it('two parallel top-ups against a balance that covers only one: exactly one 200, one 402, balance never goes negative, supply unchanged', async () => {
+    // Same guard-under-contention shape as the gift route's concurrency
+    // test: the queue holds one "success" result followed by one empty
+    // (failure) result, standing in for two concurrent callers hitting the
+    // same atomic guarded UPDATE.
+    state.returningQueue.push([{ did: FROM_DID, unit: 'MJN', amount: '0', currency: 'CAD' }], []);
+
+    const req = () => makeRequest({ ...BASE_BODY, multiplier: 1.0 }) as never;
+
+    const [resA, resB] = await Promise.all([POST(req()), POST(req())]);
+    const statuses = [resA.status, resB.status].sort();
+
+    expect(statuses).toEqual([200, 402]);
+
+    const bodies = await Promise.all([resA.json(), resB.json()]);
+    const failed = bodies.find((b) => 'error' in b);
+    expect(failed?.error).toMatch(/Insufficient MJN balance/);
+
+    const recipientCredits = state.insertCalls.filter((c) => c.values.did === 'did:imajin:r1');
+    expect(recipientCredits).toHaveLength(1);
+    expect(recipientCredits[0].values).toMatchObject({ unit: 'MJN', amount: '10' });
+
+    expect(state.updateCalls).toHaveLength(2);
+    const topupTxRows = state.insertCalls.filter((c) => c.values.type === 'event-topup');
+    expect(topupTxRows).toHaveLength(1);
   });
 });

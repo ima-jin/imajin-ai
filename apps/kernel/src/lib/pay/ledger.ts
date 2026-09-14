@@ -9,7 +9,7 @@
  * and cross-unit movement is impossible by construction (#2016 decision 2).
  */
 import { db, balances } from '@/src/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 
 /** The two wallet units this ledger understands today. ISO fiat codes are a reserved future unit (see migration 0133) but are not issued by any code path yet. */
 export type Unit = 'MJN' | 'MJNx';
@@ -146,4 +146,93 @@ export async function debitUnit(
 /** Numeric helper: read a balance row's amount as a number, defaulting to 0 when the row doesn't exist. */
 export function amountOf(row: BalanceRow | undefined): number {
   return row ? Number.parseFloat(row.amount) : 0;
+}
+
+export interface DebitIfSufficientResult {
+  ok: boolean;
+  /** The updated row, only present when `ok` is true. */
+  row?: BalanceRow;
+}
+
+/**
+ * Debit `(did, unit)` -= amount, but ONLY if the current balance is
+ * >= amount — as a single guarded conditional
+ * `UPDATE ... WHERE amount >= $x RETURNING *`.
+ *
+ * This is the atomicity primitive funded-transfer routes (#2018: gift,
+ * event-topup) must use instead of "read the balance, compare in JS, then
+ * issue an unconditional `debitUnit`": that two-step shape is a TOCTOU
+ * race — two concurrent callers can both read a stale sufficient balance
+ * and both proceed to debit, driving the balance negative, which is
+ * exactly the unbacked mint #2018 exists to forbid. A single guarded
+ * UPDATE is atomic at the database row level: the sufficiency check and
+ * the debit are the same statement, so at most one concurrent caller can
+ * ever succeed once the balance can no longer cover both.
+ *
+ * Returns `{ ok: false }` (zero rows matched/updated) when the balance is
+ * insufficient — including when the `(did, unit)` row doesn't exist yet,
+ * which reads as a balance of 0. Callers must run this inside
+ * `db.transaction()` so they can roll back everything else on `ok: false`.
+ */
+export async function debitUnitIfSufficient(
+  executor: Executor,
+  did: string,
+  unit: Unit,
+  amount: number | string,
+): Promise<DebitIfSufficientResult> {
+  const amountStr = String(amount);
+  const rows = await executor
+    .update(balances)
+    .set({ amount: sql`${balances.amount} - ${amountStr}`, updatedAt: new Date() })
+    .where(and(eq(balances.did, did), eq(balances.unit, unit), gte(balances.amount, amountStr)))
+    .returning();
+  const row = (rows as BalanceRow[])[0];
+  return row ? { ok: true, row } : { ok: false };
+}
+
+/**
+ * Thrown by `debitFundedLegs` when a leg's balance is insufficient. Callers
+ * should catch this specifically and map it to a 402 — never retry as a
+ * mint, and never swallow it into a generic 500.
+ */
+export class InsufficientBalanceError extends Error {
+  readonly unit: Unit;
+  constructor(unit: Unit) {
+    super(`Insufficient ${unit} balance`);
+    this.name = 'InsufficientBalanceError';
+    this.unit = unit;
+  }
+}
+
+export interface FundedLeg {
+  unit: Unit;
+  amount: number;
+}
+
+/**
+ * Debit `did` for every nonzero leg in `legs`, each via its own guarded
+ * conditional UPDATE (`debitUnitIfSufficient`) — the shared "assert funded
+ * in these units and debit them" primitive for #2018's funded-transfer
+ * routes (gift, event-topup), so the guard logic and its atomicity
+ * guarantee live in one place instead of being duplicated per route.
+ *
+ * Legs with `amount <= 0` are skipped (nothing to debit). Throws
+ * `InsufficientBalanceError` on the first underfunded leg and does not
+ * attempt any later leg. Must be called from inside `db.transaction()`:
+ * the throw rolls back every earlier leg's debit in the same transaction
+ * (and anything else committed there) instead of leaving a partial,
+ * unbacked credit anywhere.
+ */
+export async function debitFundedLegs(
+  executor: Executor,
+  did: string,
+  legs: readonly FundedLeg[],
+): Promise<void> {
+  for (const leg of legs) {
+    if (leg.amount <= 0) continue;
+    const result = await debitUnitIfSufficient(executor, did, leg.unit, leg.amount);
+    if (!result.ok) {
+      throw new InsufficientBalanceError(leg.unit);
+    }
+  }
 }

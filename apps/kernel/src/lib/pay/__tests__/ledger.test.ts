@@ -23,6 +23,9 @@ import {
   getBalances,
   creditUnit,
   debitUnit,
+  debitUnitIfSufficient,
+  debitFundedLegs,
+  InsufficientBalanceError,
 } from '../ledger';
 
 describe('assertKnownUnit', () => {
@@ -76,9 +79,24 @@ describe('amountOf', () => {
 // shapes these helpers actually call.
 // ---------------------------------------------------------------------------
 
-function makeExecutor(rows: Array<{ did: string; unit: string; amount: string; currency: string }>) {
+// Mirrors the shared route mock's guarded-UPDATE result shape: awaitable
+// directly (the shape every unconditional `debitUnit` caller uses) AND
+// chainable with `.returning()` (the shape `debitUnitIfSufficient` uses to
+// read back whether its guarded conditional UPDATE matched a row).
+// Top-level (not nested inside `makeExecutor`) to keep function-nesting depth low.
+function guardedUpdateResult(resultRows: Record<string, unknown>[]) {
+  return Object.assign(Promise.resolve(undefined), {
+    returning: () => Promise.resolve(resultRows),
+  });
+}
+
+function makeExecutor(
+  rows: Array<{ did: string; unit: string; amount: string; currency: string }>,
+  returningRows?: Array<Array<Record<string, unknown>>>,
+) {
   const insertCalls: Array<{ values: Record<string, unknown>; conflict?: unknown }> = [];
   const updateCalls: Array<{ values: Record<string, unknown> }> = [];
+  const returningQueue = returningRows ? [...returningRows] : undefined;
 
   const executor = {
     select: () => ({
@@ -107,7 +125,9 @@ function makeExecutor(rows: Array<{ did: string; unit: string; amount: string; c
     update: () => ({
       set: (values: Record<string, unknown>) => {
         updateCalls.push({ values });
-        return { where: () => Promise.resolve(undefined) };
+        return {
+          where: () => guardedUpdateResult(returningQueue ? (returningQueue.shift() ?? []) : [{}]),
+        };
       },
     }),
   };
@@ -174,5 +194,70 @@ describe('debitUnit', () => {
     // @ts-expect-error minimal fake executor
     await debitUnit(executor, 'did:imajin:x', MJN, 5, { clampAtZero: true });
     expect(updateCalls).toHaveLength(1);
+  });
+});
+
+describe('debitUnitIfSufficient (#2018: guarded conditional UPDATE, closes the TOCTOU debit race)', () => {
+  it('returns { ok: true, row } when the guarded UPDATE matches a row (sufficient balance)', async () => {
+    const { executor, updateCalls } = makeExecutor([], [[{ did: 'did:imajin:x', unit: MJN, amount: '5', currency: 'CAD' }]]);
+    // @ts-expect-error minimal fake executor
+    const result = await debitUnitIfSufficient(executor, 'did:imajin:x', MJN, 5);
+    expect(result.ok).toBe(true);
+    expect(result.row).toMatchObject({ did: 'did:imajin:x', unit: MJN, amount: '5' });
+    expect(updateCalls).toHaveLength(1);
+  });
+
+  it('returns { ok: false } when the guarded UPDATE matches zero rows (insufficient balance, or no row yet)', async () => {
+    const { executor, updateCalls } = makeExecutor([], [[]]);
+    // @ts-expect-error minimal fake executor
+    const result = await debitUnitIfSufficient(executor, 'did:imajin:x', MJN, 999);
+    expect(result).toEqual({ ok: false });
+    // The guarded UPDATE is still issued — the guard lives IN the statement,
+    // not as a separate pre-check.
+    expect(updateCalls).toHaveLength(1);
+  });
+});
+
+describe('debitFundedLegs (#2018: shared "assert funded and debit" primitive for gift/event-topup)', () => {
+  it('skips legs with amount <= 0 — no guarded UPDATE is attempted for them', async () => {
+    const { executor, updateCalls } = makeExecutor([], [[{}]]);
+    // @ts-expect-error minimal fake executor
+    await debitFundedLegs(executor, 'did:imajin:x', [
+      { unit: MJN, amount: 0 },
+      { unit: MJNX, amount: -1 },
+    ]);
+    expect(updateCalls).toHaveLength(0);
+  });
+
+  it('debits every nonzero leg via its own guarded UPDATE', async () => {
+    const { executor, updateCalls } = makeExecutor([], [[{}], [{}]]);
+    // @ts-expect-error minimal fake executor
+    await debitFundedLegs(executor, 'did:imajin:x', [
+      { unit: MJN, amount: 10 },
+      { unit: MJNX, amount: 5 },
+    ]);
+    expect(updateCalls).toHaveLength(2);
+  });
+
+  it('throws InsufficientBalanceError on the first underfunded leg and does not attempt any later leg', async () => {
+    const { executor, updateCalls } = makeExecutor([], [[]]); // first leg's guard fails
+    await expect(
+      // @ts-expect-error minimal fake executor
+      debitFundedLegs(executor, 'did:imajin:x', [
+        { unit: MJN, amount: 10 },
+        { unit: MJNX, amount: 5 },
+      ]),
+    ).rejects.toThrow(InsufficientBalanceError);
+    // Stopped after the first failing leg — the second leg's UPDATE was
+    // never issued.
+    expect(updateCalls).toHaveLength(1);
+  });
+
+  it('InsufficientBalanceError carries the unit that failed, for a precise 402 message', async () => {
+    const { executor } = makeExecutor([], [[]]);
+    await expect(
+      // @ts-expect-error minimal fake executor
+      debitFundedLegs(executor, 'did:imajin:x', [{ unit: MJNX, amount: 5 }]),
+    ).rejects.toMatchObject({ unit: MJNX, message: expect.stringMatching(/Insufficient MJNx balance/) });
   });
 });
