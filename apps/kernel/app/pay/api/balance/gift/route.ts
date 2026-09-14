@@ -3,8 +3,13 @@
  *
  * Bulk gift credits from a business DID to recipients.
  * Auth: from_did must match session.
- * Debits from_did's cash balance for the total gifted cash_amount,
- * and credits each recipient's cash_amount and credit_amount atomically.
+ *
+ * #2018: this is a FUNDED TRANSFER, never a mint — any entity outside the
+ * kernel that credits MJNx funds it. `from_did` is debited in both units:
+ * its MJN (cash) balance for the total gifted `cash_amount`, and its MJNx
+ * balance for the total gifted `credit_amount`. Both legs are credited to
+ * recipients atomically in the same transaction as the debits. Insufficient
+ * balance in either unit is a 402, never a partial mint.
  *
  * Request:
  * {
@@ -21,7 +26,7 @@ import { resolveEffectiveDid } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
-import { MJN, MJNX, amountOf, creditUnit, getBalanceRow } from '@/src/lib/pay/ledger';
+import { MJN, MJNX, amountOf, creditUnit, debitUnit, getBalanceRow } from '@/src/lib/pay/ledger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -74,21 +79,32 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       }
     }
 
-    // Total cash deducted from from_did is the sum of all cash_amount gifts
+    // Total amount deducted from from_did per unit is the sum of all gifts.
     const totalCashDebit = recipients.reduce((sum: number, r: { cash_amount?: number }) => sum + (r.cash_amount ?? 0), 0);
+    const totalCreditDebit = recipients.reduce((sum: number, r: { credit_amount?: number }) => sum + (r.credit_amount ?? 0), 0);
 
-    // Check from_did has sufficient MJN cash — only the cash leg is ever
-    // debited from the sender (the credit leg has no offsetting debit
-    // anywhere, matching pre-#2016 behavior; making this a real funded
-    // transfer is #2018, out of scope here).
-    const senderBalance = await getBalanceRow(db, from_did, MJN);
-    const currentCash = amountOf(senderBalance);
-    const giftCurrency = senderBalance?.currency || 'CAD';
+    // #2018: any entity outside the kernel that credits MJNx funds it. Both
+    // legs are funded transfers, so from_did must have sufficient balance in
+    // BOTH units before anything is written — insufficient balance is a 402,
+    // never a mint.
+    const senderCashBalance = await getBalanceRow(db, from_did, MJN);
+    const currentCash = amountOf(senderCashBalance);
+    const giftCurrency = senderCashBalance?.currency || 'CAD';
 
     if (currentCash < totalCashDebit) {
       return NextResponse.json(
-        { error: `Insufficient cash balance: ${currentCash} < ${totalCashDebit}` },
-        { status: 400, headers: cors }
+        { error: `Insufficient MJN balance: ${currentCash} < ${totalCashDebit}` },
+        { status: 402, headers: cors }
+      );
+    }
+
+    const senderCreditBalance = await getBalanceRow(db, from_did, MJNX);
+    const currentCredit = amountOf(senderCreditBalance);
+
+    if (currentCredit < totalCreditDebit) {
+      return NextResponse.json(
+        { error: `Insufficient MJNx balance: ${currentCredit} < ${totalCreditDebit}` },
+        { status: 402, headers: cors }
       );
     }
 
@@ -107,11 +123,17 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
           .where(and(eq(balances.did, from_did), eq(balances.unit, MJN)));
       }
 
+      // Debit from_did's MJNx credits (#2018: the credit leg is now a funded
+      // transfer, not an unbacked mint — the business's MJNx balance decreases
+      // by exactly what recipients receive).
+      if (totalCreditDebit > 0) {
+        await debitUnit(tx, from_did, MJNX, totalCreditDebit);
+      }
+
       // Credit each recipient. #2016: the cash leg and credit leg now land
       // on separate per-unit balance rows (MJN / MJNx), so each nonzero leg
       // gets its own transaction row instead of one row spanning both
-      // buckets — a mechanical adaptation to the new shape, not a policy
-      // change (#2018 owns turning this into a real funded transfer).
+      // buckets.
       for (const recipient of recipients) {
         const cashGift = recipient.cash_amount ?? 0;
         const creditGift = recipient.credit_amount ?? 0;

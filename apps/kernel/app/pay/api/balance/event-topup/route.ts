@@ -27,7 +27,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
-import { MJN, MJNX, amountOf, creditUnit, getBalanceRow } from '@/src/lib/pay/ledger';
+import { MJN, MJNX, amountOf, creditUnit, debitUnit, getBalanceRow } from '@/src/lib/pay/ledger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -87,18 +87,30 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const creditPerRecipient = ticketPrice * (multiplier - 1);
 
     const totalCashDebit = cashPerRecipient * recipient_dids.length;
+    const totalCreditDebit = creditPerRecipient * recipient_dids.length;
 
-    // Check from_did has sufficient MJN cash — only the cash (refund) leg is
-    // ever debited from the sender, matching pre-#2016 behavior; making this
-    // a real funded transfer is #2018, out of scope here.
-    const senderBalance = await getBalanceRow(db, from_did, MJN);
-    const currentCash = amountOf(senderBalance);
-    const topupCurrency = senderBalance?.currency || 'CAD';
+    // #2018: any entity outside the kernel that credits MJNx funds it. Both
+    // the cash (refund) leg and the credit (bonus) leg are funded transfers,
+    // so from_did must have sufficient balance in BOTH units before anything
+    // is written — insufficient balance is a 402, never a mint.
+    const senderCashBalance = await getBalanceRow(db, from_did, MJN);
+    const currentCash = amountOf(senderCashBalance);
+    const topupCurrency = senderCashBalance?.currency || 'CAD';
 
     if (currentCash < totalCashDebit) {
       return NextResponse.json(
-        { error: `Insufficient cash balance: ${currentCash} < ${totalCashDebit}` },
-        { status: 400, headers: cors }
+        { error: `Insufficient MJN balance: ${currentCash} < ${totalCashDebit}` },
+        { status: 402, headers: cors }
+      );
+    }
+
+    const senderCreditBalance = await getBalanceRow(db, from_did, MJNX);
+    const currentCredit = amountOf(senderCreditBalance);
+
+    if (currentCredit < totalCreditDebit) {
+      return NextResponse.json(
+        { error: `Insufficient MJNx balance: ${currentCredit} < ${totalCreditDebit}` },
+        { status: 402, headers: cors }
       );
     }
 
@@ -115,10 +127,17 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         })
         .where(and(eq(balances.did, from_did), eq(balances.unit, MJN)));
 
+      // Debit from_did's MJNx credits (#2018: the bonus leg is now a funded
+      // transfer, not an unbacked mint — the business's MJNx balance decreases
+      // by exactly what recipients receive).
+      if (totalCreditDebit > 0) {
+        await debitUnit(tx, from_did, MJNX, totalCreditDebit);
+      }
+
       // Credit each recipient. #2016: the cash (refund) leg and credit
       // (bonus) leg now land on separate per-unit balance rows (MJN / MJNx),
       // so each nonzero leg gets its own transaction row instead of one row
-      // spanning both buckets — a mechanical adaptation, not a policy change.
+      // spanning both buckets.
       for (const recipientDid of recipient_dids) {
         if (cashPerRecipient > 0) {
           const txId = generateId('tx');
