@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   isPathWithin,
+  resolveWithinRoots,
   fail,
   ExpectedCliFailure,
   packageLabel,
@@ -82,6 +83,40 @@ describe('packageLabel', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('resolveWithinRoots', () => {
+  it('returns the resolved path when it is one of the roots itself', () => {
+    const srcDir = mkdtempSync(join(PACKAGES_ROOT, '.tmp-units-src-'));
+    try {
+      expect(resolveWithinRoots(srcDir, [srcDir])).toBe(srcDir);
+    } finally {
+      rmSync(srcDir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns the resolved path when it is a descendant of one of the roots', () => {
+    const srcDir = mkdtempSync(join(PACKAGES_ROOT, '.tmp-units-src-'));
+    const nested = join(srcDir, 'dist', 'index.js');
+    try {
+      expect(resolveWithinRoots(nested, [tmpdir(), srcDir])).toBe(nested);
+    } finally {
+      rmSync(srcDir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null for a path outside every root', () => {
+    expect(resolveWithinRoots('/etc/passwd', [PACKAGES_ROOT])).toBeNull();
+  });
+
+  it('returns null for a sibling whose name merely starts with the root name', () => {
+    expect(resolveWithinRoots(`${PACKAGES_ROOT}-evil`, [PACKAGES_ROOT])).toBeNull();
+  });
+
+  it('resolves a relative candidate against the current working directory before checking', () => {
+    expect(resolveWithinRoots('.', ['/definitely-not-the-cwd'])).toBeNull();
+    expect(resolveWithinRoots('.', [process.cwd()])).toBe(process.cwd());
   });
 });
 
