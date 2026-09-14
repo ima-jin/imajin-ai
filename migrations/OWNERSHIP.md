@@ -158,19 +158,25 @@ their own schema via raw SQL instead of going through the kernel's HTTP
 API. These are the same findings as the #1983 audit's kernel-side gaps
 6–9 (renumbered here to the specific tables involved), reproduced here
 because deliverable 1 requires this list to live with the ownership map,
-not just on the audit issue:
+not just on the audit issue. Status as of #2155:
 
 1. **`coffee`, `learn`, `market`, `events`** all read `relay.relay_config`
    (kernel-owned) directly via raw SQL to get the node DID, instead of a
    public `GET /registry/api/node/self`-style endpoint. 4 independent
-   re-implementations of the same read (audit gap #8).
+   re-implementations of the same read (audit gap #8). **Not yet fixed** —
+   tracked in `migrations/cross-schema-allowlist.json` for `events` (the
+   other three call sites predate the runtime guard's app scope check and
+   are outside #2155).
 2. **`coffee`, `learn`, `market`** all read `profile.forest_config`
    (kernel-owned) directly, even though `profile.yaml` already documents
    `/api/forest/{groupDid}/config` and `/config/public` — the audit flags
    this as likely just unmigrated call sites rather than a missing route
-   (audit gap #9).
+   (audit gap #9). **Not yet fixed.**
 3. **`learn`, `market`** read `profile.profiles` (kernel-owned) directly
-   instead of through a profile API.
+   instead of through a profile API. **Fixed by #2155** — both now call
+   the #1998 kernel profile service's batched `/api/resolve` route via
+   `@imajin/auth`'s `resolveIdentitiesForDids`; `grep -rn "profile.profiles"
+   apps/learn apps/market` returns 0.
 4. **`events`** is by far the heaviest violator — raw SQL against
    `auth.identities`, `auth.credentials`, `auth.onboard_tokens` (including
    `INSERT`), `connections.pod_members` / `connections.connections`
@@ -180,19 +186,55 @@ not just on the audit issue:
    across ~15 files. Notably `events` also re-implements kernel's
    hard-eligibility tier-upgrade logic with a direct
    `UPDATE auth.identities` (audit gap #7) instead of calling an API kernel
-   doesn't yet expose.
+   doesn't yet expose. **Partially fixed by #2155** — the `cohosts` route's
+   `connections.pod_members` read + `INSERT` now goes through the kernel
+   connections service's `GET /api/pods/{id}` and
+   `POST /api/pods/{id}/members`. Every other call site in this app
+   (`organizer.ts`, `my-ticket`, guest/sales exports, the dykil survey
+   reads, the `auth.*`/`chat.*`/`pay.*` reads, etc.) is still raw SQL and
+   is listed in `migrations/cross-schema-allowlist.json`.
 5. **`packages/auth`** (imported by every app) itself runs raw SQL against
    `auth.credentials`, `auth.identities`, `profile.profiles` from
    `credentials.ts` — so the DB-layer coupling isn't purely an app habit,
    it's partly baked into the shared library every app depends on (audit
-   gap #6, "no batched identity/email resolution endpoint").
+   gap #6, "no batched identity/email resolution endpoint"). **Fixed**
+   (#1998/#1992, predates #2155) — `credentials.ts` now calls the kernel
+   over HTTP; `packages/*` isn't in the runtime guard's scope anyway (it
+   only scans `apps/<x>`), but is noted here since it's the same gap.
 
-None of these are fixed here — out of scope for phase 1 per the issue.
-They're listed so phase-1's CI guard has a documented, honest baseline: the
-guard only prevents *new* cross-owner migrations; it does not (and is not
-meant to) catch existing runtime cross-schema queries. That would need a
-lint/static-analysis rule over application source, not a migration-file
-guard, and is a candidate for a later phase.
+Items 1, 2, and most of 4 are **not fixed here** — out of scope for #2155
+(item 2 was explicitly scoped to the `cohosts` route only). They're listed
+so the runtime guard below has a documented, honest baseline.
+
+## Runtime cross-schema query guard
+
+`scripts/ci-guard-cross-schema-reads.mjs` (#2155 item 3) is the runtime
+counterpart to the migration-file guard above: it scans every source file
+under `apps/<x>` (kernel exempt — it legitimately owns and may read every
+kernel schema) for a raw-SQL `schema.table` reference or a Drizzle
+`pgSchema(...)` declaration for a schema `ownership.json` says `<x>` does
+not own. Wired into CI as the "Cross-schema query guard" step in the
+`ci-guards` job in `.github/workflows/ci.yml`.
+
+It shipped with real, pre-existing violations still in the tree (the Gaps
+above), so it ships with an explicit allowlist —
+`migrations/cross-schema-allowlist.json` — listing every currently-known
+violation as an exact `(file, schema, table)` triple. This is a ratchet,
+not a suppression:
+
+- The guard fails on any cross-schema reference NOT in the allowlist, so a
+  brand-new violation (or a new table touched in an already-listed file)
+  fails the build immediately.
+- **To shrink the allowlist**: migrate a call site to the owning schema's
+  kernel API (as #2155 did for `learn`/`market`'s `profile.profiles` reads
+  and `events`' `cohosts` route), then remove that entry from
+  `migrations/cross-schema-allowlist.json`.
+- **To check nothing was missed** after a migration, regenerate the full
+  current violation list and diff it against the allowlist:
+  `node scripts/ci-guard-cross-schema-reads.mjs --list`.
+- Do not add a new entry to make CI pass without either migrating the call
+  site or getting explicit sign-off that it's a deliberately deferred gap
+  (as items 1/2/most-of-4 above are for now).
 
 ## Shared migrations (#1991 phase 2a)
 

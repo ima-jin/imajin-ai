@@ -1,9 +1,9 @@
 ﻿import { NextRequest } from 'next/server';
 import { db } from '@/db';
 import { courses, enrollments, lessonProgress, lessons, modules } from '@/db/schema';
-import { requireHardDID , resolveActingDid } from '@imajin/auth';
+import { requireHardDID , resolveActingDid, resolveIdentitiesForDids } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
-import { eq, and, sql, asc, count } from 'drizzle-orm';
+import { eq, and, asc, count } from 'drizzle-orm';
 
 type RouteParams = { params: Promise<{ slug: string }> };
 
@@ -48,22 +48,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     .where(eq(enrollments.courseId, course.id))
     .orderBy(asc(enrollments.enrolledAt));
 
-  // Resolve DIDs to profile names/emails
+  // Resolve DIDs to profile names/emails via the kernel profile service's
+  // batched /api/resolve route (#1998) — replaces the raw cross-schema
+  // profiles-table read this app used to run directly (#2155). Fails soft
+  // (empty map) on an unreachable/misconfigured profile service, matching
+  // the previous try/catch behavior of continuing with DIDs only.
   const studentDids = enrolled.map(e => e.studentDid);
-  const profileMap: Record<string, { displayName: string | null; contactEmail: string | null; handle: string | null }> = {};
-  if (studentDids.length > 0) {
-    try {
-      const result = await db.execute(
-        sql`SELECT did, display_name, contact_email, handle FROM profile.profiles WHERE did = ANY(${studentDids})`
-      );
-      const profiles = (result as any).rows ?? result;
-      for (const p of profiles as any[]) {
-        profileMap[p.did] = { displayName: p.display_name, contactEmail: p.contact_email, handle: p.handle };
-      }
-    } catch {
-      // Profile schema may not be accessible — continue with DIDs only
-    }
-  }
+  const profileMap = studentDids.length > 0
+    ? await resolveIdentitiesForDids(studentDids)
+    : new Map<string, { did: string; handle: string | null; displayName: string | null; email?: string }>();
 
   const students = await Promise.all(enrolled.map(async (enrollment) => {
     // Count completed lessons
@@ -76,12 +69,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         )
       );
 
-    const profile = profileMap[enrollment.studentDid];
+    const profile = profileMap.get(enrollment.studentDid);
 
     return {
       studentDid: enrollment.studentDid,
       displayName: profile?.displayName || null,
-      email: profile?.contactEmail || null,
+      email: profile?.email || null,
       handle: profile?.handle || null,
       enrolledAt: enrollment.enrolledAt,
       completedAt: enrollment.completedAt,
