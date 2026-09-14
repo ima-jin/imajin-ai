@@ -5,6 +5,15 @@
  * Auth: sender must be authenticated as from_did.
  * Burns credits first, then cash.
  *
+ * #2166: the sender's debit is a single guarded conditional UPDATE
+ * (`debitUnitIfSufficient` in `src/lib/pay/ledger.ts`) inside the SAME
+ * transaction as the recipient credit, not "read the balance, compare in
+ * JS, then unconditionally update" — the latter is a TOCTOU race: two
+ * concurrent transfers from the same DID could both read a stale
+ * sufficient balance and both proceed, driving the balance negative (an
+ * unbacked credit — a mint by another name, #738). Insufficient balance is
+ * a 402, never a partial write.
+ *
  * Request:
  * {
  *   from_did: string,
@@ -20,7 +29,7 @@ import { resolveEffectiveDid } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
-import { MJN, amountOf, assertKnownUnit, creditUnit, debitUnit, getBalanceRow } from '@/src/lib/pay/ledger';
+import { MJN, assertKnownUnit, creditUnit, debitUnitIfSufficient, getBalanceRow, InsufficientBalanceError } from '@/src/lib/pay/ledger';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -80,17 +89,11 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
     const unit = unitCheck.unit;
 
-    // Check sender has sufficient balance in the requested unit
+    // Currency tag for the transaction/recipient row only — NOT a funding
+    // check. Funding sufficiency is enforced atomically inside the
+    // transaction below via a guarded conditional UPDATE (see
+    // `debitUnitIfSufficient`).
     const senderBalance = await getBalanceRow(db, from_did, unit);
-    const available = amountOf(senderBalance);
-
-    if (available < amount) {
-      return NextResponse.json(
-        { error: `Insufficient ${unit} balance` },
-        { status: 400, headers: cors }
-      );
-    }
-
     const transferCurrency = senderBalance?.currency || 'CAD';
 
     // Check recipient balance currency (if a row already exists for this unit)
@@ -107,28 +110,42 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     const txId = generateId('tx');
 
-    // Atomic operation: debit sender, credit recipient, log transaction —
-    // both legs touch the SAME unit row, so cross-unit movement is
-    // impossible by construction (#2016 decision 2).
-    await db.transaction(async (tx) => {
-      await tx.insert(transactions).values({
-        id: txId,
-        service: 'transfer',
-        type: 'transfer',
-        fromDid: from_did,
-        toDid: to_did,
-        amount: amount.toString(),
-        currency: transferCurrency,
-        unit,
-        sourceKind: 'transfer',
-        status: 'completed',
-        source,
-        metadata,
-      });
+    // Atomic operation: guarded debit sender, credit recipient, log
+    // transaction — both legs touch the SAME unit row, so cross-unit
+    // movement is impossible by construction (#2016 decision 2). The debit
+    // is a single guarded conditional UPDATE (#2166) — insufficient balance
+    // throws `InsufficientBalanceError` before the recipient is credited or
+    // the transaction row is inserted, rolling back this whole transaction.
+    try {
+      await db.transaction(async (tx) => {
+        const debitResult = await debitUnitIfSufficient(tx, from_did, unit, amount);
+        if (!debitResult.ok) {
+          throw new InsufficientBalanceError(unit);
+        }
 
-      await debitUnit(tx, from_did, unit, amount);
-      await creditUnit(tx, to_did, unit, amount, { currency: transferCurrency });
-    });
+        await tx.insert(transactions).values({
+          id: txId,
+          service: 'transfer',
+          type: 'transfer',
+          fromDid: from_did,
+          toDid: to_did,
+          amount: amount.toString(),
+          currency: transferCurrency,
+          unit,
+          sourceKind: 'transfer',
+          status: 'completed',
+          source,
+          metadata,
+        });
+
+        await creditUnit(tx, to_did, unit, amount, { currency: transferCurrency });
+      });
+    } catch (err) {
+      if (err instanceof InsufficientBalanceError) {
+        return NextResponse.json({ error: err.message }, { status: 402, headers: cors });
+      }
+      throw err;
+    }
 
     return NextResponse.json(
       {

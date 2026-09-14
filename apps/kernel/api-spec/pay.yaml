@@ -279,7 +279,9 @@ paths:
       summary: Withdraw cash balance to a connected Stripe account
       description: |
         Only `cash_amount` (real money) can be withdrawn — credits cannot be withdrawn.
-        Minimum withdrawal is $1.00 (100 cents). Creates a Stripe Transfer to the connected account.
+        Minimum withdrawal is $1.00 (100 cents). The MJN debit is a guarded conditional
+        UPDATE (#2166) reserved BEFORE the Stripe Transfer is created — insufficient
+        balance returns 402 and no Stripe transfer is ever attempted.
       security:
         - cookieAuth: []
       requestBody:
@@ -307,12 +309,17 @@ paths:
                   amount: { type: number }
                   currency: { type: string }
         "400":
-          description: Insufficient balance or below minimum
+          description: Invalid amount (below minimum or not a positive number) or missing account_id
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "402":
+          description: Insufficient MJN balance (#2166) — the guarded debit never reaches Stripe
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -327,9 +334,11 @@ paths:
         `MJN` or `MJNx`; both legs of the transfer touch the SAME unit, so
         cross-unit movement (e.g. sending MJNx and having it arrive as MJN)
         is impossible by construction. An unknown unit is a 400, never a
-        conversion. The authenticated identity must match `from_did`.
-        Accepts either a session cookie or a Bearer token (app token or
-        session JWT) — the route resolves the caller via
+        conversion. The sender's debit is a guarded conditional UPDATE (#2166)
+        in the same transaction as the recipient credit — insufficient balance
+        returns 402 and writes nothing. The authenticated identity must match
+        `from_did`. Accepts either a session cookie or a Bearer token (app
+        token or session JWT) — the route resolves the caller via
         `resolveEffectiveDid`, same as `GET /api/balance/{did}` (#2002).
       security:
         - cookieAuth: []
@@ -361,12 +370,17 @@ paths:
                   amount: { type: number }
                   unit: { type: string, enum: [MJN, MJNx] }
         "400":
-          description: Insufficient balance
+          description: Invalid request — missing fields, non-positive amount, self-transfer, unknown unit, or currency mismatch
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "402":
+          description: Insufficient balance in the requested unit (#2166) — never a partial write
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

@@ -23,6 +23,13 @@ export interface MockInsertCall {
 export interface MockUpdateCall {
   table: string;
   values: Record<string, unknown>;
+  /**
+   * The actual condition object passed to `.where(...)` — needed to decode
+   * the guard predicate itself (e.g. a guarded `debitUnitIfSufficient`
+   * conditional UPDATE's `WHERE ... AND amount >= $x`) via
+   * `PgDialect().sqlToQuery()`, not just to record that an UPDATE happened.
+   */
+  where?: unknown;
 }
 
 export interface MockDbCallState {
@@ -91,8 +98,8 @@ export function createMockDb(
     return {
       set(values: Record<string, unknown>) {
         return {
-          where(_cond?: unknown) {
-            state.updateCalls.push({ table: tableTag(table), values });
+          where(cond?: unknown) {
+            state.updateCalls.push({ table: tableTag(table), values, where: cond });
             return guardedUpdateResult(table, values);
           },
         };

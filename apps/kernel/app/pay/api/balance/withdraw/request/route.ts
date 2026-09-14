@@ -16,7 +16,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
-import { MJN, amountOf, debitUnit, getBalanceRow } from '@/src/lib/pay/ledger';
+import { MJN, debitUnitIfSufficient, getBalanceRow, InsufficientBalanceError } from '@/src/lib/pay/ledger';
 
 const MIN_WITHDRAWAL = 10; // $10.00 minimum
 
@@ -73,47 +73,57 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     );
   }
 
-  const cashAvailable = amountOf(balance);
-  if (cashAvailable < amount) {
-    return NextResponse.json(
-      { error: 'Insufficient cash balance', available: cashAvailable },
-      { status: 400, headers },
-    );
-  }
+  // #2166: sufficiency is enforced atomically inside the transaction below
+  // via a guarded conditional UPDATE (`debitUnitIfSufficient`) — not this
+  // pre-transaction `amountOf(balance)` read, which is a TOCTOU race: two
+  // concurrent withdrawal requests against the same balance could both read
+  // a stale sufficient amount and both proceed, driving the balance
+  // negative. `balance` above is still read for the 404/403 checks, which
+  // are not sufficiency checks and don't need to be atomic.
 
-  // Atomic transaction: deduct balance, create withdrawal request, create transaction
+  // Atomic transaction: guarded debit, create withdrawal request, create transaction
   const requestId = generateId('wr');
   const txId = generateId('tx');
 
-  await db.transaction(async (tx) => {
-    await debitUnit(tx, did, MJN, amount);
+  try {
+    await db.transaction(async (tx) => {
+      const debitResult = await debitUnitIfSufficient(tx, did, MJN, amount);
+      if (!debitResult.ok) {
+        throw new InsufficientBalanceError(MJN);
+      }
 
-    // Insert withdrawal request
-    await tx.insert(withdrawalRequests).values({
-      id: requestId,
-      did,
-      amount: amount.toString(),
-      currency: 'CAD',
-      emtEmail: emt_email,
-      status: 'requested',
-    });
+      // Insert withdrawal request
+      await tx.insert(withdrawalRequests).values({
+        id: requestId,
+        did,
+        amount: amount.toString(),
+        currency: 'CAD',
+        emtEmail: emt_email,
+        status: 'requested',
+      });
 
-    // Insert transaction record
-    await tx.insert(transactions).values({
-      id: txId,
-      service: 'withdrawal',
-      type: 'withdrawal',
-      fromDid: did,
-      toDid: 'platform',
-      amount: amount.toString(),
-      currency: 'CAD',
-      unit: MJN,
-      sourceKind: 'receipt',
-      status: 'pending',
-      source: 'fiat',
-      metadata: { emt_email, withdrawal_request_id: requestId },
+      // Insert transaction record
+      await tx.insert(transactions).values({
+        id: txId,
+        service: 'withdrawal',
+        type: 'withdrawal',
+        fromDid: did,
+        toDid: 'platform',
+        amount: amount.toString(),
+        currency: 'CAD',
+        unit: MJN,
+        sourceKind: 'receipt',
+        status: 'pending',
+        source: 'fiat',
+        metadata: { emt_email, withdrawal_request_id: requestId },
+      });
     });
-  });
+  } catch (err) {
+    if (err instanceof InsufficientBalanceError) {
+      return NextResponse.json({ error: err.message }, { status: 402, headers });
+    }
+    throw err;
+  }
 
   return NextResponse.json(
     { success: true, requestId, amount },
