@@ -1,7 +1,7 @@
--- Migration: 0137_google_workspace_state_gmail_email
+-- Migration: 0140_google_workspace_state_gmail_email
 -- owner: kernel
--- Renumbered from 0134 (#2144 hotfix): 0134 collided with the independently
--- merged 0134_pay_balance_units_drop_legacy_columns.sql once both PRs landed on main.
+-- Renumbered from 0137 (post-#2162/#2160 rebase): 0137 collided with the
+-- independently merged 0138/0139 registry_apps migrations once main advanced.
 -- Adds the Gmail address reverse-index column to kernel.google_workspace_state
 -- (#2144, PR 2/2). Google's Pub/Sub push payload names the mailbox by address,
 -- not by DID, so the webhook route (POST /google/api/webhook/gmail) needs this
