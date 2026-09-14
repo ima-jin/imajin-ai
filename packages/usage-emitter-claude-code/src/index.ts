@@ -54,15 +54,28 @@ async function main(): Promise<void> {
   console.log(`usage-emitter-claude-code: inserted ${inserted}, skipped ${skipped} (already recorded).`);
 }
 
-// Only run when invoked directly (`tsx src/index.ts` / `pnpm start`), not
-// when imported — keeps this module import-safe for tooling/tests.
-if (import.meta.url === `file://${process.argv[1]}`) {
+/**
+ * Runs `fn` (defaulting to `main`) and reports a thrown error the same way
+ * an uncaught rejection would, without ever letting one escape as an
+ * unhandled rejection. Extracted from the guard below, and parameterized
+ * over `fn`, so this can be exercised directly from an in-process unit test
+ * (see tests/index.test.ts) — the guard itself only runs as an import side
+ * effect when this file is invoked directly, which a plain `import` from a
+ * test never triggers.
+ */
+export async function runCli(fn: () => Promise<void> = main): Promise<void> {
   try {
-    await main();
+    await fn();
   } catch (err: unknown) {
     console.error('usage-emitter-claude-code: fatal error', err);
     process.exitCode = 1;
   }
+}
+
+// Only run when invoked directly (`tsx src/index.ts` / `pnpm start`), not
+// when imported — keeps this module import-safe for tooling/tests.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  await runCli();
 }
 
 export { main };
