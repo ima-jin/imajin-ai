@@ -297,6 +297,17 @@ scopes active, a spend cap, and `gpt-6-astra` selectable and set as the sealed
 default. Nothing below is OpenAI-specific code — it is the operator steps for
 this one route.
 
+### Preconditions
+
+Confirm all three before touching any of the steps below — the 2026-09-13
+operator review found none of these true yet on the live host:
+
+| Precondition | Check command |
+|---|---|
+| The passthrough proxy (step 1 below) is running and healthy on `127.0.0.1:8787` | `curl -sf http://127.0.0.1:8787/healthz` |
+| The real `principalDid`/`attestationId` for this seat have been obtained — from the seat-issuance step earlier in this runbook ([Migration runbook](#migration-runbook) step 2 above) / [#2146](https://github.com/ima-jin/imajin-ai/pull/2146) — and substituted for the `REPLACE_WITH_*` placeholders in the routes-config entry (step 3 below) | `grep -c REPLACE_WITH /path/to/imajin-ai/packages/openclaw-infer-passthrough/config/routes.prod.json` (expect `0`) |
+| `OPENCLAW_APP_PRIVATE_KEY` and `OPENAI_DIRECT_API_KEY` are present in the root-only `/etc/imajin/infer-passthrough.env` — **never** in OpenClaw config or chat | `sudo test -r /etc/imajin/infer-passthrough.env \&\& sudo grep -qE '^(OPENCLAW_APP_PRIVATE_KEY\|OPENAI_DIRECT_API_KEY)=' /etc/imajin/infer-passthrough.env \&\& echo ok` |
+
 ### 1. Run the proxy on the gateway host
 
 Either supervisor works; use whichever the gateway host already runs its
@@ -391,23 +402,35 @@ sudo systemctl enable --now infer-passthrough
 ### 4. The OpenClaw custom-provider config block
 
 Add this to the gateway's `models.providers` config, alongside — not
-replacing — any other providers:
+replacing — any other providers. **Corrected 2026-09-13:** OpenClaw 2026.8.2
+has no `"type": "openai-compatible"` field, and `models` is not a plain
+string array — the real schema is `api: "openai-completions"` with `models`
+as a list of `{id, name}` objects. As a one-liner:
+
+```bash
+openclaw config set models.providers.imajin-openai '{"baseUrl":"http://127.0.0.1:8787/openai/v1","apiKey":"unused-placeholder","api":"openai-completions","models":[{"id":"gpt-6-astra","name":"GPT-6 Astra (kernel seat)"}]}'
+```
+
+Or as the equivalent JSON fragment:
 
 ```json
 {
   "providers": {
     "imajin-openai": {
-      "type": "openai-compatible",
       "baseUrl": "http://127.0.0.1:8787/openai/v1",
       "apiKey": "unused-placeholder",
-      "models": ["gpt-6-astra"]
+      "api": "openai-completions",
+      "models": [
+        { "id": "gpt-6-astra", "name": "GPT-6 Astra (kernel seat)" }
+      ]
     }
   }
 }
 ```
 
 - `imajin-openai` is the provider id a `sessions_spawn(model: …)` call
-  references to use this seat.
+  references to use this seat, as `imajin-openai/gpt-6-astra` — but see step 5
+  below, which is also required before `sessions_spawn` will accept it.
 - The `/openai/v1` path segment in `baseUrl` is what selects the `"openai"`
   route entry above (`resolveRoute`, `src/router.ts`) — the recommended,
   unambiguous wiring; it does not depend on `modelPrefixes` matching.
@@ -415,7 +438,17 @@ replacing — any other providers:
   other route in this README uses — real auth is the minted app-token JWT,
   not this value. **This is the whole point: it contains no OpenAI key.**
 
-### 5. Acceptance check
+### 5. Add the seat to `agents.defaults.modelPolicy.allow`
+
+This step was missing from the original runbook. Without it, the seat is
+minted and reachable but `sessions_spawn` will refuse to use it — append
+(don't replace) the new entry to the existing allow list:
+
+```bash
+openclaw config set agents.defaults.modelPolicy.allow --append imajin-openai/gpt-6-astra
+```
+
+### 6. Acceptance check
 
 > Spawn a sub-agent on that seat, it completes a task, kernel meter shows the
 > turn under the agent DID with connector=openai model=gpt-6-astra, spend cap
