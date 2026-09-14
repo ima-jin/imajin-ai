@@ -17,7 +17,7 @@ import {
   mkdirSync,
   readdirSync,
 } from "node:fs";
-import { join, resolve, relative, isAbsolute, extname } from "node:path";
+import { join, resolve, sep, extname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -49,10 +49,22 @@ const REWRITABLE_EXTENSIONS = new Set([
 
 // True when `target` (already resolved/canonicalized) is `root` itself or a
 // descendant of it. Used to confine CLI-supplied paths to an allowed root
-// instead of trusting `resolve()` output directly.
+// instead of trusting `resolve()` output directly. The `+ sep` in the
+// `startsWith` check is required: without it a root of `/a/b` would
+// incorrectly accept a sibling like `/a/b-evil`, since that is a plain
+// string comparison rather than a path-segment one.
 export function isPathWithin(root, target) {
-  const rel = relative(root, target);
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  return target === root || target.startsWith(root + sep);
+}
+
+// Resolves `candidate` and validates it against `roots` (root itself or a
+// descendant of one) in a single step, so both CLI-path sinks below
+// (srcDir/destDir) run through one shared resolve-then-check helper instead
+// of each re-deriving the same two-step "resolve, then separately check"
+// shape (jssecurity:S8707 — path traversal via unchecked CLI arguments).
+export function resolveWithinRoots(candidate, roots) {
+  const resolved = resolve(candidate);
+  return roots.some((root) => isPathWithin(root, resolved)) ? resolved : null;
 }
 
 // Validated immediately before every log call (see `packageLabel`) so a
@@ -143,17 +155,17 @@ export function resolveValidatedDirs(pkgDir, outDir) {
 
   // The source is always a workspace package under packages/<name> (see the
   // module docstring and scripts/publish-package.sh) — never an arbitrary path.
-  const srcDir = resolve(pkgDir);
-  if (!isPathWithin(PACKAGES_ROOT, srcDir)) {
+  const srcDir = resolveWithinRoots(pkgDir, [PACKAGES_ROOT]);
+  if (srcDir === null) {
     fail(`Refusing to read package dir outside ${PACKAGES_ROOT}: ${pkgDir}`);
   }
 
   // The output dir is caller-chosen (scripts/publish-package.sh uses a fresh
   // `mktemp -d`), so it must stay within either the repo or the OS temp
   // directory rather than being trusted verbatim.
-  const destDir = resolve(outDir);
   const ALLOWED_OUTPUT_ROOTS = [REPO_ROOT, resolve(tmpdir())];
-  if (!ALLOWED_OUTPUT_ROOTS.some((root) => isPathWithin(root, destDir))) {
+  const destDir = resolveWithinRoots(outDir, ALLOWED_OUTPUT_ROOTS);
+  if (destDir === null) {
     fail(
       `Refusing to write output outside allowed roots (${ALLOWED_OUTPUT_ROOTS.join(
         ", "
