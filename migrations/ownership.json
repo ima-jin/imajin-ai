@@ -406,7 +406,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0136_google_workspace_state.sql",
-      "notes": ""
+      "notes": "Renumbered from 0133 (#2144 hotfix) — 0133 collided with the independently merged 0133_pay_balance_units.sql."
     },
     "kernel.identity_aliases": {
       "owner": "kernel",
