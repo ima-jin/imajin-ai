@@ -4,13 +4,25 @@
  * These exercise the pure validation helpers directly, and the DB-touching
  * helpers (`getBalanceRow`, `getBalances`, `creditUnit`, `debitUnit`)
  * against a minimal fake Drizzle-style executor.
+ *
+ * #2018 review (round 2): the mocked `balances` below is the REAL schema
+ * table (real `Column` objects), not a `{ did: 'did', unit: 'unit', ... }`
+ * plain-string stand-in. That distinction matters here: `eq`/`gte`/`and`
+ * only emit real column-referencing SQL (`"amount" >= $3`) when given real
+ * `Column`s — with plain strings, both sides of every comparison get bound
+ * as opaque params and the WHERE clause text says nothing about which
+ * columns or operators were used. `debitUnitIfSufficient`'s guard tests
+ * below decode the actual WHERE clause via `PgDialect().sqlToQuery()` and
+ * assert its exact text/params, so the guard predicate itself — not just
+ * "an UPDATE happened" — is under test.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
-vi.mock('@/src/db', () => ({
-  db: {},
-  balances: { did: 'did', unit: 'unit', amount: 'amount' },
-}));
+vi.mock('@/src/db', async () => {
+  const { balances } = await import('@/src/db/schemas/pay');
+  return { db: {}, balances };
+});
 
 import {
   MJN,
@@ -23,6 +35,9 @@ import {
   getBalances,
   creditUnit,
   debitUnit,
+  debitUnitIfSufficient,
+  debitFundedLegs,
+  InsufficientBalanceError,
 } from '../ledger';
 
 describe('assertKnownUnit', () => {
@@ -76,9 +91,27 @@ describe('amountOf', () => {
 // shapes these helpers actually call.
 // ---------------------------------------------------------------------------
 
-function makeExecutor(rows: Array<{ did: string; unit: string; amount: string; currency: string }>) {
+// Mirrors the shared route mock's guarded-UPDATE result shape: awaitable
+// directly (the shape every unconditional `debitUnit` caller uses) AND
+// chainable with `.returning()` (the shape `debitUnitIfSufficient` uses to
+// read back whether its guarded conditional UPDATE matched a row).
+// Top-level (not nested inside `makeExecutor`) to keep function-nesting depth low.
+function guardedUpdateResult(resultRows: Record<string, unknown>[]) {
+  return Object.assign(Promise.resolve(undefined), {
+    returning: () => Promise.resolve(resultRows),
+  });
+}
+
+function makeExecutor(
+  rows: Array<{ did: string; unit: string; amount: string; currency: string }>,
+  returningRows?: Array<Array<Record<string, unknown>>>,
+) {
   const insertCalls: Array<{ values: Record<string, unknown>; conflict?: unknown }> = [];
-  const updateCalls: Array<{ values: Record<string, unknown> }> = [];
+  // `where` captures the actual condition object passed to `.where(...)` —
+  // needed to decode the guard predicate itself (see the `debitUnitIfSufficient`
+  // WHERE-clause tests below), not just record that an UPDATE happened.
+  const updateCalls: Array<{ values: Record<string, unknown>; where?: unknown }> = [];
+  const returningQueue = returningRows ? [...returningRows] : undefined;
 
   const executor = {
     select: () => ({
@@ -106,14 +139,22 @@ function makeExecutor(rows: Array<{ did: string; unit: string; amount: string; c
     }),
     update: () => ({
       set: (values: Record<string, unknown>) => {
-        updateCalls.push({ values });
-        return { where: () => Promise.resolve(undefined) };
+        const record: { values: Record<string, unknown>; where?: unknown } = { values };
+        updateCalls.push(record);
+        return {
+          where: (cond?: unknown) => {
+            record.where = cond;
+            return guardedUpdateResult(returningQueue ? (returningQueue.shift() ?? []) : [{}]);
+          },
+        };
       },
     }),
   };
 
   return { executor, insertCalls, updateCalls };
 }
+
+const dialect = new PgDialect();
 
 describe('getBalanceRow / getBalances', () => {
   it('returns undefined when no row matches', async () => {
@@ -174,5 +215,97 @@ describe('debitUnit', () => {
     // @ts-expect-error minimal fake executor
     await debitUnit(executor, 'did:imajin:x', MJN, 5, { clampAtZero: true });
     expect(updateCalls).toHaveLength(1);
+  });
+});
+
+describe('debitUnitIfSufficient (#2018: guarded conditional UPDATE, closes the TOCTOU debit race)', () => {
+  it('returns { ok: true, row } when the guarded UPDATE matches a row (sufficient balance)', async () => {
+    const { executor, updateCalls } = makeExecutor([], [[{ did: 'did:imajin:x', unit: MJN, amount: '5', currency: 'CAD' }]]);
+    // @ts-expect-error minimal fake executor
+    const result = await debitUnitIfSufficient(executor, 'did:imajin:x', MJN, 5);
+    expect(result.ok).toBe(true);
+    expect(result.row).toMatchObject({ did: 'did:imajin:x', unit: MJN, amount: '5' });
+    expect(updateCalls).toHaveLength(1);
+  });
+
+  it('returns { ok: false } when the guarded UPDATE matches zero rows (insufficient balance, or no row yet)', async () => {
+    const { executor, updateCalls } = makeExecutor([], [[]]);
+    // @ts-expect-error minimal fake executor
+    const result = await debitUnitIfSufficient(executor, 'did:imajin:x', MJN, 999);
+    expect(result).toEqual({ ok: false });
+    // The guarded UPDATE is still issued — the guard lives IN the statement,
+    // not as a separate pre-check.
+    expect(updateCalls).toHaveLength(1);
+  });
+
+  it("the guarded UPDATE's WHERE clause is did AND unit AND amount >= the requested amount — the guard lives in the statement's predicate, not a separate JS comparison (#2018 review round 2)", async () => {
+    const { executor, updateCalls } = makeExecutor([], [[{}]]);
+    // @ts-expect-error minimal fake executor
+    await debitUnitIfSufficient(executor, 'did:imajin:x', MJNX, '12.5');
+
+    expect(updateCalls).toHaveLength(1);
+    const where = dialect.sqlToQuery(updateCalls[0].where as Parameters<PgDialect['sqlToQuery']>[0]);
+
+    // Exact text + params, not a loose substring match. This is the
+    // regression guard the review asked for: if `gte(balances.amount,
+    // amountStr)` were ever dropped from `debitUnitIfSufficient` (reverting
+    // to "read the balance in JS, then debit unconditionally" — the TOCTOU
+    // shape #2018 exists to close), the WHERE clause collapses from three
+    // conditions to two and this exact-match assertion fails.
+    expect(where.sql).toBe(
+      '("pay"."balances"."did" = $1 and "pay"."balances"."unit" = $2 and "pay"."balances"."amount" >= $3)',
+    );
+    expect(where.params).toEqual(['did:imajin:x', 'MJNx', '12.5']);
+
+    // The SET clause debits exactly the requested amount — same statement,
+    // same guarded amount, so a caller can never observe a debit larger than
+    // what the WHERE clause just proved was available.
+    const set = dialect.sqlToQuery(updateCalls[0].values.amount as Parameters<PgDialect['sqlToQuery']>[0]);
+    expect(set.sql).toBe('"pay"."balances"."amount" - $1');
+    expect(set.params).toEqual(['12.5']);
+  });
+});
+
+describe('debitFundedLegs (#2018: shared "assert funded and debit" primitive for gift/event-topup)', () => {
+  it('skips legs with amount <= 0 — no guarded UPDATE is attempted for them', async () => {
+    const { executor, updateCalls } = makeExecutor([], [[{}]]);
+    // @ts-expect-error minimal fake executor
+    await debitFundedLegs(executor, 'did:imajin:x', [
+      { unit: MJN, amount: 0 },
+      { unit: MJNX, amount: -1 },
+    ]);
+    expect(updateCalls).toHaveLength(0);
+  });
+
+  it('debits every nonzero leg via its own guarded UPDATE', async () => {
+    const { executor, updateCalls } = makeExecutor([], [[{}], [{}]]);
+    // @ts-expect-error minimal fake executor
+    await debitFundedLegs(executor, 'did:imajin:x', [
+      { unit: MJN, amount: 10 },
+      { unit: MJNX, amount: 5 },
+    ]);
+    expect(updateCalls).toHaveLength(2);
+  });
+
+  it('throws InsufficientBalanceError on the first underfunded leg and does not attempt any later leg', async () => {
+    const { executor, updateCalls } = makeExecutor([], [[]]); // first leg's guard fails
+    await expect(
+      // @ts-expect-error minimal fake executor
+      debitFundedLegs(executor, 'did:imajin:x', [
+        { unit: MJN, amount: 10 },
+        { unit: MJNX, amount: 5 },
+      ]),
+    ).rejects.toThrow(InsufficientBalanceError);
+    // Stopped after the first failing leg — the second leg's UPDATE was
+    // never issued.
+    expect(updateCalls).toHaveLength(1);
+  });
+
+  it('InsufficientBalanceError carries the unit that failed, for a precise 402 message', async () => {
+    const { executor } = makeExecutor([], [[]]);
+    await expect(
+      // @ts-expect-error minimal fake executor
+      debitFundedLegs(executor, 'did:imajin:x', [{ unit: MJNX, amount: 5 }]),
+    ).rejects.toMatchObject({ unit: MJNX, message: expect.stringMatching(/Insufficient MJNx balance/) });
   });
 });

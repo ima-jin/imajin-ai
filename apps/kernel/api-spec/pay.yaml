@@ -147,8 +147,10 @@ paths:
       operationId: giftCredits
       summary: Bulk gift credits from a business DID to multiple recipients
       description: |
-        Debits `from_did`'s cash balance for the total gifted `cash_amount`, and atomically
-        credits each recipient's cash and credit buckets.
+        A funded transfer, never a mint (#2018): debits `from_did`'s MJN (cash) balance for
+        the total gifted `cash_amount` and its MJNx (credit) balance for the total gifted
+        `credit_amount`, then atomically credits each recipient's cash and credit buckets.
+        Insufficient balance in either unit returns 402 and writes nothing.
         The authenticated identity must match `from_did`.
       security:
         - bearerAuth: []
@@ -182,12 +184,17 @@ paths:
                   batchId: { type: string }
                   count: { type: number }
         "400":
-          description: Insufficient balance or invalid request
+          description: Invalid request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "402":
+          description: Insufficient MJN or MJNx balance — never a mint (#2018)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -203,9 +210,12 @@ paths:
       operationId: eventTopup
       summary: Multiplier-based credit gifting for event attendees
       description: |
-        Debit `from_did`'s cash for `ticket_price × recipient count`. Credit each recipient
-        with `ticket_price` cash (refund) and `ticket_price × (multiplier - 1)` credits (bonus).
+        A funded transfer, never a mint (#2018): debits `from_did`'s MJN (cash) balance for
+        `ticket_price × recipient count` and its MJNx (credit) balance for the total bonus
+        credited. Credits each recipient with `ticket_price` cash (refund) and
+        `ticket_price × (multiplier - 1)` credits (bonus).
         multiplier 1.0 = refund only; multiplier 10.0 = refund + 9× credits.
+        Insufficient balance in either unit returns 402 and writes nothing.
         Authenticated via Bearer token; `from_did` must match session.
       security:
         - bearerAuth: []
@@ -242,12 +252,17 @@ paths:
                   cashPerRecipient: { type: number }
                   creditPerRecipient: { type: number }
         "400":
-          description: Insufficient balance, invalid multiplier, or missing ticket_price
+          description: Invalid multiplier or missing ticket_price
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "402":
+          description: Insufficient MJN or MJNx balance — never a mint (#2018)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

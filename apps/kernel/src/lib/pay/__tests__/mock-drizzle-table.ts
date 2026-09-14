@@ -46,7 +46,11 @@ export function tableTag(table: unknown): string {
  * `.limit()` (mirrors `getBalanceRow()`), matching how real Drizzle's
  * query builder behaves either way.
  */
-export function createMockDb(state: MockDbCallState, limitResultFor: (table: unknown) => Promise<unknown[]>) {
+export function createMockDb(
+  state: MockDbCallState,
+  limitResultFor: (table: unknown) => Promise<unknown[]>,
+  returningResultFor: (table: unknown, values: Record<string, unknown>) => Promise<unknown[]> = () => Promise.resolve([{}]),
+) {
   function whereClauseFor(table: unknown) {
     // Lazy + cached: `limitResultFor(table)` must run at most once per
     // where-clause, whether the caller awaits the clause directly or calls
@@ -67,13 +71,29 @@ export function createMockDb(state: MockDbCallState, limitResultFor: (table: unk
     return { from: fromClauseFor() };
   }
 
+  // Lazy + cached for the same reason as `whereClauseFor` above:
+  // `returningResultFor` must run at most once per call, whether the caller
+  // awaits the where-clause directly (ignoring the result, the shape every
+  // pre-#2018 unconditional `debitUnit` caller uses) or calls `.returning()`
+  // on it (the shape `debitUnitIfSufficient` uses to read back whether its
+  // guarded conditional UPDATE matched a row). Extracted to a top-level
+  // helper (rather than nested inside `update`) to keep function-nesting
+  // depth low.
+  function guardedUpdateResult(table: unknown, values: Record<string, unknown>) {
+    let cached: Promise<unknown[]> | undefined;
+    const getRows = () => (cached ??= returningResultFor(table, values));
+    return Object.assign(getRows().then(() => undefined), {
+      returning: () => getRows(),
+    });
+  }
+
   function update(table: unknown) {
     return {
       set(values: Record<string, unknown>) {
         return {
           where(_cond?: unknown) {
             state.updateCalls.push({ table: tableTag(table), values });
-            return Promise.resolve(undefined);
+            return guardedUpdateResult(table, values);
           },
         };
       },
@@ -118,6 +138,18 @@ export interface BalanceRouteDbMockOptions {
    * suites whose route never calls `db.select()`.
    */
   balanceRowQueue?: Array<Record<string, unknown> | undefined>;
+  /**
+   * FIFO queue drained by `.returning()` calls against the `balances`
+   * table, in call order — i.e. one entry per `debitUnitIfSufficient`
+   * guarded conditional UPDATE (#2018). Each entry is that call's
+   * `.returning()` result: a non-empty array (e.g. `[{}]`) means "guard
+   * passed, a row was updated"; `[]` means "guard failed, insufficient
+   * balance". Every other table, and `balances` once the queue is empty,
+   * defaults to a truthy single-row result (guard passes) so suites that
+   * don't care about this still get a working update. Omit for suites
+   * whose route never calls a guarded conditional UPDATE.
+   */
+  returningQueue?: Array<Record<string, unknown>[]>;
   /** Extra mock module exports beyond `db`/`balances`/`transactions`, e.g. `{ withdrawalRequests: {} }`. */
   extra?: Record<string, unknown>;
 }
@@ -137,7 +169,12 @@ export function balanceRouteDbModule(state: MockDbCallState, opts: BalanceRouteD
     const row = opts.balanceRowQueue.shift();
     return Promise.resolve(row ? [row] : []);
   }
-  const { select, insert, update } = createMockDb(state, limitResultFor);
+  function returningResultFor(table: unknown) {
+    if (!opts.returningQueue || tableTag(table) !== 'balances') return Promise.resolve([{}]);
+    const rows = opts.returningQueue.shift();
+    return Promise.resolve(rows ?? [{}]);
+  }
+  const { select, insert, update } = createMockDb(state, limitResultFor, returningResultFor);
   return {
     db: { select, insert, update, transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert, update }) },
     balances: { __table: 'balances', did: 'did', unit: 'unit', amount: 'amount' },
