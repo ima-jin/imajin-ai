@@ -1,10 +1,25 @@
-﻿/**
+/**
  * POST /api/balance/withdraw
  *
  * Withdraw cash balance to a connected Stripe account.
  * Only cash_amount can be withdrawn (not credits).
  *
  * Auth: required
+ *
+ * #2166: the MJN debit is a single guarded conditional UPDATE
+ * (`debitUnitIfSufficient` in `src/lib/pay/ledger.ts`), not "read the
+ * balance, compare in JS, then unconditionally update" — the latter is a
+ * TOCTOU race that lets two concurrent withdrawals both read a stale
+ * sufficient balance and both proceed, sending real money out via Stripe
+ * with no backing balance. The guarded debit is reserved FIRST, inside the
+ * same `db.transaction()` that inserts the transaction row, and the real
+ * Stripe transfer is only created after that reservation succeeds —
+ * insufficient balance throws `InsufficientBalanceError` (mapped to 402)
+ * before Stripe is ever called, and no partial row is left behind. If the
+ * Stripe call itself throws, the whole transaction (including the
+ * reservation) rolls back. This intentionally holds the balance row's lock
+ * for the duration of the Stripe API call — see the PR description for the
+ * trade-off.
  *
  * Request:
  * { amount: number, currency: string, account_id: string }
@@ -20,7 +35,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
-import { MJN, amountOf, debitUnit, getBalanceRow } from '@/src/lib/pay/ledger';
+import { MJN, debitUnitIfSufficient, InsufficientBalanceError } from '@/src/lib/pay/ledger';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
 
@@ -80,58 +95,64 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    // Check MJN balance — the only unit withdraw rails may ever read (#2016).
-    const balance = await getBalanceRow(db, did, MJN);
-
-    const cashAmount = amountOf(balance);
     // Convert cents to dollars for comparison (balance is stored in dollars)
     const withdrawalDollars = amount / 100;
 
-    if (cashAmount < withdrawalDollars) {
-      return NextResponse.json(
-        { error: 'Insufficient cash balance' },
-        { status: 400, headers: cors }
-      );
-    }
-
     const stripe = getStripe();
-
-    // Create Stripe Transfer to the connected account
-    const transfer = await stripe.transfers.create({
-      amount,
-      currency: currency.toLowerCase(),
-      destination: account_id,
-      metadata: {
-        did,
-        type: 'withdrawal',
-      },
-    });
 
     const txId = generateId('tx');
 
-    // Atomic: deduct MJN balance + record transaction
-    await db.transaction(async (tx) => {
-      await tx.insert(transactions).values({
-        id: txId,
-        service: 'pay',
-        type: 'withdrawal',
-        fromDid: did,
-        toDid: account_id,
-        amount: withdrawalDollars.toString(),
-        currency: currency.toUpperCase(),
-        unit: MJN,
-        sourceKind: 'receipt',
-        status: 'completed',
-        source: 'fiat',
-        stripeId: transfer.id,
-        metadata: {
-          transfer_id: transfer.id,
-          account_id,
-        },
-      });
+    // Atomic: guarded MJN debit reserves the funds FIRST; only once that
+    // succeeds do we call Stripe (real money movement) and record the
+    // transaction. Insufficient balance never reaches Stripe.
+    let transfer: Stripe.Transfer;
+    try {
+      transfer = await db.transaction(async (tx) => {
+        const debitResult = await debitUnitIfSufficient(tx, did, MJN, withdrawalDollars);
+        if (!debitResult.ok) {
+          throw new InsufficientBalanceError(MJN);
+        }
 
-      await debitUnit(tx, did, MJN, withdrawalDollars);
-    });
+        // Create Stripe Transfer to the connected account. If this throws,
+        // the guarded debit above rolls back with the rest of the
+        // transaction — no balance is lost without a corresponding payout.
+        const stripeTransfer = await stripe.transfers.create({
+          amount,
+          currency: currency.toLowerCase(),
+          destination: account_id,
+          metadata: {
+            did,
+            type: 'withdrawal',
+          },
+        });
+
+        await tx.insert(transactions).values({
+          id: txId,
+          service: 'pay',
+          type: 'withdrawal',
+          fromDid: did,
+          toDid: account_id,
+          amount: withdrawalDollars.toString(),
+          currency: currency.toUpperCase(),
+          unit: MJN,
+          sourceKind: 'receipt',
+          status: 'completed',
+          source: 'fiat',
+          stripeId: stripeTransfer.id,
+          metadata: {
+            transfer_id: stripeTransfer.id,
+            account_id,
+          },
+        });
+
+        return stripeTransfer;
+      });
+    } catch (err) {
+      if (err instanceof InsufficientBalanceError) {
+        return NextResponse.json({ error: err.message }, { status: 402, headers: cors });
+      }
+      throw err;
+    }
 
     return NextResponse.json(
       {
