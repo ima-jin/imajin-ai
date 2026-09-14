@@ -21,6 +21,9 @@ import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { getStripe } from '@/src/lib/pay/stripe';
+import { confirmWithdrawalFromRailEvent } from '@/src/lib/pay/withdraw-intent';
+import { getWithdrawRailByName } from '@/src/lib/pay/rails/registry';
+import { STRIPE_RAIL_NAME } from '@/src/lib/pay/providers/stripe-withdraw-rail';
 import {
   type FairManifest,
   type TxRow,
@@ -117,6 +120,18 @@ export async function POST(request: NextRequest) {
         const invoice = event.data.object as Stripe.Invoice;
         log.info({ invoiceId: invoice.id }, 'Invoice paid');
         await handleInvoicePaid(invoice);
+        break;
+      }
+
+      // #2172 webhook fast path: confirms a withdrawal intent as soon as
+      // Stripe reports the transfer, instead of waiting for the
+      // reconciliation cron sweep. Idempotent on intent id — see
+      // `confirmWithdrawalFromRailEvent`.
+      case 'transfer.created': {
+        const transfer = event.data.object as Stripe.Transfer;
+        const stripeRail = getWithdrawRailByName(STRIPE_RAIL_NAME);
+        const intentId = stripeRail ? await confirmWithdrawalFromRailEvent(stripeRail, event) : null;
+        log.info({ transferId: transfer.id, intentId }, 'Transfer created');
         break;
       }
 

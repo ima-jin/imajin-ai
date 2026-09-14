@@ -1,0 +1,18 @@
+{
+  "note": "Ratchet, NOT a general allowlist. These are the pre-existing 'stripe' SDK imports under apps/kernel/src/lib/pay/ or apps/kernel/app/pay/ (outside providers/) that already existed when scripts/ci-guard-stripe-import-scope.mjs (#2172) was introduced. The guard fails on any NEW file not listed here, so this file only ever shrinks. Remove an entry once its call site's Stripe usage is migrated behind a WithdrawRail-style adapter under lib/pay/providers/. Do not add an entry to make CI pass without migrating the call site or getting sign-off that it is genuinely deferred.",
+  "issue": "https://github.com/ima-jin/imajin-ai/issues/2172",
+  "violations": [
+    {
+      "file": "apps/kernel/src/lib/pay/stripe.ts"
+    },
+    {
+      "file": "apps/kernel/src/lib/pay/webhook-handlers.ts"
+    },
+    {
+      "file": "apps/kernel/app/pay/api/webhook/route.ts"
+    },
+    {
+      "file": "apps/kernel/app/pay/api/connect/webhook/route.ts"
+    }
+  ]
+}

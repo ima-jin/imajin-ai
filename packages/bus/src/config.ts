@@ -208,6 +208,11 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   // log line only; deliberately no `settle`/`notify` — this is a coherence
   // signal, not an action trigger.
   'settlement.manifest.unverified': attestationOnly('settlement.manifest.unverified'),
+  // #2172 — signed, durable proposal for a reconciliation discrepancy.
+  // `attestation` only, same reasoning as `settlement.manifest.unverified`
+  // above: this is a coherence signal for operator review, never an
+  // action trigger (applying a compensation is explicitly out of scope).
+  'pay.reconciliation.discrepancy': attestationOnly('pay.reconciliation.discrepancy'),
   'handle.claimed': [
     { type: 'attestation', config: { attestationType: 'handle.claimed' }, await: true, enabled: true },
     { type: 'mjn', config: { attestationType: 'handle.claimed' }, enabled: true },

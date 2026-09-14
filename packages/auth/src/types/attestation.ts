@@ -144,6 +144,17 @@ export const ATTESTATION_TYPES = [
   'registry.app.registered',
   'registry.app.rotated',
   'registry.app.revoked',
+
+  // Withdrawal-intent reconciliation (#2172) — minted by the platform node
+  // identity whenever the reconciliation sweep classifies a rail transfer
+  // and a withdrawal intent as NOT matching (either an external transfer
+  // with no completed ledger row, or a pending intent that has aged past
+  // the timeout with no matching external transfer). System-class (see
+  // MECHANICAL_ATTESTATION_TYPES below): a durable, signed proposal for
+  // operator review, never a bilateral/human-signed claim. The reconciler
+  // itself never mutates a balance or intent status — see
+  // apps/kernel/src/lib/pay/reconciliation.ts.
+  'pay.reconciliation.discrepancy',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -188,6 +199,9 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'registry.app.registered',
   'registry.app.rotated',
   'registry.app.revoked',
+  // #2172 — minted mechanically by the platform node identity for every
+  // withdrawal reconciliation discrepancy. See ATTESTATION_TYPES above.
+  'pay.reconciliation.discrepancy',
 ] as const;
 
 /**

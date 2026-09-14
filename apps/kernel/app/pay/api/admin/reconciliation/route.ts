@@ -72,11 +72,49 @@ export async function GET() {
     LIMIT 500
   `;
 
+  // #2172: withdrawal-reconciliation discrepancies, grouped by rail. Read
+  // straight from `auth.attestations` (kernel owns both `pay` and `auth`,
+  // so this is not a cross-schema violation) rather than a dedicated
+  // discrepancies table — the signed attestation IS the durable record;
+  // duplicating it into a second table would just be another place for the
+  // two to drift.
+  const discrepancyRows = await sql`
+    SELECT
+      payload->>'rail' AS rail,
+      payload->>'bucket' AS bucket,
+      payload->>'external_ref' AS external_ref,
+      payload->>'intent_id' AS intent_id,
+      (payload->>'amount')::numeric AS amount,
+      payload->>'unit' AS unit,
+      issued_at
+    FROM auth.attestations
+    WHERE type = 'pay.reconciliation.discrepancy'
+    ORDER BY issued_at DESC
+    LIMIT 500
+  `;
+
+  const discrepanciesByRail = new Map<string, unknown[]>();
+  for (const row of discrepancyRows) {
+    const rail = row.rail as string;
+    const bucket = discrepanciesByRail.get(rail) ?? [];
+    bucket.push({
+      bucket: row.bucket,
+      externalRef: row.external_ref,
+      intentId: row.intent_id,
+      amount: row.amount,
+      unit: row.unit,
+      issuedAt: row.issued_at,
+    });
+    discrepanciesByRail.set(rail, bucket);
+  }
+  const discrepancies = [...discrepanciesByRail.entries()].map(([rail, items]) => ({ rail, items }));
+
   return NextResponse.json({
     circulatingMjnx: circulating.circulating_mjnx,
     backedMjn: backed.backed_mjn,
     // #738 Decision 2: single node today — this is that node's own totals,
     // not a cross-node breakdown.
     perDid,
+    discrepancies,
   });
 }

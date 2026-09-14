@@ -1,25 +1,26 @@
 /**
  * POST /api/balance/withdraw
  *
- * Withdraw cash balance to a connected Stripe account.
- * Only cash_amount can be withdrawn (not credits).
+ * Withdraw cash balance to an external payout destination via a registered
+ * `WithdrawRail` (#2172 — rail-agnostic; Stripe is the only rail enabled
+ * for MJN today). Only MJN (receipt-backed, withdrawable) can be withdrawn.
  *
  * Auth: required
  *
- * #2166: the MJN debit is a single guarded conditional UPDATE
- * (`debitUnitIfSufficient` in `src/lib/pay/ledger.ts`), not "read the
- * balance, compare in JS, then unconditionally update" — the latter is a
- * TOCTOU race that lets two concurrent withdrawals both read a stale
- * sufficient balance and both proceed, sending real money out via Stripe
- * with no backing balance. The guarded debit is reserved FIRST, inside the
- * same `db.transaction()` that inserts the transaction row, and the real
- * Stripe transfer is only created after that reservation succeeds —
- * insufficient balance throws `InsufficientBalanceError` (mapped to 402)
- * before Stripe is ever called, and no partial row is left behind. If the
- * Stripe call itself throws, the whole transaction (including the
- * reservation) rolls back. This intentionally holds the balance row's lock
- * for the duration of the Stripe API call — see the PR description for the
- * trade-off.
+ * #2172 (supersedes #2166's single-transaction shape): reserve -> external
+ * -> confirm, not "debit + external call + record in one transaction".
+ * `executeWithdrawal` (`src/lib/pay/withdraw-intent.ts`) commits the guarded
+ * debit (#2166's `debitUnitIfSufficient`, unchanged) together with a durable
+ * `pay.withdrawal_intents` row BEFORE the rail is ever called, so the
+ * intent id (and the rail's native idempotency key, which is the same
+ * value) exists no matter what happens next. This closes the residual gap
+ * #2166 flagged: if the rail call succeeds but the confirming transaction
+ * never commits (crash, network partition), the reservation is not lost —
+ * it's a durable `pending` intent the reconciliation sweep
+ * (`src/lib/pay/reconciliation.ts`) classifies as external-without-ledger,
+ * instead of a Stripe transfer with no trace of ever having been attempted.
+ * If the rail call itself throws, the reservation is released synchronously
+ * in the same request (`releaseWithdrawal`) before this route returns.
  *
  * Request:
  * { amount: number, currency: string, account_id: string }
@@ -29,28 +30,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
-import { db, transactions } from '@/src/db';
-import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
-import { MJN, debitUnitIfSufficient, InsufficientBalanceError } from '@/src/lib/pay/ledger';
+import { MJN, InsufficientBalanceError } from '@/src/lib/pay/ledger';
+import { executeWithdrawal } from '@/src/lib/pay/withdraw-intent';
+import { defaultRailForUnit } from '@/src/lib/pay/rails/registry';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
-
-let _stripe: Stripe | null = null;
-function getStripe(): Stripe {
-  if (!_stripe) {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-      apiVersion: '2024-11-20.acacia' as Stripe.LatestApiVersion,
-    });
-  }
-  return _stripe;
-}
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -98,54 +85,23 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     // Convert cents to dollars for comparison (balance is stored in dollars)
     const withdrawalDollars = amount / 100;
 
-    const stripe = getStripe();
+    const rail = defaultRailForUnit(MJN);
+    if (!rail) {
+      return NextResponse.json(
+        { error: 'No withdrawal rail is configured for this unit' },
+        { status: 500, headers: cors }
+      );
+    }
 
-    const txId = generateId('tx');
-
-    // Atomic: guarded MJN debit reserves the funds FIRST; only once that
-    // succeeds do we call Stripe (real money movement) and record the
-    // transaction. Insufficient balance never reaches Stripe.
-    let transfer: Stripe.Transfer;
+    let result;
     try {
-      transfer = await db.transaction(async (tx) => {
-        const debitResult = await debitUnitIfSufficient(tx, did, MJN, withdrawalDollars);
-        if (!debitResult.ok) {
-          throw new InsufficientBalanceError(MJN);
-        }
-
-        // Create Stripe Transfer to the connected account. If this throws,
-        // the guarded debit above rolls back with the rest of the
-        // transaction — no balance is lost without a corresponding payout.
-        const stripeTransfer = await stripe.transfers.create({
-          amount,
-          currency: currency.toLowerCase(),
-          destination: account_id,
-          metadata: {
-            did,
-            type: 'withdrawal',
-          },
-        });
-
-        await tx.insert(transactions).values({
-          id: txId,
-          service: 'pay',
-          type: 'withdrawal',
-          fromDid: did,
-          toDid: account_id,
-          amount: withdrawalDollars.toString(),
-          currency: currency.toUpperCase(),
-          unit: MJN,
-          sourceKind: 'receipt',
-          status: 'completed',
-          source: 'fiat',
-          stripeId: stripeTransfer.id,
-          metadata: {
-            transfer_id: stripeTransfer.id,
-            account_id,
-          },
-        });
-
-        return stripeTransfer;
+      result = await executeWithdrawal({
+        did,
+        unit: MJN,
+        amount: withdrawalDollars,
+        rail,
+        currency,
+        destination: account_id,
       });
     } catch (err) {
       if (err instanceof InsufficientBalanceError) {
@@ -157,8 +113,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     return NextResponse.json(
       {
         success: true,
-        transactionId: txId,
-        transferId: transfer.id,
+        transactionId: result.transactionId,
+        transferId: result.externalRef,
         amount,
         currency: currency.toUpperCase(),
       },
