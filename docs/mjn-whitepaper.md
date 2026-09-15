@@ -1,6 +1,6 @@
 # MJN Protocol
 ## A Cryptographic Operating System for Sovereign Commerce
-### v0.5 · May 2026
+### v0.6 · September 2026
 
 *Ryan Veteze · ryan@imajin.ai · [github.com/ima-jin/imajin-ai](https://github.com/ima-jin/imajin-ai)*
 
@@ -31,28 +31,28 @@ Just Next.js apps behind Caddy on a single server with pm2.
 stable alias. MJN is Layer 6 — settlement, trust graph, attribution — on a cryptographic
 substrate.
 
-**Reference implementation:** 1 kernel + 6 federated apps at `jin.imajin.ai`. ~150
-registered identities. First demonstration: April 1, 2026.
+**Reference implementation:** 1 kernel + 8 federated apps at `jin.imajin.ai`. Live since
+February 2026.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Userspace (disposable, replaceable)                        │
-│  events · market · learn · coffee · links · dykil           │
-├─────────────────────────────────────────────────────────────┤
-│  Kernel                                                     │
-│  auth · pay · chat · media · profile · connections · registry│
-├─────────────────────────────────────────────────────────────┤
-│  Bus — reactor chains (side effects are composable)         │
-│  Vault — encrypted store (data encrypted at rest, always)   │
-│  Broker — consent gate (data released only with permission) │
-├─────────────────────────────────────────────────────────────┤
-│  Cryptographic Substrate                                    │
-│  Ed25519 · CID · dag-cbor · DFOS chains · .fair manifests   │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│  Userspace (disposable, replaceable)                                       │
+│  events · market · learn · coffee · links · dykil · broker-agent · corpus  │
+├────────────────────────────────────────────────────────────────────────────┤
+│  Kernel                                                                    │
+│  auth · pay · chat · media · profile · connections · registry              │
+├────────────────────────────────────────────────────────────────────────────┤
+│  Bus — reactor chains (side effects are composable)                        │
+│  Vault — encrypted store (data encrypted at rest, always)                  │
+│  Broker — consent gate (data released only with permission)                │
+├────────────────────────────────────────────────────────────────────────────┤
+│  Cryptographic Substrate                                                   │
+│  Ed25519 · CID · dag-cbor · DFOS chains · .fair manifests                  │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 The **kernel** is auth + pay + chat + media + profile + connections + registry. One cookie,
@@ -357,16 +357,16 @@ next (Solana), mesh trust eventually (no central authority).
 
 | Status | Item |
 |--------|------|
-| ✅ | Kernel + 6 federated userspace apps |
+| ✅ | Kernel + 8 federated userspace apps |
 | ✅ | Five-tier DID identity with lazy minting |
 | ✅ | DFOS chain-backed identity across all services |
 | ✅ | DFOS relay (106/106 conformance, four-node mesh) |
 | ✅ | Bilateral attestations via countersignatures |
-| ✅ | 25+ attestation types with Ed25519 signing |
+| ✅ | 80+ attestation types and growing, with Ed25519 signing ([types](https://github.com/ima-jin/imajin-ai/blob/main/packages/auth/src/types/attestation.ts)) |
 | ✅ | Event bus with reactor chains |
 | ✅ | .fair settlement via bus reactor |
 | ✅ | Stripe Connect multi-seller payouts |
-| ✅ | MJNx internal credit ledger |
+| ✅ | MJN/MJNx dual-unit ledger — receipt-backed withdrawable MJN vs. emitted non-withdrawable MJNx ([#2159](https://github.com/ima-jin/imajin-ai/pull/2159)) |
 | ✅ | Trust graph (pods, invites, groups, vouches) |
 | ✅ | DID-based real-time chat with E2EE |
 | ✅ | Vault — encrypted config with CID addressing |
@@ -375,31 +375,34 @@ next (Solana), mesh trust eventually (no central authority).
 | ✅ | Multi-party document signing |
 | ✅ | Federation registry |
 | ✅ | MJN token reserved on Solana |
+| ✅ | Google Workspace connector — Gmail, Calendar, Drive; OAuth2 auth-code, revocation both ways ([#2144](https://github.com/ima-jin/imajin-ai/issues/2144), [#2151](https://github.com/ima-jin/imajin-ai/pull/2151), [#2153](https://github.com/ima-jin/imajin-ai/pull/2153)) |
+| ✅ | App registry — first-class registered-app table ([#1990](https://github.com/ima-jin/imajin-ai/issues/1990), [#2160](https://github.com/ima-jin/imajin-ai/pull/2160)) |
+| ✅ | Operator approvals via /jin — signed confirm on requests, actionable from anywhere ([#2059](https://github.com/ima-jin/imajin-ai/issues/2059), [#2078](https://github.com/ima-jin/imajin-ai/pull/2078)) |
+| ✅ | Usage attestations — `usage.incurred` / `usage.rollup` / `usage.billed` with a public rollup endpoint ([#1951](https://github.com/ima-jin/imajin-ai/issues/1951), [#2030](https://github.com/ima-jin/imajin-ai/issues/2030)) |
+| ✅ | `@imajin/money` — currency-safe Money primitive with signed FX snapshots ([#2036](https://github.com/ima-jin/imajin-ai/pull/2036)) |
 | ⏳ | Selective disclosure / data broker |
 | ⏳ | Standing computation |
 | ⏳ | Portable exit credentials |
 | ⏳ | MJN token settlement (dual-currency) |
 | ⏳ | Declared-intent marketplace |
-| ⏳ | Node registration via DFOS relay |
 
 ---
 
-## Build Stats
-
-| Metric | Value |
-|--------|-------|
-| Architecture | 1 kernel + 6 federated apps |
-| Shared packages | 20 |
-| Lines of code | ~134,000 |
-| Commits | 2,467 |
-| Identities | ~150 |
-| Days | 110 |
-| Team | 1 human + AI agents |
-| Traditional estimate | $2.3M / 14.4 months / 9.2 people |
-| Actual cost | ~$108K / 110 days / 1 person |
+Build metrics (lines of code, commits, live-since date) are generated, not hand-typed —
+see the README's [Project Status](https://github.com/ima-jin/imajin-ai/blob/main/README.md#project-status)
+for the replayable stats table and how each figure is derived.
 
 ---
 
-*[Developer Guide](./developer-guide.md) · [llms-full.txt](https://imajin.ai/llms-full.txt) · [.fair spec](https://github.com/ima-jin/.fair) · [DFOS](https://protocol.dfos.com) · [Source](https://github.com/ima-jin/imajin-ai)*
+Licensed under the [Imajin Network License (INL) v1.0](https://github.com/ima-jin/imajin-ai/blob/main/LICENSE.md).
+This repository is the Imajin Inc. reference implementation of the MJN protocol, not the
+protocol spec itself — the spec is scoped to move toward an independent protocol entity
+over time.
 
-*First demonstration: April 1, 2026.*
+v0.6 (2026-09): Revocation added as sixth primitive (#2042). MJN/MJNx model reconciled
+(#2019). What's Live refreshed. Build Stats section removed — replayable stats live in
+the README. Stale dates and counts corrected.
+
+*[Developer Guide](./developer-guide) · [llms-full.txt](https://imajin.ai/llms-full.txt) · [.fair spec](https://github.com/ima-jin/.fair) · [DFOS](https://protocol.dfos.com) · [Source](https://github.com/ima-jin/imajin-ai)*
+
+*Live since February 2026.*
