@@ -228,36 +228,38 @@ What changes: **the addressable market expands.** Privacy-requiring transactions
 
 ## Dual-Token Convergence
 
-Midnight launched with a dual-token model: NIGHT (governance/security) and DUST (transaction fees). This is the same structural separation as Imajin's MJN (equity/governance) and MJNx (stable settlement, CHF-pegged).
+Midnight launched with a dual-token model: NIGHT (governance/security) and DUST (transaction fees). Imajin's two units are a different structural split — not governance/utility, but backed/emitted, per Ryan's 2026-09-04 ruling (#738 Decisions, RFC-12): **MJN** is receipt-backed money, minted only against a rail receipt, withdrawable. **MJNx** is the emitted platform unit, earned by activity, spendable in-platform, not withdrawable. Neither is a governance token; MJN carries no equity claim, and MJNx carries no peg — the old "MJNx, CHF-pegged" framing is retired (RFC-12 §1.2).
 
 | | Midnight | Imajin |
 |---|---|---|
-| **Governance token** | NIGHT | MJN |
-| **Utility token** | DUST (fees) | MJNx (settlement, CHF-pegged) |
-| **Separation rationale** | Predictable tx costs, isolate speculation | Predictable settlement, isolate speculation |
+| **Governance/security token** | NIGHT | — (no governance token; see RFC-12) |
+| **Fee/utility token** | DUST (fees) | — (fees settle in MJN or MJNx directly; no separate fee unit) |
+| **Backed unit** | — | MJN — receipt-backed, withdrawable |
+| **Emitted unit** | — | MJNx — earned by activity, in-platform only, not withdrawable |
+| **Separation rationale** | Predictable tx costs, isolate speculation | Predictable settlement (MJN) kept separate from earned, non-withdrawable activity credit (MJNx) |
 | **Fee abstraction** | Apps cover DUST fees for users | Gas pool subsidizes, users never see gas |
 | **User experience goal** | "Invisibility" — users don't know it's blockchain | Users tap, pay, chain is plumbing |
 | **Selective disclosure** | ZK proofs at protocol layer | Attestation chains at identity layer |
 | **Funding** | $200M self-funded | ~$80K bootstrapped |
-| **Token distribution** | Airdrop to 37M wallets across 8 chains | Earned through real economic activity, milestone-gated mint |
-| **Valuation at launch** | Briefly >$1B, currently ~$776M | Pre-token, virtual MJN accruing |
+| **Token distribution** | Airdrop to 37M wallets across 8 chains | MJNx is earned through real economic activity; MJN is minted only against a receipt — neither is airdropped |
+| **On-chain status** | Live tokens, briefly >$1B valuation, currently ~$776M | Both units are ledger rows today (`pay.balances`), not on-chain tokens; an on-chain MJNx→MJN bridge is a reserved Stiftung seat (RFC-12 §5) — no build, no date |
 
 The design conclusions are identical. The approach is opposite. Hoskinson built from the protocol layer up — a new L1 with ZK privacy baked into the chain. Imajin built from the application layer down — real services (events, marketplace, chat, payments) with sovereign identity underneath, chain-agnostic settlement.
 
-### Distribution: Airdrop vs Proof-of-Participation
+### Distribution: Real Activity, Not Airdrop
 
 Midnight distributed tokens to 37M wallets on day one. Wide reach, but value is given, not earned. The tokens represent nothing except having a wallet on one of eight chains.
 
-Imajin's model: virtual MJN accrues through real economic activity — buying tickets, selling goods, tipping, creating content. Each credit is an entry on a DFOS chain. Replay the chain = calculate the balance. The milestone gate (10K active DIDs + $2.5M settlement volume) converts virtual to real. Every token at mint represents actual participation in a real economy.
+Imajin's model: MJNx accrues through real economic activity — buying tickets, selling goods, tipping, creating content. Each credit is an entry on a DFOS chain, and its provenance is preserved forever (RFC-12 §1.3): replay the chain and you get the balance, and the ledger can always say how much of any balance is backed (MJN) versus emitted (MJNx). There is no scheduled conversion of MJNx into an on-chain token, no milestone that triggers one, and no rate promised — any future MJNx→MJN relationship is a reserved Stiftung seat (RFC-12 §5), decided if and when a Stiftung exists, not a mechanism this RFC or RFC-12 commits to.
 
-Airdrop is spray-and-pray. Proof-of-participation is earned. The structural consequence: Imajin's token holders are *users of the network*, not speculators who happened to have a wallet.
+Airdrop is spray-and-pray. Earned, in-platform activity is not — the structural consequence holds regardless of whether an on-chain bridge is ever built: Imajin's balances represent *users of the network*, not speculators who happened to have a wallet.
 
 ### Why This Matters for Multi-Chain Settlement
 
-If Imajin integrates Midnight as a settlement rail (Phase 3), the dual-token models are complementary:
+If Imajin integrates Midnight as a settlement rail (Phase 3), the token models are complementary, not competing:
 - DUST handles Midnight transaction fees (or Imajin's gas pool covers them)
-- MJN/MJNx handles the actual settlement value
-- NIGHT governance is Midnight's concern, MJN governance is Imajin's concern
+- MJN and MJNx handle the actual settlement value, per their existing semantics (RFC-12) — MJN for withdrawable, receipt-backed settlement; MJNx for in-platform, non-withdrawable spend
+- NIGHT governance is Midnight's concern; Imajin has no governance token to reconcile against it
 - No token conflict — they operate at different layers
 
 The town doesn't compete with the highway. It uses it.
