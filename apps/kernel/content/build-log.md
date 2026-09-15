@@ -1,5 +1,47 @@
 <!-- Build Log — newest first. Source: Discord dev channel + git history. -->
 
+## August 2026 — Connector Custody, the Corpus Engine & Agents at the Door
+
+**Connectors grew a real custody model, a per-DID search engine landed inside the kernel, and external agents got a door of their own — verified, not just trusted.**
+
+### 🔐 Connector custody, generalized (#1521, #1540, #1785, #1317, #1729, #1391, #1595)
+
+Vault-backed connectors moved off legacy v1 node-sealed storage onto a v2 custody model, with an app-facing connector surface — apps query status and invoke actions via app-auth, on the user's behalf, but never manage connector lifecycle directly. Three new connector-pattern instances landed: **Stripe BYO** (a restricted-key connector that bypasses Connect and reacts on the account holder's own money events), **Google Cloud** (signed-action-per-cloud-op — the third instance of the pattern), and a **GitHub adapter** feeding the new corpus engine, with GitHub's device flow replacing a rejected shared-app auth model. `@ima-jin/*` packages dual-published to GitHub Packages for connector visibility in the org sidebar.
+
+### 🔎 The corpus engine (Epic #1726)
+
+A new service: DID-owned, source-agnostic retrieval. Local and GitHub adapters (#1732, #1729) prove the adapter pattern, an MCP proxy exposes scope-gated search/load/sync/status to agents (#1730, #1743), a corpus manager dashboard lands on the DID profile page (#1731, #1747), and workspace-path resolution gets a real security boundary (#1746). A first spike into corpus identity, auth, and provenance (#1752) leaves the kernel-rail-vs-app question open for #1981 to settle.
+
+### 🚪 External agents get a door (#1834, #1882, #1883, #1899, #1900, #1887, #1886)
+
+The claimable-stub epic (#1834) shipped across three phases: one DID per email, a silent merge on claim, a ratcheted bilateral claim. Built on top of it: scoped delegation grants with a real grant/revoke lifecycle for external agents, an onboarding path for an outside agent to arrive with a DID, keys, and scoped grants, and agent-facing discovery of the whole knock flow (agent card, a 401 affordance, flow-as-data). `external_did` is now verified against its own `did:web` document before a knock is trusted — an unverified claim gets labeled on the accept surface, not silently believed. Agent delegation moved off `identity_members` onto grants (#1887); an intro-attribution `.fair` template splits value with the matchmaker when an intro pays off (#1886).
+
+### ⚙️ Warp as an orchestrated actor (Epic #1327, #1639, #1830, #1636, #1805)
+
+The software-factory loop kept its human gate but grew a real control surface: the full Warp API (transcript, telemetry, followups, completion events), post-dispatch run control (cancel, send a follow-up message), read-only MCP discovery scopes so the dev kernel is inspectable from a Warp connector, and run-progress events reclassified as telemetry — notifications now fire only on real state transitions, not every tick.
+
+### 🛡 Service-eligibility, not just self-declared scope (#1800, #1803, #1806, #1799)
+
+Service-token scopes now require explicit service-eligibility instead of trusting a caller's own `requestedScopes`. A session-less service credential lets a registered app do machine-to-machine kernel reads without a user session, and connector telemetry rolls up per service.
+
+### 📜 Attestation hardening (#1790, #1820, #1822, #1824)
+
+Amendment by supersession — a newer signed correction can retire an older countersigned record, on the record, not by editing it. Counterparty pending-signature notifications wired through bus/notify, the countersign-pending dashboard fixed to stop surfacing mechanical `session.created` attestations as if they needed a human, and a 401 on `attestations.countersign` traced to a missing `attestations:write` scope on the app token.
+
+### 🧹 CI as a gate, not a suggestion (#1559, #1547, PR #1572, PR #1569, PR #1571)
+
+Every CI gate audited for whether it had ever actually failed a PR (#1559) turned up a "lint-and-typecheck" gate that never ran `tsc` — fixed by wiring `pnpm -r typecheck` in (#1547). Publishable package versions normalized to 0.8.0 across the monorepo, `cid` and `vault-core` made npm-publishable, and the unused pnpm cache dropped from the scheduled audit job.
+
+### 📐 RFCs
+
+RFC-42 (MyTerms / IEEE 7012 as an Imajin conformance profile), RFC-43 (the Receipt Grammar — verb normalization, and the kernel shedding its verticals), and RFC-27 + RFC-31 rewritten to v2 (agent runtime as DID orchestrator, fleet model, bus routes).
+
+### 🏗 Also shipped
+
+Next.js upgraded 14 → 15 across the monorepo to clear eight high-severity advisories (#1565). A dedicated `inference:*` MCP scope so signing authority no longer rides on `media:write` (#1298). Media picked up a rename affordance in the viewer, a frontmatter guard against silent note-demotion, and auto-emitted responsive `<img>` markup for article images (#1543, #1542, #1532); delegated messages now carry `composedBy` attribution (#1673).
+
+---
+
 ## July 2026 — Delegation Wired End-to-End, MCP Connectors & the Software-Factory Loop
 
 **Acting-for delegation landed across the kernel, the MCP surface grew real connectors, and we built an autonomous sprint loop — human-gated by design.**
