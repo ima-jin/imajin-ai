@@ -215,9 +215,13 @@ receivable.
 
 **Live:** Stripe (Connect for multi-seller payouts). Interac e-Transfer for CAD on-ramp.
 
-**MJNx ledger:** Internal credit token. 1 MJN = $0.01 (1¢). 100 MJN = 1 MJNx. The protocol
-doesn't require the token. The token requires the protocol. MJNx is to Imajin as USD is to
-SWIFT — an accounting unit for the node's internal ledger, not a speculative asset.
+**MJN / MJNx ledger:** Two units, one ledger, provenance forever (ruled 2026-09-04, shipped
+in the #2016 ledger split). **MJN** is receipt-backed money — minted only against a rail
+receipt (Stripe today; e-Transfer, Lightning, Solana Pay/x402 as they land), burned against
+a payout receipt, withdrawable. **MJNx** is the emitted platform unit — earned by activity
+per a configured emission schedule, spendable in-platform, **not withdrawable**, and never
+silently converted to MJN. Any future MJNx → MJN relationship is a reserved Stiftung seat
+(RFC-12) — an invariant, not a conversion promise or a rate.
 
 **Planned settlement schemes:** MJNx-direct, Solana Pay, Lightning, x402.
 

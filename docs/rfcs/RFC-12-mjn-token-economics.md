@@ -1,228 +1,92 @@
-# RFC-12: RFC: MJN Token Economics — reserve-backed utility token with fiat bridge
+# RFC-12: MJN & MJNx — Settlement Units and the Reserved On-Chain Seat
 
-**Status:** Stale — load-bearing, revision pending
+**Status:** Current — reconciled with the #738 ruling (2026-09-04)
 **Canon:** Settlement
-**Tracked-in:** #1852
-**Reviewed:** 2026-09-03
+**Tracked-in:** #2019 (reconciliation); originally triaged under #1852
+**Reviewed:** 2026-09-15
 **Discussion:** https://github.com/ima-jin/imajin-ai/discussions/269
 
 ---
 
 ## Summary
 
-MJN is a reserve-backed utility token that serves as the settlement currency for the Imajin protocol. Users can freely convert between fiat and MJN through the Foundation clearinghouse. The token starts at a fixed exchange rate and evolves to a managed float as network volume grows.
+Two units, one ledger, provenance forever — ruled 2026-09-04 (#738 Decisions), shipped in the #2016 ledger split (#2159, merged 2026-09-10).
 
-This is not a speculative asset. This is a settlement instrument that happens to live on Solana.
+- **MJN** — receipt-backed money on the platform. Minted only against a signed rail receipt (Stripe today; e-Transfer, Lightning, Solana Pay/x402 as they land — #2013, #2014), burned against a payout receipt. Withdrawable.
+- **MJNx** — the emitted platform unit. Earned by activity per a configured emission schedule (#2012, #2017), spendable in-platform, **not withdrawable**, never silently converted to MJN.
+- **MJNx → MJN** is a reserved seat, not a mechanism this RFC builds: if/when a Stiftung and a real token exist, any relationship is computed from the signed ledger history already being kept (§1.3). No conversion promise, no rate, no date.
 
-## Core Model
+This RFC replaces the previous "MJN Token Economics" draft, which described MJN as a Solana-native reserve-backed token with a Foundation-run fiat bridge and peg. That model predates the 2026-09-04 ruling and doesn't match what ships today: MJN and MJNx are Postgres ledger rows (`pay.balances`, row-per-`(did, unit)`), not on-chain tokens. The Solana/Foundation material is retained in §5 as the shape a *future* on-chain bridge would take if the Stiftung seat is ever exercised — it is explicitly not committed, scheduled, or required for MJN/MJNx to work.
 
-### Dual-Currency Network
+## 1. Core Model
 
-Every transaction on the Imajin network can settle in **fiat OR MJN**. Nobody is forced into crypto. The network works either way.
+### 1.1 MJN — receipt-backed, withdrawable
 
-| Rail | Mechanism | Fees | Settlement Speed |
-|------|-----------|------|-----------------|
-| **Fiat** | Stripe / e-transfer | 2.9% + 30¢ (Stripe) | 2-day payout |
-| **MJN** | Solana on-chain | ~$0.001 (gas, subsidized) | Instant |
+- **Mint:** only against an external-value receipt. Every rail mint has a receipt — no discretionary mint, no receipt-less MJN.
+  - Live: Stripe Checkout (`topup`, `admin/deposits`), Interac e-Transfer (admin-confirmed).
+  - Planned: Lightning (#2004), Solana Pay / x402 (#2013), EMT direct (#2014).
+- **Burn:** on withdrawal, via a guarded conditional debit reserved *before* the payout rail is invoked (Stripe Transfer, EMT) — insufficient balance is a 402 and the payout is never attempted (#2166).
+- **Fiat relationship:** MJN carries the fiat relationship of its receipt (e.g. a $50 CAD Stripe top-up mints 50 MJN tagged `currency: CAD`). There is no separate "MJN rate" to publish or manage — the receipt sets it.
+- **Not a token today.** MJN lives as a `pay.balances` row keyed `(did, unit='MJN')` in the kernel's Postgres database. It is not minted on Solana or any chain.
 
-MJN is better — lower fees, instant settlement, atomic .fair splits — but not required. The user chooses. Over time, the economic advantage of MJN drives organic adoption.
+### 1.2 MJNx — emitted, in-platform, non-withdrawable
 
-### Mint/Burn Reserve Model
+- **Mint:** the bus's `mjn` reactor and the `/api/emission` route credit MJNx against a rule-based activity schedule (identity created, verified, connection, vouch, ticket purchase, etc.). The exact schedule and caps are governed by #2012, moving from hardcoded constants (`packages/bus/src/emissions.ts`) into signed `bus_chain_configs` rows (#2017) so every emission traces to a triggering attestation.
+- **Spend:** in-platform only — event tickets, market listings, course enrollment, tips, declared-intent marketplace gas, and transfers to other DIDs (still MJNx on arrival).
+- **Never withdrawable, never silently converted.** `/api/balance/withdraw` only ever debits MJN. `/api/balance/transfer` and `/api/settle` move a single unit per request — MJNx sent arrives as MJNx; an unknown or cross-unit request is a 400, never a conversion.
+- **Peg language retired.** The old "1 MJNx = 1 CAD" (and the whitepaper's now-corrected "100 MJN = 1 MJNx" sub-unit framing) is gone. MJNx carries no fiat relationship at all — it has no rate to peg or manage.
+- **Funded, not minted, outside the kernel.** Gift and event-topup credits (#2018) are transfers debited from the granting DID's own MJN and MJNx balances, atomically and with a guarded conditional debit — never a mint. Any entity outside the kernel that credits MJNx funds it.
+
+### 1.3 The ledger invariant
+
+For any balance, the ledger can always answer how much is backed (MJN) and how much is emitted (MJNx) — per-DID and in aggregate (`GET /pay/api/admin/reconciliation`, #2016 decision 4). This provenance is kept forever: every MJNx transaction carries `source_kind` (`emission` or `transfer`) and, where applicable, the triggering `attestation_id`; every MJN transaction carries `source_kind` (`receipt` or `transfer`). Nothing about §5 (the reserved seat) requires new bookkeeping — the history it would need is already the history #2016 keeps.
+
+## 2. Settlement
+
+`POST /api/settle` defaults to `unit: MJN` and validates the requested unit against `accepted_units` (default `[MJN]`) before touching any balance — an unaccepted unit is a 400, never a silent conversion. Externally-funded settlements (`funded: true`, e.g. Stripe) are hard-pinned to `unit: MJN`: there is no receipt for an externally-funded MJNx mint, so funded settlement in MJNx is not offered.
+
+`POST /api/balance/transfer` moves a single unit (default MJN) between two DIDs; both legs of the transfer touch the same unit row, so cross-unit movement is impossible by construction.
+
+## 3. What Changed From the Original Draft
+
+The previous version of this RFC (reviewed 2026-09-03, prior to the ruling) described:
+
+- MJN as a single reserve-backed Solana SPL token, mint/burn 1:1 against fiat reserves held by a Swiss Foundation clearinghouse.
+- A fixed-then-managed-float exchange rate the Foundation would publish.
+- No MJNx concept at all — "MJN" covered both the receipt-backed and the earned/emitted cases.
+
+The audit behind #2016 found this was one of three inconsistent tellings of the model in the repo (alongside the whitepaper's "MJN as a cent sub-unit of MJNx" framing and the code's single fungible bucket with `'MJNx'` as an unused alias). Ryan's 2026-09-04 ruling (§1 above) is the one that ships. This RFC is rewritten to match it; nothing in §1–2 is aspirational — it describes `pay.balances`/`pay.transactions` as they exist after #2159 (merged 2026-09-10).
+
+## 4. Where MJNx Is Spent
+
+- **Event tickets, course enrollment, tipping, market listings** — in-platform MJNx spend.
+- **Declared-intent marketplace (#114)** — gas priced in MJNx; still speculative, not built.
+- **Org DID / merchant settlement** — an Org DID accepting MJNx from a customer receives an in-platform, non-withdrawable balance like anyone else; nothing here grants merchants a special MJNx→fiat conversion path. If merchants need fiat, the payer settles in MJN instead (§2).
+
+## 5. Reserved Seat: MJNx → MJN On-Chain Bridge (no build, no date)
+
+This section is retained from the original draft as a description of the *shape* a future on-chain bridge could take **if and when** the Stiftung and a real token exist — per the #738 epic, this is a reserved seat, not a roadmap item. None of it is required, scheduled, or promised by shipping MJN/MJNx today; it is here so the option isn't lost, and so nobody re-derives a Solana-token design without reading this first.
+
+### 5.1 Why a seat, not a plan
+
+The provenance §1.3 keeps means any future MJNx→MJN relationship — a token issued *against* the signed ledger, at whatever rate a Stiftung decides — can be computed retroactively from history. There is no need to build the bridge now, peg a rate now, or promise redemption now. Doing so before there is a Stiftung would be making a financial promise nobody has authorized.
+
+### 5.2 If exercised: sketch of the mechanism
+
+- A Swiss Stiftung (non-profit foundation, Swiss Civil Code Art. 80–89 — the vehicle used by the Ethereum, Solana, Cardano, and Polkadot foundations) would hold any mint authority for an on-chain MJN-equivalent token, not Imajin Inc.
+- Any token issued would be issued *against* the DID-level MJNx provenance record kept per §1.3 — not promised inside it. The ledger doesn't owe anyone a token; a Stiftung decision would create one, informed by the ledger.
+- FINMA (Swiss financial regulator) token classification, reserve auditing, and AML/KYC procedures would need to be established before any such token could be offered.
 
 ```
-Fiat in  → Foundation mints MJN → user's wallet
-MJN in   → Foundation burns MJN → fiat to user's bank
-                    ↕
-         Foundation holds fiat reserves
-         backing outstanding MJN supply
+MJN Foundation (Swiss Stiftung, if/when formed)
+├── Would hold: any on-chain token treasury, mint authority
+├── Would govern: the MJNx → MJN relationship, RFC process for it
+Imajin Inc. (Canadian corporation)
+├── Operates: the kernel, the MJN/MJNx ledger, reference implementation
+├── Does not: hold Stiftung mint authority, promise a conversion rate
 ```
 
-- **Mint on deposit:** User sends fiat (Stripe or e-transfer), Foundation mints equivalent MJN to their embedded wallet
-- **Burn on withdrawal:** User redeems MJN, Foundation burns tokens and sends fiat to their bank
-- **Reserves are auditable:** Outstanding MJN supply always backed by fiat reserves held by the Foundation
-- **No fractional reserve:** 1:1 backing. Every MJN in circulation has fiat behind it.
-
-### Exchange Rate Strategy
-
-**Phase 1 — Fixed rate (launch)**
-- 1 MJN = fixed USD value (e.g., $0.01 or $0.10 — TBD)
-- Maximum stability. Merchants know exactly what they're accepting.
-- Settlement currency should be boring. This is intentionally boring.
-- Foundation revenue: spread on mint/burn + transaction micro-fees
-
-**Phase 2 — Managed float (maturity)**
-- Foundation adjusts rate gradually based on network economics
-- Not pegged, not wild — like a central bank managing currency
-- Rate adjustments are published transparently
-- Reflects real network utility, not speculation
-- Transition happens when network volume makes price discovery meaningful
-
-**The rule:** The rate never moves fast enough to matter for a single transaction. If you're buying coffee with MJN, you don't check the exchange rate first. That's the target.
-
-## How MJN Enters Circulation
-
-### Primary: Earned Through Participation
-- **.fair royalties** — your creative work earns MJN when consumed
-- **Inference fees** — your presence earns MJN when queried
-- **Contribution rewards** — active participation in Cultural DIDs
-- **Network rewards** — node operators earn for infrastructure
-
-### Secondary: Fiat Top-Up
-- Users buy MJN directly through jin.imajin.ai/pay
-- Stripe charges their card, Foundation mints MJN
-- Familiar UX — like loading a transit card or buying game credits
-
-### Tertiary: DEX Liquidity (future)
-- Foundation seeds SOL/MJN pool on Jupiter/Raydium
-- Only after sufficient circulation exists
-- Provides an additional on/off ramp, not the primary one
-
-## Where MJN Gets Spent
-
-### On-Network Settlement
-- **Event tickets** — pay in MJN for lower fees, instant confirmation
-- **Inference queries** — trust-gated presence queries cost MJN
-- **.fair settlements** — attribution chain splits execute on-chain
-- **Course enrollment** — jin.imajin.ai/learn accepts MJN
-- **Tipping** — jin.imajin.ai/coffee micropayments
-
-### Participating Businesses (Org DIDs)
-- Org DIDs in your trust graph accept MJN at their businesses
-- Coffee shop, bookstore, service provider — real-world commerce
-- Merchant receives MJN, cashes out to fiat whenever they want
-- Lower fees than credit card processing (no Stripe 2.9%)
-- Instant settlement (no 2-day wait)
-
-### Declared-Intent Marketplace (#114)
-- Users spend MJN balance to access declared-intent categories
-- Businesses burn MJN gas to reach opted-in users
-- Signal strength (intent + conversion history) determines gas cost
-- The marketplace runs on MJN natively
-
-## Foundation Clearinghouse Role
-
-The MJN Foundation operates as a **protocol clearinghouse**, not a bank.
-
-### What the Foundation Does
-- Holds fiat reserves backing outstanding MJN supply
-- Mints MJN on fiat deposit
-- Burns MJN on fiat withdrawal
-- Sets and publishes exchange rate
-- Operates gas subsidy pool for transaction fees
-- Publishes reserve audits (quarterly minimum)
-
-### What the Foundation Does NOT Do
-- Hold user funds (MJN is in user's sovereign wallet)
-- Control who can transact (permissionless within protocol rules)
-- Lend against reserves (no fractional reserve, ever)
-- Speculate on MJN price
-- Restrict fiat withdrawal (always redeemable)
-
-### Revenue Model
-- **Mint/burn spread** — small percentage on fiat ↔ MJN conversion
-- **Transaction micro-fees** — fraction of a cent per on-chain settlement
-- **Gas pool margin** — Foundation subsidizes gas but retains small margin
-- Transparent, published, auditable
-
-## Regulatory Position
-
-### Swiss Foundation (FINMA)
-- MJN Foundation is a Swiss Stiftung — FINMA has clear frameworks for utility tokens
-- Reserve-backed + non-speculative + clearinghouse model = favorable classification
-- Not a deposit-taking institution (user funds in sovereign wallets)
-- Not a money transmitter (protocol clearinghouse with published rates)
-- The MJN-scoped wallet decision helps here — general-purpose Solana wallet would trigger broader regulations
-
-### Why This Model Works
-- **Full reserve:** No fractional lending, no systemic risk
-- **Redeemable:** Always convertible back to fiat at published rate
-- **Transparent:** Supply, reserves, and rate are all auditable
-- **Non-speculative:** Fixed rate at launch, managed float later — not a trading vehicle
-- **Protocol-specific:** MJN settles Imajin protocol transactions, not general-purpose payments
-
-## Token Supply Mechanics
-
-### Current State
-- Token: `12rXuUVzC71zoLrqVa3JYGRiXkKrezQLXB7gKkfq9AjK`
-- Network: Solana Mainnet
-- Supply: 0 (nothing minted)
-- Mint authority: Ryan (transfers to Foundation)
-
-### At Launch
-- Foundation receives mint authority
-- Initial mint for gas subsidy pool
-- Fixed rate published
-- Fiat bridge activated via jin.imajin.ai/pay
-
-### Growth
-- Supply increases as fiat flows in (mint on deposit)
-- Supply decreases as fiat flows out (burn on withdrawal)
-- Net supply reflects the real economic value locked in the MJN network
-- No arbitrary inflation, no emission schedule — supply follows demand
-
-## Open Questions
-
-1. **Fixed rate value** — $0.01? $0.10? $1.00? Lower = more tokens in circulation, feels like micropayments. Higher = fewer tokens, feels like real money.
-2. **Managed float trigger** — what network volume or user count triggers the transition from fixed to managed?
-3. **Reserve auditing** — self-published or third-party audit? Frequency?
-4. **Multi-currency fiat** — USD only at launch, or CAD/EUR/GBP from the start?
-5. **Withdrawal limits** — any minimum/maximum for fiat redemption?
-6. **Tax implications** — how do users report MJN earnings? Is the fiat ↔ MJN conversion a taxable event?
-7. **Foundation capitalization** — initial fiat reserves to seed the gas pool and mint/burn operations
-8. **Merchant settlement** — do Org DIDs receive MJN and convert themselves, or can they opt for automatic fiat conversion?
-
-## Dependencies
-
-- MJN token on Solana mainnet (exists)
-- Embedded wallet (Discussion #268)
-- Pay service fiat rails (exists: Stripe, e-transfer)
-- Foundation incorporation (planned: Q1 2026)
-- .fair attribution for royalty settlement (exists)
-- Declared-intent marketplace (#114) for gas economics
-- Org DID (Discussion #253) for merchant participation
-
-## References
-
-- MJN Whitepaper v0.2: `docs/mjn-whitepaper.md`
-- Discussion #268: Embedded Wallet
-- Discussion #252: Cultural DID (quorum treasury)
-- Discussion #253: Org DID (merchant participation)
-- #114: Declared-Intent Marketplace
-- #256: Sovereign Inference (inference fee settlement)
-
----
-
-## MJN Foundation — Formation Roadmap
-
-The Foundation is a Swiss Stiftung (non-profit foundation under Swiss Civil Code Art. 80-89). This is the same vehicle used by Ethereum, Solana, Cardano, and Polkadot. Switzerland has the clearest regulatory framework for protocol foundations with token economics.
-
-### Step 1: Formation (~CHF 30-50K, 4-8 weeks)
-
-- Draft foundation deed (Stiftungsurkunde) — purpose, governance, initial board
-- Minimum endowment: CHF 50,000 (~$55K USD)
-- Notarize the deed with a Swiss notary
-- Register with the Commercial Registry (canton of Zug or Zurich)
-- Appoint initial Foundation Board (minimum 1 member, typically 3)
-- Requires at least one Swiss-resident board member (can be a service provider)
-
-### Step 2: FINMA Token Classification (1-3 months)
-
-- Submit formal token classification request to FINMA
-- FINMA categorizes tokens as: **utility**, **payment**, or **asset**
-- MJN target classification: **utility token** (settlement currency for a specific protocol)
-- Arguments in our favor: reserve-backed, non-speculative, MJN-scoped, fixed rate at launch, clear protocol utility
-- If classified as payment token: heavier regulation but still workable under Swiss framework
-- Deliverable: formal no-action letter or classification ruling from FINMA
-
-### Step 3: Operational Setup
-
-- Open Swiss bank account for the Foundation (crypto-friendly banks: SEBA, Sygnum, Hypothekarbank Lenzburg)
-- Appoint statutory auditor (required for supervised foundations)
-- Establish AML/KYC procedures for the fiat bridge
-- Transfer MJN mint authority from Ryan to Foundation
-- Set up Foundation governance: board meetings, decision protocols, transparency requirements
-
-### Cost Estimate
+### 5.3 Formation reference (unchanged shape, no commitment)
 
 | Item | Cost (CHF) |
 |------|------------|
@@ -233,42 +97,37 @@ The Foundation is a Swiss Stiftung (non-profit foundation under Swiss Civil Code
 | Swiss-resident board member service (annual) | 5,000 - 10,000 |
 | **Total to launch** | **~CHF 100,000 - 150,000 (~$110-165K USD)** |
 
-### Recommended Law Firms (Blockchain Specialization)
+Recommended firms (unchanged, for reference): MME, Lenz & Staehelin, Walder Wyss, LEXR (all Zurich/Zug, blockchain-specialized). No timeline is committed — the original draft's Q2–Q4 2026 target dates are removed; they predate the ruling and were never re-derived against it.
 
-- **MME** (Zurich/Zug) — represented Ethereum Foundation, deep FINMA experience
-- **Lenz & Staehelin** (Zurich/Geneva) — largest Swiss firm, strong regulatory practice
-- **Walder Wyss** (Zurich) — crypto and fintech specialization
-- **LEXR** (Zurich) — startup-focused, more accessible pricing
+### 5.4 Existing reserved token (placeholder, not connected to the ledger)
 
-### Corporate Structure
+A Solana token was already reserved as a placeholder in anticipation of the seat above: `12rXuUVzC71zoLrqVa3JYGRiXkKrezQLXB7gKkfq9AjK`, Solana Mainnet, supply 0 (nothing minted), mint authority currently held by Ryan. It has no relationship to today's MJN/MJNx ledger — it exists only so the address doesn't need to be re-claimed if/when the Stiftung seat is exercised. The whitepaper's "MJN token reserved on Solana" What's Live entry refers to this placeholder, not to a live bridge.
 
-```
-MJN Foundation (Swiss Stiftung)
-├── Owns: protocol spec, token treasury, mint authority
-├── Governs: RFC process, token economics, rate adjustments
-├── Contracts: Imajin Inc. for protocol development
-│
-Imajin Inc. (Canadian corporation)
-├── Operates: imajin.ai (reference implementation, first node)
-├── Builds: platform services, SDK, developer tools
-├── Ryan Veteze — founder
-├── Revenue: settlement fees, mint/burn spread, gas pool margin
-```
+## Open Questions
 
-### Timeline
+1. **Activity emission schedule** — which activities emit MJNx, how much, and what caps apply. Tracked in #2012; lands as `bus_chain_configs` rows via #2017.
+2. **Reconciliation cadence** — `GET /pay/api/admin/reconciliation` is on-demand today; does circulating-MJNx / backed-MJN reporting need a scheduled snapshot or alerting?
+3. **Multi-rail MJN** — Lightning (#2004) and Solana Pay/x402 (#2013) both mint MJN against their own receipt formats; confirming each receipt schema is a design task for those issues, not this one.
+4. **Reserved-seat trigger** — no open question here by design (§5.1): the seat stays reserved until a Stiftung exists to decide it.
 
-| Milestone | Target |
-|-----------|--------|
-| Engage Swiss law firm | Q2 2026 |
-| Foundation deed drafted | Q2 2026 |
-| FINMA classification submitted | Q2-Q3 2026 |
-| Foundation registered | Q3 2026 |
-| Mint authority transferred | Q3 2026 |
-| Fiat bridge operational | Q3-Q4 2026 |
+## Dependencies
 
-### Why Switzerland
+- Ledger split shipped (#2016, #2159, merged 2026-09-10).
+- Activity emission schedule ruling + config migration (#2012, #2017) — in progress.
+- Gift/event-topup as funded transfers (#2018) — shipped alongside #2159.
+- Additional MJN rails: Lightning (#2004), Solana Pay/x402 (#2013), EMT direct (#2014) — not yet built.
+- Reserved seat (§5): no dependency, no build — Stiftung formation is a precondition, not scheduled.
 
-- **FINMA has clear token frameworks** — utility, payment, and asset classifications are published and tested
-- **Neutrality** — Foundation cannot be captured by US or Chinese regulatory pressure
-- **Precedent** — Ethereum, Solana, Cardano, Polkadot all chose Swiss Stiftung for the same reasons
-- **The name draws from Japanese, built by a Canadian, governed from Switzerland** — sovereign infrastructure has no nationality
+## References
+
+- MJN Whitepaper: `docs/mjn-whitepaper.md` (see "MJN / MJNx ledger" under Settlement)
+- #738 — Open Wallet epic, Decisions (2026-09-04 ruling this RFC implements)
+- #2012 — MJNx activity emission schedule
+- #2016 / #2159 — ledger split (shipped)
+- #2018 — gift/event-topup as funded transfers
+- #2019 — this reconciliation
+- `apps/kernel/api-spec/pay.yaml` — wire contract for `Balance`, `/api/balance/*`, `/api/settle`, `/api/emission`
+
+---
+
+*"Two units, one ledger, provenance forever."*

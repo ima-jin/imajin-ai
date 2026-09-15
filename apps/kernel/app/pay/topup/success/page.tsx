@@ -43,7 +43,7 @@ export default async function TopupSuccessPage(props: Readonly<SuccessPageProps>
         <p className="text-zinc-400">
           {amount === null
             ? 'Your top-up has been processed successfully.'
-            : `$${amount.toFixed(2)} CAD has been credited to your MJNx balance.`}
+            : `$${amount.toFixed(2)} CAD has been credited to your MJN balance.`}
         </p>
       </div>
 
