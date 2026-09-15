@@ -316,7 +316,7 @@ export default function TopupPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-zinc-500">Credit to balance</span>
-                      <span className="text-amber-400 font-medium">人{Math.round(amount)}</span>
+                      <span className="text-white font-medium">{fmtCurrency(amount)} MJN</span>
                     </div>
                   </div>
                 </div>
