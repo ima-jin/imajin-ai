@@ -4,9 +4,9 @@
 
 **Connectors grew a real custody model, a per-DID search engine landed inside the kernel, and external agents got a door of their own — verified, not just trusted.**
 
-### 🔐 Connector custody, generalized (#1521, #1540, #1785, #1317, #1729, #1391, #1595)
+### 🔐 Connector custody, generalized (#1521, #1540, #1785, #1729, #1391, #1595)
 
-Vault-backed connectors moved off legacy v1 node-sealed storage onto a v2 custody model, with an app-facing connector surface — apps query status and invoke actions via app-auth, on the user's behalf, but never manage connector lifecycle directly. Three new connector-pattern instances landed: **Stripe BYO** (a restricted-key connector that bypasses Connect and reacts on the account holder's own money events), **Google Cloud** (signed-action-per-cloud-op — the third instance of the pattern), and a **GitHub adapter** feeding the new corpus engine, with GitHub's device flow replacing a rejected shared-app auth model. `@ima-jin/*` packages dual-published to GitHub Packages for connector visibility in the org sidebar.
+Vault-backed connectors moved off legacy v1 node-sealed storage onto a v2 custody model, with an app-facing connector surface — apps query status and invoke actions via app-auth, on the user's behalf, but never manage connector lifecycle directly. Two new connector-pattern instances landed: **Stripe BYO** (a restricted-key connector that bypasses Connect and reacts on the account holder's own money events) and a **GitHub adapter** feeding the new corpus engine, with GitHub's device flow replacing a rejected shared-app auth model. `@ima-jin/*` packages dual-published to GitHub Packages for connector visibility in the org sidebar. (A third pattern instance, the **Google Cloud connector** — signed-action-per-cloud-op — landed its PR in August but didn't close out, #1317, until early September; covered in next month's entry rather than claimed here early.)
 
 ### 🔎 The corpus engine (Epic #1726)
 
