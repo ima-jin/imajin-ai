@@ -1,7 +1,8 @@
 ﻿/**
  * POST /pay/api/topup/stripe
  *
- * Create a Stripe Checkout session for MJNx top-up.
+ * Create a Stripe Checkout session for an MJN top-up (#2016: fiat receipt
+ * mints the withdrawable MJN unit, never MJNx).
  * Auth required.
  *
  * Request: { amount: number, absorbFees: boolean }
@@ -89,8 +90,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   const result = await pay.checkout({
     items: [
       {
-        name: 'MJNx Top-Up',
-        description: `$${amount.toFixed(2)} CAD → MJNx balance`,
+        name: 'MJN Top-Up',
+        description: `$${amount.toFixed(2)} CAD → MJN balance`,
         amount: chargeAmountCents,
         quantity: 1,
       },

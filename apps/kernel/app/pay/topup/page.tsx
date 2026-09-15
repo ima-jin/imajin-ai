@@ -359,7 +359,7 @@ export default function TopupPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-zinc-500">Credit to balance</span>
-                      <span className="text-amber-400 font-medium">人{Math.round(amount)}</span>
+                      <span className="text-white font-medium">{fmtCurrency(amount)} MJN</span>
                     </div>
                   </div>
                 </div>
@@ -451,7 +451,7 @@ export default function TopupPage() {
             <ul className="text-sm text-zinc-400 space-y-1 list-disc list-inside">
               <li>Send the e-Transfer from your bank app</li>
               <li>We&apos;ll match it using the memo within 1 business day</li>
-              <li>Your MJNx balance will be credited automatically</li>
+              <li>Your MJN balance will be credited automatically</li>
             </ul>
           </div>
 

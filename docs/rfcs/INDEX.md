@@ -24,7 +24,7 @@ Triage performed 2026-09-03 per [#1852](https://github.com/ima-jin/imajin-ai/iss
 | [09](./RFC-09-application-plugin-architecture.md) | Application Plugin Architecture | Draft | [#254](https://github.com/ima-jin/imajin-ai/discussions/254) | Superseded | — *(unclear — see #1852)* |
 | [10](./RFC-10-sovereign-user-data.md) | Sovereign User Data | Draft | [#255](https://github.com/ima-jin/imajin-ai/discussions/255) | Superseded | Communication / Identity |
 | [11](./RFC-11-embedded-wallet.md) | Embedded Wallet | Draft | [#268](https://github.com/ima-jin/imajin-ai/discussions/268) | Superseded | Settlement |
-| [12](./RFC-12-mjn-token-economics.md) | MJN Token Economics | Draft | [#269](https://github.com/ima-jin/imajin-ai/discussions/269) | Stale (load-bearing) | Settlement |
+| [12](./RFC-12-mjn-token-economics.md) | MJN & MJNx — Settlement Units and the Reserved On-Chain Seat | Current | [#269](https://github.com/ima-jin/imajin-ai/discussions/269) | Current | Settlement |
 | [13](./RFC-13-progressive-trust-model.md) | Progressive Trust Model | Draft | [#271](https://github.com/ima-jin/imajin-ai/discussions/271) | Stale (load-bearing) | Identity / Revocation |
 | [14](./RFC-14-community-issuance-network.md) | Community Issuance Network | Draft | [#272](https://github.com/ima-jin/imajin-ai/discussions/272) | Superseded | Identity |
 | [15](./RFC-15-trust-accountability-framework.md) | Trust Accountability Framework | Draft | [#273](https://github.com/ima-jin/imajin-ai/discussions/273) | Stale (load-bearing) | Revocation / Trust |
