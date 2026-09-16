@@ -18,9 +18,10 @@ export interface RailRegistryEntry {
 
 let stripeRailSingleton: StripeWithdrawRail | null = null;
 function getStripeRail(): StripeWithdrawRail {
-  if (!stripeRailSingleton) {
-    stripeRailSingleton = new StripeWithdrawRail();
-  }
+  // `??=` as its own statement (not nested inside the `return`, per
+  // Sonar S1121) — still the nullish-coalescing assignment Sonar S6606
+  // prefers over a manual `if (!x) x = ...`.
+  stripeRailSingleton ??= new StripeWithdrawRail();
   return stripeRailSingleton;
 }
 
