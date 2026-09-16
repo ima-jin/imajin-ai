@@ -320,6 +320,28 @@ export interface BusEventMap {
     context_id: string;
     context_type: string;
   };
+  /**
+   * A withdrawal reconciliation sweep (#2172) classified a rail transfer
+   * and a withdrawal intent as not matching. `bucket` distinguishes the
+   * dangerous cases (an external transfer with no completed ledger row;
+   * a rail confirming completion for an intent already released locally)
+   * from the safe-but-aged case (a pending intent past the release
+   * timeout with no matching external transfer). Purely a proposal —
+   * publishing this event never itself mutates a balance or intent status.
+   * `amount` is carried as whichever representation the caller already had
+   * on hand (an intent's exact numeric string, or a rail-reported number) —
+   * never re-parsed through a float here.
+   */
+  'pay.reconciliation.discrepancy': {
+    rail: string;
+    external_ref: string | null;
+    intent_id: string | null;
+    amount: number | string;
+    unit: string;
+    bucket: 'external_without_ledger' | 'pending_timeout' | 'external_completed_after_release';
+    context_id: string;
+    context_type: string;
+  };
   'handle.claimed': {
     handle: string;
     context_id: string;

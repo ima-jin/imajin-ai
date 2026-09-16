@@ -276,12 +276,21 @@ paths:
     post:
       tags: [pay]
       operationId: withdraw
-      summary: Withdraw cash balance to a connected Stripe account
+      summary: Withdraw cash balance to an external payout destination
       description: |
-        Only `cash_amount` (real money) can be withdrawn — credits cannot be withdrawn.
-        Minimum withdrawal is $1.00 (100 cents). The MJN debit is a guarded conditional
-        UPDATE (#2166) reserved BEFORE the Stripe Transfer is created — insufficient
-        balance returns 402 and no Stripe transfer is ever attempted.
+        Only MJN (receipt-backed, withdrawable) can be withdrawn — MJNx cannot be
+        withdrawn. Minimum withdrawal is $1.00 (100 cents). Rail-agnostic (#2172):
+        the request shape is unchanged (`account_id` is a rail-specific destination
+        hint, e.g. a Stripe connected account id), but the flow is now reserve ->
+        external -> confirm instead of one transaction. The guarded conditional
+        UPDATE debit (#2166) is committed together with a durable withdrawal-intent
+        row BEFORE the external rail is ever called — insufficient balance returns
+        402 and no external transfer is ever attempted. If the rail call itself
+        fails, the reservation is released before this endpoint returns a 500. A
+        rail transfer that succeeds but whose confirmation never commits (crash,
+        network partition) is caught by the reconciliation sweep
+        (`GET /api/cron/withdrawal-reconcile`, not part of this per-app spec) and
+        surfaced via `GET /api/admin/reconciliation`, never silently lost.
       security:
         - cookieAuth: []
       requestBody:
@@ -1019,13 +1028,16 @@ paths:
     get:
       tags: [pay]
       operationId: payReconciliation
-      summary: MJN/MJNx reconciliation report (#2016 decision 4)
+      summary: MJN/MJNx reconciliation report (#2016 decision 4) + withdrawal discrepancies (#2172)
       description: |
         Circulating MJNx (emitted, in-platform unit), backed MJN (withdrawable
         liability), and per-DID lifetime emitted vs receipted totals. Adapted
         from the #2012 audit's §6 SQL sketch to the row-per-(did, unit)
         `pay.balances` shape. Single-node only — no cross-node breakdown
-        (#738 Decision 2).
+        (#738 Decision 2). Also surfaces withdrawal-reconciliation discrepancies
+        (#2172), grouped by rail — signed `pay.reconciliation.discrepancy`
+        attestations the reconciliation sweep emitted, proposing but never
+        applying a resolution.
       security:
         - cookieAuth: []
       responses:
@@ -1049,6 +1061,24 @@ paths:
                         mjnx_amount: { type: number }
                         lifetime_emitted: { type: number }
                         lifetime_receipted: { type: number }
+                  discrepancies:
+                    type: array
+                    description: Withdrawal reconciliation discrepancies (#2172), grouped by rail.
+                    items:
+                      type: object
+                      properties:
+                        rail: { type: string }
+                        items:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              bucket: { type: string, enum: [external_without_ledger, pending_timeout] }
+                              externalRef: { type: string, nullable: true }
+                              intentId: { type: string, nullable: true }
+                              amount: { type: number }
+                              unit: { type: string }
+                              issuedAt: { type: string, format: date-time }
         "401":
           description: Unauthorized (not an admin)
           content:
