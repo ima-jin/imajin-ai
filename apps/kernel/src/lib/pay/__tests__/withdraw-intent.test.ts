@@ -92,6 +92,18 @@ vi.mock('@/src/lib/kernel/id', () => {
   return { generateId: (prefix: string) => `${prefix}_test_${++seq}` };
 });
 
+// `withdraw-intent.ts` calls `emitReconciliationDiscrepancy` when a late
+// webhook reports completion for an already-released/failed intent —
+// mocked here so these tests assert on the call rather than exercising
+// reconciliation.ts's own DB-backed dedup logic (covered by
+// `reconciliation.test.ts`).
+const { emitReconciliationDiscrepancyMock } = vi.hoisted(() => ({
+  emitReconciliationDiscrepancyMock: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../reconciliation', () => ({
+  emitReconciliationDiscrepancy: emitReconciliationDiscrepancyMock,
+}));
+
 import { reserveWithdrawal, confirmWithdrawal, releaseWithdrawal, executeWithdrawal, confirmWithdrawalFromRailEvent } from '../withdraw-intent';
 import { InsufficientBalanceError, MJN } from '../ledger';
 import { creditUnit } from '../ledger';
@@ -106,6 +118,7 @@ function resetState() {
   state.updatedIntents.length = 0;
   state.insertedTransactions.length = 0;
   state.creditCalls.length = 0;
+  emitReconciliationDiscrepancyMock.mockClear();
 }
 
 beforeEach(() => {
@@ -245,4 +258,35 @@ describe('confirmWithdrawalFromRailEvent (#2172 webhook fast path)', () => {
     const intentId = await confirmWithdrawalFromRailEvent(rail, { type: 'fake.transfer.created', intentId: 'does-not-exist', externalRef: 'fake_tr_9' });
     expect(intentId).toBeNull();
   });
+
+  it.each(['failed', 'released'] as const)(
+    'refuses to resurrect an already-%s intent as completed, and emits an external_completed_after_release discrepancy instead',
+    async (status) => {
+      state.intentRows.push({ id: 'wdi_released', did: DID, unit: MJN, amount: '5', rail: 'fake', idempotencyKey: 'wdi_released', status });
+      const rail = new FakeRail();
+
+      const intentId = await confirmWithdrawalFromRailEvent(rail, {
+        type: 'fake.transfer.created',
+        intentId: 'wdi_released',
+        externalRef: 'fake_tr_late',
+      });
+
+      // Never resurrected: no completion, no receipt row, no status flip.
+      expect(intentId).toBeNull();
+      expect(state.updatedIntents).toHaveLength(0);
+      expect(state.insertedTransactions).toHaveLength(0);
+
+      expect(emitReconciliationDiscrepancyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          rail: 'fake',
+          intentId: 'wdi_released',
+          externalRef: 'fake_tr_late',
+          amount: '5',
+          unit: MJN,
+          bucket: 'external_completed_after_release',
+          did: DID,
+        }),
+      );
+    },
+  );
 });

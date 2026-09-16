@@ -18,7 +18,10 @@ export interface RailRegistryEntry {
 
 let stripeRailSingleton: StripeWithdrawRail | null = null;
 function getStripeRail(): StripeWithdrawRail {
-  return (stripeRailSingleton ??= new StripeWithdrawRail());
+  if (!stripeRailSingleton) {
+    stripeRailSingleton = new StripeWithdrawRail();
+  }
+  return stripeRailSingleton;
 }
 
 /**
@@ -38,7 +41,7 @@ export function getWithdrawRailByName(rail: string): WithdrawRail | null {
 /** Resolve a rail by name, but only if it's enabled for the given unit. */
 export function getWithdrawRail(rail: string, unit: Unit): WithdrawRail | null {
   const entry = REGISTRY[rail];
-  if (!entry || !entry.enabledUnits.includes(unit)) return null;
+  if (!entry?.enabledUnits.includes(unit)) return null;
   return entry.getRail();
 }
 

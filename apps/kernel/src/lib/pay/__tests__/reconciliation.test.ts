@@ -13,6 +13,13 @@ const state = vi.hoisted(() => ({
   watermarkRows: new Map<string, { rail: string; lastReconciledAt: Date; updatedAt: Date }>(),
   publishMock: vi.fn(),
   creditUnitMock: vi.fn(),
+  // Simulates `auth.attestations` for the dedup check: keys (intent id or
+  // external ref) that already have a discrepancy attestation on file.
+  // The default `publishMock` implementation (see `resetState`) adds a
+  // key here on every successful publish, so calling `reconcileRail` twice
+  // against the same stuck intent naturally dedupes on the second call —
+  // no test needs to pre-seed this by hand.
+  attestedKeys: new Set<string>(),
 }));
 
 vi.mock('@/src/db', async () => {
@@ -72,6 +79,18 @@ vi.mock('@/src/db', async () => {
 
 vi.mock('@imajin/bus', () => ({ publish: state.publishMock }));
 
+// `emitReconciliationDiscrepancy`'s dedup check reads `auth.attestations`
+// via the raw `@imajin/db` client, independent of the Drizzle `@/src/db`
+// mock above. The single interpolated value in either dedup query
+// (`payload->>'intent_id' = $1` or `payload->>'external_ref' = $1`) is
+// exactly the key `attestedKeys` tracks.
+vi.mock('@imajin/db', () => ({
+  getClient: () => (_strings: TemplateStringsArray, ...values: unknown[]) => {
+    const key = values[0] as string | undefined;
+    return Promise.resolve(key && state.attestedKeys.has(key) ? [{ exists: 1 }] : []);
+  },
+}));
+
 // `runReconciliation` iterates `listRegisteredRails()`, which would
 // otherwise resolve the real `StripeWithdrawRail` and hit `getStripe()`.
 // Stand in a `FakeRail` here — the registry's wiring itself isn't what
@@ -89,7 +108,13 @@ import { FakeRail } from './fake-rail';
 function resetState() {
   state.intentRows.length = 0;
   state.watermarkRows.clear();
-  state.publishMock.mockReset().mockResolvedValue(undefined);
+  state.attestedKeys.clear();
+  state.publishMock.mockReset().mockImplementation(
+    async (_type: string, event: { payload: { intent_id: string | null; external_ref: string | null } }) => {
+      const key = event.payload.intent_id ?? event.payload.external_ref;
+      if (key) state.attestedKeys.add(key);
+    },
+  );
   process.env.PLATFORM_DID = 'did:imajin:platform';
   delete process.env.WITHDRAWAL_RECONCILE_TIMEOUT_MS;
 }
@@ -142,9 +167,13 @@ describe('reconcileRail — three buckets (#2172 acceptance criteria)', () => {
     expect(state.publishMock).toHaveBeenCalledWith(
       'pay.reconciliation.discrepancy',
       expect.objectContaining({
-        payload: expect.objectContaining({ bucket: 'pending_timeout', intent_id: 'wdi_stuck', external_ref: null }),
+        payload: expect.objectContaining({ bucket: 'pending_timeout', intent_id: 'wdi_stuck', external_ref: null, amount: '7' }),
       }),
     );
+    // #2172 review fix 4: the exact numeric string, never `Number.parseFloat`'d.
+    const publishedAmount = state.publishMock.mock.calls[0][1].payload.amount;
+    expect(publishedAmount).toBe('7');
+    expect(typeof publishedAmount).toBe('string');
   });
 
   it('does NOT flag a pending intent still within the timeout window', async () => {
@@ -200,6 +229,30 @@ describe('reconcileRail — three buckets (#2172 acceptance criteria)', () => {
     rail.seedTransfer({ externalRef: 'fake_tr_orphan', intentId: null, amount: 5, unit: 'MJN', createdAt: new Date() });
 
     await expect(reconcileRail(rail, new Date(0), new Date())).resolves.toMatchObject({ externalWithoutLedger: 1 });
+  });
+
+  it('does not re-attest the same discrepancy on a second sweep of the same stuck intent (#2172 review fix 2)', async () => {
+    process.env.WITHDRAWAL_RECONCILE_TIMEOUT_MS = '1000';
+    const rail = new FakeRail();
+    const oldEnough = new Date(Date.now() - 5000);
+    state.intentRows.push({ id: 'wdi_stuck_dedup', did: 'did:imajin:f', unit: 'MJN', amount: '7', rail: rail.name, status: 'pending', createdAt: oldEnough });
+
+    const first = await reconcileRail(rail, new Date(0), new Date());
+    const second = await reconcileRail(rail, new Date(0), new Date());
+
+    expect(first.pendingTimeout).toBe(1);
+    expect(second.pendingTimeout).toBe(1); // still classified as a discrepancy on the second run...
+    expect(state.publishMock).toHaveBeenCalledTimes(1); // ...but only attested once.
+  });
+
+  it('does not re-attest an external-without-ledger discrepancy for the same transfer across sweeps', async () => {
+    const rail = new FakeRail();
+    rail.seedTransfer({ externalRef: 'fake_tr_dedup', intentId: null, amount: 5, unit: 'MJN', createdAt: new Date() });
+
+    await reconcileRail(rail, new Date(0), new Date());
+    await reconcileRail(rail, new Date(0), new Date());
+
+    expect(state.publishMock).toHaveBeenCalledTimes(1);
   });
 });
 

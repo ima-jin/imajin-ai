@@ -59,6 +59,30 @@ describe('StripeWithdrawRail.execute', () => {
     await expect(rail.execute({ ...intent, destination: undefined })).rejects.toThrow(/destination/);
     expect(state.transferCreateMock).not.toHaveBeenCalled();
   });
+
+  it('converts an exact decimal amount to minor units without float rounding drift (#2172 review fix 3)', async () => {
+    // `Number.parseFloat('12.345') * 100 === 1234.5` and plain `Math.round`
+    // rounds a tie away from zero, giving 1235 — but the rest of
+    // `packages/money` (and `fromDecimalString`, which this adapter now
+    // uses) banker's-rounds ties to the nearest EVEN cent, giving 1234.
+    // `parseFloat`/`Math.round` on a value that moves real money is wrong
+    // twice over: it can drift from the true decimal value at all (not
+    // demonstrated by this particular amount, but a real risk for others),
+    // and even when it doesn't drift, it silently uses a different
+    // rounding convention than every other money computation in this
+    // codebase.
+    expect(Math.round(Number.parseFloat('12.345') * 100)).toBe(1235); // the convention this fix removes
+
+    state.transferCreateMock.mockResolvedValue({ id: 'tr_exact' });
+    const rail = new StripeWithdrawRail();
+
+    await rail.execute({ ...intent, amount: '12.345' });
+
+    expect(state.transferCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 1234 }),
+      expect.anything(),
+    );
+  });
 });
 
 describe('StripeWithdrawRail.list', () => {

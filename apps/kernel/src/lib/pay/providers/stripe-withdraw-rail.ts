@@ -10,6 +10,7 @@
  * balance-transaction fees from) rather than constructing its own client.
  */
 import type Stripe from 'stripe';
+import { fromDecimalString } from '@imajin/money';
 import { getStripe } from '../stripe';
 import type {
   WithdrawRail,
@@ -37,10 +38,16 @@ export class StripeWithdrawRail implements WithdrawRail {
     }
 
     const stripe = getStripe();
+    const currency = intent.currency ?? 'CAD';
+    // Exact decimal string -> integer minor units via `@imajin/money`
+    // (`fromDecimalString` -> `parseDecimalToFraction` + `bigintToSafeNumber`
+    // internally) — never `parseFloat`/`Math.round` on a value that moves
+    // real money.
+    const amountMinorUnits = fromDecimalString(intent.amount, currency).amount;
     const transfer = await stripe.transfers.create(
       {
-        amount: Math.round(Number.parseFloat(intent.amount) * 100),
-        currency: (intent.currency ?? 'CAD').toLowerCase(),
+        amount: amountMinorUnits,
+        currency: currency.toLowerCase(),
         destination: intent.destination,
         metadata: {
           intent_id: intent.id,

@@ -25,6 +25,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { db, withdrawalIntents, reconciliationWatermarks } from '@/src/db';
+import { getClient } from '@imajin/db';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import type { WithdrawRail } from './rails/types';
@@ -59,18 +60,74 @@ async function setWatermark(rail: string, at: Date): Promise<void> {
     });
 }
 
-interface DiscrepancyParams {
+export type ReconciliationDiscrepancyBucket =
+  | 'external_without_ledger'
+  | 'pending_timeout'
+  /** #2172 follow-up: a rail webhook reports a transfer completed for an intent already `failed`/`released` locally — never resurrected as a completed withdrawal, only surfaced. See `withdraw-intent.ts`'s `confirmWithdrawalFromRailEvent`. */
+  | 'external_completed_after_release';
+
+export interface ReconciliationDiscrepancyParams {
   rail: string;
   externalRef: string | null;
   intentId: string | null;
-  amount: number;
+  /** Whichever representation the caller already had on hand — an intent's exact numeric string, or a rail-reported number. Never re-parsed through a float here (a signed attestation must carry the value as-is). */
+  amount: number | string;
   unit: string;
-  bucket: 'external_without_ledger' | 'pending_timeout';
+  bucket: ReconciliationDiscrepancyBucket;
   did: string | null;
 }
 
-/** Signs + publishes the discrepancy attestation. Never throws — a publish failure is logged, not fatal to the sweep. */
-async function emitDiscrepancy(params: DiscrepancyParams): Promise<void> {
+/**
+ * Has a discrepancy attestation already been emitted for this intent id (or,
+ * failing that, this external ref)? Read straight from `auth.attestations`
+ * (kernel owns both `pay` and `auth` — not a cross-schema violation) rather
+ * than a separate "already attested" table, so there is exactly one durable
+ * record to keep in sync. Fails OPEN (returns false, i.e. "not yet
+ * attested") on a query error — a duplicate attestation is a nuisance; a
+ * silently dropped one is a real anomaly going unreported.
+ */
+async function hasExistingDiscrepancyAttestation(intentId: string | null, externalRef: string | null): Promise<boolean> {
+  if (!intentId && !externalRef) return false;
+
+  const sql = getClient();
+  const rows = intentId
+    ? await sql`
+        SELECT 1 FROM auth.attestations
+        WHERE type = 'pay.reconciliation.discrepancy' AND payload->>'intent_id' = ${intentId}
+        LIMIT 1
+      `
+    : await sql`
+        SELECT 1 FROM auth.attestations
+        WHERE type = 'pay.reconciliation.discrepancy' AND payload->>'external_ref' = ${externalRef}
+        LIMIT 1
+      `;
+  return rows.length > 0;
+}
+
+/**
+ * Signs + publishes the discrepancy attestation — but only once per
+ * (intent id | external ref): every non-matched case is re-evaluated on
+ * every cron run (the sweep never mutates state to mark a case "seen"), so
+ * without this check the same unresolved discrepancy would be re-attested
+ * forever. Never throws — a publish (or dedup-check) failure is logged, not
+ * fatal to the sweep.
+ */
+export async function emitReconciliationDiscrepancy(params: ReconciliationDiscrepancyParams): Promise<void> {
+  const alreadyAttested = await hasExistingDiscrepancyAttestation(params.intentId, params.externalRef).catch((err: unknown) => {
+    log.error(
+      { err: String(err), rail: params.rail, bucket: params.bucket },
+      'reconciliation discrepancy dedup check failed — emitting anyway rather than risk silently dropping a real anomaly',
+    );
+    return false;
+  });
+  if (alreadyAttested) {
+    log.info(
+      { rail: params.rail, bucket: params.bucket, intentId: params.intentId, externalRef: params.externalRef },
+      'reconciliation discrepancy already attested — skipping duplicate',
+    );
+    return;
+  }
+
   const platformDid = process.env.PLATFORM_DID;
   if (!platformDid) {
     log.warn(
@@ -130,7 +187,7 @@ async function classifyTransfers(rail: WithdrawRail, watermark: Date): Promise<{
       continue;
     }
     externalWithoutLedger += 1;
-    await emitDiscrepancy({
+    await emitReconciliationDiscrepancy({
       rail: rail.name,
       externalRef: transfer.externalRef,
       intentId: transfer.intentId,
@@ -176,11 +233,13 @@ async function classifyPendingIntents(rail: WithdrawRail, runStartedAt: Date): P
     }
 
     pendingTimeout += 1;
-    await emitDiscrepancy({
+    // Keep the intent's exact numeric string — never `Number.parseFloat`
+    // a value that ends up in a signed attestation.
+    await emitReconciliationDiscrepancy({
       rail: rail.name,
       externalRef: null,
       intentId: intent.id,
-      amount: Number.parseFloat(intent.amount),
+      amount: intent.amount,
       unit: intent.unit,
       bucket: 'pending_timeout',
       did: intent.did,

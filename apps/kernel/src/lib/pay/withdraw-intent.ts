@@ -32,6 +32,7 @@ import {
   InsufficientBalanceError,
 } from './ledger';
 import type { WithdrawRail, WithdrawalIntent } from './rails/types';
+import { emitReconciliationDiscrepancy } from './reconciliation';
 
 const log = createLogger('kernel');
 
@@ -185,10 +186,33 @@ export async function executeWithdrawal(params: ExecuteWithdrawalParams): Promis
 }
 
 /**
+ * Statuses a late rail event must never be allowed to promote to
+ * `completed`. Both are terminal, reservation-already-resolved-locally
+ * states: `failed` (the rail call itself threw, see `releaseWithdrawal`)
+ * and `released` (a future operator-approved reconciliation resolution
+ * path — not written by this module today, but checked defensively since
+ * it is a valid `pay.withdrawal_intents.status` value).
+ */
+const TERMINAL_NON_COMPLETED_STATUSES = new Set(['failed', 'released']);
+
+/**
  * Webhook fast path (#2172 amendment point 2): resolve a rail-native event
  * to an intent id + external ref via `rail.confirmFromEvent`, then
  * idempotently confirm it. A no-op when the intent is missing, already
  * `completed` (replay), or the event isn't recognized.
+ *
+ * Never confirms an intent that's already `failed`/`released` locally
+ * (#2172 review): a late webhook can otherwise resurrect an already-
+ * released reservation as a completed, unbacked withdrawal — the rail
+ * reports the transfer completed (e.g. after a local timeout mistakenly
+ * treated it as failed), `releaseWithdrawal` already credited the
+ * reservation back, and blindly confirming here would flip the intent to
+ * `completed` and insert a receipt WITHOUT re-debiting: the ledger nets to
+ * zero while real money left, and the reconciler would then see a
+ * `completed` intent matching the transfer and call it "matched" — hiding
+ * exactly the discrepancy it exists to catch. Instead, this surfaces a
+ * `pay.reconciliation.discrepancy` (`external_completed_after_release`)
+ * for operator review; applying any compensation is out of scope here.
  */
 export async function confirmWithdrawalFromRailEvent(rail: WithdrawRail, payload: unknown): Promise<string | null> {
   const confirmed = await rail.confirmFromEvent(payload);
@@ -205,6 +229,24 @@ export async function confirmWithdrawalFromRailEvent(rail: WithdrawRail, payload
   }
   if (row.status === 'completed') {
     return confirmed.intentId; // Idempotent replay — already confirmed (by this webhook or the route's own confirm).
+  }
+  if (TERMINAL_NON_COMPLETED_STATUSES.has(row.status)) {
+    // `intentStatus`, not `status` — `LogContext.status` is reserved for a
+    // numeric HTTP status code; this is the intent's (string) lifecycle status.
+    log.error(
+      { intentId: row.id, rail: rail.name, intentStatus: row.status, externalRef: confirmed.externalRef },
+      'withdrawal webhook: rail reports a completed transfer for an already-released intent — refusing to resurrect it, emitting a discrepancy instead',
+    );
+    await emitReconciliationDiscrepancy({
+      rail: rail.name,
+      externalRef: confirmed.externalRef,
+      intentId: row.id,
+      amount: row.amount,
+      unit: row.unit,
+      bucket: 'external_completed_after_release',
+      did: row.did,
+    });
+    return null;
   }
 
   const intent: WithdrawalIntent = {

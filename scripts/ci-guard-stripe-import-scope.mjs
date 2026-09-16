@@ -65,7 +65,30 @@ const EXCLUDED_DIR_NAMES = new Set(['node_modules', '.next', 'dist', 'build', 'c
 const TEST_FILE_RE = /\.(test|spec)\.tsx?$/;
 const EXEMPT_DIR_SEGMENT = 'providers';
 
-const STRIPE_IMPORT_RE = /\bimport\s+(?:type\s+)?[^\n;]*?\bfrom\s+['"]stripe['"]|\brequire\(\s*['"]stripe['"]\s*\)/;
+// Deliberately simple, single-purpose checks rather than one compound
+// alternation regex (#2172 review: the earlier combined pattern tripped
+// Sonar's regex-complexity/super-linear-backtracking rules S8786/S5843).
+// Every real `import ... from 'stripe'` / `require('stripe')` in this
+// codebase is a single line (see `stripComments` below — matching never
+// needs to cross a newline), so per-line string/regex checks are both
+// simpler and no less accurate than one cross-line regex.
+const IMPORT_LINE_RE = /^\s*import\b/;
+const REQUIRE_STRIPE_RE = /\brequire\(\s*['"]stripe['"]\s*\)/;
+const FROM_STRIPE_SINGLE_QUOTE = "from 'stripe'";
+const FROM_STRIPE_DOUBLE_QUOTE = 'from "stripe"';
+
+/** True when a single line of source is an `import` statement pulling from 'stripe', or a `require('stripe')` call. */
+function lineImportsStripe(line) {
+  if (IMPORT_LINE_RE.test(line) && (line.includes(FROM_STRIPE_SINGLE_QUOTE) || line.includes(FROM_STRIPE_DOUBLE_QUOTE))) {
+    return true;
+  }
+  return REQUIRE_STRIPE_RE.test(line);
+}
+
+/** True when any line of `source` imports the `stripe` package. */
+function sourceImportsStripe(source) {
+  return source.split('\n').some(lineImportsStripe);
+}
 
 /**
  * Strips `//` line comments and `/* *\/` block comments from source text
@@ -110,7 +133,7 @@ function scanFile(filePath) {
   if (isUnderProviders(relPath)) return null;
 
   const source = stripComments(readFileSync(filePath, 'utf8'));
-  if (!STRIPE_IMPORT_RE.test(source)) return null;
+  if (!sourceImportsStripe(source)) return null;
 
   return { file: relPath };
 }
