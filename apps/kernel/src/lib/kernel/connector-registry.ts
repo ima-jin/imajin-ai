@@ -445,6 +445,32 @@ const LOCAL_ENTRY: ConnectorEntry = {
   modelsRoute: '/local/api/models',
 };
 
+/**
+ * OpenRouter's registry entry (#2188) — see {@link GEMINI_ENTRY}.
+ *
+ * OpenRouter has no OAuth, so this uses the same static-secret/token-paste
+ * shape every other brain connector uses. Unlike `local`, a sealed key IS
+ * required — OpenRouter is a hosted router, not a BYO-endpoint connector —
+ * so this goes through `brainConnectorEntry()` like Gemini/xAI/OpenAI/
+ * Moonshot/Z.ai above.
+ */
+const OPENROUTER_ENTRY = brainConnectorEntry({
+  id: 'openrouter',
+  name: 'OpenRouter',
+  description: 'Seal your own OpenRouter API key per-DID for sealed passthrough reach into every model OpenRouter fronts, billed on your own OpenRouter account.',
+  icon: '🔀',
+  credentialUi: {
+    label: 'API Key',
+    placeholder: 'OpenRouter API Key (sk-or-...)',
+    hint: 'Key is sealed server-side and never returned. Create one at openrouter.ai → Keys.',
+  },
+  // #2188, following #1769: no hardcoded default model. OpenRouter's own
+  // catalog turns over even faster than a single provider's, so the owner
+  // picks a live `provider/model` id here (e.g. `typesafe/jev-1.13`) and it
+  // is sealed as `modelId`.
+  modelsRoute: '/openrouter/api/models',
+});
+
 export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'mcp',
@@ -521,6 +547,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   MOONSHOT_ENTRY,
   ZAI_ENTRY,
   LOCAL_ENTRY,
+  OPENROUTER_ENTRY,
   {
     id: 'gcp',
     name: 'Google Cloud',

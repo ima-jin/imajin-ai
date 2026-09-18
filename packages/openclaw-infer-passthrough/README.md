@@ -214,6 +214,35 @@ proxy — real auth happens kernel-side via the minted app-token, not via anythi
 OpenClaw sends. Keep it a clearly-fake placeholder, not a real secret, in gateway
 config.
 
+### Supported kernel providers
+
+Every `BRAIN_CONNECTORS`/`CONNECTOR_REGISTRY` entry (`apps/kernel`) is reachable
+through this proxy the same way — point a route's `id` (and the OpenClaw
+custom-provider `baseUrl` path segment) at the connector's own id:
+
+| Route `id` | Kernel connector | Notes |
+|---|---|---|
+| `gemini` | Gemini | |
+| `anthropic` | Anthropic Claude | Also reachable via the Anthropic-format path below; migrates last (#1922) |
+| `xai` | xAI Grok | |
+| `openai` | OpenAI | First delegated-seat model live in prod (#1926, see the worked example below) |
+| `moonshot` | Moonshot AI (Kimi) | |
+| `zai` | Z.ai (GLM) | |
+| `openrouter` | OpenRouter | Router, not a single provider — one sealed key reaches every model it fronts. Forward `provider/model` ids (e.g. `typesafe/jev-1.13`) untouched in `model`/`models` (#2188) |
+
+```json
+{
+  "providers": {
+    "imajin-openrouter": {
+      "type": "openai-compatible",
+      "baseUrl": "http://127.0.0.1:8787/openrouter/v1",
+      "apiKey": "unused-placeholder",
+      "models": ["typesafe/jev-1.13"]
+    }
+  }
+}
+```
+
 ### Anthropic-format (NanoClaw / Claude Code) — #1959
 
 No new environment variables: a NanoClaw/Claude Code container reuses the SAME

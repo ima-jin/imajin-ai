@@ -53,6 +53,14 @@ const MODEL_RATES: Partial<Record<BrainConnectorId, Record<string, TokenRateUsd>
   zai: {
     'glm-4.6': { inputPer1M: 0.6, outputPer1M: 2.2 },
   },
+  // #2188: only a fallback — OpenRouter normally reports its own `cost` in
+  // the response `usage` block (asked for via `usage: { include: true }`),
+  // which `usage-ledger.ts` uses directly instead of this table whenever it
+  // is present. `typesafe/jev-1.13` (the #2187 Jev spike's target model) is
+  // listed here for the rare case a call comes back with no `usage.cost`.
+  openrouter: {
+    'typesafe/jev-1.13': { inputPer1M: 0.042, outputPer1M: 0 },
+  },
 };
 
 /**
@@ -74,6 +82,12 @@ const DEFAULT_RATE: Record<BrainConnectorId, TokenRateUsd> = {
   // estimate. Attribution (the token counts themselves) is still what
   // usage.incurred records; only the dollar figure is zero.
   local: { inputPer1M: 0, outputPer1M: 0 },
+  // #2188: OpenRouter fronts every provider's pricing, so no single
+  // connector-level rate can represent it accurately. This fallback exists
+  // only for the model-unknown-and-no-usage.cost edge case (see
+  // `usage-ledger.ts`'s `explicitCostUsd`) — a conservative, GPT-4o-class
+  // mid-tier estimate, same reasoning as every other connector's default.
+  openrouter: { inputPer1M: 2.5, outputPer1M: 10 },
 };
 
 /**

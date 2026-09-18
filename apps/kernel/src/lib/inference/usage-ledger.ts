@@ -54,6 +54,16 @@ export interface RecordInferenceUsageParams {
   tokensIn?: number;
   tokensOut?: number;
   /**
+   * Pre-computed USD cost taken straight from the upstream provider's own
+   * response (#2188 — OpenRouter's `usage.cost`, returned in the response
+   * `usage` block when the request asks `usage: { include: true }`). When
+   * present, this wins over the local `pricing.ts` estimate: the provider's
+   * own figure is more accurate than a hardcoded rate table. `undefined`
+   * (every emitter except the OpenRouter passthrough call) falls back to
+   * `computeCostUsd`, unchanged.
+   */
+  explicitCostUsd?: number;
+  /**
    * Emitter-specific extra context, passed straight through to
    * {@link PublishUsageIncurredParams.metadata} on the bus event — never
    * written to the `usage.incurred` row itself (#1959: the Anthropic
@@ -69,9 +79,9 @@ export interface RecordInferenceUsageParams {
  * failed request.
  */
 export async function recordInferenceUsage(params: RecordInferenceUsageParams): Promise<void> {
-  const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut, metadata } = params;
+  const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut, explicitCostUsd, metadata } = params;
   const connectorId = connectorRegistryId(principalDid, provider);
-  const costUsd = computeCostUsd(provider, model, tokensIn, tokensOut);
+  const costUsd = explicitCostUsd ?? computeCostUsd(provider, model, tokensIn, tokensOut);
   // #1148 emitter-agnostic quantity/unit: this emitter's resource is tokens,
   // so quantity is the total of both directions whenever both are known —
   // null (not 0) when either is unknown, same "don't fabricate a number"

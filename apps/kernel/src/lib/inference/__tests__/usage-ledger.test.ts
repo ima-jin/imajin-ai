@@ -243,6 +243,38 @@ describe('recordInferenceUsage', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('uses explicitCostUsd from the upstream provider instead of computeCostUsd when present (#2188)', async () => {
+    await recordInferenceUsage({
+      principalDid: OWNER,
+      provider: 'openrouter',
+      model: 'typesafe/jev-1.13',
+      tokensIn: 1_000_000,
+      tokensOut: 1_000_000,
+      // Deliberately different from what pricing.ts would compute for this
+      // model (0.042) — proves the explicit figure wins, not a coincidence.
+      explicitCostUsd: 1.23,
+    });
+
+    const usageInsert = insertCalls.find((c) => c.table === 'usageIncurred');
+    expect(usageInsert?.values.costUsd).toBe('1.23000000');
+
+    const txInsert = insertCalls.find((c) => c.table === 'transactions');
+    expect(txInsert?.values.amount).toBe('1.23000000');
+  });
+
+  it('falls back to computeCostUsd when explicitCostUsd is not given, unchanged from before #2188', async () => {
+    await recordInferenceUsage({
+      principalDid: OWNER,
+      provider: 'xai',
+      model: 'grok-4',
+      tokensIn: 1_000_000,
+      tokensOut: 1_000_000,
+    });
+
+    const usageInsert = insertCalls.find((c) => c.table === 'usageIncurred');
+    expect(usageInsert?.values.costUsd).toBe('18.00000000');
+  });
+
   it('falls back to a synthesized connector DID when the static registry does not know the provider', async () => {
     await recordInferenceUsage({
       principalDid: OWNER,

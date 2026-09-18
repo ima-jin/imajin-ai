@@ -11,3 +11,18 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 ```
 
 Full setup guide: [docs/DEVELOPER.md](../../docs/DEVELOPER.md).
+
+## Inference connectors
+
+Brain connectors (`BRAIN_CONNECTORS` in `src/lib/inference/brain.ts`, `CONNECTOR_REGISTRY` in `src/lib/kernel/connector-registry.ts`) let a DID seal its own provider API key for the completions passthrough (`POST /infer/v1/chat/completions`) instead of a shared env var — see the [inference connectors epic](https://github.com/ima-jin/imajin-ai/issues/1922). In resolution order:
+
+| Connector | Provider adapter | Notes |
+|---|---|---|
+| Gemini | `openai` (compatible) | No hardcoded default model (#1769) |
+| Anthropic | `anthropic` | Main-session brain; migrates last (#1922) |
+| xAI | `openai` (compatible) | |
+| OpenAI | `openai` | |
+| Moonshot AI (Kimi) | `openai` (compatible) | |
+| Z.ai (GLM) | `openai` (compatible) | |
+| Local Inference | `openai` (compatible) | Owner-supplied `baseUrl`; no sealed key required (#1957) |
+| OpenRouter | `openai` (compatible) | Router, not a single provider — one sealed key reaches every model it fronts; `provider/model` ids (e.g. `typesafe/jev-1.13`) forward untouched (#2188) |

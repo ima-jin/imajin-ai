@@ -37,12 +37,13 @@ import { loadOpenaiCredentials, OPENAI_BASE_URL } from '@/src/lib/openai/connect
 import { loadMoonshotCredentials, MOONSHOT_BASE_URL } from '@/src/lib/moonshot/connector';
 import { loadZaiCredentials, ZAI_BASE_URL } from '@/src/lib/zai/connector';
 import { loadLocalCredentials } from '@/src/lib/local/connector';
+import { loadOpenrouterCredentials, OPENROUTER_BASE_URL } from '@/src/lib/openrouter/connector';
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 
 const log = createLogger('kernel:inference:brain');
 
 /** Connector ids that can supply a brain, in resolution order. */
-export type BrainConnectorId = 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'local';
+export type BrainConnectorId = 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'local' | 'openrouter';
 
 /**
  * Whose sealed card may supply the model (#1624).
@@ -278,6 +279,32 @@ const BRAIN_CONNECTORS: readonly BrainConnector[] = [
     scope: 'local:infer',
     tokenRoute: '/local/api/token',
     load: loadLocalCredentials,
+  },
+  {
+    // #2188. Appended rather than slotted in, same reasoning as every other
+    // brain connector above: this table's order IS resolution priority, so
+    // inserting OpenRouter earlier would silently move existing dual-sealed
+    // DIDs onto a different brain. OpenRouter is itself a router rather than
+    // a single provider — one sealed key gives passthrough reach into every
+    // model it fronts (including `typesafe/jev-1.13`, the #2187 Jev spike's
+    // target model) — so its `provider/model` ids are forwarded untouched by
+    // the completions passthrough; this table never interprets them.
+    id: 'openrouter',
+    name: 'OpenRouter',
+    // OpenRouter speaks the OpenAI-compatible surface, so its provider
+    // adapter is `openai` pointed at openrouter.ai — the same move every
+    // other OpenAI-compatible connector above makes.
+    provider: 'openai',
+    scope: 'openrouter:infer',
+    tokenRoute: '/openrouter/api/token',
+    // No hardcoded default, matching every other connector's #1769
+    // precedent: OpenRouter's own catalog turns over even faster than a
+    // single provider's, so the owner picks a live `provider/model` id from
+    // GET /openrouter/api/models and it is sealed as `modelId` — see
+    // `NoModelSelectedError` for the fail-closed path when none is chosen
+    // yet.
+    defaultBaseUrl: OPENROUTER_BASE_URL,
+    load: loadOpenrouterCredentials,
   },
 ];
 

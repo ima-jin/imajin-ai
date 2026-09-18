@@ -37,4 +37,19 @@ describe('computeCostUsd', () => {
     // the same rule every other connector follows.
     expect(computeCostUsd('local', 'llama3', undefined, undefined)).toBeUndefined();
   });
+
+  it('computes cost for a known OpenRouter model rate (#2188 fallback path)', () => {
+    // typesafe/jev-1.13: $0.042/1M in, output free — this table is only a
+    // fallback for when OpenRouter's own `usage.cost` is absent, see
+    // `usage-ledger.ts`'s `explicitCostUsd`.
+    const cost = computeCostUsd('openrouter', 'typesafe/jev-1.13', 1_000_000, 1_000_000);
+    expect(cost).toBe(0.042);
+  });
+
+  it('falls back to the OpenRouter connector default rate for an unrecognized model', () => {
+    const known = computeCostUsd('openrouter', 'typesafe/jev-1.13', 1_000_000, 0);
+    const unknown = computeCostUsd('openrouter', 'some/future-model', 1_000_000, 0);
+    expect(unknown).not.toBe(known);
+    expect(unknown).toBe(2.5);
+  });
 });
