@@ -74,7 +74,7 @@ const PAY_RELEVANT_MIGRATIONS = [
   '0133_pay_balance_units.sql',
   '0134_pay_balance_units_drop_legacy_columns.sql',
   // #2172 — pay.withdrawal_intents / pay.reconciliation_watermarks.
-  '0141_pay_withdrawal_intents.sql',
+  '0142_pay_withdrawal_intents.sql',
 ] as const;
 
 type PgliteLedgerSchema = { balances: typeof balances };
