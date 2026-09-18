@@ -33,6 +33,15 @@ const LOCAL_BRAIN: ResolvedBrain = {
   pinnedIp: '192.168.1.50',
 };
 
+const OPENROUTER_BRAIN: ResolvedBrain = {
+  connector: 'openrouter',
+  credentialDid: 'did:imajin:supplier',
+  provider: 'openai',
+  modelId: 'typesafe/jev-1.13',
+  apiKey: 'sk-or-secret-key',
+  baseURL: 'https://openrouter.ai/api/v1',
+};
+
 describe('forwardOpenAiCompatible', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -233,6 +242,126 @@ describe('forwardOpenAiCompatible', () => {
 
       mockEgressSafeFetch.mockRejectedValueOnce(new UpstreamUnavailableError('local', 'ECONNREFUSED'));
       await expect(forwardOpenAiCompatible(LOCAL_BRAIN, { messages: [] }, {})).rejects.toBeInstanceOf(UpstreamUnavailableError);
+    });
+  });
+
+  describe('the OpenRouter connector (#2188)', () => {
+    it('sends the recommended attribution headers, which every other connector omits', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+
+      await forwardOpenAiCompatible(OPENROUTER_BRAIN, { messages: [] }, {});
+
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init.headers['HTTP-Referer']).toBe('https://imajin.ai');
+      expect(init.headers['X-Title']).toBe('Imajin');
+
+      fetchMock.mockClear();
+      fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      await forwardOpenAiCompatible(XAI_BRAIN, { messages: [] }, {});
+      const [, xaiInit] = fetchMock.mock.calls[0];
+      expect(xaiInit.headers['HTTP-Referer']).toBeUndefined();
+      expect(xaiInit.headers['X-Title']).toBeUndefined();
+    });
+
+    it('asks for usage.cost via usage: { include: true } on both non-streaming and streaming requests', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      await forwardOpenAiCompatible(OPENROUTER_BRAIN, { messages: [] }, {});
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ usage: { include: true } });
+
+      fetchMock.mockClear();
+      fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      await forwardOpenAiCompatible(OPENROUTER_BRAIN, { messages: [], stream: true }, {});
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+        usage: { include: true },
+        stream_options: { include_usage: true },
+      });
+
+      fetchMock.mockClear();
+      fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+      await forwardOpenAiCompatible(XAI_BRAIN, { messages: [] }, {});
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('usage');
+    });
+
+    /**
+     * MUST-HAVE acceptance (#2188): the target model `typesafe/jev-1.13` has
+     * no text output modality — its schema is delivered via `tools`/
+     * `tool_choice`, and it answers only in `tool_calls`. If the passthrough
+     * stripped or rewrote any of these fields, Jev would be unusable through
+     * the rail. This is a recorded-fixture round-trip in the OpenRouter
+     * response shape: no live key involved.
+     */
+    it('round-trips tools/tool_choice/response_format untouched and returns tool_calls untouched (Jev fixture)', async () => {
+      const tools = [{
+        type: 'function',
+        function: {
+          name: 'jev_decision',
+          description: 'System One decision schema',
+          parameters: { type: 'object', properties: { decision: { type: 'string' } }, required: ['decision'] },
+        },
+      }];
+      const toolChoice = { type: 'function', function: { name: 'jev_decision' } };
+      const responseFormat = { type: 'json_schema', json_schema: { name: 'jev_decision', strict: true, schema: { type: 'object' } } };
+
+      // Recorded-fixture OpenRouter response shape: a tool_calls-only
+      // completion (no content, no text modality) plus usage.cost.
+      const openrouterFixture = {
+        id: 'gen-jev-fixture-1',
+        object: 'chat.completion',
+        model: 'typesafe/jev-1.13',
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: 'call_jev_1',
+              type: 'function',
+              function: { name: 'jev_decision', arguments: '{"decision":"proceed"}' },
+            }],
+          },
+          finish_reason: 'tool_calls',
+        }],
+        usage: { prompt_tokens: 120, completion_tokens: 14, cost: 0.0000504 },
+      };
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify(openrouterFixture), { status: 200, headers: { 'content-type': 'application/json' } }),
+      );
+
+      const res = await forwardOpenAiCompatible(
+        OPENROUTER_BRAIN,
+        { messages: [{ role: 'user', content: 'decide' }], tools, tool_choice: toolChoice, response_format: responseFormat },
+        { sessionId: 'sess_jev', turnId: 'turn_jev' },
+      );
+
+      const [, init] = fetchMock.mock.calls[0];
+      const sentBody = JSON.parse(init.body);
+      expect(sentBody.tools).toEqual(tools);
+      expect(sentBody.tool_choice).toEqual(toolChoice);
+      expect(sentBody.response_format).toEqual(responseFormat);
+
+      const responseBody = await res.json();
+      expect(responseBody.choices[0].message.tool_calls).toEqual(openrouterFixture.choices[0].message.tool_calls);
+
+      // Metering used OpenRouter's own usage.cost (#2188), not the local
+      // pricing.ts estimate.
+      expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'openrouter',
+          model: 'typesafe/jev-1.13',
+          tokensIn: 120,
+          tokensOut: 14,
+          explicitCostUsd: 0.0000504,
+        }),
+      );
+    });
+
+    it('forwards OpenRouter provider/model ids untouched as the sealed model', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+
+      await forwardOpenAiCompatible(OPENROUTER_BRAIN, { messages: [] }, {});
+
+      const [, init] = fetchMock.mock.calls[0];
+      expect(JSON.parse(init.body).model).toBe('typesafe/jev-1.13');
     });
   });
 });

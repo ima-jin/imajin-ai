@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-const { mockLoadGemini, mockLoadAnthropic, mockLoadXai, mockLoadOpenai, mockLoadMoonshot, mockLoadZai, mockLoadLocal } = vi.hoisted(() => ({
+const { mockLoadGemini, mockLoadAnthropic, mockLoadXai, mockLoadOpenai, mockLoadMoonshot, mockLoadZai, mockLoadLocal, mockLoadOpenrouter } = vi.hoisted(() => ({
   mockLoadGemini: vi.fn(),
   mockLoadAnthropic: vi.fn(),
   mockLoadXai: vi.fn(),
@@ -10,6 +10,7 @@ const { mockLoadGemini, mockLoadAnthropic, mockLoadXai, mockLoadOpenai, mockLoad
   mockLoadMoonshot: vi.fn(),
   mockLoadZai: vi.fn(),
   mockLoadLocal: vi.fn(),
+  mockLoadOpenrouter: vi.fn(),
 }));
 
 vi.mock('@/src/lib/gemini/connector', () => ({
@@ -42,6 +43,11 @@ vi.mock('@/src/lib/zai/connector', () => ({
 
 vi.mock('@/src/lib/local/connector', () => ({
   loadLocalCredentials: mockLoadLocal,
+}));
+
+vi.mock('@/src/lib/openrouter/connector', () => ({
+  loadOpenrouterCredentials: mockLoadOpenrouter,
+  OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1',
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -83,6 +89,7 @@ const XAI_KEY = 'xai-SEALED';
 const OPENAI_KEY = 'sk-SEALED';
 const MOONSHOT_KEY = 'sk-moonshot-SEALED';
 const ZAI_KEY = 'zai-SEALED';
+const OPENROUTER_KEY = 'sk-or-SEALED';
 const APP_KEY = 'AIzaSy-APP-SEALED';
 
 beforeEach(() => {
@@ -98,6 +105,7 @@ beforeEach(() => {
   mockLoadMoonshot.mockResolvedValue(undefined);
   mockLoadZai.mockResolvedValue(undefined);
   mockLoadLocal.mockResolvedValue(undefined);
+  mockLoadOpenrouter.mockResolvedValue(undefined);
   // Default: no app registrant found (no parent org DID)
   mockDbSelect.mockResolvedValue([]);
 });
@@ -421,7 +429,7 @@ describe('resolveBrain — fail closed with no env fallback', () => {
   it('carries the available connector ids for programmatic callers', async () => {
     const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
 
-    expect(err.availableConnectors).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local']);
+    expect(err.availableConnectors).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'openrouter']);
     expect(err.triedDids).toEqual([OWNER]);
   });
 
@@ -490,6 +498,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
     mockLoadMoonshot.mockRejectedValue(new Error('moonshot boom'));
     mockLoadZai.mockRejectedValue(new Error('zai boom'));
     mockLoadLocal.mockRejectedValue(new Error('local boom'));
+    mockLoadOpenrouter.mockRejectedValue(new Error('openrouter boom'));
 
     const err = await resolveBrain({ ownerDid: OWNER, appDid: APP })
       .catch((e: unknown) => e as NoBrainSealedError);
@@ -504,6 +513,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
       `${OWNER}/moonshot`,
       `${OWNER}/zai`,
       `${OWNER}/local`,
+      `${OWNER}/openrouter`,
       `${APP}/gemini`,
       `${APP}/anthropic`,
       `${APP}/xai`,
@@ -511,6 +521,7 @@ describe('resolveBrain — a throwing connector is skipped, not fatal', () => {
       `${APP}/moonshot`,
       `${APP}/zai`,
       `${APP}/local`,
+      `${APP}/openrouter`,
     ]);
   });
 
@@ -587,7 +598,7 @@ describe('resolveBrain — connectors option restricts the walk (#1959)', () => 
 
 describe('listBrainConnectors', () => {
   it('reports the brain connectors in resolution order', () => {
-    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local']);
+    expect(listBrainConnectors()).toEqual(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'openrouter']);
   });
 });
 
@@ -819,5 +830,66 @@ describe('resolveBrain — the Z.ai card (#1931)', () => {
 
     expect(err.message).toContain('zai:infer');
     expect(err.message).toContain('/zai/api/token');
+  });
+});
+
+// ─── OpenRouter (#2188) ─────────────────────────────────────────────────────
+
+describe('resolveBrain — the OpenRouter card (#2188)', () => {
+  /**
+   * OpenRouter speaks the OpenAI-compatible surface, so the resolved brain
+   * must name the `openai` adapter pointed at openrouter.ai — not a new
+   * provider, the same move every other OpenAI-compatible connector makes.
+   * OpenRouter's own `provider/model` ids (e.g. `typesafe/jev-1.13`) are
+   * carried through as the sealed `modelId` untouched.
+   */
+  it('resolves as an OpenAI-compatible brain pointed at OpenRouter', async () => {
+    mockLoadOpenrouter.mockResolvedValueOnce({ apiKey: OPENROUTER_KEY, modelId: 'typesafe/jev-1.13' });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain).toEqual({
+      connector: 'openrouter',
+      credentialDid: OWNER,
+      provider: 'openai',
+      modelId: 'typesafe/jev-1.13',
+      apiKey: OPENROUTER_KEY,
+      baseURL: 'https://openrouter.ai/api/v1',
+    });
+  });
+
+  /**
+   * The #1769 decision, applied to the eighth provider: no `defaultModelId`,
+   * so a sealed key with no model chosen fails closed with "pick a model"
+   * instead of silently running whichever OpenRouter id was hardcoded when
+   * this shipped.
+   */
+  it('fails closed with NoModelSelectedError when no model is sealed', async () => {
+    mockLoadOpenrouter.mockResolvedValueOnce({ apiKey: OPENROUTER_KEY });
+
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoModelSelectedError);
+
+    expect(err).toBeInstanceOf(NoModelSelectedError);
+    expect(err.message).toContain('/openrouter/api/token');
+    expect(err.message).not.toContain(OPENROUTER_KEY);
+  });
+
+  /**
+   * Appended, not inserted: the table's order IS resolution priority, so an
+   * existing dual-sealed DID must keep the brain it already had.
+   */
+  it('does not displace an earlier sealed connector', async () => {
+    mockLoadLocal.mockResolvedValueOnce({ apiKey: '', modelId: 'llama3', baseUrl: 'http://ollama.lan:11434' });
+    mockLoadOpenrouter.mockResolvedValueOnce({ apiKey: OPENROUTER_KEY, modelId: 'typesafe/jev-1.13' });
+
+    expect((await resolveBrain(OWNER)).connector).toBe('local');
+    expect(mockLoadOpenrouter).not.toHaveBeenCalled();
+  });
+
+  it('names openrouter:infer and its token route in the fail-closed error', async () => {
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoBrainSealedError);
+
+    expect(err.message).toContain('openrouter:infer');
+    expect(err.message).toContain('/openrouter/api/token');
   });
 });

@@ -53,10 +53,13 @@ export async function forwardOpenAiCompatible(
   // branch is untouched). Non-streaming requests are left exactly as before
   // (`{ ...body, model: brain.modelId }`): every OpenAI-compatible provider
   // already includes `usage` on the plain JSON response with no extra field
-  // needed.
+  // needed. `openrouterUsageOptions` (#2188) additionally asks OpenRouter for
+  // its own `usage.cost` — every other field the caller sent (`tools`,
+  // `tool_choice`, `response_format`, ...) still flows through `...body`
+  // byte-for-byte untouched.
   const upstreamBody = stream
-    ? { ...body, model: brain.modelId, stream_options: { include_usage: true } }
-    : { ...body, model: brain.modelId };
+    ? { ...body, model: brain.modelId, stream_options: { include_usage: true }, ...openrouterUsageOptions(brain) }
+    : { ...body, model: brain.modelId, ...openrouterUsageOptions(brain) };
   const upstreamUrl = `${stripTrailingSlashes(brain.baseURL)}/chat/completions`;
 
   log.info(
@@ -97,6 +100,7 @@ export async function forwardOpenAiCompatible(
             'Content-Type': 'application/json',
             Authorization: `Bearer ${brain.apiKey}`,
             Accept: stream ? 'text/event-stream' : 'application/json',
+            ...openrouterAttributionHeaders(brain),
           },
           body: JSON.stringify(upstreamBody),
         },
@@ -140,10 +144,40 @@ export async function forwardOpenAiCompatible(
   return new Response(text, { status: upstream.status, headers });
 }
 
+/**
+ * OpenRouter's optional attribution headers (#2188) — recommended by
+ * OpenRouter so calls show up correctly attributed on their dashboard.
+ * Every other OpenAI-compatible connector's headers are unaffected.
+ */
+function openrouterAttributionHeaders(brain: ResolvedBrain): Record<string, string> {
+  return brain.connector === 'openrouter'
+    ? { 'HTTP-Referer': 'https://imajin.ai', 'X-Title': 'Imajin' }
+    : {};
+}
+
+/**
+ * OpenRouter-only request field (#2188): ask for `usage.cost` (denominated
+ * directly in USD) on every response, streaming or not, so metering can use
+ * OpenRouter's own figure instead of the local `pricing.ts` estimate — see
+ * `recordOpenAiCompatibleUsage`/`meterStreamForUsage` below. A no-op object
+ * for every other connector, which never reads this field.
+ */
+function openrouterUsageOptions(brain: ResolvedBrain): Record<string, unknown> {
+  return brain.connector === 'openrouter' ? { usage: { include: true } } : {};
+}
+
 /** OpenAI wire-format `usage`, as carried on both the JSON and SSE shapes. */
 interface OpenAiCompatibleUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
+  /**
+   * OpenRouter-only (#2188): total call cost in USD, present when the
+   * request set `usage: { include: true }` (see `openrouterUsageOptions`).
+   * Every other OpenAI-compatible provider omits this field, so it is
+   * `undefined` for them and `recordInferenceUsage` falls back to
+   * `computeCostUsd` as before.
+   */
+  cost?: number;
 }
 
 /**
@@ -172,6 +206,7 @@ async function recordOpenAiCompatibleUsage(rawBody: string, brain: ResolvedBrain
       model: brain.modelId,
       tokensIn: usage?.prompt_tokens,
       tokensOut: usage?.completion_tokens,
+      explicitCostUsd: usage?.cost,
     });
   } catch (err) {
     log.error({ err: String(err), connector: brain.connector }, 'completions passthrough: usage ledger write failed');
@@ -217,6 +252,7 @@ function meterStreamForUsage(
       model: brain.modelId,
       tokensIn: usage?.prompt_tokens,
       tokensOut: usage?.completion_tokens,
+      explicitCostUsd: usage?.cost,
     });
   })().catch((err: unknown) => {
     log.warn({ err: String(err), connector: brain.connector }, 'completions passthrough: usage stream tap failed');

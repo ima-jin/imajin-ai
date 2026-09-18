@@ -23,7 +23,7 @@ import {
 } from '../src/scope-vocabulary';
 import { SCOPES, validateScopes } from '../src/scopes';
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'gcp', 'quickbooks', 'warp', 'stripe', 'google'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'openrouter', 'gcp', 'quickbooks', 'warp', 'stripe', 'google'];
 
 const connectorEntries = SCOPE_VOCABULARY.filter(isConnectorScope);
 
@@ -271,6 +271,7 @@ describe('SCOPES is a faithful projection', () => {
     ['openai:infer', 'openai', 'OpenAI', 'openai-api'],
     ['moonshot:infer', 'moonshot', 'Moonshot', 'moonshot-api'],
     ['zai:infer', 'zai', 'Z.ai', 'zai-api'],
+    ['openrouter:infer', 'openrouter', 'OpenRouter', 'openrouter-api'],
   ] satisfies Array<[Scope, ConnectorId, string, string]>)(
     'includes %s as an owner-only connector scope, off the MCP ceiling',
     (scope, id, label, surface) => {

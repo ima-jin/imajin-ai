@@ -1,0 +1,71 @@
+/**
+ * OpenRouter route wiring tests (#2188).
+ *
+ * The wiring contract, and the mock-setup boilerplate for the two
+ * connector-agnostic route factories, are shared with every other
+ * token-paste connector — see `mockRouteWiringFactories` and
+ * `describeRouteWiringContract` in
+ * `src/lib/kernel/__tests__/brain-connector-contract.ts`. Only the
+ * provider-specific mocks and route imports live here.
+ */
+import { vi, it, expect } from 'vitest';
+import {
+  mockRouteWiringFactories,
+  describeRouteWiringContract,
+  expectScopeManifestRouteExportsPostAndOptions,
+} from '@/src/lib/kernel/__tests__/brain-connector-contract';
+
+const sealApiKey = vi.fn();
+const keySealed = vi.fn();
+const keyPending = vi.fn();
+const revokeApiKey = vi.fn();
+const findAsset = vi.fn();
+const readScopes = vi.fn();
+const publish = vi.fn();
+
+const { tokenOpts, disconnectOpts, manifestOpts } = mockRouteWiringFactories();
+
+vi.doMock('@/src/lib/openrouter/connector', () => ({
+  sealApiKey,
+  openrouterKeySealed: keySealed,
+  revokeApiKey,
+}));
+
+vi.doMock('@/src/lib/openrouter/scope-manifest', () => ({
+  findOpenrouterManifestAsset: findAsset,
+  readActiveOpenrouterScopes: readScopes,
+  publishOpenrouterScopeManifest: publish,
+  openrouterKeySealed: keySealed,
+  openrouterKeyPending: keyPending,
+  VALID_OPENROUTER_SCOPES: ['openrouter:infer'],
+}));
+
+// Importing evaluates each route module → each factory records its options.
+const tokenRoute = await import('../../../../app/openrouter/api/token/route');
+const disconnectRoute = await import('../../../../app/openrouter/api/disconnect/route');
+const openrouterManifestRoute = await import('../../../../app/openrouter/api/scope-manifest/route');
+
+// Direct, literal it() with a literal expect() on the helper's return value
+// (see expectScopeManifestRouteExportsPostAndOptions's doc comment) so Sonar
+// S2699 recognizes this file as containing a real assertion.
+it('re-exports POST and OPTIONS from the scope-manifest route, not just GET', () => {
+  expect(expectScopeManifestRouteExportsPostAndOptions(openrouterManifestRoute as Record<string, unknown>)).toBe(true);
+});
+
+describeRouteWiringContract({
+  label: 'OpenRouter',
+  inferScope: 'openrouter:infer',
+  tokenOpts,
+  disconnectOpts,
+  manifestOpts,
+  tokenRoute: tokenRoute as Record<string, unknown>,
+  disconnectRoute: disconnectRoute as Record<string, unknown>,
+  manifestRoute: openrouterManifestRoute as Record<string, unknown>,
+  sealApiKey,
+  keySealed,
+  keyPending,
+  revokeApiKey,
+  findAsset,
+  readScopes,
+  publish,
+});

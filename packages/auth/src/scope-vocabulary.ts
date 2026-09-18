@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'local' | 'gcp' | 'quickbooks' | 'warp' | 'stripe' | 'google';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'local' | 'openrouter' | 'gcp' | 'quickbooks' | 'warp' | 'stripe' | 'google';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -51,6 +51,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   moonshot: 'did:imajin:moonshot-connector',
   zai: 'did:imajin:zai-connector',
   local: 'did:imajin:local-connector',
+  openrouter: 'did:imajin:openrouter-connector',
   gcp: 'did:imajin:gcp-connector',
   quickbooks: 'did:imajin:quickbooks-connector',
   warp: 'did:imajin:warp-connector',
@@ -70,6 +71,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   moonshot: 'moonshot',
   zai: 'zai',
   local: 'local',
+  openrouter: 'openrouter',
   gcp: 'gcp',
   quickbooks: 'quickbooks',
   warp: 'warp',
@@ -397,7 +399,10 @@ export const SCOPE_VOCABULARY = [
   // and pointed at api.moonshot.ai — Kimi is OpenClaw's live coding-agent
   // workhorse today, the connector this recurring spend moves onto a sealed
   // credential first; Z.ai/GLM (#1931) is sixth, capability-completion with
-  // no current spend (lowest priority of the provider entries).
+  // no current spend (lowest priority of the provider entries); OpenRouter
+  // (#2188) is eighth (after `local`, #1957) — a router rather than a single
+  // provider, so one sealed key gives passthrough reach into every model it
+  // fronts, including the #2187 Jev spike's target model.
   brainInferScope('gemini', 'gemini-api', 'Use your Gemini API key for inference'),
   brainInferScope('anthropic', 'anthropic-api', 'Use your Anthropic API key for inference'),
   brainInferScope('xai', 'xai-api', 'Use your xAI API key for inference'),
@@ -412,6 +417,11 @@ export const SCOPE_VOCABULARY = [
   // resource being spent and must never be released to a third party,
   // whether or not a bearer token backs it.
   brainInferScope('local', 'local-api', 'Use your local inference endpoint for inference'),
+  // #2188. Appended rather than slotted in, same reasoning as every other
+  // brain connector above. OpenRouter's own sealed key is spent on every
+  // call and never released to a third party, same SELF_SENSITIVE →
+  // owner-only quadrant as every other `*:infer` scope.
+  brainInferScope('openrouter', 'openrouter-api', 'Use your OpenRouter API key for inference'),
 
   // ── Provider billing/admin keys (#1076 Stage 1) — distinct from the
   // `*:infer` key above: this is the ADMIN/org-billing credential the daily
