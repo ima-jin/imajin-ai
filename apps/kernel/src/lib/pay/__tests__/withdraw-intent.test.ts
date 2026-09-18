@@ -164,6 +164,27 @@ describe('confirmWithdrawal', () => {
       metadata: { rail: 'fake', externalRef: 'fake_tr_1', intentId: 'wdi_1' },
     });
   });
+
+  it('records the resolved destination\'s resolutionMode in the transaction metadata (#2190)', async () => {
+    const intent = {
+      id: 'wdi_1b',
+      did: DID,
+      unit: MJN,
+      amount: '5',
+      rail: 'fake',
+      idempotencyKey: 'wdi_1b',
+      destination: 'acct_default',
+      resolutionMode: 'default' as const,
+      currency: 'CAD',
+    };
+
+    await confirmWithdrawal(intent, 'fake_tr_2');
+
+    expect(state.insertedTransactions[0]).toMatchObject({
+      toDid: 'acct_default',
+      metadata: { resolutionMode: 'default' },
+    });
+  });
 });
 
 describe('releaseWithdrawal (#2172: reservation release, recorded like every other balance mutation)', () => {
@@ -208,6 +229,15 @@ describe('executeWithdrawal — crash-injection (#2172 acceptance criteria)', ()
     expect(result.externalRef).toBe(rail.distinctExternalRefs[0]);
     expect(state.updatedIntents[0].values).toMatchObject({ status: 'completed', externalRef: result.externalRef });
     expect(creditUnit).not.toHaveBeenCalled();
+  });
+
+  it('threads resolutionMode from params through the intent into the confirmed transaction\'s metadata (#2190)', async () => {
+    state.balanceReturningQueue.push([{ did: DID, unit: MJN, amount: '95' }]);
+    const rail = new FakeRail();
+
+    await executeWithdrawal({ did: DID, unit: MJN, amount: 5, rail, destination: 'acct_1', resolutionMode: 'selected' });
+
+    expect(state.insertedTransactions[0]).toMatchObject({ metadata: { resolutionMode: 'selected' } });
   });
 
   it('retrying rail.execute against the SAME already-reserved intent never mints a second external transfer', async () => {

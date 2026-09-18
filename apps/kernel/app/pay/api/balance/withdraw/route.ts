@@ -22,8 +22,16 @@
  * If the rail call itself throws, the reservation is released synchronously
  * in the same request (`releaseWithdrawal`) before this route returns.
  *
+ * #2190: `account_id` is now optional and never trusted as-is. The real
+ * destination is resolved SERVER-SIDE by `resolveWithdrawDestination` from
+ * the acting principal's own `pay.connected_accounts` row — omitted ->
+ * that DID's connected account; supplied -> must match it, else 403
+ * (fail-closed, never falls back to the client-supplied value). `did` here
+ * is already `resolveActingDid(identity)`, so a delegated (`act-as`)
+ * session can only ever resolve to the PRINCIPAL's own connected account.
+ *
  * Request:
- * { amount: number, currency: string, account_id: string }
+ * { amount: number, currency: string, account_id?: string }
  *
  * Response:
  * { success: boolean, transactionId: string, transferId: string, amount: number }
@@ -36,6 +44,7 @@ import { withLogger } from '@imajin/logger';
 import { MJN, InsufficientBalanceError } from '@/src/lib/pay/ledger';
 import { executeWithdrawal } from '@/src/lib/pay/withdraw-intent';
 import { defaultRailForUnit } from '@/src/lib/pay/rails/registry';
+import { resolveWithdrawDestination } from '@/src/lib/pay/withdraw-destination';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
 
@@ -67,9 +76,9 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    if (!account_id) {
+    if (account_id !== undefined && typeof account_id !== 'string') {
       return NextResponse.json(
-        { error: 'account_id (Stripe Connect account) is required' },
+        { error: 'account_id must be a string' },
         { status: 400, headers: cors }
       );
     }
@@ -78,6 +87,23 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     if (amount < MIN_WITHDRAWAL_CENTS) {
       return NextResponse.json(
         { error: `Minimum withdrawal is ${MIN_WITHDRAWAL_CENTS / 100} ${currency}` },
+        { status: 400, headers: cors }
+      );
+    }
+
+    // #2190: resolve the real destination server-side from `did`'s own
+    // connected accounts — `account_id`, if supplied, is only ever a
+    // selection hint, never trusted as the destination itself.
+    const resolved = await resolveWithdrawDestination(did, account_id);
+    if (!resolved.ok) {
+      if (resolved.error === 'forbidden_destination') {
+        return NextResponse.json(
+          { error: 'account_id does not belong to this account' },
+          { status: 403, headers: cors }
+        );
+      }
+      return NextResponse.json(
+        { error: 'No connected Stripe account for this account. Complete Connect onboarding before withdrawing.' },
         { status: 400, headers: cors }
       );
     }
@@ -101,7 +127,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         amount: withdrawalDollars,
         rail,
         currency,
-        destination: account_id,
+        destination: resolved.destination,
+        resolutionMode: resolved.resolutionMode,
       });
     } catch (err) {
       if (err instanceof InsufficientBalanceError) {

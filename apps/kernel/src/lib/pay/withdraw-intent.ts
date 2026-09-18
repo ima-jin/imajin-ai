@@ -32,6 +32,7 @@ import {
   InsufficientBalanceError,
 } from './ledger';
 import type { WithdrawRail, WithdrawalIntent } from './rails/types';
+import type { WithdrawDestinationResolutionMode } from './withdraw-destination';
 import { emitReconciliationDiscrepancy } from './reconciliation';
 
 const log = createLogger('kernel');
@@ -44,6 +45,8 @@ export interface ReserveWithdrawalParams {
   /** Runtime-only hints threaded onto the returned `WithdrawalIntent` for `rail.execute()` — never persisted (see `rails/types.ts`). */
   currency?: string;
   destination?: string;
+  /** How `destination` was resolved (#2190) — see `WithdrawalIntent.resolutionMode`. Runtime-only, not persisted. */
+  resolutionMode?: WithdrawDestinationResolutionMode;
 }
 
 /**
@@ -53,7 +56,7 @@ export interface ReserveWithdrawalParams {
  * `InsufficientBalanceError` and writes nothing when the guard fails.
  */
 export async function reserveWithdrawal(params: ReserveWithdrawalParams): Promise<WithdrawalIntent> {
-  const { did, unit, amount, rail, currency, destination } = params;
+  const { did, unit, amount, rail, currency, destination, resolutionMode } = params;
   const id = generateId('wdi');
   const amountStr = String(amount);
 
@@ -74,7 +77,7 @@ export async function reserveWithdrawal(params: ReserveWithdrawalParams): Promis
     });
   });
 
-  return { id, did, unit, amount: amountStr, rail, idempotencyKey: id, currency, destination };
+  return { id, did, unit, amount: amountStr, rail, idempotencyKey: id, currency, destination, resolutionMode };
 }
 
 /**
@@ -82,7 +85,10 @@ export async function reserveWithdrawal(params: ReserveWithdrawalParams): Promis
  * `pay.transactions` receipt row. `stripeId` is populated with the
  * (possibly non-Stripe) `externalRef` for backward-compatible indexing —
  * see `idx_transactions_stripe_id` — while `metadata.rail`/`externalRef`
- * carry the rail-agnostic record.
+ * carry the rail-agnostic record. `metadata.resolutionMode` (#2190) records
+ * how `toDid` (the resolved destination) was decided — `toDid` itself is
+ * always the server-resolved value, never the raw client-supplied one, so
+ * this is the attestation of what the kernel actually did.
  */
 export async function confirmWithdrawal(intent: WithdrawalIntent, externalRef: string): Promise<string> {
   const txId = generateId('tx');
@@ -106,7 +112,7 @@ export async function confirmWithdrawal(intent: WithdrawalIntent, externalRef: s
       status: 'completed',
       source: 'fiat',
       stripeId: externalRef,
-      metadata: { rail: intent.rail, externalRef, intentId: intent.id },
+      metadata: { rail: intent.rail, externalRef, intentId: intent.id, resolutionMode: intent.resolutionMode },
     });
   });
 
@@ -152,6 +158,8 @@ export interface ExecuteWithdrawalParams {
   rail: WithdrawRail;
   currency?: string;
   destination?: string;
+  /** How `destination` was resolved (#2190) — see `WithdrawalIntent.resolutionMode`. */
+  resolutionMode?: WithdrawDestinationResolutionMode;
 }
 
 export interface ExecuteWithdrawalResult {
@@ -167,8 +175,8 @@ export interface ExecuteWithdrawalResult {
  * rail's own `execute()` contract).
  */
 export async function executeWithdrawal(params: ExecuteWithdrawalParams): Promise<ExecuteWithdrawalResult> {
-  const { did, unit, amount, rail, currency, destination } = params;
-  const intent = await reserveWithdrawal({ did, unit, amount, rail: rail.name, currency, destination });
+  const { did, unit, amount, rail, currency, destination, resolutionMode } = params;
+  const intent = await reserveWithdrawal({ did, unit, amount, rail: rail.name, currency, destination, resolutionMode });
 
   try {
     const { externalRef } = await rail.execute(intent);

@@ -10,6 +10,7 @@
  * `scripts/ci-guard-stripe-import-scope.mjs`).
  */
 import type { Unit } from '../ledger';
+import type { WithdrawDestinationResolutionMode } from '../withdraw-destination';
 
 /**
  * The intent record an adapter's `execute()` is asked to fulfil.
@@ -19,6 +20,12 @@ import type { Unit } from '../ledger';
  * time — see `apps/kernel/app/pay/api/balance/withdraw/route.ts`. It is
  * never written to `pay.withdrawal_intents`, which stays free of any
  * rail-specific column per the design amendment.
+ *
+ * #2190: `destination` is now always resolved SERVER-SIDE (never the raw
+ * client-supplied value — see `../withdraw-destination.ts`), and
+ * `resolutionMode` records how, so the record of what the kernel actually
+ * did survives into `confirmWithdrawal`'s transaction metadata even though
+ * neither field is persisted on the intent row itself.
  */
 export interface WithdrawalIntent {
   id: string;
@@ -31,6 +38,8 @@ export interface WithdrawalIntent {
   idempotencyKey: string;
   /** Rail-specific destination hint, not persisted. Optional because not every rail needs one (e.g. a rail that resolves its own destination from `did`). */
   destination?: string;
+  /** How `destination` was resolved (#2190) — `'default'` when the caller omitted `account_id` and the DID's own connected account was used, `'selected'` when the caller named an `account_id` that was verified to belong to the DID. Not persisted — carried into `confirmWithdrawal`'s transaction metadata instead. */
+  resolutionMode?: WithdrawDestinationResolutionMode;
   /** Fiat currency code for the external transfer (e.g. 'CAD'), as supplied on the original request. Not persisted — `pay.withdrawal_intents` carries only `unit`. Defaults to 'CAD' when omitted, matching the pre-#2172 route's default. */
   currency?: string;
 }

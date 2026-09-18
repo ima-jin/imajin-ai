@@ -279,18 +279,22 @@ paths:
       summary: Withdraw cash balance to an external payout destination
       description: |
         Only MJN (receipt-backed, withdrawable) can be withdrawn — MJNx cannot be
-        withdrawn. Minimum withdrawal is $1.00 (100 cents). Rail-agnostic (#2172):
-        the request shape is unchanged (`account_id` is a rail-specific destination
-        hint, e.g. a Stripe connected account id), but the flow is now reserve ->
-        external -> confirm instead of one transaction. The guarded conditional
-        UPDATE debit (#2166) is committed together with a durable withdrawal-intent
-        row BEFORE the external rail is ever called — insufficient balance returns
-        402 and no external transfer is ever attempted. If the rail call itself
-        fails, the reservation is released before this endpoint returns a 500. A
-        rail transfer that succeeds but whose confirmation never commits (crash,
-        network partition) is caught by the reconciliation sweep
+        withdrawn. Minimum withdrawal is $1.00 (100 cents). Rail-agnostic (#2172),
+        reserve -> external -> confirm instead of one transaction. The guarded
+        conditional UPDATE debit (#2166) is committed together with a durable
+        withdrawal-intent row BEFORE the external rail is ever called — insufficient
+        balance returns 402 and no external transfer is ever attempted. If the rail
+        call itself fails, the reservation is released before this endpoint returns
+        a 500. A rail transfer that succeeds but whose confirmation never commits
+        (crash, network partition) is caught by the reconciliation sweep
         (`GET /api/cron/withdrawal-reconcile`, not part of this per-app spec) and
         surfaced via `GET /api/admin/reconciliation`, never silently lost.
+
+        `account_id` is optional (#2190) and is only ever a *selection hint* —
+        the destination is always resolved server-side from the caller's own
+        connected Stripe account. Omitted -> the caller's connected account is
+        used. Supplied -> it must match the caller's own connected account, else
+        403 (fail-closed; never falls back to the supplied value).
       security:
         - cookieAuth: []
       requestBody:
@@ -299,11 +303,15 @@ paths:
           application/json:
             schema:
               type: object
-              required: [amount, account_id]
+              required: [amount]
               properties:
                 amount: { type: integer, description: "Amount in cents (minimum 100)" }
                 currency: { type: string, default: usd }
-                account_id: { type: string, description: "Stripe connected account ID" }
+                account_id:
+                  type: string
+                  description: >-
+                    Optional Stripe connected account ID. Must belong to the caller;
+                    omit to use the caller's default connected account.
       responses:
         "200":
           description: Withdrawal initiated
@@ -318,7 +326,9 @@ paths:
                   amount: { type: number }
                   currency: { type: string }
         "400":
-          description: Invalid amount (below minimum or not a positive number) or missing account_id
+          description: >-
+            Invalid amount (below minimum or not a positive number), a non-string
+            account_id, or no connected Stripe account exists for the caller
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -329,6 +339,11 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "402":
           description: Insufficient MJN balance (#2166) — the guarded debit never reaches Stripe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: account_id does not belong to the caller's own connected account (#2190) — fail-closed
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

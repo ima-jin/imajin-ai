@@ -1,5 +1,5 @@
 /**
- * Tests for POST /api/balance/withdraw (#2016, #2166, #2172).
+ * Tests for POST /api/balance/withdraw (#2016, #2166, #2172, #2190).
  *
  * #2172 rewrote the route to reserve -> external -> confirm via
  * `executeWithdrawal` (`src/lib/pay/withdraw-intent.ts`) and a registered
@@ -10,8 +10,15 @@
  * older single-transaction shape — the transactional/crash-injection
  * behavior itself is covered at the `withdraw-intent.ts` unit-test level
  * (`../../../../../src/lib/pay/__tests__/withdraw-intent.test.ts`), not
- * re-verified here. This suite only asserts the route's own contract:
- * validation, status-code mapping, and response shape.
+ * re-verified here.
+ *
+ * #2190 hardened `account_id` handling: the route no longer trusts it as
+ * the destination. `resolveWithdrawDestination` (`src/lib/pay/withdraw-destination.ts`)
+ * is mocked directly here too — its own owned-vs-foreign-vs-default
+ * resolution logic is unit-tested in `withdraw-destination.test.ts`; this
+ * suite only asserts the route's own contract: validation, the route's
+ * mapping of `resolveWithdrawDestination`'s result to status codes, and
+ * response shape.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { InsufficientBalanceError, MJN } from '@/src/lib/pay/ledger';
@@ -19,6 +26,7 @@ import { InsufficientBalanceError, MJN } from '@/src/lib/pay/ledger';
 const state = vi.hoisted(() => ({
   requireAuthMock: vi.fn(),
   executeWithdrawalMock: vi.fn(),
+  resolveWithdrawDestinationMock: vi.fn(),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -28,7 +36,12 @@ vi.mock('@imajin/logger', () => ({
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: state.requireAuthMock,
-  resolveActingDid: (identity: { id: string }) => identity.id,
+  // Mirrors the real `resolveActingDid` precedence (actingFor > actingAs >
+  // id) rather than always returning `identity.id`, so this suite can
+  // assert the route resolves the destination for the PRINCIPAL under
+  // delegation, not the delegate (#2190).
+  resolveActingDid: (identity: { id: string; actingFor?: string; actingAs?: string }) =>
+    identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
@@ -37,10 +50,14 @@ vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
 // which imports the real `@/src/db` at module load time (eagerly constructing a
 // DB client) unless stubbed — same reason every other pay route suite in this
 // codebase mocks `@/src/db` even when the route itself no longer touches it directly.
-vi.mock('@/src/db', () => ({ db: {}, balances: {}, transactions: {}, withdrawalIntents: {} }));
+vi.mock('@/src/db', () => ({ db: {}, balances: {}, transactions: {}, withdrawalIntents: {}, connectedAccounts: {} }));
 
 vi.mock('@/src/lib/pay/withdraw-intent', () => ({
   executeWithdrawal: state.executeWithdrawalMock,
+}));
+
+vi.mock('@/src/lib/pay/withdraw-destination', () => ({
+  resolveWithdrawDestination: state.resolveWithdrawDestinationMock,
 }));
 
 vi.mock('@/src/lib/pay/rails/registry', () => ({
@@ -62,6 +79,11 @@ function makeRequest(body: Record<string, unknown>): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   state.requireAuthMock.mockResolvedValue({ identity: { id: DID } });
+  state.resolveWithdrawDestinationMock.mockResolvedValue({
+    ok: true,
+    destination: 'acct_1',
+    resolutionMode: 'selected',
+  });
 });
 
 describe('OPTIONS /api/balance/withdraw', () => {
@@ -93,10 +115,68 @@ describe('POST /api/balance/withdraw — MJN-only, reserve -> external -> confir
     expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
   });
 
-  it('rejects a missing account_id without ever calling executeWithdrawal', async () => {
-    const res = await POST(makeRequest({ amount: 500 }) as never);
+  it('rejects a non-string account_id without ever calling resolveWithdrawDestination or executeWithdrawal', async () => {
+    const res = await POST(makeRequest({ amount: 500, account_id: 42 }) as never);
     expect(res.status).toBe(400);
+    expect(state.resolveWithdrawDestinationMock).not.toHaveBeenCalled();
     expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
+  });
+
+  it('allows a missing account_id — resolution is delegated to resolveWithdrawDestination (#2190)', async () => {
+    state.executeWithdrawalMock.mockResolvedValueOnce({ transactionId: 'tx_1', externalRef: 'fake_tr_1' });
+
+    const res = await POST(makeRequest({ amount: 500 }) as never);
+
+    expect(res.status).toBe(200);
+    expect(state.resolveWithdrawDestinationMock).toHaveBeenCalledWith(DID, undefined);
+  });
+
+  it('never trusts a client-supplied account_id as the destination — resolveWithdrawDestination decides it (#2190)', async () => {
+    state.resolveWithdrawDestinationMock.mockResolvedValueOnce({
+      ok: true,
+      destination: 'acct_owned',
+      resolutionMode: 'selected',
+    });
+    state.executeWithdrawalMock.mockResolvedValueOnce({ transactionId: 'tx_1', externalRef: 'fake_tr_1' });
+
+    await POST(makeRequest({ amount: 500, account_id: 'acct_owned' }) as never);
+
+    expect(state.resolveWithdrawDestinationMock).toHaveBeenCalledWith(DID, 'acct_owned');
+    expect(state.executeWithdrawalMock).toHaveBeenCalledWith(
+      expect.objectContaining({ destination: 'acct_owned', resolutionMode: 'selected' }),
+    );
+  });
+
+  it('returns 403 (fail-closed) when account_id does not belong to the acting principal, without ever calling executeWithdrawal', async () => {
+    state.resolveWithdrawDestinationMock.mockResolvedValueOnce({ ok: false, error: 'forbidden_destination' });
+
+    const res = await POST(makeRequest({ amount: 500, account_id: 'acct_foreign' }) as never);
+
+    expect(res.status).toBe(403);
+    expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a 4xx with a clear error when the caller has no connected account and none was requested, without ever calling executeWithdrawal', async () => {
+    state.resolveWithdrawDestinationMock.mockResolvedValueOnce({ ok: false, error: 'no_connected_account' });
+
+    const res = await POST(makeRequest({ amount: 500 }) as never);
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+    const body = await res.json();
+    expect(body.error).toMatch(/connect|onboard/i);
+    expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
+  });
+
+  it('resolves the destination for the acting PRINCIPAL, not the delegate, under actingFor delegation (#2190)', async () => {
+    state.requireAuthMock.mockResolvedValueOnce({
+      identity: { id: 'did:imajin:agent', actingFor: 'did:imajin:principal' },
+    });
+    state.executeWithdrawalMock.mockResolvedValueOnce({ transactionId: 'tx_1', externalRef: 'fake_tr_1' });
+
+    await POST(makeRequest({ amount: 500 }) as never);
+
+    expect(state.resolveWithdrawDestinationMock).toHaveBeenCalledWith('did:imajin:principal', undefined);
   });
 
   it('maps InsufficientBalanceError to 402 (the reservation guard failed — no rail was ever called)', async () => {
