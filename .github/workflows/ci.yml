@@ -266,6 +266,15 @@ jobs:
       - name: Cross-schema query guard
         run: node scripts/ci-guard-cross-schema-reads.mjs
 
+      # Stripe SDK import scope guard (#2172 design amendment): the withdraw
+      # rail adapter interface exists so the withdraw/reconciliation path
+      # never imports the stripe SDK directly outside
+      # apps/kernel/src/lib/pay/providers/. Ships with
+      # scripts/stripe-import-allowlist.json listing the known pre-existing
+      # violations elsewhere in lib/pay/app/pay so it lands green.
+      - name: Stripe import scope guard
+        run: node scripts/ci-guard-stripe-import-scope.mjs
+
   sonarcloud:
     name: SonarCloud
     runs-on: imajin-self-hosted

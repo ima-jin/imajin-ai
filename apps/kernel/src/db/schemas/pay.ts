@@ -152,6 +152,53 @@ export const withdrawalRequests = paySchema.table('withdrawal_requests', {
 export type WithdrawalRequest = typeof withdrawalRequests.$inferSelect;
 export type NewWithdrawalRequest = typeof withdrawalRequests.$inferInsert;
 
+/**
+ * Withdrawal Intents - reserve -> external -> confirm durability record for
+ * the withdraw path (#2172).
+ *
+ * Rail-agnostic per #2172's design amendment: no Stripe-named column.
+ * `rail` names the WithdrawRail adapter that owns `externalRef`'s meaning
+ * (opaque to the kernel). The intent id doubles as the rail's native
+ * idempotency key, so a retry against an already-reserved intent can never
+ * produce a second external transfer. Distinct from `withdrawalRequests`
+ * above, which is the manual EMT withdrawal flow (migration 0030) — a
+ * different rail, not a superset/subset of this table.
+ */
+export const withdrawalIntents = paySchema.table('withdrawal_intents', {
+  id: text('id').primaryKey(),
+  did: text('did').notNull(),
+  unit: text('unit').notNull(),
+  amount: numeric('amount', { precision: 20, scale: 8 }).notNull(),
+  rail: text('rail').notNull(),
+  idempotencyKey: text('idempotency_key').notNull().unique(),
+  externalRef: text('external_ref'),
+  status: text('status').notNull().default('pending'),   // pending | completed | failed | released
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  didIdx: index('idx_pay_withdrawal_intents_did').on(table.did),
+  statusIdx: index('idx_pay_withdrawal_intents_status').on(table.status),
+  railIdx: index('idx_pay_withdrawal_intents_rail').on(table.rail),
+  externalRefIdx: index('idx_pay_withdrawal_intents_external_ref').on(table.externalRef),
+}));
+
+/**
+ * Reconciliation Watermarks - one row per registered WithdrawRail, tracking
+ * how far the reconciliation cron sweep has scanned that rail's transfer
+ * feed (#2172). Prevents both re-scanning a rail's entire history on every
+ * run and silently skipping the window between runs.
+ */
+export const reconciliationWatermarks = paySchema.table('reconciliation_watermarks', {
+  rail: text('rail').primaryKey(),
+  lastReconciledAt: timestamp('last_reconciled_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export type WithdrawalIntentRow = typeof withdrawalIntents.$inferSelect;
+export type NewWithdrawalIntentRow = typeof withdrawalIntents.$inferInsert;
+export type ReconciliationWatermark = typeof reconciliationWatermarks.$inferSelect;
+export type NewReconciliationWatermark = typeof reconciliationWatermarks.$inferInsert;
+
 // Types
 export type Transaction = typeof transactions.$inferSelect;
 export type NewTransaction = typeof transactions.$inferInsert;

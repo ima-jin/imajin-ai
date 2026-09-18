@@ -935,6 +935,18 @@
       "schema": "www",
       "firstMigration": "0001_seed.sql",
       "notes": ""
+    },
+    "pay.withdrawal_intents": {
+      "owner": "kernel",
+      "schema": "pay",
+      "firstMigration": "0141_pay_withdrawal_intents.sql",
+      "notes": ""
+    },
+    "pay.reconciliation_watermarks": {
+      "owner": "kernel",
+      "schema": "pay",
+      "firstMigration": "0141_pay_withdrawal_intents.sql",
+      "notes": ""
     }
   },
   "views": {},

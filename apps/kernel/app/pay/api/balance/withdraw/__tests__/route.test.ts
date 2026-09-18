@@ -1,126 +1,156 @@
 /**
- * Tests for POST /api/balance/withdraw (#2016, #2166) — withdraw rails
- * read/write the MJN unit row exclusively.
+ * Tests for POST /api/balance/withdraw (#2016, #2166, #2172).
  *
- * #2166: the MJN debit is now a single guarded conditional UPDATE
- * (`debitUnitIfSufficient` in `src/lib/pay/ledger.ts`), reserved BEFORE
- * the Stripe transfer is created — not a pre-transaction `getBalanceRow`
- * read compared in JS, followed by an unconditional debit AFTER Stripe
- * already sent real money. `state.returningQueue` simulates the
- * `.returning()` result of the guarded UPDATE, same convention as the
- * gift/event-topup route suites (#2018).
+ * #2172 rewrote the route to reserve -> external -> confirm via
+ * `executeWithdrawal` (`src/lib/pay/withdraw-intent.ts`) and a registered
+ * `WithdrawRail` (`src/lib/pay/rails/registry.ts`), instead of one
+ * `db.transaction()` wrapping a private inline Stripe client. These tests
+ * therefore mock `executeWithdrawal`/`defaultRailForUnit` directly rather
+ * than the DB/Stripe mocking `mock-drizzle-table.ts` provides for the
+ * older single-transaction shape — the transactional/crash-injection
+ * behavior itself is covered at the `withdraw-intent.ts` unit-test level
+ * (`../../../../../src/lib/pay/__tests__/withdraw-intent.test.ts`), not
+ * re-verified here. This suite only asserts the route's own contract:
+ * validation, status-code mapping, and response shape.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { jsonPostRequest, resetMockDbCallState } from '@/src/lib/pay/__tests__/mock-drizzle-table';
+import { InsufficientBalanceError, MJN } from '@/src/lib/pay/ledger';
 
 const state = vi.hoisted(() => ({
-  insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
-  updateCalls: [] as Array<{ table: string; values: Record<string, unknown> }>,
-  returningQueue: [] as Array<Record<string, unknown>[]>,
   requireAuthMock: vi.fn(),
-  transferCreateMock: vi.fn(),
+  executeWithdrawalMock: vi.fn(),
 }));
 
-vi.mock('@imajin/logger', async () => {
-  const { withLoggerPassthrough } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
-  return { withLogger: withLoggerPassthrough() };
-});
+vi.mock('@imajin/logger', () => ({
+  withLogger: (_service: string, handler: (req: unknown, ctx: { log: unknown }) => Promise<Response>) =>
+    (req: unknown) => handler(req, { log: { error: () => {}, info: () => {}, warn: () => {} } }),
+}));
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: state.requireAuthMock,
   resolveActingDid: (identity: { id: string }) => identity.id,
 }));
 
-vi.mock('@/src/db', async () => {
-  const { balanceRouteDbModule } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
-  return balanceRouteDbModule(state, { returningQueue: state.returningQueue });
-});
-
-vi.mock('stripe', () => ({
-  default: class {
-    transfers = { create: state.transferCreateMock };
-  },
-}));
-
-vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
 
-import { POST } from '../route';
+// `../route` imports `InsufficientBalanceError`/`MJN` from `@/src/lib/pay/ledger`,
+// which imports the real `@/src/db` at module load time (eagerly constructing a
+// DB client) unless stubbed — same reason every other pay route suite in this
+// codebase mocks `@/src/db` even when the route itself no longer touches it directly.
+vi.mock('@/src/db', () => ({ db: {}, balances: {}, transactions: {}, withdrawalIntents: {} }));
+
+vi.mock('@/src/lib/pay/withdraw-intent', () => ({
+  executeWithdrawal: state.executeWithdrawalMock,
+}));
+
+vi.mock('@/src/lib/pay/rails/registry', () => ({
+  defaultRailForUnit: () => ({ name: 'fake' }),
+}));
+
+import { POST, OPTIONS } from '../route';
 
 const DID = 'did:imajin:owner';
 
 function makeRequest(body: Record<string, unknown>): Request {
-  return jsonPostRequest('https://kernel.test/api/balance/withdraw', body);
+  return new Request('https://kernel.test/api/balance/withdraw', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetMockDbCallState(state);
-  process.env.STRIPE_SECRET_KEY = 'sk_test';
   state.requireAuthMock.mockResolvedValue({ identity: { id: DID } });
-  state.transferCreateMock.mockResolvedValue({ id: 'tr_test' });
 });
 
-describe('POST /api/balance/withdraw — MJN-only (#2016)', () => {
-  it('rejects an amount below the minimum', async () => {
-    const res = await POST(makeRequest({ amount: 1, account_id: 'acct_1' }) as never);
-    expect(res.status).toBe(400);
+describe('OPTIONS /api/balance/withdraw', () => {
+  it('returns a 204 CORS preflight response', async () => {
+    const res = await OPTIONS(makeRequest({}) as never);
+    expect(res.status).toBe(204);
+  });
+});
+
+describe('POST /api/balance/withdraw — MJN-only, reserve -> external -> confirm (#2172)', () => {
+  it('returns 401 when the caller is not authenticated', async () => {
+    state.requireAuthMock.mockResolvedValueOnce({ error: 'no session' });
+
+    const res = await POST(makeRequest({ amount: 500, account_id: 'acct_1' }) as never);
+
+    expect(res.status).toBe(401);
+    expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
   });
 
-  it('rejects insufficient MJN balance with a 402, and never calls Stripe (#2166 guarded UPDATE)', async () => {
-    // The guarded UPDATE itself is attempted (that's the sufficiency check), it just matches zero rows.
-    state.returningQueue.push([]);
+  it('rejects a non-numeric/non-positive amount without ever calling executeWithdrawal', async () => {
+    const res = await POST(makeRequest({ amount: -5, account_id: 'acct_1' }) as never);
+    expect(res.status).toBe(400);
+    expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an amount below the minimum without ever calling executeWithdrawal', async () => {
+    const res = await POST(makeRequest({ amount: 1, account_id: 'acct_1' }) as never);
+    expect(res.status).toBe(400);
+    expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing account_id without ever calling executeWithdrawal', async () => {
+    const res = await POST(makeRequest({ amount: 500 }) as never);
+    expect(res.status).toBe(400);
+    expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
+  });
+
+  it('maps InsufficientBalanceError to 402 (the reservation guard failed — no rail was ever called)', async () => {
+    state.executeWithdrawalMock.mockRejectedValueOnce(new InsufficientBalanceError(MJN));
+
     const res = await POST(makeRequest({ amount: 500, account_id: 'acct_1' }) as never);
 
     expect(res.status).toBe(402);
     const body = await res.json();
     expect(body.error).toMatch(/Insufficient MJN balance/);
-    expect(state.updateCalls).toHaveLength(1);
-    // The reservation is checked BEFORE Stripe is ever called — no real
-    // money moves for an unbacked withdrawal.
-    expect(state.transferCreateMock).not.toHaveBeenCalled();
-    // Rollback evidence: no transaction row was ever issued.
-    expect(state.insertCalls).toHaveLength(0);
   });
 
-  it('debits the MJN row and records a receipt-kind transaction on success', async () => {
-    state.returningQueue.push([{ did: DID, unit: 'MJN', amount: '95', currency: 'CAD' }]);
+  it('returns 200 with the confirmed transaction/external ref on success', async () => {
+    state.executeWithdrawalMock.mockResolvedValueOnce({
+      intent: { id: 'wdi_1', did: DID, unit: MJN, amount: '5', rail: 'fake', idempotencyKey: 'wdi_1' },
+      externalRef: 'fake_tr_1',
+      transactionId: 'tx_1',
+    });
+
     const res = await POST(makeRequest({ amount: 500, account_id: 'acct_1' }) as never);
 
     expect(res.status).toBe(200);
-    expect(state.transferCreateMock).toHaveBeenCalled();
-    const txValues = state.insertCalls[0].values;
-    expect(txValues).toMatchObject({ unit: 'MJN', sourceKind: 'receipt', type: 'withdrawal' });
-    expect(state.updateCalls).toHaveLength(1);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      success: true,
+      transactionId: 'tx_1',
+      transferId: 'fake_tr_1',
+      amount: 500,
+      currency: 'CAD',
+    });
+
+    expect(state.executeWithdrawalMock).toHaveBeenCalledWith(
+      expect.objectContaining({ did: DID, unit: MJN, amount: 5, currency: 'CAD', destination: 'acct_1' }),
+    );
   });
 
-  it('rolls back the guarded debit (and never records a transaction) when the Stripe transfer itself fails', async () => {
-    state.returningQueue.push([{ did: DID, unit: 'MJN', amount: '95', currency: 'CAD' }]);
-    state.transferCreateMock.mockRejectedValueOnce(new Error('stripe down'));
+  it('maps any other executeWithdrawal failure (e.g. the rail threw, reservation already released) to 500', async () => {
+    state.executeWithdrawalMock.mockRejectedValueOnce(new Error('rail down'));
 
     const res = await POST(makeRequest({ amount: 500, account_id: 'acct_1' }) as never);
 
     expect(res.status).toBe(500);
-    // The guarded debit was attempted, but its effect (and the transaction
-    // row) never commits because the Stripe call inside the same
-    // `db.transaction()` threw.
-    expect(state.insertCalls).toHaveLength(0);
   });
 });
 
-describe('POST /api/balance/withdraw — concurrent debit race (#2166: TOCTOU)', () => {
-  it('two parallel withdrawals against a balance that covers only one: exactly one 200 (one Stripe call), one 402 (no Stripe call)', async () => {
-    state.returningQueue.push([{ did: DID, unit: 'MJN', amount: '0', currency: 'CAD' }], []);
+describe('POST /api/balance/withdraw — no rail configured for the unit', () => {
+  it('returns 500 without ever calling executeWithdrawal when no rail is registered for MJN', async () => {
+    vi.resetModules();
+    vi.doMock('@/src/lib/pay/rails/registry', () => ({ defaultRailForUnit: () => null }));
+    const { POST: postWithNoRail } = await import('../route');
 
-    const req = () => makeRequest({ amount: 500, account_id: 'acct_1' }) as never;
-    const [resA, resB] = await Promise.all([POST(req()), POST(req())]);
-    const statuses = [resA.status, resB.status].sort();
+    const res = await postWithNoRail(makeRequest({ amount: 500, account_id: 'acct_1' }) as never);
 
-    expect(statuses).toEqual([200, 402]);
-    // Only the winner's guarded debit reached Stripe — the loser's guard
-    // failed before any real money could move.
-    expect(state.transferCreateMock).toHaveBeenCalledTimes(1);
-    expect(state.updateCalls).toHaveLength(2);
-    expect(state.insertCalls).toHaveLength(1);
+    expect(res.status).toBe(500);
+    expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
   });
 });
