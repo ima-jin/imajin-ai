@@ -1,4 +1,5 @@
 -- 0141_connectors_registry_openrouter.sql
+-- owner: kernel
 -- Extend the kernel.connectors shadow registry (0114) to the OpenRouter
 -- brain connector — Phase 1 of the inference connectors epic (#1922),
 -- sub-issue #2188.
