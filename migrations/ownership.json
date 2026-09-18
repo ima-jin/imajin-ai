@@ -939,13 +939,13 @@
     "pay.withdrawal_intents": {
       "owner": "kernel",
       "schema": "pay",
-      "firstMigration": "0141_pay_withdrawal_intents.sql",
+      "firstMigration": "0142_pay_withdrawal_intents.sql",
       "notes": ""
     },
     "pay.reconciliation_watermarks": {
       "owner": "kernel",
       "schema": "pay",
-      "firstMigration": "0141_pay_withdrawal_intents.sql",
+      "firstMigration": "0142_pay_withdrawal_intents.sql",
       "notes": ""
     }
   },

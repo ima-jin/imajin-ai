@@ -1,4 +1,4 @@
--- 0141_pay_withdrawal_intents.sql
+-- 0142_pay_withdrawal_intents.sql
 -- owner: kernel
 --
 -- #2172: withdrawal intent + rail-agnostic Stripe<->ledger reconciler.
