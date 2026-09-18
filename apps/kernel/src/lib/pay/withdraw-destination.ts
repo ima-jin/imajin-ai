@@ -67,7 +67,7 @@ export async function resolveWithdrawDestination(
     return { ok: true, destination: account.stripeAccountId, resolutionMode: 'default' };
   }
 
-  if (!account || account.stripeAccountId !== requestedAccountId) {
+  if (account?.stripeAccountId !== requestedAccountId) {
     return { ok: false, error: 'forbidden_destination' };
   }
 
