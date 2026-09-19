@@ -1646,6 +1646,96 @@ export interface BusEventMap {
     decidedAt: string;
     reason?: string;
   };
+  /**
+   * `pay.payment_request` lifecycle events (#2206/#2208) — an invoice /
+   * money request as a first-class receivable on the business DID.
+   *
+   * issuer = subject = the issuer DID for `issued`/`voided` (the business
+   * asserting/withdrawing the receivable); for `settled`, issuer is
+   * whoever asserted the settlement (the issuer, for `method: 'manual'`)
+   * and subject stays the payment_request's issuer DID.
+   *
+   * No `kernel.bus_chain_configs` rows are registered for these types yet
+   * (#2212, out of scope here) — `publish()` still runs the #1884
+   * grant-bound event-subscription fan-out and falls back to the
+   * hardcoded defaults map for any configured reactor chain.
+   */
+  'payment_request.issued': {
+    paymentRequestId: string;
+    kind: 'invoice' | 'request';
+    issuerDid: string;
+    recipientDid: string | null;
+    recipientStubId: string | null;
+    totalAmount: number;
+    currency: string;
+    contentHash: string;
+    attestationId: string | null;
+    context_id: string;
+    context_type: 'payment_request';
+  };
+  /**
+   * Reserved for #2209 (checkout <-> payment_request linkage): fired once
+   * the on-platform Stripe webhook marks a payment_request `paid`. Not
+   * published by anything in #2207/#2208 — declared now so #2209 has a
+   * stable type to publish against without touching this map again.
+   */
+  'payment_request.paid': {
+    paymentRequestId: string;
+    issuerDid: string;
+    recipientDid: string | null;
+    totalAmount: number;
+    currency: string;
+    settlementRef: Record<string, unknown>;
+    context_id: string;
+    context_type: 'payment_request';
+  };
+  'payment_request.settled': {
+    paymentRequestId: string;
+    method: 'manual' | 'stripe' | 'mjnx';
+    issuerDid: string;
+    recipientDid: string | null;
+    totalAmount: number;
+    currency: string;
+    contentHash: string;
+    settlementRef: Record<string, unknown>;
+    attestationId: string | null;
+    context_id: string;
+    context_type: 'payment_request';
+  };
+  'payment_request.voided': {
+    paymentRequestId: string;
+    issuerDid: string;
+    recipientDid: string | null;
+    context_id: string;
+    context_type: 'payment_request';
+  };
+  /**
+   * A `recipient_stub_id` addressed by a payment_request has resolved to a
+   * `recipient_did` (#2210) — the claimable-stub recipient connected to the
+   * issuer (accepted the invite / claimed the stub), whichever ordering the
+   * recipient chose (pay-first then claim, or claim-first then pay). The
+   * DID never changes across claim (#1834 point 1), so `recipientStubId`
+   * and `recipientDid` here are the SAME string — this only records which
+   * of the payment_request's two XOR columns is now populated.
+   *
+   * Published exactly once per affected payment_request (never batched
+   * across multiple requests sharing a stub) and never rewrites the prior
+   * `payment_request.issued` / `.settled` attestations — this is always a
+   * new record. issuer = the payment_request's issuer DID; subject = the
+   * resolved recipient DID.
+   */
+  'payment_request.recipient_claimed': {
+    paymentRequestId: string;
+    issuerDid: string;
+    recipientDid: string;
+    recipientStubId: string;
+    totalAmount: number;
+    currency: string;
+    contentHash: string;
+    attestationId: string | null;
+    context_id: string;
+    context_type: 'payment_request';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

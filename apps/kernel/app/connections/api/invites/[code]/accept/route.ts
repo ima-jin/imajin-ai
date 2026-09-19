@@ -7,6 +7,7 @@ import { checkPreliminaryEligibility, checkHardEligibility } from '@/src/lib/ker
 import { createLogger } from '@imajin/logger';
 import { isUnclaimedStub, tryActivateClaim } from '@/src/lib/auth/claimable-stub';
 import { resolveDidForEmail } from '@imajin/auth';
+import { resolvePaymentRequestsOnRecipientClaim } from '@/src/lib/pay/payment-requests/claim';
 
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
@@ -171,6 +172,16 @@ export async function POST(request: NextRequest, props: { params: Promise<{ code
       log.error({ err: String(err), did: accepterDid }, '[claimable-stub] claim activation error on accept');
     });
   }
+
+  // #2210: this accept IS the "claim = consent event" moment for any
+  // payment_request addressed to accepterDid as a recipient_stub_id —
+  // resolve it to recipient_did regardless of ordering (the recipient may
+  // have already paid via the opaque pay-link handle, or may be claiming
+  // before ever paying). Fire-and-forget: an attestation/publish gap here
+  // must never block the connection itself from forming.
+  resolvePaymentRequestsOnRecipientClaim(accepterDid).catch((err: unknown) => {
+    log.error({ err: String(err), did: accepterDid }, '[payment_request] recipient_claimed resolution error');
+  });
 
   // Notify inviter — fire and forget
   (async () => {

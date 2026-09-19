@@ -13,6 +13,7 @@ const {
   mockPublish,
   mockCheckPreliminaryEligibility,
   mockCheckHardEligibility,
+  mockResolvePaymentRequestsOnRecipientClaim,
 } = vi.hoisted(() => ({
   mockGetSessionFromCookies: vi.fn(),
   mockIsUnclaimedStub: vi.fn(),
@@ -24,6 +25,7 @@ const {
   mockPublish: vi.fn(async () => undefined),
   mockCheckPreliminaryEligibility: vi.fn(async () => undefined),
   mockCheckHardEligibility: vi.fn(async () => undefined),
+  mockResolvePaymentRequestsOnRecipientClaim: vi.fn(async () => undefined),
 }));
 
 vi.mock('@/src/lib/kernel/session', () => ({
@@ -33,6 +35,10 @@ vi.mock('@/src/lib/kernel/session', () => ({
 vi.mock('@/src/lib/auth/claimable-stub', () => ({
   isUnclaimedStub: mockIsUnclaimedStub,
   tryActivateClaim: mockTryActivateClaim,
+}));
+
+vi.mock('@/src/lib/pay/payment-requests/claim', () => ({
+  resolvePaymentRequestsOnRecipientClaim: mockResolvePaymentRequestsOnRecipientClaim,
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -151,6 +157,7 @@ beforeEach(() => {
   mockIsUnclaimedStub.mockResolvedValue(false);
   mockTryActivateClaim.mockResolvedValue(false);
   mockResolveDidForEmail.mockResolvedValue(null);
+  mockResolvePaymentRequestsOnRecipientClaim.mockResolvedValue(undefined);
 
   mockDbInsert.mockReturnValue({ values: vi.fn(async () => undefined) });
   mockDbUpdate.mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn(async () => undefined) }) });
@@ -327,5 +334,31 @@ describe('POST /connections/api/invites/[code]/accept — isForUser identity res
 
     expect(res.status).toBe(201);
     expect(mockResolveDidForEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /connections/api/invites/[code]/accept — payment_request recipient_claimed resolution (#2210)', () => {
+  it('resolves any payment_request addressed to the accepter as recipient_stub_id — this accept IS the claim consent event', async () => {
+    mockIsUnclaimedStub.mockResolvedValue(true);
+    mockDbSelect.mockImplementationOnce(() =>
+      makeSelectChain([baseInvite({ delivery: 'email', toEmail: 'new@example.com', toDid: STUB_DID })]),
+    );
+    queueAcceptSelects({ delivery: 'email' });
+
+    const res = await POST(makeReq(), makeParams(CODE));
+
+    expect(res.status).toBe(201);
+    expect(mockResolvePaymentRequestsOnRecipientClaim).toHaveBeenCalledWith(STUB_DID);
+  });
+
+  it('still forms the connection even when payment_request resolution errors (fire-and-forget, never blocking)', async () => {
+    mockResolvePaymentRequestsOnRecipientClaim.mockRejectedValueOnce(new Error('boom'));
+    mockGetSessionFromCookies.mockResolvedValue(SESSION);
+    mockDbSelect.mockImplementationOnce(() => makeSelectChain([baseInvite()]));
+    queueAcceptSelects();
+
+    const res = await POST(makeReq(), makeParams(CODE));
+
+    expect(res.status).toBe(201);
   });
 });

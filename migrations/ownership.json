@@ -947,6 +947,12 @@
       "schema": "pay",
       "firstMigration": "0142_pay_withdrawal_intents.sql",
       "notes": ""
+    },
+    "pay.payment_request": {
+      "owner": "kernel",
+      "schema": "pay",
+      "firstMigration": "0143_pay_payment_requests.sql",
+      "notes": ""
     }
   },
   "views": {},

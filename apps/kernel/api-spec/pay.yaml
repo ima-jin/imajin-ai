@@ -77,6 +77,73 @@ components:
       required: [error]
       properties:
         error: { type: string }
+    PaymentRequest:
+      type: object
+      description: |
+        #2206/#2207: an invoice / money request as a first-class receivable
+        on the business DID. `fair_manifest` is always non-null — every
+        payment_request carries a .fair manifest (the simple case is a
+        single-payee manifest, built via `buildFairManifest` when the
+        caller supplies none).
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [invoice, request] }
+        issuerDid: { type: string }
+        payeeAccount: { type: string }
+        recipientDid: { type: string, nullable: true }
+        recipientStubId: { type: string, nullable: true }
+        payHandle: { type: string, description: "Opaque handle for the unauthenticated GET /api/payment-requests/by-handle/{handle} read (#2210)" }
+        lineItems:
+          type: array
+          items:
+            type: object
+            required: [name, amount, quantity]
+            properties:
+              name: { type: string }
+              description: { type: string }
+              amount: { type: integer, description: "Unit price in minor units" }
+              quantity: { type: integer }
+        currency: { type: string }
+        totalAmount: { type: integer, description: "Minor units" }
+        fairManifest: { type: object, description: ".fair manifest — never null" }
+        dueAt: { type: string, format: date-time, nullable: true }
+        allowOnPlatform: { type: boolean }
+        status: { type: string, enum: [issued, paid, settled_manual, void] }
+        settlementRef:
+          type: object
+          nullable: true
+          description: "Stripe checkout session id | mjnx tx | manual { method, note, asserted_by, settled_at }"
+        contentHash: { type: string, description: "Attestations bind this, never bytes" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PaymentRequestPublicView:
+      type: object
+      description: |
+        #2210 — the minimum-necessary, unauthenticated view returned by
+        GET /api/payment-requests/by-handle/{handle}. No issuer DID, no
+        recipient PII, no fair_manifest/settlement_ref/content_hash.
+      properties:
+        kind: { type: string, enum: [invoice, request] }
+        lineItems:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              description: { type: string }
+              amount: { type: integer }
+              quantity: { type: integer }
+        totalAmount: { type: integer, description: "Minor units" }
+        currency: { type: string }
+        issuerDisplayName: { type: string }
+        status: { type: string, enum: [issued, paid, settled_manual, void] }
+    PaymentRequestInvite:
+      type: object
+      description: "Present on the create response only when the recipient was resolved via recipient_invite (#2210)."
+      properties:
+        id: { type: string }
+        code: { type: string }
+        url: { type: string }
 
 paths:
   /api/health:
@@ -1096,6 +1163,297 @@ paths:
                               issuedAt: { type: string, format: date-time }
         "401":
           description: Unauthorized (not an admin)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/payment-requests:
+    post:
+      tags: [pay]
+      operationId: createPaymentRequest
+      summary: Create a payment_request (invoice / money request) — issuer-only
+      description: |
+        #2206/#2207/#2208/#2210. `issuer_did` must resolve to the
+        authenticated principal (`requireAuth`/`actingFor`). Exactly one
+        of `recipient_did` / `recipient_stub_id` / `recipient_invite` is
+        required:
+          - `recipient_did` must be a DID the issuer has an existing
+            connection with (403 otherwise).
+          - `recipient_stub_id` passes a pre-resolved claimable-stub DID
+            through directly.
+          - `recipient_invite` (`{ email, delivery?: 'link'|'email',
+            note? }`) creates-or-reuses a claimable stub (#1834) for that
+            email and a connections invite carrying this request as its
+            opaque reason (#1839 no-PII-pre-claim posture); the response's
+            `invite` field carries the resulting invite id/code/url.
+        `total` is computed from `line_items`. When `fair_manifest` is
+        omitted, a default single-payee manifest is built via
+        `buildFairManifest`; a caller-supplied manifest is rejected (400)
+        when its `total` does not match the computed request total. Mints
+        exactly ONE `payment_request.issued` attestation (signed by the
+        issuer, binding `content_hash`) and publishes
+        `payment_request.issued`. Every request also gets an opaque
+        `payHandle` for the unauthenticated by-handle read.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [issuer_did, line_items]
+              properties:
+                issuer_did: { type: string }
+                payee_account: { type: string, description: "Defaults to issuer_did" }
+                kind: { type: string, enum: [invoice, request], default: invoice }
+                recipient_did: { type: string }
+                recipient_stub_id: { type: string }
+                recipient_invite:
+                  type: object
+                  description: "New-counterparty path (#2210) — exactly one of recipient_did/recipient_stub_id/recipient_invite is required"
+                  required: [email]
+                  properties:
+                    email: { type: string, format: email }
+                    delivery: { type: string, enum: [link, email], default: email }
+                    note: { type: string }
+                line_items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [name, amount, quantity]
+                    properties:
+                      name: { type: string }
+                      description: { type: string }
+                      amount: { type: integer, description: "Unit price in minor units" }
+                      quantity: { type: integer }
+                currency: { type: string, default: CAD }
+                due_at: { type: string, format: date-time }
+                allow_on_platform: { type: boolean, default: true }
+                fair_manifest: { type: object, description: "Optional — defaulted via buildFairManifest when omitted" }
+      responses:
+        "201":
+          description: payment_request created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaymentRequest"
+                  - type: object
+                    properties:
+                      invite: { $ref: "#/components/schemas/PaymentRequestInvite" }
+        "400":
+          description: Invalid request (bad recipient/line_items, or fair_manifest.total mismatch)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: issuer_did does not match the authenticated principal, or recipient_did is not an existing connection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      tags: [pay]
+      operationId: listPaymentRequests
+      summary: List payment_requests by issuer and/or recipient
+      description: |
+        At least one of `issuer_did` / `recipient_did` is required and must
+        match the authenticated principal — a caller may only list their
+        own issued or received payment_requests.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: issuer_did
+          in: query
+          schema: { type: string }
+        - name: recipient_did
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [issued, paid, settled_manual, void] }
+        - name: kind
+          in: query
+          schema: { type: string, enum: [invoice, request] }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: payment_requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentRequests:
+                    type: array
+                    items: { $ref: "#/components/schemas/PaymentRequest" }
+        "400":
+          description: Neither issuer_did nor recipient_did was supplied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: issuer_did/recipient_did does not match the authenticated principal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/payment-requests/{id}:
+    get:
+      tags: [pay]
+      operationId: getPaymentRequest
+      summary: Get a payment_request — issuer or recipient only
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: payment_request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentRequest" }
+        "403":
+          description: Not the issuer or recipient
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/payment-requests/by-handle/{handle}:
+    get:
+      tags: [pay]
+      operationId: getPaymentRequestByHandle
+      summary: Unauthenticated minimum-necessary read for the opaque pay-link handle (#2210)
+      description: |
+        Used by both recipient orderings: pay-first (before any account/
+        connection exists) and claim-first (after claiming). No
+        recipient PII, no issuer DID. Hidden (404) once `void`, same as an
+        unknown handle.
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Minimum-necessary payment_request view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentRequestPublicView" }
+        "404":
+          description: Not found, or void
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/payment-requests/{id}/void:
+    post:
+      tags: [pay]
+      operationId: voidPaymentRequest
+      summary: Void a payment_request — issuer-only, only valid from `issued`
+      description: Publishes `payment_request.voided`.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: payment_request voided
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentRequest" }
+        "403":
+          description: Not the issuer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Not in `issued` status (already void/settled_manual/paid), or a concurrent status change
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/payment-requests/{id}/settle:
+    post:
+      tags: [pay]
+      operationId: settlePaymentRequestManual
+      summary: Record an off-platform manual settlement — issuer-only, only valid from `issued`
+      description: |
+        Sets `status` to `settled_manual` and `settlement_ref = { method:
+        'manual', note, asserted_by, settled_at }`. Mints exactly ONE
+        `payment_request.settled` attestation (`method: 'manual'`, signed
+        by the issuer) and publishes `payment_request.settled`. On-platform
+        settlement (`stripe`/`mjnx`) is reserved for #2209, which always
+        runs via `POST /api/settle`.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: { type: string, enum: [manual] }
+                note: { type: string }
+      responses:
+        "200":
+          description: payment_request settled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentRequest" }
+        "400":
+          description: Invalid method/note
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the issuer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Not in `issued` status, or a concurrent status change
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
