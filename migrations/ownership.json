@@ -426,6 +426,12 @@
       "firstMigration": "0043_match_records.sql",
       "notes": ""
     },
+    "kernel.payment_request_notifications": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0144_payment_request_bus_chains.sql",
+      "notes": ""
+    },
     "kernel.quickbooks_realm_index": {
       "owner": "kernel",
       "schema": "kernel",

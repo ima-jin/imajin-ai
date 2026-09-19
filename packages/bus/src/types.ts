@@ -1710,6 +1710,34 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'payment_request';
   };
+  /**
+   * A payment_request recipient's claimable stub (#1834) resolved to a real
+   * DID (#2210/#2214, `resolvePaymentRequestsOnRecipientClaim` —
+   * `apps/kernel/src/lib/pay/payment-requests/claim.ts` on the sibling
+   * `feat/2210-payment-request-recipient` branch). "Claim = consent event":
+   * `recipient_stub_id` re-points onto `recipient_did` (same DID — #1834
+   * point 1), never rewriting the prior `issued`/`settled` attestations.
+   * `recipientStubId` intentionally carries the SAME value as
+   * `recipientDid` here (the DID survives the claim) rather than the
+   * pre-claim id, since the stub id and the now-known DID are one and the
+   * same identity.
+   *
+   * Declared here (bus-package-owned event-type registry) ahead of that
+   * branch merging so #2212's `bus_chain_configs` row for it can exist
+   * now — additive and inert until the publisher ships.
+   */
+  'payment_request.recipient_claimed': {
+    paymentRequestId: string;
+    issuerDid: string;
+    recipientDid: string;
+    recipientStubId: string;
+    totalAmount: number;
+    currency: string;
+    contentHash: string;
+    attestationId: string | null;
+    context_id: string;
+    context_type: 'payment_request';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
