@@ -76,6 +76,32 @@ export async function forwardToKernel(
 }
 
 /**
+ * Forward `GET /openai/v1/models` to the kernel's `GET /infer/v1/models/usable`
+ * (imajin-ai#2201) — same bearer-token auth as the completions passthrough,
+ * no request body. Returns the raw `Response` for any HTTP status the
+ * kernel returns; only a network failure or TTFB timeout throws.
+ */
+export async function forwardModelsToKernel(
+  kernelBaseUrl: string,
+  token: string,
+  timeoutMs: number,
+): Promise<Response> {
+  const url = `${stripTrailingSlashes(kernelBaseUrl)}/infer/v1/models/usable`;
+  try {
+    return await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (err) {
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new UpstreamTimeoutError('Kernel', timeoutMs);
+    }
+    throw new UpstreamUnavailableError('Kernel', err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
  * Break-glass: forward the same raw request body straight to the provider's
  * own OpenAI-compatible endpoint, bypassing the kernel entirely. Only called
  * on a kernel 5xx or TTFB timeout, and only for a route with both

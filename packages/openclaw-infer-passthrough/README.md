@@ -11,6 +11,10 @@ formats, one shim — see [imajin-ai#1959](https://github.com/ima-jin/imajin-ai/
 - **OpenAI-compatible** (`POST /v1/chat/completions`, `POST /:providerId/v1/chat/completions`)
   — forwards to `POST /infer/v1/chat/completions` ([#1925](https://github.com/ima-jin/imajin-ai/issues/1925),
   PR [#1936](https://github.com/ima-jin/imajin-ai/pull/1936)).
+- **Model discovery** (`GET /openai/v1/models`) — forwards to the kernel's
+  `GET /infer/v1/models/usable` ([#2201](https://github.com/ima-jin/imajin-ai/issues/2201)), returning the
+  principal's usable brains (OpenAI list shape) so an OpenClaw custom-provider `baseUrl` can discover
+  models live instead of a static `models` config list.
 - **Anthropic-format** (`POST /anthropic/v1/messages`, `POST /anthropic/v1/messages/count_tokens`)
   — forwards to `POST /infer/v1/messages` and its `count_tokens` sibling
   ([#1959](https://github.com/ima-jin/imajin-ai/issues/1959)) for harnesses that speak the
@@ -225,10 +229,31 @@ custom-provider `baseUrl` path segment) at the connector's own id:
 | `gemini` | Gemini | |
 | `anthropic` | Anthropic Claude | Also reachable via the Anthropic-format path below; migrates last (#1922) |
 | `xai` | xAI Grok | |
-| `openai` | OpenAI | First delegated-seat model live in prod (#1926, see the worked example below) |
+| `openai` | OpenAI | First delegated-seat model live in prod (#1926, see the worked example below). `GET /openai/v1/models` (#2201) additionally exposes live model discovery for this seat's `baseUrl` |
 | `moonshot` | Moonshot AI (Kimi) | |
 | `zai` | Z.ai (GLM) | |
 | `openrouter` | OpenRouter | Router, not a single provider — one sealed key reaches every model it fronts. Forward `provider/model` ids (e.g. `typesafe/jev-1.13`) untouched in `model`/`models` (#2188) |
+
+#### Model discovery — `GET /openai/v1/models` (#2201)
+
+Mints the same route token as the `openai` route's completions calls and forwards to the kernel's
+`GET /infer/v1/models/usable`, returning the body unchanged: the principal's usable brains (sealed
+connectors with a resolved model) in the OpenAI list shape, so an OpenClaw provider plugin can discover
+models live via `GET {baseUrl}/models` instead of a static `models` config list. No break-glass fallback
+— a kernel outage just means discovery is briefly unavailable.
+
+#### Parameter translation for OpenAI-served models (#2201)
+
+OpenAI's current chat-completions surface rejects two otherwise-valid OpenAI-compatible request shapes,
+both observed live on `gpt-6-astra`. For a request whose `model` looks like an OpenAI model id
+(`gpt-`/`o1-`/`o3-`, the same shape the `openai` route's `modelPrefixes` uses above) this proxy rewrites
+the body before forwarding to either the kernel or a break-glass direct endpoint — every other connector
+(e.g. xAI, even when addressed through its own path-prefixed route) forwards byte for byte:
+
+- `max_tokens` → `max_completion_tokens`, when the latter is not already present
+  (`Unsupported parameter: 'max_tokens' … Use 'max_completion_tokens'`).
+- Drops `reasoning_effort` when `tools` is present (`Function tools with reasoning_effort are not
+  supported for gpt-6-astra in /v1/chat/completions`).
 
 ```json
 {
