@@ -371,6 +371,24 @@ describe('getPaymentRequestByHandle (#2210)', () => {
     const result = await getPaymentRequestByHandle('ph_abc');
     expect(result?.issuerDisplayName).toBe(ISSUER_DID.slice(0, 16));
   });
+
+  it('pay-first ordering: the handle view is identical whether the row is still addressed to an unclaimed recipient_stub_id or already resolved to recipient_did', async () => {
+    const STUB_ADDRESSED = { ...ROW, recipientDid: null, recipientStubId: 'did:imajin:unclaimed-stub' };
+    const DID_RESOLVED = { ...ROW, recipientDid: 'did:imajin:unclaimed-stub', recipientStubId: null };
+
+    state.selectQueue.push([STUB_ADDRESSED]);
+    state.selectQueue.push([{ displayName: 'Acme Co' }]);
+    const beforeClaim = await getPaymentRequestByHandle('ph_abc');
+
+    state.selectQueue.push([DID_RESOLVED]);
+    state.selectQueue.push([{ displayName: 'Acme Co' }]);
+    const afterClaim = await getPaymentRequestByHandle('ph_abc');
+
+    // The payer-facing view never varies with recipient_did/recipient_stub_id
+    // state — the request stays payable through the same handle regardless
+    // of whether the recipient has claimed yet.
+    expect(beforeClaim).toEqual(afterClaim);
+  });
 });
 
 describe('listPaymentRequests', () => {

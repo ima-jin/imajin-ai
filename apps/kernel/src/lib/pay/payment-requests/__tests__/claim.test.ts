@@ -131,4 +131,47 @@ describe('resolvePaymentRequestsOnRecipientClaim', () => {
     await resolvePaymentRequestsOnRecipientClaim('did:imajin:unrelated-stub');
     expect(state.mechanicalAttestationMock).not.toHaveBeenCalled();
   });
+
+  it('prior issued/settled attestations are untouched — content_hash carries through unchanged, never recomputed, and never rewritten', async () => {
+    state.selectQueue.push([ADDRESSED_ROW]);
+    state.updateReturningQueue.push([{ ...ADDRESSED_ROW, recipientDid: CLAIMED_DID, recipientStubId: null }]);
+
+    await resolvePaymentRequestsOnRecipientClaim(CLAIMED_DID);
+
+    // The re-point carries the ORIGINAL content_hash forward verbatim —
+    // it is read off the existing row, never recomputed — so the
+    // `issued`/`settled` attestations that already bound it stay valid
+    // and are never touched by this module (it only ever calls
+    // emitMechanicalAttestation for the NEW recipient_claimed record).
+    expect(state.mechanicalAttestationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ content_hash: 'bafy-x' }) }),
+    );
+    expect(state.publishMock).toHaveBeenCalledWith(
+      'payment_request.recipient_claimed',
+      expect.objectContaining({ payload: expect.objectContaining({ contentHash: 'bafy-x' }) }),
+    );
+  });
+
+  it('claim-first ordering: resolving before any settlement still re-points a plain `issued` request', async () => {
+    const claimFirstRow = { ...ADDRESSED_ROW, status: 'issued' };
+    state.selectQueue.push([claimFirstRow]);
+    state.updateReturningQueue.push([{ ...claimFirstRow, recipientDid: CLAIMED_DID, recipientStubId: null }]);
+
+    await resolvePaymentRequestsOnRecipientClaim(CLAIMED_DID);
+
+    expect(state.updateCalls[0].values).toEqual(expect.objectContaining({ recipientDid: CLAIMED_DID, recipientStubId: null }));
+    expect(state.publishMock).toHaveBeenCalledOnce();
+  });
+
+  it('pay-first ordering: a request already settled while addressed to the stub still re-points cleanly on later claim', async () => {
+    const paidFirstRow = { ...ADDRESSED_ROW, status: 'settled_manual' };
+    state.selectQueue.push([paidFirstRow]);
+    state.updateReturningQueue.push([{ ...paidFirstRow, recipientDid: CLAIMED_DID, recipientStubId: null }]);
+
+    await resolvePaymentRequestsOnRecipientClaim(CLAIMED_DID);
+
+    expect(state.updateCalls[0].values).toEqual(expect.objectContaining({ recipientDid: CLAIMED_DID, recipientStubId: null }));
+    expect(state.mechanicalAttestationMock).toHaveBeenCalledOnce();
+    expect(state.publishMock).toHaveBeenCalledOnce();
+  });
 });
