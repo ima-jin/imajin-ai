@@ -35,6 +35,7 @@ import {
   notifyCheckoutServices,
   verifyWebhookManifestSignature,
 } from '@/src/lib/pay/webhook-handlers';
+import { settlePaymentRequestFromStripeCheckout } from '@/src/lib/pay/payment-requests/checkout';
 
 const log = createLogger('kernel');
 
@@ -208,6 +209,16 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  // #2209: a payment_request-linked checkout is a structurally different
+  // flow (settle exclusively via settlePayment(), never the generic
+  // feeLedger/balanceRollups chain distribution below) — fully separate
+  // code path, so it can never interact with or alter the generic checkout
+  // behavior for non-payment_request sessions.
+  if (session.metadata?.payment_request_id) {
+    await handlePaymentRequestCheckoutCompleted(session);
+    return;
+  }
+
   // Idempotency: skip if already completed
   const existing = await db.select().from(transactions).where(eq(transactions.stripeId, session.id)).limit(1);
   if (existing[0]?.status === 'completed') {
@@ -228,6 +239,38 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   }
 
   await notifyCheckoutServices(session);
+}
+
+/**
+ * `checkout.session.completed` for a payment_request-linked session
+ * (#2209): marks the request `paid`, publishes `payment_request.paid`,
+ * ALWAYS settles via `settlePayment()`, and mints the kernel-signed
+ * `payment_request.settled` attestation. Idempotent on webhook replay —
+ * see `settlePaymentRequestFromStripeCheckout`'s doc comment.
+ */
+async function handlePaymentRequestCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
+  const paymentRequestId = session.metadata?.payment_request_id;
+  if (!paymentRequestId) return;
+
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null;
+
+  const result = await settlePaymentRequestFromStripeCheckout({
+    paymentRequestId,
+    checkoutSessionId: session.id,
+    paymentIntentId,
+  });
+
+  if ('error' in result) {
+    log.error(
+      { paymentRequestId, sessionId: session.id, error: result.error },
+      'payment_request checkout webhook error',
+    );
+    return;
+  }
+  if (!result.settled) {
+    log.info({ paymentRequestId, sessionId: session.id }, 'payment_request checkout webhook: already processed, no-op');
+  }
 }
 
 /**
