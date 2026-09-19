@@ -155,6 +155,17 @@ export const ATTESTATION_TYPES = [
   // itself never mutates a balance or intent status — see
   // apps/kernel/src/lib/pay/reconciliation.ts.
   'pay.reconciliation.discrepancy',
+
+  // pay.payment_request lifecycle facts (#2206/#2208) — an invoice / money
+  // request as a first-class receivable on the business DID. Both are
+  // minted signed by the issuer DID (never the platform node identity),
+  // binding the request's content_hash, never bytes — see
+  // apps/kernel/src/lib/pay/payment-requests/attestations.ts. System-class
+  // in the sense that they are always unilateral/mechanical (see
+  // MECHANICAL_ATTESTATION_TYPES below): never bilateral, never carrying
+  // an author_jws, never awaiting a countersignature.
+  'payment_request.issued',
+  'payment_request.settled',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -202,6 +213,12 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #2172 — minted mechanically by the platform node identity for every
   // withdrawal reconciliation discrepancy. See ATTESTATION_TYPES above.
   'pay.reconciliation.discrepancy',
+  // #2206/#2208 — minted mechanically (unilateral, never a bilateral/
+  // human-countersigned claim) whenever a payment_request is issued or
+  // settled. Signed by the issuer DID, not the platform node identity —
+  // see ATTESTATION_TYPES above.
+  'payment_request.issued',
+  'payment_request.settled',
 ] as const;
 
 /**
