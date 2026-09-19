@@ -80,7 +80,15 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const brain = await resolveBrain(appDid ? { ownerDid, appDid } : ownerDid);
+    const context = appDid ? { ownerDid, appDid } : ownerDid;
+    // #2195: `model` is the routing key among the principal's sealed,
+    // usable connectors — omitted (rather than passed as `undefined`) when
+    // absent so a bare `resolveBrain(context)` call stays byte-identical to
+    // before #2195 for the common case of no explicit model.
+    const requestedModel = typeof body.value.model === 'string' ? body.value.model : undefined;
+    const brain = requestedModel
+      ? await resolveBrain(context, { model: requestedModel })
+      : await resolveBrain(context);
 
     log.info(
       {

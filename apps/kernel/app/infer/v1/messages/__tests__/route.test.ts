@@ -47,6 +47,15 @@ describe('POST /infer/v1/messages — dispatch', () => {
     expect(JSON.parse(preparedBody.value)).toMatchObject({ model: 'claude-opus-4-6' });
   });
 
+  it('threads the client-requested model into brain resolution as the routing key (#2195)', async () => {
+    await POST(makeReq({ body: JSON.stringify({ model: 'claude-haiku-4-5', messages: [] }) }));
+
+    expect(mockResolveBrain).toHaveBeenCalledWith(
+      { ownerDid: OWNER_DID, appDid: APP_DID },
+      { connectors: ['anthropic'], model: 'claude-haiku-4-5' },
+    );
+  });
+
   it('forwards session/turn headers as metering metadata', async () => {
     await POST(makeReq({ headers: { 'x-session-id': 'sess_1', 'x-turn-id': 'turn_1' } }));
 

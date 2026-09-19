@@ -183,6 +183,15 @@ describe('POST /infer/v1/chat/completions — dispatch', () => {
     expect(mockResolveBrain).toHaveBeenCalledWith(OWNER_DID);
   });
 
+  it('threads the client-requested model into brain resolution as the routing key (#2195)', async () => {
+    await POST(makeReq({ body: { model: 'grok-4', messages: [{ role: 'user', content: 'hi' }] } }));
+
+    expect(mockResolveBrain).toHaveBeenCalledWith(
+      { ownerDid: OWNER_DID, appDid: APP_DID },
+      { model: 'grok-4' },
+    );
+  });
+
   it('dispatches OpenAI-compatible connectors (xai/gemini/openai) to forwardOpenAiCompatible', async () => {
     mockResolveBrain.mockResolvedValueOnce(XAI_BRAIN);
     const body = { messages: [{ role: 'user', content: 'hi' }] };

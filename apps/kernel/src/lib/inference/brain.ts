@@ -372,21 +372,51 @@ export function listBrainConnectors(): readonly BrainConnectorId[] {
 }
 
 /**
- * Thrown when a connector's credential resolves (grant + key both present)
- * but no model is selected — neither a sealed `modelId` nor a connector
- * `defaultModelId` (#1769).
+ * One sealed connector card (#2195): connected (grant + key both resolved)
+ * but with no model chosen — neither a sealed `modelId` nor a connector
+ * `defaultModelId` (#1769). A flat, exported shape (rather than embedding the
+ * whole internal `BrainConnector`) so {@link NoModelSelectedError} stays easy
+ * to construct outside this module — e.g. in tests that exercise the real
+ * class rather than a fake stand-in.
+ */
+export interface UnusableSealedCard {
+  connectorId: BrainConnectorId;
+  connectorName: string;
+  tokenRoute: string;
+  credentialDid: string;
+}
+
+/**
+ * Thrown when every candidate DID/connector pair the walk found was either
+ * unsealed or sealed-but-modelless, AND at least one was sealed-but-modelless
+ * (#1769, revised by #2195).
  *
- * Distinct from `NoBrainSealedError`: the DID in question IS connected, so
- * falling through to the next connector/DID would be wrong — the fix is to
- * pick a model on this connector's card, not to try a different credential.
+ * Distinct from `NoBrainSealedError`: at least one of the DIDs in question IS
+ * connected, so the fix is to pick a model on that connector's card, not to
+ * seal a new credential. Before #2195 this was thrown the instant the FIRST
+ * sealed-but-modelless card was seen, aborting the walk and starving every
+ * other sealed connector on the table of a look — now the walk keeps going,
+ * and this only fires once nothing usable turned up anywhere, naming every
+ * card that needs a model picked.
  */
 export class NoModelSelectedError extends Error {
-  constructor(connectorName: string, tokenRoute: string) {
+  /** Every sealed-but-modelless card the walk found, in walk order. */
+  readonly failures: readonly BrainConnectorFailure[];
+
+  constructor(cards: readonly UnusableSealedCard[]) {
+    const named = cards
+      .map((c) => `${c.connectorName} (${c.credentialDid}) — pick one at ${c.tokenRoute}`)
+      .join('; ');
     super(
-      `${connectorName} is connected but no model is selected — choose a model on the ` +
-      `${connectorName} connector card (${tokenRoute}).`,
+      `no_model_selected: connected but no model is selected on ${named}. Choose a model on ` +
+      'the connector card(s) above to use them as a brain.',
     );
     this.name = 'NoModelSelectedError';
+    this.failures = cards.map((c) => ({
+      connector: c.connectorId,
+      credentialDid: c.credentialDid,
+      cause: 'no_model_selected',
+    }));
   }
 }
 
@@ -445,24 +475,23 @@ function credentialDids(context: string | BrainCredentialContext): string[] {
 }
 
 /**
- * Build the {@link ResolvedBrain} for a connector that just resolved usable
+ * Build the {@link ResolvedBrain} for a connector that just resolved sealed
  * credentials — the sealed endpoint/model win over the connector's defaults.
  *
- * Throws `NoModelSelectedError` (#1769) when neither a sealed `modelId` nor a
- * connector `defaultModelId` is available: this DID IS connected (grant + key
- * both resolved), so a resolver must not silently fall through to the next
- * DID/connector over a fixable "pick a model" problem.
+ * Returns `undefined` (#2195) rather than throwing when neither a sealed
+ * `modelId` nor a connector `defaultModelId` is available: the caller
+ * records the card and keeps walking instead of aborting resolution over one
+ * card's "pick a model" problem — see the walk in {@link resolveBrain}.
  */
-function buildResolvedBrain(
+function buildUsableBrain(
   connector: BrainConnector,
   did: string,
   creds: SealedCredentials,
-): ResolvedBrain {
-  const baseURL = creds.baseUrl ?? connector.defaultBaseUrl;
+): ResolvedBrain | undefined {
   const modelId = creds.modelId ?? connector.defaultModelId;
-  if (!modelId) {
-    throw new NoModelSelectedError(connector.name, connector.tokenRoute);
-  }
+  if (!modelId) return undefined;
+
+  const baseURL = creds.baseUrl ?? connector.defaultBaseUrl;
   return {
     connector: connector.id,
     credentialDid: did,
@@ -475,7 +504,8 @@ function buildResolvedBrain(
 }
 
 /**
- * Restricts which brains a caller may resolve into (#1959).
+ * Restricts which brains a caller may resolve into (#1959), and/or names the
+ * model the caller actually wants (#2195).
  *
  * A bare `resolveBrain(context)` call walks every table entry, because the
  * OpenAI-compatible passthrough (#1925) is provider-agnostic — whichever
@@ -492,24 +522,43 @@ function buildResolvedBrain(
 export interface ResolveBrainOptions {
   /** When set, only these connector ids are walked — in BRAIN_CONNECTORS order, not the order given here. */
   connectors?: readonly BrainConnectorId[];
+  /**
+   * The caller's requested model id (#2195) — the routing key. Among the
+   * principal's sealed, usable connectors (sealed + a model resolved), the
+   * one whose model matches wins outright, regardless of table order. When
+   * omitted, or when nothing matches, resolution falls back to the first
+   * usable connector in walk order: a per-DID default-brain preference is a
+   * deliberate non-goal for now, same as `BRAIN_CONNECTORS`'
+   * order-is-priority precedent (#1621 calls it a future refinement).
+   */
+  model?: string;
 }
 
 /**
  * Resolve a brain from the candidate DIDs' sealed connector cards.
  *
  * Walks DIDs owner-first, and each DID's connectors in BRAIN_CONNECTORS order
- * (optionally narrowed by {@link ResolveBrainOptions.connectors}), returning
- * the first connection that is both granted and sealed. Throws
- * `NoBrainSealedError` when none is — there is no env-var fallback and no
- * node-level default credential.
+ * (optionally narrowed by {@link ResolveBrainOptions.connectors}).
  *
- * A connector that THROWS is skipped rather than aborting the walk (#1637). One
- * card's custody problem is not the other cards' problem: before this, a Gemini
- * key awaiting Tier 1 owner approval escaped as a raw `VaultDelegationError`,
- * which meant a healthy Anthropic key later in the table was never tried and the
- * caller lost the actionable `NoBrainSealedError` as well. Skipping still fails
- * closed — with nothing resolvable the walk ends in `NoBrainSealedError`, whose
- * `failures` records what was skipped — and each failure is logged.
+ * `model` (#2195) is the routing key. Without one, the first usable
+ * connector found wins immediately — table order is priority, unchanged
+ * from before #2195. With one, the walk keeps going past a usable-but-
+ * non-matching connector (remembered as the fallback) looking for an exact
+ * match; a match returns immediately, and running out of DIDs/connectors
+ * with no match falls back to the first usable connector found.
+ *
+ * A connector that is sealed but has picked no model (#1769) is skipped, not
+ * fatal (#2195): it is recorded and the walk keeps going, so one broken
+ * model picker can no longer take every other sealed connector on the table
+ * down with it. `NoModelSelectedError` is thrown, naming every such card,
+ * only once the walk ends with nothing usable at all. A connector that
+ * THROWS is also skipped rather than aborting the walk (#1637) — one card's
+ * custody problem is not the other cards' problem: before this, a Gemini key
+ * awaiting Tier 1 owner approval escaped as a raw `VaultDelegationError`,
+ * which meant a healthy Anthropic key later in the table was never tried.
+ * With nothing usable and nothing sealed-but-modelless either, the walk ends
+ * in `NoBrainSealedError` — there is no env-var fallback and no node-level
+ * default credential — whose `failures` records every connector that threw.
  *
  * The returned `apiKey` is for the immediate call only: never log it, persist
  * it, or include it in a response body.
@@ -522,6 +571,7 @@ export async function resolveBrain(
   const candidateConnectors = options?.connectors
     ? BRAIN_CONNECTORS.filter((c) => options.connectors!.includes(c.id))
     : BRAIN_CONNECTORS;
+  const requestedModel = options?.model;
 
   // Walk up to the app's registrant org DID — the identity where org-level
   // keys (e.g. Gemini) are sealed. The UI seals keys to org/business/person
@@ -540,52 +590,140 @@ export async function resolveBrain(
   // is otherwise indistinguishable from "no brain" once resolution fails.
   log.info({ appDid: ctx.appDid ?? null, dids }, 'resolveBrain: walking candidate DIDs');
 
+  const walk = await walkBrainConnectors(dids, candidateConnectors, requestedModel);
+  if (walk.brain) return walk.brain;
+
+  if (walk.fallback) {
+    // #2195: nothing served the requested model — fall back to the
+    // principal's explicit default brain (a future refinement, #1621) or,
+    // absent one, the first usable sealed connector found in walk order.
+    log.info(
+      { credentialDid: walk.fallback.credentialDid, connector: walk.fallback.connector, requestedModel },
+      'resolveBrain: no sealed connector served the requested model — using the first usable brain',
+    );
+    return walk.fallback;
+  }
+
+  if (walk.modellessCards.length > 0) {
+    throw new NoModelSelectedError(walk.modellessCards);
+  }
+
+  throw new NoBrainSealedError(dids, candidateConnectors, walk.failures);
+}
+
+/** Aggregate result of walking every candidate (DID, connector) pair — see {@link walkBrainConnectors}. */
+interface BrainWalkResult {
+  /** Set when a usable connector matched `requestedModel` (or none was requested) — the walk returns immediately. */
+  brain?: ResolvedBrain;
+  /** The first usable connector found, kept in case nothing serves `requestedModel`. */
+  fallback?: ResolvedBrain;
+  failures: BrainConnectorFailure[];
+  modellessCards: UnusableSealedCard[];
+}
+
+/**
+ * Walk every (DID, connector) pair and classify each into a running result,
+ * stopping early only when a connector actually serves `requestedModel` (or
+ * none was requested — see {@link probeConnector}'s `'usable'` handling).
+ * Factored out of {@link resolveBrain} so the two functions' branching stays
+ * under Sonar's cognitive-complexity limit (#2195).
+ */
+async function walkBrainConnectors(
+  dids: readonly string[],
+  candidateConnectors: readonly BrainConnector[],
+  requestedModel: string | undefined,
+): Promise<BrainWalkResult> {
   const failures: BrainConnectorFailure[] = [];
+  const modellessCards: UnusableSealedCard[] = [];
+  let fallback: ResolvedBrain | undefined;
 
   for (const did of dids) {
     for (const connector of candidateConnectors) {
-      let creds: SealedCredentials | undefined;
-      try {
-        creds = await connector.load(did);
-      } catch (err) {
-        // Never log `err` alongside anything unsealed, and never surface it to a
-        // caller: a vault/provider message can carry the value being read.
-        log.warn(
-          { credentialDid: did, connector: connector.id, err: String(err) },
-          'brain connector probe failed — skipping this connector',
-        );
-        failures.push({ connector: connector.id, credentialDid: did, cause: String(err) });
+      const outcome = await probeConnector(connector, did);
+
+      if (outcome.kind === 'failed') {
+        failures.push(outcome.failure);
         continue;
       }
-      if (!creds) {
-        // Not an error — this DID simply has no usable connection for this
-        // connector (unsealed, or sealed with no active grant). Logged at
-        // debug-adjacent info level because "which DID/connector combos were
-        // empty" is exactly what #1762 needed and could not see before.
-        log.info(
-          { credentialDid: did, connector: connector.id },
-          'brain connector probe: nothing sealed/granted for this DID',
-        );
+      if (outcome.kind === 'unsealed') continue;
+      if (outcome.kind === 'modelless') {
+        modellessCards.push(outcome.card);
         continue;
       }
 
-      // The sealed endpoint/model win over the connector defaults; a missing
-      // model with no default throws NoModelSelectedError (#1769) rather than
-      // continuing the walk — see buildResolvedBrain.
-      const brain = buildResolvedBrain(connector, did, creds);
-
-      log.info(
-        {
-          credentialDid: did,
-          connector: brain.connector,
-          provider: brain.provider,
-          model: brain.modelId,
-        },
-        'resolved brain from sealed connection',
-      );
-      return brain;
+      // outcome.kind === 'usable': no routing key supplied means the first
+      // usable connector wins outright (table-order priority, unchanged
+      // from before #2195); otherwise a matching model outranks table order.
+      if (!requestedModel || outcome.brain.modelId === requestedModel) {
+        return { brain: outcome.brain, failures, modellessCards };
+      }
+      fallback ??= outcome.brain;
     }
   }
 
-  throw new NoBrainSealedError(dids, candidateConnectors, failures);
+  return { fallback, failures, modellessCards };
+}
+
+/** Outcome of probing one (connector, DID) pair — see {@link probeConnector}. */
+type ConnectorProbeOutcome =
+  | { kind: 'usable'; brain: ResolvedBrain }
+  | { kind: 'modelless'; card: UnusableSealedCard }
+  | { kind: 'failed'; failure: BrainConnectorFailure }
+  | { kind: 'unsealed' };
+
+/**
+ * Probe one connector for one DID and classify the result, so
+ * {@link resolveBrain}'s walk is a flat dispatch over outcomes rather than
+ * nested try/catch and conditionals (#2195 keeps this under Sonar's
+ * cognitive-complexity limit).
+ *
+ * A connector that THROWS is reported as `'failed'` rather than propagating
+ * (#1637) — one card's custody problem is not the other cards' problem.
+ */
+async function probeConnector(connector: BrainConnector, did: string): Promise<ConnectorProbeOutcome> {
+  let creds: SealedCredentials | undefined;
+  try {
+    creds = await connector.load(did);
+  } catch (err) {
+    // Never log `err` alongside anything unsealed, and never surface it to a
+    // caller: a vault/provider message can carry the value being read.
+    log.warn(
+      { credentialDid: did, connector: connector.id, err: String(err) },
+      'brain connector probe failed — skipping this connector',
+    );
+    return { kind: 'failed', failure: { connector: connector.id, credentialDid: did, cause: String(err) } };
+  }
+  if (!creds) {
+    // Not an error — this DID simply has no usable connection for this
+    // connector (unsealed, or sealed with no active grant). Logged at
+    // debug-adjacent info level because "which DID/connector combos were
+    // empty" is exactly what #1762 needed and could not see before.
+    log.info(
+      { credentialDid: did, connector: connector.id },
+      'brain connector probe: nothing sealed/granted for this DID',
+    );
+    return { kind: 'unsealed' };
+  }
+
+  const brain = buildUsableBrain(connector, did, creds);
+  if (!brain) {
+    // #2195: sealed but no model chosen — record it rather than aborting
+    // resolution (#1769's original behavior): one card's broken model
+    // picker must not starve every other sealed connector on the table of
+    // a look.
+    log.warn(
+      { credentialDid: did, connector: connector.id },
+      'brain connector sealed but no model selected — skipping, walk continues',
+    );
+    return {
+      kind: 'modelless',
+      card: { connectorId: connector.id, connectorName: connector.name, tokenRoute: connector.tokenRoute, credentialDid: did },
+    };
+  }
+
+  log.info(
+    { credentialDid: did, connector: brain.connector, provider: brain.provider, model: brain.modelId },
+    'resolved brain from sealed connection',
+  );
+  return { kind: 'usable', brain };
 }

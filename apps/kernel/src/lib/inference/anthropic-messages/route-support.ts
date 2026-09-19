@@ -18,7 +18,7 @@ import type { Logger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { resolveInferenceAuth } from '../auth';
-import { resolveBrain, type ResolvedBrain } from '../brain';
+import { resolveBrain, type ResolvedBrain, type ResolveBrainOptions } from '../brain';
 import { mapBrainErrorToHttp } from '../brain-http-errors';
 import { mapUpstreamErrorToHttp } from '../completions/errors';
 
@@ -85,9 +85,40 @@ export async function guardAnthropicRequest(request: NextRequest): Promise<Guard
  * different provider (e.g. xAI) must fail closed with `NoBrainSealedError`
  * here rather than silently resolving a credential that cannot serve
  * Anthropic-shaped bytes — see `resolveBrain`'s `ResolveBrainOptions` doc.
+ *
+ * `model` (#2195) threads the client's requested model id through as the
+ * routing key among this DID's sealed Anthropic-shaped cards, exactly like
+ * the OpenAI-compatible completions route already does for its own table.
  */
-export function resolveAnthropicBrain(ownerDid: string, appDid: string | undefined): Promise<ResolvedBrain> {
-  return resolveBrain(appDid ? { ownerDid, appDid } : ownerDid, { connectors: ANTHROPIC_ONLY });
+export function resolveAnthropicBrain(
+  ownerDid: string,
+  appDid: string | undefined,
+  model?: string,
+): Promise<ResolvedBrain> {
+  const options: ResolveBrainOptions = model ? { connectors: ANTHROPIC_ONLY, model } : { connectors: ANTHROPIC_ONLY };
+  return resolveBrain(appDid ? { ownerDid, appDid } : ownerDid, options);
+}
+
+/**
+ * Best-effort extraction of the client's requested `model` field from the
+ * raw Anthropic Messages body (#2195) — used only to pick which sealed
+ * connector serves the call. The sealed connector's own `modelId` still wins
+ * in the forwarded request (see `applySealedModel`); this never overrides
+ * that. Never throws: an unparseable body is caught by the route's own JSON
+ * validation a moment later (`applySealedModel`), so this quietly returns
+ * `undefined` instead of duplicating that error path.
+ */
+export function extractRequestedModel(bodyText: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+
+  const model = (parsed as Record<string, unknown>).model;
+  return typeof model === 'string' ? model : undefined;
 }
 
 /** Attaches CORS headers to an adapter's response without altering its body/status. */
