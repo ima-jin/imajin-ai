@@ -686,6 +686,36 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
     settings: null,
     modelsRoute: null,
   },
+  {
+    id: 'typesafe',
+    name: 'TypeSafe.ai',
+    description: 'Bring your own TypeSafe.ai (Jev) API key to run calibrated decisions \u2014 typed answers with a probability distribution attached, not a chat brain.',
+    icon: '\u2696\ufe0f',
+    ingestionPattern: 'token-paste',
+    channel: 'typesafe',
+    connectorDid: 'did:imajin:typesafe-connector',
+    scopes: connectorUiScopes('typesafe'),
+    statusEndpoint: '/typesafe/api/scope-manifest',
+    backendPending: false,
+    connectRoute: null,
+    configureRoute: null,
+    tokenRoute: '/typesafe/api/connect',
+    disconnectRoute: '/typesafe/api/disconnect',
+    credentialUi: {
+      label: 'API Key',
+      placeholder: 'TypeSafe.ai API Key',
+      hint: 'Key is sealed server-side and never returned. This is a SERVICE connector (calibrated decisions via ' +
+        '/typesafe/api/decide), not an inference brain \u2014 it is never reachable via /infer/*.',
+    },
+    settings: null,
+    // No dynamic model picker: TypeSafe callers choose jev-latest / jev-1.13.0
+    // / jev-preview PER CALL on POST /typesafe/api/decide (default jev-latest),
+    // not as a sealed per-DID choice the way the brain connectors' pickers work
+    // \u2014 GET /typesafe/api/models exists for connect-time key validation and
+    // card status, but does not speak the { models, currentModelId } / PUT
+    // contract this field's picker UI expects.
+    modelsRoute: null,
+  },
 ];
 
 /** Look up a connector entry by its id. Returns undefined for unknown ids. */

@@ -23,7 +23,7 @@ import {
 } from '../src/scope-vocabulary';
 import { SCOPES, validateScopes } from '../src/scopes';
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'openrouter', 'gcp', 'quickbooks', 'warp', 'stripe', 'google'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'openrouter', 'gcp', 'quickbooks', 'warp', 'stripe', 'google', 'typesafe'];
 
 const connectorEntries = SCOPE_VOCABULARY.filter(isConnectorScope);
 
