@@ -153,6 +153,55 @@ export type WithdrawalRequest = typeof withdrawalRequests.$inferSelect;
 export type NewWithdrawalRequest = typeof withdrawalRequests.$inferInsert;
 
 /**
+ * Payment Requests - invoice / money request as a first-class receivable on
+ * the business DID (#2206/#2207).
+ *
+ * `kind`/`status` are plain `text` + a CHECK constraint (migration
+ * 0143_pay_payment_requests.sql) rather than a Postgres native ENUM,
+ * matching the convention already used by `withdrawal_intents.status`
+ * above (migration 0142) — additive-only, no `ALTER TYPE` needed to widen.
+ *
+ * Exactly one of `recipientDid` / `recipientStubId` must be set at create
+ * time (enforced by the migration's CHECK constraint AND, redundantly, at
+ * the route layer — see #2207's "document the choice" note). Once a stub
+ * claims, `recipientStubId` resolves to `recipientDid` via a
+ * `payment_request.recipient_claimed` event (#2210, out of scope here).
+ */
+export const paymentRequestKindValues = ['invoice', 'request'] as const;
+export type PaymentRequestKind = typeof paymentRequestKindValues[number];
+
+export const paymentRequestStatusValues = ['issued', 'paid', 'settled_manual', 'void'] as const;
+export type PaymentRequestStatus = typeof paymentRequestStatusValues[number];
+
+export const paymentRequests = paySchema.table('payment_request', {
+  id: text('id').primaryKey(),                           // pr_xxx
+  kind: text('kind').notNull().default('invoice'),        // 'invoice' | 'request'
+  issuerDid: text('issuer_did').notNull(),                // the business DID owed
+  payeeAccount: text('payee_account').notNull(),          // Stripe connected account id / business DID
+  recipientDid: text('recipient_did'),                    // NULLABLE — exactly one of this / recipientStubId
+  recipientStubId: text('recipient_stub_id'),             // NULLABLE — resolved to recipientDid on claim
+  lineItems: jsonb('line_items').notNull(),                // Array<{ name, description?, amount, quantity }>
+  currency: text('currency').notNull().default('CAD'),
+  totalAmount: integer('total_amount').notNull(),          // minor units, per packages/money
+  fairManifest: jsonb('fair_manifest').notNull(),          // .fair manifest — every payment_request carries one
+  dueAt: timestamp('due_at', { withTimezone: true }),
+  allowOnPlatform: boolean('allow_on_platform').notNull().default(true),
+  status: text('status').notNull().default('issued'),      // issued | paid | settled_manual | void
+  settlementRef: jsonb('settlement_ref'),                  // stripe session id | mjnx tx | manual {note, asserted_by}
+  contentHash: text('content_hash').notNull(),              // attestations bind this, never bytes
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  issuerDidIdx: index('idx_payment_request_issuer_did').on(table.issuerDid),
+  recipientDidIdx: index('idx_payment_request_recipient_did').on(table.recipientDid),
+  recipientStubIdIdx: index('idx_payment_request_recipient_stub_id').on(table.recipientStubId),
+  statusIdx: index('idx_payment_request_status').on(table.status),
+}));
+
+export type PaymentRequest = typeof paymentRequests.$inferSelect;
+export type NewPaymentRequest = typeof paymentRequests.$inferInsert;
+
+/**
  * Withdrawal Intents - reserve -> external -> confirm durability record for
  * the withdraw path (#2172).
  *
