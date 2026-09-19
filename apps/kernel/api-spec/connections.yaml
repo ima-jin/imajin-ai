@@ -65,6 +65,8 @@ components:
         expiresAt: { type: string, format: date-time, nullable: true }
         acceptedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
+        reasonContextId: { type: string, nullable: true, description: "Opaque reference to why this invite exists, e.g. a pay.payment_request id (#2210)" }
+        reasonContextType: { type: string, nullable: true }
     Error:
       type: object
       required: [error]

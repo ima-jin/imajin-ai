@@ -46,6 +46,13 @@ export const invitesInConnections = connectionsSchema.table("invites", {
   // claim-stub-expiry sweep (#1841) — the invite's target stub tombstoned
   // while this invite was still pending. See migrations/0112_claim_stub_expiry.sql.
   lapsedAt: timestamp("lapsed_at", { withTimezone: true, mode: 'string' }),
+  // #2210: generic, vertical-agnostic "this invite exists because of
+  // <context>" pointer — same context_id/context_type convention as
+  // attestations/bus payloads. First caller is pay.payment_request
+  // (carried as the invite's opaque "reason", per #1839's no-PII-pre-claim
+  // posture), but nothing here is pay-specific.
+  reasonContextId: text("reason_context_id"),
+  reasonContextType: text("reason_context_type"),
 }, (table) => [
   index("idx_invites_code").using("btree", table.code.asc().nullsLast().op("text_ops")),
   index("idx_invites_from_did").using("btree", table.fromDid.asc().nullsLast().op("text_ops")),
@@ -55,6 +62,7 @@ export const invitesInConnections = connectionsSchema.table("invites", {
   index("idx_trust_invites_from_did").using("btree", table.fromDid.asc().nullsLast().op("text_ops")),
   index("idx_invites_scope_did").using("btree", table.scopeDid.asc().nullsLast().op("text_ops")),
   index("idx_invites_pending_attestation_id").using("btree", table.pendingAttestationId.asc().nullsLast().op("text_ops")),
+  index("idx_invites_reason_context_id").using("btree", table.reasonContextId.asc().nullsLast().op("text_ops")),
   unique("trust_invites_code_unique").on(table.code),
 ]);
 

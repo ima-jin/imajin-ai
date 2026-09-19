@@ -16,6 +16,8 @@ const state = vi.hoisted(() => ({
   publishMock: vi.fn().mockResolvedValue(undefined),
   issuedAttestationMock: vi.fn().mockResolvedValue('att_issued_1'),
   settledAttestationMock: vi.fn().mockResolvedValue('att_settled_1'),
+  isConnectedMock: vi.fn().mockResolvedValue(true),
+  createInviteMock: vi.fn(),
 }));
 
 function selectLimitResult() {
@@ -55,6 +57,7 @@ vi.mock('@/src/db', () => ({
     update: () => ({ set: (values: Record<string, unknown>) => ({ where: () => updateWhere(values) }) }),
   },
   paymentRequests: { __table: 'payment_request' },
+  profiles: { __table: 'profiles' },
 }));
 
 vi.mock('@imajin/bus', () => ({ publish: state.publishMock }));
@@ -66,8 +69,13 @@ vi.mock('../attestations', () => ({
   emitPaymentRequestSettledAttestation: state.settledAttestationMock,
 }));
 
+vi.mock('@/src/lib/chat/connection-check', () => ({ isConnected: state.isConnectedMock }));
+
+vi.mock('@/src/lib/connections/payment-request-invite', () => ({ createPaymentRequestInvite: state.createInviteMock }));
+
 import {
   createPaymentRequest,
+  getPaymentRequestByHandle,
   isServiceError,
   listPaymentRequests,
   settlePaymentRequestManual,
@@ -88,6 +96,15 @@ function resetState() {
   state.settledAttestationMock.mockClear();
   state.issuedAttestationMock.mockResolvedValue('att_issued_1');
   state.settledAttestationMock.mockResolvedValue('att_settled_1');
+  state.isConnectedMock.mockReset();
+  state.isConnectedMock.mockResolvedValue(true);
+  state.createInviteMock.mockReset();
+  state.createInviteMock.mockResolvedValue({
+    recipientStubId: 'did:imajin:new-stub',
+    inviteId: 'inv_1',
+    inviteCode: 'code123',
+    inviteUrl: 'https://jin.imajin.ai/connections/invite/did:imajin:issuer/code123',
+  });
 }
 
 beforeEach(() => {
@@ -205,6 +222,154 @@ describe('createPaymentRequest', () => {
       chain: [{ did: ISSUER_DID, role: 'seller', amount: 5000 }],
       total: { amount: 5000, currency: 'CAD' },
     });
+  });
+});
+
+describe('createPaymentRequest — recipient resolution (#2210)', () => {
+  it('creates when recipient_did is an existing connection of the issuer', async () => {
+    state.isConnectedMock.mockResolvedValue(true);
+    const result = await createPaymentRequest({
+      callerDid: ISSUER_DID,
+      issuerDid: ISSUER_DID,
+      recipientDid: RECIPIENT_DID,
+      lineItems: VALID_LINE_ITEMS,
+    });
+    expect(isServiceError(result)).toBe(false);
+    expect(state.isConnectedMock).toHaveBeenCalledWith(ISSUER_DID, RECIPIENT_DID);
+  });
+
+  it('rejects recipient_did when the issuer has no existing connection with it (403)', async () => {
+    state.isConnectedMock.mockResolvedValue(false);
+    const result = await createPaymentRequest({
+      callerDid: ISSUER_DID,
+      issuerDid: ISSUER_DID,
+      recipientDid: RECIPIENT_DID,
+      lineItems: VALID_LINE_ITEMS,
+    });
+    expect(isServiceError(result)).toBe(true);
+    if (isServiceError(result)) expect(result.status).toBe(403);
+    expect(state.insertCalls).toHaveLength(0);
+  });
+
+  it('rejects recipient_invite without an email', async () => {
+    const result = await createPaymentRequest({
+      callerDid: ISSUER_DID,
+      issuerDid: ISSUER_DID,
+      recipientInvite: { delivery: 'email' },
+      lineItems: VALID_LINE_ITEMS,
+    });
+    expect(isServiceError(result)).toBe(true);
+    if (isServiceError(result)) expect(result.status).toBe(400);
+    expect(state.createInviteMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects when recipient_did AND recipient_invite are both supplied', async () => {
+    const result = await createPaymentRequest({
+      callerDid: ISSUER_DID,
+      issuerDid: ISSUER_DID,
+      recipientDid: RECIPIENT_DID,
+      recipientInvite: { email: 'customer@example.com' },
+      lineItems: VALID_LINE_ITEMS,
+    });
+    expect(isServiceError(result)).toBe(true);
+    if (isServiceError(result)) expect(result.status).toBe(400);
+  });
+
+  it('creates via recipient_invite: creates-or-reuses the stub + invite carrying this request as the opaque reason, and returns the invite handle', async () => {
+    const result = await createPaymentRequest({
+      callerDid: ISSUER_DID,
+      issuerDid: ISSUER_DID,
+      recipientInvite: { email: 'customer@example.com', delivery: 'email', note: 'thanks!' },
+      lineItems: VALID_LINE_ITEMS,
+    });
+
+    expect(isServiceError(result)).toBe(false);
+    expect(state.createInviteMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issuerDid: ISSUER_DID,
+        email: 'customer@example.com',
+        delivery: 'email',
+        note: 'thanks!',
+        reasonContextType: 'payment_request',
+      }),
+    );
+    // reasonContextId is the payment_request's own generated id.
+    const inviteCallArg = state.createInviteMock.mock.calls[0][0];
+    expect(typeof inviteCallArg.reasonContextId).toBe('string');
+    expect(inviteCallArg.reasonContextId).toBeTruthy();
+
+    expect(state.insertCalls).toHaveLength(1);
+    expect(state.insertCalls[0].recipientStubId).toBe('did:imajin:new-stub');
+    expect(state.insertCalls[0].recipientDid).toBeNull();
+
+    if (!isServiceError(result)) {
+      expect(result.invite).toEqual({ id: 'inv_1', code: 'code123', url: 'https://jin.imajin.ai/connections/invite/did:imajin:issuer/code123' });
+    }
+  });
+
+  it('every created payment_request gets an opaque pay_handle', async () => {
+    const result = await createPaymentRequest({
+      callerDid: ISSUER_DID,
+      issuerDid: ISSUER_DID,
+      recipientDid: RECIPIENT_DID,
+      lineItems: VALID_LINE_ITEMS,
+    });
+    expect(isServiceError(result)).toBe(false);
+    expect(state.insertCalls[0].payHandle).toBeTruthy();
+  });
+});
+
+describe('getPaymentRequestByHandle (#2210)', () => {
+  const ROW = {
+    id: 'pr_1',
+    kind: 'invoice',
+    issuerDid: ISSUER_DID,
+    lineItems: VALID_LINE_ITEMS,
+    totalAmount: 5000,
+    currency: 'CAD',
+    status: 'issued',
+    payHandle: 'ph_abc',
+  };
+
+  it('returns null (404 at the route layer) for an unknown handle', async () => {
+    state.selectQueue.push([]);
+    const result = await getPaymentRequestByHandle('ph_bad');
+    expect(result).toBeNull();
+  });
+
+  it('returns the minimum-necessary view for a known handle — no issuer DID, no recipient fields, no content_hash', async () => {
+    state.selectQueue.push([ROW]);
+    state.selectQueue.push([{ displayName: 'Acme Co', handle: 'acme' }]);
+
+    const result = await getPaymentRequestByHandle('ph_abc');
+
+    expect(result).toEqual({
+      kind: 'invoice',
+      lineItems: VALID_LINE_ITEMS,
+      totalAmount: 5000,
+      currency: 'CAD',
+      issuerDisplayName: 'Acme Co',
+      status: 'issued',
+    });
+    expect(result).not.toHaveProperty('issuerDid');
+    expect(result).not.toHaveProperty('recipientDid');
+    expect(result).not.toHaveProperty('recipientStubId');
+    expect(result).not.toHaveProperty('contentHash');
+    expect(result).not.toHaveProperty('fairManifest');
+  });
+
+  it('is hidden (null) once void, same as an unknown handle', async () => {
+    state.selectQueue.push([{ ...ROW, status: 'void' }]);
+    const result = await getPaymentRequestByHandle('ph_abc');
+    expect(result).toBeNull();
+  });
+
+  it('falls back to a truncated DID when the issuer has no profile', async () => {
+    state.selectQueue.push([ROW]);
+    state.selectQueue.push([]);
+
+    const result = await getPaymentRequestByHandle('ph_abc');
+    expect(result?.issuerDisplayName).toBe(ISSUER_DID.slice(0, 16));
   });
 });
 
