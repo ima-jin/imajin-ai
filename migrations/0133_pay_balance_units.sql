@@ -17,13 +17,18 @@
 ALTER TABLE pay.balances ADD COLUMN IF NOT EXISTS unit text;
 ALTER TABLE pay.balances ADD COLUMN IF NOT EXISTS amount numeric(20, 8);
 
--- 2. Turn every existing (one row per DID) row into the MJN row: MJN is the
+-- 2. Drop the single-column PK (did) BEFORE inserting the MJNx rows —
+-- the old PK only allows one row per DID, but step 3 needs to insert a
+-- second row per DID. The composite PK is added in step 5 after backfill.
+ALTER TABLE pay.balances DROP CONSTRAINT IF EXISTS balances_pkey;
+
+-- 3. Turn every existing (one row per DID) row into the MJN row: MJN is the
 -- receipt-backed, withdrawable unit, which is exactly what cash_amount was.
 UPDATE pay.balances
 SET unit = 'MJN', amount = cash_amount
 WHERE unit IS NULL;
 
--- 3. Insert the MJNx row per DID from the old credit_amount bucket. MJNx is
+-- 4. Insert the MJNx row per DID from the old credit_amount bucket. MJNx is
 -- the emitted, in-platform, non-withdrawable unit — this is exactly what
 -- credit_amount held (the #2012 audit found `credit_amount` is what the
 -- ruling calls MJNx, mislabeled as `currency='MJN'` in a few call sites).
@@ -34,18 +39,15 @@ SELECT did, 'MJNx', credit_amount, currency, false, updated_at
 FROM pay.balances
 WHERE unit = 'MJN';
 
--- 4. Every row must have a unit and an amount from here on.
+-- 5. Every row must have a unit and an amount from here on.
 ALTER TABLE pay.balances ALTER COLUMN unit SET NOT NULL;
 ALTER TABLE pay.balances ALTER COLUMN amount SET NOT NULL;
 ALTER TABLE pay.balances ALTER COLUMN amount SET DEFAULT '0';
 
--- 5. Replace the single-column PK (did) with the composite (did, unit) PK —
--- there are now up to two rows per DID. The existing constraint is named
--- `balances_pkey` (0001_seed.sql:1401), not schema-prefixed.
-ALTER TABLE pay.balances DROP CONSTRAINT IF EXISTS balances_pkey;
+-- 6. Add the composite (did, unit) PK now that both MJN and MJNx rows exist.
 ALTER TABLE pay.balances ADD CONSTRAINT balances_pkey PRIMARY KEY (did, unit);
 
--- 6. Constrain unit to the two known wallet units, reserving ISO-4217-shaped
+-- 7. Constrain unit to the two known wallet units, reserving ISO-4217-shaped
 -- codes (e.g. a future fiat-native row) per decision 1's "enum/CHECK (MJN,
 -- MJNx, ISO fiat codes as needed)" — none are populated by this migration.
 ALTER TABLE pay.balances ADD CONSTRAINT pay_balances_unit_check
