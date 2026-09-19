@@ -111,4 +111,25 @@ describe('gpt-6-astra delegated seat via the "openai" route (imajin-ai#1926)', (
     expect(result.headers['Content-Type']).toBe('application/json');
     expect(baseDeps().health.snapshot().fallbackCount).toBe(0);
   });
+
+  it('rewrites max_tokens to max_completion_tokens before forwarding to the kernel (#2201)', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('https://kernel.test/infer/v1/chat/completions');
+      const body = JSON.parse(init?.body as string);
+      expect(body).not.toHaveProperty('max_tokens');
+      expect(body.max_completion_tokens).toBe(512);
+      return new Response(JSON.stringify({ id: 'chatcmpl-astra-2', model: 'gpt-6-astra', choices: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await handleCompletions(baseDeps(), {
+      providerIdFromPath: 'openai',
+      bodyText: JSON.stringify({ model: 'gpt-6-astra', max_tokens: 512, messages: [{ role: 'user', content: 'hi' }] }),
+    });
+
+    expect(result.status).toBe(200);
+  });
 });

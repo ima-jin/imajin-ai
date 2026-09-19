@@ -79,7 +79,7 @@ vi.mock('@/src/db', () => ({
 
 // ─── Subject ────────────────────────────────────────────────────────────────
 
-import { resolveBrain, listBrainConnectors, NoBrainSealedError, NoModelSelectedError } from '../brain';
+import { resolveBrain, listBrainConnectors, listUsableBrains, NoBrainSealedError, NoModelSelectedError } from '../brain';
 
 const OWNER = 'did:imajin:farmer';
 const APP = 'did:imajin:agrifortress';
@@ -984,5 +984,73 @@ describe('resolveBrain — model is the routing key (#2195)', () => {
 
     expect(brain.connector).toBe('xai');
     expect(brain.modelId).toBe('grok-4');
+  });
+});
+
+// ─── listUsableBrains — the principal's usable brains (#2201) ───────────────
+
+describe('listUsableBrains — the principal\'s usable brains for GET /infer/v1/models (#2201)', () => {
+  it('lists every usable connector in resolution order, omitting a modelless sealed card', async () => {
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+    mockLoadXai.mockResolvedValueOnce({ apiKey: XAI_KEY, modelId: 'grok-4' });
+    mockLoadOpenai.mockResolvedValueOnce({ apiKey: OPENAI_KEY, modelId: 'gpt-6-astra' });
+
+    const brains = await listUsableBrains(OWNER);
+
+    expect(brains.map((b) => b.connector)).toEqual(['xai', 'openai']);
+    expect(brains[0].modelId).toBe('grok-4');
+    expect(brains[1].modelId).toBe('gpt-6-astra');
+  });
+
+  it('returns an empty list rather than throwing when nothing is sealed', async () => {
+    const brains = await listUsableBrains(OWNER);
+    expect(brains).toEqual([]);
+  });
+
+  it('returns an empty list rather than throwing NoModelSelectedError when every sealed card is modelless', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+
+    const brains = await listUsableBrains(OWNER);
+
+    expect(brains).toEqual([]);
+  });
+
+  it('visits every (DID, connector) pair rather than stopping at the first usable one', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY, modelId: 'gemini-3.6-flash' });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
+
+    const brains = await listUsableBrains(OWNER);
+
+    expect(brains.map((b) => b.connector)).toEqual(['gemini', 'anthropic']);
+    expect(mockLoadAnthropic).toHaveBeenCalledWith(OWNER);
+  });
+
+  it('dedupes the same (connector, model) pair sealed on both the owner and the app', async () => {
+    mockLoadXai.mockResolvedValue({ apiKey: XAI_KEY, modelId: 'grok-4' });
+
+    const brains = await listUsableBrains({ ownerDid: OWNER, appDid: APP });
+
+    expect(brains).toHaveLength(1);
+    expect(brains[0].credentialDid).toBe(OWNER);
+  });
+
+  it('skips a connector that throws while probing, without aborting the list', async () => {
+    mockLoadGemini.mockRejectedValueOnce(new Error('vault integrity failure'));
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
+
+    const brains = await listUsableBrains(OWNER);
+
+    expect(brains.map((b) => b.connector)).toEqual(['anthropic']);
+  });
+
+  it('restricts the walk to the given connectors, same as resolveBrain\'s option (#1959)', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY, modelId: 'gemini-3.6-flash' });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
+
+    const brains = await listUsableBrains(OWNER, { connectors: ['anthropic'] });
+
+    expect(brains.map((b) => b.connector)).toEqual(['anthropic']);
+    expect(mockLoadGemini).not.toHaveBeenCalled();
   });
 });

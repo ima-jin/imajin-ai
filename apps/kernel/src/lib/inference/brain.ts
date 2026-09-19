@@ -475,6 +475,36 @@ function credentialDids(context: string | BrainCredentialContext): string[] {
 }
 
 /**
+ * Resolve the full candidate DID list for a credential context: owner, then
+ * app, then (#1624) the app's registrant org DID — the identity where
+ * org-level keys are sealed, one hop out from the app DID itself. Shared by
+ * {@link resolveBrain} and {@link listUsableBrains} (#2201) so the two never
+ * drift on which DIDs a principal's brain(s) can come from.
+ */
+async function resolveCandidateDids(context: string | BrainCredentialContext): Promise<string[]> {
+  const dids = credentialDids(context);
+
+  // Walk up to the app's registrant org DID — the identity where org-level
+  // keys (e.g. Gemini) are sealed. The UI seals keys to org/business/person
+  // identities, not to app DIDs directly; this hop bridges the gap.
+  const ctx = typeof context === 'string' ? { ownerDid: context } : context;
+  if (ctx.appDid) {
+    const registrantDid = await lookupAppRegistrantDid(ctx.appDid);
+    if (registrantDid && !dids.includes(registrantDid)) {
+      dids.push(registrantDid);
+    }
+  }
+
+  // Diagnostic for #1762: the full candidate list, in walk order, before any
+  // connector is probed, plus whether an appDid was supplied at all — a
+  // missing appDid means the registrant org-DID walk above never ran, which
+  // is otherwise indistinguishable from "no brain" once resolution fails.
+  log.info({ appDid: ctx.appDid ?? null, dids }, 'brain: walking candidate DIDs');
+
+  return dids;
+}
+
+/**
  * Build the {@link ResolvedBrain} for a connector that just resolved sealed
  * credentials — the sealed endpoint/model win over the connector's defaults.
  *
@@ -567,28 +597,11 @@ export async function resolveBrain(
   context: string | BrainCredentialContext,
   options?: ResolveBrainOptions,
 ): Promise<ResolvedBrain> {
-  const dids = credentialDids(context);
+  const dids = await resolveCandidateDids(context);
   const candidateConnectors = options?.connectors
     ? BRAIN_CONNECTORS.filter((c) => options.connectors!.includes(c.id))
     : BRAIN_CONNECTORS;
   const requestedModel = options?.model;
-
-  // Walk up to the app's registrant org DID — the identity where org-level
-  // keys (e.g. Gemini) are sealed. The UI seals keys to org/business/person
-  // identities, not to app DIDs directly; this hop bridges the gap.
-  const ctx = typeof context === 'string' ? { ownerDid: context } : context;
-  if (ctx.appDid) {
-    const registrantDid = await lookupAppRegistrantDid(ctx.appDid);
-    if (registrantDid && !dids.includes(registrantDid)) {
-      dids.push(registrantDid);
-    }
-  }
-
-  // Diagnostic for #1762: the full candidate list, in walk order, before any
-  // connector is probed, plus whether an appDid was supplied at all — a
-  // missing appDid means the registrant org-DID walk above never ran, which
-  // is otherwise indistinguishable from "no brain" once resolution fails.
-  log.info({ appDid: ctx.appDid ?? null, dids }, 'resolveBrain: walking candidate DIDs');
 
   const walk = await walkBrainConnectors(dids, candidateConnectors, requestedModel);
   if (walk.brain) return walk.brain;
@@ -609,6 +622,64 @@ export async function resolveBrain(
   }
 
   throw new NoBrainSealedError(dids, candidateConnectors, walk.failures);
+}
+
+/**
+ * The principal's usable brains (#2201): every (DID, connector) pair whose
+ * sealed credentials resolve to a servable model — sealed model id, or the
+ * connector's own default when the owner sealed none. Modelless sealed cards
+ * (a connector that IS sealed but has no model chosen or defaulted) cannot
+ * serve a request, so they are omitted here exactly as `resolveBrain` skips
+ * them — see `buildUsableBrain`'s `undefined` return.
+ *
+ * Order is resolution order: DID-major (owner, then app, then the app's
+ * registrant org DID — {@link resolveCandidateDids}), and within a DID,
+ * BRAIN_CONNECTORS table order. `data[0]` is the brain a request with no
+ * explicit `model` would resolve to via `resolveBrain`.
+ *
+ * Deduped by (connector, modelId): the same connector/model pair sealed on
+ * more than one candidate DID (e.g. both owner and app/org) is only ever one
+ * usable brain from a caller's perspective, and only the first (highest
+ * priority) occurrence is kept.
+ *
+ * A connector that throws while being probed is skipped, silently as far as
+ * this function's return value goes (#1637's precedent) — a caller listing
+ * models is not the place to surface a vault fault; `resolveBrain`'s own
+ * error path already covers that for the actual inference request.
+ *
+ * Deliberately does NOT reuse {@link walkBrainConnectors}: that walk stops
+ * early the moment it finds a usable connector (or one matching a requested
+ * model) — the exact behavior `resolveBrain`'s existing tests pin verbatim.
+ * Listing every usable brain needs the opposite: visit every (DID,
+ * connector) pair. Both walks are built from the same {@link probeConnector}
+ * primitive and the same {@link resolveCandidateDids} candidate list, so
+ * there is exactly one place that knows how to probe a connector and exactly
+ * one place that knows which DIDs are in play — only the outer termination
+ * rule differs, which is why it is not itself shared.
+ */
+export async function listUsableBrains(
+  context: string | BrainCredentialContext,
+  options?: Pick<ResolveBrainOptions, 'connectors'>,
+): Promise<ResolvedBrain[]> {
+  const dids = await resolveCandidateDids(context);
+  const candidateConnectors = options?.connectors
+    ? BRAIN_CONNECTORS.filter((c) => options.connectors!.includes(c.id))
+    : BRAIN_CONNECTORS;
+
+  const seen = new Set<string>();
+  const brains: ResolvedBrain[] = [];
+  for (const did of dids) {
+    for (const connector of candidateConnectors) {
+      const outcome = await probeConnector(connector, did);
+      if (outcome.kind !== 'usable') continue;
+
+      const key = `${outcome.brain.connector}::${outcome.brain.modelId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      brains.push(outcome.brain);
+    }
+  }
+  return brains;
 }
 
 /** Aggregate result of walking every candidate (DID, connector) pair — see {@link walkBrainConnectors}. */
