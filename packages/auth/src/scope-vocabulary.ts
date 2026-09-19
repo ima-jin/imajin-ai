@@ -28,7 +28,7 @@
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 /** Connectors that can own scopes. */
-export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'local' | 'openrouter' | 'gcp' | 'quickbooks' | 'warp' | 'stripe' | 'google';
+export type ConnectorId = 'mcp' | 'github' | 'discord' | 'gemini' | 'anthropic' | 'xai' | 'openai' | 'moonshot' | 'zai' | 'local' | 'openrouter' | 'gcp' | 'quickbooks' | 'warp' | 'stripe' | 'google' | 'typesafe';
 
 /**
  * Capability surfaces that can *carry* a scope in an access token.
@@ -57,6 +57,7 @@ export const CONNECTOR_DIDS: Readonly<Record<ConnectorId, string>> = {
   warp: 'did:imajin:warp-connector',
   stripe: 'did:imajin:stripe-connector',
   google: 'did:imajin:google-connector',
+  typesafe: 'did:imajin:typesafe-connector',
 };
 
 /** Channel label used in `auth.channel_links`. Currently always the id. */
@@ -77,6 +78,7 @@ export const CONNECTOR_CHANNELS: Readonly<Record<ConnectorId, string>> = {
   warp: 'warp',
   stripe: 'stripe',
   google: 'google',
+  typesafe: 'typesafe',
 };
 
 // ── Release tiers (#1196 consent 2×2) ─────────────────────────────────────────
@@ -489,6 +491,19 @@ export const SCOPE_VOCABULARY = [
     label: 'Read your Google Drive file metadata and content' },
   { scope: 'google:meet:records', connector: 'google', verb: 'meet:records', surface: 'google-api', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
     label: 'Read your Google Meet conference records, recordings, and transcripts' },
+
+  // ── TypeSafe.ai (Jev) connector (#2197) — a SERVICE connector, not an
+  // inference connector: the sealed key buys the `/v1/systemone` calibrated
+  // decision primitive (a typed answer with a probability distribution
+  // attached), not a chat brain — so it is declared here with its own scope
+  // family (`typesafe:decide`), NOT folded into the `brainInferScope` /
+  // `*:infer` cluster above, and it is never added to `BRAIN_CONNECTORS` or
+  // reachable via `/infer/*`. Same shape as `quickbooks:read` — the owner's
+  // own sealed key, consumed server-side on every call, never released to a
+  // third party → SELF_ONLY → silent under the #1196 2×2 (mirroring
+  // QuickBooks' read scope exactly, per the issue's design revision).
+  { scope: 'typesafe:decide', connector: 'typesafe', verb: 'decide', surface: 'systemone', classification: SELF_ONLY,
+    label: 'Use your TypeSafe.ai API key to run calibrated decisions (probability-scored answers)' },
 
   // ── Discovery (#1636, re-homed onto `mcp` by #1679)
   //

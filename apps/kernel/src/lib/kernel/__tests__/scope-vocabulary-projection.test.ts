@@ -31,7 +31,7 @@ import { MCP_SCOPES, MCP_SCOPE_SET, filterGrantedScopes } from '@/src/lib/mcp/oa
 // projections stay faithful, and pin the current scope sets so any vocabulary
 // change is visible in review rather than discovered in production.
 
-const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'openrouter', 'gcp', 'quickbooks', 'warp', 'stripe', 'google'];
+const CONNECTOR_IDS: readonly ConnectorId[] = ['mcp', 'github', 'discord', 'gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai', 'local', 'openrouter', 'gcp', 'quickbooks', 'warp', 'stripe', 'google', 'typesafe'];
 
 // ── Every projection resolves back to the vocabulary ──────────────────────────
 
@@ -155,6 +155,7 @@ describe('pinned scope sets (change these deliberately)', () => {
       'google:calendar:read', 'google:calendar:write',
       'google:drive:read', 'google:meet:records',
     ]],
+    ['TypeSafe.ai', 'typesafe', ['typesafe:decide']],
   ] satisfies Array<[string, ConnectorId, string[]]>)('pins the %s connector card toggles', (_label, id, expected) => {
     expect(connectorUiScopes(id).map((s) => s.name)).toEqual(expected);
   });
@@ -308,6 +309,7 @@ const GCP_DID = 'did:imajin:gcp-connector';
 const QUICKBOOKS_DID = 'did:imajin:quickbooks-connector';
 const WARP_DID = 'did:imajin:warp-connector';
 const STRIPE_DID = 'did:imajin:stripe-connector';
+const TYPESAFE_DID = 'did:imajin:typesafe-connector';
 
 describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('mcp', () => {
@@ -449,6 +451,25 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
     expect(connectorScopeDescriptors('stripe')).toEqual({
       'stripe:events': { verb: 'events', surface: 'payments', label: 'Publish your own Stripe payment events onto the bus', release: { discloses_others: false, sensitive: true, viewer: STRIPE_DID } },
     });
+  });
+
+  // #2197 — new descriptor, not a migrated literal. SELF_ONLY (not
+  // SELF_SENSITIVE like the connectors above): TypeSafe is a SERVICE
+  // connector per the issue's design revision, declared with the exact same
+  // classification as `quickbooks:read`, so no `release`/`viewer` fields
+  // appear — it derives `silent`, materialising on manifest publish with no
+  // separate consent event.
+  it('typesafe', () => {
+    expect(connectorScopeDescriptors('typesafe')).toEqual({
+      'typesafe:decide': {
+        verb: 'decide',
+        surface: 'systemone',
+        label: 'Use your TypeSafe.ai API key to run calibrated decisions (probability-scored answers)',
+        release: { discloses_others: false, sensitive: false },
+      },
+    });
+    // Silent scopes have no viewer, unlike the SELF_SENSITIVE connectors above.
+    expect(TYPESAFE_DID).toBe('did:imajin:typesafe-connector');
   });
 });
 
