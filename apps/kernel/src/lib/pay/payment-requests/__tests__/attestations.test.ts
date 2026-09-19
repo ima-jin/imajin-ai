@@ -30,6 +30,15 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
 
+// #2209: `attestations.ts` now also imports `emitMechanicalAttestation` (for
+// the kernel-signed stripe-settled path), which transitively pulls in
+// `node-identity.ts` — mocked here so its module-scope `getClient()` call
+// never runs against a real (absent in tests) DATABASE_URL, matching
+// `emit-mechanical-attestation.test.ts`'s own mocking of this module.
+vi.mock('@/src/lib/kernel/node-identity', () => ({
+  getNodeDid: vi.fn().mockResolvedValue('did:imajin:node'),
+}));
+
 import {
   emitPaymentRequestIssuedAttestation,
   emitPaymentRequestSettledAttestation,
