@@ -105,7 +105,11 @@ describe('extractReceiptDraft — brain resolution', () => {
   });
 
   it('returns no_local_brain when a model is not selected', async () => {
-    mocks.resolveBrain.mockRejectedValue(new NoModelSelectedError('Local Inference', '/local/api/token'));
+    mocks.resolveBrain.mockRejectedValue(
+      new NoModelSelectedError([
+        { connectorId: 'local', connectorName: 'Local Inference', tokenRoute: '/local/api/token', credentialDid: OWNER_DID },
+      ]),
+    );
 
     const result = await extractReceiptDraft({ ownerDid: OWNER_DID, assetId: 'asset_1' });
 

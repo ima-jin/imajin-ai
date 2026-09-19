@@ -269,12 +269,20 @@ describe('resolveBrain — fails closed when a connected connector has no model 
     expect(err.message).not.toContain(GEMINI_KEY);
   });
 
-  it('does not fall through to a healthy Anthropic key — the Gemini DID IS connected', async () => {
+  /**
+   * #2195 revises this: a sealed-but-modelless card used to abort the whole
+   * walk (`NoModelSelectedError` thrown the instant Gemini resolved with no
+   * model), starving every later connector of a look even on the SAME DID.
+   * Now it is skipped and recorded, and the walk keeps going.
+   */
+  it('falls through to a healthy Anthropic connector when Gemini is sealed but has no model chosen (#2195)', async () => {
     mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
-    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
 
-    await expect(resolveBrain(OWNER)).rejects.toBeInstanceOf(NoModelSelectedError);
-    expect(mockLoadAnthropic).not.toHaveBeenCalled();
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain.connector).toBe('anthropic');
+    expect(mockLoadAnthropic).toHaveBeenCalledWith(OWNER);
   });
 
   it('resolves fine once a modelId is sealed alongside the key', async () => {
@@ -891,5 +899,90 @@ describe('resolveBrain — the OpenRouter card (#2188)', () => {
 
     expect(err.message).toContain('openrouter:infer');
     expect(err.message).toContain('/openrouter/api/token');
+  });
+});
+
+// ─── Route by requested model, skip modelless cards (#2195) ─────────────────
+
+describe('resolveBrain — model is the routing key (#2195)', () => {
+  /**
+   * The bug this closes: an Anthropic card whose model picker is broken used
+   * to abort the whole walk before xAI ever got a look, and even a healthy
+   * walk ignored `model` entirely and took the first sealed connector in
+   * BRAIN_CONNECTORS table order regardless of what the caller asked for.
+   */
+  it('routes to the connector serving the requested model, skipping a modelless sealed card ahead of it', async () => {
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+    mockLoadXai.mockResolvedValueOnce({ apiKey: XAI_KEY, modelId: 'grok-4' });
+
+    const brain = await resolveBrain(OWNER, { model: 'grok-4' });
+
+    expect(brain.connector).toBe('xai');
+    expect(brain.modelId).toBe('grok-4');
+  });
+
+  describe('two fully-usable connectors, one matching the request', () => {
+    beforeEach(() => {
+      mockLoadAnthropic.mockResolvedValue({ apiKey: ANTHROPIC_KEY, modelId: 'claude-x' });
+      mockLoadOpenai.mockResolvedValue({ apiKey: OPENAI_KEY, modelId: 'gpt-6-astra' });
+    });
+
+    it('routes to openai when the requested model is sealed there', async () => {
+      const brain = await resolveBrain(OWNER, { model: 'gpt-6-astra' });
+      expect(brain.connector).toBe('openai');
+    });
+
+    it('routes to anthropic when the requested model is sealed there', async () => {
+      const brain = await resolveBrain(OWNER, { model: 'claude-x' });
+      expect(brain.connector).toBe('anthropic');
+    });
+
+    it('falls back to the first usable connector in table order when the request matches neither', async () => {
+      const brain = await resolveBrain(OWNER, { model: 'some-other-model' });
+      expect(brain.connector).toBe('anthropic');
+    });
+  });
+
+  it('throws NoModelSelectedError naming the only sealed-but-unusable card when nothing serves the request', async () => {
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+
+    const err = await resolveBrain(OWNER, { model: 'claude-x' }).catch((e: unknown) => e as NoModelSelectedError);
+
+    expect(err).toBeInstanceOf(NoModelSelectedError);
+    expect(err.message).toContain('Anthropic Claude');
+    expect(err.message).not.toContain(ANTHROPIC_KEY);
+  });
+
+  it('falls back to a usable brain rather than throwing when a modelless card exists alongside it', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY, modelId: 'claude-opus-4-6' });
+
+    const brain = await resolveBrain(OWNER, { model: 'unrequested-model' });
+
+    expect(brain.connector).toBe('anthropic');
+  });
+
+  it('names every sealed-but-unusable card, not just the first, when nothing at all is usable', async () => {
+    mockLoadGemini.mockResolvedValueOnce({ apiKey: GEMINI_KEY });
+    mockLoadAnthropic.mockResolvedValueOnce({ apiKey: ANTHROPIC_KEY });
+
+    const err = await resolveBrain(OWNER).catch((e: unknown) => e as NoModelSelectedError);
+
+    expect(err).toBeInstanceOf(NoModelSelectedError);
+    expect(err.message).toContain('Gemini');
+    expect(err.message).toContain('Anthropic Claude');
+    expect(err.failures).toEqual([
+      { connector: 'gemini', credentialDid: OWNER, cause: 'no_model_selected' },
+      { connector: 'anthropic', credentialDid: OWNER, cause: 'no_model_selected' },
+    ]);
+  });
+
+  it('existing single-connector resolution is unaffected when no model is requested', async () => {
+    mockLoadXai.mockResolvedValueOnce({ apiKey: XAI_KEY, modelId: 'grok-4' });
+
+    const brain = await resolveBrain(OWNER);
+
+    expect(brain.connector).toBe('xai');
+    expect(brain.modelId).toBe('grok-4');
   });
 });

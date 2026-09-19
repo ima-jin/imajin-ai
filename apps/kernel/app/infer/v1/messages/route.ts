@@ -72,6 +72,7 @@ import { corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { applySealedModel, forwardAnthropicMessages } from '@/src/lib/inference/anthropic-messages/forward';
 import {
+  extractRequestedModel,
   guardAnthropicRequest,
   mapAnthropicPipelineError,
   resolveAnthropicBrain,
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const brain = await resolveAnthropicBrain(ownerDid, appDid);
+    const brain = await resolveAnthropicBrain(ownerDid, appDid, extractRequestedModel(bodyText));
 
     const prepared = applySealedModel(bodyText, brain.modelId);
     if (!prepared.ok) {
