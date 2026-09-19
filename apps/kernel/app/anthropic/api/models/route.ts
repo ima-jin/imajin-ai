@@ -26,11 +26,18 @@
  * `listModels`/`probeModel` here instead of using
  * `createOpenAiCompatibleModelHandlers` (#1927) the way OpenAI/xAI do —
  * Gemini takes the same hand-declared approach for the same reason (its own
- * API shape, not OpenAI-compatible either).
+ * API shape, not OpenAI-compatible either). `Content-Type: application/json`
+ * rides alongside those two per Anthropic's own request-header contract
+ * (verified against the Claude API overview docs, #2196) — every other
+ * Anthropic call in this codebase (`anthropic-messages/forward.ts`,
+ * `usage/billed/anthropic.ts`) already sends it; this route was the one gap.
  *
  * Security invariant: the API key never leaves the server, in either
- * direction — not in the GET response, and not echoed back on PUT. Upstream
- * response bodies are never surfaced either, only their status code.
+ * direction — not in the GET response, and not echoed back on PUT. The raw
+ * upstream response body is never surfaced — only Anthropic's own
+ * `error.type`/`error.message` fields (#2196), which never carry the key,
+ * so a prod failure is diagnosable from the card instead of a bare
+ * `upstream 400 Bad Request`.
  */
 import {
   createConnectorModelPickerRoute,
@@ -65,7 +72,40 @@ interface RawAnthropicModelsPage {
 }
 
 function anthropicHeaders(apiKey: string): Record<string, string> {
-  return { 'x-api-key': apiKey, 'anthropic-version': ANTHROPIC_VERSION, Accept: 'application/json' };
+  return {
+    'x-api-key': apiKey,
+    'anthropic-version': ANTHROPIC_VERSION,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+}
+
+/** Anthropic's error envelope: `{ type: 'error', error: { type, message } }`. */
+interface AnthropicErrorBody {
+  error?: { type?: string; message?: string };
+}
+
+/**
+ * Best-effort read of Anthropic's own `error.type`/`error.message` off a
+ * non-2xx response (#2196), so the connector card can show e.g.
+ * `invalid_request_error: <reason>` instead of a bare `400 Bad Request`.
+ * Only those two known-safe string fields are read — never the raw body —
+ * so nothing else an error page might carry (and the sealed key, which
+ * never rides an Anthropic error response in the first place) can leak.
+ * Never throws: a body that is not JSON, or not this shape, falls back to
+ * the plain HTTP status text.
+ */
+async function describeAnthropicError(res: { json: () => Promise<unknown> }, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as AnthropicErrorBody;
+    const type = typeof body.error?.type === 'string' ? body.error.type : undefined;
+    const message = typeof body.error?.message === 'string' ? body.error.message : undefined;
+    if (type && message) return `${type}: ${message}`;
+    if (message) return message;
+  } catch {
+    // Not JSON, or not Anthropic's error shape — fall back to the plain HTTP status text.
+  }
+  return fallback;
 }
 
 /**
@@ -82,7 +122,7 @@ async function listModels(creds: AnthropicCredentials): Promise<ModelListResult>
     const url = afterId ? `${baseUrl}/models?after_id=${encodeURIComponent(afterId)}` : `${baseUrl}/models`;
     const res = await fetch(url, { headers: anthropicHeaders(creds.apiKey) });
     if (!res.ok) {
-      return { ok: false, status: res.status, statusText: res.statusText };
+      return { ok: false, status: res.status, statusText: await describeAnthropicError(res, res.statusText) };
     }
     const raw = (await res.json()) as RawAnthropicModelsPage;
     for (const model of raw.data ?? []) {
@@ -114,7 +154,12 @@ async function probeModel(creds: AnthropicCredentials, modelId: string): Promise
   if (res.status === 404) {
     return { ok: false, deprecated: true };
   }
-  return { ok: false, deprecated: false, status: res.status, statusText: res.statusText };
+  return {
+    ok: false,
+    deprecated: false,
+    status: res.status,
+    statusText: await describeAnthropicError(res, res.statusText),
+  };
 }
 
 export const { GET, PUT, OPTIONS } = createConnectorModelPickerRoute({

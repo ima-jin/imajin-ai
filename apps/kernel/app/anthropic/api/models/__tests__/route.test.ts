@@ -110,6 +110,22 @@ describe('GET', () => {
     expect(options.headers.Authorization).toBeUndefined();
   });
 
+  it('sends the exact header set Anthropic requires \u2014 x-api-key, anthropic-version, and content-type (#2196)', async () => {
+    mockLoadAnthropicSealedCredentials.mockResolvedValue({ apiKey: API_KEY });
+    const fetchMock = stubFetch({ data: [], has_more: false });
+
+    await GET(makeReq());
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, { headers: Record<string, string> }];
+    expect(url).toBe('https://api.anthropic.com/v1/models');
+    expect(options.headers).toEqual({
+      'x-api-key': API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    });
+  });
+
   it('maps id/display_name entries to { id, name } and drops malformed entries', async () => {
     mockLoadAnthropicSealedCredentials.mockResolvedValue({ apiKey: API_KEY });
     stubFetch({
@@ -180,14 +196,50 @@ describe('GET', () => {
     expect(fetchMock).toHaveBeenCalledWith('https://proxy.example/v1/models', expect.any(Object));
   });
 
-  it('maps an upstream error to 502 without forwarding its body', async () => {
+  it('maps an upstream error to 502 without forwarding an unrecognised body shape', async () => {
+    // Not Anthropic's real `{ error: { type, message } }` envelope (#2196) —
+    // only that shape's `type`/`message` strings are ever read, so a body
+    // that doesn't match it must still fall back to the plain status text.
     mockLoadAnthropicSealedCredentials.mockResolvedValue({ apiKey: API_KEY });
-    stubFetch({ error: { message: `bad key ${API_KEY}` } }, false, 401);
+    stubFetch({ details: `bad key ${API_KEY}` }, false, 401);
 
     const res = await GET(makeReq());
 
     expect(res.status).toBe(502);
     expect(JSON.stringify(await res.json())).not.toContain(API_KEY);
+  });
+
+  it('surfaces the upstream error.type/error.message on a 400 so the failure is diagnosable (#2196)', async () => {
+    mockLoadAnthropicSealedCredentials.mockResolvedValue({ apiKey: API_KEY });
+    stubFetch(
+      { type: 'error', error: { type: 'invalid_request_error', message: 'after_id is not a valid model ID' } },
+      false,
+      400,
+    );
+
+    const res = await GET(makeReq());
+    const body = await res.json() as { error: string };
+
+    expect(res.status).toBe(502);
+    expect(body.error).toBe('anthropic_models: upstream 400 invalid_request_error: after_id is not a valid model ID');
+    expect(body.error).not.toContain(API_KEY);
+  });
+
+  it('falls back to the plain HTTP status text when the upstream body is not JSON', async () => {
+    mockLoadAnthropicSealedCredentials.mockResolvedValue({ apiKey: API_KEY });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      json: async () => { throw new Error('not json'); },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await GET(makeReq());
+    const body = await res.json() as { error: string };
+
+    expect(res.status).toBe(502);
+    expect(body.error).toBe('anthropic_models: upstream 400 Bad Request');
   });
 
   it('maps a transport failure to 502', async () => {
@@ -245,5 +297,20 @@ describe('PUT (validates against GET /v1/models/{model_id} before persisting)', 
 
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain(API_KEY);
+  });
+
+  it('surfaces the upstream error.type/error.message on a non-404 probe failure (#2196)', async () => {
+    stubFetch(
+      { type: 'error', error: { type: 'permission_error', message: 'This API key does not have permission' } },
+      false,
+      403,
+    );
+
+    const res = await PUT(makeReq({ modelId: 'claude-opus-4-6' }));
+    const body = await res.json() as { error: string };
+
+    expect(res.status).toBe(502);
+    expect(body.error).toBe('anthropic_models: upstream 403 permission_error: This API key does not have permission');
+    expect(mockSetModelId).not.toHaveBeenCalled();
   });
 });
