@@ -1,6 +1,4 @@
-import type { PaymentRequestKind, PaymentRequestStatus } from '@/src/db';
-
-export type { PaymentRequestKind, PaymentRequestStatus };
+export type { PaymentRequestKind, PaymentRequestStatus } from '@/src/db';
 
 /** A single line item on a payment_request. Mirrors `CheckoutItem`'s shape (`apps/kernel/src/lib/pay/checkout.ts`) for consistency across pay surfaces. */
 export interface PaymentRequestLineItem {
