@@ -19,6 +19,7 @@ import {
   isOperatorIdentity,
   getOperatorDid,
 } from '../operator-approvals';
+import { EXEC_COMMAND_KIND, EXEC_COMMAND_SOURCE } from '../exec-command-approvals';
 import {
   OPERATOR_DID,
   operatorIdentity,
@@ -235,6 +236,92 @@ describe('validateApprovalRequestedPayload — open vocabulary (#2152)', () => {
       // Different detail must never collide onto the same accepted hash.
       expect(first.contentHash).not.toBe(second.contentHash);
     });
+  });
+});
+
+describe('validateApprovalRequestedPayload — exec.command (#2221)', () => {
+  function execCommandPayload(overrides: Record<string, unknown> = {}) {
+    const base = {
+      proposalId: 'opap_exec_1',
+      source: EXEC_COMMAND_SOURCE,
+      kind: EXEC_COMMAND_KIND,
+      summary: 'Restart the gateway on gateway-01.',
+      keysTouched: [] as string[],
+      detail: {
+        command: 'systemctl restart openclaw-gateway',
+        host: 'gateway-01',
+        cwd: '/opt/openclaw',
+        agentId: 'agent_123',
+        sessionKey: 'session_abc',
+        requestedBy: 'did:imajin:jin-agent',
+        approvalId: 'oc_approval_1',
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      },
+    };
+    const merged = { ...base, ...overrides };
+    const contentHash = 'contentHash' in overrides
+      ? overrides.contentHash
+      : computeApprovalContentHash({
+        proposalId: merged.proposalId,
+        source: merged.source,
+        kind: merged.kind,
+        summary: merged.summary,
+        keysTouched: merged.keysTouched,
+        detail: merged.detail,
+      });
+    return { ...merged, contentHash };
+  }
+
+  it('accepts a well-formed exec.command payload with a matching contentHash', () => {
+    const payload = execCommandPayload();
+    const result = validateApprovalRequestedPayload(payload);
+    expect(result).toEqual({
+      ok: true,
+      source: EXEC_COMMAND_SOURCE,
+      kind: EXEC_COMMAND_KIND,
+      detail: payload.detail,
+      contentHash: expect.any(String),
+    });
+  });
+
+  it.each(['command', 'host', 'cwd', 'agentId', 'sessionKey', 'requestedBy', 'approvalId', 'expiresAt'])(
+    'rejects exec.command detail missing %s',
+    (field) => {
+      const payload = execCommandPayload();
+      const detail = { ...payload.detail, [field]: undefined };
+      const result = validateApprovalRequestedPayload({ ...payload, detail, contentHash: undefined });
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.error).toMatch(new RegExp(`detail\\.${field}`));
+    },
+  );
+
+  it('rejects exec.command with no detail at all', () => {
+    const payload = execCommandPayload({ detail: undefined, contentHash: undefined });
+    const result = validateApprovalRequestedPayload(payload);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.error).toMatch(/detail is required/);
+  });
+
+  it('rejects a hash mismatch the same way every other kind does (#2152 invariant, exercised for exec.command)', () => {
+    const payload = execCommandPayload();
+    const tampered = { ...payload, detail: { ...payload.detail, host: 'a-different-host' } };
+    const result = validateApprovalRequestedPayload(tampered);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.error).toMatch(/does not match the canonical payload/);
+  });
+
+  it('never truncates the command even at the very edge of the generic 16KB detail cap', () => {
+    const longCommand = `echo ${'x'.repeat(15 * 1024)}`;
+    const baseDetail = execCommandPayload().detail;
+    const detail = { ...baseDetail, command: longCommand };
+    const withLongCommand = execCommandPayload({ detail });
+    const result = validateApprovalRequestedPayload(withLongCommand);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect((result.detail as { command: string }).command).toBe(longCommand);
   });
 });
 

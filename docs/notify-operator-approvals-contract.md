@@ -301,3 +301,33 @@ it gets the same backlog-on-reconnect redelivery every other notification
 does (#2044/#2050, `apps/kernel/src/lib/notify/backlog.ts`) — a pending
 approval survives the operator's client reconnecting with no
 proposal-specific redelivery code required.
+
+## `gateway-exec:command` (#2221)
+
+The first kind whose decision vocabulary the kernel itself narrows, rather
+than leaving `mode` fully opaque: forwarded OpenClaw host-exec approvals
+(`ima-jin/openclaw-imajin-plugin#38`, the `gateway-exec` `ApprovalSource`).
+See `apps/kernel/src/lib/notify/exec-command-approvals.ts` for the full
+contract; summary:
+
+- `source: 'gateway-exec'`, `kind: 'gateway-exec:command'` — a disclosed
+  deviation from the issue's shorthand `exec.command`, since the open
+  vocabulary's `"<source>:<subkind>"` convention (above) requires a
+  colon-separated, hyphenated subkind, not a dot.
+- `detail` has a fixed, validated shape (`command`, `host`, `cwd`,
+  `agentId`, `sessionKey`, `requestedBy`, `approvalId`, `expiresAt`) — the
+  only kind whose `detail` fields are individually required/typed rather
+  than left to the source's own discretion, since the operator is
+  deciding whether to let a real command run on a real host.
+- The kernel enforces `mode` for this kind alone: `approve` only ever
+  pairs with `mode` absent or `'allow-once'`, `reject` only with `mode`
+  absent or `'deny'` — `'allow-always'` (or any other value) is rejected
+  with 400 before any state mutation. Every other kind still leaves `mode`
+  fully opaque.
+- A decision on a proposal past its own `detail.expiresAt` is refused with
+  409, checked before any state mutation.
+- `POST /notify/api/internal/operator-approvals/outcome` (webhook-secret
+  gated, same posture as `.../applied`) attaches a post-exec outcome
+  (`exitCode`, `durationMs`, `outputHash`) once the gateway reports back —
+  additive to the approval record, shown on the /jin card. Scoped to this
+  kind only.
