@@ -14,6 +14,7 @@ const CONFIG: ProxyConfig = {
   routes: [
     { id: 'xai', principalDid: 'did:imajin:ryan', attestationId: 'att-xai', modelPrefixes: ['grok-'] },
     { id: 'anthropic', principalDid: 'did:imajin:ryan', attestationId: 'att-anthropic', modelPrefixes: ['claude-'] },
+    { id: 'openai', principalDid: 'did:imajin:ryan', attestationId: 'att-openai', modelPrefixes: ['gpt-', 'o1-', 'o3-'] },
   ],
 };
 
@@ -159,5 +160,34 @@ describe('proxy server (integration)', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ input_tokens: 5 });
+  });
+
+  it('mints a token and forwards GET /openai/v1/models to the kernel end to end (#2201)', async () => {
+    const realFetch = globalThis.fetch;
+    const modelsBody = { object: 'list', data: [{ id: 'gpt-6-astra', object: 'model', owned_by: 'openai', created: 1_700_000_000 }] };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === 'https://kernel.test/auth/api/apps/token') {
+          return new Response(JSON.stringify({ token: 'tok-e2e', expiresIn: 600, scopes: ['infer:completions'] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url === 'https://kernel.test/infer/v1/models/usable') {
+          expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer tok-e2e');
+          return new Response(JSON.stringify(modelsBody), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (url.startsWith(baseUrl)) {
+          return realFetch(url, init);
+        }
+        throw new Error(`unexpected fetch to ${url}`);
+      }),
+    );
+
+    const res = await fetch(`${baseUrl}/openai/v1/models`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(modelsBody);
   });
 });

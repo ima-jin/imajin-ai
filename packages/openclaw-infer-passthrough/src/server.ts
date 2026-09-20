@@ -8,6 +8,7 @@
  * Routes:
  *   POST /:providerId/v1/chat/completions      — OpenAI-compatible, explicit route selection
  *   POST /v1/chat/completions                  — OpenAI-compatible, route selection via body.model
+ *   GET  /openai/v1/models                     — OpenAI-compatible model discovery (imajin-ai#2201)
  *   POST /anthropic/v1/messages                — Anthropic-format raw passthrough (imajin-ai#1959)
  *   POST /anthropic/v1/messages/count_tokens   — Anthropic-format token counting (imajin-ai#1959)
  *   GET  /healthz                              — break-glass observability (imajin-ai#1922 guardrail), shared by both formats
@@ -17,6 +18,7 @@ import { Readable } from 'node:stream';
 import { loadConfig, resolveDirectApiKey } from './config.js';
 import { HealthTracker } from './health.js';
 import { handleCompletions } from './handle-completions.js';
+import { handleModels } from './handle-models.js';
 import { handleAnthropicRequest, type AnthropicEndpoint } from './anthropic-handler.js';
 import { createLogger } from './logger.js';
 import { RouteTokenProvider } from './token-provider.js';
@@ -25,6 +27,9 @@ import type { ProxyConfig } from './types.js';
 const log = createLogger('openclaw-infer-passthrough');
 
 const COMPLETIONS_PATH_RE = /^\/(?:([a-zA-Z0-9_-]+)\/)?v1\/chat\/completions\/?$/;
+
+/** `GET /openai/v1/models` — model discovery for the `openai` seat's OpenClaw custom-provider `baseUrl` (imajin-ai#2201). */
+const MODELS_PATH_RE = /^\/openai\/v1\/models\/?$/;
 
 /** `/anthropic/v1/messages` or `/anthropic/v1/messages/count_tokens` — the fixed prefix a container points `ANTHROPIC_BASE_URL` at (imajin-ai#1959). */
 const ANTHROPIC_PATH_RE = /^\/anthropic\/v1\/messages(\/count_tokens)?\/?$/;
@@ -111,6 +116,12 @@ async function routeRequest(
     const body = JSON.stringify(health.snapshot());
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(body);
+    return;
+  }
+
+  if (req.method === 'GET' && MODELS_PATH_RE.test(url.pathname)) {
+    const result = await handleModels(deps);
+    await writeProxyResponse(res, result.status, result.headers, result.body);
     return;
   }
 

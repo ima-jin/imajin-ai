@@ -13,6 +13,7 @@
 import { dispatchWithBreakGlass, jsonError, type ProxyResponse } from './dispatch.js';
 import type { HealthTracker } from './health.js';
 import type { Logger } from './logger.js';
+import { translateOpenAiParams } from './param-translation.js';
 import { resolveRoute } from './router.js';
 import type { TokenSource } from './token-provider.js';
 import { forwardDirect, forwardToKernel } from './upstream.js';
@@ -63,13 +64,19 @@ export async function handleCompletions(
     );
   }
 
+  // #2201: OpenAI-served models reject a couple of otherwise-valid
+  // OpenAI-compatible parameter shapes (`max_tokens`, `reasoning_effort` +
+  // `tools`) — scoped by the model id's own OpenAI shape, so xAI and every
+  // other connector forward byte for byte.
+  const bodyText = translateOpenAiParams(model, req.bodyText);
+
   return dispatchWithBreakGlass(
     { route, getTokenProvider: deps.getTokenProvider, resolveDirectApiKey: deps.resolveDirectApiKey, health: deps.health, log: deps.log },
     (token) =>
-      forwardToKernel(deps.kernelBaseUrl, token, req.bodyText, deps.kernelTimeoutMs, {
+      forwardToKernel(deps.kernelBaseUrl, token, bodyText, deps.kernelTimeoutMs, {
         sessionId: req.sessionId,
         turnId: req.turnId,
       }),
-    (directApiKey) => forwardDirect(route, directApiKey, req.bodyText, deps.directTimeoutMs),
+    (directApiKey) => forwardDirect(route, directApiKey, bodyText, deps.directTimeoutMs),
   );
 }
