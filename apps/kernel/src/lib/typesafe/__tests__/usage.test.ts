@@ -128,4 +128,34 @@ describe('recordTypesafeUsage', () => {
 
     await expect(recordTypesafeUsage({ ownerDid: OWNER, model: 'jev-latest', tokensIn: 10, tokensOut: 0 })).resolves.toBeUndefined();
   });
+
+  it('#2204: writes externalId (x-typesafe-request-id) on the row and publishes it + sessionId/turnId/warpRunId in the bus event', async () => {
+    await recordTypesafeUsage({
+      ownerDid: OWNER,
+      model: 'jev-latest',
+      tokensIn: 10,
+      tokensOut: 0,
+      sessionId: 'sess-1',
+      turnId: 'turn-1',
+      warpRunId: 'run-1',
+      externalId: 'req_abc123',
+    });
+
+    const row = insertValuesMock.mock.calls[0][0];
+    expect(row.externalId).toBe('req_abc123');
+
+    expect(publishUsageIncurredMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'sess-1',
+      turnId: 'turn-1',
+      warpRunId: 'run-1',
+      externalId: 'req_abc123',
+    }));
+  });
+
+  it('writes externalId as null when the upstream call never returned one', async () => {
+    await recordTypesafeUsage({ ownerDid: OWNER, model: 'jev-latest', tokensIn: 10, tokensOut: 0 });
+
+    const row = insertValuesMock.mock.calls[0][0];
+    expect(row.externalId).toBeNull();
+  });
 });

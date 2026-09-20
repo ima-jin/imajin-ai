@@ -43,7 +43,7 @@ below) plus the routes-config/OpenClaw-config values an operator supplies.
 | a | Mint/refresh the 10-min app-token JWT for the AGENT DID via challenge-response with the agent's own keypair | Done | `src/token-provider.ts` (`mintAppToken`, `RouteTokenProvider`) — challenge shape matches `apps/kernel/app/auth/api/apps/token/route.ts` byte for byte; works for whichever DID is configured as `OPENCLAW_APP_DID`, including the agent's own |
 | b | `/:providerId/v1/chat/completions` maps `openai` → the kernel's OpenAI connector and passes `model: gpt-6-astra` through unchanged | Done | `src/router.ts` (`resolveRoute`) + `src/upstream.ts` (`forwardToKernel`, raw byte passthrough) on this side; `apps/kernel/src/lib/inference/brain.ts`'s `openai` `BRAIN_CONNECTORS` entry (#1927) + `openai-compatible-adapter.ts` resolve and forward the sealed model kernel-side — see `tests/openai-seat.test.ts` |
 | c | Streaming (SSE) works end-to-end | Done | `src/dispatch.ts`/`src/upstream.ts` (byte-for-byte body passthrough) + `src/server.ts` (`writeProxyResponse`, Node/Web stream bridge); the kernel tees the stream for metering without altering client bytes (`openai-compatible-adapter.ts`'s `meterStreamForUsage`) — see "streams an SSE response through untouched" in `tests/handle-completions.test.ts` |
-| d | `usage` surfaced so the kernel meter records `usage.incurred` under the agent DID, connector=openai, model=gpt-6-astra | Done (kernel-side, #1925/#1923) | `apps/kernel/src/lib/inference/completions/openai-compatible-adapter.ts` (`recordInferenceUsage`, `agentDid: meta.agentDid`) — this proxy only forwards the `X-Session-Id`/`X-Turn-Id` headers that metadata is keyed on (`src/upstream.ts`) |
+| d | `usage` surfaced so the kernel meter records `usage.incurred` under the agent DID, connector=openai, model=gpt-6-astra | Done (kernel-side, #1925/#1923) | `apps/kernel/src/lib/inference/completions/openai-compatible-adapter.ts` (`recordInferenceUsage`, `agentDid: meta.agentDid`) — this proxy only forwards the `X-Imajin-Session`/`X-Imajin-Turn` headers that metadata is keyed on (`src/upstream.ts`, imajin-ai#2204; the legacy `X-Session-Id`/`X-Turn-Id` names still work on the kernel side) |
 | e | Spend-cap 4xx surfaced as a clean provider error, not a hang | Done | `src/dispatch.ts` (`dispatchWithBreakGlass`: only a ≥500 status or a TTFB timeout triggers fallback; every 4xx — including the kernel's `402 spend_cap_exceeded` from `brain-http-errors.ts` — is forwarded verbatim) — see the `402` case in `tests/openai-seat.test.ts` |
 
 No `apps/kernel` changes were needed or made for this deliverable — the
@@ -533,11 +533,18 @@ Every successful passthrough call writes one row via `recordInferenceUsage` (see
 `anthropic-adapter.ts`, landed in #1925/PR #1936 — plus `anthropic-messages/forward.ts`
 for the `/anthropic/*` path, #1959) into the per-turn `inference.usage` ledger (naming
 finalized in #1923), keyed by principal DID, agent DID, session/turn id (forwarded from
-this proxy's `X-Session-Id`/`X-Turn-Id` request headers when OpenClaw/NanoClaw send
-them), provider, model, and token counts. The Anthropic-format path additionally carries
-`cache_creation_input_tokens`/`cache_read_input_tokens` in the row's metadata, and never
-meters `POST /anthropic/v1/messages/count_tokens` calls — token counting is not a billed
-Anthropic call. To confirm a specific flipped route is actually being metered:
+this proxy's `X-Imajin-Session`/`X-Imajin-Turn` request headers — falling back to the
+legacy `X-Session-Id`/`X-Turn-Id` names — when OpenClaw/NanoClaw send them; an
+`X-Imajin-Run` header, carrying the Warp run id when the session was spawned from one,
+is also forwarded and lands in the `usage.incurred` attestation's metadata, imajin-ai#2204),
+provider, model, and token counts. The upstream request id (the OpenAI/xAI response `id`,
+or `x-typesafe-request-id` for the TypeSafe.ai connector) is also captured into
+`usage.incurred.external_id` kernel-side — see #2204's auditor chain view
+(`GET /usage/api/audit/sessions/{sessionId}`) for the read side. The Anthropic-format path
+additionally carries `cache_creation_input_tokens`/`cache_read_input_tokens` in the row's
+metadata, and never meters `POST /anthropic/v1/messages/count_tokens` calls — token
+counting is not a billed Anthropic call. To confirm a specific flipped route is actually
+being metered:
 
 - Query the per-connector spend burn-down
   (`GET /connections/api/connectors/:id/spend`, gated by `infer:usage-read`) for the

@@ -219,6 +219,9 @@ interface AnthropicUsage {
   cache_read_input_tokens?: number;
 }
 
+/** The `msg_...` id Anthropic assigns the message — top-level on the non-streaming JSON body, and on the streaming `message_start` event's `message` object (#2204). */
+type AnthropicExternalId = string | undefined;
+
 /**
  * Write the `usage.incurred` row for one call (#1959 deliverable 2).
  * `quantity` (computed inside `recordInferenceUsage`) is `tokensIn +
@@ -235,16 +238,20 @@ async function writeAnthropicMessagesUsage(
   brain: ResolvedBrain,
   meta: CompletionsRequestMetadata,
   usage: AnthropicUsage,
+  externalId: AnthropicExternalId,
 ): Promise<void> {
   await recordInferenceUsage({
     sessionId: meta.sessionId,
     turnId: meta.turnId,
+    warpRunId: meta.warpRunId,
     principalDid: brain.credentialDid,
     agentDid: meta.agentDid,
     provider: brain.connector,
     model: brain.modelId,
     tokensIn: usage.input_tokens,
     tokensOut: usage.output_tokens,
+    // #2204: the `msg_...` id Anthropic assigns this call.
+    externalId,
     metadata: {
       format: 'anthropic-messages',
       ...(usage.cache_creation_input_tokens !== undefined
@@ -266,23 +273,29 @@ async function recordAnthropicMessagesUsage(
   brain: ResolvedBrain,
   meta: CompletionsRequestMetadata,
 ): Promise<void> {
-  let usage: AnthropicUsage | undefined;
+  let parsed: { id?: string; usage?: AnthropicUsage } | undefined;
   try {
-    usage = (JSON.parse(rawBody) as { usage?: AnthropicUsage }).usage;
+    parsed = JSON.parse(rawBody) as { id?: string; usage?: AnthropicUsage };
   } catch {
     // Not JSON (or not an object) — nothing to meter from, record the call anyway.
   }
-  await writeAnthropicMessagesUsage(brain, meta, usage ?? {});
+  await writeAnthropicMessagesUsage(brain, meta, parsed?.usage ?? {}, parsed?.id);
 }
 
-/** Extract usage fields from one Anthropic SSE `data:` line, merging into `acc` in place. */
-function mergeSseUsageLine(line: string, acc: AnthropicUsage): void {
+/** Accumulated usage + the `message_start` event's message id, mutated line by line while draining the SSE tap (#2204). */
+interface AnthropicStreamMeter {
+  usage: AnthropicUsage;
+  externalId: AnthropicExternalId;
+}
+
+/** Extract usage fields (and, on `message_start`, the message id) from one Anthropic SSE `data:` line, merging into `meter` in place. */
+function mergeSseUsageLine(line: string, meter: AnthropicStreamMeter): void {
   const trimmed = line.trim();
   if (!trimmed.startsWith('data:')) return;
   const payload = trimmed.slice(5).trim();
   if (payload.length === 0) return;
 
-  let event: { type?: string; message?: { usage?: AnthropicUsage }; usage?: AnthropicUsage };
+  let event: { type?: string; message?: { id?: string; usage?: AnthropicUsage }; usage?: AnthropicUsage };
   try {
     event = JSON.parse(payload) as typeof event;
   } catch {
@@ -292,12 +305,14 @@ function mergeSseUsageLine(line: string, acc: AnthropicUsage): void {
   // #1959 Jin's review note 4: input_tokens (+ the two cache fields) arrive
   // on `message_start`; output_tokens arrives on `message_delta` — Anthropic
   // never repeats input_tokens there, so both events are read, not just one.
+  // #2204: `message_start.message.id` is the `msg_...` externalId.
   if (event.type === 'message_start' && event.message?.usage) {
-    acc.input_tokens = event.message.usage.input_tokens;
-    acc.cache_creation_input_tokens = event.message.usage.cache_creation_input_tokens;
-    acc.cache_read_input_tokens = event.message.usage.cache_read_input_tokens;
+    meter.usage.input_tokens = event.message.usage.input_tokens;
+    meter.usage.cache_creation_input_tokens = event.message.usage.cache_creation_input_tokens;
+    meter.usage.cache_read_input_tokens = event.message.usage.cache_read_input_tokens;
+    meter.externalId = event.message.id;
   } else if (event.type === 'message_delta' && event.usage?.output_tokens !== undefined) {
-    acc.output_tokens = event.usage.output_tokens;
+    meter.usage.output_tokens = event.usage.output_tokens;
   }
 }
 
@@ -316,7 +331,7 @@ function meterAnthropicMessagesStream(
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    const usage: AnthropicUsage = {};
+    const meter: AnthropicStreamMeter = { usage: {}, externalId: undefined };
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -325,11 +340,11 @@ function meterAnthropicMessagesStream(
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
       for (const line of lines) {
-        mergeSseUsageLine(line, usage);
+        mergeSseUsageLine(line, meter);
       }
     }
 
-    await writeAnthropicMessagesUsage(brain, meta, usage);
+    await writeAnthropicMessagesUsage(brain, meta, meter.usage, meter.externalId);
   })().catch((err: unknown) => {
     log.warn({ err: String(err), connector: brain.connector }, 'anthropic messages passthrough: usage stream tap failed');
   });

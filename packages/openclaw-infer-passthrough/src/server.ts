@@ -37,6 +37,26 @@ const ANTHROPIC_PATH_RE = /^\/anthropic\/v1\/messages(\/count_tokens)?\/?$/;
 /** The single well-known route id every Anthropic-format request resolves against — see `anthropic-handler.ts`'s header. */
 const ANTHROPIC_ROUTE_ID = 'anthropic';
 
+/**
+ * Read one incoming correlation header, preferring the canonical
+ * `X-Imajin-*` name (imajin-ai#2204) and falling back to the legacy
+ * `X-Session-Id`/`X-Turn-Id` names this shim forwarded before that issue —
+ * the plugin side (imajin-ai#36) sends the new names once it lands, but
+ * nothing here needs to change again when it does.
+ */
+function readHeader(req: IncomingMessage, canonical: string, legacy?: string): string | undefined {
+  const value = req.headers[canonical] ?? (legacy ? req.headers[legacy] : undefined);
+  return typeof value === 'string' ? value : undefined;
+}
+
+function readCorrelationHeaders(req: IncomingMessage): { sessionId?: string; turnId?: string; warpRunId?: string } {
+  return {
+    sessionId: readHeader(req, 'x-imajin-session', 'x-session-id'),
+    turnId: readHeader(req, 'x-imajin-turn', 'x-turn-id'),
+    warpRunId: readHeader(req, 'x-imajin-run'),
+  };
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -132,8 +152,7 @@ async function routeRequest(
     const result = await handleAnthropicRequest(anthropicDeps, {
       endpoint,
       bodyText,
-      sessionId: req.headers['x-session-id'] as string | undefined,
-      turnId: req.headers['x-turn-id'] as string | undefined,
+      ...readCorrelationHeaders(req),
       anthropicVersion: req.headers['anthropic-version'] as string | undefined,
       anthropicBeta: req.headers['anthropic-beta'] as string | undefined,
     });
@@ -152,8 +171,7 @@ async function routeRequest(
   const result = await handleCompletions(deps, {
     providerIdFromPath: match[1],
     bodyText,
-    sessionId: req.headers['x-session-id'] as string | undefined,
-    turnId: req.headers['x-turn-id'] as string | undefined,
+    ...readCorrelationHeaders(req),
   });
   await writeProxyResponse(res, result.status, result.headers, result.body);
 }

@@ -34,6 +34,7 @@ import { forwardAnthropic } from '@/src/lib/inference/completions/anthropic-adap
 import { forwardOpenAiCompatible } from '@/src/lib/inference/completions/openai-compatible-adapter';
 import type { ChatCompletionsRequestBody, CompletionsRequestMetadata } from '@/src/lib/inference/completions/types';
 import { enforceSpendCap } from '@/src/lib/inference/spend-cap';
+import { resolveSessionHeaders } from '@/src/lib/inference/session-headers';
 import { connectorRegistryId, readConnectorRegistration } from '@/src/lib/kernel/connector-registry-store';
 
 const log = createLogger('kernel:inference:completions-route');
@@ -72,10 +73,12 @@ export async function POST(request: NextRequest) {
 
   // Per-turn metering context (#1922 target architecture component 3,
   // #1923): every adapter writes one usage.incurred row from this once the
-  // call resolves.
+  // call resolves. #2204: sessionId/turnId/warpRunId ride the shared
+  // X-Imajin-* correlation headers (legacy X-Session-Id/X-Turn-Id still
+  // accepted) so the row can be traced back to the OpenClaw session/turn
+  // that caused it.
   const meta: CompletionsRequestMetadata = {
-    sessionId: request.headers.get('x-session-id') ?? undefined,
-    turnId: request.headers.get('x-turn-id') ?? undefined,
+    ...resolveSessionHeaders(request),
     agentDid: appDid,
   };
 

@@ -26,6 +26,8 @@ export interface IncomingCompletionsRequest {
   bodyText: string;
   sessionId?: string;
   turnId?: string;
+  /** OpenClaw's Warp run id, when this session was spawned from one (imajin-ai#2204). */
+  warpRunId?: string;
 }
 
 export interface HandleCompletionsDeps {
@@ -76,6 +78,7 @@ export async function handleCompletions(
       forwardToKernel(deps.kernelBaseUrl, token, bodyText, deps.kernelTimeoutMs, {
         sessionId: req.sessionId,
         turnId: req.turnId,
+        warpRunId: req.warpRunId,
       }),
     (directApiKey) => forwardDirect(route, directApiKey, bodyText, deps.directTimeoutMs),
   );

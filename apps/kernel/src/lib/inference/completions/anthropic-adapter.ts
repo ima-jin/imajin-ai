@@ -114,12 +114,15 @@ async function generateAnthropic(
     await recordInferenceUsage({
       sessionId: meta.sessionId,
       turnId: meta.turnId,
+      warpRunId: meta.warpRunId,
       principalDid: brain.credentialDid,
       agentDid: meta.agentDid,
       provider: brain.connector,
       model: brain.modelId,
       tokensIn: result.usage.promptTokens,
       tokensOut: result.usage.completionTokens,
+      // #2204: the AI SDK surfaces the provider's own response id here.
+      externalId: result.response?.id,
     });
 
     const completion = buildChatCompletion(brain.modelId, result);
@@ -151,7 +154,7 @@ function streamAnthropic(
     abortSignal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     ...(body.max_tokens !== undefined ? { maxTokens: body.max_tokens } : {}),
     ...(body.temperature !== undefined ? { temperature: body.temperature } : {}),
-    onFinish: ({ finishReason, usage }) => {
+    onFinish: ({ finishReason, usage, response }) => {
       log.info(
         {
           connector: brain.connector,
@@ -168,12 +171,15 @@ function streamAnthropic(
       recordInferenceUsage({
         sessionId: meta.sessionId,
         turnId: meta.turnId,
+        warpRunId: meta.warpRunId,
         principalDid: brain.credentialDid,
         agentDid: meta.agentDid,
         provider: brain.connector,
         model: brain.modelId,
         tokensIn: usage.promptTokens,
         tokensOut: usage.completionTokens,
+        // #2204: same provider response id the non-streaming path reads off `result.response.id`.
+        externalId: response?.id,
       }).catch((err: unknown) => {
         log.error({ err: String(err), connector: brain.connector }, 'completions passthrough: usage ledger write failed');
       });

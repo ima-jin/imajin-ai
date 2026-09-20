@@ -33,6 +33,7 @@ import {
   type TypesafeQuestionType,
 } from '@/src/lib/typesafe/client';
 import { recordTypesafeUsage } from '@/src/lib/typesafe/usage';
+import { resolveSessionHeaders } from '@/src/lib/inference/session-headers';
 
 const log = createLogger('kernel');
 
@@ -182,8 +183,12 @@ export async function POST(request: NextRequest) {
       model: data.model,
       tokensIn: data.usage?.input_tokens,
       tokensOut: data.usage?.output_tokens,
-      sessionId: request.headers.get('x-session-id') ?? undefined,
-      turnId: request.headers.get('x-turn-id') ?? undefined,
+      // #2204: sessionId/turnId/warpRunId ride the shared X-Imajin-*
+      // correlation headers (legacy X-Session-Id/X-Turn-Id still accepted);
+      // externalId is the same upstream request id already surfaced to the
+      // caller as `requestId`, now also persisted for the auditor chain view.
+      ...resolveSessionHeaders(request),
+      externalId: requestId ?? undefined,
     });
 
     return NextResponse.json(

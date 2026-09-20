@@ -51,6 +51,10 @@ export interface RecordTypesafeUsageParams {
   tokensOut?: number;
   sessionId?: string;
   turnId?: string;
+  /** Warp run id (#2204), forwarded via the `X-Imajin-Run` header when this session was spawned from one. */
+  warpRunId?: string;
+  /** Upstream request id (#2204 auditor chain view) — `x-typesafe-request-id` for this call. */
+  externalId?: string;
 }
 
 /**
@@ -59,7 +63,7 @@ export interface RecordTypesafeUsageParams {
  * into a failed request.
  */
 export async function recordTypesafeUsage(params: RecordTypesafeUsageParams): Promise<void> {
-  const { ownerDid, agentDid, model, tokensIn, tokensOut, sessionId, turnId } = params;
+  const { ownerDid, agentDid, model, tokensIn, tokensOut, sessionId, turnId, warpRunId, externalId } = params;
   const costUsd = computeTypesafeCostUsd(tokensIn);
   const connectorId = connectorRegistryId(ownerDid, 'typesafe');
   const quantity = tokensIn !== undefined && tokensOut !== undefined ? tokensIn + tokensOut : undefined;
@@ -87,6 +91,7 @@ export async function recordTypesafeUsage(params: RecordTypesafeUsageParams): Pr
       // No pay.transactions row for this emitter — TypeSafe usage carries no
       // spend-cap/brain coupling, so there is nothing to link back to.
       transactionId: null,
+      externalId: externalId ?? null,
     });
 
     // Deliberately NOT awaited — the row above is already durably written,
@@ -99,6 +104,11 @@ export async function recordTypesafeUsage(params: RecordTypesafeUsageParams): Pr
       quantity,
       costUsd,
       source: 'typesafe-decide',
+      sessionId,
+      turnId,
+      externalId,
+      agentDid,
+      warpRunId,
     }).catch((err: unknown) => {
       log.error(
         { err: String(err), usageId, ownerDid, resource },

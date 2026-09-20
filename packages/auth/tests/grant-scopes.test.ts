@@ -21,11 +21,12 @@ const MCP_PROMOTED_SCOPES = [
 ];
 
 // #2059 adds 'operator:approvals' as a 4th kernel extension, alongside the
-// original 3 from #1882.
-const KERNEL_EXTENSION_SCOPES = ['intros:propose', 'events:read', 'contacts:read', 'operator:approvals'];
+// original 3 from #1882; #2204 adds 'usage:read' as a 5th (the auditor
+// chain-view capability).
+const KERNEL_EXTENSION_SCOPES = ['intros:propose', 'events:read', 'contacts:read', 'operator:approvals', 'usage:read'];
 
 describe('GRANT_SCOPE_REGISTRY structure', () => {
-  it('promotes exactly the 16 named MCP scopes plus the kernel extensions (#1882, #2059)', () => {
+  it('promotes exactly the 16 named MCP scopes plus the kernel extensions (#1882, #2059, #2204)', () => {
     expect(MCP_PROMOTED_SCOPES).toHaveLength(16);
     expect(allGrantScopes()).toEqual([...MCP_PROMOTED_SCOPES, ...KERNEL_EXTENSION_SCOPES]);
   });

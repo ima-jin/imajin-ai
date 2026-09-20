@@ -344,6 +344,70 @@ describe('response error handling', () => {
   });
 });
 
+describe('audit chain view (#2204)', () => {
+  it('shows a "view audit chain" toggle for a turn with a real session key', async () => {
+    await renderPanel([turn({ id: 'row1', sessionKey: 's1' })]);
+
+    expect(screen.getByRole('button', { name: 'view audit chain →' })).toBeDefined();
+  });
+
+  it('does not show the chain toggle for a session-less turn', async () => {
+    await renderPanel([turn({ id: 'row1', sessionKey: null })]);
+
+    expect(screen.queryByRole('button', { name: 'view audit chain →' })).toBeNull();
+  });
+
+  it('fetches the session chain and renders the principal DID when the toggle is clicked', async () => {
+    const fetchSpy = await renderPanel([turn({ id: 'row1', sessionKey: 's1' })]);
+    fetchSpy.mockImplementation(async (url: string) => {
+      if (typeof url === 'string' && url.includes('/usage/api/audit/sessions/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            sessionId: 's1',
+            principalDid: 'did:imajin:ADEKFWc2pbTKzfgzA3q6yrc1rEPNeMEP71mkBbCan54k',
+            turns: [
+              {
+                turnId: 'turn_1',
+                usage: [
+                  {
+                    id: 'usage_1',
+                    source: 'inference-passthrough',
+                    resource: 'model:xai/grok-4',
+                    provider: 'xai',
+                    connectorId: 'conn_1',
+                    model: 'grok-4',
+                    tokensIn: 10,
+                    tokensOut: 5,
+                    costUsd: '0.00010000',
+                    status: null,
+                    agentDid: null,
+                    externalId: 'ext_1',
+                    createdAt: new Date().toISOString(),
+                    transaction: null,
+                    attestation: null,
+                  },
+                ],
+              },
+            ],
+          }),
+        } as unknown as Response;
+      }
+      return { ok: true, status: 200, json: async () => [] } as unknown as Response;
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'view audit chain →' }));
+
+    await waitFor(() => expect(screen.getByText(/principal:/)).toBeDefined());
+    expect(screen.getByText('upstream id: ext_1')).toBeDefined();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/usage/api/audit/sessions/s1'),
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+});
+
 describe('row fields', () => {
   it('renders tokens in/out, model badge, and cost for a turn', async () => {
     await renderPanel([turn({ id: 'row1', tokensIn: 12000, tokensOut: 800, cost: { input: 0.18, output: 0.06, total: 0.24 } })]);

@@ -80,6 +80,7 @@ import {
 } from '@/src/lib/inference/anthropic-messages/route-support';
 import type { CompletionsRequestMetadata } from '@/src/lib/inference/completions/types';
 import { enforceSpendCap } from '@/src/lib/inference/spend-cap';
+import { resolveSessionHeaders } from '@/src/lib/inference/session-headers';
 import { connectorRegistryId, readConnectorRegistration } from '@/src/lib/kernel/connector-registry-store';
 
 const log = createLogger('kernel:inference:anthropic-messages-route');
@@ -95,9 +96,10 @@ export async function POST(request: NextRequest) {
   if (!guarded.ok) return guarded.response;
   const { cors, ownerDid, appDid, bodyText } = guarded.value;
 
+  // #2204: sessionId/turnId/warpRunId ride the shared X-Imajin-* correlation
+  // headers (legacy X-Session-Id/X-Turn-Id still accepted).
   const meta: CompletionsRequestMetadata = {
-    sessionId: request.headers.get('x-session-id') ?? undefined,
-    turnId: request.headers.get('x-turn-id') ?? undefined,
+    ...resolveSessionHeaders(request),
     agentDid: appDid,
   };
 
