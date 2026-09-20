@@ -71,6 +71,18 @@ export interface RecordInferenceUsageParams {
    * fields; every other emitter continues to omit this and is unaffected).
    */
   metadata?: Record<string, unknown>;
+  /**
+   * Upstream call outcome (#2202). `'error'` marks the written row as a
+   * failed upstream attempt (the completions passthrough still writes one
+   * even on a 4xx/5xx, so the attempt is audited) — tokens/cost stay
+   * whatever they resolved to (typically null, since an error body rarely
+   * carries `usage`), but this marker lets cost/call-count rollups exclude
+   * the row instead of silently counting a failed call as a free success.
+   * Omitted (the default) for every normal call, successful or
+   * degraded-but-served with unknown usage — those write `status = NULL`,
+   * unchanged from before this field existed.
+   */
+  status?: 'error';
 }
 
 /**
@@ -79,9 +91,12 @@ export interface RecordInferenceUsageParams {
  * failed request.
  */
 export async function recordInferenceUsage(params: RecordInferenceUsageParams): Promise<void> {
-  const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut, explicitCostUsd, metadata } = params;
+  const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut, explicitCostUsd, metadata, status } = params;
   const connectorId = connectorRegistryId(principalDid, provider);
-  const costUsd = explicitCostUsd ?? computeCostUsd(provider, model, tokensIn, tokensOut);
+  // #2202: a failed upstream attempt's cost is always unknown, never a
+  // computed figure that happened to survive an error body -- "zero/NULL
+  // cost, so cost math ignores it" is the whole point of `status: 'error'`.
+  const costUsd = status === 'error' ? undefined : (explicitCostUsd ?? computeCostUsd(provider, model, tokensIn, tokensOut));
   // #1148 emitter-agnostic quantity/unit: this emitter's resource is tokens,
   // so quantity is the total of both directions whenever both are known —
   // null (not 0) when either is unknown, same "don't fabricate a number"
@@ -116,6 +131,7 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
       quantity: quantity === undefined ? null : quantity.toFixed(6),
       unit: quantity === undefined ? null : 'tokens',
       transactionId: transactionId ?? null,
+      status: status ?? null,
     });
 
     // #1148: publish the usage.incurred bus event — turns the row into a

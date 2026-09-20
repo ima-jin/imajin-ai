@@ -104,7 +104,7 @@ describe('resolveConnectorOwnerDid — app-auth, owner-first precedence (#1773)'
 
     const result = await resolveConnectorOwnerDid(makeRequest({ authorization: 'Bearer app-token' }));
 
-    expect(result).toEqual({ ok: true, ownerDid: DELEGATING_USER_DID });
+    expect(result).toEqual({ ok: true, ownerDid: DELEGATING_USER_DID, agentDid: APP_DID });
   });
 
   it('falls back to the legacy X-Acting-For header when appAuth.userDid is empty', async () => {
@@ -116,7 +116,7 @@ describe('resolveConnectorOwnerDid — app-auth, owner-first precedence (#1773)'
       makeRequest({ authorization: 'Bearer service-token', 'x-acting-for': DELEGATING_USER_DID }),
     );
 
-    expect(result).toEqual({ ok: true, ownerDid: DELEGATING_USER_DID });
+    expect(result).toEqual({ ok: true, ownerDid: DELEGATING_USER_DID, agentDid: APP_DID });
   });
 
   it('falls back to the app owner DID for a pure service token with no delegating user', async () => {
@@ -154,6 +154,17 @@ describe('resolveConnectorOwnerDid — app-auth, owner-first precedence (#1773)'
 
     // If this had fallen through to the registry lookup, the empty rows array
     // seeded above would have produced a 404 instead of the delegating DID.
-    expect(result).toEqual({ ok: true, ownerDid: DELEGATING_USER_DID });
+    expect(result).toEqual({ ok: true, ownerDid: DELEGATING_USER_DID, agentDid: APP_DID });
+  });
+
+  it('#2202: omits agentDid for a pure service token with no delegating user — the app is not acting for anyone else', async () => {
+    requireAppAuthMock.mockResolvedValue({
+      appAuth: { appDid: APP_DID, userDid: '', scopes: [], attestationId: '', isServiceToken: true },
+    });
+
+    const result = await resolveConnectorOwnerDid(makeRequest({ authorization: 'Bearer service-token' }));
+
+    expect(result).toEqual({ ok: true, ownerDid: APP_OWNER_DID });
+    expect((result as { agentDid?: string }).agentDid).toBeUndefined();
   });
 });

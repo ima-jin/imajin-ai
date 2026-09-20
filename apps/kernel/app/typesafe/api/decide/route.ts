@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
-  const { ownerDid } = auth;
+  const { ownerDid, agentDid } = auth;
 
   let rawBody: unknown;
   try {
@@ -178,6 +178,7 @@ export async function POST(request: NextRequest) {
     // non-streaming path).
     await recordTypesafeUsage({
       ownerDid,
+      agentDid,
       model: data.model,
       tokensIn: data.usage?.input_tokens,
       tokensOut: data.usage?.output_tokens,

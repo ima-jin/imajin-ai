@@ -183,6 +183,31 @@ describe('success path', () => {
     }));
   });
 
+  it('#2202: threads agentDid through to recordTypesafeUsage for a delegated call (X-Agent-DID acting for a principal)', async () => {
+    const AGENT_DID = 'did:imajin:openclaw-app';
+    resolveConnectorOwnerDidMock.mockResolvedValue({ ok: true, ownerDid: OWNER, agentDid: AGENT_DID });
+    const upstream = { model: 'jev-1.13.0', answers: {}, usage: { input_tokens: 50, output_tokens: 0 } };
+    postSystemOneMock.mockResolvedValue({ data: upstream, requestId: null });
+
+    await POST(request(VALID_BODY));
+
+    expect(recordTypesafeUsageMock).toHaveBeenCalledWith(expect.objectContaining({
+      ownerDid: OWNER,
+      agentDid: AGENT_DID,
+    }));
+  });
+
+  it('#2202: a direct call (no delegation) passes agentDid through as undefined', async () => {
+    resolveConnectorOwnerDidMock.mockResolvedValue({ ok: true, ownerDid: OWNER });
+    const upstream = { model: 'jev-1.13.0', answers: {}, usage: { input_tokens: 50, output_tokens: 0 } };
+    postSystemOneMock.mockResolvedValue({ data: upstream, requestId: null });
+
+    await POST(request(VALID_BODY));
+
+    const call = recordTypesafeUsageMock.mock.calls[0][0];
+    expect(call.agentDid).toBeUndefined();
+  });
+
   it('never returns the sealed API key anywhere in the response', async () => {
     postSystemOneMock.mockResolvedValue({ data: { model: 'jev-1.13.0', answers: {}, usage: { input_tokens: 1, output_tokens: 0 } }, requestId: null });
 

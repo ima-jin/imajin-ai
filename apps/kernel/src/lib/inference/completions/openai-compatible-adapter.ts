@@ -135,12 +135,12 @@ export async function forwardOpenAiCompatible(
   //     Metering never delays or alters what the client receives.
   if (stream && upstream.body) {
     const [clientBody, meterBody] = upstream.body.tee();
-    meterStreamForUsage(meterBody, brain, meta);
+    meterStreamForUsage(meterBody, brain, meta, upstream.ok);
     return new Response(clientBody, { status: upstream.status, headers });
   }
 
   const text = await upstream.text();
-  await recordOpenAiCompatibleUsage(text, brain, meta);
+  await recordOpenAiCompatibleUsage(text, brain, meta, upstream.ok);
   return new Response(text, { status: upstream.status, headers });
 }
 
@@ -187,8 +187,12 @@ interface OpenAiCompatibleUsage {
  * degraded row with null tokens rather than none at all. Awaited by the
  * caller before the response is returned — the whole body is already
  * buffered by this point, so there is no streaming latency left to protect.
+ *
+ * `upstreamOk` (#2202) marks the row `status: 'error'` when the upstream
+ * rejected the request (4xx/5xx) instead of writing an indistinguishable
+ * null-cost "success" row — see `recordInferenceUsage`'s `status` doc.
  */
-async function recordOpenAiCompatibleUsage(rawBody: string, brain: ResolvedBrain, meta: CompletionsRequestMetadata): Promise<void> {
+async function recordOpenAiCompatibleUsage(rawBody: string, brain: ResolvedBrain, meta: CompletionsRequestMetadata, upstreamOk: boolean): Promise<void> {
   let usage: OpenAiCompatibleUsage | undefined;
   try {
     usage = (JSON.parse(rawBody) as { usage?: OpenAiCompatibleUsage }).usage;
@@ -207,6 +211,7 @@ async function recordOpenAiCompatibleUsage(rawBody: string, brain: ResolvedBrain
       tokensIn: usage?.prompt_tokens,
       tokensOut: usage?.completion_tokens,
       explicitCostUsd: usage?.cost,
+      ...(upstreamOk ? {} : { status: 'error' }),
     });
   } catch (err) {
     log.error({ err: String(err), connector: brain.connector }, 'completions passthrough: usage ledger write failed');
@@ -224,6 +229,7 @@ function meterStreamForUsage(
   body: ReadableStream<Uint8Array>,
   brain: ResolvedBrain,
   meta: CompletionsRequestMetadata,
+  upstreamOk: boolean,
 ): void {
   (async () => {
     const reader = body.getReader();
@@ -253,6 +259,7 @@ function meterStreamForUsage(
       tokensIn: usage?.prompt_tokens,
       tokensOut: usage?.completion_tokens,
       explicitCostUsd: usage?.cost,
+      ...(upstreamOk ? {} : { status: 'error' }),
     });
   })().catch((err: unknown) => {
     log.warn({ err: String(err), connector: brain.connector }, 'completions passthrough: usage stream tap failed');

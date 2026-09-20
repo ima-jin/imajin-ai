@@ -29,6 +29,14 @@
  * pure service token (no delegating user at all) falls through to the app
  * owner's DID, which is the correct home for org-level config like the
  * QuickBooks OAuth App client id/secret.
+ *
+ * #2202: the `ok` result also carries `agentDid` - the invoking app's own
+ * DID - whenever a delegating user was resolved, mirroring
+ * `resolveInferenceAuth`'s `context.appDid` so every caller derives
+ * (principal, agent) the exact same way instead of a second copy of this
+ * logic. Deliberately omitted for the pure-service-token fallback below: an
+ * app acting purely as its own registered owner is not delegated, so there
+ * is no distinct agent to record.
  */
 import type { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
@@ -39,7 +47,7 @@ import { db, registryApps } from '@/src/db';
 const log = createLogger('kernel');
 
 export type ConnectorOwnerResult =
-  | { ok: true; ownerDid: string }
+  | { ok: true; ownerDid: string; agentDid?: string }
   | { ok: false; error: string; status: number };
 
 /** The app owner's DID for `appDid` from `registry.apps`, or undefined when unregistered. */
@@ -80,7 +88,7 @@ export async function resolveConnectorOwnerDid(request: NextRequest): Promise<Co
     const delegatingUserDid =
       appResult.appAuth.userDid || request.headers.get('x-acting-for') || '';
     if (delegatingUserDid) {
-      return { ok: true, ownerDid: delegatingUserDid };
+      return { ok: true, ownerDid: delegatingUserDid, agentDid: appResult.appAuth.appDid };
     }
 
     // No delegating user — a service token acting purely on the app's own

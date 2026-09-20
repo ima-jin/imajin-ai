@@ -39,6 +39,12 @@ export function computeTypesafeCostUsd(tokensIn: number | undefined): number | u
 
 export interface RecordTypesafeUsageParams {
   ownerDid: string;
+  /**
+   * Invoking app DID, when the call was delegated (#2202) - resolved the
+   * same way `recordInferenceUsage`'s `agentDid` is, via
+   * `resolveConnectorOwnerDid`'s `agentDid`. `undefined` for a direct call.
+   */
+  agentDid?: string;
   /** The resolved, versioned model id TypeSafe returned (e.g. `jev-1.13.0`). */
   model: string;
   tokensIn?: number;
@@ -53,7 +59,7 @@ export interface RecordTypesafeUsageParams {
  * into a failed request.
  */
 export async function recordTypesafeUsage(params: RecordTypesafeUsageParams): Promise<void> {
-  const { ownerDid, model, tokensIn, tokensOut, sessionId, turnId } = params;
+  const { ownerDid, agentDid, model, tokensIn, tokensOut, sessionId, turnId } = params;
   const costUsd = computeTypesafeCostUsd(tokensIn);
   const connectorId = connectorRegistryId(ownerDid, 'typesafe');
   const quantity = tokensIn !== undefined && tokensOut !== undefined ? tokensIn + tokensOut : undefined;
@@ -67,6 +73,7 @@ export async function recordTypesafeUsage(params: RecordTypesafeUsageParams): Pr
       sessionId: sessionId ?? null,
       turnId: turnId ?? null,
       principalDid: ownerDid,
+      agentDid: agentDid ?? null,
       source: 'typesafe-decide',
       resource,
       provider: 'typesafe',
