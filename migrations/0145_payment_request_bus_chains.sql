@@ -1,4 +1,4 @@
--- 0144_payment_request_bus_chains.sql
+-- 0145_payment_request_bus_chains.sql
 -- owner: kernel
 --
 -- #2212 (child of #2206): `kernel.bus_chain_configs` rows for the
@@ -14,10 +14,16 @@
 -- exactly, since getChainConfig() prefers a DB row over DEFAULTS whenever
 -- one exists.
 --
--- `payment_request.recipient_claimed` is seeded here too even though its
--- publisher (#2210/#2214, `resolvePaymentRequestsOnRecipientClaim`) ships on
--- a sibling branch not yet merged as of this migration — the row is
--- additive and inert until that event actually fires.
+-- `payment_request.recipient_claimed`'s publisher (#2210/#2214,
+-- `resolvePaymentRequestsOnRecipientClaim`) has since merged to main; its
+-- chain row is seeded here alongside the other four for the same reason
+-- as always — one migration reconciling the whole event family with
+-- config.ts DEFAULTS.
+--
+-- Renumbered from 0144 to 0145 (mirrors the 0133 precedent documented in
+-- ownership.json for kernel.google_workspace_state): 0144 collided with
+-- 0144_pay_payment_request_recipient_claim.sql, independently merged to
+-- main via #2214 while this branch was in flight.
 --
 -- ADDITIVE ONLY.
 

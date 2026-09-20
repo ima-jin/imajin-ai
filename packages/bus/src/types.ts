@@ -1711,20 +1711,19 @@ export interface BusEventMap {
     context_type: 'payment_request';
   };
   /**
-   * A payment_request recipient's claimable stub (#1834) resolved to a real
-   * DID (#2210/#2214, `resolvePaymentRequestsOnRecipientClaim` —
-   * `apps/kernel/src/lib/pay/payment-requests/claim.ts` on the sibling
-   * `feat/2210-payment-request-recipient` branch). "Claim = consent event":
-   * `recipient_stub_id` re-points onto `recipient_did` (same DID — #1834
-   * point 1), never rewriting the prior `issued`/`settled` attestations.
-   * `recipientStubId` intentionally carries the SAME value as
-   * `recipientDid` here (the DID survives the claim) rather than the
-   * pre-claim id, since the stub id and the now-known DID are one and the
-   * same identity.
+   * A `recipient_stub_id` addressed by a payment_request has resolved to a
+   * `recipient_did` (#2210) — the claimable-stub recipient connected to the
+   * issuer (accepted the invite / claimed the stub), whichever ordering the
+   * recipient chose (pay-first then claim, or claim-first then pay). The
+   * DID never changes across claim (#1834 point 1), so `recipientStubId`
+   * and `recipientDid` here are the SAME string — this only records which
+   * of the payment_request's two XOR columns is now populated.
    *
-   * Declared here (bus-package-owned event-type registry) ahead of that
-   * branch merging so #2212's `bus_chain_configs` row for it can exist
-   * now — additive and inert until the publisher ships.
+   * Published exactly once per affected payment_request (never batched
+   * across multiple requests sharing a stub) and never rewrites the prior
+   * `payment_request.issued` / `.settled` attestations — this is always a
+   * new record. issuer = the payment_request's issuer DID; subject = the
+   * resolved recipient DID.
    */
   'payment_request.recipient_claimed': {
     paymentRequestId: string;

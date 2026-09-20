@@ -429,8 +429,8 @@
     "kernel.payment_request_notifications": {
       "owner": "kernel",
       "schema": "kernel",
-      "firstMigration": "0144_payment_request_bus_chains.sql",
-      "notes": ""
+      "firstMigration": "0145_payment_request_bus_chains.sql",
+      "notes": "Renumbered from 0144 (#2216 post-merge) — 0144 collided with the independently merged 0144_pay_payment_request_recipient_claim.sql (#2214)."
     },
     "kernel.quickbooks_realm_index": {
       "owner": "kernel",

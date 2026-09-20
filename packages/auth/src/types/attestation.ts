@@ -169,6 +169,15 @@ export const ATTESTATION_TYPES = [
   // an author_jws, never awaiting a countersignature.
   'payment_request.issued',
   'payment_request.settled',
+
+  // pay.payment_request recipient re-pointing (#2210) — minted mechanically
+  // by the platform node identity when a claimable-stub recipient
+  // (recipient_stub_id) connects to the issuer (accepts the invite / claims
+  // the stub, whichever ordering the recipient chose), re-pointing the
+  // request to a resolved recipient_did. System-class (see
+  // MECHANICAL_ATTESTATION_TYPES below): never a rewrite of the prior
+  // `issued`/`settled` attestations, always its own new record.
+  'payment_request.recipient_claimed',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -222,6 +231,10 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // see ATTESTATION_TYPES above.
   'payment_request.issued',
   'payment_request.settled',
+  // #2210 — minted mechanically by the platform node identity when a
+  // claimable-stub recipient resolves to a recipient_did. See
+  // ATTESTATION_TYPES above.
+  'payment_request.recipient_claimed',
 ] as const;
 
 /**

@@ -24,6 +24,8 @@ interface CreatePaymentRequestBody {
   kind?: unknown;
   recipient_did?: unknown;
   recipient_stub_id?: unknown;
+  /** New-counterparty path (#2210): { email, delivery?: 'link' | 'email', note? }. */
+  recipient_invite?: unknown;
   line_items?: unknown;
   currency?: unknown;
   due_at?: unknown;
@@ -55,6 +57,7 @@ export async function POST(request: NextRequest) {
       kind: body.kind,
       recipientDid: body.recipient_did,
       recipientStubId: body.recipient_stub_id,
+      recipientInvite: body.recipient_invite,
       lineItems: body.line_items,
       currency: body.currency,
       dueAt: body.due_at,
