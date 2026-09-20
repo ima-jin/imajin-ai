@@ -28,6 +28,10 @@ import {
   revokeStaticSecretGrant,
   vaultFieldStatusForGrantee,
 } from '@/src/lib/vault';
+import {
+  notifyConnectorCredentialSealed,
+  notifyConnectorCredentialUnsealed,
+} from '@/src/lib/notify/connector-events';
 
 const log = createLogger('kernel');
 
@@ -139,6 +143,11 @@ export function createConnectorStaticSecret(
       { principalDid, connectorDid: opts.connectorDid, pendingGrant: grantId === null },
       `${opts.name} static secret sealed`,
     );
+
+    // #2205 — best-effort; never fails a seal that already succeeded (see
+    // connector-events.ts's own fail-open guarantee). `opts.name` doubles as
+    // the CONNECTOR_REGISTRY id for every current static-secret connector.
+    await notifyConnectorCredentialSealed(principalDid, opts.name);
     return { grantId, requestId };
   }
 
@@ -167,7 +176,12 @@ export function createConnectorStaticSecret(
   }
 
   async function revokeGrant(principalDid: string): Promise<boolean> {
-    return revokeStaticSecretGrant(secretField(principalDid), opts.connectorDid);
+    const revoked = await revokeStaticSecretGrant(secretField(principalDid), opts.connectorDid);
+    // #2205 — only on an actual transition; best-effort, never fails this call.
+    if (revoked) {
+      await notifyConnectorCredentialUnsealed(principalDid, opts.name);
+    }
+    return revoked;
   }
 
   async function secretSealed(principalDid: string): Promise<boolean> {
