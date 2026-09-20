@@ -189,6 +189,12 @@ export const paymentRequests = paySchema.table('payment_request', {
   status: text('status').notNull().default('issued'),      // issued | paid | settled_manual | void
   settlementRef: jsonb('settlement_ref'),                  // stripe session id | mjnx tx | manual {note, asserted_by}
   contentHash: text('content_hash').notNull(),              // attestations bind this, never bytes
+  // #2210: opaque, unguessable "pay link" handle — GET
+  // /pay/api/payment-requests/by-handle/:handle keys off this rather than
+  // the internal id, so an unauthenticated payer (no DID/session yet, per
+  // the pay-first ordering) can read the minimum needed to pay without any
+  // recipient PII ever entering the response.
+  payHandle: text('pay_handle').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
@@ -196,6 +202,7 @@ export const paymentRequests = paySchema.table('payment_request', {
   recipientDidIdx: index('idx_payment_request_recipient_did').on(table.recipientDid),
   recipientStubIdIdx: index('idx_payment_request_recipient_stub_id').on(table.recipientStubId),
   statusIdx: index('idx_payment_request_status').on(table.status),
+  payHandleIdx: index('idx_payment_request_pay_handle').on(table.payHandle),
 }));
 
 export type PaymentRequest = typeof paymentRequests.$inferSelect;

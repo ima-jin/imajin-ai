@@ -1709,6 +1709,33 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'payment_request';
   };
+  /**
+   * A `recipient_stub_id` addressed by a payment_request has resolved to a
+   * `recipient_did` (#2210) — the claimable-stub recipient connected to the
+   * issuer (accepted the invite / claimed the stub), whichever ordering the
+   * recipient chose (pay-first then claim, or claim-first then pay). The
+   * DID never changes across claim (#1834 point 1), so `recipientStubId`
+   * and `recipientDid` here are the SAME string — this only records which
+   * of the payment_request's two XOR columns is now populated.
+   *
+   * Published exactly once per affected payment_request (never batched
+   * across multiple requests sharing a stub) and never rewrites the prior
+   * `payment_request.issued` / `.settled` attestations — this is always a
+   * new record. issuer = the payment_request's issuer DID; subject = the
+   * resolved recipient DID.
+   */
+  'payment_request.recipient_claimed': {
+    paymentRequestId: string;
+    issuerDid: string;
+    recipientDid: string;
+    recipientStubId: string;
+    totalAmount: number;
+    currency: string;
+    contentHash: string;
+    attestationId: string | null;
+    context_id: string;
+    context_type: 'payment_request';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

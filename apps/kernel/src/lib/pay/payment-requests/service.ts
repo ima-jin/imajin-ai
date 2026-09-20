@@ -9,11 +9,13 @@
  * `/usage/api/billed` (`lib/usage/billed/manual.ts`).
  */
 import { and, desc, eq } from 'drizzle-orm';
-import { db, paymentRequests } from '@/src/db';
+import { db, paymentRequests, profiles } from '@/src/db';
 import type { PaymentRequest, PaymentRequestKind } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { publish } from '@imajin/bus';
 import { add as moneyAdd, type Money } from '@imajin/money';
+import { isConnected } from '@/src/lib/chat/connection-check';
+import { createPaymentRequestInvite } from '@/src/lib/connections/payment-request-invite';
 import { computePaymentRequestContentHash } from './content-hash';
 import { buildDefaultPaymentRequestManifest, validateCustomPaymentRequestManifest } from './manifest';
 import { emitPaymentRequestIssuedAttestation, emitPaymentRequestSettledAttestation } from './attestations';
@@ -87,6 +89,12 @@ function validateLineItems(raw: unknown, currency: string): LineItemsResult {
   return { total, items };
 }
 
+export interface CreatePaymentRequestInvite {
+  email?: unknown;
+  delivery?: unknown;
+  note?: unknown;
+}
+
 export interface CreatePaymentRequestInput {
   /** The authenticated caller's resolved effective DID (`resolveActingDid`). */
   callerDid: string;
@@ -95,6 +103,8 @@ export interface CreatePaymentRequestInput {
   kind?: unknown;
   recipientDid?: unknown;
   recipientStubId?: unknown;
+  /** New-counterparty path (#2210): create/reuse a claimable stub + connections invite carrying this request as the invite's opaque reason. */
+  recipientInvite?: unknown;
   lineItems?: unknown;
   currency?: unknown;
   dueAt?: unknown;
@@ -102,22 +112,99 @@ export interface CreatePaymentRequestInput {
   fairManifest?: unknown;
 }
 
+export interface CreatedPaymentRequestInvite {
+  id: string;
+  code: string;
+  url: string;
+}
+
 export interface CreatedPaymentRequest extends PaymentRequest {
   attestationId: string | null;
+  /** Present only when the recipient was resolved via `recipientInvite` (#2210). */
+  invite?: CreatedPaymentRequestInvite;
+}
+
+type RecipientResolution = { recipientDid: string | null; recipientStubId: string | null; invite?: CreatedPaymentRequestInvite };
+
+/** Validate the `recipientInvite` object shape; does not touch the DB. */
+function validateRecipientInvite(raw: unknown): { email: string; delivery: 'link' | 'email'; note: string | null } | ServiceError {
+  const invite = raw as CreatePaymentRequestInvite;
+  if (typeof invite.email !== 'string' || !invite.email.trim()) {
+    // The claim-resolution seam (#1834) is keyed on email — without one
+    // there's no dedup target and no way to ever resolve recipient_did.
+    return err('recipient_invite.email is required', 400);
+  }
+  if (invite.delivery !== undefined && invite.delivery !== 'link' && invite.delivery !== 'email') {
+    return err("recipient_invite.delivery must be 'link' or 'email'", 400);
+  }
+  if (invite.note !== undefined && invite.note !== null && typeof invite.note !== 'string') {
+    return err('recipient_invite.note must be a string', 400);
+  }
+  return {
+    email: invite.email.trim(),
+    delivery: invite.delivery === 'link' ? 'link' : 'email',
+    note: typeof invite.note === 'string' ? invite.note : null,
+  };
 }
 
 /**
  * Resolve + validate the recipient fields: exactly one of `recipientDid` /
- * `recipientStubId` must be supplied at create time (#2207 hard
- * requirement — enforced here AND by the migration's CHECK constraint).
+ * `recipientStubId` / `recipientInvite` must be supplied at create time
+ * (#2207/#2210 hard requirement — the XOR of the first two is enforced
+ * here AND by the migration's CHECK constraint; `recipientInvite` is
+ * request-shape sugar that resolves to a fresh `recipientStubId`).
+ *
+ *  - `recipientDid` must be a DID the issuer already has an active
+ *    connection with (#2210) — an arbitrary DID would let a payment_request
+ *    address someone with no established relationship to the issuer at
+ *    all, bypassing the invite/claim path entirely.
+ *  - `recipientInvite` creates (or reuses, per #1834's one-stub-per-email
+ *    dedup) a claimable stub and a connections invite carrying this
+ *    request as its opaque reason (`createPaymentRequestInvite`) — the
+ *    resulting stub DID becomes `recipientStubId`.
  */
-function resolveRecipient(input: CreatePaymentRequestInput): { recipientDid: string | null; recipientStubId: string | null } | ServiceError {
+async function resolveRecipientForCreate(
+  input: CreatePaymentRequestInput,
+  issuerDid: string,
+  paymentRequestId: string,
+): Promise<RecipientResolution | ServiceError> {
   const recipientDid = typeof input.recipientDid === 'string' && input.recipientDid ? input.recipientDid : null;
   const recipientStubId = typeof input.recipientStubId === 'string' && input.recipientStubId ? input.recipientStubId : null;
-  if (Boolean(recipientDid) === Boolean(recipientStubId)) {
-    return err('exactly one of recipient_did or recipient_stub_id is required', 400);
+  const recipientInviteRaw = input.recipientInvite && typeof input.recipientInvite === 'object' ? input.recipientInvite : null;
+
+  const provided = [recipientDid, recipientStubId, recipientInviteRaw].filter(Boolean).length;
+  if (provided !== 1) {
+    return err('exactly one of recipient_did, recipient_stub_id, or recipient_invite is required', 400);
   }
-  return { recipientDid, recipientStubId };
+
+  if (recipientDid) {
+    if (!(await isConnected(issuerDid, recipientDid))) {
+      return err('recipient_did must be a DID the issuer has an existing connection with', 403);
+    }
+    return { recipientDid, recipientStubId: null };
+  }
+
+  if (recipientStubId) {
+    return { recipientDid: null, recipientStubId };
+  }
+
+  const inviteInput = validateRecipientInvite(recipientInviteRaw);
+  if (isServiceError(inviteInput)) return inviteInput;
+
+  const invite = await createPaymentRequestInvite({
+    issuerDid,
+    email: inviteInput.email,
+    delivery: inviteInput.delivery,
+    note: inviteInput.note,
+    reasonContextId: paymentRequestId,
+    reasonContextType: 'payment_request',
+  });
+
+  return {
+    recipientDid: null,
+    recipientStubId: invite.recipientStubId,
+    invite: { id: invite.inviteId, code: invite.inviteCode, url: invite.inviteUrl },
+  };
 }
 
 /** Parse and validate the optional `due_at` ISO date string. */
@@ -163,9 +250,15 @@ export async function createPaymentRequest(input: CreatePaymentRequestInput): Pr
   }
   const kind: PaymentRequestKind = kindRaw;
 
-  const recipientResult = resolveRecipient(input);
+  // Generated up front: the recipient_invite path (#2210) needs the
+  // payment_request's own id to stamp as the invite's opaque
+  // reasonContextId before the row itself exists.
+  const id = generateId('pr');
+  const payHandle = generateId('ph');
+
+  const recipientResult = await resolveRecipientForCreate(input, input.issuerDid, id);
   if (isServiceError(recipientResult)) return recipientResult;
-  const { recipientDid, recipientStubId } = recipientResult;
+  const { recipientDid, recipientStubId, invite } = recipientResult;
 
   const currency = typeof input.currency === 'string' && input.currency ? input.currency.toUpperCase() : 'CAD';
 
@@ -179,8 +272,6 @@ export async function createPaymentRequest(input: CreatePaymentRequestInput): Pr
 
   const allowOnPlatform = input.allowOnPlatform === undefined ? true : Boolean(input.allowOnPlatform);
   const payeeAccount = typeof input.payeeAccount === 'string' && input.payeeAccount ? input.payeeAccount : input.issuerDid;
-
-  const id = generateId('pr');
 
   const fairManifestResult = resolveFairManifest(input.fairManifest, { payeeAccount, paymentRequestId: id, total });
   if (isServiceError(fairManifestResult)) return fairManifestResult;
@@ -217,6 +308,7 @@ export async function createPaymentRequest(input: CreatePaymentRequestInput): Pr
       status: 'issued',
       settlementRef: null,
       contentHash,
+      payHandle,
     })
     .returning();
 
@@ -250,12 +342,50 @@ export async function createPaymentRequest(input: CreatePaymentRequestInput): Pr
     },
   }).catch(() => {});
 
-  return { ...row, attestationId };
+  return { ...row, attestationId, ...(invite ? { invite } : {}) };
 }
 
 export async function getPaymentRequestById(id: string): Promise<PaymentRequest | null> {
   const [row] = await db.select().from(paymentRequests).where(eq(paymentRequests.id, id)).limit(1);
   return row ?? null;
+}
+
+export interface PaymentRequestPublicView {
+  kind: PaymentRequestKind;
+  lineItems: PaymentRequestLineItem[];
+  totalAmount: number;
+  currency: string;
+  issuerDisplayName: string;
+  status: string;
+}
+
+/** Best-effort display name for the issuer — falls back to a truncated DID rather than failing the whole read. */
+async function resolveIssuerDisplayName(issuerDid: string): Promise<string> {
+  const [profile] = await db.select().from(profiles).where(eq(profiles.did, issuerDid)).limit(1);
+  return profile?.displayName || profile?.handle || issuerDid.slice(0, 16);
+}
+
+/**
+ * Unauthenticated read of the minimum needed to pay, keyed by the opaque
+ * `pay_handle` rather than the internal id (#2210) — what both the
+ * pay-first and claim-first recipient orderings resolve against before an
+ * account/connection exists. Deliberately excludes issuerDid,
+ * recipientDid/recipientStubId, fairManifest, settlementRef, and
+ * contentHash — no recipient PII, and nothing beyond what's needed to pay.
+ * Hidden (404, same as an unknown handle) once `void`.
+ */
+export async function getPaymentRequestByHandle(handle: string): Promise<PaymentRequestPublicView | null> {
+  const [row] = await db.select().from(paymentRequests).where(eq(paymentRequests.payHandle, handle)).limit(1);
+  if (!row || row.status === 'void') return null;
+
+  return {
+    kind: row.kind as PaymentRequestKind,
+    lineItems: row.lineItems as PaymentRequestLineItem[],
+    totalAmount: row.totalAmount,
+    currency: row.currency,
+    issuerDisplayName: await resolveIssuerDisplayName(row.issuerDid),
+    status: row.status,
+  };
 }
 
 export interface ListPaymentRequestsInput {
