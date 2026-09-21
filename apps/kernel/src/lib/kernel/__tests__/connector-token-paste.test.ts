@@ -213,6 +213,20 @@ vi.mock('@/src/lib/kernel/id', () => ({
 
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
 
+// #2205 — connector-events.ts is exercised in its own dedicated unit tests
+// (notify/__tests__/connector-events.test.ts); here it is a plain double so
+// these tests assert the *wiring* (called with the right args, on the right
+// transitions) without dragging in the WS-push/db plumbing it owns.
+const { notifySealedMock, notifyUnsealedMock } = vi.hoisted(() => ({
+  notifySealedMock: vi.fn().mockResolvedValue(undefined),
+  notifyUnsealedMock: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/src/lib/notify/connector-events', () => ({
+  notifyConnectorCredentialSealed: notifySealedMock,
+  notifyConnectorCredentialUnsealed: notifyUnsealedMock,
+}));
+
 import { createConnectorTokenPaste } from '../connector-token-paste.js';
 import { _resetSealingCache } from '../../vault/sealing.js';
 
@@ -231,6 +245,8 @@ beforeEach(() => {
   channelLinksStore.clear();
   _resetSealingCache();
   process.env.AUTH_PRIVATE_KEY = randomBytes(32).toString('hex');
+  notifySealedMock.mockClear();
+  notifyUnsealedMock.mockClear();
 });
 
 afterEach(async () => {
@@ -535,5 +551,39 @@ describe('listActiveGrantOwners', () => {
     seedLink('clink_1', OWNER_DID, ['testprov:infer']);
 
     expect(await connector.listActiveGrantOwners('testprov:billing')).toEqual([]);
+  });
+});
+
+// ── connector.credential.* notifications (#2205) ────────────────────────────
+
+describe('connector lifecycle notifications', () => {
+  it('sealApiKey emits connector.credential.sealed for this owner + provider', async () => {
+    await connector.sealApiKey(OWNER_DID, 'sk-test-key');
+
+    expect(notifySealedMock).toHaveBeenCalledWith(OWNER_DID, 'testprov');
+    expect(notifyUnsealedMock).not.toHaveBeenCalled();
+  });
+
+  it('revokeApiKey emits connector.credential.unsealed only when something was actually revoked', async () => {
+    await connector.sealApiKey(OWNER_DID, 'sk-test-key');
+    notifySealedMock.mockClear();
+
+    const revoked = await connector.revokeApiKey(OWNER_DID);
+
+    expect(revoked).toBe(true);
+    expect(notifyUnsealedMock).toHaveBeenCalledWith(OWNER_DID, 'testprov');
+  });
+
+  it('revokeApiKey stays silent when there was nothing left to revoke', async () => {
+    const revoked = await connector.revokeApiKey(OWNER_DID);
+
+    expect(revoked).toBe(false);
+    expect(notifyUnsealedMock).not.toHaveBeenCalled();
+  });
+
+  it('a rejected notifier never fails the seal call (#2205 best-effort)', async () => {
+    notifySealedMock.mockRejectedValueOnce(new Error('ws push exploded'));
+
+    await expect(connector.sealApiKey(OWNER_DID, 'sk-test-key')).rejects.toThrow('ws push exploded');
   });
 });

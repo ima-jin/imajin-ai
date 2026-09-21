@@ -699,6 +699,47 @@ export const templates: NotifyTemplate[] = [
     },
     body: (data) => (typeof data.summary === 'string' ? data.summary : 'An operator approval is pending.'),
   },
+  {
+    // #2205 — connector credential lifecycle. No email: a technical hint for
+    // a WS-connected consumer (ima-jin/openclaw-imajin-plugin#37), not a
+    // channel a person configures separately. Never carries credential
+    // material — see apps/kernel/src/lib/notify/connector-events.ts.
+    scope: 'connector.credential.sealed',
+    urgency: 'low',
+    title: (data) => {
+      const provider = typeof data.provider === 'string' ? data.provider : 'A connector';
+      return `${provider} credential sealed`;
+    },
+    body: (data) => {
+      const provider = typeof data.provider === 'string' ? data.provider : undefined;
+      return provider ? `A credential was sealed for the ${provider} connector.` : 'A connector credential was sealed.';
+    },
+  },
+  {
+    scope: 'connector.credential.unsealed',
+    urgency: 'low',
+    title: (data) => {
+      const provider = typeof data.provider === 'string' ? data.provider : 'A connector';
+      return `${provider} credential unsealed`;
+    },
+    body: (data) => {
+      const provider = typeof data.provider === 'string' ? data.provider : undefined;
+      return provider
+        ? `The sealed credential for the ${provider} connector was unsealed or removed.`
+        : 'A connector credential was unsealed or removed.';
+    },
+  },
+  {
+    scope: 'connector.models.changed',
+    urgency: 'low',
+    title: (data) => {
+      const provider = typeof data.provider === 'string' ? data.provider : undefined;
+      return provider ? `${provider} model catalog changed` : 'Model catalog changed';
+    },
+    // Advisory only (#2205): the hint names why the catalog might have moved,
+    // never the model list itself — consumers re-pull GET /infer/v1/models/usable.
+    body: (_data) => 'Your usable model catalog may have changed — re-fetch GET /infer/v1/models/usable.',
+  },
   // #2212 (child of #2206) — payment_request.* notify templates. One scope
   // per lifecycle transition; `data.role` distinguishes issuer vs recipient
   // copy on the two-sided transitions (paid/settled) so a single template
