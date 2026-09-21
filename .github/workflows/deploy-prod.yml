@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: [self-hosted, imajin-server]
+    runs-on: [self-hosted, imajin]
     environment: production
     defaults:
       run:
