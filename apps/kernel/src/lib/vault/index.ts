@@ -25,7 +25,7 @@ import {
 } from '@imajin/vault-core';
 import { verifySync, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
-import { and, eq, isNull, gt, or, like, type SQL } from 'drizzle-orm';
+import { and, eq, isNull, gt, or, like, desc, type SQL } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import {
   db,
@@ -1368,6 +1368,154 @@ export async function _applyDelegationGrant(
 
   // 4. Decrypt the ciphertext.
   return unsealSecret(entry, fieldKey);
+}
+
+// ── Agent-facing grant fetch (#2231) ────────────────────────────────────────
+//
+// Remote human -> agent credential handoff: an owner seals a secret and
+// issues a delegation grant naming an arbitrary agent DID as `grantedTo`
+// (POST /api/vault/delegation/grant, Tier 1 external-owner flow). The
+// functions below are what let that agent — authenticated as itself, never
+// as this node's admin — fetch the sealed value for a grant it holds, and
+// enumerate its own grants by `purpose` without ever seeing wrapped key
+// material.
+
+export type GrantFetchOutcome =
+  | { status: 'ok'; value: string; grant: VaultDelegationGrant }
+  | { status: 'not_found' | 'not_grantee' | 'inactive' | 'expired' | 'consumed' };
+
+/**
+ * Resolve, validate, and (on success) decrypt the sealed value behind one
+ * specific `vault_delegation_grants` row, for the agent DID it was granted
+ * to.
+ *
+ * Unlike {@link loadAndUnsealByGrantee} (which resolves whatever grant is
+ * CURRENTLY active for a field), this looks up one grant BY ID — the route's
+ * caller presents a specific grantId, and the outcome must reflect that
+ * exact row's state (e.g. "this one was already consumed"), not whatever
+ * else might currently be active for the same field.
+ *
+ * `oneTime` grants are claimed atomically (`consumedAt` set with a
+ * `WHERE consumed_at IS NULL` guard) BEFORE decryption, so two concurrent
+ * fetches of the same one-time grant can never both succeed.
+ *
+ * Never throws for an ordinary authorization/lifecycle refusal — those are
+ * `status` values on the returned outcome, precisely so the route layer can
+ * audit every outcome uniformly. VaultDelegationError / VaultIntegrityError
+ * can still propagate from decrypt-time integrity failures (tampered entry,
+ * invalid owner signature); the caller should route those through
+ * `toVaultErrorResponse`.
+ */
+export async function fetchGrantSecret(params: {
+  grantId: string;
+  granteeDid: string;
+}): Promise<GrantFetchOutcome> {
+  const rows = await db
+    .select()
+    .from(vaultDelegationGrants)
+    .where(eq(vaultDelegationGrants.id, params.grantId))
+    .limit(1);
+  const grant = rows[0];
+  if (!grant) {
+    return { status: 'not_found' };
+  }
+  if (grant.grantedTo !== params.granteeDid) {
+    // Deliberately distinct from 'not_found' only in the caller's log, never in
+    // the HTTP response shape: confirming a grantId exists but belongs to
+    // someone else would let a caller enumerate grantIds it cannot use.
+    return { status: 'not_grantee' };
+  }
+  if (grant.status !== 'active') {
+    return { status: 'inactive' };
+  }
+  if (grant.expiresAt !== null && grant.expiresAt.getTime() <= Date.now()) {
+    return { status: 'expired' };
+  }
+
+  if (grant.oneTime) {
+    if (grant.consumedAt !== null) {
+      return { status: 'consumed' };
+    }
+    const claimed = await db
+      .update(vaultDelegationGrants)
+      .set({ consumedAt: new Date() })
+      .where(and(eq(vaultDelegationGrants.id, grant.id), isNull(vaultDelegationGrants.consumedAt)))
+      .returning({ id: vaultDelegationGrants.id });
+    if (claimed.length === 0) {
+      // Lost the race to a concurrent fetch of the same one-time grant.
+      return { status: 'consumed' };
+    }
+  }
+
+  const entry = await vaultService.get(grant.field);
+  if (!entry || entry.deleted) {
+    return { status: 'not_found' };
+  }
+
+  const value = await _applyDelegationGrant(
+    entry,
+    grant,
+    getNodeXPrivateKey(),
+    resolveGrantVerifier(entry, grant),
+  );
+  return { status: 'ok', value, grant };
+}
+
+export interface GranteeGrantSummary {
+  grantId: string;
+  subject: string;
+  field: string;
+  purpose: string | null;
+  oneTime: boolean;
+  status: string;
+  expiresAt: string | null;
+  consumedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * List the grants issued to `granteeDid`, optionally narrowed to a single
+ * `purpose`, WITHOUT any wrapped key material — the read surface for an
+ * agent enumerating its own grants (#2231).
+ */
+export async function listGrantsForGrantee(params: {
+  granteeDid: string;
+  purpose?: string;
+}): Promise<GranteeGrantSummary[]> {
+  const rows = await db
+    .select({
+      id: vaultDelegationGrants.id,
+      subject: vaultDelegationGrants.subject,
+      field: vaultDelegationGrants.field,
+      purpose: vaultDelegationGrants.purpose,
+      oneTime: vaultDelegationGrants.oneTime,
+      status: vaultDelegationGrants.status,
+      expiresAt: vaultDelegationGrants.expiresAt,
+      consumedAt: vaultDelegationGrants.consumedAt,
+      createdAt: vaultDelegationGrants.createdAt,
+    })
+    .from(vaultDelegationGrants)
+    .where(
+      params.purpose === undefined
+        ? eq(vaultDelegationGrants.grantedTo, params.granteeDid)
+        : and(
+            eq(vaultDelegationGrants.grantedTo, params.granteeDid),
+            eq(vaultDelegationGrants.purpose, params.purpose),
+          ),
+    )
+    .orderBy(desc(vaultDelegationGrants.createdAt));
+
+  return rows.map((row) => ({
+    grantId: row.id,
+    subject: row.subject,
+    field: row.field,
+    purpose: row.purpose,
+    oneTime: row.oneTime,
+    status: row.status,
+    expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
+    consumedAt: row.consumedAt ? row.consumedAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+  }));
 }
 
 // ── Batch v1→v2 custody migration (#1537) ───────────────────────────

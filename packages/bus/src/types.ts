@@ -664,6 +664,23 @@ export interface BusEventMap {
     context_type: 'vault.delegation';
   };
   /**
+   * Emitted on every attempt (successful or refused) by an authenticated
+   * agent DID to fetch the sealed value behind one of its own
+   * vault_delegation_grants rows (#2231 remote human -> agent credential
+   * handoff). Carries no secret material — outcome + metadata only — so it
+   * is safe for the generic `audit-log` reactor (#1140) to persist verbatim.
+   */
+  'vault.delegation.fetched': {
+    grantId: string;
+    field: string;
+    granteeDid: string;
+    purpose: string | null;
+    oneTime: boolean;
+    outcome: 'ok' | 'not_found' | 'not_grantee' | 'inactive' | 'expired' | 'consumed' | 'error';
+    context_id: string;
+    context_type: 'vault.delegation';
+  };
+  /**
    * Emitted by sealAndStoreV2 in Tier 1 mode when the vault entry is written
    * but no delegation grant has been created yet (#1403).  The external owner
    * agent (imajin-cli vault serve) receives this event, recovers the field key

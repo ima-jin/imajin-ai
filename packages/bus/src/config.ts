@@ -316,6 +316,14 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'vault.delegation.revoked': [
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #2231 — remote human -> agent credential handoff. `audit-log` (#1140) is
+  // the durable, queryable record of every fetch attempt (success or
+  // refusal); the event payload itself never carries secret material, so
+  // the reactor's default "store the whole payload" projection is safe here.
+  // Kept in sync with migration 0148.
+  'vault.delegation.fetched': [
+    { type: 'audit-log', config: { fields: ['grantId', 'field', 'granteeDid', 'purpose', 'oneTime', 'outcome'] }, enabled: true },
+  ],
   // #1841 — claim-stub-expiry sweep. `emit` puts the tombstone event on the
   // signed event stream; no `attestation`/`mjn` reactor since a lapsing
   // stub is a garbage-collection outcome, not an economic/identity event

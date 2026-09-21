@@ -265,6 +265,44 @@ describe('POST /api/vault/delegation/grant — self-describing grants', () => {
   });
 });
 
+// ── Remote human -> agent credential handoff (#2231) ─────────────────────────
+
+describe('POST /api/vault/delegation/grant — purpose / oneTime (#2231)', () => {
+  it('persists purpose and oneTime when provided', async () => {
+    await POST(makeRequest(validBody({ purpose: 'gha-runner-registration', oneTime: true })) as never);
+
+    const inserted = mockInsertValues.mock.calls[0]![0] as Record<string, unknown>;
+    expect(inserted.purpose).toBe('gha-runner-registration');
+    expect(inserted.oneTime).toBe(true);
+  });
+
+  it('defaults purpose to null and oneTime to false when omitted', async () => {
+    await POST(makeRequest(validBody()) as never);
+
+    const inserted = mockInsertValues.mock.calls[0]![0] as Record<string, unknown>;
+    expect(inserted.purpose).toBeNull();
+    expect(inserted.oneTime).toBe(false);
+  });
+
+  it('rejects a non-string purpose', async () => {
+    const response = await POST(makeRequest(validBody({ purpose: 123 })) as never);
+    expect(response.status).toBe(400);
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty purpose', async () => {
+    const response = await POST(makeRequest(validBody({ purpose: '   ' })) as never);
+    expect(response.status).toBe(400);
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-boolean oneTime', async () => {
+    const response = await POST(makeRequest(validBody({ oneTime: 'yes' })) as never);
+    expect(response.status).toBe(400);
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+});
+
 // ── Renewal (#1535) ───────────────────────────────────────────────────────────
 //
 // Expiry and revocation now destroy key material, so without an owner-initiated
