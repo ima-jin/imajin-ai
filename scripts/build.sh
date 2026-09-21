@@ -51,6 +51,7 @@ fi
 FAILED=()
 SUCCEEDED=()
 PORT_REAP_FAILED=false
+PORT_REAP_FAILURES=()
 
 echo "=== [$LABEL] Build started: $(date) ===" > "$REPORT"
 echo "Apps: ${APPS[*]}" >> "$REPORT"
@@ -192,33 +193,21 @@ EOF
   printf '%s' "$port"
 }
 
-# Space-separated PIDs pm2 currently manages, snapshotted once before the
-# restart loop (mirrors scripts/reap-orphans.sh). A listener on a managed
-# port whose PID isn't in this list isn't a process pm2 is about to restart —
-# i.e. it's an orphan.
-pm2_managed_pids() {
-  pm2 jlist 2>/dev/null | node -e '
-    const procs = JSON.parse(require("fs").readFileSync(0) || "[]");
-    const pids = procs
-      .map((p) => (p && p.pid) ? String(p.pid) : "")
-      .filter(Boolean);
-    console.log(pids.join(" "));
-  ' 2>/dev/null || echo ""
-}
-
-is_pm2_pid() {
-  local pid="$1" managed_pids="$2" managed
-  for managed in $managed_pids; do
-    [[ "$pid" = "$managed" ]] && return 0
-  done
-  return 1
-}
+# is_pm2_owned/pm2_managed_pids/pm2_has_name/ecosystem_has_app come from the
+# shared helper (also used by scripts/reap-orphans.sh) so the two never drift
+# again (#2237). is_pm2_owned walks the ancestor chain — not just an exact
+# pid match — since pm2 fork-mode tracks the wrapper process (e.g. `next
+# start`) while the port is actually held by a grandchild (e.g.
+# `next-server`, or tsx→node for corpus).
+# shellcheck source=scripts/lib/pm2-owned.sh
+source "$REPO_ROOT/scripts/lib/pm2-owned.sh"
 
 # Reap any listener on $port that pm2 doesn't own, then verify (short bounded
 # wait) that the port is actually free. Returns 1 without touching pm2 if a
-# non-pm2 process still holds the port afterwards.
+# non-pm2 process still holds the port afterwards. Expects the global
+# PM2_PIDS to already be populated via pm2_managed_pids.
 reap_orphan_port() {
-  local app="$1" port="$2" managed_pids="$3"
+  local app="$1" port="$2"
   local pid cmd listeners stray
 
   if ! command -v ss >/dev/null 2>&1; then
@@ -229,7 +218,7 @@ reap_orphan_port() {
   listeners="$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
   for pid in $listeners; do
     [[ -z "$pid" ]] && continue
-    is_pm2_pid "$pid" "$managed_pids" && continue
+    is_pm2_owned "$pid" && continue
     cmd="$(ps -o cmd= -p "$pid" 2>/dev/null || echo '?')"
     echo "⚠️  Orphan on :$port ($app) — pid $pid ($cmd) not owned by pm2. Reaping." | tee -a "$REPORT"
     kill "$pid" 2>/dev/null || true
@@ -244,7 +233,7 @@ reap_orphan_port() {
     listeners="$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
     for pid in $listeners; do
       [[ -z "$pid" ]] && continue
-      is_pm2_pid "$pid" "$managed_pids" || stray="$pid"
+      is_pm2_owned "$pid" || stray="$pid"
     done
     [[ -z "$stray" ]] && return 0
     sleep 0.5
@@ -271,9 +260,24 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
   for app in "${SUCCEEDED[@]}"; do
     name="$(pm2_name "$app")"
     port="$(service_port_for_app "$app")"
-    if [[ -n "$port" && "$port" != "0" ]] && ! reap_orphan_port "$app" "$port" "$PM2_PIDS"; then
+
+    # Daemon processes with no HTTP port (devPort/prodPort 0 or unset in the
+    # manifest, e.g. broker-agent — #1101) that pm2 doesn't already manage and
+    # that have no entry in this env's ecosystem config aren't ours to
+    # restart: they're either not deployed here, or run on another host.
+    # Skip them instead of letting `pm2 restart` fail and the cold-start
+    # fallback fail too, which produced a misleading ⚠️ on every build.
+    if [[ -z "$port" || "$port" = "0" ]] \
+       && ! pm2_has_name "$name" \
+       && ! ecosystem_has_app "$name" "$ECOSYSTEM_FILE"; then
+      echo "ℹ️  Skipping $name — no port configured and not managed by pm2 or $ECOSYSTEM_FILE here" | tee -a "$REPORT"
+      continue
+    fi
+
+    if [[ -n "$port" && "$port" != "0" ]] && ! reap_orphan_port "$app" "$port"; then
       RESTART_FAILED+=("$name")
       PORT_REAP_FAILED=true
+      PORT_REAP_FAILURES+=("${app}(${port})")
       continue
     fi
     if pm2 restart "$name" --update-env >> "$REPORT" 2>&1; then
@@ -284,10 +288,7 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
     # `pm2 start <file> --only <name>` exits 0 even when <name> matches nothing
     # in the file, so verify the process actually exists afterwards.
     if [[ -f "$ECOSYSTEM_FILE" ]] && pm2 start "$ECOSYSTEM_FILE" --only "$name" >> "$REPORT" 2>&1 \
-       && pm2 jlist 2>/dev/null | node -e '
-         const procs = JSON.parse(require("fs").readFileSync(0) || "[]");
-         process.exit(procs.some((p) => p && p.name === process.argv[1]) ? 0 : 1);
-       ' "$name"; then
+       && pm2_has_name "$name"; then
       echo "✅ $name started from ecosystem config" | tee -a "$REPORT"
     else
       echo "⚠️  Could not restart or start $name (not in pm2 and not in $ECOSYSTEM_FILE)" | tee -a "$REPORT"
@@ -305,6 +306,9 @@ echo "" >> "$REPORT"
 echo "=== [$LABEL] Build finished: $(date) ===" >> "$REPORT"
 echo "✅ Succeeded: ${SUCCEEDED[*]:-none}" | tee -a "$REPORT"
 echo "❌ Failed: ${FAILED[*]:-none}" | tee -a "$REPORT"
+if [[ "$PORT_REAP_FAILED" = true ]]; then
+  echo "❌ Port-reap failures: ${PORT_REAP_FAILURES[*]}" | tee -a "$REPORT"
+fi
 
 # Exit with error if anything failed, including apps skipped because an
 # orphaned process couldn't be cleared off their port (#2094).
