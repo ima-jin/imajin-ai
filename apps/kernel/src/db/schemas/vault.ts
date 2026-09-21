@@ -1,4 +1,4 @@
-import { pgSchema, text, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgSchema, text, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -48,6 +48,31 @@ export const vaultDelegationGrants = vaultSchema.table('vault_delegation_grants'
   // which made Tier 1 a one-way door and stopped Tier-0 and Tier-1 grants
   // coexisting. Nullable: rows written before #1521 fall back to the old rule.
   ownerEdPub: text('owner_ed_pub'),
+
+  // ── Remote human -> agent credential handoff (#2231) ──────────────────────
+  //
+  // These three columns are deliberately NOT part of `canonicalizeGrantPayload`'s
+  // signed fields: that canonical form is already load-bearing for every existing
+  // grant, and every unseal re-verifies `ownerSignature` against it — adding a key
+  // would change the canonical string and break signature verification for every
+  // grant signed before this migration. `purpose` and `oneTime` are therefore
+  // authorization-adjacent bookkeeping, not cryptographically bound scope: the
+  // actual access boundary remains (subject, grantedTo, field), unchanged by them.
+
+  // Free-form label naming what the grantee intends to use the secret for (e.g.
+  // 'gha-runner-registration'), so a grantee can enumerate its own grants by
+  // intent without ever seeing wrapped key material. Null for grants issued
+  // before this column existed, and for self-grants that don't need one.
+  purpose: text('purpose'),
+  // Single-use grants (e.g. a one-shot runner-registration token): the first
+  // successful GET of the sealed value via the agent-fetch route consumes the
+  // grant. Defaults false so every pre-existing and ordinary grant stays
+  // multi-read, matching prior behaviour exactly.
+  oneTime: boolean('one_time').notNull().default(false),
+  // Set the moment a `oneTime` grant is successfully fetched. A second fetch
+  // sees this populated and is refused with 410 Gone rather than re-reading the
+  // secret. Always null for a non-`oneTime` grant.
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
 }, (table) => ({
   // Primary lookup: node checks for its own active grants on a given field.
   grantedToFieldIdx: index('idx_vault_delegation_granted_to_field')
@@ -55,6 +80,10 @@ export const vaultDelegationGrants = vaultSchema.table('vault_delegation_grants'
   // Subject lookup: owner lists / revokes their own grants.
   subjectIdx: index('idx_vault_delegation_subject')
     .on(table.subject, table.status),
+  // Agent self-service lookup (#2231): a grantee enumerating its own grants,
+  // optionally narrowed by purpose, without ever selecting the wrapped key.
+  grantedToPurposeIdx: index('idx_vault_delegation_granted_to_purpose')
+    .on(table.grantedTo, table.purpose),
   // Expiry sweep: background cleanup of expired active grants.
   expiresIdx: index('idx_vault_delegation_expires')
     .on(table.expiresAt)

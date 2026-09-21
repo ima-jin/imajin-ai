@@ -36,6 +36,20 @@ interface GrantBody {
   keyId: string;
   ownerSignature: string; // Ed25519 sig over canonicalizeGrantPayload(...)
   expiresAt?: string | null;
+  /**
+   * Remote human -> agent credential handoff (#2231): a free-form label
+   * naming what the grantee intends to use the secret for (e.g.
+   * 'gha-runner-registration'), so it can later enumerate its own grants by
+   * intent via GET /api/vault/delegation/grants?purpose=. NOT part of the
+   * owner-signed canonical payload — see the schema docblock for why.
+   */
+  purpose?: string | null;
+  /**
+   * Single-use grant (#2231): the agent-fetch route consumes it on first
+   * successful read and refuses every read after with 410 Gone. Defaults to
+   * false, matching every pre-existing multi-read grant.
+   */
+  oneTime?: boolean;
 }
 
 /**
@@ -186,6 +200,22 @@ async function resolveRenewal(
 }
 
 /**
+ * Validate the optional #2231 metadata fields, returning an error message or
+ * null. Extracted so `POST` itself stays under the cognitive-complexity
+ * budget — this is pure input validation with no dependency on request state.
+ */
+function validateGrantMetadata(purpose: unknown, oneTime: unknown): string | null {
+  if (purpose !== undefined && purpose !== null &&
+      (typeof purpose !== 'string' || purpose.trim().length === 0 || purpose.length > 200)) {
+    return 'purpose must be a non-empty string of at most 200 characters';
+  }
+  if (oneTime !== undefined && typeof oneTime !== 'boolean') {
+    return 'oneTime must be a boolean';
+  }
+  return null;
+}
+
+/**
  * POST /api/vault/delegation/grant — accept a pre-signed delegation grant from
  * the owner agent (imajin-cli vault serve).
  *
@@ -228,12 +258,17 @@ export async function POST(request: NextRequest) {
   const {
     requestId, subject, grantedTo, field,
     ownerXPub, wrappedKey, wrappedNonce, keyId,
-    ownerSignature, expiresAt,
+    ownerSignature, expiresAt, purpose, oneTime,
   } = body;
 
   if (!subject || !grantedTo || !field || !ownerXPub ||
       !wrappedKey || !wrappedNonce || !keyId || !ownerSignature) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  const metadataError = validateGrantMetadata(purpose, oneTime);
+  if (metadataError) {
+    return NextResponse.json({ error: metadataError }, { status: 400 });
   }
 
   try {
@@ -337,6 +372,9 @@ export async function POST(request: NextRequest) {
       // Pin the verifier this signature was checked against, so the grant stays
       // verifiable if the Tier 1 env later changes.
       ownerEdPub,
+      // #2231 — agent-facing bookkeeping, not cryptographically signed scope.
+      purpose: purpose ?? null,
+      oneTime: oneTime ?? false,
     });
 
     // 6. Mark the grant request as fulfilled. A renewal has no request row to
