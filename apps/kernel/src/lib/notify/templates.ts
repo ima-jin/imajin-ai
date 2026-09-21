@@ -699,6 +699,124 @@ export const templates: NotifyTemplate[] = [
     },
     body: (data) => (typeof data.summary === 'string' ? data.summary : 'An operator approval is pending.'),
   },
+  // #2212 (child of #2206) — payment_request.* notify templates. One scope
+  // per lifecycle transition; `data.role` distinguishes issuer vs recipient
+  // copy on the two-sided transitions (paid/settled) so a single template
+  // can serve both `send()` calls the reactor makes for those events.
+  {
+    scope: 'pay:payment_request-issued',
+    urgency: 'normal',
+    title: (data) => {
+      const issuer = typeof data.issuerName === 'string' && data.issuerName ? data.issuerName : 'Someone';
+      // #1839 posture: a stub recipient's title/subject must never carry the
+      // amount pre-claim — only the in-app title uses this function, but it
+      // is kept amount-free for both cases for one consistent, simple rule.
+      return `${issuer} sent you a payment request`;
+    },
+    body: (data) => {
+      const issuer = typeof data.issuerName === 'string' && data.issuerName ? data.issuerName : 'Someone';
+      const amount = typeof data.totalFormatted === 'string' ? data.totalFormatted : undefined;
+      return amount ? `${issuer} is requesting ${amount}.` : `${issuer} sent you a payment request.`;
+    },
+    email: {
+      subject: (data) => {
+        const issuer = typeof data.issuerName === 'string' && data.issuerName ? data.issuerName : 'Someone';
+        return `${issuer} sent you a payment request`;
+      },
+      html: (data) => {
+        const issuer = escapeHtml(data.issuerName || 'Someone');
+        const amount = typeof data.totalFormatted === 'string' ? escapeHtml(data.totalFormatted) : undefined;
+        const body = amount
+          ? `<strong style="color:#ffffff;">${issuer}</strong> is requesting <strong style="color:#ffffff;">${amount}</strong>.`
+          : `<strong style="color:#ffffff;">${issuer}</strong> sent you a payment request.`;
+        return simpleEmailHtml('New payment request', body);
+      },
+    },
+  },
+  {
+    scope: 'pay:payment_request-paid',
+    urgency: 'normal',
+    title: (data) => (data.role === 'issuer' ? 'Payment received' : 'Payment sent'),
+    body: (data) => {
+      const amount = typeof data.totalFormatted === 'string' ? data.totalFormatted : 'a payment';
+      return data.role === 'issuer'
+        ? `You received ${amount} for a payment request.`
+        : `Your payment of ${amount} was received.`;
+    },
+    email: {
+      subject: (data) => (data.role === 'issuer' ? 'Payment received' : 'Payment sent — receipt'),
+      html: (data) => {
+        const amount = escapeHtml(data.totalFormatted || 'a payment');
+        const body = data.role === 'issuer'
+          ? `You received <strong style="color:#ffffff;">${amount}</strong> for a payment request.`
+          : `Your payment of <strong style="color:#ffffff;">${amount}</strong> was received.`;
+        return simpleEmailHtml(data.role === 'issuer' ? 'Payment received' : 'Payment sent', body);
+      },
+    },
+  },
+  {
+    scope: 'pay:payment_request-settled',
+    urgency: 'normal',
+    title: (_data) => 'Payment request settled',
+    // `method` states who asserted the settlement (#2209): the issuer
+    // themself for 'manual', the platform/Stripe for 'stripe'/'mjnx' — the
+    // issuer's own copy must not claim credit for a settlement they didn't
+    // assert.
+    body: (data) => {
+      const amount = typeof data.totalFormatted === 'string' ? data.totalFormatted : 'This payment request';
+      if (data.method === 'manual') {
+        return data.role === 'issuer'
+          ? `You marked ${amount} settled.`
+          : `${amount} was settled — the issuer marked this settled.`;
+      }
+      return data.role === 'issuer'
+        ? `${amount} was settled automatically — confirmed by the platform.`
+        : `${amount} was settled — this was confirmed automatically.`;
+    },
+    email: {
+      subject: (_data) => 'Payment request settled',
+      html: (data) => {
+        const amount = escapeHtml(data.totalFormatted || 'This payment request');
+        const body = data.method === 'manual'
+          ? (data.role === 'issuer'
+            ? `You marked <strong style="color:#ffffff;">${amount}</strong> settled.`
+            : `<strong style="color:#ffffff;">${amount}</strong> was settled — the issuer marked this settled.`)
+          : (data.role === 'issuer'
+            ? `<strong style="color:#ffffff;">${amount}</strong> was settled automatically — confirmed by the platform.`
+            : `<strong style="color:#ffffff;">${amount}</strong> was settled — this was confirmed automatically (Stripe).`);
+        return simpleEmailHtml('Payment request settled', body);
+      },
+    },
+  },
+  {
+    scope: 'pay:payment_request-voided',
+    urgency: 'normal',
+    title: (_data) => 'Payment request voided',
+    body: (data) => {
+      const amount = typeof data.totalFormatted === 'string' ? data.totalFormatted : 'A payment request';
+      return `${amount} was voided by the issuer.`;
+    },
+    email: {
+      subject: (_data) => 'Payment request voided',
+      html: (data) => {
+        const amount = escapeHtml(data.totalFormatted || 'A payment request');
+        return simpleEmailHtml('Payment request voided', `<strong style="color:#ffffff;">${amount}</strong> was voided by the issuer.`);
+      },
+    },
+  },
+  {
+    scope: 'pay:payment_request-claimed',
+    urgency: 'low',
+    title: (_data) => 'Your counterparty claimed their identity',
+    body: (_data) => 'The recipient of your payment request claimed their identity and can now be reached directly.',
+    email: {
+      subject: (_data) => 'Your counterparty claimed their identity',
+      html: (_data) => simpleEmailHtml(
+        'Recipient claimed their identity',
+        'The recipient of your payment request claimed their identity and can now be reached directly.'
+      ),
+    },
+  },
 ];
 
 export function getTemplate(scope: string): NotifyTemplate | undefined {
