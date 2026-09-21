@@ -1652,8 +1652,10 @@ export interface BusEventMap {
    *
    * issuer = subject = the issuer DID for `issued`/`voided` (the business
    * asserting/withdrawing the receivable); for `settled`, issuer is
-   * whoever asserted the settlement (the issuer, for `method: 'manual'`)
-   * and subject stays the payment_request's issuer DID.
+   * whoever asserted the settlement — the issuer DID for `method:
+   * 'manual'`, or the platform node DID for `method: 'stripe'` (#2209 —
+   * kernel-signed, since no human asserted it, the webhook did) — and
+   * subject is the recipient DID when known, else the issuer DID.
    *
    * No `kernel.bus_chain_configs` rows are registered for these types yet
    * (#2212, out of scope here) — `publish()` still runs the #1884
@@ -1674,10 +1676,9 @@ export interface BusEventMap {
     context_type: 'payment_request';
   };
   /**
-   * Reserved for #2209 (checkout <-> payment_request linkage): fired once
-   * the on-platform Stripe webhook marks a payment_request `paid`. Not
-   * published by anything in #2207/#2208 — declared now so #2209 has a
-   * stable type to publish against without touching this map again.
+   * Fired once the on-platform Stripe webhook (#2209) marks a
+   * payment_request `paid` — see `settlePaymentRequestFromStripeCheckout`
+   * (`apps/kernel/src/lib/pay/payment-requests/checkout.ts`).
    */
   'payment_request.paid': {
     paymentRequestId: string;

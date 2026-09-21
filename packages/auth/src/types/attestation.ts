@@ -156,12 +156,15 @@ export const ATTESTATION_TYPES = [
   // apps/kernel/src/lib/pay/reconciliation.ts.
   'pay.reconciliation.discrepancy',
 
-  // pay.payment_request lifecycle facts (#2206/#2208) — an invoice / money
-  // request as a first-class receivable on the business DID. Both are
-  // minted signed by the issuer DID (never the platform node identity),
-  // binding the request's content_hash, never bytes — see
-  // apps/kernel/src/lib/pay/payment-requests/attestations.ts. System-class
-  // in the sense that they are always unilateral/mechanical (see
+  // pay.payment_request lifecycle facts (#2206/#2208/#2209) — an invoice /
+  // money request as a first-class receivable on the business DID.
+  // `issued` and manual `settled` are minted signed by the issuer DID
+  // (never the platform node identity); a `settled` for an on-platform
+  // Stripe settlement (#2209) is kernel-signed instead (no human asserted
+  // it, the webhook did) — see
+  // apps/kernel/src/lib/pay/payment-requests/attestations.ts. Both bind
+  // the request's content_hash, never bytes. System-class in the sense
+  // that they are always unilateral/mechanical (see
   // MECHANICAL_ATTESTATION_TYPES below): never bilateral, never carrying
   // an author_jws, never awaiting a countersignature.
   'payment_request.issued',
