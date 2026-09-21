@@ -8,7 +8,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: [self-hosted, imajin-server]
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     defaults:
       run:
