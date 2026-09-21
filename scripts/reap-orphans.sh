@@ -54,6 +54,23 @@ is_pm2_pid() {
   return 1
 }
 
+# A listener is pm2-owned if it OR any ancestor (up to 6 levels) is a pm2 pid.
+# Next.js apps run as `next start` (the pid pm2 tracks) which forks a
+# `next-server` child that actually holds the port — matching only the exact
+# pid misreads every healthy Next app as an orphan (2026-09-21 dev deploy:
+# reaped 6 children, pm2 respawned them, script then "refused to restart").
+is_pm2_owned() {
+  local pid="$1" depth=0
+  while [[ -n "$pid" && "$pid" != "0" && "$pid" != "1" && "$depth" -lt 6 ]]; do
+    if is_pm2_pid "$pid"; then
+      return 0
+    fi
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    depth=$((depth + 1))
+  done
+  return 1
+}
+
 KILLED=0
 for port in "${PORTS[@]}"; do
   # PIDs listening on this port (LISTEN only). ss avoids lsof dependency.
@@ -62,7 +79,7 @@ for port in "${PORTS[@]}"; do
 
   for pid in $LISTENERS; do
     [[ -z "$pid" ]] && continue
-    if is_pm2_pid "$pid"; then
+    if is_pm2_owned "$pid"; then
       continue
     fi
     CMD="$(ps -o cmd= -p "$pid" 2>/dev/null || echo '?')"
