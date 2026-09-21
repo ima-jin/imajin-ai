@@ -15,12 +15,21 @@ jobs:
         working-directory: /home/jin/dev/imajin-ai
     env:
       PATH: /home/jin/.nvm/versions/node/v22.22.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      ECOSYSTEM_FILE: /home/jin/dev/ecosystem.config.js
 
     steps:
       - name: Pull latest
         run: |
           git fetch origin main
           git reset --hard origin/main
+
+      - name: Sync pm2 ecosystem config
+        # Mirrors deploy-prod. Without this ~/dev/ecosystem.config.js is a
+        # hand-copied snapshot (last touched 2026-07-16) — build.sh cold-starts
+        # new services from it, so dev-corpus never existed on the box.
+        run: |
+          cp deploy/ecosystem.dev.config.js "$ECOSYSTEM_FILE"
+          echo "✅ Synced ecosystem config to $ECOSYSTEM_FILE"
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile --ignore-scripts

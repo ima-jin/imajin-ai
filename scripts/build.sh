@@ -281,7 +281,13 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
     fi
     # pm2 doesn't know this process yet — try to cold-start from ecosystem config.
     echo "ℹ️  $name not running — attempting cold start from ecosystem config" | tee -a "$REPORT"
-    if [[ -f "$ECOSYSTEM_FILE" ]] && pm2 start "$ECOSYSTEM_FILE" --only "$name" >> "$REPORT" 2>&1; then
+    # `pm2 start <file> --only <name>` exits 0 even when <name> matches nothing
+    # in the file, so verify the process actually exists afterwards.
+    if [[ -f "$ECOSYSTEM_FILE" ]] && pm2 start "$ECOSYSTEM_FILE" --only "$name" >> "$REPORT" 2>&1 \
+       && pm2 jlist 2>/dev/null | node -e '
+         const procs = JSON.parse(require("fs").readFileSync(0) || "[]");
+         process.exit(procs.some((p) => p && p.name === process.argv[1]) ? 0 : 1);
+       ' "$name"; then
       echo "✅ $name started from ecosystem config" | tee -a "$REPORT"
     else
       echo "⚠️  Could not restart or start $name (not in pm2 and not in $ECOSYSTEM_FILE)" | tee -a "$REPORT"
