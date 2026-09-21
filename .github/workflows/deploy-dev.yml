@@ -6,6 +6,16 @@ on:
     types: [completed]
     branches: [main]
 
+# One dev deploy at a time. Two merges in quick succession produce two CI runs
+# and therefore two Deploy to Dev runs; without this they run concurrently in
+# the same /home/jin/dev/imajin-ai checkout (two pnpm installs + builds racing).
+# cancel-in-progress stays false so a running deploy is never killed mid-pm2
+# restart; GitHub still collapses older *pending* runs in the group, so the
+# duplicate simply never starts. Mirrors deploy-prod's `concurrency: deploy-prod`.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: [self-hosted, imajin]
