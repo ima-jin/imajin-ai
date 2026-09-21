@@ -51,6 +51,7 @@ import { createHash } from 'node:crypto';
 import type { Identity } from '@imajin/auth';
 import { canonicalize } from '@imajin/auth';
 import { getNodeSelfInfo } from '@/src/lib/kernel/node-identity';
+import { EXEC_COMMAND_KIND, validateExecCommandDetail } from './exec-command-approvals';
 
 export const OPERATOR_APPROVAL_REQUESTED_SCOPE = 'operator.approval.requested';
 
@@ -354,6 +355,16 @@ export function validateApprovalRequestedPayload(data: Record<string, unknown>):
 
   const detailResult = validateDetail(data.detail);
   if (!detailResult.ok) return detailResult;
+
+  // #2221: exec.command carries a fixed, security-relevant detail shape
+  // (verbatim command + who/where/until-when) — validated on top of the
+  // generic bounds check above, same enforcement point every other kind's
+  // detail skips today (only exec.command needs it: the operator is
+  // deciding whether to let a real command run on a real host).
+  if (sourceKind.kind === EXEC_COMMAND_KIND) {
+    const execDetailResult = validateExecCommandDetail(detailResult.detail);
+    if (!execDetailResult.ok) return execDetailResult;
+  }
 
   const normalizedKeysTouched = (keysTouched as string[] | undefined) ?? [];
   const isOpenVocabularyRequest = data.source !== undefined || detailResult.detail !== null;

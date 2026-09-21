@@ -71,6 +71,18 @@ components:
             reason: { type: string }
             operatorSignature:
               $ref: "#/components/schemas/OperatorCountersignature"
+        outcome:
+          type: object
+          nullable: true
+          description: >-
+            Post-exec outcome follow-up (#2221, `gateway-exec:command` only)
+            — null until the bridge reports the gateway's exec-finished
+            event back via the internal `.../operator-approvals/outcome`
+            webhook.
+          properties:
+            exitCode: { type: integer }
+            durationMs: { type: integer }
+            outputHash: { type: string }
         appliedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
