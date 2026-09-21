@@ -27,6 +27,7 @@ pm2_managed_pids() {
       .filter(Boolean);
     console.log(pids.join(" "));
   ' 2>/dev/null || echo ""
+  return 0
 }
 
 # Exact-match test against the global PM2_PIDS list (set by the caller via
@@ -57,16 +58,18 @@ is_pm2_owned() {
 
 # Does pm2 currently know a process named $1 (regardless of pid)?
 pm2_has_name() {
-  local name="$1"
+  local name="$1" status
   pm2 jlist 2>/dev/null | node -e '
     const procs = JSON.parse(require("fs").readFileSync(0) || "[]");
     process.exit(procs.some((p) => p && p.name === process.argv[1]) ? 0 : 1);
   ' "$name" 2>/dev/null
+  status=$?
+  return "$status"
 }
 
 # Does the ecosystem config file at $2 declare an app named $1?
 ecosystem_has_app() {
-  local name="$1" file="$2"
+  local name="$1" file="$2" status
   [[ -f "$file" ]] || return 1
   node -e '
     const path = process.argv[1];
@@ -80,4 +83,6 @@ ecosystem_has_app() {
     }
     process.exit(Array.isArray(apps) && apps.some((a) => a && a.name === name) ? 0 : 1);
   ' "$file" "$name" 2>/dev/null
+  status=$?
+  return "$status"
 }
