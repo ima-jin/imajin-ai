@@ -90,6 +90,15 @@ vi.mock('@/src/lib/pay/stripe', () => ({
   }),
 }));
 
+// #2209: the route now also imports `payment-requests/checkout.ts` (the
+// payment_request-linked branch, exercised in `payment-request-checkout.test.ts`
+// instead), which transitively pulls in `node-identity.ts` — mocked here so
+// its module-scope `getClient()` call never runs against a real (absent in
+// tests) DATABASE_URL.
+vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
+  settlePaymentRequestFromStripeCheckout: vi.fn(),
+}));
+
 // #1073: settle-core.ts's verifySettlementSignature is unmocked (real module,
 // same as the rest of this black-box suite) and always resolves
 // `{ signatureVerified: false }` for these fixtures, since none carry a

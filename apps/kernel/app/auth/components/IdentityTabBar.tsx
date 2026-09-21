@@ -7,6 +7,7 @@ interface Props {
   showSettings: boolean;
   showMembers: boolean;
   showSecurity: boolean;
+  showMoney: boolean;
   enabledServices: string[];
   landingService?: string | null;
 }
@@ -26,6 +27,7 @@ const ALL_TABS: Tab[] = [
   { label: 'Developer', href: '/auth/developer/apps', exact: false },
   { label: 'Connected apps', href: '/auth/apps', exact: false },
   { label: 'Connections', href: '/auth/connectors', exact: false },
+  { label: 'Money', href: '/auth/money', exact: false },
   { label: 'Corpus', href: '/auth/corpus', exact: false },
   { label: 'Security', href: '/auth/security', exact: false },
   { label: 'Settings', href: '/auth/settings', exact: false },
@@ -68,6 +70,7 @@ export default function IdentityTabBar({
   showSettings,
   showMembers,
   showSecurity,
+  showMoney,
   enabledServices,
 }: Readonly<Props>) {
   const pathname = usePathname();
@@ -76,6 +79,7 @@ export default function IdentityTabBar({
     if (tab.href === '/auth/security') return showSecurity;
     if (tab.href === '/auth/settings') return showSettings;
     if (tab.href === '/auth/members') return showMembers;
+    if (tab.href === '/auth/money') return showMoney;
     return true;
   });
 

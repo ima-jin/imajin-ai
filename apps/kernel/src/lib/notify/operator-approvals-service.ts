@@ -23,6 +23,13 @@ import {
   type OperatorCountersignature,
 } from './operator-approvals';
 import { verifyOperatorCountersignature } from './operator-countersign';
+import {
+  EXEC_COMMAND_KIND,
+  asExecCommandDetail,
+  isExecCommandExpired,
+  validateExecCommandDecisionMode,
+  type ExecCommandOutcome,
+} from './exec-command-approvals';
 
 const log = createLogger('kernel:operator-approvals');
 
@@ -41,6 +48,8 @@ export interface OperatorApprovalCard {
   contentHash: string | null;
   status: OperatorApprovalRow['status'];
   decision: OperatorApprovalDecidedPayload | null;
+  /** Post-exec outcome follow-up (#2221, exec.command only) — null until the bridge reports one. */
+  outcome: ExecCommandOutcome | null;
   appliedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -62,6 +71,7 @@ function toCard(row: OperatorApprovalRow): OperatorApprovalCard {
     contentHash: effectiveContentHash(row),
     status: row.status,
     decision: decisionRecord?.payload ?? null,
+    outcome: (row.outcome as ExecCommandOutcome | null) ?? null,
     appliedAt: row.appliedAt ? row.appliedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -176,6 +186,32 @@ function nextStatusFor(decision: ApprovalDecision): OperatorApprovalRow['status'
 }
 
 /**
+ * exec.command-only gate (#2221): enforces allow-once/deny-only mode
+ * (rejects e.g. 'allow-always' with 400) and refuses a decision once the
+ * request's own `detail.expiresAt` has passed (409) — before any state
+ * mutation or signature, same fail-closed posture as the status check
+ * above. A no-op for every other kind.
+ */
+function checkExecCommandGate(
+  row: OperatorApprovalRow,
+  decision: ApprovalDecision,
+  mode: string | undefined,
+): { ok: true } | { ok: false; error: string; status: number } {
+  if (row.kind !== EXEC_COMMAND_KIND) return { ok: true };
+
+  const modeResult = validateExecCommandDecisionMode(decision, mode);
+  if (!modeResult.ok) return { ok: false, error: modeResult.error, status: 400 };
+  if (decision === 'withdrawn') return { ok: true };
+
+  const execDetail = asExecCommandDetail(row.detail as Record<string, unknown> | null);
+  if (execDetail && isExecCommandExpired(execDetail)) {
+    return { ok: false, error: 'Approval has expired and can no longer be decided', status: 409 };
+  }
+
+  return { ok: true };
+}
+
+/**
  * Record the operator's decision: sign a kernel-witnessed attestation,
  * advance the proposal's state machine, and publish `operator.approval.decided`
  * for the plugin to consume. Fail-closed: a proposal not in the state this
@@ -203,6 +239,11 @@ export async function decideOperatorApproval(
       error: `Proposal is not awaiting this decision (status: ${row.status})`,
       status: 409,
     };
+  }
+
+  const execGate = checkExecCommandGate(row, decision, mode);
+  if (!execGate.ok) {
+    return { ok: false, error: execGate.error, status: execGate.status };
   }
 
   // #2082: once the per-node flag is on, a decision with no operator
@@ -292,6 +333,35 @@ export async function markApplied(proposalId: string): Promise<{ ok: boolean }> 
     .where(and(eq(operatorApprovals.proposalId, proposalId), eq(operatorApprovals.status, 'approved')));
 
   log.info({ proposalId }, 'operator approval applied');
+  return { ok: true };
+}
+
+/**
+ * Attach a post-exec outcome (#2221 scope item 4) reported by the
+ * gateway-exec bridge once OpenClaw finishes running an allow-once'd
+ * command. Deliberately minimal, same posture as `markApplied`: no
+ * signature, no new bus event, just data the card displays. Scoped to
+ * exec.command — no other kind has "the command finished running"
+ * semantics today. Idempotent: re-posting overwrites with the latest
+ * report rather than erroring, since the bridge's own retry contract
+ * (mirroring the apply-confirmation hook) may resend.
+ */
+export async function attachApprovalOutcome(
+  proposalId: string,
+  outcome: ExecCommandOutcome,
+): Promise<{ ok: boolean; error?: string }> {
+  const row = await loadApproval(proposalId);
+  if (!row) return { ok: false, error: 'Proposal not found' };
+  if (row.kind !== EXEC_COMMAND_KIND) {
+    return { ok: false, error: 'Outcome attachment is only supported for exec.command approvals' };
+  }
+
+  await db
+    .update(operatorApprovals)
+    .set({ outcome: outcome as unknown as Record<string, unknown>, updatedAt: new Date() })
+    .where(eq(operatorApprovals.proposalId, proposalId));
+
+  log.info({ proposalId, exitCode: outcome.exitCode }, 'exec.command outcome attached');
   return { ok: true };
 }
 

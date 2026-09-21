@@ -39,6 +39,10 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
   let showSettings = false;
   let showMembers = false;
   const showSecurity = effectiveIdentity?.scope === 'actor';
+  // Money (#2211) is the business-DID receivable surface — not a
+  // toggleable vertical service (unlike enabledServices below), so it's
+  // gated on scope alone, the same way Security is gated on 'actor'.
+  const showMoney = effectiveIdentity?.scope === 'business';
 
   // Query forest_config for enabled services and landing service
   let enabledServices: string[] = [];
@@ -95,6 +99,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
       showSettings={showSettings}
       showMembers={showMembers}
       showSecurity={showSecurity}
+      showMoney={showMoney}
       enabledServices={enabledServices}
       landingService={landingService}
     />

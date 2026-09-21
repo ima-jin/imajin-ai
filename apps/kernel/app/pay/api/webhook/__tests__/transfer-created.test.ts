@@ -21,6 +21,14 @@ vi.mock('@/src/lib/pay/stripe', () => ({
   getStripe: () => ({ webhooks: { constructEvent: state.constructEventMock } }),
 }));
 
+// #2209: the route now also imports `payment-requests/checkout.ts`, which
+// transitively pulls in `node-identity.ts` — mocked here so its
+// module-scope `getClient()` call never runs against a real (absent in
+// tests) DATABASE_URL.
+vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
+  settlePaymentRequestFromStripeCheckout: vi.fn(),
+}));
+
 vi.mock('@/src/lib/pay/withdraw-intent', () => ({
   confirmWithdrawalFromRailEvent: state.confirmWithdrawalFromRailEventMock,
 }));
