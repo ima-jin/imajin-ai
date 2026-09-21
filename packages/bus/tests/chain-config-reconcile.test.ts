@@ -74,6 +74,14 @@ describe('chain config DEFAULTS reconcile (#1873, #1874)', () => {
     expect(types).toEqual(['audit-log']);
     expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
   });
+
+  it('vault.delegation.acked routes to audit-log (#2235)', async () => {
+    const cfg = await getChainConfig('vault.delegation.acked', 'default');
+    const types = cfg.reactors.map((r) => r.type);
+
+    expect(types).toEqual(['audit-log']);
+    expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
+  });
 });
 
 describe('broker reactor registry (#1874)', () => {

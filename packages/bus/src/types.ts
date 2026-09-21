@@ -681,6 +681,32 @@ export interface BusEventMap {
     context_type: 'vault.delegation';
   };
   /**
+   * Emitted on every attempt (successful or refused) by an authenticated
+   * agent DID to ack a vault_delegation_grants row it previously fetched
+   * (#2235 agent ack — sign that a fetched grant was *used*, follow-up to
+   * #2231). `outcome` is always the ack outcome the caller asked to record,
+   * even on a refusal (e.g. a 409 ack_conflict still names the outcome that
+   * conflicted). `refused` is present only on a refusal and mirrors the
+   * grant-fetch/ack route's outcome code. `ownerDid`/`purpose` are null when
+   * the grant itself could not be resolved (not_found/not_grantee), same
+   * minimal-detail-on-refusal posture as vault.delegation.fetched. Carries
+   * no secret material, no `note`, and no `evidence.ref` — only the
+   * evidence *kind* label — so it is safe for the generic `audit-log`
+   * reactor (#1140) to persist verbatim.
+   */
+  'vault.delegation.acked': {
+    grantId: string;
+    granteeDid: string;
+    ownerDid: string | null;
+    purpose: string | null;
+    outcome: 'used' | 'failed' | 'discarded';
+    evidenceKind: string | null;
+    ackedAt: string | null;
+    refused: 'not_found' | 'not_grantee' | 'not_fetched' | 'ack_conflict' | 'error' | null;
+    context_id: string;
+    context_type: 'vault.delegation';
+  };
+  /**
    * Emitted by sealAndStoreV2 in Tier 1 mode when the vault entry is written
    * but no delegation grant has been created yet (#1403).  The external owner
    * agent (imajin-cli vault serve) receives this event, recovers the field key

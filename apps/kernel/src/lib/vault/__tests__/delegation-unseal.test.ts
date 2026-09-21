@@ -377,4 +377,25 @@ describe('canonicalizeGrantPayload', () => {
         expect(canonicalizeGrantPayload({ ...base, wrappedKey: 'CCCC' })).not.toBe(original);
         expect(canonicalizeGrantPayload({ ...base, grantedTo: 'did:imajin:zzz' })).not.toBe(original);
     });
+
+    // #2235: acked_at/ack_outcome/ack_evidence (and #2231's own purpose/
+    // oneTime/consumedAt, plus #2235's last_fetched_at) are deliberately NOT
+    // part of the owner-signed canonical form — see the migration 0149 /
+    // schema docblocks. canonicalizeGrantPayload only ever reads its 8 named
+    // fields, so a grant row carrying every one of these bookkeeping columns
+    // must canonicalize identically to one that doesn't.
+    it('ignores #2231/#2235 bookkeeping fields (purpose/oneTime/consumedAt/lastFetchedAt/ackedAt/ackOutcome/ackEvidence)', () => {
+        const withBookkeepingFields = {
+            ...base,
+            purpose: 'gha-runner-registration',
+            oneTime: true,
+            consumedAt: new Date('2025-01-01T00:00:00Z'),
+            lastFetchedAt: new Date('2025-01-01T00:00:00Z'),
+            ackedAt: new Date('2025-01-02T00:00:00Z'),
+            ackOutcome: 'used',
+            ackEvidence: { kind: 'gha-runner', ref: 'imajin-gx10' },
+        };
+
+        expect(canonicalizeGrantPayload(withBookkeepingFields)).toBe(canonicalizeGrantPayload(base));
+    });
 });
