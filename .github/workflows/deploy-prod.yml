@@ -34,7 +34,10 @@ jobs:
     steps:
       - name: Pull latest
         run: |
-          git fetch origin --tags
+          # --prune/--prune-tags: stale remote-tracking refs (e.g. a deleted
+          # `docs` branch) block fetching a new nested branch like `docs/foo`
+          # with a D/F ref conflict (see #2239).
+          git fetch --prune --prune-tags origin --tags
           git reset --hard ${{ github.event.inputs.ref || github.ref_name }}
 
       - name: Sync pm2 ecosystem config
