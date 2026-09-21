@@ -533,6 +533,29 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'attestation', config: { attestationType: 'usage.rollup' }, await: true, enabled: true },
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #2212 (child of #2206) — payment_request.* lifecycle notify chains.
+  // `payment-request-notify` reads the `pay.payment_request` row itself
+  // (issuer/recipient DIDs, stub-vs-DID branching, amount) rather than a
+  // config-shaped `notify` entry — see the reactor's header comment for why
+  // a dedicated reactor type was needed. `recipient_claimed` is seeded here
+  // even though its publisher ships on a sibling branch (#2210/#2214) not
+  // yet merged as of this file — the chain is additive and inert until that
+  // event actually fires.
+  'payment_request.issued': [
+    { type: 'payment-request-notify', config: {}, enabled: true },
+  ],
+  'payment_request.paid': [
+    { type: 'payment-request-notify', config: {}, enabled: true },
+  ],
+  'payment_request.settled': [
+    { type: 'payment-request-notify', config: {}, enabled: true },
+  ],
+  'payment_request.voided': [
+    { type: 'payment-request-notify', config: {}, enabled: true },
+  ],
+  'payment_request.recipient_claimed': [
+    { type: 'payment-request-notify', config: {}, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------

@@ -26,7 +26,8 @@
     "@imajin/emit": "workspace:*",
     "@imajin/notify": "workspace:*",
     "@imajin/db": "workspace:*",
-    "@imajin/fair": "workspace:*"
+    "@imajin/fair": "workspace:*",
+    "@imajin/money": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5",
