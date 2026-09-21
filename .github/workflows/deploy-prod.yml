@@ -10,9 +10,18 @@ on:
         required: false
         default: 'main'
 
+# Prod deploys are gated by the GitHub Environment `production` (required
+# reviewer: repo admin). Anyone with write access can dispatch; the job holds
+# until a reviewer approves the pending deployment — from anywhere, no ssh.
+# The run log is the record of what was deployed, by whom, approved by whom.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: self-hosted
+    environment: production
     defaults:
       run:
         working-directory: /home/jin/prod/imajin-ai
