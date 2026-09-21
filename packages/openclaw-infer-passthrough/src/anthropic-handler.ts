@@ -40,6 +40,8 @@ export interface IncomingAnthropicRequest {
   bodyText: string;
   sessionId?: string;
   turnId?: string;
+  /** OpenClaw's Warp run id, when this session was spawned from one (imajin-ai#2204). */
+  warpRunId?: string;
   anthropicVersion?: string;
   anthropicBeta?: string;
 }
@@ -74,7 +76,13 @@ export async function handleAnthropicRequest(
   }
 
   const path = kernelPath(req.endpoint);
-  const headers = { sessionId: req.sessionId, turnId: req.turnId, anthropicVersion: req.anthropicVersion, anthropicBeta: req.anthropicBeta };
+  const headers = {
+    sessionId: req.sessionId,
+    turnId: req.turnId,
+    warpRunId: req.warpRunId,
+    anthropicVersion: req.anthropicVersion,
+    anthropicBeta: req.anthropicBeta,
+  };
 
   return dispatchWithBreakGlass(
     { route, getTokenProvider: deps.getTokenProvider, resolveDirectApiKey: deps.resolveDirectApiKey, health: deps.health, log: deps.log },

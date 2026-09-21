@@ -175,6 +175,63 @@ components:
         lines:
           type: array
           items: { $ref: "#/components/schemas/DraftReceiptLine" }
+    AuditChainTransaction:
+      type: object
+      nullable: true
+      description: "The pay.transactions row this usage row's spend was recorded under, or null when no cost was computed (e.g. typesafe-decide)."
+      properties:
+        id: { type: string, description: "tx_xxx" }
+        amount: { type: string }
+        currency: { type: string }
+        status: { type: string }
+        toDid: { type: string }
+        createdAt: { type: string, format: date-time, nullable: true }
+    AuditChainAttestation:
+      type: object
+      nullable: true
+      description: "The signed usage.incurred attestation minted for this row, or null if none was found (e.g. attestation forwarding was down at write time)."
+      properties:
+        id: { type: string, description: "att_xxx" }
+        issuerDid: { type: string }
+        payload: { type: object, description: "Verbatim signed payload — carries the same sessionId/turnId/externalId/transactionId/agentDid as the row (#2204)." }
+        signature: { type: string }
+        cid: { type: string, nullable: true }
+        issuedAt: { type: string, format: date-time }
+    AuditChainUsageRow:
+      type: object
+      properties:
+        id: { type: string, description: "usage_xxx" }
+        source: { type: string, description: "'inference-passthrough' | 'typesafe-decide' | ..." }
+        resource: { type: string }
+        provider: { type: string }
+        connectorId: { type: string, nullable: true }
+        model: { type: string }
+        tokensIn: { type: integer, nullable: true }
+        tokensOut: { type: integer, nullable: true }
+        costUsd: { type: string, nullable: true }
+        quantity: { type: string, nullable: true }
+        unit: { type: string, nullable: true }
+        status: { type: string, nullable: true, description: "'error' for a failed upstream attempt; null otherwise" }
+        agentDid: { type: string, nullable: true }
+        externalId: { type: string, nullable: true, description: "Upstream request id — x-typesafe-request-id, or the OpenAI/xAI response id" }
+        createdAt: { type: string, format: date-time }
+        transaction: { $ref: "#/components/schemas/AuditChainTransaction" }
+        attestation: { $ref: "#/components/schemas/AuditChainAttestation" }
+    AuditChainTurn:
+      type: object
+      properties:
+        turnId: { type: string, nullable: true }
+        usage:
+          type: array
+          items: { $ref: "#/components/schemas/AuditChainUsageRow" }
+    AuditSessionChain:
+      type: object
+      properties:
+        sessionId: { type: string }
+        principalDid: { type: string }
+        turns:
+          type: array
+          items: { $ref: "#/components/schemas/AuditChainTurn" }
 
 paths:
   /api/summary:
@@ -439,6 +496,58 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "502":
           description: Extraction failed (model call error or unparseable output)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/audit/sessions/{sessionId}:
+    get:
+      tags: [usage]
+      operationId: getAuditSessionChain
+      summary: The auditor chain view for one OpenClaw session (#2204)
+      description: |
+        Returns every `usage.incurred` row for `sessionId`, grouped by turn
+        (oldest turn first, oldest row first within a turn), each with its
+        linked `pay.transactions` settlement row and signed `usage.incurred`
+        attestation inlined — session -> turn -> usage row -> transaction ->
+        attestation -> upstream external id, in one response.
+
+        Auth: the caller must be the session's own principal (`usage.incurred
+        .principal_did`), or hold an active `usage:read` delegation grant
+        (packages/auth/src/grant-scopes.ts, #1882) issued by that principal.
+        Every other caller gets 403.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string }
+          description: "The OpenClaw session key (X-Imajin-Session / legacy X-Session-Id), URL-encoded"
+      responses:
+        "200":
+          description: The session's chain
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditSessionChain" }
+        "400":
+          description: sessionId is required
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Forbidden — not the session owner and no active usage:read grant from them
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No usage.incurred rows found for this session
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

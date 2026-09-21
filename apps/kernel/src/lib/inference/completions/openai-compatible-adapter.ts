@@ -180,6 +180,13 @@ interface OpenAiCompatibleUsage {
   cost?: number;
 }
 
+/** The subset of an OpenAI-compatible response/chunk this adapter reads for metering + auditing (#2202/#2204). */
+interface OpenAiCompatibleMeterable {
+  /** The upstream request/completion id — identical on every SSE chunk of one call. Persisted as `usage.incurred.external_id`. */
+  id?: string;
+  usage?: OpenAiCompatibleUsage;
+}
+
 /**
  * Parse a non-streaming JSON response body for `usage` and write the
  * usage.incurred row. Never throws: a body this adapter does not
@@ -193,9 +200,9 @@ interface OpenAiCompatibleUsage {
  * null-cost "success" row — see `recordInferenceUsage`'s `status` doc.
  */
 async function recordOpenAiCompatibleUsage(rawBody: string, brain: ResolvedBrain, meta: CompletionsRequestMetadata, upstreamOk: boolean): Promise<void> {
-  let usage: OpenAiCompatibleUsage | undefined;
+  let parsed: OpenAiCompatibleMeterable | undefined;
   try {
-    usage = (JSON.parse(rawBody) as { usage?: OpenAiCompatibleUsage }).usage;
+    parsed = JSON.parse(rawBody) as OpenAiCompatibleMeterable;
   } catch {
     // Not JSON (or not an object) — nothing to meter from, record the call anyway.
   }
@@ -204,18 +211,56 @@ async function recordOpenAiCompatibleUsage(rawBody: string, brain: ResolvedBrain
     await recordInferenceUsage({
       sessionId: meta.sessionId,
       turnId: meta.turnId,
+      warpRunId: meta.warpRunId,
       principalDid: brain.credentialDid,
       agentDid: meta.agentDid,
       provider: brain.connector,
       model: brain.modelId,
-      tokensIn: usage?.prompt_tokens,
-      tokensOut: usage?.completion_tokens,
-      explicitCostUsd: usage?.cost,
+      tokensIn: parsed?.usage?.prompt_tokens,
+      tokensOut: parsed?.usage?.completion_tokens,
+      explicitCostUsd: parsed?.usage?.cost,
+      // #2204: the upstream response id, for the auditor chain view.
+      externalId: parsed?.id,
       ...(upstreamOk ? {} : { status: 'error' }),
     });
   } catch (err) {
     log.error({ err: String(err), connector: brain.connector }, 'completions passthrough: usage ledger write failed');
   }
+}
+
+/** Accumulated usage + the first-seen `id`, mutated line by line while draining the SSE tap. */
+interface StreamMeterAccumulator {
+  usage: OpenAiCompatibleUsage | undefined;
+  externalId: string | undefined;
+}
+
+/** Merge one parsed SSE data-frame into `acc` in place — extracted so `drainMeterStream`'s loop body stays a single call, not four branches. */
+function mergeMeterableLine(found: OpenAiCompatibleMeterable | undefined, acc: StreamMeterAccumulator): void {
+  if (!found) return;
+  if (found.usage) acc.usage = found.usage;
+  // #2204: every chunk of one streamed completion echoes the same `id` —
+  // captured from the first chunk that carries one, since the final
+  // usage-bearing chunk isn't guaranteed to repeat it.
+  if (!acc.externalId && found.id) acc.externalId = found.id;
+}
+
+/** Drain the SSE tap to completion, accumulating `{ usage, externalId }` across every chunk. */
+async function drainMeterStream(body: ReadableStream<Uint8Array>): Promise<StreamMeterAccumulator> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const acc: StreamMeterAccumulator = { usage: undefined, externalId: undefined };
+  let buffer = '';
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) mergeMeterableLine(parseSseUsageLine(line), acc);
+  }
+
+  return acc;
 }
 
 /**
@@ -232,26 +277,12 @@ function meterStreamForUsage(
   upstreamOk: boolean,
 ): void {
   (async () => {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let usage: OpenAiCompatibleUsage | undefined;
-
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-      for (const line of lines) {
-        const found = parseSseUsageLine(line);
-        if (found) usage = found;
-      }
-    }
+    const { usage, externalId } = await drainMeterStream(body);
 
     await recordInferenceUsage({
       sessionId: meta.sessionId,
       turnId: meta.turnId,
+      warpRunId: meta.warpRunId,
       principalDid: brain.credentialDid,
       agentDid: meta.agentDid,
       provider: brain.connector,
@@ -259,6 +290,7 @@ function meterStreamForUsage(
       tokensIn: usage?.prompt_tokens,
       tokensOut: usage?.completion_tokens,
       explicitCostUsd: usage?.cost,
+      externalId,
       ...(upstreamOk ? {} : { status: 'error' }),
     });
   })().catch((err: unknown) => {
@@ -266,14 +298,14 @@ function meterStreamForUsage(
   });
 }
 
-/** Extract `usage` from one `data: {...}` SSE line, or `undefined` when this line carries none. */
-function parseSseUsageLine(line: string): OpenAiCompatibleUsage | undefined {
+/** Extract `{ id, usage }` from one `data: {...}` SSE line, or `undefined` when this line isn't a data frame. */
+function parseSseUsageLine(line: string): OpenAiCompatibleMeterable | undefined {
   const trimmed = line.trim();
   if (!trimmed.startsWith('data:')) return undefined;
   const payload = trimmed.slice(5).trim();
   if (payload === '[DONE]' || payload.length === 0) return undefined;
   try {
-    return (JSON.parse(payload) as { usage?: OpenAiCompatibleUsage }).usage;
+    return JSON.parse(payload) as OpenAiCompatibleMeterable;
   } catch {
     return undefined;
   }

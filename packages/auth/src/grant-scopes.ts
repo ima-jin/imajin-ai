@@ -38,6 +38,17 @@ export const GRANT_SCOPE_REGISTRY = [
   // #1884 event-subscription WS fan-out, so it can apply or discard the
   // Gateway proposal the decision refers to.
   { scope: 'operator:approvals', origin: 'kernel', eventTypes: ['operator.approval.decided'] },
+  // #2204 — the auditor-chain-view capability: lets a delegator grant a
+  // distinct auditor DID (not itself, not an app acting AS it) read access
+  // to its own `usage.incurred` chain (session -> turn -> usage rows ->
+  // transaction -> attestation -> upstream id) via
+  // `GET /usage/api/audit/sessions/{sessionId}`. Named `usage:read` rather
+  // than a new `audit:read` string — the resource being read IS usage (plus
+  // the transactions/attestations it already links to), so this reuses the
+  // existing `infer:usage-read`-style naming class instead of inventing a
+  // parallel one; see that route's module doc for the full reasoning. No
+  // event feed: this is a pull-only read capability, not a subscription.
+  { scope: 'usage:read', origin: 'kernel', eventTypes: [] },
 ] as const satisfies readonly {
   scope: string;
   origin: 'mcp' | 'kernel';

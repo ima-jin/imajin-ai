@@ -114,14 +114,18 @@ export interface OpenAIChatCompletionChunk {
 
 /**
  * Per-turn metering context (#1922 target architecture component 3, built
- * out in #1923). `sessionId`/`turnId` are OpenClaw's `X-Session-Id` /
- * `X-Turn-Id` request headers; `agentDid` is the invoking app DID resolved by
- * auth (distinct from `brain.credentialDid`, whose sealed card actually paid
- * for the call). Every adapter threads this straight into
- * `recordInferenceUsage` once the call resolves.
+ * out in #1923). `sessionId`/`turnId` are OpenClaw's `X-Imajin-Session` /
+ * `X-Imajin-Turn` request headers (legacy `X-Session-Id`/`X-Turn-Id` still
+ * accepted, see `session-headers.ts`); `warpRunId` is the optional
+ * `X-Imajin-Run` header, present when the session was spawned from a Warp
+ * run (#2204); `agentDid` is the invoking app DID resolved by auth (distinct
+ * from `brain.credentialDid`, whose sealed card actually paid for the
+ * call). Every adapter threads this straight into `recordInferenceUsage`
+ * once the call resolves.
  */
 export interface CompletionsRequestMetadata {
   sessionId?: string;
   turnId?: string;
+  warpRunId?: string;
   agentDid?: string;
 }

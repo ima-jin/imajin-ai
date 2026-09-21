@@ -83,6 +83,22 @@ export interface RecordInferenceUsageParams {
    * unchanged from before this field existed.
    */
   status?: 'error';
+  /**
+   * Upstream request id (#2204 auditor chain view) — the OpenAI/xAI
+   * response `id` field for this call. Written straight into
+   * `usage.incurred.external_id` and into the `usage.incurred` bus event's
+   * payload, so the signed attestation and the ledger row carry the same
+   * upstream reference. `undefined` when the adapter could not find one
+   * (e.g. an error body with no `id`, or a provider that omits it).
+   */
+  externalId?: string;
+  /**
+   * Warp run id (#2204), forwarded via the `X-Imajin-Run` header when this
+   * session was spawned from one. Carried only in the `usage.incurred` bus
+   * event's payload — there is no dedicated ledger column for it, since it
+   * is a one-per-session fact rather than a per-call one.
+   */
+  warpRunId?: string;
 }
 
 /**
@@ -91,7 +107,7 @@ export interface RecordInferenceUsageParams {
  * failed request.
  */
 export async function recordInferenceUsage(params: RecordInferenceUsageParams): Promise<void> {
-  const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut, explicitCostUsd, metadata, status } = params;
+  const { sessionId, turnId, principalDid, agentDid, provider, model, tokensIn, tokensOut, explicitCostUsd, metadata, status, externalId, warpRunId } = params;
   const connectorId = connectorRegistryId(principalDid, provider);
   // #2202: a failed upstream attempt's cost is always unknown, never a
   // computed figure that happened to survive an error body -- "zero/NULL
@@ -132,6 +148,7 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
       unit: quantity === undefined ? null : 'tokens',
       transactionId: transactionId ?? null,
       status: status ?? null,
+      externalId: externalId ?? null,
     });
 
     // #1148: publish the usage.incurred bus event — turns the row into a
@@ -141,7 +158,21 @@ export async function recordInferenceUsage(params: RecordInferenceUsageParams): 
     // row is already durably written above, so a slow or failed bus publish
     // must never add latency to (or fail) an already-served completion —
     // same fail-open contract as the rest of this function.
-    publishUsageIncurred({ usageId, principalDid, resource, quantity, costUsd, source: 'inference-passthrough', metadata }).catch((err: unknown) => {
+    publishUsageIncurred({
+      usageId,
+      principalDid,
+      resource,
+      quantity,
+      costUsd,
+      source: 'inference-passthrough',
+      sessionId,
+      turnId,
+      externalId,
+      transactionId,
+      agentDid,
+      warpRunId,
+      metadata,
+    }).catch((err: unknown) => {
       log.error(
         { err: String(err), usageId, principalDid, resource },
         'usage.incurred bus publish failed — row already written',
@@ -165,6 +196,25 @@ export interface PublishUsageIncurredParams {
   costUsd: number | undefined;
   /** Which emitter produced this row, e.g. `'inference-passthrough'` or an external `usage.emitters` `source` (#1151). */
   source: string;
+  /**
+   * Chain-linking fields (#2204, the auditor chain view): the same
+   * `usage.incurred` row values, carried into the signed attestation
+   * payload so a reader never has to trust that the ledger row and the
+   * signed record agree — they are, by construction, the same write.
+   * Every field is optional and independent of the others (a typesafe-decide
+   * row never has a `transactionId`, a call with no correlation headers has
+   * neither `sessionId` nor `turnId`, ...).
+   */
+  sessionId?: string;
+  turnId?: string;
+  /** Upstream request id for this call (`x-typesafe-request-id`, or the OpenAI/xAI response `id`). */
+  externalId?: string;
+  /** `pay.transactions.id` this call's spend was recorded under, when a cost was computed. */
+  transactionId?: string;
+  /** Invoking app DID, when the call was delegated. */
+  agentDid?: string;
+  /** Warp run id, when the session was spawned from one (`X-Imajin-Run`). */
+  warpRunId?: string;
   /**
    * Emitter-specific extra context carried alongside the shared primitive
    * fields (#1956 precedent: the presence-query emitter's `queryId` /
@@ -190,7 +240,7 @@ export interface PublishUsageIncurredParams {
  * `publish('usage.incurred', ...)` call.
  */
 export async function publishUsageIncurred(params: PublishUsageIncurredParams): Promise<void> {
-  const { usageId, principalDid, resource, quantity, unit, costUsd, source, metadata } = params;
+  const { usageId, principalDid, resource, quantity, unit, costUsd, source, sessionId, turnId, externalId, transactionId, agentDid, warpRunId, metadata } = params;
   const nodeDid = await getNodeDid();
 
   await publish('usage.incurred', {
@@ -210,6 +260,14 @@ export async function publishUsageIncurred(params: PublishUsageIncurredParams): 
       ts: new Date().toISOString(),
       context_id: usageId,
       context_type: 'usage',
+      // #2204: the same chain-linking values the ledger row carries, so the
+      // signed attestation and the row agree by construction.
+      sessionId: sessionId ?? null,
+      turnId: turnId ?? null,
+      externalId: externalId ?? null,
+      transactionId: transactionId ?? null,
+      agentDid: agentDid ?? null,
+      warpRunId: warpRunId ?? null,
       ...(metadata ? { metadata } : {}),
     },
   });

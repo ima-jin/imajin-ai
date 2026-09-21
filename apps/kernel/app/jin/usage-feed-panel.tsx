@@ -30,6 +30,7 @@ import {
   type SessionGroup,
   type DeltaTone,
 } from './usage-feed-grouping';
+import { AuditChainView } from './audit-chain-view';
 
 // Subject DID resolves from `?subject_did=` then `NEXT_PUBLIC_JIN_DID` only
 // — deliberately NO hardcoded DID literal here. Dev and prod use different
@@ -91,6 +92,10 @@ function TurnRow({ row }: Readonly<{ row: TurnUsageRow }>) {
 
 function SessionSection({ group }: Readonly<{ group: SessionGroup }>) {
   const [expanded, setExpanded] = useState(true);
+  // #2204: the auditor chain view only applies to a real session key — a
+  // session-less turn (no X-Imajin-Session/X-Session-Id header) has no
+  // `GET /usage/api/audit/sessions/{sessionId}` to open.
+  const [showChain, setShowChain] = useState(false);
   const firstRow = group.rows[0];
   const label = group.sessionKey ?? `no session · ${firstRow.id}`;
   const fullLabel = group.sessionKey ?? firstRow.id;
@@ -119,21 +124,35 @@ function SessionSection({ group }: Readonly<{ group: SessionGroup }>) {
         </span>
       </button>
       {expanded && (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-900">
-              <th className="px-4 py-1.5 text-left font-medium">Time</th>
-              <th className="px-4 py-1.5 text-left font-medium">Model</th>
-              <th className="px-4 py-1.5 text-right font-medium">Tokens in</th>
-              <th className="px-4 py-1.5 text-right font-medium">Tokens out</th>
-              <th className="px-4 py-1.5 text-right font-medium">Δ vs prev</th>
-              <th className="px-4 py-1.5 text-right font-medium">Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {group.rows.map((row) => <TurnRow key={row.id} row={row} />)}
-          </tbody>
-        </table>
+        <>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wide text-gray-600 border-b border-gray-900">
+                <th className="px-4 py-1.5 text-left font-medium">Time</th>
+                <th className="px-4 py-1.5 text-left font-medium">Model</th>
+                <th className="px-4 py-1.5 text-right font-medium">Tokens in</th>
+                <th className="px-4 py-1.5 text-right font-medium">Tokens out</th>
+                <th className="px-4 py-1.5 text-right font-medium">Δ vs prev</th>
+                <th className="px-4 py-1.5 text-right font-medium">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {group.rows.map((row) => <TurnRow key={row.id} row={row} />)}
+            </tbody>
+          </table>
+          {group.sessionKey && (
+            <div className="px-4 py-2 border-t border-gray-900">
+              <button
+                type="button"
+                onClick={() => setShowChain((v) => !v)}
+                className="text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors"
+              >
+                {showChain ? 'hide audit chain ▴' : 'view audit chain →'}
+              </button>
+              {showChain && <AuditChainView sessionId={group.sessionKey} onClose={() => setShowChain(false)} />}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

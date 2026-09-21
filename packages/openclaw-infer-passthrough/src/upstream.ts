@@ -36,6 +36,23 @@ export class NoDirectFallbackError extends Error {
 export interface ForwardHeaders {
   sessionId?: string;
   turnId?: string;
+  /** OpenClaw's Warp run id, when this session was spawned from one (imajin-ai#2204). */
+  warpRunId?: string;
+}
+
+/**
+ * Attach the correlation headers the kernel folds into `usage.incurred`'s
+ * `session_id`/`turn_id`/metadata (imajin-ai#2204) — `X-Imajin-Session` /
+ * `X-Imajin-Turn` / `X-Imajin-Run`, the canonical names the auditor-chain
+ * issue settles on. Shared by both wire formats' forwarders below so the
+ * header set never drifts between them.
+ */
+function correlationHeaders(headers: ForwardHeaders): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (headers.sessionId) out['X-Imajin-Session'] = headers.sessionId;
+  if (headers.turnId) out['X-Imajin-Turn'] = headers.turnId;
+  if (headers.warpRunId) out['X-Imajin-Run'] = headers.warpRunId;
+  return out;
 }
 
 /**
@@ -56,9 +73,8 @@ export async function forwardToKernel(
   const reqHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
+    ...correlationHeaders(headers),
   };
-  if (headers.sessionId) reqHeaders['X-Session-Id'] = headers.sessionId;
-  if (headers.turnId) reqHeaders['X-Turn-Id'] = headers.turnId;
 
   try {
     return await fetch(url, {
@@ -166,9 +182,8 @@ export async function forwardAnthropicToKernel(
   const reqHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-api-key': token,
+    ...correlationHeaders(headers),
   };
-  if (headers.sessionId) reqHeaders['X-Session-Id'] = headers.sessionId;
-  if (headers.turnId) reqHeaders['X-Turn-Id'] = headers.turnId;
   if (headers.anthropicVersion) reqHeaders['anthropic-version'] = headers.anthropicVersion;
   if (headers.anthropicBeta) reqHeaders['anthropic-beta'] = headers.anthropicBeta;
 

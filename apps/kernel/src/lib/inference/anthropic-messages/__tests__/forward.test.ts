@@ -160,12 +160,14 @@ describe('forwardAnthropicMessages', () => {
     expect(mockRecordInferenceUsage).toHaveBeenCalledWith({
       sessionId: 'sess_1',
       turnId: 'turn_1',
+      warpRunId: undefined,
       principalDid: 'did:imajin:supplier',
       agentDid: undefined,
       provider: 'anthropic',
       model: 'claude-opus-4-6',
       tokensIn: 100,
       tokensOut: 42,
+      externalId: 'msg_1',
       metadata: { format: 'anthropic-messages', cacheCreationInputTokens: 8, cacheReadInputTokens: 20 },
     });
   });
@@ -230,12 +232,14 @@ describe('forwardAnthropicMessages', () => {
       expect(mockRecordInferenceUsage).toHaveBeenCalledWith({
         sessionId: 's1',
         turnId: undefined,
+        warpRunId: undefined,
         principalDid: 'did:imajin:supplier',
         agentDid: undefined,
         provider: 'anthropic',
         model: 'claude-opus-4-6',
         tokensIn: 25,
         tokensOut: 15,
+        externalId: undefined,
         metadata: { format: 'anthropic-messages', cacheCreationInputTokens: 3, cacheReadInputTokens: 9 },
       });
     });

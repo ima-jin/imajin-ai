@@ -162,6 +162,89 @@ describe('proxy server (integration)', () => {
     expect(await res.json()).toEqual({ input_tokens: 5 });
   });
 
+  it('forwards X-Imajin-Session/Turn/Run headers to the kernel completions route (#2204)', async () => {
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === 'https://kernel.test/auth/api/apps/token') {
+          return new Response(JSON.stringify({ token: 'tok-e2e', expiresIn: 600, scopes: ['infer:completions'] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url === 'https://kernel.test/infer/v1/chat/completions') {
+          const headers = init?.headers as Record<string, string>;
+          expect(headers['X-Imajin-Session']).toBe('sess-123');
+          expect(headers['X-Imajin-Turn']).toBe('turn-456');
+          expect(headers['X-Imajin-Run']).toBe('run-789');
+          return new Response(JSON.stringify({ id: 'chatcmpl-e2e' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.startsWith(baseUrl)) {
+          return realFetch(url, init);
+        }
+        throw new Error(`unexpected fetch to ${url}`);
+      }),
+    );
+
+    const res = await fetch(`${baseUrl}/xai/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Imajin-Session': 'sess-123',
+        'X-Imajin-Turn': 'turn-456',
+        'X-Imajin-Run': 'run-789',
+      },
+      body: JSON.stringify({ model: 'grok-4', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('falls back to legacy X-Session-Id/X-Turn-Id headers when X-Imajin-* is absent (#2204)', async () => {
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === 'https://kernel.test/auth/api/apps/token') {
+          return new Response(JSON.stringify({ token: 'tok-e2e', expiresIn: 600, scopes: ['infer:completions'] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url === 'https://kernel.test/infer/v1/chat/completions') {
+          const headers = init?.headers as Record<string, string>;
+          expect(headers['X-Imajin-Session']).toBe('legacy-sess');
+          expect(headers['X-Imajin-Turn']).toBe('legacy-turn');
+          expect(headers['X-Imajin-Run']).toBeUndefined();
+          return new Response(JSON.stringify({ id: 'chatcmpl-e2e' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.startsWith(baseUrl)) {
+          return realFetch(url, init);
+        }
+        throw new Error(`unexpected fetch to ${url}`);
+      }),
+    );
+
+    const res = await fetch(`${baseUrl}/xai/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': 'legacy-sess',
+        'X-Turn-Id': 'legacy-turn',
+      },
+      body: JSON.stringify({ model: 'grok-4', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+  });
+
   it('mints a token and forwards GET /openai/v1/models to the kernel end to end (#2201)', async () => {
     const realFetch = globalThis.fetch;
     const modelsBody = { object: 'list', data: [{ id: 'gpt-6-astra', object: 'model', owned_by: 'openai', created: 1_700_000_000 }] };

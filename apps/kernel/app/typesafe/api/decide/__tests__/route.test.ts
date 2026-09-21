@@ -208,6 +208,59 @@ describe('success path', () => {
     expect(call.agentDid).toBeUndefined();
   });
 
+  it('#2204: threads requestId through to recordTypesafeUsage as externalId', async () => {
+    const upstream = { model: 'jev-1.13.0', answers: {}, usage: { input_tokens: 50, output_tokens: 0 } };
+    postSystemOneMock.mockResolvedValue({ data: upstream, requestId: 'req_abc' });
+
+    await POST(request(VALID_BODY));
+
+    expect(recordTypesafeUsageMock).toHaveBeenCalledWith(expect.objectContaining({ externalId: 'req_abc' }));
+  });
+
+  it('#2204: reads sessionId/turnId/warpRunId off the X-Imajin-* headers', async () => {
+    const upstream = { model: 'jev-1.13.0', answers: {}, usage: { input_tokens: 50, output_tokens: 0 } };
+    postSystemOneMock.mockResolvedValue({ data: upstream, requestId: null });
+
+    const req = new NextRequest('https://kernel.test/typesafe/api/decide', {
+      method: 'POST',
+      body: JSON.stringify(VALID_BODY),
+      headers: {
+        'content-type': 'application/json',
+        'X-Imajin-Session': 'sess-9',
+        'X-Imajin-Turn': 'turn-9',
+        'X-Imajin-Run': 'run-9',
+      },
+    });
+    await POST(req);
+
+    expect(recordTypesafeUsageMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'sess-9',
+      turnId: 'turn-9',
+      warpRunId: 'run-9',
+    }));
+  });
+
+  it('#2204: falls back to legacy X-Session-Id/X-Turn-Id headers', async () => {
+    const upstream = { model: 'jev-1.13.0', answers: {}, usage: { input_tokens: 50, output_tokens: 0 } };
+    postSystemOneMock.mockResolvedValue({ data: upstream, requestId: null });
+
+    const req = new NextRequest('https://kernel.test/typesafe/api/decide', {
+      method: 'POST',
+      body: JSON.stringify(VALID_BODY),
+      headers: {
+        'content-type': 'application/json',
+        'X-Session-Id': 'legacy-sess',
+        'X-Turn-Id': 'legacy-turn',
+      },
+    });
+    await POST(req);
+
+    expect(recordTypesafeUsageMock).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'legacy-sess',
+      turnId: 'legacy-turn',
+    }));
+  });
+
   it('never returns the sealed API key anywhere in the response', async () => {
     postSystemOneMock.mockResolvedValue({ data: { model: 'jev-1.13.0', answers: {}, usage: { input_tokens: 1, output_tokens: 0 } }, requestId: null });
 

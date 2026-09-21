@@ -415,4 +415,44 @@ describe('forwardOpenAiCompatible', () => {
       expect(JSON.parse(init.body).model).toBe('typesafe/jev-1.13');
     });
   });
+
+  describe('externalId + warpRunId capture (#2204 auditor chain view)', () => {
+    it('captures the upstream response id as externalId on a non-streaming call', async () => {
+      mockRecordInferenceUsage.mockClear();
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'chatcmpl-xyz', choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+      await forwardOpenAiCompatible(XAI_BRAIN, { messages: [] }, { sessionId: 'sess-1', turnId: 'turn-1', warpRunId: 'run-1' });
+
+      expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
+        expect.objectContaining({ externalId: 'chatcmpl-xyz', sessionId: 'sess-1', turnId: 'turn-1', warpRunId: 'run-1' }),
+      );
+    });
+
+    it('captures the upstream id from the first SSE chunk that carries one on a streaming call', async () => {
+      mockRecordInferenceUsage.mockClear();
+      const upstreamStream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: {"id":"chatcmpl-stream-1","choices":[]}\n\n'));
+          controller.enqueue(new TextEncoder().encode('data: {"id":"chatcmpl-stream-1","usage":{"prompt_tokens":3,"completion_tokens":4}}\n\n'));
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+          controller.close();
+        },
+      });
+      fetchMock.mockResolvedValueOnce(
+        new Response(upstreamStream, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+      );
+
+      const res = await forwardOpenAiCompatible(XAI_BRAIN, { messages: [], stream: true }, {});
+      await res.text();
+
+      expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
+        expect.objectContaining({ externalId: 'chatcmpl-stream-1', tokensIn: 3, tokensOut: 4 }),
+      );
+    });
+  });
 });

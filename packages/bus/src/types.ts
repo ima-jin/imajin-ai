@@ -1585,6 +1585,19 @@ export interface BusEventMap {
     ts: string;
     context_id: string;
     context_type: string;
+    /**
+     * Auditor chain-view linking fields (#2204): the same values the
+     * `usage.incurred` row carries, so the signed attestation this event
+     * mints and the ledger row agree by construction. All optional/nullable
+     * because most emitters populate only a subset (e.g. typesafe-decide
+     * never has a transactionId).
+     */
+    sessionId?: string | null;
+    turnId?: string | null;
+    externalId?: string | null;
+    transactionId?: string | null;
+    agentDid?: string | null;
+    warpRunId?: string | null;
   };
   /**
    * The daily clock-rollup over `usage.incurred` (#1148): one signed record
