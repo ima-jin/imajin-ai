@@ -24,6 +24,11 @@ export type PaymentRequestSettlementMethod = 'manual' | 'stripe' | 'mjnx';
 export interface PaymentRequestSettlementRef {
   method: PaymentRequestSettlementMethod;
   note?: string;
-  asserted_by: string;
+  /** Who asserted the settlement — the caller DID for `manual`. Omitted for `stripe` (#2209): that path is kernel-signed, not a human assertion. */
+  asserted_by?: string;
   settled_at: string;
+  /** `method: 'stripe'` only (#2209) — the Checkout session that paid this request. */
+  checkout_session_id?: string;
+  /** `method: 'stripe'` only (#2209) — the underlying PaymentIntent, when Stripe reports one. */
+  payment_intent_id?: string | null;
 }

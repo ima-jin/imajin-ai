@@ -21,8 +21,9 @@
  *   applied       -> the source confirmed the proposal was applied.
  *                    Only reachable from 'approved'. Terminal.
  *
- * See migration 0130_operator_approvals.sql and
- * 0132_operator_approvals_generic_source.sql for the full schema rationale.
+ * See migration 0130_operator_approvals.sql,
+ * 0132_operator_approvals_generic_source.sql, and
+ * 0147_operator_approvals_exec_outcome.sql for the full schema rationale.
  */
 import { pgSchema, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
 
@@ -57,6 +58,12 @@ export const operatorApprovals = operatorSchema.table(
      *          signature: string, senderPubkey: string }
      */
     decision: jsonb('decision'),
+    /**
+     * Post-exec outcome follow-up (#2221, exec.command only):
+     * { exitCode: number; durationMs: number; outputHash: string }.
+     * Additive, nullable — no other kind populates this today.
+     */
+    outcome: jsonb('outcome').$type<Record<string, unknown> | null>(),
     appliedAt: timestamp('applied_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

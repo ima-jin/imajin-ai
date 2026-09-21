@@ -125,8 +125,18 @@ interface OperatorApprovalCard {
   contentHash: string;
   status: ApprovalStatus;
   decision: { decidedBy: string; decidedAt: string; reason?: string } | null;
+  /** Post-exec outcome follow-up (#2221, exec.command only) — null until the bridge reports one. */
+  outcome: { exitCode: number; durationMs: number; outputHash: string } | null;
   appliedAt: string | null;
   createdAt: string;
+}
+
+/** True once a pending approval's own `detail.expiresAt` has passed (#2221) — undefined/malformed `expiresAt` never expires. */
+function isApprovalExpired(approval: OperatorApprovalCard): boolean {
+  const expiresAt = approval.detail?.expiresAt;
+  if (typeof expiresAt !== 'string') return false;
+  const expiresAtMs = Date.parse(expiresAt);
+  return !Number.isNaN(expiresAtMs) && expiresAtMs <= Date.now();
 }
 
 function statusBadge(status: ApprovalStatus) {
@@ -228,8 +238,83 @@ const SKILL_WORKSHOP_RENDERER: SourceRenderer = {
   renderDetail: renderSkillWorkshopDetail,
 };
 
+// `gateway-exec` (#2221): forwarded OpenClaw host-exec approvals. Only
+// allow-once/deny are ever offered — there is no third button, so
+// allow-always is unreachable from this card by construction (the kernel
+// additionally rejects it server-side if a caller hits the API directly,
+// see exec-command-approvals.ts).
+
+/** `mm:ss` (or `h:mm:ss` past an hour) countdown text, or 'expired'. Pure — no hooks — so it can be called from a ticking child component. */
+function formatExpiryCountdown(expiresAtMs: number, nowMs: number): string {
+  if (Number.isNaN(expiresAtMs)) return '';
+  const remainingMs = expiresAtMs - nowMs;
+  if (remainingMs <= 0) return 'expired';
+
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return hours > 0 ? `expires in ${hours}:${pad(minutes)}:${pad(seconds)}` : `expires in ${minutes}:${pad(seconds)}`;
+}
+
+function ExecOutcomeView({ outcome }: Readonly<{ outcome: { exitCode: number; durationMs: number; outputHash: string } }>) {
+  const succeeded = outcome.exitCode === 0;
+  return (
+    <div className="text-xs text-gray-500 border-t border-gray-800 pt-2">
+      <span className="uppercase tracking-wide mr-2">Outcome</span>
+      <span className={succeeded ? 'text-green-400' : 'text-red-400'}>exit {outcome.exitCode}</span>
+      <span className="mx-2">·</span>
+      <span>{outcome.durationMs}ms</span>
+      <span className="mx-2">·</span>
+      <span className="font-mono">{outcome.outputHash}</span>
+    </div>
+  );
+}
+
+/** Owns the second-by-second countdown tick — a real component (not a plain render function) so it can hold its own `useState`/`useEffect` without violating the rules of hooks. */
+function ExecCommandDetailView({ approval }: Readonly<{ approval: OperatorApprovalCard }>) {
+  const { detail, outcome } = approval;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const command = detailString(detail, 'command', '');
+  const host = detailString(detail, 'host', 'unknown host');
+  const cwd = detailString(detail, 'cwd', '—');
+  const agentId = detailString(detail, 'agentId', '—');
+  const sessionKey = detailString(detail, 'sessionKey', '—');
+  const expiresAtRaw = detail?.expiresAt;
+  const expiresAtMs = typeof expiresAtRaw === 'string' ? Date.parse(expiresAtRaw) : NaN;
+  const countdown = formatExpiryCountdown(expiresAtMs, nowMs);
+
+  return (
+    <div className="space-y-2">
+      {/* Verbatim, never summarised/truncated (#2221) — the hash-bearing content is
+          the full string; the scrollable max-height is a purely visual collapse. */}
+      <pre className="text-xs text-gray-100 bg-gray-900/80 rounded p-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono">{command}</pre>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+        <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 font-mono">{host}</span>
+        <span>cwd: <span className="font-mono text-gray-400">{cwd}</span></span>
+        <span>agent: <span className="font-mono text-gray-400">{agentId}</span> / <span className="font-mono text-gray-400">{sessionKey}</span></span>
+        {countdown && <span className={countdown === 'expired' ? 'text-red-400 font-medium' : 'text-gray-500'}>{countdown}</span>}
+      </div>
+      {outcome && <ExecOutcomeView outcome={outcome} />}
+    </div>
+  );
+}
+
+const GATEWAY_EXEC_RENDERER: SourceRenderer = {
+  decisionLabels: { approve: 'Allow once', reject: 'Deny' },
+  renderDetail: (approval) => <ExecCommandDetailView approval={approval} />,
+};
+
 const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
   'skill-workshop': SKILL_WORKSHOP_RENDERER,
+  'gateway-exec': GATEWAY_EXEC_RENDERER,
 };
 
 function rendererFor(source: string): SourceRenderer {
@@ -250,6 +335,10 @@ function ApprovalCardRow({
   // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
   // finding. Stable across renders so it only fires when the button mounts.
   const autoFocusRef = useCallback((el: HTMLButtonElement | null) => el?.focus(), []);
+  // #2221: a pending approval past its own detail.expiresAt can no longer be
+  // decided — the kernel enforces this authoritatively at decide time; this
+  // only keeps the card from ever offering a decision it will just refuse.
+  const expired = approval.status === 'pending' && isApprovalExpired(approval);
   return (
     <div className="rounded-lg border border-gray-800 p-4 space-y-2">
       <div className="flex items-center justify-between gap-3">
@@ -262,7 +351,12 @@ function ApprovalCardRow({
         <span className="text-xs text-gray-500">{new Date(approval.createdAt).toLocaleString()}</span>
       </div>
       {renderer.renderDetail(approval)}
-      {approval.status === 'pending' && (
+      {approval.status === 'pending' && expired && (
+        <div className="pt-1">
+          <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-800 text-gray-500">expired — can no longer be decided</span>
+        </div>
+      )}
+      {approval.status === 'pending' && !expired && (
         <div className="flex items-center gap-2 pt-1">
           <button
             type="button"

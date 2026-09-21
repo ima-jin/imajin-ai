@@ -1401,6 +1401,78 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/payment-requests/{id}/checkout:
+    post:
+      tags: [pay]
+      operationId: createPaymentRequestCheckout
+      summary: Create (or reuse) a Stripe Checkout session for a payment_request — issuer or recipient (#2209)
+      description: |
+        Composes the existing `POST /api/checkout` code path with the
+        payment_request's own `line_items`/`currency`/`fair_manifest`
+        (always present — #2207 NOT NULL)/`issuer_did`, and
+        `metadata.payment_request_id`. Refuses when the request isn't
+        `issued` or doesn't `allow_on_platform`. Idempotent: reuses an
+        already-open Stripe session for the same request instead of
+        creating a duplicate. Auth required — an anonymous pay-link
+        checkout (no recipient DID) is deferred to #2210.
+
+        On `checkout.session.completed`, the Stripe webhook
+        (`POST /api/webhook`) reads `metadata.payment_request_id`: status
+        → `paid`, `settlement_ref = { method: 'stripe', checkout_session_id,
+        payment_intent_id }`, publishes `payment_request.paid`, ALWAYS
+        settles via the canonical `settlePayment()` primitive (the manifest
+        is guaranteed present), mints exactly ONE kernel-signed
+        `payment_request.settled` attestation, and publishes
+        `payment_request.settled`. Idempotent on webhook replay.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customer_email: { type: string, format: email }
+      responses:
+        "200":
+          description: Checkout session created (or reused)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  url: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+                  reused: { type: boolean, description: "true when an existing open Stripe session was reused" }
+        "400":
+          description: Invalid request, allow_on_platform is false, or the seller hasn't completed Stripe Connect setup
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the issuer or recipient
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Not in `issued` status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/payment-requests/{id}/settle:
     post:
       tags: [pay]
@@ -1411,8 +1483,8 @@ paths:
         'manual', note, asserted_by, settled_at }`. Mints exactly ONE
         `payment_request.settled` attestation (`method: 'manual'`, signed
         by the issuer) and publishes `payment_request.settled`. On-platform
-        settlement (`stripe`/`mjnx`) is reserved for #2209, which always
-        runs via `POST /api/settle`.
+        settlement (`stripe`) transitions to `paid` (not `settled_manual`)
+        instead — see `POST /api/payment-requests/{id}/checkout` (#2209).
       security:
         - cookieAuth: []
         - bearerAuth: []

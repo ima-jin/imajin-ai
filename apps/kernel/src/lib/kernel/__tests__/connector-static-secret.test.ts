@@ -29,6 +29,19 @@ vi.mock('@/src/db', () => ({
   },
 }));
 
+// #2205 — exercised in its own dedicated unit tests
+// (notify/__tests__/connector-events.test.ts); a plain double here so these
+// tests assert wiring only.
+const { notifySealedMock, notifyUnsealedMock } = vi.hoisted(() => ({
+  notifySealedMock: vi.fn().mockResolvedValue(undefined),
+  notifyUnsealedMock: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@/src/lib/notify/connector-events', () => ({
+  notifyConnectorCredentialSealed: notifySealedMock,
+  notifyConnectorCredentialUnsealed: notifyUnsealedMock,
+}));
+
 import { createConnectorStaticSecret } from '../connector-static-secret';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -61,6 +74,8 @@ beforeEach(() => {
   revokeGrantMock.mockReset().mockResolvedValue(false);
   statusMock.mockReset().mockResolvedValue('absent');
   whereMock.mockReset().mockResolvedValue([]);
+  notifySealedMock.mockClear();
+  notifyUnsealedMock.mockClear();
 });
 
 afterEach(() => {
@@ -280,5 +295,44 @@ describe('resolveActiveGrant', () => {
   it('returns false when there are no rows at all', async () => {
     noGrant();
     expect(await makeConnector().resolveActiveGrant(PRINCIPAL, 'test:use')).toBe(false);
+  });
+});
+
+// ── connector.credential.* notifications (#2205) ────────────────────────────
+
+describe('connector lifecycle notifications', () => {
+  it('sealAndGrant emits connector.credential.sealed, using opts.name as the provider id', async () => {
+    await makeConnector().sealAndGrant(PRINCIPAL, SECRET);
+
+    expect(notifySealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test');
+    expect(notifyUnsealedMock).not.toHaveBeenCalled();
+  });
+
+  it('emits connector.credential.sealed even for a pending Tier-1 seal (the vault write already happened)', async () => {
+    sealGrantMock.mockResolvedValue({ entry: {}, grantId: null, requestId: 'req-42' });
+
+    await makeConnector().sealAndGrant(PRINCIPAL, SECRET);
+
+    expect(notifySealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test');
+  });
+
+  it('revokeGrant emits connector.credential.unsealed only when a grant was actually revoked', async () => {
+    revokeGrantMock.mockResolvedValue(true);
+
+    expect(await makeConnector().revokeGrant(PRINCIPAL)).toBe(true);
+    expect(notifyUnsealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test');
+  });
+
+  it('revokeGrant stays silent when there was nothing to revoke', async () => {
+    revokeGrantMock.mockResolvedValue(false);
+
+    expect(await makeConnector().revokeGrant(PRINCIPAL)).toBe(false);
+    expect(notifyUnsealedMock).not.toHaveBeenCalled();
+  });
+
+  it('a rejected notifier never fails the seal call (#2205 best-effort)', async () => {
+    notifySealedMock.mockRejectedValueOnce(new Error('ws push exploded'));
+
+    await expect(makeConnector().sealAndGrant(PRINCIPAL, SECRET)).rejects.toThrow('ws push exploded');
   });
 });

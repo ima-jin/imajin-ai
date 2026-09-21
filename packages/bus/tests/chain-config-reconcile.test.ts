@@ -52,6 +52,20 @@ describe('chain config DEFAULTS reconcile (#1873, #1874)', () => {
     expect(types).not.toContain('settle');
     expect(cfg.reactors[0]?.await).toBe(true);
   });
+
+  it.each([
+    'payment_request.issued',
+    'payment_request.paid',
+    'payment_request.settled',
+    'payment_request.voided',
+    'payment_request.recipient_claimed',
+  ])('%s routes to payment-request-notify (#2212)', async (eventType) => {
+    const cfg = await getChainConfig(eventType, 'default');
+    const types = cfg.reactors.map((r) => r.type);
+
+    expect(types).toEqual(['payment-request-notify']);
+    expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
+  });
 });
 
 describe('broker reactor registry (#1874)', () => {

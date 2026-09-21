@@ -96,8 +96,33 @@ import {
   recordApprovalRequested,
   decideOperatorApproval,
   markApplied,
+  attachApprovalOutcome,
   listApprovalsForOperator,
 } from '../operator-approvals-service';
+import { EXEC_COMMAND_KIND, EXEC_COMMAND_SOURCE } from '../exec-command-approvals';
+
+function execCommandDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    command: 'systemctl restart openclaw-gateway',
+    host: 'gateway-01',
+    cwd: '/opt/openclaw',
+    agentId: 'agent_123',
+    sessionKey: 'session_abc',
+    requestedBy: 'did:imajin:jin-agent',
+    approvalId: 'oc_approval_1',
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    ...overrides,
+  };
+}
+
+function execCommandRow(overrides: Record<string, unknown> = {}) {
+  return row({
+    source: EXEC_COMMAND_SOURCE,
+    kind: EXEC_COMMAND_KIND,
+    detail: execCommandDetail(),
+    ...overrides,
+  });
+}
 
 function row(overrides: Record<string, unknown> = {}) {
   return {
@@ -295,6 +320,102 @@ describe('decideOperatorApproval', () => {
     expect(result.ok).toBe(true);
   });
 
+  // #2221: the allow-once/deny-only gate and expiry refusal are exec.command
+  // only — every other kind's decisions are unaffected by this block.
+  describe('exec.command gate (#2221)', () => {
+    it('approves an exec.command proposal with mode allow-once', async () => {
+      mockSelectLimit
+        .mockResolvedValueOnce([execCommandRow({ status: 'pending' })])
+        .mockResolvedValueOnce([execCommandRow({ status: 'approved' })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        mode: 'allow-once',
+      });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('rejects (400) mode allow-always before any state mutation or signature — the exact loophole this gate closes', async () => {
+      mockSelectLimit.mockResolvedValueOnce([execCommandRow({ status: 'pending' })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        mode: 'allow-always',
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.status).toBe(400);
+      expect(result.error).toMatch(/allow-always/);
+      expect(mockSignSync).not.toHaveBeenCalled();
+      expect(mockUpdateWhere).not.toHaveBeenCalled();
+      expect(mockPublish).not.toHaveBeenCalled();
+    });
+
+    it('rejects (400) an arbitrary mode value paired with reject', async () => {
+      mockSelectLimit.mockResolvedValueOnce([execCommandRow({ status: 'pending' })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'reject',
+        mode: 'allow-once',
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.status).toBe(400);
+    });
+
+    it('rejects (409) a decision on an expired approval, before any state mutation or signature', async () => {
+      mockSelectLimit.mockResolvedValueOnce([
+        execCommandRow({ status: 'pending', detail: execCommandDetail({ expiresAt: '2000-01-01T00:00:00.000Z' }) }),
+      ]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.status).toBe(409);
+      expect(result.error).toMatch(/expired/);
+      expect(mockSignSync).not.toHaveBeenCalled();
+      expect(mockUpdateWhere).not.toHaveBeenCalled();
+      expect(mockPublish).not.toHaveBeenCalled();
+    });
+
+    it('rejects (409) an expired approval even for a deny decision', async () => {
+      mockSelectLimit.mockResolvedValueOnce([
+        execCommandRow({ status: 'pending', detail: execCommandDetail({ expiresAt: '2000-01-01T00:00:00.000Z' }) }),
+      ]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'reject' });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.status).toBe(409);
+    });
+
+    it('leaves non-exec.command kinds unaffected by the mode gate (an arbitrary mode is still just opaque, #2152)', async () => {
+      mockSelectLimit
+        .mockResolvedValueOnce([row({ status: 'pending' })])
+        .mockResolvedValueOnce([row({ status: 'approved' })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        mode: 'allow-always',
+      });
+
+      expect(result.ok).toBe(true);
+    });
+  });
+
   // #2082: operator countersignature — the "kernel-forged decision" guard,
   // verification wiring, and the withdraw path all funnel through this same
   // function, so they're covered here rather than only at the route layer.
@@ -472,6 +593,45 @@ describe('markApplied', () => {
   it('is a no-op for an unknown proposal', async () => {
     mockSelectLimit.mockResolvedValueOnce([]);
     expect(await markApplied(PROPOSAL_ID)).toEqual({ ok: false });
+  });
+});
+
+describe('attachApprovalOutcome (#2221)', () => {
+  const OUTCOME = { exitCode: 0, durationMs: 1234, outputHash: 'a'.repeat(64) };
+
+  it('attaches an outcome to an exec.command approval', async () => {
+    mockSelectLimit.mockResolvedValueOnce([execCommandRow({ status: 'approved' })]);
+
+    const result = await attachApprovalOutcome(PROPOSAL_ID, OUTCOME);
+
+    expect(result).toEqual({ ok: true });
+    expect(mockUpdateWhere).toHaveBeenCalledOnce();
+  });
+
+  it('rejects (with an error) an outcome for a non-exec.command kind', async () => {
+    mockSelectLimit.mockResolvedValueOnce([row({ status: 'approved' })]);
+
+    const result = await attachApprovalOutcome(PROPOSAL_ID, OUTCOME);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/exec.command/);
+    expect(mockUpdateWhere).not.toHaveBeenCalled();
+  });
+
+  it('rejects (with an error) an unknown proposal', async () => {
+    mockSelectLimit.mockResolvedValueOnce([]);
+
+    const result = await attachApprovalOutcome(PROPOSAL_ID, OUTCOME);
+
+    expect(result).toEqual({ ok: false, error: 'Proposal not found' });
+  });
+
+  it('overwrites a previously-attached outcome (idempotent re-post)', async () => {
+    mockSelectLimit.mockResolvedValueOnce([execCommandRow({ status: 'approved', outcome: { exitCode: 1, durationMs: 1, outputHash: 'b'.repeat(64) } })]);
+
+    const result = await attachApprovalOutcome(PROPOSAL_ID, OUTCOME);
+
+    expect(result).toEqual({ ok: true });
   });
 });
 

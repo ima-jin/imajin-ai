@@ -26,6 +26,8 @@ import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { createLogger } from '@imajin/logger';
 import { randomUUID } from 'node:crypto';
+import { emitMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
+import type { PaymentRequestSettlementRef } from './types';
 
 const log = createLogger('kernel');
 
@@ -163,6 +165,41 @@ export async function emitPaymentRequestSettledAttestation(params: {
       total_amount: params.totalAmount,
       currency: params.currency,
       content_hash: params.contentHash,
+    },
+  });
+}
+
+/**
+ * Exactly ONE `payment_request.settled` per on-platform Stripe settlement
+ * (#2209) — unlike the manual path above, this is KERNEL-signed (the
+ * platform node identity, via the shared `emitMechanicalAttestation`
+ * primitive), never the payment_request's issuer: the epic's "kernel
+ * signs on-platform" requirement, since no human asserted this settlement
+ * — the Stripe webhook did. Binds `content_hash` and the full
+ * `settlement_ref` (checkout session id + payment intent id).
+ */
+export async function emitPaymentRequestSettledStripeAttestation(params: {
+  paymentRequestId: string;
+  issuerDid: string;
+  recipientDid: string | null;
+  contentHash: string;
+  totalAmount: number;
+  currency: string;
+  settlementRef: PaymentRequestSettlementRef;
+}): Promise<string | null> {
+  return emitMechanicalAttestation({
+    subjectDid: params.recipientDid ?? params.issuerDid,
+    type: 'payment_request.settled',
+    contextId: params.paymentRequestId,
+    contextType: 'payment_request',
+    payload: {
+      payment_request_id: params.paymentRequestId,
+      method: 'stripe',
+      issuer_did: params.issuerDid,
+      total_amount: params.totalAmount,
+      currency: params.currency,
+      content_hash: params.contentHash,
+      settlement_ref: params.settlementRef,
     },
   });
 }

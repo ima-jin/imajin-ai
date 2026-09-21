@@ -21,6 +21,8 @@ interface ApprovalFixture {
   detail: Record<string, unknown> | null;
   status: 'pending' | 'approved' | 'denied' | 'withdrawn' | 'applied';
   decision: null;
+  /** Post-exec outcome follow-up (#2221, exec.command only). */
+  outcome?: { exitCode: number; durationMs: number; outputHash: string } | null;
   appliedAt: string | null;
   createdAt: string;
 }
@@ -55,6 +57,28 @@ function skillWorkshopApproval(overrides: Partial<ApprovalFixture> = {}): Approv
       description: 'Adds a 5-day forecast endpoint.',
       diffSummary: '+12 -3 lines in src/weather.ts',
     },
+    ...overrides,
+  });
+}
+
+function gatewayExecApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
+  return approval({
+    proposalId: 'opap_exec_1',
+    source: 'gateway-exec',
+    kind: 'gateway-exec:command',
+    summary: 'Restart the gateway on gateway-01.',
+    keysTouched: [],
+    detail: {
+      command: 'systemctl restart openclaw-gateway',
+      host: 'gateway-01',
+      cwd: '/opt/openclaw',
+      agentId: 'agent_123',
+      sessionKey: 'session_abc',
+      requestedBy: 'did:imajin:jin-agent',
+      approvalId: 'oc_approval_1',
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    },
+    outcome: null,
     ...overrides,
   });
 }
@@ -362,5 +386,79 @@ describe('per-source renderer registry — skill-workshop', () => {
     expect(await screen.findByRole('button', { name: 'Approve' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
     expect(screen.getByText('some-future-source:thing')).toBeDefined();
+  });
+});
+
+// `gateway-exec` renderer (#2221): verbatim command block, host/cwd/agent
+// badges, expiry countdown/expired state, and allow-once/deny-only labels.
+describe('per-source renderer registry — gateway-exec', () => {
+  it('renders the verbatim command block, host badge, cwd, agent + session, and an expiry countdown', async () => {
+    installFetch([{ isOperator: true, approvals: [gatewayExecApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('systemctl restart openclaw-gateway')).toBeDefined();
+    expect(screen.getByText('gateway-01')).toBeDefined();
+    expect(screen.getByText('/opt/openclaw')).toBeDefined();
+    expect(screen.getByText('agent_123')).toBeDefined();
+    expect(screen.getByText('session_abc')).toBeDefined();
+    expect(screen.getByText(/expires in/)).toBeDefined();
+  });
+
+  it('offers only Allow once / Deny — never a third (allow-always) button', async () => {
+    installFetch([{ isOperator: true, approvals: [gatewayExecApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByRole('button', { name: 'Allow once' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /allow.always/i })).toBeNull();
+  });
+
+  it('posts decision=approve when Allow once is clicked (labels are cosmetic only)', async () => {
+    const spy = installFetch(
+      [{ isOperator: true, approvals: [gatewayExecApproval()] }, { isOperator: true, approvals: [gatewayExecApproval({ status: 'approved' })] }],
+      { ok: true, body: { approval: gatewayExecApproval({ status: 'approved' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Allow once' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'approve' }) });
+  });
+
+  it('shows an expired indicator and no decision controls once detail.expiresAt has passed (#2221)', async () => {
+    const expired = gatewayExecApproval({
+      detail: { ...gatewayExecApproval().detail, expiresAt: '2000-01-01T00:00:00.000Z' },
+    });
+    installFetch([{ isOperator: true, approvals: [expired] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('expired — can no longer be decided')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
+  });
+
+  it('renders the post-exec outcome (exit code, duration, output hash) once attached', async () => {
+    const withOutcome = gatewayExecApproval({
+      status: 'approved',
+      outcome: { exitCode: 0, durationMs: 842, outputHash: 'a'.repeat(64) },
+    });
+    installFetch([{ isOperator: true, approvals: [withOutcome] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('exit 0')).toBeDefined();
+    expect(screen.getByText('842ms')).toBeDefined();
+    expect(screen.getByText('a'.repeat(64))).toBeDefined();
+  });
+
+  it('shows no outcome section before one is attached', async () => {
+    installFetch([{ isOperator: true, approvals: [gatewayExecApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    await screen.findByText('systemctl restart openclaw-gateway');
+    expect(screen.queryByText(/^exit /)).toBeNull();
   });
 });

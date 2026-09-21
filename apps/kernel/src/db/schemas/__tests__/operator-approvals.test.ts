@@ -26,6 +26,7 @@ describe('operator.approvals schema', () => {
     expect(operatorApprovals.notificationId.name).toBe('notification_id');
     expect(operatorApprovals.status.name).toBe('status');
     expect(operatorApprovals.decision.name).toBe('decision');
+    expect(operatorApprovals.outcome.name).toBe('outcome');
     expect(operatorApprovals.appliedAt.name).toBe('applied_at');
     expect(operatorApprovals.createdAt.name).toBe('created_at');
     expect(operatorApprovals.updatedAt.name).toBe('updated_at');
@@ -54,6 +55,10 @@ describe('operator.approvals schema', () => {
     expect(operatorApprovals.appliedAt.notNull).toBe(false);
     expect(operatorApprovals.detail.notNull).toBe(false);
     expect(operatorApprovals.contentHash.notNull).toBe(false);
+  });
+
+  it('leaves outcome nullable (#2221: exec.command-only post-exec follow-up)', () => {
+    expect(operatorApprovals.outcome.notNull).toBe(false);
   });
 
   it('declares the operator-, status-, and source-scoped lookup indexes', () => {

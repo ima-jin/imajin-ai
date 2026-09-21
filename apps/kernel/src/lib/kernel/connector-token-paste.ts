@@ -61,6 +61,10 @@ import {
   recordConnectorRegistration,
   revokeConnectorRegistration,
 } from '@/src/lib/kernel/connector-registry-store';
+import {
+  notifyConnectorCredentialSealed,
+  notifyConnectorCredentialUnsealed,
+} from '@/src/lib/notify/connector-events';
 
 const log = createLogger('kernel');
 
@@ -260,6 +264,10 @@ export function createConnectorTokenPaste(
       provider: opts.id,
       sealedKeyField: keyField(ownerDid),
     });
+
+    // #2205 — best-effort; never fails a seal that already succeeded (see
+    // connector-events.ts's own fail-open guarantee).
+    await notifyConnectorCredentialSealed(ownerDid, opts.id);
   }
 
   async function resolveActiveGrant(ownerDid: string, requiredScope: string): Promise<boolean> {
@@ -402,7 +410,14 @@ export function createConnectorTokenPaste(
     // Both authoritative surfaces are already revoked at this point; the
     // registry is brought into agreement afterwards and never throws (#1924).
     await revokeConnectorRegistration(ownerDid, opts.id);
-    return revokedGrants > 0 || revokedLinks > 0;
+
+    const revoked = revokedGrants > 0 || revokedLinks > 0;
+    // #2205 — only on an actual transition, so a no-op disconnect stays
+    // silent; best-effort, never fails this call (see connector-events.ts).
+    if (revoked) {
+      await notifyConnectorCredentialUnsealed(ownerDid, opts.id);
+    }
+    return revoked;
   }
 
   /**
