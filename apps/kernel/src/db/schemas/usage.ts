@@ -70,6 +70,13 @@ export const usageIncurred = usageSchema.table(
     // underlying event (e.g. a Claude Code session-JSONL message uuid). Null
     // for the passthrough emitter, whose calls are already exactly-once.
     externalId: text('external_id'),
+    // #2202: NULL for every normal call (successful, or degraded-but-served
+    // with unknown usage, per the "a degraded row beats a missing one" note
+    // above) -- only ever 'error' for a completions-passthrough call the
+    // upstream rejected (4xx/5xx). Lets cost/call-count rollups exclude a
+    // failed attempt instead of silently counting it as a free success; the
+    // row itself is still kept for audit visibility.
+    status: text('status'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -79,6 +86,7 @@ export const usageIncurred = usageSchema.table(
     turnIdx: index('idx_usage_incurred_turn').on(table.turnId),
     connectorIdx: index('idx_usage_incurred_connector').on(table.connectorId, table.createdAt),
     createdIdx: index('idx_usage_incurred_created').on(table.createdAt),
+    statusIdx: index('idx_usage_incurred_status').on(table.status).where(sql`${table.status} IS NOT NULL`),
     // #1151 dedupe: partial unique index (see migrations/0121_usage_emitters.sql)
     // so re-tailing/re-polling an external emitter can never double-count.
     sourceExternalIdUniq: uniqueIndex('uniq_usage_incurred_source_external_id')

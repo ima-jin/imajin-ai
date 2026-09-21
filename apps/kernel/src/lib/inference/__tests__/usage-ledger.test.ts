@@ -233,6 +233,36 @@ describe('recordInferenceUsage', () => {
     expect(usageInsert.values.unit).toBeNull();
   });
 
+  it('#2202: writes status=error and null cost/no transaction for a failed upstream attempt, even when a cost happened to be computable', async () => {
+    await recordInferenceUsage({
+      principalDid: OWNER,
+      provider: 'xai',
+      model: 'grok-4',
+      tokensIn: 1_000_000,
+      tokensOut: 1_000_000,
+      status: 'error',
+    });
+
+    const usageInsert = insertCalls.find((c) => c.table === 'usageIncurred');
+    expect(usageInsert?.values.status).toBe('error');
+    expect(usageInsert?.values.costUsd).toBeNull();
+    expect(usageInsert?.values.transactionId).toBeNull();
+    expect(insertCalls.find((c) => c.table === 'transactions')).toBeUndefined();
+  });
+
+  it('#2202: writes status=null for every normal call, unchanged from before the status field existed', async () => {
+    await recordInferenceUsage({
+      principalDid: OWNER,
+      provider: 'xai',
+      model: 'grok-4',
+      tokensIn: 1_000_000,
+      tokensOut: 1_000_000,
+    });
+
+    const usageInsert = insertCalls.find((c) => c.table === 'usageIncurred');
+    expect(usageInsert?.values.status).toBeNull();
+  });
+
   it('never throws when the DB write fails \u2014 a metering failure must not fail an already-served completion', async () => {
     insertMock.mockImplementationOnce(() => {
       throw new Error('relation "usage.incurred" does not exist');

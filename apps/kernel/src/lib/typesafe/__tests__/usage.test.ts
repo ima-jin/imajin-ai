@@ -79,6 +79,22 @@ describe('recordTypesafeUsage', () => {
     });
   });
 
+  it('#2202: writes agentDid on the row for a delegated call, mirroring recordInferenceUsage', async () => {
+    const AGENT_DID = 'did:imajin:openclaw-app';
+    await recordTypesafeUsage({ ownerDid: OWNER, agentDid: AGENT_DID, model: 'jev-latest', tokensIn: 10, tokensOut: 0 });
+
+    const row = insertValuesMock.mock.calls[0][0];
+    expect(row.principalDid).toBe(OWNER);
+    expect(row.agentDid).toBe(AGENT_DID);
+  });
+
+  it('#2202: writes agentDid as null for a direct (non-delegated) call', async () => {
+    await recordTypesafeUsage({ ownerDid: OWNER, model: 'jev-latest', tokensIn: 10, tokensOut: 0 });
+
+    const row = insertValuesMock.mock.calls[0][0];
+    expect(row.agentDid).toBeNull();
+  });
+
   it('never writes a pay.transactions row or spend-cap side effect (no brain coupling)', async () => {
     await recordTypesafeUsage({ ownerDid: OWNER, model: 'jev-latest', tokensIn: 100, tokensOut: 0 });
 

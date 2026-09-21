@@ -155,6 +155,57 @@ describe('forwardOpenAiCompatible', () => {
     expect(await res.json()).toEqual({ error: { message: 'model_deprecated' } });
   });
 
+  it('#2202: marks the usage.incurred row status=error on a non-streaming upstream 4xx, instead of a bare null-cost "success" row', async () => {
+    mockRecordInferenceUsage.mockClear();
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { message: 'max_tokens unsupported' } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await forwardOpenAiCompatible(XAI_BRAIN, { messages: [] }, {});
+
+    expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'xai', model: 'grok-4', status: 'error' }),
+    );
+  });
+
+  it('#2202: marks the usage.incurred row status=error on a streaming upstream 5xx', async () => {
+    mockRecordInferenceUsage.mockClear();
+    const upstreamStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {"error":"upstream_unavailable"}\n\n'));
+        controller.close();
+      },
+    });
+    fetchMock.mockResolvedValueOnce(
+      new Response(upstreamStream, { status: 503, headers: { 'content-type': 'text/event-stream' } }),
+    );
+
+    const res = await forwardOpenAiCompatible(XAI_BRAIN, { messages: [], stream: true }, {});
+    await res.text();
+
+    expect(mockRecordInferenceUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'xai', model: 'grok-4', status: 'error' }),
+    );
+  });
+
+  it('#2202: omits status entirely on a successful (2xx) call, unchanged from before this field existed', async () => {
+    mockRecordInferenceUsage.mockClear();
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: 'chatcmpl-1', choices: [], usage: { prompt_tokens: 5, completion_tokens: 2 } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    await forwardOpenAiCompatible(XAI_BRAIN, { messages: [] }, {});
+
+    const call = mockRecordInferenceUsage.mock.calls[0][0];
+    expect(call.status).toBeUndefined();
+  });
+
   it('throws UpstreamTimeoutError when fetch aborts on timeout', async () => {
     fetchMock.mockImplementationOnce(() => {
       const err = new Error('The operation was aborted');
