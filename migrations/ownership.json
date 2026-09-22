@@ -81,13 +81,13 @@
     "auth.delegate_grant_requests": {
       "owner": "kernel",
       "schema": "auth",
-      "firstMigration": "0153_delegate_grant_bearers.sql",
+      "firstMigration": "0156_delegate_grant_bearers.sql",
       "notes": ""
     },
     "auth.delegate_grant_bearers": {
       "owner": "kernel",
       "schema": "auth",
-      "firstMigration": "0153_delegate_grant_bearers.sql",
+      "firstMigration": "0156_delegate_grant_bearers.sql",
       "notes": ""
     },
     "auth.devices": {

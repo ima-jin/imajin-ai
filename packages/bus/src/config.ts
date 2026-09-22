@@ -372,7 +372,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   // #2252 — delegate-grant bearer credential for static-header foreign
   // clients (knock -> approve -> scoped bearer). `audit-log` persists every
   // knock/issue/use/deny/revoke, mirroring agent.reach's #2251 pattern
-  // above. Kept in sync with migration 0153.
+  // above. Kept in sync with migration 0156.
   'access.knock.requested': [
     {
       type: 'audit-log',
