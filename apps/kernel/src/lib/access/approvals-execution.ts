@@ -16,7 +16,7 @@
  */
 import { createLogger } from '@imajin/logger';
 import type { OperatorApprovalCard } from '../notify/operator-approvals-service';
-import { resolveVaultAuthorization, type VaultAuthorization } from '../vault/authorization';
+import { resolveVaultAuthorization } from '../vault/authorization';
 import { getNodeSigningIdentity } from '../vault/sealing';
 import {
   getDelegateGrantRequestById,
@@ -28,7 +28,7 @@ const log = createLogger('kernel');
 
 export const ACCESS_BEARER_GRANT_KIND = 'access:bearer-grant';
 
-export type { VaultAuthorization as AccessAuthorization };
+export type { VaultAuthorization as AccessAuthorization } from '../vault/authorization';
 
 export interface AccessExecutionData {
   /** The plaintext bearer — surfaced in the decision route's response EXACTLY ONCE. */
