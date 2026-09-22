@@ -1,11 +1,13 @@
 name: Release
 
-# Tag is truth (#2285): this is the ONLY place package.json "version" fields
-# are ever bumped, and the ONLY place vX.Y.Z tags are ever created. Everyone
-# else (scripts/build.sh, packages/ui/src/BuildInfo.tsx) reads the nearest
-# git tag for what's actually running; deploy-prod.yml already triggers on
-# `push: tags: ['v*']`, so pushing the tag this workflow creates is what
-# actually ships a release.
+# Tag is truth (#2285): package.json "version" fields are bumped ONLY here,
+# in lockstep, ONLY via a normal reviewed PR into main — this workflow never
+# pushes to main directly and never bypasses branch protection. Merging the
+# PR this workflow opens is what actually cuts the release:
+# .github/workflows/tag-release.yml tags that merge commit and dispatches
+# deploy-prod.yml, which is gated by the `production` GitHub Environment's
+# required reviewer (see deploy-prod.yml) — the same approval gate every
+# other prod deploy already goes through, not a new one.
 on:
   workflow_dispatch:
     inputs:
@@ -18,7 +20,7 @@ on:
           - patch
         default: minor
 
-# One release at a time — two concurrent runs racing to read/bump/commit/tag
+# One release in flight at a time — two concurrent runs racing to read/bump
 # root package.json would corrupt each other's version math.
 concurrency:
   group: release
@@ -26,14 +28,20 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: write
+  # Only used to dispatch ci.yml against the release branch below (a
+  # workflow_dispatch call, not a push/tag) — see that step's comment for
+  # why. Nothing here dispatches deploy-prod.yml or touches production.
+  actions: write
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    # Releases are cut from main only. workflow_dispatch can technically be
-    # run against any ref/branch from the Actions UI; refuse anything else
-    # rather than silently tagging a feature branch's tip as a release.
+    # Releases are dispatched from main only. workflow_dispatch can
+    # technically be run against any ref from the Actions UI; refuse
+    # anything else rather than silently opening a release PR whose base
+    # content isn't main's current tip.
     if: ${{ github.ref == 'refs/heads/main' }}
     steps:
       - name: Refuse to run off main
@@ -42,30 +50,17 @@ jobs:
           echo "::error::Release must be dispatched against main (got ${{ github.ref }})."
           exit 1
 
-      # RELEASE_PUSH_TOKEN (name only — see docs/npm-publishing.md "Cutting a
-      # release"): a token with permission to push a commit + tag straight to
-      # `main`, bypassing branch-protection's normal PR requirement. The
-      # ephemeral `secrets.GITHUB_TOKEN` cannot do this — GitHub deliberately
-      # prevents the default token from bypassing branch protection, even
-      # with `contents: write` — so this MUST be a separately provisioned
-      # secret naming a bypass-listed actor. Never printed or logged; only
-      # ever referenced by name below.
+      # Default GITHUB_TOKEN only — no bypass-actor token. Every push this
+      # workflow makes below goes to a NEW release/vX.Y.Z branch, never to
+      # main, so branch protection on main is never a question here.
       - uses: actions/checkout@v4
         with:
           ref: main
-          # Full history: `git describe --tags` (used by scripts/build.sh)
-          # and this workflow's own duplicate-tag guard both need to see
-          # every existing tag, not just the tip commit.
+          # Full history: `git describe --tags` (scripts/build.sh) and this
+          # workflow's own duplicate-tag guard both need to see every
+          # existing tag, not just the tip commit.
           fetch-depth: 0
           fetch-tags: true
-          token: ${{ secrets.RELEASE_PUSH_TOKEN }}
-
-      - name: Verify RELEASE_PUSH_TOKEN is configured
-        if: ${{ secrets.RELEASE_PUSH_TOKEN == '' }}
-        run: |
-          echo "::error::RELEASE_PUSH_TOKEN is not set. This release cannot push a commit/tag that" \
-               "bypasses main's branch protection without it. See docs/npm-publishing.md."
-          exit 1
 
       - uses: actions/setup-node@v4
         with:
@@ -82,42 +77,95 @@ jobs:
           NEW_VERSION=$(node scripts/bump-workspace-version.mjs "${{ inputs.bump }}")
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
+      # From here on, everything reads the version from $VERSION (a plain
+      # env var) rather than repeating the `${{ steps.bump.outputs.* }}`
+      # expression inline in each run block.
       - name: Guard against re-using an existing tag
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
         # Out of scope (#2285): existing tags (v0.7.0, v0.7.1, v0.8.0, ...)
         # must never be touched. This is a hard stop, not a silent skip — a
         # collision here means the bump math or the base ref is wrong.
         run: |
-          TAG="v${{ steps.bump.outputs.version }}"
+          TAG="v$VERSION"
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "::error::Tag $TAG already exists. Refusing to overwrite an existing release tag."
+            echo "::error::Tag $TAG already exists. Refusing to open a release PR for a version already tagged."
             exit 1
           fi
 
-      - name: Commit the version bump
+      - name: Create the release branch and commit the version bump
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "release/v$VERSION"
           # The commit message prefix "release:" is load-bearing, not just a
-          # label: scripts/ci-guard-version-bump.mjs (ci.yml's "CI Guards" job)
-          # is what lets a version-bump commit past the guard that blocks
-          # every other PR from touching package.json versions.
+          # label: scripts/ci-guard-version-bump.mjs (ci.yml's "CI Guards"
+          # job) is what lets this commit past the guard that blocks every
+          # other PR from touching package.json versions, and
+          # tag-release.yml keys off this exact prefix (read off the real
+          # merge parent, not the merge commit's own generic message) to
+          # decide whether a push to main is a release.
           #
-          # `git add -A` with no pathspec, not `*/package.json`: git pathspec
-          # globs don't recurse across directory levels the way a shell glob
-          # does (`*/package.json` matches `apps/package.json` but NOT
-          # `apps/www/package.json`), and `**/package.json` needs glob
-          # pathspec magic to behave. scripts/bump-workspace-version.mjs only
-          # ever rewrites package.json files, so an unrestricted `-A` is safe.
+          # `git add -A` with no pathspec, not `*/package.json`: git
+          # pathspec globs don't recurse across directory levels the way a
+          # shell glob does (`*/package.json` matches `apps/package.json`
+          # but NOT `apps/www/package.json`), and `**/package.json` needs
+          # glob pathspec magic to behave. scripts/bump-workspace-version.mjs
+          # only ever rewrites package.json files, so an unrestricted `-A`
+          # is safe.
           git add -A
-          git commit -m "release: v${{ steps.bump.outputs.version }}"
+          git commit -m "release: v$VERSION"
 
-      - name: Tag the release
-        run: |
-          git tag -a "v${{ steps.bump.outputs.version }}" -m "release: v${{ steps.bump.outputs.version }}"
+      - name: Push the release branch
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        # A new branch, never main — this does not touch branch protection.
+        run: git push origin "release/v$VERSION"
 
-      - name: Push commit and tag
-        # Pushing the tag is what actually ships this release — it's what
-        # deploy-prod.yml's `push: tags: ['v*']` trigger fires on.
+      - name: Open the release pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
         run: |
-          git push origin HEAD:refs/heads/main
-          git push origin "refs/tags/v${{ steps.bump.outputs.version }}"
+          # Body written to a temp file rather than inlined into `--body`:
+          # avoids fighting shell/YAML quoting for a multi-line, backtick-
+          # and-punctuation-heavy message (see AGENTS.md's "GitHub CLI"
+          # convention for the same reasoning, applied here to bash instead
+          # of PowerShell).
+          BODY_FILE="$(mktemp)"
+          cat > "$BODY_FILE" <<EOF
+          Lockstep version bump to \`v$VERSION\`, opened by the [Release workflow](../actions/workflows/release.yml).
+
+          Merging this PR (keeping its \`release: v$VERSION\` commit message intact) is what cuts the release: [\`tag-release.yml\`](../actions/workflows/tag-release.yml) tags the resulting merge commit as \`v$VERSION\` and dispatches [\`deploy-prod.yml\`](../actions/workflows/deploy-prod.yml) against that tag, which is gated by the \`production\` GitHub Environment's required reviewer — no separate approval step exists here, it's the same gate every other prod deploy already goes through.
+
+          See \`docs/npm-publishing.md\`'s "Cutting a release" section for the full mechanism.
+          EOF
+          PR_URL=$(gh pr create \
+            --title "release: v$VERSION" \
+            --base main \
+            --head "release/v$VERSION" \
+            --body-file "$BODY_FILE")
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "Opened $PR_URL"
+
+      - name: Dispatch CI against the release branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        # A pull request opened with the default GITHUB_TOKEN does not
+        # trigger other workflows' `pull_request` events — GitHub
+        # deliberately suppresses further workflow runs from GITHUB_TOKEN-
+        # authored activity to prevent recursive workflow chains (the exact
+        # same rule tag-release.yml's dispatch of deploy-prod.yml works
+        # around). Left alone, this PR's required status checks (Build, CI
+        # Guards, Lint & Typecheck, SonarCloud, Test — see
+        # .github/required-checks.json) would sit at "Expected — waiting for
+        # status" forever and block merge. `workflow_dispatch` is exempt
+        # from that suppression, and GitHub matches required checks to a
+        # commit SHA regardless of which trigger produced them, so
+        # dispatching ci.yml against this exact branch/commit populates the
+        # PR's required checks for real.
+        run: gh workflow run ci.yml --ref "release/v$VERSION"
