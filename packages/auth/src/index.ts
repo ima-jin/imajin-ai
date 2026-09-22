@@ -192,3 +192,10 @@ export {
   isKnockExternalDid,
 } from "./knock";
 export type { KnockStatus, ExternalDidVerificationState } from "./knock";
+export { loadFromVault } from "./vault-client";
+export type {
+  VaultBootstrapIdentity,
+  VaultKeySpec,
+  LoadFromVaultParams,
+  VaultCredentials,
+} from "./vault-client";
