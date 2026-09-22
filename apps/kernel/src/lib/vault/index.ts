@@ -744,9 +744,25 @@ export async function loadAndUnseal(field: string): Promise<string | undefined> 
 export async function sealAndGrantStaticSecret(
   field: string,
   plaintext: string,
-  options: { principalDid: string; granteeDid: string; expiresAt?: Date | null },
+  options: {
+    principalDid: string;
+    granteeDid: string;
+    expiresAt?: Date | null;
+    /**
+     * Free-form label naming what the grantee intends to use the secret
+     * for (#2231/#2242) — carried onto the Tier 0 self-granted row only;
+     * unused for pre-existing callers that don't pass it.
+     */
+    purpose?: string | null;
+    /**
+     * Single-use grant (#2231/#2242): the agent-fetch route consumes it on
+     * first successful read. Defaults to false, matching every pre-existing
+     * caller of this function exactly.
+     */
+    oneTime?: boolean;
+  },
 ): Promise<{ entry: VaultEntry; grantId: string | null; requestId: string | null }> {
-  const { principalDid, granteeDid, expiresAt = null } = options;
+  const { principalDid, granteeDid, expiresAt = null, purpose = null, oneTime = false } = options;
   const identity = getNodeSigningIdentity();
   const fieldKey = randomBytes(32);
 
@@ -891,6 +907,9 @@ export async function sealAndGrantStaticSecret(
     // node's own (Tier 0 only — this path throws under Tier 1).
     recipientXPub: nodeXPub,
     ownerEdPub: identity.senderPubkey,
+    // #2231/#2242 — agent-facing bookkeeping, not cryptographically signed scope.
+    purpose,
+    oneTime,
   });
 
   return { entry, grantId, requestId: null };
@@ -1530,3 +1549,14 @@ export {
   vaultFieldStatusForGrantee,
   type VaultFieldStatus,
 } from './field-status';
+
+// ── #2242 — vault.mint (Ed25519 keypair born in-vault) ─────────────────────
+// Trailing re-export only; see ./mint.ts for the implementation.
+export {
+  mintedKeyField,
+  mintKeypair,
+  revokeMintedKey,
+  type MintKeypairParams,
+  type MintKeypairResult,
+  type RevokeMintedKeyOutcome,
+} from './mint';

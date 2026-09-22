@@ -681,6 +681,42 @@ export interface BusEventMap {
     context_type: 'vault.delegation';
   };
   /**
+   * Emitted when POST /api/vault/mint generates a new Ed25519 keypair
+   * inside the vault (#2242). Carries no key material — the private key is
+   * sealed and delivered only via the existing #2231 one-time
+   * delegation-grant fetch path; this event is the audit trail for the
+   * mint action itself.
+   */
+  'vault.key.minted': {
+    mintId: string;
+    did: string;
+    publicKey: string;
+    field: string;
+    purpose: string;
+    /** Grantee DID the sealed private key was delivered to. */
+    requestedBy: string;
+    /** Acting principal (requireAuth/actingFor) who requested the mint. */
+    mintedBy: string;
+    /** Null under Tier 1, pending the external owner agent. */
+    grantId: string | null;
+    context_id: string;
+    context_type: 'vault.mint';
+  };
+  /**
+   * Emitted when POST /api/vault/mint/revoke tombstones a previously
+   * minted key (#2242): the vault_minted_keys row is marked revoked and
+   * the delegation grant's wrapped key material is erased (soft tombstone
+   * for v1 — see apps/kernel/src/lib/vault/mint.ts).
+   */
+  'vault.key.revoked': {
+    mintId: string;
+    did: string;
+    publicKey: string;
+    revokedBy: string;
+    context_id: string;
+    context_type: 'vault.mint';
+  };
+  /**
    * Emitted by sealAndStoreV2 in Tier 1 mode when the vault entry is written
    * but no delegation grant has been created yet (#1403).  The external owner
    * agent (imajin-cli vault serve) receives this event, recovers the field key

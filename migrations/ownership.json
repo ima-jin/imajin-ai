@@ -959,6 +959,12 @@
       "schema": "pay",
       "firstMigration": "0143_pay_payment_requests.sql",
       "notes": ""
+    },
+    "kernel.vault_minted_keys": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0150_vault_mint.sql",
+      "notes": ""
     }
   },
   "views": {},
