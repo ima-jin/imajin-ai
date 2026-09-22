@@ -68,7 +68,7 @@ const listTool: McpTool = {
   name: 'media_list',
   requiredScope: 'media:read',
   description:
-    'List the media assets owned by your DID. Optional filters: type (mime prefix, e.g. "image"), search (filename substring), folderId, limit (max 200), offset.',
+    'List the media assets owned by your DID, newest first by default. Optional filters: type (mime prefix, e.g. "image"), search (filename substring), folderId, limit (max 200), offset, order ("desc" newest-first [default] or "asc" oldest-first).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -77,17 +77,20 @@ const listTool: McpTool = {
       folderId: { type: 'string' },
       limit: { type: 'integer', minimum: 1, maximum: 200 },
       offset: { type: 'integer', minimum: 0 },
+      order: { type: 'string', enum: ['asc', 'desc'], description: 'Sort by createdAt; defaults to "desc" (newest first)' },
     },
     additionalProperties: false,
   },
   async handler(args, ctx) {
     await requireMcpGrant(ctx.did, 'media:read', ctx.appDid);
+    const orderArg = str(args, 'order');
     const opts: ListOptions = {
       type: str(args, 'type'),
       search: str(args, 'search'),
       folderId: str(args, 'folderId'),
       limit: num(args, 'limit'),
       offset: num(args, 'offset'),
+      order: orderArg === 'asc' ? 'asc' : 'desc',
     };
     const rows = await listOwnedAssets(ctx.did, opts);
     return json({ count: rows.length, assets: rows.map(summarize) });

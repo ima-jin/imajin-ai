@@ -172,7 +172,12 @@ const uploadTool: McpTool = {
   name: 'media_upload',
   requiredScope: 'media:write',
   description:
-    `Upload a new private asset owned by your DID from base64-encoded bytes (max ${MAX_UPLOAD_MB} MB). Create-only: always makes a new asset.`,
+    'Upload a new private asset owned by your DID from base64-encoded bytes. For small content you generated ' +
+    "yourself (notes, snippets) only — over MCP the model is the byte transport, so this does not scale to real " +
+    "files. Files from the user's device (audio, photos, documents) should be uploaded in the Imajin app and " +
+    'referenced here by asset id instead (see media_list / media_get). Oversize payloads return a structured ' +
+    "{ code: 'payload_too_large', limitBytes, uploadUrl } error instead of failing silently. Create-only: always " +
+    'makes a new asset.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -192,7 +197,16 @@ const uploadTool: McpTool = {
 
     const buffer = Buffer.from(dataB64, 'base64');
     if (buffer.byteLength === 0) throw new Error('data_base64 decoded to empty content');
-    if (buffer.byteLength > MAX_UPLOAD_BYTES) throw new Error(`File exceeds ${MAX_UPLOAD_MB} MB limit`);
+    if (buffer.byteLength > MAX_UPLOAD_BYTES) {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.MEDIA_PUBLIC_URL ?? '';
+      return json({
+        error: {
+          code: 'payload_too_large',
+          limitBytes: MAX_UPLOAD_BYTES,
+          uploadUrl: `${baseUrl}/media`,
+        },
+      });
+    }
 
     const mimeType = inferMime(str(args, 'mimeType') ?? '', filename);
     if (!isAllowedMime(mimeType)) throw new Error(`MIME type ${mimeType} is not allowed`);
