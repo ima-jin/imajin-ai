@@ -25,6 +25,9 @@ importers:
 
   .:
     dependencies:
+      '@imajin/auth':
+        specifier: workspace:*
+        version: link:packages/auth
       '@metalabel/dfos-protocol':
         specifier: ^0.13.5
         version: 0.13.5

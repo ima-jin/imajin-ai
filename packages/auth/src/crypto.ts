@@ -166,6 +166,23 @@ export function isValidPublicKey(hex: string): boolean {
 }
 
 /**
+ * Create a `did:imajin:*` DID from an Ed25519 public key.
+ *
+ * Format: did:imajin:<first-16-chars-of-pubkey>
+ *
+ * Note: the full public key is still needed for verification — the DID is
+ * just a short identifier. Moved here from the (now-deleted, #1711) keypair
+ * provider, since it's a pure function of a public key rather than anything
+ * provider-specific.
+ */
+export function createDID(publicKey: string): string {
+  if (!isValidPublicKey(publicKey)) {
+    throw new Error('Invalid public key');
+  }
+  return `did:imajin:${publicKey.slice(0, 16)}`;
+}
+
+/**
  * Validate that a string is a valid hex-encoded private key.
  * Accepts raw 32-byte hex (64 chars) or PKCS#8 DER hex (96 chars).
  * Use `extractPrivateKeySeed` to normalise before signing.
