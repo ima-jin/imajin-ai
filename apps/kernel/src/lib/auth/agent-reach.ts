@@ -24,7 +24,7 @@
 import { eq, and } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { db, identities, consentGrants } from '@/src/db';
-import { canonicalize, emitAttestation } from '@imajin/auth';
+import { canonicalize, emitAttestation, SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 import { broker, publish, isBrokerRelease } from '@imajin/bus';
 import type { BrokerPredicateClaim } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
@@ -97,6 +97,25 @@ function hashTranscript(transcript: string): string {
   return createHash('sha256').update(transcript).digest('hex');
 }
 
+/**
+ * Bounds the requester-claimed `issuedAt` the same way
+ * `apps/kernel/src/lib/notify/operator-approvals-service.ts`'s
+ * `isDecidedAtWithinClockSkew` bounds a claimed decision timestamp —
+ * reusing `SIGNED_MESSAGE_MAX_AGE`/`FUTURE_TOLERANCE` rather than inventing
+ * new constants (or a nonce store) for what is, structurally, the same
+ * clock-skew/replay-window problem (owner ruling on #2251 review, 2026-09-22).
+ * A stale or future-dated request is folded into the same `invalid_signature`
+ * / 401 outcome as a cryptographically bad signature — the anti-enumeration
+ * property already established for that path: a requester cannot tell "your
+ * clock is off" apart from "your key is wrong" from the response alone.
+ */
+function isReachRequestFresh(issuedAt: string): boolean {
+  const claimed = Date.parse(issuedAt);
+  if (Number.isNaN(claimed)) return false;
+  const age = Date.now() - claimed;
+  return age <= SIGNED_MESSAGE_MAX_AGE && age >= -FUTURE_TOLERANCE;
+}
+
 async function publishDenied(params: { requesterDid: string; principalDid: string; reason: ReachDenialReason }): Promise<void> {
   await publish('agent.reach.denied', {
     issuer: params.requesterDid,
@@ -123,11 +142,87 @@ function extractAnswer(data: Record<string, unknown>, field: string): boolean {
   return claim?.result === true;
 }
 
+interface EmitReachAttestationParams {
+  principalDid: string;
+  input: ReachRequestInput;
+  transcriptHash: string;
+  signatureVerified: boolean;
+  outcome: 'answered' | 'denied';
+  reason?: ReachDenialReason;
+  answer?: boolean;
+  onBehalfOfStubDid?: string;
+  grantId?: string;
+}
+
+/**
+ * Mint exactly one `agent.reach` attestation for this exchange, whatever the
+ * outcome (owner ruling on #2251 review, 2026-09-22: "every reach exchange —
+ * answered OR denied by the gate — mints exactly one attestation... the
+ * record remembers THAT a reach was refused; the boolean leaks nothing").
+ * Binds the transcript hash, never the transcript bytes themselves — the
+ * payload below carries only the structured request metadata (purpose,
+ * field, predicate, declared arg) that the requester already disclosed by
+ * making the call, plus the boolean answer only on the `answered` branch.
+ * `signatureVerified` is carried explicitly so the record is honest about
+ * what was actually checked: a denial minted before signature verification
+ * (unknown principal/requester) or after a failed verification never claims
+ * the requester's identity was authenticated.
+ */
+async function emitReachAttestation(params: EmitReachAttestationParams): Promise<void> {
+  const { input } = params;
+  const nodeDid = await getNodeDid();
+  await emitAttestation({
+    issuer_did: nodeDid,
+    subject_did: params.principalDid,
+    type: 'agent.reach',
+    context_id: input.requesterDid,
+    context_type: 'agent.reach',
+    payload: {
+      requesterDid: input.requesterDid,
+      principalDid: params.principalDid,
+      onBehalfOfStubDid: params.onBehalfOfStubDid ?? null,
+      onBehalfOfPlatform: input.onBehalfOf.platform,
+      selfDescription: input.onBehalfOf.selfDescription ?? null,
+      purpose: input.purpose,
+      field: input.field,
+      predicate: input.predicate,
+      arg: input.arg ?? null,
+      transcriptHash: params.transcriptHash,
+      requesterSignature: input.signature,
+      signatureVerified: params.signatureVerified,
+      grantId: params.grantId ?? null,
+      outcome: params.outcome,
+      ...(params.outcome === 'denied' ? { reason: params.reason } : { answer: params.answer }),
+    },
+  }).catch((err: unknown) => log.error({ err: String(err), outcome: params.outcome }, '[agent-reach] emitAttestation failed'));
+}
+
+/** Attest the denial, then publish `agent.reach.denied` — every fail-closed exit uses this single path. */
+async function denyReach(params: {
+  principalDid: string;
+  input: ReachRequestInput;
+  transcriptHash: string;
+  reason: ReachDenialReason;
+  signatureVerified: boolean;
+}): Promise<void> {
+  await emitReachAttestation({
+    principalDid: params.principalDid,
+    input: params.input,
+    transcriptHash: params.transcriptHash,
+    signatureVerified: params.signatureVerified,
+    outcome: 'denied',
+    reason: params.reason,
+  });
+  await publishDenied({ requesterDid: params.input.requesterDid, principalDid: params.principalDid, reason: params.reason });
+}
+
 /**
  * Evaluate one reach request against `principalDid`'s gate. Fails closed at
- * every step: an unknown principal, an unknown/unsigned-for requester, an
- * invalid signature, or a missing/revoked `agent:reach` grant all deny
- * before the gate is ever evaluated. A gate with no configured
+ * every step: an unknown principal, an unknown/unsigned-for requester, a
+ * stale/future/invalid signature, or a missing/revoked `agent:reach` grant
+ * all deny before the gate is ever evaluated — and every one of those
+ * denials, like every answered exchange, mints exactly one `agent.reach`
+ * attestation (see {@link emitReachAttestation}). A gate with no configured
  * `consent_grants` row also denies (via the broker's own fail-closed
  * default) — collapsed into the same `answer: false` as a gate that
  * evaluated and declined, so the absence of a gate is never itself
@@ -137,13 +232,16 @@ export async function reachPrincipal(
   principalDid: string,
   input: ReachRequestInput,
 ): Promise<ReachAnswer | ReachDenied> {
+  const transcript = reachTranscript(principalDid, input);
+  const transcriptHash = hashTranscript(transcript);
+
   const [principal] = await db
     .select({ id: identities.id, metadata: identities.metadata })
     .from(identities)
     .where(eq(identities.id, principalDid))
     .limit(1);
   if (!principal) {
-    await publishDenied({ requesterDid: input.requesterDid, principalDid, reason: 'principal_not_found' });
+    await denyReach({ principalDid, input, transcriptHash, reason: 'principal_not_found', signatureVerified: false });
     return denial('principal_not_found', 404);
   }
 
@@ -153,14 +251,18 @@ export async function reachPrincipal(
     .where(eq(identities.id, input.requesterDid))
     .limit(1);
   if (!requester) {
-    await publishDenied({ requesterDid: input.requesterDid, principalDid, reason: 'requester_unknown' });
+    await denyReach({ principalDid, input, transcriptHash, reason: 'requester_unknown', signatureVerified: false });
     return denial('requester_unknown', 401);
   }
 
-  const transcript = reachTranscript(principalDid, input);
+  if (!isReachRequestFresh(input.issuedAt)) {
+    await denyReach({ principalDid, input, transcriptHash, reason: 'invalid_signature', signatureVerified: false });
+    return denial('invalid_signature', 401);
+  }
+
   const signatureValid = await verifySignature(transcript, input.signature, requester.publicKey);
   if (!signatureValid) {
-    await publishDenied({ requesterDid: input.requesterDid, principalDid, reason: 'invalid_signature' });
+    await denyReach({ principalDid, input, transcriptHash, reason: 'invalid_signature', signatureVerified: false });
     return denial('invalid_signature', 401);
   }
 
@@ -171,7 +273,7 @@ export async function reachPrincipal(
     delegatorDid: principalDid,
   });
   if (!introspection.authorized || !introspection.grantId) {
-    await publishDenied({ requesterDid: input.requesterDid, principalDid, reason: 'unauthorized' });
+    await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified: true });
     return denial('unauthorized', 403);
   }
 
@@ -195,32 +297,18 @@ export async function reachPrincipal(
   });
 
   const answer = isBrokerRelease(brokerResult) ? extractAnswer(brokerResult.data, input.field) : false;
-  const transcriptHash = hashTranscript(transcript);
   const issuedAt = new Date().toISOString();
 
-  const nodeDid = await getNodeDid();
-  await emitAttestation({
-    issuer_did: nodeDid,
-    subject_did: principalDid,
-    type: 'agent.reach',
-    context_id: input.requesterDid,
-    context_type: 'agent.reach',
-    payload: {
-      requesterDid: input.requesterDid,
-      onBehalfOfStubDid: stub.did,
-      onBehalfOfPlatform: input.onBehalfOf.platform,
-      selfDescription: input.onBehalfOf.selfDescription ?? null,
-      principalDid,
-      purpose: input.purpose,
-      field: input.field,
-      predicate: input.predicate,
-      arg: input.arg ?? null,
-      answer,
-      transcriptHash,
-      requesterSignature: input.signature,
-      grantId: introspection.grantId,
-    },
-  }).catch((err: unknown) => log.error({ err: String(err) }, '[agent-reach] emitAttestation failed'));
+  await emitReachAttestation({
+    principalDid,
+    input,
+    transcriptHash,
+    signatureVerified: true,
+    outcome: 'answered',
+    answer,
+    onBehalfOfStubDid: stub.did,
+    grantId: introspection.grantId,
+  });
 
   await publish('agent.reach.answered', {
     issuer: input.requesterDid,

@@ -115,10 +115,14 @@ vi.mock('../foreign-principal-stub', () => ({
 }));
 
 const emitAttestationMock = vi.fn().mockResolvedValue({ attestationId: 'att_1' });
-vi.mock('@imajin/auth', () => ({
-  canonicalize: (obj: unknown) => JSON.stringify(obj),
-  emitAttestation: (...args: unknown[]) => emitAttestationMock(...args),
-}));
+vi.mock('@imajin/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@imajin/auth')>();
+  return {
+    ...actual,
+    canonicalize: (obj: unknown) => JSON.stringify(obj),
+    emitAttestation: (...args: unknown[]) => emitAttestationMock(...args),
+  };
+});
 
 const brokerMock = vi.fn();
 const publishMock = vi.fn().mockResolvedValue(undefined);
@@ -128,6 +132,7 @@ vi.mock('@imajin/bus', () => ({
   isBrokerRelease: (r: { status: string }) => r.status === 'released',
 }));
 
+import { SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 import { reachPrincipal, seedAgentReachGate, reachTranscript, type ReachRequestInput } from '../agent-reach';
 
 const PRINCIPAL_DID = 'did:imajin:ryan';
@@ -162,27 +167,61 @@ describe('reachPrincipal (#2251)', () => {
     identitiesStore.set(REQUESTER_DID, { id: REQUESTER_DID, publicKey: 'requester-pubkey', metadata: {} });
   });
 
-  it('denies with principal_not_found when the target DID does not exist, without ever checking the signature', async () => {
+  it('denies with principal_not_found when the target DID does not exist, without ever checking the signature, but still attests the refusal', async () => {
     const result = await reachPrincipal('did:imajin:nobody', baseInput());
     expect(result).toMatchObject({ denied: true, reason: 'principal_not_found', status: 404 });
     expect(verifySignatureMock).not.toHaveBeenCalled();
     expect(publishMock).toHaveBeenCalledWith('agent.reach.denied', expect.objectContaining({
       payload: expect.objectContaining({ reason: 'principal_not_found' }),
     }));
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      subject_did: 'did:imajin:nobody',
+      type: 'agent.reach',
+      payload: expect.objectContaining({ outcome: 'denied', reason: 'principal_not_found', signatureVerified: false }),
+    }));
   });
 
-  it('denies with requester_unknown when the requester has no identity (never knocked/accepted)', async () => {
+  it('denies with requester_unknown when the requester has no identity (never knocked/accepted), and attests the refusal', async () => {
     const result = await reachPrincipal(PRINCIPAL_DID, baseInput({ requesterDid: 'did:imajin:stranger' }));
     expect(result).toMatchObject({ denied: true, reason: 'requester_unknown', status: 401 });
     expect(introspectGrantMock).not.toHaveBeenCalled();
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ outcome: 'denied', reason: 'requester_unknown', signatureVerified: false }),
+    }));
   });
 
-  it('denies with invalid_signature when the signature does not verify, before checking any grant', async () => {
+  it('denies with invalid_signature when the signature does not verify, before checking any grant, and attests the refusal honestly (signatureVerified: false)', async () => {
     verifySignatureMock.mockResolvedValue(false);
     const result = await reachPrincipal(PRINCIPAL_DID, baseInput());
     expect(result).toMatchObject({ denied: true, reason: 'invalid_signature', status: 401 });
     expect(introspectGrantMock).not.toHaveBeenCalled();
-    expect(emitAttestationMock).not.toHaveBeenCalled();
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ outcome: 'denied', reason: 'invalid_signature', signatureVerified: false }),
+    }));
+  });
+
+  it('denies with invalid_signature when the request timestamp is stale (older than SIGNED_MESSAGE_MAX_AGE), without ever calling verifySignature', async () => {
+    const staleIssuedAt = new Date(Date.now() - SIGNED_MESSAGE_MAX_AGE - 1000).toISOString();
+    const result = await reachPrincipal(PRINCIPAL_DID, baseInput({ issuedAt: staleIssuedAt }));
+    expect(result).toMatchObject({ denied: true, reason: 'invalid_signature', status: 401 });
+    expect(verifySignatureMock).not.toHaveBeenCalled();
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ outcome: 'denied', reason: 'invalid_signature', signatureVerified: false }),
+    }));
+  });
+
+  it('denies with invalid_signature when the request timestamp is too far in the future (beyond FUTURE_TOLERANCE)', async () => {
+    const futureIssuedAt = new Date(Date.now() + FUTURE_TOLERANCE + 5000).toISOString();
+    const result = await reachPrincipal(PRINCIPAL_DID, baseInput({ issuedAt: futureIssuedAt }));
+    expect(result).toMatchObject({ denied: true, reason: 'invalid_signature', status: 401 });
+    expect(verifySignatureMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a request at the exact edges of the freshness window', async () => {
+    const justInsideMaxAge = new Date(Date.now() - SIGNED_MESSAGE_MAX_AGE + 1000).toISOString();
+    const result = await reachPrincipal(PRINCIPAL_DID, baseInput({ issuedAt: justInsideMaxAge }));
+    expect(result).not.toHaveProperty('denied');
+    expect(verifySignatureMock).toHaveBeenCalled();
   });
 
   it('verifies the signature against the exact reachTranscript for this principal + input', async () => {
@@ -192,24 +231,30 @@ describe('reachPrincipal (#2251)', () => {
     expect(verifySignatureMock).toHaveBeenCalledWith(expectedTranscript, 'deadbeef', 'requester-pubkey');
   });
 
-  it('denies with unauthorized when there is no active agent:reach grant (fail-closed)', async () => {
+  it('denies with unauthorized when there is no active agent:reach grant (fail-closed), attesting that the signature WAS verified even though the grant was missing', async () => {
     introspectGrantMock.mockResolvedValue({ authorized: false, reason: 'No active, unexpired grant covers this capability and audience' });
     const result = await reachPrincipal(PRINCIPAL_DID, baseInput());
     expect(result).toMatchObject({ denied: true, reason: 'unauthorized', status: 403 });
     expect(brokerMock).not.toHaveBeenCalled();
-    expect(emitAttestationMock).not.toHaveBeenCalled();
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ outcome: 'denied', reason: 'unauthorized', signatureVerified: true }),
+    }));
   });
 
-  it('fails closed the instant the grant is revoked — same call shape as after revokeGrant()', async () => {
+  it('fails closed the instant the grant is revoked — same call shape as after revokeGrant() — and attests the post-revocation refusal', async () => {
     // Simulates DELETE /auth/api/grants/:grantId having just run: introspectGrant
     // re-reads storage and returns unauthorized on the very next call.
     introspectGrantMock.mockResolvedValueOnce({ authorized: true, grantId: 'grant_1' });
     const beforeRevocation = await reachPrincipal(PRINCIPAL_DID, baseInput());
     expect(beforeRevocation).not.toHaveProperty('denied');
 
+    emitAttestationMock.mockClear();
     introspectGrantMock.mockResolvedValueOnce({ authorized: false, reason: 'revoked' });
     const afterRevocation = await reachPrincipal(PRINCIPAL_DID, baseInput());
     expect(afterRevocation).toMatchObject({ denied: true, reason: 'unauthorized', status: 403 });
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ outcome: 'denied', reason: 'unauthorized', signatureVerified: true }),
+    }));
   });
 
   it('returns answer: true and mints the agent.reach attestation when the gate matches', async () => {
@@ -233,6 +278,8 @@ describe('reachPrincipal (#2251)', () => {
         requesterDid: REQUESTER_DID,
         onBehalfOfStubDid: 'did:imajin:alice-stub',
         principalDid: PRINCIPAL_DID,
+        outcome: 'answered',
+        signatureVerified: true,
         answer: true,
         grantId: 'grant_1',
       }),
