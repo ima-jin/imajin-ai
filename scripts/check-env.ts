@@ -44,7 +44,12 @@ function cyan(s: string)   { return `${c.cyan}${s}${c.reset}`; }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const ROOT = path.resolve(import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname), "..");
+// Overridable for tests (scripts/__tests__/check-env.test.mjs) so they can
+// point every apps/*/.env.{example,local} and deploy/ecosystem.*.config.js
+// lookup at a throwaway temp directory instead of this real checkout.
+const ROOT =
+  process.env.CHECK_ENV_ROOT ??
+  path.resolve(import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname), "..");
 
 function parseEnvFile(filePath: string): Map<string, string> {
   const result = new Map<string, string>();
@@ -60,6 +65,115 @@ function parseEnvFile(filePath: string): Map<string, string> {
     result.set(key, val);
   }
   return result;
+}
+
+// ── .env.example annotations (#2246) ────────────────────────────────────────
+//
+// A recognized comment line placed directly above a `KEY=value` line in an
+// .env.example changes how check-env treats that key when validating
+// .env.local. See docs/ENVIRONMENTS.md for the user-facing writeup; this is
+// the parser both that doc and every apps/*/.env.example header point back
+// to as the source of truth:
+//   # optional                 -> ok if unset locally; warned about once, grouped
+//   # vault-sourced: <reason>  -> fetched at boot; ok if unset, WARNS if hand-set
+//   # deprecated: <reason>     -> WARNS if set locally; fine if unset
+// No annotation on a key = required, exactly like before this feature: a
+// missing value is a hard error.
+
+type AnnotationKind = "optional" | "vault-sourced" | "deprecated";
+
+interface KeyAnnotation {
+  kind: AnnotationKind;
+  /** Free-text reason from `vault-sourced:`/`deprecated:` — absent for `# optional`. */
+  reason?: string;
+}
+
+const OPTIONAL_ANNOTATION = /^#\s*optional\s*$/i;
+const VAULT_SOURCED_ANNOTATION = /^#\s*vault-sourced:\s*(.+)$/i;
+const DEPRECATED_ANNOTATION = /^#\s*deprecated:\s*(.+)$/i;
+
+function parseAnnotationLine(rawLine: string): KeyAnnotation | null {
+  const line = rawLine.trim();
+  if (OPTIONAL_ANNOTATION.test(line)) return { kind: "optional" };
+  const vaultMatch = VAULT_SOURCED_ANNOTATION.exec(line);
+  if (vaultMatch) return { kind: "vault-sourced", reason: vaultMatch[1].trim() };
+  const deprecatedMatch = DEPRECATED_ANNOTATION.exec(line);
+  if (deprecatedMatch) return { kind: "deprecated", reason: deprecatedMatch[1].trim() };
+  return null;
+}
+
+/**
+ * Reads an .env.example's per-key annotations. Deliberately re-reads the
+ * file with `parseEnvFile` rather than folding this into that function: the
+ * annotation only ever applies to the *example* template, never to
+ * .env.local, and keeping the two parses separate means a stray `# optional`
+ * comment a user leaves in their own .env.local is inert instead of being
+ * silently interpreted.
+ */
+function parseAnnotations(filePath: string): Map<string, KeyAnnotation> {
+  const result = new Map<string, KeyAnnotation>();
+  if (!fs.existsSync(filePath)) return result;
+  const lines = fs.readFileSync(filePath, "utf-8").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    const annotation = i > 0 ? parseAnnotationLine(lines[i - 1]) : null;
+    if (annotation) result.set(key, annotation);
+  }
+  return result;
+}
+
+// ── Per-env deploy targets (#2246) ───────────────────────────────────────────
+//
+// "Is this service actually deployed to this environment?" decides whether a
+// missing .env.local is a hard error or just a warning (see checkService).
+// Rather than inventing a new manifest, this reads the same source build.sh
+// and the deploy workflows already treat as canonical for what pm2 runs per
+// env: deploy/ecosystem.{dev,prod}.config.js's `cwd` entries (each one ends
+// in `.../apps/<name>`). See deploy/README.md.
+
+interface DeployTargets {
+  /** False when the ecosystem file couldn't be read/parsed — callers fall back to the pre-#2246 heuristic. */
+  known: boolean;
+  names: Set<string>;
+}
+
+const deployTargetsCache = new Map<"dev" | "prod", DeployTargets>();
+
+function loadDeployTargets(env: "dev" | "prod"): DeployTargets {
+  const cached = deployTargetsCache.get(env);
+  if (cached) return cached;
+
+  const file = path.join(ROOT, "deploy", env === "prod" ? "ecosystem.prod.config.js" : "ecosystem.dev.config.js");
+  const names = new Set<string>();
+  if (fs.existsSync(file)) {
+    const text = fs.readFileSync(file, "utf-8");
+    const cwdPattern = /"cwd"\s*:\s*"([^"]+)"/g;
+    let match: RegExpExecArray | null;
+    while ((match = cwdPattern.exec(text)) !== null) {
+      const appMatch = /\/apps\/([^/"]+)\/?$/.exec(match[1]);
+      if (appMatch) names.add(appMatch[1]);
+    }
+  }
+  const result: DeployTargets = { known: names.size > 0, names };
+  deployTargetsCache.set(env, result);
+  return result;
+}
+
+/**
+ * True when `svc` is actually meant to run in `env` — i.e. a missing
+ * .env.local for it should be a hard error, not just a warning. Falls back
+ * to the original devPort===0 heuristic (daemon services warn instead of
+ * error) when the ecosystem manifest can't be read, so this never regresses
+ * behaviour for an unrelated checkout shape.
+ */
+function isDeployTarget(svc: ServiceDefinition, env: "dev" | "prod"): boolean {
+  const targets = loadDeployTargets(env);
+  if (!targets.known) return svc.devPort !== 0;
+  return targets.names.has(svc.name);
 }
 
 /** Extract port from a localhost URL like http://localhost:3001 */
@@ -102,22 +216,19 @@ function serviceNameFromPublicKey(key: string): string | null {
 interface ServiceResult {
   service: ServiceDefinition;
   hasEnvLocal: boolean;
+  /** True when a missing .env.local for this service is an error, not just a warning (see isDeployTarget). */
+  isDeployTarget: boolean;
   missing: string[];
   wrongPorts: { key: string; expected: number; actual: number }[];
   extra: string[];
+  /** `# optional` keys absent from .env.local — fine, but surfaced as one grouped warning. */
+  optionalMissing: string[];
+  /** `# vault-sourced:` keys that ARE set in .env.local — the deprecated hand-provisioned path. */
+  vaultSourcedPresent: { key: string; reason?: string }[];
+  /** `# deprecated:` keys that ARE set in .env.local. */
+  deprecatedPresent: { key: string; reason?: string }[];
   errors: number;
   warnings: number;
-}
-
-/** Keys present in .env.example but missing from .env.local */
-function findMissingKeys(example: Map<string, string>, local: Map<string, string>): string[] {
-  const missing: string[] = [];
-  for (const key of example.keys()) {
-    if (!local.has(key)) {
-      missing.push(key);
-    }
-  }
-  return missing;
 }
 
 /** Keys present in .env.local but not declared in .env.example */
@@ -170,19 +281,59 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
   const localPath = path.join(appDir, ".env.local");
 
   const example = parseEnvFile(examplePath);
+  const annotations = parseAnnotations(examplePath);
   const local = parseEnvFile(localPath);
   const hasEnvLocal = fs.existsSync(localPath);
 
   if (!hasEnvLocal) {
-    // Daemon processes (devPort === 0) have no HTTP port and may not have .env.local
-    // set up on the server yet — treat as a warning rather than a hard failure.
-    const noEnvErrors = svc.devPort === 0 ? 0 : 1;
-    const noEnvWarnings = svc.devPort === 0 ? 1 : 0;
-    return { service: svc, hasEnvLocal, missing: [], wrongPorts: [], extra: [], errors: noEnvErrors, warnings: noEnvWarnings };
+    // Only a hard error when this service is actually deployed to `env`
+    // (deploy/ecosystem.{env}.config.js) — otherwise it's a warning, e.g. a
+    // daemon not yet provisioned on this host, or a service this env simply
+    // doesn't run (#2246).
+    const target = isDeployTarget(svc, env);
+    return {
+      service: svc,
+      hasEnvLocal,
+      isDeployTarget: target,
+      missing: [],
+      wrongPorts: [],
+      extra: [],
+      optionalMissing: [],
+      vaultSourcedPresent: [],
+      deprecatedPresent: [],
+      errors: target ? 1 : 0,
+      warnings: target ? 0 : 1,
+    };
   }
 
-  // Check all keys from .env.example are present in .env.local
-  const missing = findMissingKeys(example, local);
+  // Check all keys from .env.example are present in .env.local — except
+  // annotated ones, which get their own (non-error) treatment below.
+  const missing: string[] = [];
+  const optionalMissing: string[] = [];
+  for (const key of example.keys()) {
+    if (local.has(key)) continue;
+    const annotation = annotations.get(key);
+    if (!annotation) {
+      missing.push(key);
+    } else if (annotation.kind === "optional") {
+      optionalMissing.push(key);
+    }
+    // vault-sourced / deprecated missing -> fine, nothing to record.
+  }
+
+  // vault-sourced/deprecated keys that ARE set locally get a warning each —
+  // the former is exactly the "deprecated hand-provisioned value, remove
+  // after rotation" signal a prod rotation sweep looks for.
+  const vaultSourcedPresent: { key: string; reason?: string }[] = [];
+  const deprecatedPresent: { key: string; reason?: string }[] = [];
+  for (const [key, annotation] of annotations.entries()) {
+    if (!local.has(key)) continue;
+    if (annotation.kind === "vault-sourced") {
+      vaultSourcedPresent.push({ key, reason: annotation.reason });
+    } else if (annotation.kind === "deprecated") {
+      deprecatedPresent.push({ key, reason: annotation.reason });
+    }
+  }
 
   // Validate port values in .env.local
   const wrongPorts: { key: string; expected: number; actual: number }[] = [];
@@ -197,19 +348,47 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
   const extra = findExtraKeys(example, local);
 
   const errors = missing.length + wrongPorts.length;
-  const warnings = extra.length;
+  const warnings =
+    extra.length + (optionalMissing.length > 0 ? 1 : 0) + vaultSourcedPresent.length + deprecatedPresent.length;
 
-  return { service: svc, hasEnvLocal, missing, wrongPorts, extra, errors, warnings };
+  return {
+    service: svc,
+    hasEnvLocal,
+    isDeployTarget: isDeployTarget(svc, env),
+    missing,
+    wrongPorts,
+    extra,
+    optionalMissing,
+    vaultSourcedPresent,
+    deprecatedPresent,
+    errors,
+    warnings,
+  };
 }
 
 function printResult(result: ServiceResult, env: "dev" | "prod"): void {
-  const { service: svc, hasEnvLocal, missing, wrongPorts, extra, errors, warnings } = result;
+  const {
+    service: svc,
+    hasEnvLocal,
+    isDeployTarget: target,
+    missing,
+    wrongPorts,
+    extra,
+    optionalMissing,
+    vaultSourcedPresent,
+    deprecatedPresent,
+    errors,
+    warnings,
+  } = result;
   const icon = svc.icon;
   const label = bold(`${icon}  ${svc.name}`);
   const portLabel = dim(`(port ${env === "prod" ? svc.prodPort : svc.devPort})`);
 
   if (!hasEnvLocal) {
-    console.log(`  ${sym.warn}  ${label} ${portLabel}  ${yellow("no .env.local — skipping")}`);
+    const message = target
+      ? red("no .env.local — required for this env's deploy target")
+      : yellow("no .env.local — skipping (not a deploy target for this env)");
+    console.log(`  ${target ? sym.err : sym.warn}  ${label} ${portLabel}  ${message}`);
     return;
   }
 
@@ -234,6 +413,22 @@ function printResult(result: ServiceResult, env: "dev" | "prod"): void {
   for (const { key, expected, actual } of wrongPorts) {
     const portMismatch = `expected :${expected}, got :${actual}`;
     console.log(`       ${sym.arrow}  ${red("wrong port")}  ${cyan(key)}  ${dim(portMismatch)}`);
+  }
+
+  if (optionalMissing.length > 0) {
+    const keys = optionalMissing.map((k) => cyan(k)).join(", ");
+    console.log(`       ${sym.arrow}  ${yellow("optional, not set")}  ${keys}`);
+  }
+
+  for (const { key, reason } of vaultSourcedPresent) {
+    const detail = reason
+      ? `deprecated hand-provisioned value present; remove after rotation (${reason})`
+      : "deprecated hand-provisioned value present; remove after rotation";
+    console.log(`       ${sym.arrow}  ${yellow("vault-sourced")}  ${cyan(key)}  ${dim(detail)}`);
+  }
+
+  for (const { key, reason } of deprecatedPresent) {
+    console.log(`       ${sym.arrow}  ${yellow("deprecated")}  ${cyan(key)}  ${dim(reason ?? "")}`);
   }
 
   for (const key of extra) {

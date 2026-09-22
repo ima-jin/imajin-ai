@@ -109,13 +109,21 @@ module.exports = {
       "min_uptime": "20s"
     },
     {
-      // See ecosystem.prod.config.js's prod-corpus comment: corpus is an
+      // See ecosystem.prod.config.js's corpus comment: corpus is an
       // internal-only daemon, not on the 3xxx/7xxx web-app port convention.
       // dev-jin and prod-jin (and every other dev-*/prod-* pair) run side by
       // side on the same host, so dev-corpus can't reuse prod-corpus's 8003 —
       // that would be a straight port collision, not a shared value. 8013
       // has no other precedent to follow (corpus is the only 8xxx service),
       // so it's just "8003 + 10" to keep it visually next to its prod pair.
+      //
+      // Per #2232 (multi-host deploy) prod-corpus was removed from
+      // ecosystem.prod.config.js — corpus now runs on gx10 in prod, not the
+      // ProLiant. dev-corpus stays here deliberately: corpus still runs in
+      // dev on this host today. scripts/check-env.ts (#2246) derives each
+      // env's deploy targets from these files' `cwd` entries, so keeping
+      // this entry is what keeps a missing apps/corpus/.env.local a hard
+      // error in dev (as it is today) while it's a warning in prod.
       //
       // Secrets (#1750, apps/corpus/.env.example): CORPUS_DID,
       // CORPUS_DID_PRIVATE_KEY, AUTH_SERVICE_URL, ATTESTATION_INTERNAL_API_KEY.
