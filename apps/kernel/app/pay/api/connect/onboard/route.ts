@@ -19,7 +19,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { db, connectedAccounts } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
-import { getStripe } from '@/src/lib/pay/stripe';
+import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
 import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
@@ -57,7 +57,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    const stripe = getStripe();
+    const stripe = getStripeClient();
     const did = resolveActingDid(identity);
 
     // Check if DID already has a connected account

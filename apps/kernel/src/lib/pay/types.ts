@@ -297,18 +297,19 @@ export interface RefundResult {
 // Provider Config Types
 // ============================================================================
 
-/** Stripe provider configuration */
+/**
+ * Stripe provider configuration.
+ *
+ * #2174: the Stripe SDK client itself is always sourced from the shared
+ * adapter singleton (`providers/stripe-client.ts`'s `getStripeClient()`),
+ * which is the only place `STRIPE_SECRET_KEY` is read — so this config no
+ * longer carries a `secretKey`/`apiVersion`/etc. for constructing a second,
+ * independent client. It only carries provider-level options that aren't
+ * part of the raw Stripe client itself.
+ */
 export interface StripeProviderConfig {
-  /** Stripe secret key */
-  secretKey: string;
-  /** API version (optional, defaults to latest) */
-  apiVersion?: string;
   /** Webhook signing secret */
   webhookSecret?: string;
-  /** Request timeout in ms */
-  timeout?: number;
-  /** Max retry attempts */
-  maxNetworkRetries?: number;
 }
 
 /** Solana provider configuration */

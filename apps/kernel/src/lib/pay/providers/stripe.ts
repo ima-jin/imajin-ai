@@ -11,7 +11,8 @@
  * - Refunds
  */
 
-import Stripe from 'stripe';
+import type Stripe from 'stripe';
+import { getStripeClient } from './stripe-client';
 import type { PaymentProvider, HealthCheckResult, ProviderCapabilities } from './types';
 import type {
   StripeProviderConfig,
@@ -45,11 +46,11 @@ export class StripeProvider implements PaymentProvider {
   
   constructor(config: StripeProviderConfig) {
     this.config = config;
-    this.stripe = new Stripe(config.secretKey, {
-      apiVersion: (config.apiVersion || '2024-11-20.acacia') as any,
-      timeout: config.timeout || 60000,
-      maxNetworkRetries: config.maxNetworkRetries || 3,
-    });
+    // #2174: the client itself always comes from the shared adapter
+    // singleton (`./stripe-client`) — this provider no longer constructs
+    // its own `new Stripe(...)`, so `STRIPE_SECRET_KEY` has exactly one
+    // read site regardless of how many `PaymentProvider`s are configured.
+    this.stripe = getStripeClient();
   }
   
   // ===========================================================================

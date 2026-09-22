@@ -24,7 +24,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-import { getStripe } from '@/src/lib/pay/stripe';
+import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -71,7 +71,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    const stripe = getStripe();
+    const stripe = getStripeClient();
 
     // Find existing customer for this DID, or create one
     let customerId: string;

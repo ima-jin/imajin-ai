@@ -2,6 +2,7 @@ import { db, transactions } from '@/src/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import type { Logger } from '@imajin/logger';
+import { findCheckoutSessionByPaymentIntent } from './providers/stripe-client';
 import { MJN, creditUnit, debitUnit } from './ledger';
 
 type LoggerLike = Pick<Logger, 'error'>;
@@ -9,7 +10,8 @@ type TransactionRow = typeof transactions.$inferSelect;
 
 /**
  * Resolve a Stripe checkout session ID (cs_xxx) to its transaction row via
- * the Stripe API, for callers (e.g. events tickets) that only know the
+ * the pay adapter (#2174 — `findCheckoutSessionByPaymentIntent`, not a raw
+ * `import('stripe')`), for callers (e.g. events tickets) that only know the
  * payment intent ID (pi_xxx). Non-fatal: logs and returns undefined on any
  * failure so the caller can fall back to a 404.
  */
@@ -18,19 +20,13 @@ async function resolveTransactionViaPaymentIntent(
   log: LoggerLike,
 ): Promise<TransactionRow | undefined> {
   try {
-    const Stripe = (await import('stripe')).default;
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-04-10' as any });
-    const sessions = await stripe.checkout.sessions.list({ payment_intent: paymentId, limit: 1 });
-    if (!sessions.data[0]) return undefined;
+    const session = await findCheckoutSessionByPaymentIntent(paymentId);
+    if (!session) return undefined;
 
     const [result] = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.stripeId, sessions.data[0].id))
+      .where(eq(transactions.stripeId, session.id))
       .limit(1);
     return result;
   } catch (e) {

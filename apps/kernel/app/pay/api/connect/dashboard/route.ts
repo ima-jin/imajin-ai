@@ -15,7 +15,7 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { db, connectedAccounts } from '@/src/db';
-import { getStripe } from '@/src/lib/pay/stripe';
+import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
 import { withLogger } from '@imajin/logger';
 
 export async function OPTIONS(request: NextRequest) {
@@ -83,7 +83,7 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
       );
     }
 
-    const stripe = getStripe();
+    const stripe = getStripeClient();
     const loginLink = await stripe.accounts.createLoginLink(account.stripeAccountId);
 
     return NextResponse.json({ url: loginLink.url }, { headers: cors });

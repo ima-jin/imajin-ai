@@ -3,9 +3,6 @@
   "issue": "https://github.com/ima-jin/imajin-ai/issues/2172",
   "violations": [
     {
-      "file": "apps/kernel/src/lib/pay/stripe.ts"
-    },
-    {
       "file": "apps/kernel/src/lib/pay/webhook-handlers.ts"
     },
     {

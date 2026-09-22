@@ -20,7 +20,7 @@ import { eq } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { getStripe } from '@/src/lib/pay/stripe';
+import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
 import { confirmWithdrawalFromRailEvent } from '@/src/lib/pay/withdraw-intent';
 import { getWithdrawRailByName } from '@/src/lib/pay/rails/registry';
 import { STRIPE_RAIL_NAME } from '@/src/lib/pay/providers/stripe-withdraw-rail';
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
   let event: Stripe.Event;
   
   try {
-    const stripe = getStripe();
+    const stripe = getStripeClient();
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     log.error({ err: String(err) }, 'Webhook signature verification failed');

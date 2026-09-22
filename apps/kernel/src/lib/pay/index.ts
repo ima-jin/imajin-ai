@@ -6,9 +6,13 @@
  * @example
  * import { PaymentService } from '@imajin/pay';
  * 
+ * // #2174: the Stripe client itself always comes from the shared adapter
+ * // singleton (providers/stripe-client.ts), which reads STRIPE_SECRET_KEY
+ * // internally — pass an empty object (or omit stripe entirely) to leave
+ * // it unconfigured.
  * const pay = new PaymentService({
  *   providers: {
- *     stripe: { secretKey: process.env.STRIPE_SECRET_KEY },
+ *     stripe: {},
  *     solana: { rpcUrl: process.env.SOLANA_RPC_URL },
  *   },
  * });

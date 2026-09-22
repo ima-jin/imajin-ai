@@ -42,7 +42,7 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { resolveSettlementChain, type FairSettlementEntry } from '@imajin/fair';
 import { getPaymentService } from '../pay';
-import { getStripe } from '../stripe';
+import { getStripeClient } from '../providers/stripe-client';
 import { resolveConnectedAccountFee, type CheckoutBody, type CheckoutItem } from '../checkout';
 import type { CheckoutRequest, FiatCurrency } from '../types';
 import { settlePayment } from '../settle-core';
@@ -93,7 +93,7 @@ async function findReusableCheckoutSession(
   if (!pendingTx?.stripeId) return null;
 
   try {
-    const stripe = getStripe();
+    const stripe = getStripeClient();
     const session = await stripe.checkout.sessions.retrieve(pendingTx.stripeId);
     if (session.status === 'open' && session.url) {
       return { id: session.id, url: session.url, expiresAt: new Date(session.expires_at * 1000).toISOString() };

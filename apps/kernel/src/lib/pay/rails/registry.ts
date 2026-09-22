@@ -11,7 +11,7 @@ import type { WithdrawRail } from './types';
 import { StripeWithdrawRail, STRIPE_RAIL_NAME } from '../providers/stripe-withdraw-rail';
 
 export interface RailRegistryEntry {
-  /** Lazily constructed — mirrors `getStripe()`'s own lazy init, so importing the registry never requires `STRIPE_SECRET_KEY` to be set (e.g. in tests that never call `execute`/`list`). */
+  /** Lazily constructed — mirrors `getStripeClient()`'s own lazy init, so importing the registry never requires `STRIPE_SECRET_KEY` to be set (e.g. in tests that never call `execute`/`list`). */
   getRail: () => WithdrawRail;
   enabledUnits: readonly Unit[];
 }

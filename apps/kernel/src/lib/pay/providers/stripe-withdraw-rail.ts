@@ -5,13 +5,14 @@
  * (`scripts/stripe-import-allowlist.json`) that imports the `stripe`
  * package for the withdraw/reconciliation path — everything else in
  * `lib/pay/rails/` and the withdraw/reconciliation code talks to the
- * `WithdrawRail` interface only. Reuses the shared lazy `getStripe()`
- * singleton from `../stripe` (the same client `webhook-handlers.ts` reads
- * balance-transaction fees from) rather than constructing its own client.
+ * `WithdrawRail` interface only. Reuses the shared lazy `getStripeClient()`
+ * singleton from `./stripe-client` (#2174 — the same adapter client
+ * `webhook-handlers.ts` reads balance-transaction fees from) rather than
+ * constructing its own client.
  */
 import type Stripe from 'stripe';
 import { fromDecimalString } from '@imajin/money';
-import { getStripe } from '../stripe';
+import { getStripeClient } from './stripe-client';
 import type {
   WithdrawRail,
   WithdrawalIntent,
@@ -37,7 +38,7 @@ export class StripeWithdrawRail implements WithdrawRail {
       throw new Error(`StripeWithdrawRail.execute: intent ${intent.id} has no destination account`);
     }
 
-    const stripe = getStripe();
+    const stripe = getStripeClient();
     const currency = intent.currency ?? 'CAD';
     // Exact decimal string -> integer minor units via `@imajin/money`
     // (`fromDecimalString` -> `parseDecimalToFraction` + `bigintToSafeNumber`
@@ -64,7 +65,7 @@ export class StripeWithdrawRail implements WithdrawRail {
   }
 
   async list({ since }: ListTransfersParams): Promise<RailTransfer[]> {
-    const stripe = getStripe();
+    const stripe = getStripeClient();
     const transfers = await stripe.transfers.list({
       created: { gte: Math.floor(since.getTime() / 1000) },
       limit: 100,
