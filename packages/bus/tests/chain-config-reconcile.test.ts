@@ -75,6 +75,14 @@ describe('chain config DEFAULTS reconcile (#1873, #1874)', () => {
     expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
   });
 
+  it('vault.delegation.acked routes to audit-log (#2235)', async () => {
+    const cfg = await getChainConfig('vault.delegation.acked', 'default');
+    const types = cfg.reactors.map((r) => r.type);
+
+    expect(types).toEqual(['audit-log']);
+    expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
+  });
+
   it.each(['vault.key.minted', 'vault.key.revoked'])('%s routes to audit-log (#2242)', async (eventType) => {
     const cfg = await getChainConfig(eventType, 'default');
     const types = cfg.reactors.map((r) => r.type);

@@ -178,3 +178,83 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/vault/mint/cards:
+    get:
+      tags: [vault-mint]
+      operationId: vaultMintCards
+      summary: Vault key cards read model for the /jin Vault section (#2247)
+      description: >-
+        One timeline card per minted key (minted/granted/fetched/acked/
+        revoked rows, never a value — there is no reveal/copy affordance
+        anywhere in this codebase's mint-in-vault path), plus the
+        "hand-provisioned" filter list: vault entries whose field name was
+        never produced by `mintKeypair` (derived by elimination from the
+        `vault-minted-key:` field-name prefix, not a stored provenance
+        flag — see `apps/kernel/src/lib/vault/key-cards.ts`).
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        did: { type: string }
+                        publicKey: { type: string }
+                        purpose: { type: string }
+                        requestedBy: { type: string }
+                        mintedBy: { type: string }
+                        status: { type: string, enum: [active, revoked] }
+                        createdAt: { type: string, format: date-time }
+                        revokedAt: { type: [string, "null"], format: date-time }
+                        revokedBy: { type: [string, "null"] }
+                        grant:
+                          type: [object, "null"]
+                          properties:
+                            grantId: { type: string }
+                            grantedTo: { type: string }
+                            purpose: { type: [string, "null"] }
+                            oneTime: { type: boolean }
+                            status: { type: string }
+                            expiresAt: { type: [string, "null"], format: date-time }
+                            consumedAt: { type: [string, "null"], format: date-time }
+                            lastFetchedAt: { type: [string, "null"], format: date-time }
+                            ackedAt: { type: [string, "null"], format: date-time }
+                            ackOutcome: { type: [string, "null"] }
+                        timeline:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              type: { type: string, enum: [minted, granted, fetched, acked, rotated, revoked] }
+                              at: { type: string, format: date-time }
+                              alert:
+                                type: boolean
+                                description: "True for a 'fetched' row with no matching ack yet — the honest-record red line."
+                              detail: { type: object }
+                        heldBy: { type: [string, "null"] }
+                        lastAckAt: { type: [string, "null"], format: date-time }
+                        fetchWithoutAck: { type: boolean }
+                  handProvisioned:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field: { type: string }
+                        senderDid: { type: string }
+                        timestamp: { type: string, format: date-time }
+                        custodyScheme: { type: string }
+                        status: { type: string, enum: [active, deleted] }
+        "401":
+          description: Not authenticated as admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }

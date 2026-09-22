@@ -182,7 +182,6 @@ export const ATTESTATION_TYPES = [
   // minted key's grant is revoked. See ATTESTATION_TYPES above.
   'vault.key.minted',
   'vault.key.revoked',
-
   // #2251 — per-principal agent-reach exchange. Minted mechanically (kernel
   // node key) on every reach attempt, answered or denied: binds the foreign
   // agent DID, the foreign-principal stub DID it declared `onBehalfOf`, the
@@ -193,6 +192,11 @@ export const ATTESTATION_TYPES = [
   // this record. System-class (see MECHANICAL_ATTESTATION_TYPES below):
   // never bilateral, never awaiting a countersignature.
   'agent.reach',
+  // #2247 — minted mechanically when a minted key's grant is withdrawn
+  // (revoke tier 'withdraw': stops future fetches without tombstoning the
+  // vault_minted_keys record itself, distinct from 'vault.key.revoked').
+  // See ATTESTATION_TYPES above.
+  'vault.key.withdrawn',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -257,6 +261,9 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #2251 — minted mechanically by the kernel node key on every reach
   // attempt (answered or denied). See ATTESTATION_TYPES above.
   'agent.reach',
+  // #2247 — minted mechanically when a minted key's grant is withdrawn.
+  // See ATTESTATION_TYPES above.
+  'vault.key.withdrawn',
 ] as const;
 
 /**

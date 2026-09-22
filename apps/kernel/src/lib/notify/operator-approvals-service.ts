@@ -87,7 +87,14 @@ export interface RecordApprovalRequestedParams {
   keysTouched: string[];
   detail: Record<string, unknown> | null;
   contentHash: string | null;
-  notificationId: string;
+  /**
+   * `notify.notifications.id` for the `operator.approval.requested` row,
+   * when one exists. Null for a proposal raised in-process (#2247's /jin
+   * vault-proposals route, which calls this function directly rather than
+   * going through `POST /notify/api/send`'s webhook-secret-gated ingestion
+   * — there is no notification row to reference).
+   */
+  notificationId: string | null;
 }
 
 /**

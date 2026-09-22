@@ -27,12 +27,14 @@
  * itself (`deleteFromVault`) — that stronger, harder-destroy action is
  * deferred to a later revocation tier (see the #2242 PR description).
  */
-import { generateKeypair } from '@imajin/auth';
+import { generateKeypair, emitAttestation } from '@imajin/auth';
+import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { eq } from 'drizzle-orm';
 import { db, vaultMintedKeys, type VaultMintedKey } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { sealAndGrantStaticSecret, revokeStaticSecretGrant } from './index';
+import type { VaultAuthorization } from './authorization';
 
 const log = createLogger('kernel');
 
@@ -117,6 +119,147 @@ export async function mintKeypair(params: MintKeypairParams): Promise<MintKeypai
   );
 
   return { mintId, did, publicKey, field, grantId, requestId };
+}
+
+/**
+ * Emit the `vault.key.minted` attestation + bus event for a freshly minted
+ * key. Extracted (#2247) so both `POST /api/vault/mint` and the /jin vault
+ * proposal execution bridge (`approvals-execution.ts` — a mint proposal
+ * signed on the canvas rather than called directly over HTTP) produce
+ * byte-identical attestation/event shapes instead of two hand-copied call
+ * sites drifting apart. Fire-and-forget: never throws, matching every
+ * other vault route's existing attestation/publish posture.
+ */
+export function emitMintedEvents(params: {
+  minted: MintKeypairResult;
+  purpose: string;
+  requesterDid: string;
+  mintedBy: string;
+  composedBy?: string | null;
+  /**
+   * Present only when this mint was executed from an approved `vault:mint`
+   * canvas proposal (#2247) — the countersigned-decision reference this
+   * mechanical action was authorized by. `mintedBy`/`issuer_did` is
+   * ALWAYS the node identity in that case (the signing-roles ruling: the
+   * node executes and witnesses, never the operator); this is the audit
+   * trail linking the mechanical action back to who authorized it.
+   */
+  authorizedBy?: VaultAuthorization;
+}): void {
+  const { minted, purpose, requesterDid, mintedBy, composedBy = null, authorizedBy } = params;
+
+  emitAttestation({
+    issuer_did: mintedBy,
+    subject_did: minted.did,
+    type: 'vault.key.minted',
+    context_id: minted.mintId,
+    context_type: 'vault.mint',
+    payload: {
+      mintId: minted.mintId,
+      publicKey: minted.publicKey,
+      purpose,
+      requesterDid,
+      composedBy,
+      grantId: minted.grantId,
+      ...(authorizedBy ? { authorizedBy } : {}),
+    },
+  }).catch((err: unknown) => log.error({ err: String(err), mintId: minted.mintId }, 'vault.key.minted attestation failed'));
+
+  publish('vault.key.minted', {
+    issuer: mintedBy,
+    subject: minted.did,
+    scope: 'vault',
+    payload: {
+      mintId: minted.mintId,
+      did: minted.did,
+      publicKey: minted.publicKey,
+      field: minted.field,
+      purpose,
+      requestedBy: requesterDid,
+      mintedBy,
+      grantId: minted.grantId,
+      ...(authorizedBy ? { authorizedBy } : {}),
+      context_id: minted.mintId,
+      context_type: 'vault.mint',
+    },
+  }).catch((err: unknown) => log.error({ err: String(err), mintId: minted.mintId }, 'Bus publish error for vault.key.minted'));
+}
+
+/**
+ * Emit the `vault.key.revoked` attestation + bus event for a revoked
+ * minted key. Extracted (#2247) alongside {@link emitMintedEvents} for the
+ * same reason — shared by `POST /api/vault/mint/revoke` and the vault
+ * proposal execution bridge.
+ */
+export function emitRevokedEvents(record: VaultMintedKey, revokedBy: string, authorizedBy?: VaultAuthorization): void {
+  emitAttestation({
+    issuer_did: revokedBy,
+    subject_did: record.did,
+    type: 'vault.key.revoked',
+    context_id: record.id,
+    context_type: 'vault.mint',
+    payload: {
+      mintId: record.id,
+      publicKey: record.publicKey,
+      revokedBy,
+      ...(authorizedBy ? { authorizedBy } : {}),
+    },
+  }).catch((err: unknown) => log.error({ err: String(err), mintId: record.id }, 'vault.key.revoked attestation failed'));
+
+  publish('vault.key.revoked', {
+    issuer: revokedBy,
+    subject: record.did,
+    scope: 'vault',
+    payload: {
+      mintId: record.id,
+      did: record.did,
+      publicKey: record.publicKey,
+      revokedBy,
+      ...(authorizedBy ? { authorizedBy } : {}),
+      context_id: record.id,
+      context_type: 'vault.mint',
+    },
+  }).catch((err: unknown) => log.error({ err: String(err), mintId: record.id }, 'Bus publish error for vault.key.revoked'));
+}
+
+/**
+ * Emit the `vault.key.withdrawn` attestation + bus event for revoke tier
+ * 'withdraw' (#2247) — deactivates a minted key's delegation grant
+ * WITHOUT tombstoning the `vault_minted_keys` record itself (distinct
+ * from {@link emitRevokedEvents}'s full tombstone). Only call this when
+ * something was actually deactivated (`revokeStaticSecretGrant` returned
+ * `true`) — a withdraw against a field with no active grant is a no-op
+ * and should not mint a record of an action that didn't happen.
+ */
+export function emitWithdrawnEvents(record: VaultMintedKey, withdrawnBy: string, authorizedBy?: VaultAuthorization): void {
+  emitAttestation({
+    issuer_did: withdrawnBy,
+    subject_did: record.did,
+    type: 'vault.key.withdrawn',
+    context_id: record.id,
+    context_type: 'vault.mint',
+    payload: {
+      mintId: record.id,
+      publicKey: record.publicKey,
+      withdrawnBy,
+      ...(authorizedBy ? { authorizedBy } : {}),
+    },
+  }).catch((err: unknown) => log.error({ err: String(err), mintId: record.id }, 'vault.key.withdrawn attestation failed'));
+
+  publish('vault.key.withdrawn', {
+    issuer: withdrawnBy,
+    subject: record.did,
+    scope: 'vault',
+    payload: {
+      mintId: record.id,
+      did: record.did,
+      publicKey: record.publicKey,
+      withdrawnBy,
+      ...(authorizedBy ? { authorizedBy } : {}),
+      context_id: record.id,
+      context_type: 'vault.mint',
+    },
+  }).catch((err: unknown) => log.error({ err: String(err), mintId: record.id }, 'Bus publish error for vault.key.withdrawn'));
 }
 
 export type RevokeMintedKeyOutcome =

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { crypto as authCrypto } from '@imajin/auth';
 import { CorpusEngine } from '../index';
 import { AttestationNotFoundError } from '../errors';
+import { bootstrapCorpusIdentity, _resetCorpusIdentityStateForTests } from '../../lib/corpus-identity';
 import type { ThreadDocument } from '../types';
 
 const ORIGINAL_CORPUS_DID = process.env.CORPUS_DID;
@@ -153,5 +154,76 @@ describe('CorpusEngine ingestion attestations (#1750)', () => {
     await vi.waitFor(() => {
       expect(engine.status('did:example:alice').attestations.pendingForward).toBe(1);
     });
+  });
+});
+
+describe('CorpusEngine + vault-sourced identity grant ack (#2257)', () => {
+  let dataDir: string;
+  let engine: CorpusEngine;
+  const GRANT_ID = 'vdg_engine_test';
+  const BOOTSTRAP_DID = 'did:imajin:engine-bootstrap00';
+  const BOOTSTRAP_PRIVATE_KEY = 'd'.repeat(64);
+  const BEARER_TOKEN = 'imajin_tok_engine-test';
+
+  function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), { status });
+  }
+
+  function ackCalls(fetchMock: ReturnType<typeof vi.fn>): [string, RequestInit][] {
+    return fetchMock.mock.calls.filter((call: unknown[]) => (call[0] as string).includes('/ack')) as [string, RequestInit][];
+  }
+
+  function fakeVaultFetch() {
+    return vi.fn(async (url: string) => {
+      if (url.endsWith('/api/challenge')) return jsonResponse({ challengeId: 'ch_1', challenge: 'raw' });
+      if (url.endsWith('/api/authenticate')) return jsonResponse({ token: BEARER_TOKEN });
+      if (url.includes('/fetch')) {
+        return jsonResponse({ ok: true, field: `vault-minted-key:${CORPUS_KEYPAIR.publicKey}`, value: CORPUS_KEYPAIR.privateKey, oneTime: true });
+      }
+      if (url.includes('/ack')) return jsonResponse({ ok: true, grantId: GRANT_ID, outcome: 'used', ackedAt: new Date().toISOString() });
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+  }
+
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'corpus-attestations-vault-'));
+    engine = new CorpusEngine({ dataDir, now: () => new Date('2026-09-01T00:00:00.000Z') });
+    delete process.env.CORPUS_DID;
+    delete process.env.CORPUS_DID_PRIVATE_KEY;
+    delete process.env.ATTESTATION_INTERNAL_API_KEY;
+    process.env.CORPUS_VAULT_GRANT_ID = GRANT_ID;
+    process.env.CORPUS_VAULT_BOOTSTRAP_DID = BOOTSTRAP_DID;
+    process.env.CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY = BOOTSTRAP_PRIVATE_KEY;
+    process.env.AUTH_SERVICE_URL = 'https://kernel.test';
+    _resetCorpusIdentityStateForTests();
+  });
+
+  afterEach(() => {
+    engine.close();
+    rmSync(dataDir, { recursive: true, force: true });
+    vi.unstubAllGlobals();
+    delete process.env.CORPUS_VAULT_GRANT_ID;
+    delete process.env.CORPUS_VAULT_BOOTSTRAP_DID;
+    delete process.env.CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY;
+    _resetCorpusIdentityStateForTests();
+    restoreEnv();
+  });
+
+  it('the first successful sign sends exactly one "used" ack, and later ingests never ack again', async () => {
+    const fetchMock = fakeVaultFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    await bootstrapCorpusIdentity();
+
+    expect(ackCalls(fetchMock)).toHaveLength(0); // no ack at fetch/boot time (#2257)
+
+    engine.ingest('did:example:alice', [doc({ id: '1', title: 'Signed doc' })]);
+    await vi.waitFor(() => expect(ackCalls(fetchMock)).toHaveLength(1));
+    const [, init] = ackCalls(fetchMock)[0]!;
+    expect(JSON.parse(init.body as string)).toMatchObject({ outcome: 'used' });
+
+    // A second batch signs again, but must not send a second ack for the same grant.
+    engine.ingest('did:example:alice', [doc({ id: '2', title: 'Second doc' })]);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(ackCalls(fetchMock)).toHaveLength(1);
   });
 });

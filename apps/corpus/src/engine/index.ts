@@ -13,7 +13,7 @@ import type {
 import { PgxNotConfiguredError, PgxUnavailableError } from './errors';
 import { addFreshnessWarnings } from '../lib/freshness';
 import { forwardIngestionAttestation } from '../lib/attestation-forwarder';
-import { loadCorpusIdentity } from '../lib/corpus-identity';
+import { loadCorpusIdentity, markCorpusIdentityUsedForSigning } from '../lib/corpus-identity';
 import { PgxClient } from '../lib/pgx-client';
 import { DEFAULT_SEARCH_LIMIT, DEFAULT_TOKEN_BUDGET, estimateTokens, truncateToTokenBudget } from '../lib/tokens';
 
@@ -78,6 +78,13 @@ export class CorpusEngine {
     const attestations = this.store.ingest(did, documents, this.now().toISOString(), ref, identity, ingesterDid);
 
     if (identity) {
+      if (attestations.length > 0) {
+        // First (and every) successful sign in this process reports the
+        // vault grant ack's deferred 'used' outcome (#2257) — a no-op after
+        // the first call, and also a no-op when `identity` didn't come from
+        // the vault path at all.
+        markCorpusIdentityUsedForSigning();
+      }
       for (const attestation of attestations) {
         this.forwardAttestation(did, identity.did, attestation);
       }

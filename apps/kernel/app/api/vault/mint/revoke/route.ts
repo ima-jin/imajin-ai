@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import { emitAttestation } from '@imajin/auth';
-import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { revokeMintedKey } from '@/src/lib/vault';
+import { revokeMintedKey, emitRevokedEvents } from '@/src/lib/vault';
 import { requireMintAuthority } from '@/src/lib/vault/mint-authority';
 
 const log = createLogger('kernel');
@@ -53,32 +51,7 @@ export async function POST(request: Request) {
 
   const { record } = outcome;
 
-  emitAttestation({
-    issuer_did: actingDid,
-    subject_did: trimmedDid,
-    type: 'vault.key.revoked',
-    context_id: record.id,
-    context_type: 'vault.mint',
-    payload: {
-      mintId: record.id,
-      publicKey: record.publicKey,
-      revokedBy: actingDid,
-    },
-  }).catch((err: unknown) => log.error({ err: String(err), mintId: record.id }, 'vault.key.revoked attestation failed'));
-
-  publish('vault.key.revoked', {
-    issuer: actingDid,
-    subject: trimmedDid,
-    scope: 'vault',
-    payload: {
-      mintId: record.id,
-      did: trimmedDid,
-      publicKey: record.publicKey,
-      revokedBy: actingDid,
-      context_id: record.id,
-      context_type: 'vault.mint',
-    },
-  }).catch((err: unknown) => log.error({ err: String(err), mintId: record.id }, 'Bus publish error for vault.key.revoked'));
+  emitRevokedEvents(record, actingDid);
 
   log.info({ mintId: record.id, did: trimmedDid, revokedBy: actingDid }, 'Vault: mint revoked');
 

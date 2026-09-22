@@ -681,6 +681,32 @@ export interface BusEventMap {
     context_type: 'vault.delegation';
   };
   /**
+   * Emitted on every attempt (successful or refused) by an authenticated
+   * agent DID to ack a vault_delegation_grants row it previously fetched
+   * (#2235 agent ack — sign that a fetched grant was *used*, follow-up to
+   * #2231). `outcome` is always the ack outcome the caller asked to record,
+   * even on a refusal (e.g. a 409 ack_conflict still names the outcome that
+   * conflicted). `refused` is present only on a refusal and mirrors the
+   * grant-fetch/ack route's outcome code. `ownerDid`/`purpose` are null when
+   * the grant itself could not be resolved (not_found/not_grantee), same
+   * minimal-detail-on-refusal posture as vault.delegation.fetched. Carries
+   * no secret material, no `note`, and no `evidence.ref` — only the
+   * evidence *kind* label — so it is safe for the generic `audit-log`
+   * reactor (#1140) to persist verbatim.
+   */
+  'vault.delegation.acked': {
+    grantId: string;
+    granteeDid: string;
+    ownerDid: string | null;
+    purpose: string | null;
+    outcome: 'used' | 'failed' | 'discarded';
+    evidenceKind: string | null;
+    ackedAt: string | null;
+    refused: 'not_found' | 'not_grantee' | 'not_fetched' | 'ack_conflict' | 'error' | null;
+    context_id: string;
+    context_type: 'vault.delegation';
+  };
+  /**
    * Emitted when POST /api/vault/mint generates a new Ed25519 keypair
    * inside the vault (#2242). Carries no key material — the private key is
    * sealed and delivered only via the existing #2231 one-time
@@ -695,10 +721,22 @@ export interface BusEventMap {
     purpose: string;
     /** Grantee DID the sealed private key was delivered to. */
     requestedBy: string;
-    /** Acting principal (requireAuth/actingFor) who requested the mint. */
+    /** Acting principal (requireAuth/actingFor) who requested the mint — always the NODE identity (#2247, the signing-roles ruling: the node executes and witnesses, never the operator). */
     mintedBy: string;
     /** Null under Tier 1, pending the external owner agent. */
     grantId: string | null;
+    /**
+     * Present only when this mint was executed from an approved `vault:mint`
+     * canvas proposal (#2247) — the countersigned-decision reference this
+     * mechanical action was authorized by. Absent for a direct
+     * `POST /api/vault/mint` call.
+     */
+    authorizedBy?: {
+      approvalId: string;
+      operatorDid: string;
+      contentHash: string;
+      decidedAt: string;
+    };
     context_id: string;
     context_type: 'vault.mint';
   };
@@ -712,7 +750,38 @@ export interface BusEventMap {
     mintId: string;
     did: string;
     publicKey: string;
+    /** Always the NODE identity (#2247, the signing-roles ruling). */
     revokedBy: string;
+    /** Present only when executed from an approved `vault:revoke`/`vault:rotate` canvas proposal (#2247). */
+    authorizedBy?: {
+      approvalId: string;
+      operatorDid: string;
+      contentHash: string;
+      decidedAt: string;
+    };
+    context_id: string;
+    context_type: 'vault.mint';
+  };
+  /**
+   * Emitted when a revoke tier 'withdraw' (#2247) deactivates a minted
+   * key's delegation grant WITHOUT tombstoning the `vault_minted_keys`
+   * record itself — distinct from `vault.key.revoked`'s full tombstone.
+   * The record remembers THAT it was withdrawn, same audit posture as
+   * every other vault.key.* mechanical event.
+   */
+  'vault.key.withdrawn': {
+    mintId: string;
+    did: string;
+    publicKey: string;
+    /** Always the NODE identity (#2247, the signing-roles ruling). */
+    withdrawnBy: string;
+    /** Present only when executed from an approved `vault:revoke` canvas proposal (#2247). */
+    authorizedBy?: {
+      approvalId: string;
+      operatorDid: string;
+      contentHash: string;
+      decidedAt: string;
+    };
     context_id: string;
     context_type: 'vault.mint';
   };
@@ -802,6 +871,13 @@ export interface BusEventMap {
     field: string;
     subject: string;     // ownerDid
     grantedTo: string;   // nodeDid
+    /** Present only when executed from an approved `vault:grant` canvas proposal (#2247). */
+    authorizedBy?: {
+      approvalId: string;
+      operatorDid: string;
+      contentHash: string;
+      decidedAt: string;
+    };
     context_id: string;
     context_type: 'vault';
   };

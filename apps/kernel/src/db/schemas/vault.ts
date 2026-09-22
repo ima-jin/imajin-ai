@@ -1,4 +1,4 @@
-import { pgSchema, text, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgSchema, text, timestamp, boolean, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -73,6 +73,33 @@ export const vaultDelegationGrants = vaultSchema.table('vault_delegation_grants'
   // sees this populated and is refused with 410 Gone rather than re-reading the
   // secret. Always null for a non-`oneTime` grant.
   consumedAt: timestamp('consumed_at', { withTimezone: true }),
+
+  // ── Agent ack (#2235) ──────────────────────────────────────────────────
+  //
+  // Same non-canonical bookkeeping posture as purpose/oneTime/consumedAt
+  // above: none of these four columns are part of `canonicalizeGrantPayload`.
+
+  // Set by `fetchGrantSecret` on every successful decrypt (one-time or
+  // reusable), synchronously — not derived from the `vault.delegation.fetched`
+  // audit event, which is a fire-and-forget publish and would race an ack
+  // that follows immediately behind its own fetch. This is the precondition
+  // POST .../ack checks: null means "never successfully fetched", so acking
+  // is refused with 409 grant_not_fetched.
+  lastFetchedAt: timestamp('last_fetched_at', { withTimezone: true }),
+  // Set the moment the grantee successfully acks (idempotent: a repeat ack
+  // with the SAME outcome is accepted; a DIFFERENT outcome is a 409 conflict).
+  ackedAt: timestamp('acked_at', { withTimezone: true }),
+  // 'used' | 'failed' | 'discarded' — enforced by a CHECK constraint at the
+  // DB level (migration 0149), not just application validation.
+  ackOutcome: text('ack_outcome'),
+  // Optional evidence + free-text note the grantee attaches, e.g.
+  // { kind: 'gha-runner', ref: 'imajin-gx10', note: 'registered gx10 ok' }.
+  // The route body has separate `evidence: { kind, ref }` and `note` fields;
+  // both fold into this single jsonb column rather than adding a fourth
+  // migration 0149 column for `note` alone. Never the secret value — the
+  // route layer bounds every string's length (note ≤280, evidence.ref ≤120)
+  // and never logs any of them.
+  ackEvidence: jsonb('ack_evidence').$type<{ kind?: string; ref?: string; note?: string } | null>(),
 }, (table) => ({
   // Primary lookup: node checks for its own active grants on a given field.
   grantedToFieldIdx: index('idx_vault_delegation_granted_to_field')

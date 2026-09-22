@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { SERVICES } from '@imajin/config';
 import { getMcpIssuer } from '@/src/lib/mcp/oauth-config';
+import { LATEST_PROTOCOL_VERSION } from '@/src/lib/mcp/protocol';
 import { nodeUrl } from '@/src/lib/http/node-url';
 
 /**
@@ -116,9 +117,17 @@ export function GET() {
     /**
      * Protocol surfaces this node actually speaks. MCP only — see the
      * advertise-only-what-resolves note above before adding to this list.
+     *
+     * `version` is the NEWEST revision this node serves (spike #2250 found
+     * this hardcoded at the stale `2025-03-26` launch value even after #1474
+     * added dual-era `2026-07-28` support — a stranger's agent negotiating
+     * off this card alone had no way to discover the newer revision). The
+     * server still serves every revision in SUPPORTED_PROTOCOL_VERSIONS; a
+     * legacy caller negotiates down via its own `initialize` handshake as
+     * before, so this is not a breaking change.
      */
     protocols: {
-      mcp: { version: '2025-03-26', endpoint: mcpEndpoint },
+      mcp: { version: LATEST_PROTOCOL_VERSION, endpoint: mcpEndpoint },
     },
 
     /** Settlement wire schemes available on this node */

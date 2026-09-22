@@ -1,28 +1,25 @@
 /**
- * Unit tests for POST /api/vault/mint (#2242).
+ * Unit tests for POST /api/vault/mint (#2242, refactored #2247 to call the
+ * shared `emitMintedEvents` helper instead of emitting attestation/bus
+ * events inline).
  *
  * Covers: authority gating (unauthorized principal rejected), body
- * validation, that mint never returns private key material, and that a
- * signed mint attestation + vault.key.minted bus event are both emitted
- * with no secret material in either payload.
+ * validation, that mint never returns private key material, and that
+ * `emitMintedEvents` is invoked with the right shape. The attestation/
+ * bus-event content itself is covered by `../../../../../src/lib/vault/
+ * __tests__/mint.test.ts`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockRequireMintAuthority, mockMintKeypair, mockEmitAttestation, mockPublish } = vi.hoisted(() => ({
+const { mockRequireMintAuthority, mockMintKeypair, mockEmitMintedEvents } = vi.hoisted(() => ({
   mockRequireMintAuthority: vi.fn(),
   mockMintKeypair: vi.fn(),
-  mockEmitAttestation: vi.fn().mockResolvedValue({}),
-  mockPublish: vi.fn().mockResolvedValue(undefined),
+  mockEmitMintedEvents: vi.fn(),
 }));
-
-vi.mock('@imajin/auth', () => ({
-  emitAttestation: mockEmitAttestation,
-}));
-
-vi.mock('@imajin/bus', () => ({ publish: mockPublish }));
 
 vi.mock('@/src/lib/vault', () => ({
   mintKeypair: mockMintKeypair,
+  emitMintedEvents: mockEmitMintedEvents,
 }));
 
 vi.mock('@/src/lib/vault/mint-authority', () => ({
@@ -122,36 +119,17 @@ describe('POST /api/vault/mint — success', () => {
     );
   });
 
-  it('emits a vault.key.minted attestation with issuer = acting principal, subject = minted DID', async () => {
+  it('emits the shared mint events with issuer/mintedBy = acting principal, and composedBy threaded through', async () => {
     await POST(makeRequest({ purpose: 'corpus-identity', requesterDid: REQUESTER }));
 
-    expect(mockEmitAttestation).toHaveBeenCalledTimes(1);
-    const [params] = mockEmitAttestation.mock.calls[0]!;
-    expect(params.type).toBe('vault.key.minted');
-    expect(params.issuer_did).toBe(NODE_DID);
-    expect(params.subject_did).toBe(MINTED_DID);
-    expect(JSON.stringify(params)).not.toContain('privateKey');
-  });
-
-  it('publishes a vault.key.minted bus event with no key material', async () => {
-    await POST(makeRequest({ purpose: 'corpus-identity', requesterDid: REQUESTER }));
-
-    expect(mockPublish).toHaveBeenCalledTimes(1);
-    const [eventType, event] = mockPublish.mock.calls[0]!;
-    expect(eventType).toBe('vault.key.minted');
-    expect(event.payload.did).toBe(MINTED_DID);
-    expect(event.payload.requestedBy).toBe(REQUESTER);
-    expect(event.payload.mintedBy).toBe(NODE_DID);
-    expect(JSON.stringify(event.payload)).not.toContain('privateKey');
-  });
-
-  it('never fails the request when the attestation or bus publish itself fails', async () => {
-    mockEmitAttestation.mockRejectedValue(new Error('attestation service down'));
-    mockPublish.mockRejectedValue(new Error('bus unavailable'));
-
-    const response = await POST(makeRequest({ purpose: 'corpus-identity', requesterDid: REQUESTER }));
-
-    expect(response.status).toBe(201);
+    expect(mockEmitMintedEvents).toHaveBeenCalledTimes(1);
+    expect(mockEmitMintedEvents).toHaveBeenCalledWith({
+      minted: expect.objectContaining({ did: MINTED_DID }),
+      purpose: 'corpus-identity',
+      requesterDid: REQUESTER,
+      mintedBy: NODE_DID,
+      composedBy: null,
+    });
   });
 
   it('returns a vault error response when mintKeypair throws', async () => {

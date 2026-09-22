@@ -1,27 +1,23 @@
 /**
- * Unit tests for POST /api/vault/mint/revoke (#2242).
+ * Unit tests for POST /api/vault/mint/revoke (#2242, refactored #2247 to
+ * call the shared `emitRevokedEvents` helper instead of emitting
+ * attestation/bus events inline).
  *
  * Covers: authority gating, missing/invalid body, not-found vs
- * already-revoked vs freshly-revoked outcomes, and that the revoke
- * attestation + bus event carry no key material.
+ * already-revoked vs freshly-revoked outcomes, and that
+ * `emitRevokedEvents` is invoked only on a fresh revoke.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockRequireMintAuthority, mockRevokeMintedKey, mockEmitAttestation, mockPublish } = vi.hoisted(() => ({
+const { mockRequireMintAuthority, mockRevokeMintedKey, mockEmitRevokedEvents } = vi.hoisted(() => ({
   mockRequireMintAuthority: vi.fn(),
   mockRevokeMintedKey: vi.fn(),
-  mockEmitAttestation: vi.fn().mockResolvedValue({}),
-  mockPublish: vi.fn().mockResolvedValue(undefined),
+  mockEmitRevokedEvents: vi.fn(),
 }));
-
-vi.mock('@imajin/auth', () => ({
-  emitAttestation: mockEmitAttestation,
-}));
-
-vi.mock('@imajin/bus', () => ({ publish: mockPublish }));
 
 vi.mock('@/src/lib/vault', () => ({
   revokeMintedKey: mockRevokeMintedKey,
+  emitRevokedEvents: mockEmitRevokedEvents,
 }));
 
 vi.mock('@/src/lib/vault/mint-authority', () => ({
@@ -86,10 +82,10 @@ describe('POST /api/vault/mint/revoke — outcomes', () => {
     const response = await POST(makeRequest({ did: MINTED_DID }));
 
     expect(response.status).toBe(404);
-    expect(mockEmitAttestation).not.toHaveBeenCalled();
+    expect(mockEmitRevokedEvents).not.toHaveBeenCalled();
   });
 
-  it('returns ok + alreadyRevoked without re-emitting an attestation', async () => {
+  it('returns ok + alreadyRevoked without re-emitting events', async () => {
     mockRevokeMintedKey.mockResolvedValue({
       status: 'already_revoked',
       record: { id: 'vmk_test', did: MINTED_DID, publicKey: PUBLIC_KEY },
@@ -101,14 +97,12 @@ describe('POST /api/vault/mint/revoke — outcomes', () => {
     expect(response.status).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.alreadyRevoked).toBe(true);
-    expect(mockEmitAttestation).not.toHaveBeenCalled();
+    expect(mockEmitRevokedEvents).not.toHaveBeenCalled();
   });
 
-  it('revokes, emits a vault.key.revoked attestation with no key material, and publishes a matching bus event', async () => {
-    mockRevokeMintedKey.mockResolvedValue({
-      status: 'revoked',
-      record: { id: 'vmk_test', did: MINTED_DID, publicKey: PUBLIC_KEY },
-    });
+  it('revokes and emits the shared revoke events with the acting principal as revokedBy', async () => {
+    const record = { id: 'vmk_test', did: MINTED_DID, publicKey: PUBLIC_KEY };
+    mockRevokeMintedKey.mockResolvedValue({ status: 'revoked', record });
 
     const response = await POST(makeRequest({ did: MINTED_DID }));
     const body = await response.json() as { ok: boolean; did: string; mintId: string };
@@ -117,30 +111,7 @@ describe('POST /api/vault/mint/revoke — outcomes', () => {
     expect(body.ok).toBe(true);
     expect(body.did).toBe(MINTED_DID);
 
-    expect(mockEmitAttestation).toHaveBeenCalledTimes(1);
-    const [params] = mockEmitAttestation.mock.calls[0]!;
-    expect(params.type).toBe('vault.key.revoked');
-    expect(params.issuer_did).toBe(NODE_DID);
-    expect(params.subject_did).toBe(MINTED_DID);
-    expect(JSON.stringify(params)).not.toContain('privateKey');
-
-    expect(mockPublish).toHaveBeenCalledTimes(1);
-    const [eventType, event] = mockPublish.mock.calls[0]!;
-    expect(eventType).toBe('vault.key.revoked');
-    expect(event.payload.did).toBe(MINTED_DID);
-    expect(event.payload.revokedBy).toBe(NODE_DID);
-  });
-
-  it('never fails the request when the attestation or bus publish itself fails', async () => {
-    mockRevokeMintedKey.mockResolvedValue({
-      status: 'revoked',
-      record: { id: 'vmk_test', did: MINTED_DID, publicKey: PUBLIC_KEY },
-    });
-    mockEmitAttestation.mockRejectedValue(new Error('attestation service down'));
-    mockPublish.mockRejectedValue(new Error('bus unavailable'));
-
-    const response = await POST(makeRequest({ did: MINTED_DID }));
-
-    expect(response.status).toBe(200);
+    expect(mockEmitRevokedEvents).toHaveBeenCalledTimes(1);
+    expect(mockEmitRevokedEvents).toHaveBeenCalledWith(record, NODE_DID);
   });
 });

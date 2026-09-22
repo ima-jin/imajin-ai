@@ -135,7 +135,11 @@ function insertValues(table: { __table?: string }, data: Row) {
   if (table.__table === 'requests') {
     return Promise.resolve([]);
   }
-  grantStore.set(String(data.id), { purpose: null, oneTime: false, consumedAt: null, ...data });
+  grantStore.set(String(data.id), {
+    purpose: null, oneTime: false, consumedAt: null,
+    lastFetchedAt: null, ackedAt: null, ackOutcome: null, ackEvidence: null,
+    ...data,
+  });
   return Promise.resolve([]);
 }
 
@@ -153,6 +157,35 @@ function applyPatch(row: Row, patch: Row): Row {
 function updateWhere(patch: Row, cond: Cond) {
   const patched = filterGrants(cond).map((row) => applyPatch(row, patch));
   return { ...settledArray(), returning: () => Promise.resolve(patched) };
+}
+
+/**
+ * A `db.update(...)` chain double that always resolves its `.returning()`
+ * to zero rows — the exact shape a losing `WHERE ... IS NULL` atomic-claim
+ * guard produces. Kept as its own top-level function (rather than inlined
+ * where it's used) so its 3 levels of chain nesting don't stack on top of
+ * the enclosing `describe`/`it` callbacks and trip the linter's nested-
+ * function depth budget.
+ */
+function zeroRowClaimUpdate() {
+  return { set: () => ({ where: () => ({ returning: () => Promise.resolve([]) }) }) };
+}
+
+/**
+ * Same shape as {@link zeroRowClaimUpdate}, but runs `onClaim` as a side
+ * effect of the `.where(...)` call itself — simulating a concurrent writer
+ * committing its own claim at the exact moment this call's atomic UPDATE
+ * would have run, before this call's own zero-row result is produced.
+ */
+function zeroRowClaimUpdateWithSideEffect(onClaim: () => void) {
+  return {
+    set: () => ({
+      where: () => {
+        onClaim();
+        return { returning: () => Promise.resolve([]) };
+      },
+    }),
+  };
 }
 
 function selectEnvelopesWhere(cond: Cond) {
@@ -186,6 +219,10 @@ vi.mock('@/src/db', () => {
     consumedAt: col('consumedAt'),
     expiresAt: col('expiresAt'),
     createdAt: col('createdAt'),
+    lastFetchedAt: col('lastFetchedAt'),
+    ackedAt: col('ackedAt'),
+    ackOutcome: col('ackOutcome'),
+    ackEvidence: col('ackEvidence'),
   };
   const vaultOwnerEnvelopes = { __table: 'envelopes', field: col('field'), keyId: col('keyId') };
   const vaultGrantRequests = { __table: 'requests' };
@@ -212,8 +249,9 @@ vi.mock('@imajin/bus', () => ({
 
 // ── Imports (after mocks) ─────────────────────────────────────────────────────
 
-import { sealAndGrantStaticSecret, fetchGrantSecret, listGrantsForGrantee } from '../index.js';
+import { sealAndGrantStaticSecret, fetchGrantSecret, listGrantsForGrantee, ackGrant, vaultService } from '../index.js';
 import { _resetSealingCache } from '../sealing.js';
+import { db } from '@/src/db';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -272,6 +310,23 @@ describe('fetchGrantSecret', () => {
 
     expect(outcome.status).toBe('ok');
     expect(outcome.status === 'ok' && outcome.value).toBe(SECRET);
+  });
+
+  it('sets lastFetchedAt on a successful fetch (#2235 ack precondition)', async () => {
+    const grantId = await seedGrant();
+    expect(grantStore.get(grantId)!.lastFetchedAt).toBeNull();
+
+    const outcome = await fetchGrantSecret({ grantId, granteeDid: AGENT });
+
+    expect(outcome.status).toBe('ok');
+    expect(grantStore.get(grantId)!.lastFetchedAt).toBeInstanceOf(Date);
+    expect(outcome.status === 'ok' && outcome.grant.lastFetchedAt).toBeInstanceOf(Date);
+  });
+
+  it('never sets lastFetchedAt on a refused fetch', async () => {
+    const grantId = await seedGrant({ status: 'revoked' });
+    await fetchGrantSecret({ grantId, granteeDid: AGENT });
+    expect(grantStore.get(grantId)!.lastFetchedAt).toBeNull();
   });
 
   it('returns not_found for an unknown grantId', async () => {
@@ -337,6 +392,30 @@ describe('fetchGrantSecret', () => {
       expect(second.status).toBe('ok');
       expect(grantStore.get(grantId)!.consumedAt).toBeNull();
     });
+
+    // #2234 review: the `claimed.length === 0` race-loser branch (two
+    // concurrent fetches of the same one-time grant, only one atomic UPDATE
+    // can win) had no coverage at all. Mocking `db.update` for exactly one
+    // call to return zero rows — the exact shape a losing `WHERE consumed_at
+    // IS NULL` guard produces — exercises that branch directly and
+    // deterministically, without depending on Promise microtask ordering.
+    it('never decrypts when the atomic claim update loses the race and returns zero rows', async () => {
+      const grantId = await seedGrant({ oneTime: true });
+      const getSpy = vi.spyOn(vaultService, 'get');
+      const updateSpy = vi.spyOn(db, 'update').mockReturnValueOnce(zeroRowClaimUpdate() as never);
+
+      const outcome = await fetchGrantSecret({ grantId, granteeDid: AGENT });
+
+      expect(outcome.status).toBe('consumed');
+      expect(getSpy).not.toHaveBeenCalled();
+      // The mocked UPDATE never actually wrote anything, so the row is
+      // exactly as seedGrant left it — confirming the refusal came from the
+      // zero-row claim result, not from some other consumedAt already set.
+      expect(grantStore.get(grantId)!.consumedAt).toBeNull();
+
+      updateSpy.mockRestore();
+      getSpy.mockRestore();
+    });
   });
 });
 
@@ -387,5 +466,128 @@ describe('listGrantsForGrantee', () => {
       expect(row).not.toHaveProperty('wrappedKey');
       expect(row).not.toHaveProperty('wrappedNonce');
     }
+  });
+
+  it('reports ackOutcome/ackedAt/ackEvidence as null for an unacked grant (#2235)', async () => {
+    const rows = await listGrantsForGrantee({ granteeDid: AGENT });
+    const row = rows.find((r) => r.grantId === 'vdg_a1')!;
+    expect(row.ackOutcome).toBeNull();
+    expect(row.ackedAt).toBeNull();
+    expect(row.ackEvidence).toBeNull();
+  });
+
+  it('surfaces ackOutcome/ackedAt/ackEvidence once a grant has been acked (#2235)', async () => {
+    grantStore.set('vdg_a1', {
+      ...grantStore.get('vdg_a1'),
+      ackOutcome: 'used',
+      ackedAt: new Date('2025-02-01T00:00:00Z'),
+      ackEvidence: { kind: 'gha-runner', ref: 'imajin-gx10' },
+    });
+
+    const rows = await listGrantsForGrantee({ granteeDid: AGENT });
+    const row = rows.find((r) => r.grantId === 'vdg_a1')!;
+
+    expect(row.ackOutcome).toBe('used');
+    expect(row.ackedAt).toBe('2025-02-01T00:00:00.000Z');
+    expect(row.ackEvidence).toEqual({ kind: 'gha-runner', ref: 'imajin-gx10' });
+  });
+});
+
+// ── ackGrant ──────────────────────────────────────────────────────────────────
+
+describe('ackGrant', () => {
+  it('returns not_found for an unknown grantId', async () => {
+    const outcome = await ackGrant({ grantId: 'vdg_nonexistent', granteeDid: AGENT, outcome: 'used' });
+    expect(outcome.status).toBe('not_found');
+  });
+
+  it('returns not_grantee when the caller does not match grantedTo', async () => {
+    const grantId = await seedGrant();
+    await fetchGrantSecret({ grantId, granteeDid: AGENT });
+
+    const outcome = await ackGrant({ grantId, granteeDid: OTHER_AGENT, outcome: 'used' });
+    expect(outcome.status).toBe('not_grantee');
+  });
+
+  it('returns not_fetched when the grant has never been successfully fetched', async () => {
+    const grantId = await seedGrant();
+    const outcome = await ackGrant({ grantId, granteeDid: AGENT, outcome: 'used' });
+    expect(outcome.status).toBe('not_fetched');
+  });
+
+  it('acks a fetched grant, persisting outcome and evidence', async () => {
+    const grantId = await seedGrant();
+    await fetchGrantSecret({ grantId, granteeDid: AGENT });
+
+    const outcome = await ackGrant({
+      grantId,
+      granteeDid: AGENT,
+      outcome: 'used',
+      evidence: { kind: 'gha-runner', ref: 'imajin-gx10' },
+    });
+
+    expect(outcome.status).toBe('ok');
+    expect(outcome.status === 'ok' && outcome.ackOutcome).toBe('used');
+    expect(outcome.status === 'ok' && outcome.ownerDid).toBe(PRINCIPAL);
+    expect(grantStore.get(grantId)!.ackOutcome).toBe('used');
+    expect(grantStore.get(grantId)!.ackedAt).toBeInstanceOf(Date);
+    expect(grantStore.get(grantId)!.ackEvidence).toEqual({ kind: 'gha-runner', ref: 'imajin-gx10' });
+  });
+
+  it('is idempotent: acking again with the SAME outcome returns the original ackedAt unchanged', async () => {
+    const grantId = await seedGrant();
+    await fetchGrantSecret({ grantId, granteeDid: AGENT });
+
+    const first = await ackGrant({ grantId, granteeDid: AGENT, outcome: 'used' });
+    const second = await ackGrant({ grantId, granteeDid: AGENT, outcome: 'used' });
+
+    if (first.status !== 'ok' || second.status !== 'ok') {
+      throw new Error(`expected both acks to be 'ok', got ${first.status}/${second.status}`);
+    }
+    expect(second.ackedAt).toEqual(first.ackedAt);
+  });
+
+  it('refuses a different outcome with conflict, reporting the original', async () => {
+    const grantId = await seedGrant();
+    await fetchGrantSecret({ grantId, granteeDid: AGENT });
+
+    const first = await ackGrant({ grantId, granteeDid: AGENT, outcome: 'used' });
+    const second = await ackGrant({ grantId, granteeDid: AGENT, outcome: 'failed' });
+
+    if (first.status !== 'ok' || second.status !== 'conflict') {
+      throw new Error(`expected 'ok'/'conflict', got ${first.status}/${second.status}`);
+    }
+    expect(second.ackOutcome).toBe('used');
+    expect(second.ackedAt).toEqual(first.ackedAt);
+  });
+
+  it('never persists anything when the first-claim UPDATE loses the race, reporting whichever outcome won', async () => {
+    const grantId = await seedGrant();
+    await fetchGrantSecret({ grantId, granteeDid: AGENT });
+
+    // The initial read (inside ackGrant) must still see an unacked row so it
+    // proceeds past resolveExistingAck to attempt the atomic claim. Only
+    // THEN, as a side effect of the mocked UPDATE call itself, does a
+    // "concurrent" ack win the `WHERE acked_at IS NULL` guard — mirroring
+    // exactly when a real concurrent writer would commit between our read
+    // and our write. The mocked UPDATE returns zero rows, matching what a
+    // losing guard produces, so ackGrant falls into its re-select branch and
+    // must report whichever outcome actually won.
+    const updateSpy = vi.spyOn(db, 'update').mockReturnValueOnce(
+      zeroRowClaimUpdateWithSideEffect(() => {
+        grantStore.set(grantId, {
+          ...grantStore.get(grantId),
+          ackedAt: new Date('2025-03-01T00:00:00Z'),
+          ackOutcome: 'discarded',
+        });
+      }) as never,
+    );
+
+    const outcome = await ackGrant({ grantId, granteeDid: AGENT, outcome: 'used' });
+
+    expect(outcome.status).toBe('conflict');
+    expect(outcome.status === 'conflict' && outcome.ackOutcome).toBe('discarded');
+
+    updateSpy.mockRestore();
   });
 });
