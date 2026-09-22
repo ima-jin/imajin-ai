@@ -92,7 +92,6 @@ kernel and corpus are colocated on the same host; point it at gx10 in prod.
 |---------|---------|
 | `@imajin/auth` | Ed25519 signing, verification, DID creation |
 | `@imajin/db` | Database layer (postgres-js + drizzle-orm) |
-| `@imajin/pay` | Unified payments (Stripe + Solana) |
 | `@imajin/config` | Shared configuration |
 | `@imajin/ui` | Shared UI components (NavBar, Footer, dark theme) |
 | `@imajin/input` | Input components (emoji, voice, GPS, file upload) |

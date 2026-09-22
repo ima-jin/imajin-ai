@@ -99,7 +99,6 @@ Generated from `packages/*/package.json`. **None are published to npm yet** — 
 | [`@imajin/money`](./packages/money) | Currency-safe Money primitive, signed FX snapshots, ECB rate cache |
 | [`@imajin/notify`](./packages/notify) | Cross-channel notification client (email/in-app/chat) |
 | [`@imajin/onboard`](./packages/onboard) | Anonymous-to-soft-DID onboarding (`<OnboardGate>`) |
-| [`@imajin/pay`](./packages/pay) | Unified payments — Stripe + Solana |
 | [`@imajin/tokens`](./packages/tokens) | Design tokens (DTCG format, Style Dictionary v4) |
 | [`@imajin/trust-graph`](./packages/trust-graph) | Trust graph queries — pod membership, trust distance/radius |
 | [`@imajin/ui`](./packages/ui) | Shared UI — nav bar, identity management, app launcher, theming |
@@ -137,7 +136,7 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 | Codebase | 332,544 lines (`.ts`/`.tsx`) | `git ls-files '*.ts' '*.tsx' \| xargs cat \| wc -l` |
 | Commits | 3,755 | `git rev-list --count HEAD` |
 | Live since | February 2026 | `git log --reverse --format=%ad --date=short` (first commit) |
-| Services | 9 apps, 30 shared packages | `ls apps`, `ls packages` |
+| Services | 9 apps, 29 shared packages | `ls apps`, `ls packages` |
 <!-- stats:end -->
 _As of commit `cc9ae36b` (2026-09-06). Regenerated at each replay of [#2028](https://github.com/ima-jin/imajin-ai/issues/2028)._
 

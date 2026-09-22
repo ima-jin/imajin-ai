@@ -15,7 +15,6 @@ const nextConfig = {
     '@imajin/media',
     '@imajin/notify',
     '@imajin/onboard',
-    '@imajin/pay',
     '@imajin/trust-graph',
     '@imajin/ui',
     '@imajin/vault-core',

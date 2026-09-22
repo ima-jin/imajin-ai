@@ -32,7 +32,6 @@
     "@imajin/money": "workspace:*",
     "@imajin/notify": "workspace:*",
     "@imajin/onboard": "workspace:*",
-    "@imajin/pay": "workspace:*",
     "@imajin/trust-graph": "workspace:*",
     "@imajin/ui": "workspace:^",
     "@imajin/vault-core": "workspace:*",
