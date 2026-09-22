@@ -12,7 +12,7 @@ export type { IdentityTier } from "./tiers";
 export { canonicalize, sign, signSync } from "./sign";
 export { verify, isValidMessageStructure } from "./verify";
 export * as crypto from "./crypto";
-export { hexToBytes, stringToBytes, bytesToHex, bytesToMultibase, multibaseToPubkey, hexToMultibase, multibaseToHex, generateKeypair, generatePrivateKey, getPublicKey, extractPrivateKeySeed, verifySync, isValidPublicKey, isValidPrivateKey, isValidSignature } from "./crypto";
+export { hexToBytes, stringToBytes, bytesToHex, bytesToMultibase, multibaseToPubkey, hexToMultibase, multibaseToHex, generateKeypair, generatePrivateKey, getPublicKey, extractPrivateKeySeed, verifySync, isValidPublicKey, isValidPrivateKey, isValidSignature, createDID } from "./crypto";
 export type { Attestation, AttestationType, NostrKeyBindingClaim } from "./types/attestation";
 export { ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from "./types/attestation";
 export {

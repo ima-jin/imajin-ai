@@ -27,10 +27,16 @@
  * to check for an existing DID against. Running it twice and deploying both
  * outputs would just orphan the first DID's signed attestations without
  * invalidating them (a signature stays valid for whichever key made it).
+ *
+ * `@imajin/auth` is loaded via a dynamic `import()` rather than a static
+ * one (#1711): the package is ESM-only (see packages/auth/tsup.config.ts),
+ * and this script has no `package.json` "type": "module" ancestor, so tsx
+ * transpiles a static `import` here to a CommonJS `require()`, which fails
+ * to resolve against an exports map with only an `import` condition. A
+ * dynamic `import()` is preserved as-is and resolves correctly.
  */
-import { generateKeypair, createDID } from '../packages/auth/src/providers/keypair';
-
-function main(): void {
+async function main(): Promise<void> {
+  const { generateKeypair, createDID } = await import('@imajin/auth');
   const keypair = generateKeypair();
   const did = createDID(keypair.publicKey);
 
@@ -43,4 +49,7 @@ function main(): void {
   console.log('If unset, the corpus service still ingests normally but skips signing attestations.\n');
 }
 
-main();
+// Exported (not just invoked) so scripts/__tests__/bootstrap-corpus-identity.test.mjs
+// can `await` full completion — including the dynamic import() above — after
+// importing this module directly. Inert for the normal CLI invocation.
+export const __mainPromise = main();

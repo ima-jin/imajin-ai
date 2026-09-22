@@ -16,6 +16,7 @@ import {
   multibaseToPubkey,
   hexToMultibase,
   multibaseToHex,
+  createDID,
 } from '../src/crypto';
 
 describe('bytesToHex / hexToBytes', () => {
@@ -196,6 +197,28 @@ describe('isValidSignature', () => {
 
   it('rejects wrong length', () => {
     expect(isValidSignature('ab'.repeat(32))).toBe(false);
+  });
+});
+
+describe('createDID (#1711: moved here from the deleted keypair provider)', () => {
+  it('derives a did:imajin:* DID from the first 16 hex chars of the public key', () => {
+    const { publicKey } = generateKeypair();
+    expect(createDID(publicKey)).toBe(`did:imajin:${publicKey.slice(0, 16)}`);
+  });
+
+  it('is deterministic for the same public key', () => {
+    const { publicKey } = generateKeypair();
+    expect(createDID(publicKey)).toBe(createDID(publicKey));
+  });
+
+  it('produces different DIDs for different public keys', () => {
+    const a = generateKeypair();
+    const b = generateKeypair();
+    expect(createDID(a.publicKey)).not.toBe(createDID(b.publicKey));
+  });
+
+  it('throws on an invalid public key', () => {
+    expect(() => createDID('not-a-valid-public-key')).toThrow('Invalid public key');
   });
 });
 
