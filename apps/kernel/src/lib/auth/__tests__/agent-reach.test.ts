@@ -138,6 +138,20 @@ import { reachPrincipal, seedAgentReachGate, reachTranscript, type ReachRequestI
 const PRINCIPAL_DID = 'did:imajin:ryan';
 const REQUESTER_DID = 'did:imajin:muse-agent';
 
+/**
+ * Pins the #2262 follow-up contract for every `reachPrincipal` path: exactly
+ * one `agent.reach` attestation is minted per exchange (never zero, never a
+ * duplicate on a fail-closed branch), and its payload carries only the
+ * transcript's hash — never the raw transcript bytes that were signed.
+ */
+function expectAttestedExactlyOnce(matcher: Record<string, unknown>): void {
+  expect(emitAttestationMock).toHaveBeenCalledTimes(1);
+  expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining(matcher));
+  const [attestationArgs] = emitAttestationMock.mock.calls[0] as [{ payload: Record<string, unknown> }];
+  expect(attestationArgs.payload).toHaveProperty('transcriptHash');
+  expect(attestationArgs.payload).not.toHaveProperty('transcript');
+}
+
 function baseInput(overrides: Partial<ReachRequestInput> = {}): ReachRequestInput {
   return {
     requesterDid: REQUESTER_DID,
@@ -174,20 +188,20 @@ describe('reachPrincipal (#2251)', () => {
     expect(publishMock).toHaveBeenCalledWith('agent.reach.denied', expect.objectContaining({
       payload: expect.objectContaining({ reason: 'principal_not_found' }),
     }));
-    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+    expectAttestedExactlyOnce({
       subject_did: 'did:imajin:nobody',
       type: 'agent.reach',
       payload: expect.objectContaining({ outcome: 'denied', reason: 'principal_not_found', signatureVerified: false }),
-    }));
+    });
   });
 
   it('denies with requester_unknown when the requester has no identity (never knocked/accepted), and attests the refusal', async () => {
     const result = await reachPrincipal(PRINCIPAL_DID, baseInput({ requesterDid: 'did:imajin:stranger' }));
     expect(result).toMatchObject({ denied: true, reason: 'requester_unknown', status: 401 });
     expect(introspectGrantMock).not.toHaveBeenCalled();
-    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+    expectAttestedExactlyOnce({
       payload: expect.objectContaining({ outcome: 'denied', reason: 'requester_unknown', signatureVerified: false }),
-    }));
+    });
   });
 
   it('denies with invalid_signature when the signature does not verify, before checking any grant, and attests the refusal honestly (signatureVerified: false)', async () => {
@@ -195,9 +209,9 @@ describe('reachPrincipal (#2251)', () => {
     const result = await reachPrincipal(PRINCIPAL_DID, baseInput());
     expect(result).toMatchObject({ denied: true, reason: 'invalid_signature', status: 401 });
     expect(introspectGrantMock).not.toHaveBeenCalled();
-    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+    expectAttestedExactlyOnce({
       payload: expect.objectContaining({ outcome: 'denied', reason: 'invalid_signature', signatureVerified: false }),
-    }));
+    });
   });
 
   it('denies with invalid_signature when the request timestamp is stale (older than SIGNED_MESSAGE_MAX_AGE), without ever calling verifySignature', async () => {
@@ -205,16 +219,19 @@ describe('reachPrincipal (#2251)', () => {
     const result = await reachPrincipal(PRINCIPAL_DID, baseInput({ issuedAt: staleIssuedAt }));
     expect(result).toMatchObject({ denied: true, reason: 'invalid_signature', status: 401 });
     expect(verifySignatureMock).not.toHaveBeenCalled();
-    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+    expectAttestedExactlyOnce({
       payload: expect.objectContaining({ outcome: 'denied', reason: 'invalid_signature', signatureVerified: false }),
-    }));
+    });
   });
 
-  it('denies with invalid_signature when the request timestamp is too far in the future (beyond FUTURE_TOLERANCE)', async () => {
+  it('denies with invalid_signature when the request timestamp is too far in the future (beyond FUTURE_TOLERANCE), and attests the refusal exactly once', async () => {
     const futureIssuedAt = new Date(Date.now() + FUTURE_TOLERANCE + 5000).toISOString();
     const result = await reachPrincipal(PRINCIPAL_DID, baseInput({ issuedAt: futureIssuedAt }));
     expect(result).toMatchObject({ denied: true, reason: 'invalid_signature', status: 401 });
     expect(verifySignatureMock).not.toHaveBeenCalled();
+    expectAttestedExactlyOnce({
+      payload: expect.objectContaining({ outcome: 'denied', reason: 'invalid_signature', signatureVerified: false }),
+    });
   });
 
   it('accepts a request at the exact edges of the freshness window', async () => {
@@ -236,9 +253,9 @@ describe('reachPrincipal (#2251)', () => {
     const result = await reachPrincipal(PRINCIPAL_DID, baseInput());
     expect(result).toMatchObject({ denied: true, reason: 'unauthorized', status: 403 });
     expect(brokerMock).not.toHaveBeenCalled();
-    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+    expectAttestedExactlyOnce({
       payload: expect.objectContaining({ outcome: 'denied', reason: 'unauthorized', signatureVerified: true }),
-    }));
+    });
   });
 
   it('fails closed the instant the grant is revoked — same call shape as after revokeGrant() — and attests the post-revocation refusal', async () => {
@@ -252,9 +269,9 @@ describe('reachPrincipal (#2251)', () => {
     introspectGrantMock.mockResolvedValueOnce({ authorized: false, reason: 'revoked' });
     const afterRevocation = await reachPrincipal(PRINCIPAL_DID, baseInput());
     expect(afterRevocation).toMatchObject({ denied: true, reason: 'unauthorized', status: 403 });
-    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+    expectAttestedExactlyOnce({
       payload: expect.objectContaining({ outcome: 'denied', reason: 'unauthorized', signatureVerified: true }),
-    }));
+    });
   });
 
   it('returns answer: true and mints the agent.reach attestation when the gate matches', async () => {
@@ -268,7 +285,7 @@ describe('reachPrincipal (#2251)', () => {
     expect(result).toMatchObject({ answer: true });
     expect(result).toHaveProperty('transcriptHash');
 
-    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+    expectAttestedExactlyOnce({
       issuer_did: 'did:imajin:node',
       subject_did: PRINCIPAL_DID,
       type: 'agent.reach',
@@ -283,14 +300,14 @@ describe('reachPrincipal (#2251)', () => {
         answer: true,
         grantId: 'grant_1',
       }),
-    }));
+    });
 
     expect(publishMock).toHaveBeenCalledWith('agent.reach.answered', expect.objectContaining({
       payload: expect.objectContaining({ answer: true, grantId: 'grant_1' }),
     }));
   });
 
-  it('returns answer: false without disclosing the underlying topic list when the predicate does not match', async () => {
+  it('returns answer: false without disclosing the underlying topic list when the predicate does not match, attesting the answered exchange exactly once', async () => {
     brokerMock.mockResolvedValue({
       status: 'released',
       data: { contact_topics: { field: 'contact_topics', predicate: 'contains', result: false, cacheKey: 'k1', issuedAt: 'x', expiresAt: 'y' } },
@@ -299,14 +316,20 @@ describe('reachPrincipal (#2251)', () => {
 
     const result = await reachPrincipal(PRINCIPAL_DID, baseInput({ arg: 'unrelated_topic' }));
     expect(result).toMatchObject({ answer: false });
+    expectAttestedExactlyOnce({
+      payload: expect.objectContaining({ outcome: 'answered', answer: false }),
+    });
   });
 
-  it('collapses a broker rejection (e.g. no consent_grants row configured) into answer: false, never a distinct error', async () => {
+  it('collapses a broker rejection (e.g. no consent_grants row configured) into answer: false, never a distinct error, attesting the gate-denied exchange exactly once', async () => {
     brokerMock.mockResolvedValue({ status: 'rejected', reason: 'no_consent', fields: ['contact_topics'] });
 
     const result = await reachPrincipal(PRINCIPAL_DID, baseInput());
     expect(result).toMatchObject({ answer: false });
     expect(result).not.toHaveProperty('denied');
+    expectAttestedExactlyOnce({
+      payload: expect.objectContaining({ outcome: 'answered', answer: false }),
+    });
   });
 
   it('passes the raw, never-disclosed gate value to broker() as data — never in the returned answer', async () => {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 
 vi.mock('next/server', () => {
   class MockNextResponse {
@@ -112,5 +113,31 @@ describe('POST /auth/api/agents/:did/reach', () => {
       arg: body.arg,
       signature: body.signature,
     }));
+  });
+
+  it('returns 401 with invalid_signature for a stale signed request (issuedAt older than SIGNED_MESSAGE_MAX_AGE) — anti-enumeration: same outcome as a bad signature', async () => {
+    reachPrincipalMock.mockResolvedValue({ denied: true, reason: 'invalid_signature', status: 401 });
+    const staleIssuedAt = new Date(Date.now() - SIGNED_MESSAGE_MAX_AGE - 1000).toISOString();
+
+    const response = await POST(
+      makeRequest(validBody({ issuedAt: staleIssuedAt })) as never,
+      { params: Promise.resolve({ did: PRINCIPAL_DID }) },
+    );
+
+    expect((response as { status: number }).status).toBe(401);
+    expect((response as { body: { error: string } }).body).toMatchObject({ error: 'invalid_signature' });
+  });
+
+  it('returns 401 with invalid_signature for a future-dated signed request (issuedAt beyond FUTURE_TOLERANCE) — anti-enumeration: same outcome as a bad signature', async () => {
+    reachPrincipalMock.mockResolvedValue({ denied: true, reason: 'invalid_signature', status: 401 });
+    const futureIssuedAt = new Date(Date.now() + FUTURE_TOLERANCE + 5000).toISOString();
+
+    const response = await POST(
+      makeRequest(validBody({ issuedAt: futureIssuedAt })) as never,
+      { params: Promise.resolve({ did: PRINCIPAL_DID }) },
+    );
+
+    expect((response as { status: number }).status).toBe(401);
+    expect((response as { body: { error: string } }).body).toMatchObject({ error: 'invalid_signature' });
   });
 });
