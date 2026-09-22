@@ -154,6 +154,39 @@ bootstrap identity (`CORPUS_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY`) — the real
 signing keypair itself is minted in the vault and fetched at boot, never
 hand-copied onto the host (#2241/#2243).
 
+### Internal generated secrets (#2245)
+
+A third secret state, alongside hand-set and vault-sourced-fetched-at-boot:
+**granted**. `missing → granted (vault, signed, purpose-bound, unread) →
+loaded (fetched in-memory + one deferred ack)`. What ever touches an env
+var, CI log, or `.env.example` is the grant reference (or nothing at all)
+— never the secret value itself.
+
+This applies to secrets with a **single in-process consumer** (never
+fanned out to another service) — e.g. the foreign-principal-stub pepper
+(`kernel.foreign-principal-pepper`, replacing the old
+`FOREIGN_PRINCIPAL_STUB_SECRET` env var). The ruling (Ryan, 2026-09-22, via
+#2245):
+
+> Internal generated secrets don't need a human to *exist* — they need a
+> human to *replace or destroy* them. On first boot, the kernel looks up a
+> static-secret grant for the purpose, self-granted to its own node DID;
+> if none exists, it generates one in-process, seals + self-grants it, and
+> emits exactly one mechanical `vault.secret.generated` attestation
+> binding the purpose/grantId/content hash — never the bytes. Human
+> countersign (canvas card, #2084 roles) is reserved for import / rotate /
+> revoke, never for this self-provisioning path.
+
+This is distinct from the `# vault-sourced:` annotation above, which
+describes a secret fetched at boot from a grant something else (an
+operator, another service) already created. A self-provisioned internal
+secret has no annotation at all in `.env.example` — the var is deleted
+entirely, since check-env has nothing to validate once no human ever sets
+it. See `apps/kernel/src/lib/vault/internal-secret.ts` for the
+implementation (generate-vs-fetch decision, the provisioning-claim race
+between two boots, and the rotation seam a future rotate card can build on
+without changing the "current grant" lookup).
+
 ### Per-env deploy targets (#2246)
 
 A service with no `.env.local` at all is only a **hard error** when it's

@@ -1704,8 +1704,7 @@ export {
   type VaultFieldStatus,
 } from './field-status';
 
-// ── #2242 — vault.mint (Ed25519 keypair born in-vault) ─────────────────────
-// Trailing re-export only; see ./mint.ts for the implementation.
+// ── #2242 — vault.mint (Ed25519 keypair born in-vault) ──────────────────────────────
 export {
   mintedKeyField,
   mintKeypair,
@@ -1717,6 +1716,14 @@ export {
   type MintKeypairResult,
   type RevokeMintedKeyOutcome,
 } from './mint';
+
+// ── #2245 — self-provisioned internal secrets ──────────────────────────
+// Trailing re-export only; see ./internal-secret.ts for the implementation.
+export {
+  getInternalSecret,
+  internalSecretField,
+  _resetInternalSecretCacheForTests,
+} from './internal-secret';
 
 // ── #2247 — vault key cards on /jin (grant to a NEW consumer for an
 // already-minted key's field, without a re-seal) ───────────────────────────

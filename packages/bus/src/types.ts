@@ -786,6 +786,20 @@ export interface BusEventMap {
     context_type: 'vault.mint';
   };
   /**
+   * Emitted exactly once, the first time the kernel self-provisions an
+   * internal secret with no existing active grant for its purpose (#2245
+   * — first target of the #2241 vault-native-credentials epic). Carries
+   * no secret material — `contentHash` is a SHA-256 of the generated value,
+   * never the value itself. See apps/kernel/src/lib/vault/internal-secret.ts.
+   */
+  'vault.secret.generated': {
+    purpose: string;
+    grantId: string;
+    contentHash: string;
+    context_id: string;
+    context_type: 'vault.internal-secret';
+  };
+  /**
    * Emitted when the per-principal agent-reach endpoint (#2251) answers a
    * signed, authorized reach request. Carries no underlying gate data
    * (e.g. the principal's topic list) — only the boolean answer and the

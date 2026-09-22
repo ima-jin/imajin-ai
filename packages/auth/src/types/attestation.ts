@@ -197,6 +197,12 @@ export const ATTESTATION_TYPES = [
   // vault_minted_keys record itself, distinct from 'vault.key.revoked').
   // See ATTESTATION_TYPES above.
   'vault.key.withdrawn',
+  // #2245 — minted mechanically, exactly once, the first time the kernel
+  // self-provisions an internal secret (e.g. the foreign-principal-stub
+  // pepper) that has no active vault_delegation_grants row yet for its
+  // purpose. Binds only purpose/grantId/contentHash — never the generated
+  // bytes. See apps/kernel/src/lib/vault/internal-secret.ts.
+  'vault.secret.generated',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -264,6 +270,9 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #2247 — minted mechanically when a minted key's grant is withdrawn.
   // See ATTESTATION_TYPES above.
   'vault.key.withdrawn',
+  // #2245 — minted mechanically, exactly once, on first-boot self-
+  // provisioning of an internal secret. See ATTESTATION_TYPES above.
+  'vault.secret.generated',
 ] as const;
 
 /**
