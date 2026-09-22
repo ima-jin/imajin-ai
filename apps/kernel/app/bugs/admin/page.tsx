@@ -188,11 +188,11 @@ export default function AdminBugsPage() {
                   </a>
                 )}
 
-                {/* GitHub link */}
-                {r.githubIssueUrl && (
+                {/* Tracker link (#2184) */}
+                {r.externalUrl && (
                   <p className="text-xs mb-3">
-                    <a href={r.githubIssueUrl} target="_blank" rel="noreferrer" className="text-orange-400 hover:text-orange-300">
-                      GitHub #{r.githubIssueNumber} →
+                    <a href={r.externalUrl} target="_blank" rel="noreferrer" className="text-orange-400 hover:text-orange-300">
+                      {r.tracker === 'github' ? 'GitHub' : r.tracker ?? 'Tracker'} #{r.externalRef?.split('#').pop()} →
                     </a>
                   </p>
                 )}
