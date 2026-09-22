@@ -90,6 +90,33 @@ describe('chain config DEFAULTS reconcile (#1873, #1874)', () => {
     expect(types).toEqual(['audit-log']);
     expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
   });
+
+  // #2263 audit (follow-up to #2251/#2255): pins the exact audit-log
+  // `fields` allowlist for agent.reach events — disclosure-safe principal
+  // refs + outcome only, never the transcript, the requester's raw
+  // signature, or the gate's predicate/arg internals (same posture as
+  // vault.delegation.fetched/vault.key.minted above). Kept in sync with
+  // migration 0151; see tests/audit-log.test.ts for the reactor-level
+  // exact-key-set assertion this config feeds.
+  it('agent.reach.answered routes to audit-log with the disclosure-safe field allowlist (#2263)', async () => {
+    const cfg = await getChainConfig('agent.reach.answered', 'default');
+
+    expect(cfg.reactors).toEqual([
+      {
+        type: 'audit-log',
+        config: { fields: ['requesterDid', 'principalDid', 'onBehalfOfStubDid', 'purpose', 'field', 'answer', 'grantId'] },
+        enabled: true,
+      },
+    ]);
+  });
+
+  it('agent.reach.denied routes to audit-log with the disclosure-safe field allowlist (#2263)', async () => {
+    const cfg = await getChainConfig('agent.reach.denied', 'default');
+
+    expect(cfg.reactors).toEqual([
+      { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
+    ]);
+  });
 });
 
 describe('broker reactor registry (#1874)', () => {

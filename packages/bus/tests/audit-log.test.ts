@@ -110,3 +110,107 @@ describe('auditLogReactor (#1140)', () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+// #2263 audit — follow-up to PR #2255/#2251. Confirms the durable
+// kernel.audit_log record for every agent.reach exchange (answered or
+// denied) discloses only the disclosure-safe key set already documented at
+// packages/bus/src/types.ts (agent.reach.answered / agent.reach.denied) and
+// packages/bus/src/config.ts's DEFAULTS entries (kept in sync with
+// migration 0151). Pinned as an exact key-set assertion — not
+// `objectContaining` — so widening the config's `fields` allowlist (or
+// flipping it to the reactor's "store the whole payload" default) is a
+// visible, deliberate diff here rather than a silent disclosure regression.
+//
+// Feeds the reactor a payload shaped like the real bus event PLUS fields
+// that must never reach this table even if a future change accidentally
+// widened the published event itself (transcript bytes, the requester's
+// raw signature, the boolean-gate `arg`/`predicate` internals, free-text
+// `selfDescription`) — proving the config-level allowlist actively strips
+// them, not merely that today's event happens to omit them.
+describe('agent.reach disclosure allowlist (#2263 audit — no signatures, no gate internals, no message bodies)', () => {
+  beforeEach(() => {
+    calls.length = 0;
+  });
+
+  const NEVER_DISCLOSED = {
+    transcriptHash: 'sha256:should-never-reach-audit-log',
+    requesterSignature: 'ed25519:should-never-reach-audit-log',
+    signatureVerified: true,
+    arg: 'business_development',
+    predicate: 'contains',
+    selfDescription: 'free-text self-description should never reach audit-log',
+    onBehalfOfPlatform: 'meta-muse',
+  };
+
+  it('agent.reach.answered: audit_log row is exactly {requesterDid, principalDid, onBehalfOfStubDid, purpose, field, answer, grantId}', async () => {
+    const event = makeEvent({
+      type: 'agent.reach.answered',
+      scope: 'agent',
+      payload: {
+        requesterDid: 'did:imajin:muse-agent',
+        principalDid: 'did:imajin:ryan',
+        onBehalfOfStubDid: 'did:imajin:alice-stub',
+        purpose: 'agent.reach',
+        field: 'contact_topics',
+        answer: true,
+        grantId: 'grant_1',
+        context_id: 'did:imajin:muse-agent',
+        context_type: 'agent.reach',
+        ...NEVER_DISCLOSED,
+      },
+    });
+    // Same allowlist as packages/bus/src/config.ts DEFAULTS['agent.reach.answered']
+    // and migration 0151's kernel.bus_chain_configs row.
+    const config = {
+      fields: ['requesterDid', 'principalDid', 'onBehalfOfStubDid', 'purpose', 'field', 'answer', 'grantId'],
+    };
+
+    await auditLogReactor(event, config);
+
+    expect(calls).toHaveLength(1);
+    const projected = JSON.parse(calls[0].values[V.payload] as string);
+    expect(projected).toEqual({
+      requesterDid: 'did:imajin:muse-agent',
+      principalDid: 'did:imajin:ryan',
+      onBehalfOfStubDid: 'did:imajin:alice-stub',
+      purpose: 'agent.reach',
+      field: 'contact_topics',
+      answer: true,
+      grantId: 'grant_1',
+    });
+    for (const key of Object.keys(NEVER_DISCLOSED)) {
+      expect(projected).not.toHaveProperty(key);
+    }
+  });
+
+  it('agent.reach.denied: audit_log row is exactly {requesterDid, principalDid, reason}', async () => {
+    const event = makeEvent({
+      type: 'agent.reach.denied',
+      scope: 'agent',
+      payload: {
+        requesterDid: 'did:imajin:muse-agent',
+        principalDid: 'did:imajin:ryan',
+        reason: 'unauthorized',
+        context_id: 'did:imajin:muse-agent',
+        context_type: 'agent.reach',
+        ...NEVER_DISCLOSED,
+      },
+    });
+    // Same allowlist as packages/bus/src/config.ts DEFAULTS['agent.reach.denied']
+    // and migration 0151's kernel.bus_chain_configs row.
+    const config = { fields: ['requesterDid', 'principalDid', 'reason'] };
+
+    await auditLogReactor(event, config);
+
+    expect(calls).toHaveLength(1);
+    const projected = JSON.parse(calls[0].values[V.payload] as string);
+    expect(projected).toEqual({
+      requesterDid: 'did:imajin:muse-agent',
+      principalDid: 'did:imajin:ryan',
+      reason: 'unauthorized',
+    });
+    for (const key of Object.keys(NEVER_DISCLOSED)) {
+      expect(projected).not.toHaveProperty(key);
+    }
+  });
+});
