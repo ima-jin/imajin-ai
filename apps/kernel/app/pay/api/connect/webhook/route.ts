@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { db, connectedAccounts } from '@/src/db';
-import { getStripe } from '@/src/lib/pay/stripe';
+import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
 import { withLogger } from '@imajin/logger';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
@@ -39,7 +39,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   let event: Stripe.Event;
 
   try {
-    const stripe = getStripe();
+    const stripe = getStripeClient();
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     log.error({ err: String(err) }, 'Connect webhook signature verification failed');

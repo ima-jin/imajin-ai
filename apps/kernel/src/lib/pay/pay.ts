@@ -6,6 +6,7 @@
 
 import { PaymentService } from '@/src/lib/pay';
 import type { PaymentServiceConfig } from '@/src/lib/pay';
+import { isStripeConfigured } from '@/src/lib/pay/providers/stripe-client';
 
 let paymentService: PaymentService | null = null;
 
@@ -18,10 +19,12 @@ export function getPaymentService(): PaymentService {
     providers: {},
   };
   
-  // Configure Stripe if key is present
-  if (process.env.STRIPE_SECRET_KEY) {
+  // Configure Stripe if a key is present. #2174: `isStripeConfigured()` is
+  // the only place `STRIPE_SECRET_KEY` is read — `StripeProviderConfig` no
+  // longer carries the raw key, since `StripeProvider` sources its client
+  // from the shared adapter singleton instead.
+  if (isStripeConfigured()) {
     config.providers.stripe = {
-      secretKey: process.env.STRIPE_SECRET_KEY,
       webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
     };
   }

@@ -17,8 +17,8 @@ vi.mock('@/src/db', () => ({ db: {}, transactions: {}, feeLedger: {} }));
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 
-vi.mock('@/src/lib/pay/stripe', () => ({
-  getStripe: () => ({ webhooks: { constructEvent: state.constructEventMock } }),
+vi.mock('@/src/lib/pay/providers/stripe-client', () => ({
+  getStripeClient: () => ({ webhooks: { constructEvent: state.constructEventMock } }),
 }));
 
 // #2209: the route now also imports `payment-requests/checkout.ts`, which

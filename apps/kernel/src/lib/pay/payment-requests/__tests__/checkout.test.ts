@@ -82,8 +82,8 @@ vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefi
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: state.getNodeDidMock }));
 vi.mock('@imajin/config', () => ({ buildPublicUrlAbsolute: (name: string) => `https://kernel.test/${name}` }));
 vi.mock('@/src/lib/pay/pay', () => ({ getPaymentService: () => ({ checkout: state.payCheckoutMock }) }));
-vi.mock('@/src/lib/pay/stripe', () => ({
-  getStripe: () => ({ checkout: { sessions: { retrieve: state.stripeSessionsRetrieveMock } } }),
+vi.mock('@/src/lib/pay/providers/stripe-client', () => ({
+  getStripeClient: () => ({ checkout: { sessions: { retrieve: state.stripeSessionsRetrieveMock } } }),
 }));
 vi.mock('@/src/lib/pay/checkout', () => ({ resolveConnectedAccountFee: state.resolveConnectedAccountFeeMock }));
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: state.settlePaymentMock }));

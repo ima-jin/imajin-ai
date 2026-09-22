@@ -83,8 +83,8 @@ const { constructEventMock, retrievePaymentIntentMock } = vi.hoisted(() => ({
   constructEventMock: vi.fn(),
   retrievePaymentIntentMock: vi.fn(),
 }));
-vi.mock('@/src/lib/pay/stripe', () => ({
-  getStripe: () => ({
+vi.mock('@/src/lib/pay/providers/stripe-client', () => ({
+  getStripeClient: () => ({
     webhooks: { constructEvent: constructEventMock },
     paymentIntents: { retrieve: retrievePaymentIntentMock },
   }),

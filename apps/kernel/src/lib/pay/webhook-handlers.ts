@@ -15,7 +15,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
-import { getStripe } from './stripe';
+import { getStripeClient } from './providers/stripe-client';
 import { verifySettlementSignature } from './settle-core';
 import { MJN, MJNX, creditUnit } from './ledger';
 
@@ -53,7 +53,7 @@ export async function fetchActualStripeFee(
   if (!paymentIntentId) return null;
 
   try {
-    const stripe = getStripe();
+    const stripe = getStripeClient();
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
       expand: ['latest_charge.balance_transaction'],
     });

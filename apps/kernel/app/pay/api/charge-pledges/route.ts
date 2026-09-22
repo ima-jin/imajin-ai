@@ -30,7 +30,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-import { getStripe } from '@/src/lib/pay/stripe';
+import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
 
 interface PledgeCharge {
   pledgeId: string;
@@ -86,7 +86,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    const stripe = getStripe();
+    const stripe = getStripeClient();
     const results: Array<{ pledgeId: string; status: 'charged' | 'failed'; error?: string }> = [];
     let charged = 0;
     let failed = 0;
