@@ -26,7 +26,7 @@
  * is a real window between that read and this process's own seal+grant
  * completing, so a DB-enforced claim
  * (`kernel.internal_secret_provisions`, UNIQUE on `(owner_did, purpose)`,
- * migration 0152) makes exactly one of them the winner, matching this
+ * migration 0153) makes exactly one of them the winner, matching this
  * codebase's existing "insert with onConflictDoNothing, re-read on loss"
  * idiom (see `getOrCreateSystemFolder`, `insertActiveGrant`) rather than a
  * novel locking primitive:
@@ -203,7 +203,7 @@ async function generateAndSeal(ownerDid: string, purpose: string): Promise<strin
 /**
  * Claim the `(ownerDid, purpose)` provisioning slot via the DB unique
  * constraint (`uniq_internal_secret_provisions_owner_purpose`, migration
- * 0152). Returns true when THIS call won the claim (proceed to generate);
+ * 0153). Returns true when THIS call won the claim (proceed to generate);
  * false when another process already holds it (poll for its grant instead).
  */
 async function claimProvisioning(ownerDid: string, purpose: string, field: string): Promise<boolean> {

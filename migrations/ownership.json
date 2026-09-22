@@ -975,7 +975,7 @@
     "kernel.internal_secret_provisions": {
       "owner": "kernel",
       "schema": "kernel",
-      "firstMigration": "0152_internal_secret_provisions.sql",
+      "firstMigration": "0153_internal_secret_provisions.sql",
       "notes": ""
     }
   },

@@ -1,4 +1,4 @@
--- 0152_internal_secret_provisions.sql
+-- 0153_internal_secret_provisions.sql
 -- owner: kernel
 --
 -- #2245: self-provisioned internal secrets — first target

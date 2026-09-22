@@ -352,7 +352,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   // (never on a subsequent boot's re-fetch of the same purpose) — the
   // payload carries only purpose/grantId/contentHash, never the generated
   // bytes. Mirrors vault.key.minted's #2242 pattern above. Kept in sync
-  // with migration 0152.
+  // with migration 0153.
   'vault.secret.generated': [
     { type: 'audit-log', config: { fields: ['purpose', 'grantId', 'contentHash'] }, enabled: true },
   ],
