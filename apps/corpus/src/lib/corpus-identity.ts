@@ -43,9 +43,25 @@
  * site downstream (`engine/index.ts`) treats a `null` identity as "skip
  * attestation for this batch," never as a reason to fail the request or
  * sign with a placeholder key.
+ *
+ * ## Grant ack (#2257, applies only to the vault path above)
+ * `loadFromVault()` no longer acks the fetch itself — it hands back a
+ * deferred `GrantAckHandle` instead (see `packages/auth/src/vault-client.ts`'s
+ * docblock for the full ruling). This module is corpus's half of that
+ * contract:
+ *  - A vault fetch that comes back without a usable minted keypair is a
+ *    boot/startup failure attributable to that key -> `ack.failed()`,
+ *    right here in {@link bootstrapCorpusIdentity}.
+ *  - A vault fetch that DOES yield a usable identity stashes its ack
+ *    handle in `vaultSourcedIdentityAck`; {@link markCorpusIdentityUsedForSigning}
+ *    (called by `engine/index.ts` at the first successful signing) sends
+ *    the deferred `used` ack exactly once.
+ *  - If corpus never signs anything before it exits, `loadFromVault`'s own
+ *    process-exit safety net sends `discarded` — this module does nothing
+ *    for that case.
  */
 import { createLogger } from '@imajin/logger';
-import { loadFromVault } from '@imajin/auth';
+import { loadFromVault, type GrantAckHandle } from '@imajin/auth';
 
 const log = createLogger('corpus');
 
@@ -59,12 +75,35 @@ const VAULT_SOURCED_KEY = 'CORPUS_DID_PRIVATE_KEY';
 let warnedMissingIdentity = false;
 let warnedDeprecatedEnvVar = false;
 let vaultSourcedIdentity: CorpusIdentity | null = null;
+/**
+ * The deferred #2257 ack handle for `vaultSourcedIdentity`'s grant, if it
+ * came from the vault path. `null` under the deprecated env override (no
+ * vault fetch ever happens) and when no identity is configured at all —
+ * neither path ever holds a grant to ack.
+ */
+let vaultSourcedIdentityAck: GrantAckHandle | null = null;
 
 /** Test-only: clears in-memory state so each test starts from a clean slate. */
 export function _resetCorpusIdentityStateForTests(): void {
   warnedMissingIdentity = false;
   warnedDeprecatedEnvVar = false;
   vaultSourcedIdentity = null;
+  vaultSourcedIdentityAck = null;
+}
+
+/**
+ * Called by the FIRST successful use of the vault-sourced signing key —
+ * currently `engine/index.ts`'s `ingest()`, right after it builds+signs a
+ * batch's first `IngestionAttestation` (#1750). Sends the deferred `used`
+ * ack for #2257's ruling: fetching a secret from the vault is not itself
+ * an ack (the kernel's fetch event already records that); USING it is.
+ * Idempotent and safe to call on every ingest — the underlying
+ * `GrantAckHandle` only ever sends its first ack — and a no-op when corpus
+ * has no vault-sourced identity (deprecated env override, or no identity
+ * configured at all).
+ */
+export function markCorpusIdentityUsedForSigning(): void {
+  vaultSourcedIdentityAck?.used('first-sign');
 }
 
 /** Logs the `CORPUS_DID`/`CORPUS_DID_PRIVATE_KEY` deprecation warning once per process. */
@@ -114,7 +153,15 @@ export async function bootstrapCorpusIdentity(): Promise<void> {
 
     const privateKey = credentials.values[VAULT_SOURCED_KEY];
     const did = credentials.dids[VAULT_SOURCED_KEY];
+    const ack = credentials.acks[VAULT_SOURCED_KEY] ?? null;
     if (!privateKey || !did) {
+      // `ack` is only set when the vault fetch itself succeeded (#2257) — if
+      // it's present here, corpus DID consume a grant but got back
+      // something that isn't a usable minted keypair (missing `did`), which
+      // is exactly the ruling's "boot/startup failure attributable to the
+      // key". When `ack` is null, nothing was fetched at all (a plain
+      // `onMissing: 'degrade'` refusal) — there is no grant to ack.
+      ack?.failed('unusable-minted-key');
       log.warn(
         {},
         'corpus-identity: vault fetch degraded (no signing key returned) — ingestion will proceed without signed attestations',
@@ -123,7 +170,8 @@ export async function bootstrapCorpusIdentity(): Promise<void> {
     }
 
     vaultSourcedIdentity = { did, privateKey };
-    log.info({ did }, 'corpus-identity: signing key fetched from vault at boot (#2243)');
+    vaultSourcedIdentityAck = ack;
+    log.info({ did }, 'corpus-identity: signing key fetched from vault at boot (#2243); ack deferred to first use (#2257)');
   } catch (err) {
     log.warn(
       { err: String(err) },

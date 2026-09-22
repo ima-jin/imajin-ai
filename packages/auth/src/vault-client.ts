@@ -19,18 +19,46 @@
  * ## Guarantees
  *  - Memory-only: the fetched value is returned to the caller and never
  *    written to disk, an env var, a log line, or a thrown error message.
- *  - Every key fetch is acked (#2235) with the outcome and the caller's
- *    `purpose` (folded into the ack's free-text `note` — the ack route has
- *    no separate `purpose` field; the grant's `purpose` is set at
- *    grant-issuance time instead). Ack failures are logged as warnings and
- *    never fail the overall `loadFromVault()` call (#2235's ack is a
- *    best-effort signed record, not a precondition for using a secret
- *    already in hand).
  *  - Fail-closed/degraded per key, declared by the caller via
  *    `onMissing: 'fail' | 'degrade'` — a `'fail'` key that cannot be
  *    fetched throws (redacted: the thrown message never contains a fetched
  *    value, a private key, or a bearer token); a `'degrade'` key is simply
  *    omitted from the result's `values`/`dids` and listed in `degraded`.
+ *
+ * ## Ack semantics (#2257 ruling — option (b′), one deferred ack per grant)
+ *  `loadFromVault` never acks a key at fetch-time. The kernel's fetch event
+ *  (#2231) already records "it left the vault" — a fetch-time ack would
+ *  make `outcome: 'failed'` (#2235) unreachable, since the helper would
+ *  already have claimed `'used'` before the caller had done anything with
+ *  the value. Instead, every key it successfully fetches gets a
+ *  `GrantAckHandle` back (`VaultCredentials.acks[key]`) whose ONE job is
+ *  reporting what the CALLER did with that value:
+ *   - `used(evidenceKind?)` — the caller's own first successful use of the
+ *     key. This is the caller's responsibility to call, at the exact
+ *     moment of first use — `loadFromVault` has no way to observe "used"
+ *     on its own for a caller that uses the value lazily (e.g. corpus only
+ *     signs when it next ingests something; see
+ *     `apps/corpus/src/lib/corpus-identity.ts`'s `markCorpusIdentityUsedForSigning`).
+ *   - `failed(evidenceKind?)` — a boot/startup failure attributable to
+ *     this key (it doesn't parse, doesn't look like what the caller
+ *     expected, etc.).
+ *   - `discarded()` — process shutdown, or an explicit release, without
+ *     any use. A caller never has to call this itself: a `beforeExit` /
+ *     `SIGTERM` / `SIGINT` safety net (installed once by this module, see
+ *     `installExitAckHook` below) sends `'discarded'` for every handle
+ *     still un-acked when the process is going down, so a fetched grant
+ *     can never be silently left un-acked (the #2247 "fetch-without-ack"
+ *     red line).
+ *  Each handle sends exactly ONE ack, ever — the first of
+ *  `used`/`failed`/`discarded`/the exit hook to fire wins; every later call
+ *  on the same handle is a same-process no-op (logged at debug level, no
+ *  second HTTP call). Every ack call is best-effort: a rejected or thrown
+ *  ack request only logs a warning, and never fails the caller's flow.
+ *  `evidenceKind` is a short, value-free label only (e.g. `'first-sign'`)
+ *  — never pass secret material or free text that could carry it; this
+ *  module never includes a fetched value, a private key, or a bearer
+ *  token in an ack request, a log line, or a thrown error message.
+ *  This is the pattern for every future consumer (#2245, #2246).
  *
  * ## What this does NOT do
  *  - It does not decide HOW a caller obtains the bootstrap `identity` it
@@ -54,6 +82,25 @@ const MINTED_KEY_FIELD_PREFIX = 'vault-minted-key:';
 
 /** Max length of the free-text `note` the ack route accepts (mirrors the kernel route's own `MAX_NOTE_LENGTH`). */
 const MAX_ACK_NOTE_LENGTH = 280;
+
+/** `outcome` values the ack route accepts (#2235, deferred per #2257). */
+export type GrantAckOutcome = 'used' | 'failed' | 'discarded';
+
+/**
+ * One-ack-per-grant handle returned for each key `loadFromVault` actually
+ * fetched. See this module's docblock ("Ack semantics") for the full
+ * contract. Every method is synchronous and never throws — the underlying
+ * ack HTTP call is fire-and-forget best-effort, matching #2235's existing
+ * "ack is a warning, not a precondition" posture.
+ */
+export interface GrantAckHandle {
+  /** The caller's first successful use of this key. Call this yourself, exactly where "first use" actually happens for your consumer. */
+  used(evidenceKind?: string): void;
+  /** A boot/startup failure attributable to this key. */
+  failed(evidenceKind?: string): void;
+  /** Process shutdown / explicit release without any use. Usually unnecessary to call directly — the module-level exit hook does this automatically for any handle still un-acked. */
+  discarded(): void;
+}
 
 export interface VaultBootstrapIdentity {
   /** The caller's own, already-registered kernel identity DID. */
@@ -105,6 +152,13 @@ export interface VaultCredentials {
   dids: Record<string, string>;
   /** `key` names that could not be fetched and were declared `onMissing: 'degrade'`. */
   degraded: string[];
+  /**
+   * `key` -> the one-ack-per-grant handle for a successfully-fetched key
+   * (#2257). Absent for any key listed in `degraded` — nothing was fetched
+   * for it, so there is nothing to ack (the kernel's fetch route already
+   * refused before any grant was consumed).
+   */
+  acks: Record<string, GrantAckHandle>;
 }
 
 /** Extracts the DID a #2242-minted keypair's private key belongs to from its vault field name, or `null` for any other field shape. */
@@ -204,30 +258,131 @@ async function fetchGrant(authServiceUrl: string, grantId: string, token: string
  * `POST /api/vault/delegation/grants/{grantId}/ack` (#2235). Never throws —
  * an ack failure is a warning, never a `loadFromVault()` failure (see this
  * module's docblock). `note` carries the caller's `purpose` since the ack
- * route itself has no dedicated `purpose` field.
+ * route itself has no dedicated `purpose` field. `evidenceKind` (when
+ * given) is sent as `evidence.kind`; `evidence.ref` is always the grantId
+ * itself (never secret, already known to the kernel) since the route
+ * requires both fields together — this client never sends any OTHER
+ * free-text evidence that could carry secret material.
  */
-async function ackGrantBestEffort(
+async function sendGrantAck(
   authServiceUrl: string,
   grantId: string,
   token: string,
-  outcome: 'used' | 'failed' | 'discarded',
-  note: string,
+  outcome: GrantAckOutcome,
+  purpose: string,
+  evidenceKind: string | undefined,
 ): Promise<void> {
   try {
     const res = await fetch(`${authServiceUrl}/api/vault/delegation/grants/${encodeURIComponent(grantId)}/ack`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ outcome, note: note.slice(0, MAX_ACK_NOTE_LENGTH) }),
+      body: JSON.stringify({
+        outcome,
+        note: purpose.slice(0, MAX_ACK_NOTE_LENGTH),
+        ...(evidenceKind ? { evidence: { kind: evidenceKind, ref: grantId } } : {}),
+      }),
     });
     if (!res.ok) {
-      log.warn({ grantId, outcome, status: res.status }, 'loadFromVault: ack was rejected — treating as non-fatal per #2235');
+      log.warn({ grantId, outcome, status: res.status }, 'loadFromVault: ack was rejected — treating as non-fatal per #2235/#2257');
     }
   } catch (err) {
-    log.warn({ grantId, outcome, err: String(err) }, 'loadFromVault: ack request failed — treating as non-fatal per #2235');
+    log.warn({ grantId, outcome, err: String(err) }, 'loadFromVault: ack request failed — treating as non-fatal per #2235/#2257');
   }
 }
 
-/** Fetches (and acks) one `VaultKeySpec`, mutating `result` in place. Throws only for an `onMissing: 'fail'` key. */
+/**
+ * Registry of ack handles that have not yet sent their (single) ack, used
+ * only by the exit-time safety net below — a handle removes itself the
+ * instant it sends an ack, successful or not. Keyed by an opaque per-handle
+ * object identity rather than `grantId` so nothing here needs `grantId` to
+ * be globally unique across every `loadFromVault` caller in the process.
+ */
+const pendingGrantAcks = new Map<object, () => void>();
+
+/** Every event this module's exit safety net listens for (#2257). */
+const EXIT_ACK_HOOK_EVENTS = ['beforeExit', 'SIGTERM', 'SIGINT'] as const;
+
+/**
+ * Sends `'discarded'` for every grant handle still un-acked. This is the
+ * exit-time safety net for #2257's "process shutdown without any use ->
+ * discarded" rule: swapped in as the live `process` listener by
+ * `installExitAckHook` below, and also exported (as `_flushUnackedGrantsForTests`)
+ * so tests can trigger it deterministically without sending the process a
+ * real signal.
+ */
+function flushUnackedGrantsAsDiscarded(): void {
+  for (const discard of [...pendingGrantAcks.values()]) {
+    discard();
+  }
+}
+
+/** Test-only: same effect as this process receiving `SIGTERM`/`SIGINT`/`beforeExit`, without touching the real process. */
+export function _flushUnackedGrantsForTests(): void {
+  flushUnackedGrantsAsDiscarded();
+}
+
+/**
+ * (Re-)installs this module's process-exit safety net, first removing any
+ * listener left behind by a PREVIOUSLY-loaded instance of this module.
+ * That swap only matters for tests, which reload this module repeatedly
+ * via `vi.resetModules()` — production loads this module exactly once, so
+ * this is a one-time no-op in practice. Without the swap, every reload
+ * would leave one more set of listeners attached to the real `process`,
+ * quickly tripping Node's `MaxListenersExceededWarning`, and only the
+ * FIRST-loaded module instance's (stale) `pendingGrantAcks` would ever
+ * actually flush.
+ */
+function installExitAckHook(): void {
+  const registry = globalThis as unknown as Record<symbol, (() => void) | undefined>;
+  const registryKey = Symbol.for('imajin.auth.vault-client.exitAckHook');
+  const previous = registry[registryKey];
+  if (previous) {
+    for (const event of EXIT_ACK_HOOK_EVENTS) {
+      process.removeListener(event, previous);
+    }
+  }
+  for (const event of EXIT_ACK_HOOK_EVENTS) {
+    process.on(event, flushUnackedGrantsAsDiscarded);
+  }
+  registry[registryKey] = flushUnackedGrantsAsDiscarded;
+}
+
+installExitAckHook();
+
+/**
+ * Builds the one-ack-per-grant handle for a key that was just successfully
+ * fetched. Registers itself in `pendingGrantAcks` immediately so the exit
+ * safety net covers it even if the caller never touches the handle at all.
+ */
+function createGrantAckHandle(
+  authServiceUrl: string,
+  grantId: string,
+  token: string,
+  purpose: string,
+): GrantAckHandle {
+  const registryKey: object = {};
+  let sent = false;
+
+  const send = (outcome: GrantAckOutcome, evidenceKind?: string): void => {
+    if (sent) {
+      log.debug({ grantId, outcome }, 'loadFromVault: grant already acked — ignoring extra ack (#2257 one-ack-per-grant)');
+      return;
+    }
+    sent = true;
+    pendingGrantAcks.delete(registryKey);
+    void sendGrantAck(authServiceUrl, grantId, token, outcome, purpose, evidenceKind);
+  };
+
+  pendingGrantAcks.set(registryKey, () => send('discarded'));
+
+  return {
+    used: evidenceKind => send('used', evidenceKind),
+    failed: evidenceKind => send('failed', evidenceKind),
+    discarded: () => send('discarded'),
+  };
+}
+
+/** Fetches one `VaultKeySpec`, mutating `result` in place. Throws only for an `onMissing: 'fail'` key. No ack is sent here (#2257) — a successful fetch instead gets a deferred `GrantAckHandle` in `result.acks`. */
 async function loadOneKey(
   authServiceUrl: string,
   token: string,
@@ -257,19 +412,19 @@ async function loadOneKey(
     result.dids[keySpec.key] = did;
   }
 
-  await ackGrantBestEffort(authServiceUrl, grantId, token, 'used', purpose);
+  result.acks[keySpec.key] = createGrantAckHandle(authServiceUrl, grantId, token, purpose);
 }
 
 /**
  * Fetch `params.keys` through their one-time delegation grant(s), holding
  * every value in memory only. See this module's docblock for the full
- * contract.
+ * contract, including the deferred (#2257) ack semantics.
  */
 export async function loadFromVault(params: LoadFromVaultParams): Promise<VaultCredentials> {
   const authServiceUrl = resolveAuthServiceUrl(params.authServiceUrl);
   const token = await authenticateBootstrapIdentity(authServiceUrl, params.identity);
 
-  const result: VaultCredentials = { values: {}, dids: {}, degraded: [] };
+  const result: VaultCredentials = { values: {}, dids: {}, degraded: [], acks: {} };
   for (const keySpec of params.keys) {
     await loadOneKey(authServiceUrl, token, params.grant, params.purpose, keySpec, result);
   }
