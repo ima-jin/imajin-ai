@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ─── Mock next/server ───────────────────────────────────────────────────────
-function mockNextResponseJson(body: unknown, init?: { status?: number; headers?: Record<string, string> }) {
+function mockResponse(body: unknown, init?: { status?: number; headers?: Record<string, string> }) {
   return {
     status: init?.status ?? 200,
     headers: new Headers(init?.headers ?? {}),
@@ -9,10 +9,23 @@ function mockNextResponseJson(body: unknown, init?: { status?: number; headers?:
   };
 }
 
+// `NextResponse` is used both as `NextResponse.json(...)` and, since the
+// OPTIONS/#2250 CORS preflight handler, as `new NextResponse(null, init)`
+// directly — a plain object with a `.json` property (the previous shape of
+// this mock) throws "NextResponse is not a constructor" the moment `new` is
+// used. A function-based mock supports both call forms: `new Fn()` and
+// `Fn.json()`, because a constructor that returns an object overrides `this`.
+function MockNextResponse(
+  this: unknown,
+  body: unknown,
+  init?: { status?: number; headers?: Record<string, string> },
+) {
+  return mockResponse(body, init);
+}
+MockNextResponse.json = vi.fn(mockResponse);
+
 vi.mock('next/server', () => ({
-  NextResponse: {
-    json: vi.fn(mockNextResponseJson),
-  },
+  NextResponse: MockNextResponse,
   NextRequest: class {},
 }));
 
@@ -61,7 +74,7 @@ vi.mock('@/src/lib/mcp/server', () => ({
 }));
 
 // Import AFTER mocks are registered
-const { POST } = await import('../../../../app/mcp/route');
+const { POST, OPTIONS } = await import('../../../../app/mcp/route');
 import { verifyAppToken } from '@/src/lib/auth/jwt';
 import { handleMcpRpc } from '@/src/lib/mcp/server';
 
@@ -120,6 +133,20 @@ describe('POST /mcp surface scope gate (#1337)', () => {
     expect(res.status).toBe(401);
     const json = await res.json();
     expect(json.error).toBe('invalid_token');
+  });
+
+  // #2250 — CORS must survive on every branch, not just the happy path, so a
+  // future refactor of the error paths can't silently drop it from one of them.
+  it('includes CORS headers on the 401 unauthenticated response', async () => {
+    const res = await POST(makeRequest({}));
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+  });
+
+  it('includes CORS headers on the 403 insufficient_scope response', async () => {
+    h.tokenPayload = validPayload({ scope: 'unknown:scope' });
+    const res = await POST(makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }));
+    expect(res.status).toBe(403);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
   });
 
   // #1899 — an unknown/ungranted key needs to be told where the front door is.
@@ -218,6 +245,41 @@ describe('POST /mcp surface scope gate (#1337)', () => {
     expect((ctx as Record<string, unknown>).appDid).toBe('did:imajin:app');
     const scopes = (ctx as Record<string, unknown>).scopes as Set<string>;
     expect(scopes.has('github:read')).toBe(true);
+  });
+
+  // #2250 — the success path is the one a real client hits on every call, so
+  // this is the branch most likely to be exercised (and least likely to be
+  // hand-checked) if CORS ever regresses.
+  it('includes CORS headers on a successful 200 dispatch', async () => {
+    h.tokenPayload = validPayload({ scope: 'media:read' });
+    const res = await POST(
+      makeRequest({ auth: 'Bearer token', body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+  });
+});
+
+/**
+ * OPTIONS /mcp — CORS preflight (#2250).
+ *
+ * `/mcp` is Bearer-authenticated, never cookie-authenticated, so a wildcard
+ * origin is safe (mirrors the `.well-known/*` discovery docs). Without this
+ * preflight response, a browser-based MCP client is blocked before our own
+ * auth gate ever runs — see route.ts's MCP_CORS_HEADERS comment.
+ */
+describe('OPTIONS /mcp CORS preflight (#2250)', () => {
+  it('returns 204 with the full CORS header set', () => {
+    const res = OPTIONS();
+    expect(res.status).toBe(204);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
+    expect(res.headers.get('Access-Control-Allow-Methods')).toContain('POST');
+    expect(res.headers.get('Access-Control-Allow-Methods')).toContain('OPTIONS');
+
+    const allowedHeaders = res.headers.get('Access-Control-Allow-Headers') ?? '';
+    for (const required of ['Authorization', 'Content-Type', 'Mcp-Protocol-Version', 'Mcp-Method', 'Mcp-Name']) {
+      expect(allowedHeaders).toContain(required);
+    }
   });
 });
 

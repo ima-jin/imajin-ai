@@ -14,6 +14,32 @@ import {
 export const dynamic = 'force-dynamic';
 
 /**
+ * Permissive CORS for the MCP JSON-RPC surface (generic conformance fix,
+ * spike #2250).
+ *
+ * `/mcp` is Bearer-token authenticated, never cookie-authenticated, so a
+ * wildcard origin carries no CSRF/credential-leak risk — the same reasoning
+ * already applied to the `.well-known/*` discovery docs. Without this, any
+ * MCP client that calls the endpoint directly from a browser context (rather
+ * than proxying server-side, as Claude Desktop's native app does) is blocked
+ * by the browser before our own auth gate ever runs: Next's default OPTIONS
+ * handler answers a preflight with only an `Allow` header and no
+ * `Access-Control-Allow-*` headers, so the browser never sends the real
+ * request. Not every MCP client proxies server-side, so this is a generic
+ * spec-conformance gap, not a Claude- or Muse-specific patch.
+ */
+const MCP_CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers':
+    'Authorization, Content-Type, Mcp-Protocol-Version, Mcp-Method, Mcp-Name',
+};
+
+export function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: MCP_CORS_HEADERS });
+}
+
+/**
  * RFC 9728 §5.3 challenge — points Claude at the protected-resource metadata so
  * it can discover the authorization server and run the OAuth dance. Mirrors the
  * verified DFOS contract (#1166).
@@ -26,6 +52,7 @@ function unauthorized(error = 'invalid_token') {
     {
       status: 401,
       headers: {
+        ...MCP_CORS_HEADERS,
         'WWW-Authenticate': `Bearer resource_metadata="${getProtectedResourceMetadataUrl()}"`,
       },
     },
@@ -99,7 +126,10 @@ export async function POST(request: NextRequest) {
     // pointer back to the agent card as a wholly unknown one.
     return NextResponse.json(
       { error: 'insufficient_scope', onboarding: agentCardUrl() },
-      { status: 403, headers: { 'WWW-Authenticate': 'Bearer error="insufficient_scope"' } },
+      {
+        status: 403,
+        headers: { ...MCP_CORS_HEADERS, 'WWW-Authenticate': 'Bearer error="insufficient_scope"' },
+      },
     );
   }
 
@@ -110,7 +140,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json(
       { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } },
-      { status: 400 },
+      { status: 400, headers: MCP_CORS_HEADERS },
     );
   }
 
@@ -118,9 +148,10 @@ export async function POST(request: NextRequest) {
 
   // Echo the protocol version header back when the client sends one.
   const protocolHeader = request.headers.get('mcp-protocol-version');
-  const headers: Record<string, string> = protocolHeader
-    ? { 'MCP-Protocol-Version': protocolHeader }
-    : {};
+  const headers: Record<string, string> = {
+    ...MCP_CORS_HEADERS,
+    ...(protocolHeader ? { 'MCP-Protocol-Version': protocolHeader } : {}),
+  };
 
   // JSON-RPC batch. Batching is gone from the modern transport ("the body of the
   // HTTP POST MUST be a single JSON-RPC request or notification"), so this path

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SERVICES } from '@imajin/config';
+import { LATEST_PROTOCOL_VERSION } from '@/src/lib/mcp/protocol';
 
 // Mock next/server — not available outside Next.js runtime
 vi.mock('next/server', () => ({
@@ -101,6 +102,15 @@ describe('GET /.well-known/agent.json', () => {
   it('still advertises MCP, which is live', () => {
     const card = invoke();
     expect(card.protocols.mcp.endpoint).toBe('https://mcp.test.example/mcp');
+  });
+
+  // #2250 — this was hardcoded to the stale `2025-03-26` launch value even
+  // after #1474 added `2026-07-28` dual-era support. Pinned to the real
+  // constant (not a literal string) so a future protocol bump that forgets to
+  // update this route fails this test instead of silently under-advertising.
+  it('advertises the newest MCP protocol revision the server actually serves', () => {
+    const card = invoke();
+    expect(card.protocols.mcp.version).toBe(LATEST_PROTOCOL_VERSION);
   });
 
   it('builds node URL from env vars', () => {
