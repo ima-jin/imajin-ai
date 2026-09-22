@@ -455,6 +455,37 @@ export const claimStubIndex = authSchema.table('claim_stub_index', {
 }));
 
 /**
+ * Foreign-principal stubs (#2251) — a generalization of the email-keyed
+ * claimable-stub primitive above (#1834) for a foreign agent's own
+ * principal (e.g. Alice, a Meta Muse user), who has no Imajin identity and
+ * discloses no PII to us. Keyed by a salted/peppered HMAC of
+ * `${platform}:${externalRef}` (an opaque, platform-scoped reference — e.g.
+ * a Muse user id — never an email or other directly-identifying value), so
+ * a foreign agent asking on behalf of the same external principal more than
+ * once resolves to the same soft-tier stub DID every time
+ * (match-without-disclosure, same property as `claim_stub_index`).
+ *
+ * Unlike `claim_stub_index`, this primitive has no claim ratchet in this
+ * slice — the stub exists purely as the `onBehalfOf` linkage target for
+ * `agent.reach` attestations. A claim path (the foreign principal later
+ * showing up as a real Imajin identity and claiming this stub) is a
+ * follow-up, not part of the thinnest vertical slice.
+ */
+export const foreignPrincipalStubs = authSchema.table('foreign_principal_stubs', {
+  id: text('id').primaryKey(),                        // fpstub_{nanoid}
+  platform: text('platform').notNull(),                // e.g. 'meta-muse' — the foreign agent's own platform, never ours
+  externalRefHmac: text('external_ref_hmac').notNull(), // HMAC-SHA256(platform + externalRef), never the raw ref
+  stubDid: text('stub_did').notNull().unique().references(() => identities.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  lookupUniq: uniqueIndex('uniq_foreign_principal_stubs_lookup').on(table.platform, table.externalRefHmac),
+  stubDidIdx: index('idx_foreign_principal_stubs_stub_did').on(table.stubDid),
+}));
+
+export type ForeignPrincipalStub = typeof foreignPrincipalStubs.$inferSelect;
+export type NewForeignPrincipalStub = typeof foreignPrincipalStubs.$inferInsert;
+
+/**
  * Scoped delegation grants for external agents (#1882) — grant/revoke
  * lifecycle for `domain:verb` capabilities, independent from the coarse
  * X-Acting-For agent bootstrap in `identity_members` (role='agent').
@@ -672,6 +703,8 @@ export type Identity = typeof identities.$inferSelect;
 export type NewIdentity = typeof identities.$inferInsert;
 export type ClaimStubIndex = typeof claimStubIndex.$inferSelect;
 export type NewClaimStubIndex = typeof claimStubIndex.$inferInsert;
+// ForeignPrincipalStub / NewForeignPrincipalStub are exported alongside the
+// foreignPrincipalStubs table declaration above (#2251).
 export type Challenge = typeof challenges.$inferSelect;
 export type Token = typeof tokens.$inferSelect;
 export type OnboardToken = typeof onboardTokens.$inferSelect;

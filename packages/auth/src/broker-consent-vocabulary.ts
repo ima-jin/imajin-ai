@@ -38,7 +38,7 @@ export type BrokerFieldValueType =
   | 'iso_datetime'
   | 'object';
 
-export type BrokerTermVocabularyId = 'allergen' | 'dietary_preference' | 'accessibility_need';
+export type BrokerTermVocabularyId = 'allergen' | 'dietary_preference' | 'accessibility_need' | 'contact_topic';
 
 export interface BrokerTermEntry {
   /** Canonical term. This is the only string persisted in predicate config. */
@@ -93,6 +93,22 @@ export const BROKER_TERM_VOCABULARIES = [
       { term: 'service_animal', label: 'Service animal', aliases: ['guide dog'] },
       { term: 'hearing_access', label: 'Hearing access', aliases: ['hearing assistance'] },
       { term: 'vision_access', label: 'Vision access', aliases: ['visual assistance'] },
+    ],
+  },
+  // #2251 — per-principal agent-reach gate. A principal (e.g. Ryan) declares
+  // which topics they're open to being contacted about by a foreign agent
+  // acting for its own principal; the broker's `contains` predicate answers
+  // "is this principal open to being contacted about X" as a boolean,
+  // without ever disclosing the full topic list. One seeded example only —
+  // the vocabulary here is a strawman for the seam, not exhaustive.
+  {
+    id: 'contact_topic',
+    description: 'Canonical topics a principal may declare themselves open to being contacted about via the agent-reach gate.',
+    terms: [
+      { term: 'business_development', label: 'Business development', aliases: ['business', 'partnerships'] },
+      { term: 'collaboration', label: 'Collaboration', aliases: ['collab'] },
+      { term: 'speaking', label: 'Speaking engagement', aliases: ['speaking_engagement', 'talk'] },
+      { term: 'general_inquiry', label: 'General inquiry', aliases: ['general', 'other'] },
     ],
   },
 ] as const satisfies readonly BrokerTermVocabulary[];
@@ -183,6 +199,12 @@ export const BROKER_FIELD_VOCABULARY = [
     label: 'Locale', description: 'Preferred locale/language tag.' },
   { field: 'timezone', valueType: 'string', allowedPredicates: TEXT_PREDICATES, allowedModes: ANY_MODE,
     label: 'Timezone', description: 'Preferred IANA timezone.' },
+
+  // #2251 — the per-principal agent-reach gate field. `attestation`-only
+  // mode (never `raw`): the entire point is that nobody but the principal
+  // ever sees the underlying topic list, only a computed `contains` boolean.
+  { field: 'contact_topics', valueType: 'string_set', termVocabulary: 'contact_topic', allowedPredicates: SET_PREDICATES, allowedModes: ['attestation'],
+    label: 'Contact topics', description: 'Topics the principal has declared themselves open to being contacted about by a foreign agent.' },
 ] as const satisfies readonly BrokerFieldVocabularyEntry[];
 
 export type BrokerFieldName = typeof BROKER_FIELD_VOCABULARY[number]['field'];
@@ -262,6 +284,13 @@ export const BROKER_PURPOSE_VOCABULARY = [
     description: 'Legacy event-registration purpose kept for broker default compatibility.',
     allowedFields: ['name', 'email', 'ticketType'],
     status: 'compatibility',
+  },
+  {
+    purpose: 'agent.reach',
+    label: 'Agent reach',
+    description: 'Per-principal agent endpoint (#2251): a foreign agent, acting for its own principal, asks whether this principal is open to being contacted about a declared topic. Answers only a boolean — never the underlying topic list.',
+    allowedFields: ['contact_topics'],
+    status: 'canonical',
   },
 ] as const satisfies readonly BrokerPurposeVocabularyEntry[];
 

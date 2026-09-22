@@ -347,6 +347,19 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'vault.key.revoked': [
     { type: 'audit-log', config: { fields: ['mintId', 'did', 'publicKey', 'revokedBy'] }, enabled: true },
   ],
+  // #2251 — per-principal agent-reach endpoint. `audit-log` persists every
+  // attempt (answered or denied), mirroring vault.delegation.fetched's
+  // #2231 pattern above. Kept in sync with migration 0151.
+  'agent.reach.answered': [
+    {
+      type: 'audit-log',
+      config: { fields: ['requesterDid', 'principalDid', 'onBehalfOfStubDid', 'purpose', 'field', 'answer', 'grantId'] },
+      enabled: true,
+    },
+  ],
+  'agent.reach.denied': [
+    { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
+  ],
   // #1841 — claim-stub-expiry sweep. `emit` puts the tombstone event on the
   // signed event stream; no `attestation`/`mjn` reactor since a lapsing
   // stub is a garbage-collection outcome, not an economic/identity event
