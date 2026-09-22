@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { UsageFeedPanel } from './usage-feed-panel';
 import { OperatorApprovalsPanel } from './operator-approvals-panel';
+import { VaultKeysPanel } from './vault-keys-panel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -376,6 +377,12 @@ export default function JinPage() {
       {/* Body — S3358: avoid nested ternary by extracting render logic */}
       <main className="px-6 py-4">
         {renderBody(loading, visible, showDone, handleAction, actionLoading)}
+
+        {/* Vault key cards (#2247) — mint/grant/rotate/revoke as signed
+            canvas proposals; renders nothing for a non-admin. Rendered
+            ABOVE the operator-approvals panel so a freshly-raised vault
+            proposal's confirm card appears directly below it. */}
+        <VaultKeysPanel />
 
         {/* Operator approvals (#2059) — gateway restart / config proposals,
             visible only to the node operator; renders nothing otherwise. */}

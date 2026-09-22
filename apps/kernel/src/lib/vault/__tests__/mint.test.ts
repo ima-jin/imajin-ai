@@ -24,16 +24,28 @@ type MintedKeyRow = Record<string, unknown> & {
   revokedBy: string | null;
 };
 
-const { mintedKeyStore, mockGenerateKeypair, mockSealAndGrantStaticSecret, mockRevokeStaticSecretGrant } = vi.hoisted(() => ({
+const {
+  mintedKeyStore,
+  mockGenerateKeypair,
+  mockSealAndGrantStaticSecret,
+  mockRevokeStaticSecretGrant,
+  mockEmitAttestation,
+  mockPublish,
+} = vi.hoisted(() => ({
   mintedKeyStore: new Map<string, MintedKeyRow>(),
   mockGenerateKeypair: vi.fn(),
   mockSealAndGrantStaticSecret: vi.fn(),
   mockRevokeStaticSecretGrant: vi.fn(),
+  mockEmitAttestation: vi.fn().mockResolvedValue({}),
+  mockPublish: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@imajin/auth', () => ({
   generateKeypair: mockGenerateKeypair,
+  emitAttestation: mockEmitAttestation,
 }));
+
+vi.mock('@imajin/bus', () => ({ publish: mockPublish }));
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -93,7 +105,7 @@ vi.mock('drizzle-orm', () => ({
   eq: (_col: unknown, value: unknown) => ({ __eq: value }),
 }));
 
-import { mintKeypair, revokeMintedKey, mintedKeyField } from '../mint.js';
+import { mintKeypair, revokeMintedKey, mintedKeyField, emitMintedEvents, emitRevokedEvents } from '../mint.js';
 
 const PUBLIC_KEY = 'a'.repeat(64);
 const PRIVATE_KEY = 'b'.repeat(64);
@@ -230,5 +242,75 @@ describe('revokeMintedKey', () => {
 
     expect(second.status).toBe('already_revoked');
     expect(mockRevokeStaticSecretGrant).not.toHaveBeenCalled();
+  });
+});
+
+// #2247: emitMintedEvents/emitRevokedEvents are shared between
+// `POST /api/vault/mint(/revoke)` and the vault-proposal execution bridge
+// (`approvals-execution.ts`) — tested once here rather than duplicated at
+// each call site.
+describe('emitMintedEvents', () => {
+  const minted = {
+    mintId: 'vmk_test',
+    did: EXPECTED_DID,
+    publicKey: PUBLIC_KEY,
+    field: mintedKeyField(EXPECTED_DID),
+    grantId: 'vdg_test',
+    requestId: null,
+  };
+
+  it('emits a vault.key.minted attestation with issuer = mintedBy, subject = minted DID, and no key material', () => {
+    emitMintedEvents({ minted, purpose: 'corpus-identity', requesterDid: 'did:imajin:corpus-bootstrap', mintedBy: 'did:imajin:node' });
+
+    expect(mockEmitAttestation).toHaveBeenCalledTimes(1);
+    const [params] = mockEmitAttestation.mock.calls[0]!;
+    expect(params.type).toBe('vault.key.minted');
+    expect(params.issuer_did).toBe('did:imajin:node');
+    expect(params.subject_did).toBe(EXPECTED_DID);
+    expect(JSON.stringify(params)).not.toContain(PRIVATE_KEY);
+  });
+
+  it('publishes a vault.key.minted bus event with requestedBy/mintedBy and no key material', () => {
+    emitMintedEvents({ minted, purpose: 'corpus-identity', requesterDid: 'did:imajin:corpus-bootstrap', mintedBy: 'did:imajin:node' });
+
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+    const [eventType, event] = mockPublish.mock.calls[0]!;
+    expect(eventType).toBe('vault.key.minted');
+    expect(event.payload.did).toBe(EXPECTED_DID);
+    expect(event.payload.requestedBy).toBe('did:imajin:corpus-bootstrap');
+    expect(event.payload.mintedBy).toBe('did:imajin:node');
+    expect(JSON.stringify(event.payload)).not.toContain(PRIVATE_KEY);
+  });
+
+  it('never throws when the attestation or bus publish itself rejects', () => {
+    mockEmitAttestation.mockRejectedValue(new Error('attestation service down'));
+    mockPublish.mockRejectedValue(new Error('bus unavailable'));
+
+    expect(() => emitMintedEvents({ minted, purpose: 'x', requesterDid: 'did:imajin:x', mintedBy: 'did:imajin:node' })).not.toThrow();
+  });
+});
+
+describe('emitRevokedEvents', () => {
+  const record = { id: 'vmk_test', did: EXPECTED_DID, publicKey: PUBLIC_KEY } as unknown as Parameters<typeof emitRevokedEvents>[0];
+
+  it('emits a vault.key.revoked attestation with issuer/revokedBy and no key material', () => {
+    emitRevokedEvents(record, 'did:imajin:node');
+
+    expect(mockEmitAttestation).toHaveBeenCalledTimes(1);
+    const [params] = mockEmitAttestation.mock.calls[0]!;
+    expect(params.type).toBe('vault.key.revoked');
+    expect(params.issuer_did).toBe('did:imajin:node');
+    expect(params.subject_did).toBe(EXPECTED_DID);
+    expect(JSON.stringify(params)).not.toContain(PRIVATE_KEY);
+  });
+
+  it('publishes a vault.key.revoked bus event', () => {
+    emitRevokedEvents(record, 'did:imajin:node');
+
+    expect(mockPublish).toHaveBeenCalledTimes(1);
+    const [eventType, event] = mockPublish.mock.calls[0]!;
+    expect(eventType).toBe('vault.key.revoked');
+    expect(event.payload.did).toBe(EXPECTED_DID);
+    expect(event.payload.revokedBy).toBe('did:imajin:node');
   });
 });

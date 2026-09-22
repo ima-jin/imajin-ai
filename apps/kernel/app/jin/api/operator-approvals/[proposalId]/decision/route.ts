@@ -36,6 +36,7 @@ import { createLogger } from '@imajin/logger';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
 import { decideOperatorApproval } from '@/src/lib/notify/operator-approvals-service';
 import { parseOperatorSignature } from '@/src/lib/notify/operator-countersign';
+import { executeVaultApproval } from '@/src/lib/vault/approvals-execution';
 
 const log = createLogger('kernel:operator-approvals:decision');
 
@@ -46,6 +47,32 @@ const MAX_MODE_LENGTH = 128;
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
+}
+
+/**
+ * #2247: approving on the canvas IS the signing event for a vault:*
+ * proposal (mint/grant/rotate/revoke). `decideOperatorApproval` itself
+ * stays source-agnostic (#2152) — it only records the witnessed decision
+ * — so the actual vault mutation runs here, right after, and ONLY for a
+ * successful 'approve' on a vault-sourced proposal. A mutation failure is
+ * reported back as `executionError` without un-recording the decision
+ * itself, which is durable regardless of outcome. Extracted out of POST so
+ * its cognitive complexity stays under the SonarCloud threshold.
+ */
+async function runVaultExecutionIfApplicable(
+  proposalId: string,
+  decision: string,
+  card: Parameters<typeof executeVaultApproval>[0],
+): Promise<string | undefined> {
+  if (decision !== 'approve' || card.source !== 'vault') {
+    return undefined;
+  }
+  const execution = await executeVaultApproval(card);
+  if (execution.ok) {
+    return undefined;
+  }
+  log.error({ proposalId, kind: card.kind, error: execution.error }, 'Vault proposal approved but execution failed');
+  return execution.error;
 }
 
 export async function POST(
@@ -120,7 +147,13 @@ export async function POST(
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
     }
-    return NextResponse.json({ approval: result.card }, { headers: cors });
+
+    const executionError = await runVaultExecutionIfApplicable(proposalId, decision, result.card);
+
+    return NextResponse.json(
+      executionError ? { approval: result.card, executionError } : { approval: result.card },
+      { headers: cors },
+    );
   } catch (err) {
     log.error({ err: String(err), proposalId, operatorDid }, 'decideOperatorApproval failed');
     return NextResponse.json({ error: 'Failed to record decision' }, { status: 500, headers: cors });

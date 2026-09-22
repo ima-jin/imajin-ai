@@ -61,6 +61,18 @@ function skillWorkshopApproval(overrides: Partial<ApprovalFixture> = {}): Approv
   });
 }
 
+function vaultApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
+  return approval({
+    proposalId: 'opap_vault_1',
+    source: 'vault',
+    kind: 'vault:mint',
+    summary: 'Mint a new vault-native service key for "corpus-identity", delivered to did:imajin:corpus-bootstrap.',
+    keysTouched: [],
+    detail: { purpose: 'corpus-identity', requesterDid: 'did:imajin:corpus-bootstrap' },
+    ...overrides,
+  });
+}
+
 function gatewayExecApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
   return approval({
     proposalId: 'opap_exec_1',
@@ -460,5 +472,82 @@ describe('per-source renderer registry — gateway-exec', () => {
 
     await screen.findByText('systemctl restart openclaw-gateway');
     expect(screen.queryByText(/^exit /)).toBeNull();
+  });
+});
+
+// `vault` renderer (#2247): mint/grant/rotate/revoke proposals raised from
+// the /jin Vault section or by an agent in chat, riding this SAME approvals
+// rail. Approving them is the signing event for the actual vault mutation.
+describe('per-source renderer registry — vault', () => {
+  it('renders the mint detail (purpose + delivered-to) and Sign/Deny controls', async () => {
+    installFetch([{ isOperator: true, approvals: [vaultApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('corpus-identity')).toBeDefined();
+    expect(screen.getByText('did:imajin:corpus-bootstrap')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Sign' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
+  });
+
+  it('renders the grant detail (key/grant-to/one-time)', async () => {
+    const grantApproval = vaultApproval({
+      kind: 'vault:grant',
+      detail: { did: 'did:imajin:x', grantedTo: 'did:imajin:prod-corpus', oneTime: true },
+    });
+    installFetch([{ isOperator: true, approvals: [grantApproval] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('did:imajin:x')).toBeDefined();
+    expect(screen.getByText('did:imajin:prod-corpus')).toBeDefined();
+  });
+
+  it('renders the rotate detail', async () => {
+    const rotateApproval = vaultApproval({ kind: 'vault:rotate', detail: { did: 'did:imajin:x' } });
+    installFetch([{ isOperator: true, approvals: [rotateApproval] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText(/mint a replacement, grant its current consumer/)).toBeDefined();
+  });
+
+  it('shows a tier-specific button label for revoke — Withdraw', async () => {
+    const revokeApproval = vaultApproval({ kind: 'vault:revoke', detail: { did: 'did:imajin:x', tier: 'withdraw' } });
+    installFetch([{ isOperator: true, approvals: [revokeApproval] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByRole('button', { name: 'Withdraw' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined();
+  });
+
+  it('shows the dignity-warning copy only for the destroy tier', async () => {
+    const destroyApproval = vaultApproval({ kind: 'vault:revoke', detail: { did: 'did:imajin:x', tier: 'destroy' } });
+    installFetch([{ isOperator: true, approvals: [destroyApproval] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByRole('button', { name: 'Destroy' })).toBeDefined();
+    expect(screen.getByText(/irreversible/)).toBeDefined();
+  });
+
+  it('does not show the dignity warning for withdraw/tombstone tiers', async () => {
+    const tombstoneApproval = vaultApproval({ kind: 'vault:revoke', detail: { did: 'did:imajin:x', tier: 'tombstone' } });
+    installFetch([{ isOperator: true, approvals: [tombstoneApproval] }]);
+    render(<OperatorApprovalsPanel />);
+
+    await screen.findByRole('button', { name: 'Tombstone' });
+    expect(screen.queryByText(/irreversible/)).toBeNull();
+  });
+
+  it('posts decision=approve when Sign is clicked on a mint proposal', async () => {
+    const spy = installFetch(
+      [{ isOperator: true, approvals: [vaultApproval()] }, { isOperator: true, approvals: [vaultApproval({ status: 'approved' })] }],
+      { ok: true, body: { approval: vaultApproval({ status: 'approved' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Sign' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'approve' }) });
   });
 });

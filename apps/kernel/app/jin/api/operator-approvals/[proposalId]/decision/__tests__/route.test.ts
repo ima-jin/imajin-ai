@@ -20,13 +20,18 @@ import {
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockGetOperatorDid, mockDecide } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockDecide: vi.fn(),
+  mockExecuteVaultApproval: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
+
+vi.mock('@/src/lib/vault/approvals-execution', () => ({
+  executeVaultApproval: mockExecuteVaultApproval,
+}));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
   corsHeaders: () => new Headers(),
@@ -79,6 +84,7 @@ beforeEach(() => {
   mockGetOperatorDid.mockResolvedValue(OPERATOR_DID);
   mockRequireAuth.mockResolvedValue({ identity: operatorIdentity() });
   mockDecide.mockResolvedValue({ ok: true, card: pendingApprovalCard({ status: 'approved' }) });
+  mockExecuteVaultApproval.mockResolvedValue({ ok: true });
 });
 
 describe('OPTIONS /jin/api/operator-approvals/:proposalId/decision', () => {
@@ -296,6 +302,58 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error: string };
       expect(body.error).toBe('Operator countersignature is required on this node');
+    });
+  });
+
+  // #2247: approving a vault:* proposal is the signing event for the actual
+  // vault mutation, executed right after the decision is recorded.
+  describe('vault proposal execution bridge (#2247)', () => {
+    it('calls executeVaultApproval when a vault-sourced proposal is approved', async () => {
+      mockDecide.mockResolvedValueOnce({
+        ok: true,
+        card: pendingApprovalCard({ status: 'approved', source: 'vault', kind: 'vault:mint' }),
+      });
+
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockExecuteVaultApproval).toHaveBeenCalledTimes(1);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { executionError?: string };
+      expect(body.executionError).toBeUndefined();
+    });
+
+    it('does not execute for a reject decision on a vault-sourced proposal', async () => {
+      mockDecide.mockResolvedValueOnce({
+        ok: true,
+        card: pendingApprovalCard({ status: 'denied', source: 'vault', kind: 'vault:mint' }),
+      });
+
+      const res = await POST(makeReq({ decision: 'reject' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockExecuteVaultApproval).not.toHaveBeenCalled();
+      expect(res.status).toBe(200);
+    });
+
+    it('does not execute for an approved proposal from a non-vault source', async () => {
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockExecuteVaultApproval).not.toHaveBeenCalled();
+      expect(res.status).toBe(200);
+    });
+
+    it('surfaces an execution failure as executionError without failing the request or un-recording the decision', async () => {
+      mockDecide.mockResolvedValueOnce({
+        ok: true,
+        card: pendingApprovalCard({ status: 'approved', source: 'vault', kind: 'vault:mint' }),
+      });
+      mockExecuteVaultApproval.mockResolvedValueOnce({ ok: false, error: 'vault:mint proposal is missing purpose/requesterDid' });
+
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { approval: { status: string }; executionError?: string };
+      expect(body.approval.status).toBe('approved');
+      expect(body.executionError).toBe('vault:mint proposal is missing purpose/requesterDid');
     });
   });
 });

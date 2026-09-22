@@ -199,6 +199,16 @@ paths:
                 type: object
                 properties:
                   approval: { $ref: "#/components/schemas/OperatorApprovalCard" }
+                  executionError:
+                    type: string
+                    description: >-
+                      Present only when `approval.source` is `vault` (#2247),
+                      `decision` was `approve`, and the resulting vault
+                      mutation (mint/grant/rotate/revoke) failed. The
+                      decision itself is still recorded regardless — this
+                      never causes a non-2xx response, since the operator's
+                      signed decision is durable independent of execution
+                      outcome.
         "400":
           description: Malformed body, or decision not one of approve | reject | withdrawn
           content:
@@ -221,6 +231,65 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "500":
           description: Failed to record decision
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/vault-proposals:
+    post:
+      tags: [jin]
+      operationId: raiseVaultProposal
+      summary: Raise a vault:* proposal (mint/grant/rotate/revoke) as a canvas-native operator-approval card
+      description: >-
+        Canvas-native counterpart to an agent proposing in chat via
+        `POST /notify/api/send` (#2247). Only the node operator may call
+        this route — same gate as the decision endpoint above. Creates a
+        `source: 'vault'`, `kind: 'vault:<action>'` row on the SAME
+        operator-approvals table `GET /api/operator-approvals` already
+        lists and `POST /api/operator-approvals/{proposalId}/decision`
+        already decides — no new approval rail. Approving the resulting
+        card is the signing event; the actual vault mutation runs
+        server-side at that point (`src/lib/vault/approvals-execution.ts`).
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, detail]
+              properties:
+                kind: { type: string, enum: [mint, grant, rotate, revoke] }
+                detail:
+                  type: object
+                  description: >-
+                    Shape depends on `kind`: mint needs {purpose,
+                    requesterDid, expiresAt?}; grant needs {did, grantedTo,
+                    purpose?, oneTime?, expiresAt?}; rotate needs {did,
+                    purpose?, requesterDid?, expiresAt?}; revoke needs
+                    {did, tier?: withdraw|tombstone|destroy}.
+      responses:
+        "201":
+          description: Proposal raised
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proposalId: { type: string }
+        "400":
+          description: Missing/invalid kind or detail for that kind
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Caller is not the node operator
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

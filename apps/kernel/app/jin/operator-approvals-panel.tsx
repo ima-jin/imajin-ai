@@ -177,8 +177,14 @@ interface DecisionLabels {
 }
 
 interface SourceRenderer {
-  decisionLabels: DecisionLabels;
+  /** Static for most sources; a function when the label depends on the approval itself (e.g. vault:revoke's tier, #2247). */
+  decisionLabels: DecisionLabels | ((approval: OperatorApprovalCard) => DecisionLabels);
   renderDetail: (approval: OperatorApprovalCard) => ReactNode;
+}
+
+/** Resolve a renderer's decisionLabels, calling it through when it's per-approval (#2247). */
+function resolveDecisionLabels(renderer: SourceRenderer, approval: OperatorApprovalCard): DecisionLabels {
+  return typeof renderer.decisionLabels === 'function' ? renderer.decisionLabels(approval) : renderer.decisionLabels;
 }
 
 const DEFAULT_DECISION_LABELS: DecisionLabels = { approve: 'Approve', reject: 'Deny' };
@@ -312,9 +318,112 @@ const GATEWAY_EXEC_RENDERER: SourceRenderer = {
   renderDetail: (approval) => <ExecCommandDetailView approval={approval} />,
 };
 
+// `vault` (#2247): mint/grant/rotate/revoke proposals raised either from
+// the /jin Vault section (`POST /jin/api/vault-proposals`) or by an agent
+// in chat (`POST /notify/api/send`). Approving one of these IS the signing
+// event — the actual mutation runs server-side in
+// `src/lib/vault/approvals-execution.ts` right after this card's decision
+// is recorded. `kind` is namespaced `vault:<action>` (#2152's open
+// vocabulary), so this renderer dispatches on the full kind string rather
+// than a separate `detail.action` field.
+
+/** Human label for a vault:revoke tier — used for both the button label and the card's own detail line. */
+function revokeTierLabel(tier: string): string {
+  if (tier === 'destroy') return 'Destroy';
+  if (tier === 'tombstone') return 'Tombstone';
+  return 'Withdraw';
+}
+
+function renderVaultMintDetail(approval: OperatorApprovalCard): ReactNode {
+  const { detail } = approval;
+  const purpose = detailString(detail, 'purpose', '—');
+  const requesterDid = detailString(detail, 'requesterDid', '—');
+  return (
+    <div className="space-y-1 text-sm text-gray-200">
+      <p>Mint a new vault-native service key.</p>
+      <div className="text-xs text-gray-500">
+        <span className="uppercase tracking-wide mr-2">Purpose</span>{purpose}
+      </div>
+      <div className="text-xs text-gray-500">
+        <span className="uppercase tracking-wide mr-2">Delivered to</span>
+        <span className="font-mono">{requesterDid}</span>
+      </div>
+    </div>
+  );
+}
+
+function renderVaultGrantDetail(approval: OperatorApprovalCard): ReactNode {
+  const { detail } = approval;
+  const did = detailString(detail, 'did', '—');
+  const grantedTo = detailString(detail, 'grantedTo', '—');
+  const purpose = detailString(detail, 'purpose', '');
+  const oneTime = detail?.oneTime === true;
+  return (
+    <div className="space-y-1 text-sm text-gray-200">
+      <p>Grant an additional consumer access to an existing vault key.</p>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Key</span><span className="font-mono">{did}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Grant to</span><span className="font-mono">{grantedTo}</span></div>
+      {purpose && <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Purpose</span>{purpose}</div>}
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">One-time</span>{oneTime ? 'yes' : 'no'}</div>
+    </div>
+  );
+}
+
+function renderVaultRotateDetail(approval: OperatorApprovalCard): ReactNode {
+  const did = detailString(approval.detail, 'did', '—');
+  return (
+    <div className="space-y-1 text-sm text-gray-200">
+      <p>Rotate a vault key: mint a replacement, grant its current consumer, then revoke the old key — as one signed proposal.</p>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Key</span><span className="font-mono">{did}</span></div>
+    </div>
+  );
+}
+
+function renderVaultRevokeDetail(approval: OperatorApprovalCard): ReactNode {
+  const did = detailString(approval.detail, 'did', '—');
+  const tier = detailString(approval.detail, 'tier', 'withdraw');
+  return (
+    <div className="space-y-2 text-sm text-gray-200">
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Key</span><span className="font-mono">{did}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Tier</span>{revokeTierLabel(tier)}</div>
+      {tier === 'destroy' && (
+        <p className="text-xs text-red-300 bg-red-950/40 border border-red-900/60 rounded p-2">
+          Destroy is irreversible. The key&apos;s wrapped material is erased and no future fetch will ever succeed again — this cannot be undone by re-approving.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function renderVaultDetail(approval: OperatorApprovalCard): ReactNode {
+  switch (approval.kind) {
+    case 'vault:mint':
+      return renderVaultMintDetail(approval);
+    case 'vault:grant':
+      return renderVaultGrantDetail(approval);
+    case 'vault:rotate':
+      return renderVaultRotateDetail(approval);
+    case 'vault:revoke':
+      return renderVaultRevokeDetail(approval);
+    default:
+      return renderDefaultDetail(approval);
+  }
+}
+
+const VAULT_RENDERER: SourceRenderer = {
+  decisionLabels: (approval) => {
+    if (approval.kind === 'vault:revoke') {
+      return { approve: revokeTierLabel(detailString(approval.detail, 'tier', 'withdraw')), reject: 'Cancel' };
+    }
+    return { approve: 'Sign', reject: 'Deny' };
+  },
+  renderDetail: renderVaultDetail,
+};
+
 const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
   'skill-workshop': SKILL_WORKSHOP_RENDERER,
   'gateway-exec': GATEWAY_EXEC_RENDERER,
+  vault: VAULT_RENDERER,
 };
 
 function rendererFor(source: string): SourceRenderer {
@@ -331,6 +440,7 @@ function ApprovalCardRow({
   busy: boolean;
 }>) {
   const renderer = rendererFor(approval.source);
+  const decisionLabels = resolveDecisionLabels(renderer, approval);
   // S9379: an imperative focus-on-mount ref instead of the declarative
   // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
   // finding. Stable across renders so it only fires when the button mounts.
@@ -364,7 +474,7 @@ function ApprovalCardRow({
             disabled={busy}
             className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {renderer.decisionLabels.reject}
+            {decisionLabels.reject}
           </button>
           <button
             type="button"
@@ -373,7 +483,7 @@ function ApprovalCardRow({
             ref={autoFocusRef}
             className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
           >
-            {busy ? '…' : renderer.decisionLabels.approve}
+            {busy ? '…' : decisionLabels.approve}
           </button>
         </div>
       )}
