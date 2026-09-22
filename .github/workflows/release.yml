@@ -1,0 +1,123 @@
+name: Release
+
+# Tag is truth (#2285): this is the ONLY place package.json "version" fields
+# are ever bumped, and the ONLY place vX.Y.Z tags are ever created. Everyone
+# else (scripts/build.sh, packages/ui/src/BuildInfo.tsx) reads the nearest
+# git tag for what's actually running; deploy-prod.yml already triggers on
+# `push: tags: ['v*']`, so pushing the tag this workflow creates is what
+# actually ships a release.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - minor
+          - patch
+        default: minor
+
+# One release at a time — two concurrent runs racing to read/bump/commit/tag
+# root package.json would corrupt each other's version math.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    # Releases are cut from main only. workflow_dispatch can technically be
+    # run against any ref/branch from the Actions UI; refuse anything else
+    # rather than silently tagging a feature branch's tip as a release.
+    if: ${{ github.ref == 'refs/heads/main' }}
+    steps:
+      - name: Refuse to run off main
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Release must be dispatched against main (got ${{ github.ref }})."
+          exit 1
+
+      # RELEASE_PUSH_TOKEN (name only — see docs/npm-publishing.md "Cutting a
+      # release"): a token with permission to push a commit + tag straight to
+      # `main`, bypassing branch-protection's normal PR requirement. The
+      # ephemeral `secrets.GITHUB_TOKEN` cannot do this — GitHub deliberately
+      # prevents the default token from bypassing branch protection, even
+      # with `contents: write` — so this MUST be a separately provisioned
+      # secret naming a bypass-listed actor. Never printed or logged; only
+      # ever referenced by name below.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # Full history: `git describe --tags` (used by scripts/build.sh)
+          # and this workflow's own duplicate-tag guard both need to see
+          # every existing tag, not just the tip commit.
+          fetch-depth: 0
+          fetch-tags: true
+          token: ${{ secrets.RELEASE_PUSH_TOKEN }}
+
+      - name: Verify RELEASE_PUSH_TOKEN is configured
+        if: ${{ secrets.RELEASE_PUSH_TOKEN == '' }}
+        run: |
+          echo "::error::RELEASE_PUSH_TOKEN is not set. This release cannot push a commit/tag that" \
+               "bypasses main's branch protection without it. See docs/npm-publishing.md."
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bump every package.json to the same new version (lockstep)
+        id: bump
+        # See scripts/bump-workspace-version.mjs for why this is not the
+        # literal `pnpm -r version <bump>` — that command is a silent no-op
+        # on the pnpm version this repo pins (packageManager: pnpm@9.15.0),
+        # and even a working recursive bump wouldn't produce lockstep given
+        # this repo's current per-package version divergence.
+        run: |
+          NEW_VERSION=$(node scripts/bump-workspace-version.mjs "${{ inputs.bump }}")
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Guard against re-using an existing tag
+        # Out of scope (#2285): existing tags (v0.7.0, v0.7.1, v0.8.0, ...)
+        # must never be touched. This is a hard stop, not a silent skip — a
+        # collision here means the bump math or the base ref is wrong.
+        run: |
+          TAG="v${{ steps.bump.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG already exists. Refusing to overwrite an existing release tag."
+            exit 1
+          fi
+
+      - name: Commit the version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # The commit message prefix "release:" is load-bearing, not just a
+          # label: scripts/ci-guard-version-bump.mjs (ci.yml's "CI Guards" job)
+          # is what lets a version-bump commit past the guard that blocks
+          # every other PR from touching package.json versions.
+          #
+          # `git add -A` with no pathspec, not `*/package.json`: git pathspec
+          # globs don't recurse across directory levels the way a shell glob
+          # does (`*/package.json` matches `apps/package.json` but NOT
+          # `apps/www/package.json`), and `**/package.json` needs glob
+          # pathspec magic to behave. scripts/bump-workspace-version.mjs only
+          # ever rewrites package.json files, so an unrestricted `-A` is safe.
+          git add -A
+          git commit -m "release: v${{ steps.bump.outputs.version }}"
+
+      - name: Tag the release
+        run: |
+          git tag -a "v${{ steps.bump.outputs.version }}" -m "release: v${{ steps.bump.outputs.version }}"
+
+      - name: Push commit and tag
+        # Pushing the tag is what actually ships this release — it's what
+        # deploy-prod.yml's `push: tags: ['v*']` trigger fires on.
+        run: |
+          git push origin HEAD:refs/heads/main
+          git push origin "refs/tags/v${{ steps.bump.outputs.version }}"

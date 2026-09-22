@@ -89,10 +89,14 @@ scripts/init-taxonomy.sh ima-jin/imajin-ai --set universal --set platform
 - Use GitHub's **native sub-issues / blocked-by** (GraphQL `addSubIssue` / `addBlockedBy`) over `- [ ]` body checklists.
 - Labels are for **type/topic**; Status/Priority/Vertical live on the org [Roadmap board](https://github.com/orgs/ima-jin/projects/5), not as labels.
 
+## Versioning (#2285)
+
+**Feature PRs never touch a `package.json` `"version"` field.** Tag is truth: `scripts/build.sh` derives the displayed build version from `git describe --tags`, and every `package.json` version across the workspace (root + every `apps/*`/`packages/*` manifest) is bumped **only** by the Release workflow, in lockstep, to match the tag it's about to cut. A feature PR that bumps any version field — even by accident, even just one package — is rejected by CI's "CI Guards" job (`scripts/ci-guard-version-bump.mjs`), unless its head commit message starts with `release:` (the one shape of commit the Release workflow itself produces). See `docs/npm-publishing.md` for the full mechanism.
+
 ## Deploy guardrails
 
 **NEVER `git pull` on the prod box to deploy.** Always use the pipeline:
-- Tag-triggered: `git tag vX.Y.Z && git push origin vX.Y.Z`
-- Manual/on-demand: `gh workflow run deploy-prod.yml -f ref=main` (or use the GitHub Actions UI)
+- **Cutting a release (tags `main`, ships to prod):** run the **Release** workflow (`gh workflow run release.yml -f bump=minor` or `-f bump=patch`, or the GitHub Actions UI). This is the **only** way a `vX.Y.Z` tag is ever created — never `git tag`/`git push` a version tag by hand. The tag push it produces is what triggers `deploy-prod.yml`.
+- **Re-deploying an already-tagged/main commit** (no new version, e.g. redeploying after an infra fix): `gh workflow run deploy-prod.yml -f ref=main` (or the GitHub Actions UI).
 
 A manual `git pull` skips `build-changed.sh`, migrations, `reap-orphans`, and `pm2 restart`. The built `.next` stays stale and build failures are invisible (no failed CI run to inspect).

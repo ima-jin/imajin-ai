@@ -1,7 +1,11 @@
 // Set NEXT_PUBLIC_VERSION, NEXT_PUBLIC_BUILD_HASH, and NEXT_PUBLIC_COMMIT_COUNT at build time.
-// scripts/build.sh sets these from the root package.json `version` field and
-// `git rev-parse`/`git rev-list --count` — NOT from a git tag, so bumping the
-// root package.json version is what actually changes what renders here.
+// scripts/build.sh derives these from `git describe --tags` (the nearest
+// reachable tag, stripped of its leading "v") and `git rev-parse`/
+// `git rev-list --count` (#2285). Tag is truth: falls back to the root
+// package.json `version` field only on an untagged checkout, then "dev".
+// Cutting a release (.github/workflows/release.yml) is what actually changes
+// what renders here — bumping package.json alone does not, once a newer tag
+// exists.
 
 import { buildPublicUrl, APP_DISPLAY_NAME } from "@imajin/config";
 
