@@ -1,0 +1,180 @@
+openapi: "3.1.0"
+info:
+  title: imajin vault
+  version: "1.0.0"
+  description: |
+    Kernel-side sealed-secret vault. Unlike every other spec in this
+    directory, vault routes are NOT served under `/{service}/api/...` — they
+    are top-level kernel routes at `/api/vault/**`. Paths below are given as
+    the real, absolute routes for that reason; the `servers` entries below
+    resolve to the kernel root, not `/vault`.
+
+    This spec currently documents `vault.mint` (#2242): generating an
+    Ed25519 keypair INSIDE the vault and revoking a minted key. The private
+    key is sealed the same way any other vault secret is sealed and is
+    never returned by any route here — only `{ did, publicKey }`. It is
+    delivered to its intended recipient (`requesterDid`) as a one-time,
+    purpose-bound delegation grant, fetchable through the PRE-EXISTING
+    (#2231) `POST /api/vault/delegation/grants/{grantId}/fetch` route — no
+    new fetch surface exists for minted keys.
+
+    The broader pre-existing vault surface (`/api/vault/delegation/**`,
+    `/api/vault/set`, `/api/vault/rotate`, `/api/vault/grants/**`, etc.) is
+    not yet backfilled into this spec.
+servers:
+  - url: https://{node}.imajin.ai
+    description: production node
+    variables:
+      node:
+        default: jin
+  - url: http://localhost:3000
+    description: local development
+
+tags:
+  - name: vault-mint
+    description: vault.mint (#2242) — Ed25519 keypairs born inside the vault
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+paths:
+  /api/vault/mint:
+    post:
+      tags: [vault-mint]
+      operationId: vaultMint
+      summary: Generate an Ed25519 keypair INSIDE the vault
+      description: >-
+        The private key is sealed via the same v2 delegation-grant custody
+        path every other vault secret uses, and is never present in this
+        response. Auth: the caller's resolved acting DID
+        (requireAuth + X-Acting-For) must be the vault's own node signing
+        identity, self or delegated — see
+        `apps/kernel/src/lib/vault/mint-authority.ts`. Emits a signed
+        `vault.key.minted` attestation (issuer = acting principal, subject =
+        the new DID) and a `vault.key.minted` bus event for the audit log.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purpose, requesterDid]
+              properties:
+                purpose:
+                  type: string
+                  maxLength: 200
+                  description: Free-form label naming what the minted key will be used for.
+                requesterDid:
+                  type: string
+                  description: >-
+                    The DID that should receive the one-time delegation
+                    grant for the sealed private key (e.g. a service's own
+                    pre-existing bootstrap identity). Distinct from the
+                    authenticated caller.
+                expiresAt:
+                  type: [string, "null"]
+                  format: date-time
+                  description: Optional expiry for the resulting delegation grant.
+      responses:
+        "201":
+          description: Keypair minted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [did, publicKey]
+                properties:
+                  did: { type: string, description: "The newly minted DID (did:imajin:...)" }
+                  publicKey: { type: string, description: "Hex-encoded Ed25519 public key" }
+        "400":
+          description: Missing or invalid purpose/requesterDid/expiresAt
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Authenticated, but not the vault node identity (or its delegate)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/vault/mint/revoke:
+    post:
+      tags: [vault-mint]
+      operationId: vaultMintRevoke
+      summary: Tombstone a previously minted key
+      description: >-
+        Soft tombstone (v1): the minted-key record is marked revoked
+        (surviving as the record that a key existed and was withdrawn), and
+        the delegation grant's wrapped key material is erased so a
+        subsequent fetch of that grant fails closed. The underlying vault
+        field entry itself is left in place. Idempotent: revoking an
+        already-revoked key returns `{ ok: true, alreadyRevoked: true }`
+        rather than erroring. Emits a signed `vault.key.revoked` attestation
+        and a matching bus event.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [did]
+              properties:
+                did:
+                  type: string
+                  description: The minted DID to revoke.
+      responses:
+        "200":
+          description: Revoked (or already revoked)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  did: { type: string }
+                  mintId: { type: string }
+                  alreadyRevoked: { type: boolean }
+        "400":
+          description: Missing did
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Authenticated, but not the vault node identity (or its delegate)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No minted key found for this DID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }

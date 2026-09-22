@@ -178,6 +178,10 @@ export const ATTESTATION_TYPES = [
   // MECHANICAL_ATTESTATION_TYPES below): never a rewrite of the prior
   // `issued`/`settled` attestations, always its own new record.
   'payment_request.recipient_claimed',
+  // #2242 — minted mechanically when a vault keypair is born in-vault or a
+  // minted key's grant is revoked. See ATTESTATION_TYPES above.
+  'vault.key.minted',
+  'vault.key.revoked',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -235,6 +239,10 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // claimable-stub recipient resolves to a recipient_did. See
   // ATTESTATION_TYPES above.
   'payment_request.recipient_claimed',
+  // #2242 — minted mechanically when a vault keypair is born in-vault or a
+  // minted key's grant is revoked. See ATTESTATION_TYPES above.
+  'vault.key.minted',
+  'vault.key.revoked',
 ] as const;
 
 /**

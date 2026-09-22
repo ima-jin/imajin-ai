@@ -204,3 +204,49 @@ export const vaultOwnerEnvelopes = vaultSchema.table('vault_owner_envelopes', {
 
 export type VaultOwnerEnvelope = typeof vaultOwnerEnvelopes.$inferSelect;
 export type NewVaultOwnerEnvelope = typeof vaultOwnerEnvelopes.$inferInsert;
+
+/**
+ * Minted vault keys (#2242) — the bookkeeping record for an Ed25519 keypair
+ * generated INSIDE the vault (never on disk, never returned by mint) and
+ * sealed via the existing v2 delegation-grant custody path (#2231's
+ * `sealAndGrantStaticSecret` / agent-fetch route). This table does not hold
+ * any key material itself — the sealed private key lives in the ordinary
+ * vault entry at `field`, and is reached only through a `vault_delegation_grants`
+ * row (`grantId`), exactly like any other static secret.
+ *
+ * What this table adds on top of that existing machinery is the DID <->
+ * mint provenance a delegation grant alone doesn't carry: who requested the
+ * mint (`mintedBy`, the acting principal resolved via requireAuth/actingFor),
+ * who the sealed key was delivered to (`requestedBy`, the grantee), and
+ * revocation as a TOMBSTONE — `status`/`revokedAt`/`revokedBy` survive a
+ * revoke so the record remembers a key existed and was revoked, distinct
+ * from the delegation grant's own row (which `revokeMintedKey` still marks
+ * 'revoked' and crypto-erases, per `revokeStaticSecretGrant`).
+ *
+ * Soft tombstone only for v1 (see apps/kernel/src/lib/vault/mint.ts): the
+ * underlying vault entry at `field` is left in place, matching
+ * `revokeStaticSecretGrant`'s existing "does not tombstone the vault entry"
+ * contract. A harder-destroy tier (also wiping the vault entry itself) is
+ * deferred — see the #2242 PR description.
+ */
+export const vaultMintedKeys = vaultSchema.table('vault_minted_keys', {
+  id: text('id').primaryKey(),                          // vmk_{nanoid}
+  did: text('did').notNull(),                            // the newly minted DID
+  publicKey: text('public_key').notNull(),               // hex Ed25519 public key
+  field: text('field').notNull(),                        // vault field holding the sealed private key
+  purpose: text('purpose').notNull(),                    // free-form label — why this key was minted
+  requestedBy: text('requested_by').notNull(),           // grantee DID the sealed key was delivered to
+  mintedBy: text('minted_by').notNull(),                 // acting principal who called mint (requireAuth/actingFor)
+  grantId: text('grant_id'),                             // vault_delegation_grants.id; null under Tier 1 pending grant
+  status: text('status').notNull().default('active'),    // 'active' | 'revoked'
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokedBy: text('revoked_by'),                         // acting principal who called revoke
+}, (table) => ({
+  didUniq: uniqueIndex('uniq_vault_minted_keys_did').on(table.did),
+  fieldIdx: index('idx_vault_minted_keys_field').on(table.field),
+  requestedByIdx: index('idx_vault_minted_keys_requested_by').on(table.requestedBy, table.status),
+}));
+
+export type VaultMintedKey = typeof vaultMintedKeys.$inferSelect;
+export type NewVaultMintedKey = typeof vaultMintedKeys.$inferInsert;
