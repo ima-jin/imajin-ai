@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, authErrorResponse } from '@imajin/auth';
-import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { ackGrant, type AckOutcome, type AckEvidence, type GrantAckOutcome } from '@/src/lib/vault';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+import { GRANT_NOT_FOUND_STATUS, GRANT_NOT_FOUND_ERROR, publishVaultDelegationAudit } from '@/src/lib/vault/route-helpers';
 
 const log = createLogger('kernel');
 
@@ -23,10 +23,10 @@ function statusForOutcome(status: Exclude<GrantAckOutcome['status'], 'ok'>): num
   switch (status) {
     case 'not_found':
     case 'not_grantee':
-      // Identical response shape for both, same anti-enumeration posture as
-      // POST .../fetch: confirming a grantId exists but belongs to someone
-      // else would let a caller enumerate grantIds it cannot use.
-      return 404;
+      // Same anti-enumeration posture as POST .../fetch: confirming a
+      // grantId exists but belongs to someone else would let a caller
+      // enumerate grantIds it cannot use.
+      return GRANT_NOT_FOUND_STATUS;
     case 'not_fetched':
     case 'conflict':
     default:
@@ -39,7 +39,7 @@ function errorForOutcome(status: Exclude<GrantAckOutcome['status'], 'ok'>): stri
   switch (status) {
     case 'not_found':
     case 'not_grantee':
-      return 'No delegation grant found for this id';
+      return GRANT_NOT_FOUND_ERROR;
     case 'not_fetched':
       return 'grant_not_fetched';
     case 'conflict':
@@ -138,24 +138,17 @@ function auditAck(params: {
   ackedAt: string | null;
   refused: 'not_found' | 'not_grantee' | 'not_fetched' | 'ack_conflict' | 'error' | null;
 }): void {
-  publish('vault.delegation.acked', {
-    issuer: params.granteeDid,
-    subject: params.granteeDid,
-    scope: 'vault',
-    payload: {
-      grantId: params.grantId,
-      granteeDid: params.granteeDid,
-      ownerDid: params.ownerDid,
-      purpose: params.purpose,
-      outcome: params.outcome,
-      evidenceKind: params.evidenceKind,
-      ackedAt: params.ackedAt,
-      refused: params.refused,
-      context_id: params.grantId,
-      context_type: 'vault.delegation',
-    },
-  }).catch((err: unknown) => {
-    log.error({ err: String(err), grantId: params.grantId }, 'Bus publish error for vault.delegation.acked');
+  publishVaultDelegationAudit('vault.delegation.acked', params.granteeDid, params.grantId, {
+    grantId: params.grantId,
+    granteeDid: params.granteeDid,
+    ownerDid: params.ownerDid,
+    purpose: params.purpose,
+    outcome: params.outcome,
+    evidenceKind: params.evidenceKind,
+    ackedAt: params.ackedAt,
+    refused: params.refused,
+    context_id: params.grantId,
+    context_type: 'vault.delegation',
   });
 }
 
