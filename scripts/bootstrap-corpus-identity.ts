@@ -49,4 +49,7 @@ async function main(): Promise<void> {
   console.log('If unset, the corpus service still ingests normally but skips signing attestations.\n');
 }
 
-main();
+// Exported (not just invoked) so scripts/__tests__/bootstrap-corpus-identity.test.mjs
+// can `await` full completion — including the dynamic import() above — after
+// importing this module directly. Inert for the normal CLI invocation.
+export const __mainPromise = main();
