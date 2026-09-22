@@ -1,4 +1,4 @@
--- 0152_delegate_grant_bearers.sql
+-- 0153_delegate_grant_bearers.sql
 -- owner: kernel
 --
 -- #2252: delegate-grant bearer credential for static-header foreign clients
