@@ -33,7 +33,7 @@ import { eq, desc } from 'drizzle-orm';
 import { crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { db, vaultDelegationGrants, vaultMintedKeys, type VaultDelegationGrant } from '@/src/db';
+import { db, vaultDelegationGrants, vaultMintedKeys } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
 import { canonicalizeGrantPayload } from './index';
@@ -172,4 +172,4 @@ export function emitGrantEvents(params: {
 }
 
 /** Narrow re-export for tests that need the raw grant row shape. */
-export type { VaultDelegationGrant };
+export type { VaultDelegationGrant } from '@/src/db';

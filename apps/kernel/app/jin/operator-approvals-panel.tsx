@@ -41,6 +41,7 @@
  * which case the resulting 400 surfaces through the existing error flash.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 
 interface StoredKeypair {
   privateKey: string;
@@ -326,13 +327,6 @@ const GATEWAY_EXEC_RENDERER: SourceRenderer = {
 // is recorded. `kind` is namespaced `vault:<action>` (#2152's open
 // vocabulary), so this renderer dispatches on the full kind string rather
 // than a separate `detail.action` field.
-
-/** Human label for a vault:revoke tier — used for both the button label and the card's own detail line. */
-function revokeTierLabel(tier: string): string {
-  if (tier === 'destroy') return 'Destroy';
-  if (tier === 'tombstone') return 'Tombstone';
-  return 'Withdraw';
-}
 
 function renderVaultMintDetail(approval: OperatorApprovalCard): ReactNode {
   const { detail } = approval;

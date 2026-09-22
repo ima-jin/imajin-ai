@@ -25,10 +25,11 @@ import { mintKeypair, emitMintedEvents, revokeMintedKey, emitRevokedEvents } fro
 import { grantExistingMintedKey, emitGrantEvents } from './grant';
 import { getMintedKeyByDid } from './key-cards';
 import { revokeStaticSecretGrant } from './index';
+import type { VaultRevokeTier } from './revoke-tier';
 
 const log = createLogger('kernel');
 
-export type VaultRevokeTier = 'withdraw' | 'tombstone' | 'destroy';
+export type { VaultRevokeTier };
 
 export interface VaultExecutionResult {
   ok: boolean;
@@ -182,12 +183,14 @@ async function executeRevoke(card: OperatorApprovalCard): Promise<VaultExecution
 }
 
 /**
- * "Claim pending service" (UX note #3) needs #2243's fetch-at-boot /
- * pairing events, which are not on main yet (a sibling run is building
- * #2243 in parallel on branch feat/2243-load-from-vault). Stubbed here so
- * the proposal SHAPE exists and is testable, but nothing executes —
- * TODO(#2243): wire this up once loadFromVault's claim/pairing events
- * land.
+ * "Claim pending service" (UX note #3) is the claimable pending-service
+ * self-registration/pairing moment. #2243 (loadFromVault fetch-at-boot,
+ * merged into main) deliberately does NOT implement it — per its own PR
+ * description, that pairing flow needs a service/host-shaped extension of
+ * the #1834 claimable-stub primitive that doesn't exist yet, and is
+ * flagged there as its own follow-up. Stubbed here so the proposal SHAPE
+ * exists and is testable, but nothing executes — TODO(#2243): wire this up
+ * once that follow-up lands.
  */
 function executeClaim(): Promise<VaultExecutionResult> {
   return Promise.resolve({ ok: false, error: 'vault:claim execution is stubbed pending #2243' });

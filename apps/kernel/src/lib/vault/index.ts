@@ -1739,3 +1739,7 @@ export {
   type VaultKeyTimelineEventType,
   type HandProvisionedField,
 } from './key-cards';
+
+// ── #2247 — shared vault revoke-tier label (canvas + route summary copy) ─────
+// Trailing re-export only; see ./revoke-tier.ts for the implementation.
+export { revokeTierLabel, type VaultRevokeTier } from './revoke-tier';

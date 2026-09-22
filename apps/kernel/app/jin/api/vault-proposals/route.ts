@@ -25,6 +25,7 @@ import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { generateId } from '@/src/lib/kernel/id';
 import { getOperatorDid, isOperatorIdentity, computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
+import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 
 const log = createLogger('kernel:vault-proposals');
 
@@ -107,7 +108,7 @@ function validateRevokeDetail(detail: Record<string, unknown>): ValidationResult
   const tier = (detail.tier as string | undefined) ?? 'withdraw';
   return {
     ok: true,
-    summary: `${tier === 'destroy' ? 'Destroy' : tier === 'tombstone' ? 'Tombstone' : 'Withdraw'} the vault key ${did}.`,
+    summary: `${revokeTierLabel(tier)} the vault key ${did}.`,
     keysTouched: [did],
   };
 }

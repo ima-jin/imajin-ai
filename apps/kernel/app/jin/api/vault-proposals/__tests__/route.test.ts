@@ -122,18 +122,11 @@ describe('POST /jin/api/vault-proposals — validation', () => {
     expect(res.status).toBe(400);
   });
 
-  it('rejects a grant proposal missing did/grantedTo', async () => {
-    const res = await POST(makeReq({ kind: 'grant', detail: {} }) as Parameters<typeof POST>[0]);
-    expect(res.status).toBe(400);
-  });
-
-  it('rejects a rotate proposal missing did', async () => {
-    const res = await POST(makeReq({ kind: 'rotate', detail: {} }) as Parameters<typeof POST>[0]);
-    expect(res.status).toBe(400);
-  });
-
-  it('rejects a revoke proposal missing did', async () => {
-    const res = await POST(makeReq({ kind: 'revoke', detail: {} }) as Parameters<typeof POST>[0]);
+  // grant/rotate/revoke all require detail.did; grant additionally requires
+  // grantedTo, but the empty-detail case rejects on the first missing field
+  // for all three (S5976: parameterized rather than three near-identical bodies).
+  it.each(['grant', 'rotate', 'revoke'] as const)("rejects a '%s' proposal with an empty detail", async (kind) => {
+    const res = await POST(makeReq({ kind, detail: {} }) as Parameters<typeof POST>[0]);
     expect(res.status).toBe(400);
   });
 

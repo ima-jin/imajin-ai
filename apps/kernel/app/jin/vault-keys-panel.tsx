@@ -16,10 +16,14 @@
  * (`POST /jin/api/vault-proposals`); approving it there is the actual
  * signing event, and the vault mutation itself runs server-side.
  *
- * "Claim pending service" (UX note #3) needs #2243's fetch-at-boot /
- * pairing events, which are not on main yet — rendered here as an inert,
- * clearly-labelled stub. TODO(#2243): wire this up once loadFromVault's
- * claim/pairing events land.
+ * "Claim pending service" (UX note #3) is the claimable pending-service
+ * self-registration/pairing moment. #2243 (loadFromVault fetch-at-boot,
+ * merged into main) deliberately does NOT implement it — that pairing flow
+ * needs a service/host-shaped extension of the #1834 claimable-stub
+ * primitive that doesn't exist yet, and is called out as its own follow-up
+ * in #2243's own PR description. Rendered here as an inert,
+ * clearly-labelled stub until that follow-up lands. TODO(#2243): wire this
+ * up once the claim/pairing events exist.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
@@ -87,20 +91,31 @@ function timeAgo(iso: string | null): string | null {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+/**
+ * Safely read a string field out of a timeline row's `detail` (untrusted,
+ * server-shaped JSON typed as `Record<string, unknown>`). Falls back to
+ * `—` for anything that isn't actually a string, rather than blindly
+ * `String()`-coercing a possible object into `'[object Object]'`.
+ */
+function detailString(detail: Record<string, unknown>, key: string): string {
+  const value = detail[key];
+  return typeof value === 'string' && value.length > 0 ? value : '—';
+}
+
 function timelineRowLabel(event: VaultKeyTimelineEvent): string {
   switch (event.type) {
     case 'minted':
-      return `Minted by ${String(event.detail.by ?? '—')}`;
+      return `Minted by ${detailString(event.detail, 'by')}`;
     case 'granted':
-      return `Granted to ${String(event.detail.to ?? '—')}${event.detail.oneTime ? ' (one-time)' : ''}`;
+      return `Granted to ${detailString(event.detail, 'to')}${event.detail.oneTime ? ' (one-time)' : ''}`;
     case 'fetched':
-      return `Fetched by ${String(event.detail.consumer ?? '—')}`;
+      return `Fetched by ${detailString(event.detail, 'consumer')}`;
     case 'acked':
-      return `Acked — ${String(event.detail.outcome ?? '—')}`;
+      return `Acked — ${detailString(event.detail, 'outcome')}`;
     case 'rotated':
       return 'Rotated';
     case 'revoked':
-      return `Revoked by ${String(event.detail.by ?? '—')}`;
+      return `Revoked by ${detailString(event.detail, 'by')}`;
     default:
       return event.type;
   }
@@ -235,7 +250,7 @@ function VaultKeyCardView({
               onChange={(e) => setGrantForm({ ...grantForm, oneTime: e.target.checked })}
               className="accent-amber-500"
             />
-            one-time
+            <span>one-time</span>
           </label>
           <button type="submit" disabled={busy} className="px-2.5 py-1 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40">
             Propose grant
@@ -316,16 +331,18 @@ function MintForm({
 }
 
 /**
- * "Claim pending service" (UX note #3) — stubbed pending #2243. Always
- * rendered, always disabled: this documents the intended surface without
- * pretending it works. TODO(#2243): replace this whole component once
- * loadFromVault's claim/pairing events exist on main.
+ * "Claim pending service" (UX note #3) — stubbed pending the claim/pairing
+ * follow-up flagged in #2243's own PR description (#2243 itself, the
+ * fetch-at-boot helper, is merged; the pairing/self-registration moment is
+ * not). Always rendered, always disabled: this documents the intended
+ * surface without pretending it works. TODO(#2243): replace this whole
+ * component once that follow-up's claim/pairing events exist.
  */
 function ClaimPendingServiceStub() {
   return (
     <div className="rounded-lg border border-dashed border-gray-800 p-3 text-xs text-gray-600">
       <span className="font-medium text-gray-500">Claim pending service</span>
-      <span className="ml-2">— waiting on #2243 (fetch-at-boot / pairing events)</span>
+      <span className="ml-2">— waiting on the claim/pairing follow-up (#2243)</span>
       <button type="button" disabled className="ml-3 px-2 py-0.5 rounded bg-gray-800 text-gray-600 cursor-not-allowed">
         Claim
       </button>
