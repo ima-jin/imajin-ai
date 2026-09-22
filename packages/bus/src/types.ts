@@ -831,6 +831,81 @@ export interface BusEventMap {
     context_type: 'agent.reach';
   };
   /**
+   * Delegate-grant bearer credential (#2252) — the outbound shape for
+   * static-header foreign clients (Muse Code / Muse's consumer connector)
+   * that cannot complete an OAuth+PKCE dance. Never carries the bearer
+   * plaintext or its hash — only the domain metadata the /jin timeline and
+   * `kernel.audit_log` need.
+   */
+  'access.knock.requested': {
+    requestId: string;
+    principalDid: string;
+    clientLabel: string;
+    purpose: string;
+    scopes: string[];
+    surfaces: string[];
+    context_id: string;
+    context_type: 'access.knock';
+  };
+  /**
+   * Emitted once, from `executeAccessApproval`, immediately after an
+   * operator-countersigned `access:bearer-grant` decision mints the bearer
+   * (#2252) — mirrors `vault.key.minted`'s `authorizedBy` shape.
+   */
+  'access.bearer.issued': {
+    bearerId: string;
+    requestId: string;
+    principalDid: string;
+    clientLabel: string;
+    purpose: string;
+    scopes: string[];
+    surfaces: string[];
+    expiresAt: string;
+    hardCapAt: string;
+    authorizedBy: {
+      approvalId: string;
+      operatorDid: string;
+      contentHash: string;
+      decidedAt: string;
+    };
+    context_id: string;
+    context_type: 'access.bearer';
+  };
+  /** Emitted on every successful bearer authentication (#2252) — one per request, never batched. */
+  'access.bearer.used': {
+    bearerId: string;
+    principalDid: string;
+    surface: string;
+    context_id: string;
+    context_type: 'access.bearer';
+  };
+  /**
+   * Emitted when a resolvable (non-tombstoned) bearer fails authentication
+   * (#2252) — expired past its sliding window or hard cap, or presented
+   * against a surface it was never granted. A wholly unknown token (never
+   * existed, or already tombstoned — see `resolveDelegateGrantBearer`'s
+   * docs) mints no event: there is nothing to bind it to, and minting one
+   * for arbitrary garbage bearers would be an unbounded attestation-flood
+   * vector.
+   */
+  'access.bearer.denied': {
+    bearerId: string;
+    principalDid: string;
+    surface: string;
+    reason: 'expired' | 'surface_miss';
+    context_id: string;
+    context_type: 'access.bearer';
+  };
+  /** Emitted when the principal tombstones their own bearer (#2252) — immediate effect, no cache. */
+  'access.bearer.revoked': {
+    bearerId: string;
+    principalDid: string;
+    clientLabel: string;
+    revokedBy: string;
+    context_id: string;
+    context_type: 'access.bearer';
+  };
+  /**
    * Emitted by sealAndStoreV2 in Tier 1 mode when the vault entry is written
    * but no delegation grant has been created yet (#1403).  The external owner
    * agent (imajin-cli vault serve) receives this event, recovers the field key

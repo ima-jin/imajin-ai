@@ -414,14 +414,86 @@ const VAULT_RENDERER: SourceRenderer = {
   renderDetail: renderVaultDetail,
 };
 
+// `access` (#2252): delegate-grant bearer knocks ("Muse Code wants to
+// connect") — approving mints the bearer server-side; the one-time
+// plaintext reveal is handled by `handleDecide` below, not by this
+// renderer (the renderer only ever sees the durable card fields, never the
+// secret).
+function renderAccessDetail(approval: OperatorApprovalCard): ReactNode {
+  const { detail } = approval;
+  const clientLabel = detailString(detail, 'clientLabel', 'Unknown client');
+  const purpose = detailString(detail, 'purpose', '\u2014');
+  const scopes = Array.isArray(detail?.scopes) ? (detail.scopes as string[]) : [];
+  const surfaces = Array.isArray(detail?.surfaces) ? (detail.surfaces as string[]) : [];
+  return (
+    <div className="space-y-1 text-sm text-gray-200">
+      <p><span className="font-medium text-gray-100">{clientLabel}</span> wants a scoped bearer.</p>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Purpose</span>{purpose}</div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Scopes</span><span className="font-mono">{scopes.join(', ') || '\u2014'}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Surfaces</span><span className="font-mono">{surfaces.join(', ') || '\u2014'}</span></div>
+    </div>
+  );
+}
+
+const ACCESS_RENDERER: SourceRenderer = {
+  decisionLabels: { approve: 'Approve & mint bearer', reject: 'Deny' },
+  renderDetail: renderAccessDetail,
+};
+
 const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
   'skill-workshop': SKILL_WORKSHOP_RENDERER,
   'gateway-exec': GATEWAY_EXEC_RENDERER,
   vault: VAULT_RENDERER,
+  access: ACCESS_RENDERER,
 };
 
 function rendererFor(source: string): SourceRenderer {
   return SOURCE_RENDERERS[source] ?? DEFAULT_RENDERER;
+}
+
+// ── one-time bearer reveal (#2252) ──────────────────────────────────────────
+// The decision route surfaces the freshly minted delegate-grant bearer
+// plaintext exactly once, in the approve response's `data.bearer` — never
+// persisted, never fetchable again (see `src/lib/access/delegate-grant.ts`).
+// This box is the only place in the UI that ever holds it, in memory, until
+// the operator dismisses it or navigates away.
+
+interface RevealedBearer {
+  proposalId: string;
+  clientLabel: string;
+  bearer: string;
+  expiresAt: string;
+}
+
+function RevealedBearerBanner({
+  revealed,
+  onDismiss,
+}: Readonly<{ revealed: RevealedBearer; onDismiss: () => void }>) {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback(() => {
+    navigator.clipboard?.writeText(revealed.bearer).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => undefined);
+  }, [revealed.bearer]);
+
+  return (
+    <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/40 p-4 space-y-2" data-testid="revealed-bearer">
+      <p className="text-sm text-amber-200 font-medium">
+        Bearer minted for &quot;{revealed.clientLabel}&quot; — shown once, never again. Paste it into the client&apos;s credential store now.
+      </p>
+      <pre className="text-xs font-mono text-amber-100 bg-black/40 rounded p-2 overflow-x-auto select-all">{revealed.bearer}</pre>
+      <p className="text-xs text-amber-400">Sliding expiry — extends on every use, dead by {new Date(revealed.expiresAt).toLocaleString()} without one.</p>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={copy} className="px-2.5 py-1 rounded text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60">
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
+        <button type="button" onClick={onDismiss} className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600">
+          I&apos;ve saved it — dismiss
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function ApprovalCardRow({
@@ -537,6 +609,7 @@ export function OperatorApprovalsPanel() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [flash, setFlash] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  const [revealedBearer, setRevealedBearer] = useState<RevealedBearer | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const notify = useCallback((type: 'ok' | 'err', msg: string) => {
@@ -591,6 +664,19 @@ export function OperatorApprovalsPanel() {
         notify('err', body.error ?? `Decision failed (${res.status})`);
         return;
       }
+      // #2252: an approved access:bearer-grant proposal returns the freshly
+      // minted bearer plaintext exactly once, in `data.bearer` — surface it
+      // as a persistent (not auto-dismissing) reveal box rather than the
+      // 4s flash, since the operator needs time to copy it.
+      const responseBody = await res.json().catch(() => ({})) as { data?: { bearer?: string; expiresAt?: string } };
+      if (decision === 'approve' && responseBody.data?.bearer) {
+        setRevealedBearer({
+          proposalId,
+          clientLabel: detailString(approval.detail, 'clientLabel', approval.summary),
+          bearer: responseBody.data.bearer,
+          expiresAt: responseBody.data.expiresAt ?? '',
+        });
+      }
       notify('ok', `Proposal ${decision}.`);
       await load(true);
     } finally {
@@ -625,6 +711,10 @@ export function OperatorApprovalsPanel() {
         }`}>
           {flash.msg}
         </div>
+      )}
+
+      {revealedBearer && (
+        <RevealedBearerBanner revealed={revealedBearer} onDismiss={() => setRevealedBearer(null)} />
       )}
 
       {renderPanelBody(loading, approvals, handleDecide, busyId)}

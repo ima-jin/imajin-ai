@@ -369,6 +369,33 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'agent.reach.denied': [
     { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
   ],
+  // #2252 — delegate-grant bearer credential for static-header foreign
+  // clients (knock -> approve -> scoped bearer). `audit-log` persists every
+  // knock/issue/use/deny/revoke, mirroring agent.reach's #2251 pattern
+  // above. Kept in sync with migration 0156.
+  'access.knock.requested': [
+    {
+      type: 'audit-log',
+      config: { fields: ['requestId', 'principalDid', 'clientLabel', 'purpose', 'scopes', 'surfaces'] },
+      enabled: true,
+    },
+  ],
+  'access.bearer.issued': [
+    {
+      type: 'audit-log',
+      config: { fields: ['bearerId', 'requestId', 'principalDid', 'clientLabel', 'purpose', 'scopes', 'surfaces', 'expiresAt', 'hardCapAt'] },
+      enabled: true,
+    },
+  ],
+  'access.bearer.used': [
+    { type: 'audit-log', config: { fields: ['bearerId', 'principalDid', 'surface'] }, enabled: true },
+  ],
+  'access.bearer.denied': [
+    { type: 'audit-log', config: { fields: ['bearerId', 'principalDid', 'surface', 'reason'] }, enabled: true },
+  ],
+  'access.bearer.revoked': [
+    { type: 'audit-log', config: { fields: ['bearerId', 'principalDid', 'clientLabel', 'revokedBy'] }, enabled: true },
+  ],
   // #1841 — claim-stub-expiry sweep. `emit` puts the tombstone event on the
   // signed event stream; no `attestation`/`mjn` reactor since a lapsing
   // stub is a garbage-collection outcome, not an economic/identity event

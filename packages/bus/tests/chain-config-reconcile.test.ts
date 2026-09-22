@@ -117,6 +117,20 @@ describe('chain config DEFAULTS reconcile (#1873, #1874)', () => {
       { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
     ]);
   });
+
+  it.each([
+    'access.knock.requested',
+    'access.bearer.issued',
+    'access.bearer.used',
+    'access.bearer.denied',
+    'access.bearer.revoked',
+  ])('%s routes to audit-log (#2252)', async (eventType) => {
+    const cfg = await getChainConfig(eventType, 'default');
+    const types = cfg.reactors.map((r) => r.type);
+
+    expect(types).toEqual(['audit-log']);
+    expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
+  });
 });
 
 describe('broker reactor registry (#1874)', () => {

@@ -7,7 +7,7 @@
  * per-source renderer registry (default vs. skill-workshop).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { crypto as authCrypto } from '@imajin/auth';
 import { OperatorApprovalsPanel } from '../operator-approvals-panel';
 import { installIntervalSpy } from './panel-test-support';
@@ -69,6 +69,24 @@ function vaultApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixtur
     summary: 'Mint a new vault-native service key for "corpus-identity", delivered to did:imajin:corpus-bootstrap.',
     keysTouched: [],
     detail: { purpose: 'corpus-identity', requesterDid: 'did:imajin:corpus-bootstrap' },
+    ...overrides,
+  });
+}
+
+function accessApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
+  return approval({
+    proposalId: 'opap_access_1',
+    source: 'access',
+    kind: 'access:bearer-grant',
+    summary: '"Muse Code" is asking to connect via mcp for: read my media',
+    keysTouched: [],
+    detail: {
+      requestId: 'dgr_1',
+      clientLabel: 'Muse Code',
+      purpose: 'read my media',
+      scopes: ['discovery:read'],
+      surfaces: ['mcp'],
+    },
     ...overrides,
   });
 }
@@ -549,5 +567,79 @@ describe('per-source renderer registry — vault', () => {
     await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
     const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
     expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'approve' }) });
+  });
+});
+
+// `access` renderer (#2252): delegate-grant bearer knocks. Approving mints
+// the bearer server-side and returns its plaintext exactly once via
+// `data.bearer` in the decision response — surfaced as a persistent reveal
+// box, not the 4s auto-dismissing flash.
+describe('per-source renderer registry — access', () => {
+  it('renders the client/purpose/scopes/surfaces detail and Approve & mint bearer / Deny controls', async () => {
+    installFetch([{ isOperator: true, approvals: [accessApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('Muse Code')).toBeDefined();
+    expect(screen.getByText('read my media')).toBeDefined();
+    expect(screen.getByText('discovery:read')).toBeDefined();
+    expect(screen.getByText('mcp')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Approve & mint bearer' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
+  });
+
+  it('falls back to em-dash placeholders when scopes/surfaces are absent from detail', async () => {
+    installFetch([{ isOperator: true, approvals: [accessApproval({ detail: { requestId: 'dgr_1', clientLabel: 'Muse Code', purpose: 'p' } })] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('Muse Code')).toBeDefined();
+    expect(screen.getAllByText('—')).toHaveLength(2);
+  });
+
+  it('reveals the minted bearer plaintext exactly once when the decision response carries data.bearer', async () => {
+    installFetch(
+      [{ isOperator: true, approvals: [accessApproval()] }, { isOperator: true, approvals: [accessApproval({ status: 'approved' })] }],
+      { ok: true, body: { approval: accessApproval({ status: 'approved' }), data: { bearer: 'plaintext-secret-xyz', bearerId: 'dgb_1', expiresAt: '2026-04-01T00:00:00.000Z', hardCapAt: '2026-04-15T00:00:00.000Z' } } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve & mint bearer' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & mint bearer' }));
+
+    const revealBox = await screen.findByTestId('revealed-bearer');
+    expect(within(revealBox).getByText('plaintext-secret-xyz')).toBeDefined();
+    expect(within(revealBox).getByText(/Muse Code/)).toBeDefined();
+  });
+
+  it('never reveals a bearer for a reject decision (no data in the response)', async () => {
+    installFetch(
+      [{ isOperator: true, approvals: [accessApproval()] }, { isOperator: true, approvals: [accessApproval({ status: 'denied' })] }],
+      { ok: true, body: { approval: accessApproval({ status: 'denied' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Deny' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal reject.')).toBeDefined());
+    expect(screen.queryByTestId('revealed-bearer')).toBeNull();
+  });
+
+  it('dismisses the reveal box, copies to the clipboard, and never shows it again after dismissal', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    installFetch(
+      [{ isOperator: true, approvals: [accessApproval()] }, { isOperator: true, approvals: [accessApproval({ status: 'approved' })] }],
+      { ok: true, body: { approval: accessApproval({ status: 'approved' }), data: { bearer: 'plaintext-secret-xyz', bearerId: 'dgb_1', expiresAt: '2026-04-01T00:00:00.000Z' } } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve & mint bearer' });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & mint bearer' }));
+    await screen.findByTestId('revealed-bearer');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(writeText).toHaveBeenCalledWith('plaintext-secret-xyz');
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    expect(screen.queryByTestId('revealed-bearer')).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { verifyAppToken } from '@/src/lib/auth/jwt';
 import { getMcpResource, getProtectedResourceMetadataUrl, MCP_SCOPE_SET } from '@/src/lib/mcp/oauth-config';
 import { handleMcpRpc } from '@/src/lib/mcp/server';
 import { agentCardUrl } from '@/src/lib/http/node-url';
+import { resolveDelegateGrantBearer } from '@/src/lib/access/delegate-grant';
 import {
   headerMismatchError,
   httpStatusForModernResponse,
@@ -59,6 +60,72 @@ function unauthorized(error = 'invalid_token') {
   );
 }
 
+function insufficientScope(error = 'insufficient_scope') {
+  return NextResponse.json(
+    { error, onboarding: agentCardUrl() },
+    { status: 403, headers: { ...MCP_CORS_HEADERS, 'WWW-Authenticate': `Bearer error="${error}"` } },
+  );
+}
+
+interface McpAuthContext {
+  did: string;
+  appDid: string;
+  scopes: Set<string>;
+}
+
+type McpAuthResult = { ok: true; ctx: McpAuthContext } | { ok: false; response: NextResponse };
+
+/**
+ * Resolve the bearer on an `/mcp` request to a `{did, appDid, scopes}`
+ * context, trying the OAuth app+jwt path first (`verifyAppToken`, unchanged)
+ * and falling back to a delegate-grant static bearer (#2252) only when that
+ * fails to parse/verify at all — a token that verifies as a JWT but fails
+ * audience/scope checks stays on the original path's own error responses,
+ * exactly as before this fallback existed.
+ *
+ * The delegate-grant path resolves to the PRINCIPAL's own DID carrying only
+ * the bearer's granted scopes (never wider) — every downstream check below
+ * (the surface-scope gate, and each tool's own `requiredScope` check in
+ * `handleMcpRpc`) applies identically to both token kinds, so "the granted
+ * scopes, nothing wider" falls out of reusing the exact same enforcement
+ * path rather than needing a parallel one.
+ */
+async function authenticateMcpRequest(request: NextRequest): Promise<McpAuthResult> {
+  const auth = request.headers.get('authorization');
+  if (!auth?.startsWith('Bearer ')) {
+    return { ok: false, response: unauthorized() };
+  }
+  const token = auth.slice(7);
+
+  const payload = await verifyAppToken(token);
+  if (payload) {
+    if (!payload.sub || payload.aud !== getMcpResource()) {
+      return { ok: false, response: unauthorized() };
+    }
+    return {
+      ok: true,
+      ctx: { did: payload.sub, appDid: payload.azp, scopes: new Set(payload.scope ? payload.scope.split(' ') : []) },
+    };
+  }
+
+  const bearerResult = await resolveDelegateGrantBearer(token, 'mcp');
+  if (!bearerResult.ok) {
+    if (bearerResult.reason === 'surface_miss') {
+      return { ok: false, response: insufficientScope() };
+    }
+    // 'unknown' and 'expired' collapse onto the same OAuth-shaped 401 the
+    // JWT path already used, but with a distinct stable error code so a
+    // client debugging "why did this stop working" can tell an outright
+    // bad token apart from one that aged out.
+    return { ok: false, response: unauthorized(bearerResult.reason === 'expired' ? 'token_expired' : 'invalid_token') };
+  }
+
+  return {
+    ok: true,
+    ctx: { did: bearerResult.principalDid, appDid: `delegate:${bearerResult.bearerId}`, scopes: new Set(bearerResult.scopes) },
+  };
+}
+
 type RpcMessage = Parameters<typeof handleMcpRpc>[0];
 
 /** True when this POST is speaking a MODERN revision (2026-07-28+). */
@@ -98,39 +165,20 @@ function isModernRequest(request: NextRequest, msg: RpcMessage | null): boolean 
  * the two eras cannot share one code path.
  */
 export async function POST(request: NextRequest) {
-  const auth = request.headers.get('authorization');
-  if (!auth?.startsWith('Bearer ')) {
-    return unauthorized();
+  const authResult = await authenticateMcpRequest(request);
+  if (!authResult.ok) {
+    return authResult.response;
   }
-
-  const payload = await verifyAppToken(auth.slice(7));
-  // verifyAppToken checks signature/issuer/typ but NOT a specific audience —
-  // enforce the resource binding here so a token minted for another audience
-  // (e.g. 'imajin:apps') cannot be replayed against the MCP surface.
-  if (!payload) {
-    return unauthorized();
-  }
-  if (!payload.sub || payload.aud !== getMcpResource()) {
-    return unauthorized();
-  }
+  const { did, appDid, scopes } = authResult.ctx;
 
   // Surface gate: the token must carry at least one recognized MCP scope to reach
   // the MCP surface at all. The authoritative read-vs-write decision is per-tool in
   // handleMcpRpc (each McpTool.requiredScope), so a write-only token can reach the
   // write tools and a read-only token cannot call them (#1170).
-  const scopes = new Set(payload.scope ? payload.scope.split(' ') : []);
   const tokenScopes = Array.from(scopes);
   const hasRecognizedScope = tokenScopes.some((s) => MCP_SCOPE_SET.has(s));
   if (!hasRecognizedScope) {
-    // `onboarding` (#1899): a recognized-but-ungranted key needs the same
-    // pointer back to the agent card as a wholly unknown one.
-    return NextResponse.json(
-      { error: 'insufficient_scope', onboarding: agentCardUrl() },
-      {
-        status: 403,
-        headers: { ...MCP_CORS_HEADERS, 'WWW-Authenticate': 'Bearer error="insufficient_scope"' },
-      },
-    );
+    return insufficientScope();
   }
 
   // Authenticated + audience-bound + media-scoped. Parse + dispatch JSON-RPC.
@@ -144,7 +192,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const ctx = { did: payload.sub, appDid: payload.azp, scopes };
+  const ctx = { did, appDid, scopes };
 
   // Echo the protocol version header back when the client sends one.
   const protocolHeader = request.headers.get('mcp-protocol-version');
