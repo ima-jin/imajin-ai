@@ -18,7 +18,7 @@ const mockSetModelId = vi.fn();
 const mockListModels = vi.fn();
 const mockProbeModel = vi.fn();
 
-const { resolveOwnerDid } = mockModelPickerRouteDeps();
+const { resolveOwnerDid, notifyModelsChanged } = mockModelPickerRouteDeps();
 
 vi.doMock('@/src/lib/local/connector', () => ({
   loadLocalSealedCredentials: mockLoadSealed,
@@ -43,6 +43,7 @@ describe('GET/PUT /local/api/models', () => {
     mockSetModelId.mockReset();
     mockListModels.mockReset();
     mockProbeModel.mockReset();
+    notifyModelsChanged.mockReset();
   });
 
   it('answers CORS pre-flight', async () => {
@@ -105,6 +106,9 @@ describe('GET/PUT /local/api/models', () => {
     );
     expect(mockSetModelId).toHaveBeenCalledWith(OWNER_DID, 'llama3');
     expect(await res.json()).toEqual({ modelId: 'llama3' });
+    // #2220 — explicit catalog-refresh trigger, advisory catalog-update hint.
+    expect(notifyModelsChanged).toHaveBeenCalledTimes(1);
+    expect(notifyModelsChanged).toHaveBeenCalledWith(OWNER_DID, 'local', 'catalog-update');
   });
 
   it('refuses a model the endpoint does not serve (404 -> model_deprecated), sealing nothing', async () => {
@@ -115,5 +119,6 @@ describe('GET/PUT /local/api/models', () => {
     expect(res.status).toBe(422);
     expect((await res.json()).error).toBe('model_deprecated');
     expect(mockSetModelId).not.toHaveBeenCalled();
+    expect(notifyModelsChanged).not.toHaveBeenCalled();
   });
 });

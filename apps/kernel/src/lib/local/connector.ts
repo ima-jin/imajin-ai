@@ -58,6 +58,10 @@ import {
 } from '@/src/lib/kernel/connector-registry-store';
 import { checkEgressTarget } from '@/src/lib/kernel/egress-guard';
 import { CONNECTOR_DIDS, CONNECTOR_CHANNELS } from '@imajin/auth/scope-vocabulary';
+import {
+  notifyConnectorCredentialSealed,
+  notifyConnectorCredentialUnsealed,
+} from '@/src/lib/notify/connector-events';
 
 const log = createLogger('kernel:local-connector');
 
@@ -177,6 +181,13 @@ export async function sealBearerToken(
     provider: 'local',
     sealedKeyField: apiKeyField(ownerDid),
   });
+
+  // #2220 — this is the local connector's own "enable"/rotate route
+  // (`createConnectorTokenPaste`'s `sealApiKey` fires the same event for
+  // every other brain connector, but `local` cannot reuse that factory —
+  // see this module's header). Best-effort; never fails a seal that already
+  // succeeded (see connector-events.ts's own fail-open guarantee).
+  await notifyConnectorCredentialSealed(ownerDid, 'local');
 }
 
 /** Whether a bearer token is sealed AND readable for this DID (#1724 precedent). */
@@ -294,5 +305,14 @@ export async function disconnect(ownerDid: string): Promise<boolean> {
   const clearedSettings = await clearBaseUrl(ownerDid);
   await deleteFromVault(modelIdField(ownerDid));
   await revokeConnectorRegistration(ownerDid, 'local');
-  return revokedGrants > 0 || revokedLinks > 0 || clearedSettings;
+
+  const revoked = revokedGrants > 0 || revokedLinks > 0 || clearedSettings;
+  // #2220 — only on an actual transition, so a no-op disconnect stays
+  // silent; best-effort, never fails this call (see connector-events.ts).
+  // Mirrors `createConnectorTokenPaste`'s `revokeApiKey`, which `local`
+  // cannot reuse (see this module's header).
+  if (revoked) {
+    await notifyConnectorCredentialUnsealed(ownerDid, 'local');
+  }
+  return revoked;
 }

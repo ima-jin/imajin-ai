@@ -27,7 +27,7 @@ const mockLoadAnthropicSealedCredentials = vi.fn();
 const mockAnthropicKeyPending = vi.fn();
 const mockSetModelId = vi.fn();
 
-const { resolveOwnerDid: mockResolveConnectorOwnerDid } = mockModelPickerRouteDeps();
+const { resolveOwnerDid: mockResolveConnectorOwnerDid, notifyModelsChanged: mockNotifyModelsChanged } = mockModelPickerRouteDeps();
 
 vi.doMock('@/src/lib/anthropic/connector', () => ({
   loadAnthropicSealedCredentials: mockLoadAnthropicSealedCredentials,
@@ -57,6 +57,7 @@ beforeEach(() => {
     loadSealedCredentials: mockLoadAnthropicSealedCredentials,
     keyPending: mockAnthropicKeyPending,
     setModelId: mockSetModelId,
+    notifyModelsChanged: mockNotifyModelsChanged,
     ownerDid: OWNER_DID,
     apiKey: API_KEY,
   });
@@ -75,6 +76,7 @@ describeModelPickerAuthAndValidationContract({
     loadSealedCredentials: mockLoadAnthropicSealedCredentials,
     keyPending: mockAnthropicKeyPending,
     setModelId: mockSetModelId,
+    notifyModelsChanged: mockNotifyModelsChanged,
   },
 });
 
@@ -275,6 +277,9 @@ describe('PUT (validates against GET /v1/models/{model_id} before persisting)', 
       }),
     );
     expect(mockSetModelId).toHaveBeenCalledWith(OWNER_DID, 'claude-opus-4-6');
+    // #2220 — explicit catalog-refresh trigger, advisory catalog-update hint.
+    expect(mockNotifyModelsChanged).toHaveBeenCalledTimes(1);
+    expect(mockNotifyModelsChanged).toHaveBeenCalledWith(OWNER_DID, 'anthropic', 'catalog-update');
   });
 
   it('trims before probing and storing', async () => {

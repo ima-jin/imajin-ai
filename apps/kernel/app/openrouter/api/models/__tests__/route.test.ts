@@ -31,7 +31,7 @@ const openrouterMockLoadSealed = vi.fn();
 const openrouterMockKeyPending = vi.fn();
 const mockSetModelId = vi.fn();
 
-const { resolveOwnerDid: openrouterMockResolveOwnerDid } = mockModelPickerRouteDeps();
+const { resolveOwnerDid: openrouterMockResolveOwnerDid, notifyModelsChanged: openrouterMockNotifyModelsChanged } = mockModelPickerRouteDeps();
 
 vi.doMock('@/src/lib/openrouter/connector', () => ({
   loadOpenrouterSealedCredentials: openrouterMockLoadSealed,
@@ -53,6 +53,7 @@ beforeEach(() => {
     loadSealedCredentials: openrouterMockLoadSealed,
     keyPending: openrouterMockKeyPending,
     setModelId: mockSetModelId,
+    notifyModelsChanged: openrouterMockNotifyModelsChanged,
     ownerDid: OWNER_DID,
     apiKey: API_KEY,
   });
@@ -203,6 +204,9 @@ describe('PUT', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ modelId: MODEL_A });
     expect(mockSetModelId).toHaveBeenCalledWith(OWNER_DID, MODEL_A);
+    // #2220 — explicit catalog-refresh trigger, advisory catalog-update hint.
+    expect(openrouterMockNotifyModelsChanged).toHaveBeenCalledTimes(1);
+    expect(openrouterMockNotifyModelsChanged).toHaveBeenCalledWith(OWNER_DID, 'openrouter', 'catalog-update');
   });
 
   /**
@@ -218,6 +222,7 @@ describe('PUT', () => {
     expect(res.status).toBe(422);
     expect((await res.json()).error).toBe('model_deprecated');
     expect(mockSetModelId).not.toHaveBeenCalled();
+    expect(openrouterMockNotifyModelsChanged).not.toHaveBeenCalled();
   });
 
   it('maps a failed list fetch to 502 \u2014 never misreports a transport fault as model_deprecated', async () => {
@@ -244,5 +249,6 @@ describe('PUT', () => {
 
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain(API_KEY);
+    expect(openrouterMockNotifyModelsChanged).not.toHaveBeenCalled();
   });
 });

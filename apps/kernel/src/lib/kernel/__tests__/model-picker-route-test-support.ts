@@ -65,6 +65,8 @@ export interface ModelPickerRouteMocks {
   setModelId: ReturnType<typeof vi.fn>;
   ownerDid: string;
   apiKey: string;
+  /** #2220 — the explicit catalog-refresh notification a successful PUT fires. Optional: only routes asserting on it need to pass it. */
+  notifyModelsChanged?: ReturnType<typeof vi.fn>;
 }
 
 /**
@@ -82,18 +84,22 @@ export function resetModelPickerMocks(mocks: ModelPickerRouteMocks): void {
   mocks.keyPending.mockResolvedValue(false);
   mocks.setModelId.mockReset();
   mocks.setModelId.mockResolvedValue(undefined);
+  mocks.notifyModelsChanged?.mockReset();
 }
 
 export interface ModelPickerRouteDeps {
   resolveOwnerDid: Mock;
+  /** #2220 — mock of `notifyConnectorModelsChanged`, called by the shared PUT handler on a successful model selection. */
+  notifyModelsChanged: Mock;
 }
 
 /**
- * Mock the three dependencies every model-picker route shares regardless of
- * provider — `resolveConnectorOwnerDid`, CORS headers, and the logger — via
- * `vi.doMock` (unlike `vi.mock`, NOT hoisted, so it registers only for the
- * NEXT dynamic import). Call this BEFORE mocking the connector-specific
- * module and dynamically importing the route under test:
+ * Mock the dependencies every model-picker route shares regardless of
+ * provider — `resolveConnectorOwnerDid`, CORS headers, the logger, and the
+ * connector-events notifier (#2220) — via `vi.doMock` (unlike `vi.mock`, NOT
+ * hoisted, so it registers only for the NEXT dynamic import). Call this
+ * BEFORE mocking the connector-specific module and dynamically importing
+ * the route under test:
  *
  * ```ts
  * const { resolveOwnerDid } = mockModelPickerRouteDeps();
@@ -103,6 +109,7 @@ export interface ModelPickerRouteDeps {
  */
 export function mockModelPickerRouteDeps(): ModelPickerRouteDeps {
   const resolveOwnerDid = vi.fn();
+  const notifyModelsChanged = vi.fn();
 
   vi.doMock('@/src/lib/kernel/connector-owner-did', () => ({
     resolveConnectorOwnerDid: resolveOwnerDid,
@@ -117,7 +124,11 @@ export function mockModelPickerRouteDeps(): ModelPickerRouteDeps {
     createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
   }));
 
-  return { resolveOwnerDid };
+  vi.doMock('@/src/lib/notify/connector-events', () => ({
+    notifyConnectorModelsChanged: notifyModelsChanged,
+  }));
+
+  return { resolveOwnerDid, notifyModelsChanged };
 }
 
 export interface ModelPickerRouteContractFixture<Req = ModelPickerRouteRequest> {
@@ -142,6 +153,8 @@ export interface ModelPickerRouteContractFixture<Req = ModelPickerRouteRequest> 
     loadSealed: Mock;
     keyPending: Mock;
     setModelId: Mock;
+    /** #2220 — asserted to fire exactly once on a successful PUT, and never on a failure path. */
+    notifyModelsChanged: Mock;
   };
 }
 
@@ -150,6 +163,8 @@ export interface ModelPickerAuthAndValidationMocks {
   loadSealedCredentials: Mock;
   keyPending: Mock;
   setModelId: Mock;
+  /** #2220 — asserted NOT to fire on any of this contract's PUT failure paths. */
+  notifyModelsChanged: Mock;
 }
 
 export interface ModelPickerAuthAndValidationFixture<Req = ModelPickerRouteRequest> {
@@ -294,6 +309,8 @@ export function describeModelPickerAuthAndValidationContract<Req>(
       expect(body.error).toBe('model_deprecated');
       expect(body.modelId).toBe(sampleModelId);
       expect(mocks.setModelId).not.toHaveBeenCalled();
+      // #2220 — a rejected selection must never advertise a catalog change.
+      expect(mocks.notifyModelsChanged).not.toHaveBeenCalled();
     });
 
     it('maps a non-404 probe failure to 502, without sealing the model', async () => {
@@ -304,6 +321,7 @@ export function describeModelPickerAuthAndValidationContract<Req>(
       expect(res.status).toBe(502);
       expectNoLeak(await res.json());
       expect(mocks.setModelId).not.toHaveBeenCalled();
+      expect(mocks.notifyModelsChanged).not.toHaveBeenCalled();
     });
 
     it('maps a network failure during the probe to 502, without sealing the model', async () => {
@@ -313,6 +331,7 @@ export function describeModelPickerAuthAndValidationContract<Req>(
 
       expect(res.status).toBe(502);
       expect(mocks.setModelId).not.toHaveBeenCalled();
+      expect(mocks.notifyModelsChanged).not.toHaveBeenCalled();
     });
   });
 }
@@ -390,6 +409,7 @@ export function describeModelPickerRouteContract<Req>(fixture: ModelPickerRouteC
       loadSealedCredentials: mocks.loadSealed,
       keyPending: mocks.keyPending,
       setModelId: mocks.setModelId,
+      notifyModelsChanged: mocks.notifyModelsChanged,
       ownerDid,
       apiKey,
     });
@@ -533,6 +553,10 @@ export function describeModelPickerRouteContract<Req>(fixture: ModelPickerRouteC
       expect(fetchMock).toHaveBeenCalledWith(`${baseUrl}/models/${modelA}`, expect.any(Object));
       expect(mocks.setModelId).toHaveBeenCalledWith(ownerDid, modelA);
       expect(await res.json()).toEqual({ modelId: modelA });
+      // #2220 — the explicit catalog-refresh trigger: fires exactly once,
+      // advisory `catalog-update` hint, for the acting DID + this connector.
+      expect(mocks.notifyModelsChanged).toHaveBeenCalledTimes(1);
+      expect(mocks.notifyModelsChanged).toHaveBeenCalledWith(ownerDid, id, 'catalog-update');
     });
 
     /**
@@ -574,6 +598,7 @@ export function describeModelPickerRouteContract<Req>(fixture: ModelPickerRouteC
 
       expect(res.status).toBe(500);
       expect(JSON.stringify(await res.json())).not.toContain(apiKey);
+      expect(mocks.notifyModelsChanged).not.toHaveBeenCalled();
     });
   });
 }

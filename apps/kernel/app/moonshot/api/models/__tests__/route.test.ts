@@ -19,7 +19,7 @@ const moonshotMockLoadSealed = vi.fn();
 const moonshotMockKeyPending = vi.fn();
 const mockSetModelId = vi.fn();
 
-const { resolveOwnerDid: moonshotMockResolveOwnerDid } = mockModelPickerRouteDeps();
+const { resolveOwnerDid: moonshotMockResolveOwnerDid, notifyModelsChanged: moonshotMockNotifyModelsChanged } = mockModelPickerRouteDeps();
 
 vi.doMock('@/src/lib/moonshot/connector', () => ({
   loadMoonshotSealedCredentials: moonshotMockLoadSealed,
@@ -58,5 +58,6 @@ describeModelPickerRouteContract({
     loadSealed: moonshotMockLoadSealed,
     keyPending: moonshotMockKeyPending,
     setModelId: mockSetModelId,
+    notifyModelsChanged: moonshotMockNotifyModelsChanged,
   },
 });

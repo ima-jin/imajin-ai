@@ -33,6 +33,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
+import { notifyConnectorModelsChanged } from '@/src/lib/notify/connector-events';
 
 const log = createLogger('kernel');
 
@@ -279,6 +280,14 @@ export function createConnectorModelPickerRoute<C extends ModelPickerCredentials
         { status: 500, headers: cors },
       );
     }
+
+    // #2220 — the owner explicitly changed which model this connector will
+    // serve, so the usable-model catalog (#2201) may have just changed. This
+    // is the "explicit catalog-refresh" trigger the direct `catalog-update`
+    // hint exists for (see connector-events.ts) — distinct from the implicit
+    // credential-sealed/unsealed cascade, and best-effort: never fails a
+    // model choice that already persisted.
+    await notifyConnectorModelsChanged(ownerDid, opts.id, 'catalog-update');
 
     return NextResponse.json({ modelId }, { headers: cors });
   }
