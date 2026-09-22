@@ -420,10 +420,11 @@ function printResult(result: ServiceResult, env: "dev" | "prod"): void {
     console.log(`       ${sym.arrow}  ${yellow("optional, not set")}  ${keys}`);
   }
 
-  for (const { key } of vaultSourcedPresent) {
-    console.log(
-      `       ${sym.arrow}  ${yellow("vault-sourced")}  ${cyan(key)}  ${dim("deprecated hand-provisioned value present; remove after rotation")}`,
-    );
+  for (const { key, reason } of vaultSourcedPresent) {
+    const detail = reason
+      ? `deprecated hand-provisioned value present; remove after rotation (${reason})`
+      : "deprecated hand-provisioned value present; remove after rotation";
+    console.log(`       ${sym.arrow}  ${yellow("vault-sourced")}  ${cyan(key)}  ${dim(detail)}`);
   }
 
   for (const { key, reason } of deprecatedPresent) {
