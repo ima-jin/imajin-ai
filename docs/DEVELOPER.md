@@ -158,7 +158,6 @@ Code shared across services lives in `packages/`:
 |---------|-------------|
 | `@imajin/auth` | Ed25519 signing, DIDs, identity |
 | `@imajin/db` | Database (postgres-js + drizzle-orm) |
-| `@imajin/pay` | Stripe + Solana payments |
 | `@imajin/ui` | Shared React components (NavBar, Footer) |
 | `@imajin/input` | Input widgets (emoji, voice, GPS, upload) |
 | `@imajin/media` | Media browser components |

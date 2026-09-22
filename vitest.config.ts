@@ -86,8 +86,6 @@ export default defineConfig({
       { find: '@imajin/fair', replacement: resolve(__dirname, 'packages/fair/src/index.ts') },
       { find: '@imajin/ui/server', replacement: resolve(__dirname, 'packages/ui/src/server.ts') },
       { find: '@imajin/ui', replacement: resolve(__dirname, 'packages/ui/src/index.ts') },
-      { find: '@imajin/pay/providers', replacement: resolve(__dirname, 'packages/pay/src/providers/index.ts') },
-      { find: '@imajin/pay', replacement: resolve(__dirname, 'packages/pay/src/index.ts') },
       // #1011 phase 2 (#2142): newly built packages, same rationale as above —
       // vitest runs before build in CI, so every package that now ships a
       // real dist build needs to be aliased straight to source for tests.
