@@ -29,6 +29,7 @@ import * as connectorsSchema from './schemas/connectors';
 import * as usageSchema from './schemas/usage';
 import * as operatorApprovalsSchema from './schemas/operator-approvals';
 import * as googleSchema from './schemas/google';
+import * as accessSchema from './schemas/access';
 
 const schema = {
   ...authSchema,
@@ -60,6 +61,7 @@ const schema = {
   ...usageSchema,
   ...operatorApprovalsSchema,
   ...googleSchema,
+  ...accessSchema,
 };
 
 export const db = createDb(schema);
@@ -94,6 +96,7 @@ export * from './schemas/connectors';
 export * from './schemas/usage';
 export * from './schemas/operator-approvals';
 export * from './schemas/google';
+export * from './schemas/access';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";

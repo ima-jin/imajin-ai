@@ -203,6 +203,18 @@ export const ATTESTATION_TYPES = [
   // purpose. Binds only purpose/grantId/contentHash — never the generated
   // bytes. See apps/kernel/src/lib/vault/internal-secret.ts.
   'vault.secret.generated',
+
+  // Delegate-grant bearer credential (#2252) — the outbound shape for
+  // static-header foreign clients (Meta Muse consumer connector / Muse
+  // Code) that cannot complete an OAuth+PKCE dance. Minted mechanically
+  // (kernel node key) at every step of the knock -> approve -> use ->
+  // revoke lifecycle; never bilateral, never awaiting a countersignature.
+  // See MECHANICAL_ATTESTATION_TYPES below.
+  'access.knock',
+  'access.bearer.issued',
+  'access.bearer.used',
+  'access.bearer.denied',
+  'access.bearer.revoked',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -273,6 +285,14 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #2245 — minted mechanically, exactly once, on first-boot self-
   // provisioning of an internal secret. See ATTESTATION_TYPES above.
   'vault.secret.generated',
+  // #2252 — minted mechanically by the kernel node key at every step of
+  // the delegate-grant bearer lifecycle (knock/issue/use/deny/revoke).
+  // See ATTESTATION_TYPES above.
+  'access.knock',
+  'access.bearer.issued',
+  'access.bearer.used',
+  'access.bearer.denied',
+  'access.bearer.revoked',
 ] as const;
 
 /**

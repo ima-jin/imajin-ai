@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { UsageFeedPanel } from './usage-feed-panel';
 import { OperatorApprovalsPanel } from './operator-approvals-panel';
 import { VaultKeysPanel } from './vault-keys-panel';
+import { AccessBearersPanel } from './access-bearers-panel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -383,6 +384,13 @@ export default function JinPage() {
             ABOVE the operator-approvals panel so a freshly-raised vault
             proposal's confirm card appears directly below it. */}
         <VaultKeysPanel />
+
+        {/* Delegate-grant bearers (#2252) — knock/manage self-service,
+            visible to any signed-in identity; renders nothing when signed
+            out. Rendered ABOVE the operator-approvals panel so a freshly
+            raised knock's confirm card appears directly below it, same
+            placement convention as VaultKeysPanel above. */}
+        <AccessBearersPanel />
 
         {/* Operator approvals (#2059) — gateway restart / config proposals,
             visible only to the node operator; renders nothing otherwise. */}

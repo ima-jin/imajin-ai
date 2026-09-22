@@ -37,6 +37,7 @@ import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-ap
 import { decideOperatorApproval } from '@/src/lib/notify/operator-approvals-service';
 import { parseOperatorSignature } from '@/src/lib/notify/operator-countersign';
 import { executeVaultApproval } from '@/src/lib/vault/approvals-execution';
+import { executeAccessApproval } from '@/src/lib/access/approvals-execution';
 
 const log = createLogger('kernel:operator-approvals:decision');
 
@@ -50,29 +51,55 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 /**
- * #2247: approving on the canvas IS the signing event for a vault:*
- * proposal (mint/grant/rotate/revoke). `decideOperatorApproval` itself
- * stays source-agnostic (#2152) — it only records the witnessed decision
- * — so the actual vault mutation runs here, right after, and ONLY for a
- * successful 'approve' on a vault-sourced proposal. A mutation failure is
+ * #2247/#2252: approving on the canvas IS the signing event for a vault:*
+ * or access:* proposal. `decideOperatorApproval` itself stays
+ * source-agnostic (#2152) — it only records the witnessed decision — so
+ * the actual mutation runs here, right after, and ONLY for a successful
+ * 'approve' on a vault- or access-sourced proposal. A mutation failure is
  * reported back as `executionError` without un-recording the decision
- * itself, which is durable regardless of outcome. Extracted out of POST so
- * its cognitive complexity stays under the SonarCloud threshold.
+ * itself, which is durable regardless of outcome. `data` (#2252) carries a
+ * ONE-TIME reveal payload back to the caller — currently only the freshly
+ * minted delegate-grant bearer plaintext; never persisted anywhere past
+ * this single response. Extracted out of POST so its cognitive complexity
+ * stays under the SonarCloud threshold.
  */
-async function runVaultExecutionIfApplicable(
+interface ExecutionOutcome {
+  error?: string;
+  data?: Record<string, unknown>;
+}
+
+async function runProposalExecutionIfApplicable(
   proposalId: string,
   decision: string,
   card: Parameters<typeof executeVaultApproval>[0],
-): Promise<string | undefined> {
-  if (decision !== 'approve' || card.source !== 'vault') {
-    return undefined;
+): Promise<ExecutionOutcome> {
+  if (decision !== 'approve') {
+    return {};
   }
-  const execution = await executeVaultApproval(card);
-  if (execution.ok) {
-    return undefined;
+  if (card.source === 'vault') {
+    const execution = await executeVaultApproval(card);
+    if (execution.ok) return {};
+    log.error({ proposalId, kind: card.kind, error: execution.error }, 'Vault proposal approved but execution failed');
+    return { error: execution.error };
   }
-  log.error({ proposalId, kind: card.kind, error: execution.error }, 'Vault proposal approved but execution failed');
-  return execution.error;
+  if (card.source === 'access') {
+    const execution = await executeAccessApproval(card);
+    if (execution.ok) return { data: { ...execution.data } };
+    log.error({ proposalId, kind: card.kind, error: execution.error }, 'Access proposal approved but execution failed');
+    return { error: execution.error };
+  }
+  return {};
+}
+
+/** Assembles the decision response body, folding in `executionError`/`data` only when present. Extracted purely to keep POST's own cognitive complexity down. */
+function buildDecisionResponseBody(
+  card: Parameters<typeof executeVaultApproval>[0],
+  outcome: ExecutionOutcome,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { approval: card };
+  if (outcome.error) body.executionError = outcome.error;
+  if (outcome.data) body.data = outcome.data;
+  return body;
 }
 
 export async function POST(
@@ -148,12 +175,9 @@ export async function POST(
       return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
     }
 
-    const executionError = await runVaultExecutionIfApplicable(proposalId, decision, result.card);
+    const outcome = await runProposalExecutionIfApplicable(proposalId, decision, result.card);
 
-    return NextResponse.json(
-      executionError ? { approval: result.card, executionError } : { approval: result.card },
-      { headers: cors },
-    );
+    return NextResponse.json(buildDecisionResponseBody(result.card, outcome), { headers: cors });
   } catch (err) {
     log.error({ err: String(err), proposalId, operatorDid }, 'decideOperatorApproval failed');
     return NextResponse.json({ error: 'Failed to record decision' }, { status: 500, headers: cors });

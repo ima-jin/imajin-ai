@@ -20,17 +20,22 @@ import {
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval, mockExecuteAccessApproval } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockDecide: vi.fn(),
   mockExecuteVaultApproval: vi.fn(),
+  mockExecuteAccessApproval: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
 
 vi.mock('@/src/lib/vault/approvals-execution', () => ({
   executeVaultApproval: mockExecuteVaultApproval,
+}));
+
+vi.mock('@/src/lib/access/approvals-execution', () => ({
+  executeAccessApproval: mockExecuteAccessApproval,
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -85,6 +90,7 @@ beforeEach(() => {
   mockRequireAuth.mockResolvedValue({ identity: operatorIdentity() });
   mockDecide.mockResolvedValue({ ok: true, card: pendingApprovalCard({ status: 'approved' }) });
   mockExecuteVaultApproval.mockResolvedValue({ ok: true });
+  mockExecuteAccessApproval.mockResolvedValue({ ok: true, data: { bearer: 'plaintext-bearer', bearerId: 'dgb_1', expiresAt: '2026-04-01T00:00:00.000Z', hardCapAt: '2026-04-15T00:00:00.000Z' } });
 });
 
 describe('OPTIONS /jin/api/operator-approvals/:proposalId/decision', () => {
@@ -354,6 +360,57 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
       const body = (await res.json()) as { approval: { status: string }; executionError?: string };
       expect(body.approval.status).toBe('approved');
       expect(body.executionError).toBe('vault:mint proposal is missing purpose/requesterDid');
+    });
+  });
+
+  // #2252: approving an access:* proposal (a delegate-grant bearer knock)
+  // is the signing event for the bearer mint, executed right after the
+  // decision is recorded — mirrors the vault bridge above, but ALSO returns
+  // the freshly minted bearer plaintext exactly once via `data`.
+  describe('access proposal execution bridge (#2252)', () => {
+    it('calls executeAccessApproval when an access-sourced proposal is approved and returns data.bearer', async () => {
+      mockDecide.mockResolvedValueOnce({
+        ok: true,
+        card: pendingApprovalCard({ status: 'approved', source: 'access', kind: 'access:bearer-grant' }),
+      });
+
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockExecuteAccessApproval).toHaveBeenCalledTimes(1);
+      expect(mockExecuteVaultApproval).not.toHaveBeenCalled();
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data?: { bearer: string }; executionError?: string };
+      expect(body.data?.bearer).toBe('plaintext-bearer');
+      expect(body.executionError).toBeUndefined();
+    });
+
+    it('does not execute for a reject decision on an access-sourced proposal', async () => {
+      mockDecide.mockResolvedValueOnce({
+        ok: true,
+        card: pendingApprovalCard({ status: 'denied', source: 'access', kind: 'access:bearer-grant' }),
+      });
+
+      const res = await POST(makeReq({ decision: 'reject' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockExecuteAccessApproval).not.toHaveBeenCalled();
+      const body = (await res.json()) as { data?: unknown };
+      expect(body.data).toBeUndefined();
+      expect(res.status).toBe(200);
+    });
+
+    it('surfaces an access execution failure as executionError, with no data, without failing the request', async () => {
+      mockDecide.mockResolvedValueOnce({
+        ok: true,
+        card: pendingApprovalCard({ status: 'approved', source: 'access', kind: 'access:bearer-grant' }),
+      });
+      mockExecuteAccessApproval.mockResolvedValueOnce({ ok: false, error: 'Delegate-grant knock has expired' });
+
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { executionError?: string; data?: unknown };
+      expect(body.executionError).toBe('Delegate-grant knock has expired');
+      expect(body.data).toBeUndefined();
     });
   });
 });

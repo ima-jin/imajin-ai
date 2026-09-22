@@ -78,6 +78,18 @@
       "firstMigration": "0099_delegation_grants.sql",
       "notes": ""
     },
+    "auth.delegate_grant_requests": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0152_delegate_grant_bearers.sql",
+      "notes": ""
+    },
+    "auth.delegate_grant_bearers": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0152_delegate_grant_bearers.sql",
+      "notes": ""
+    },
     "auth.devices": {
       "owner": "kernel",
       "schema": "auth",
