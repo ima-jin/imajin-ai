@@ -73,6 +73,17 @@ vi.mock('@/src/lib/mcp/server', () => ({
   })),
 }));
 
+// ─── Mock the delegate-grant bearer fallback (#2252) ───────────────────────
+// This module transitively imports `@/src/db`, which requires DATABASE_URL
+// at module-eval time — unmocked, it would blow up the whole import graph in
+// this test's `await import('../../../../app/mcp/route')` below. Every test
+// here always supplies a JWT payload (or deliberately none), so the delegate-
+// grant fallback is only ever reached on the JWT-failure paths, where
+// 'unknown' reproduces this suite's pre-#2252 401 invalid_token expectation.
+vi.mock('@/src/lib/access/delegate-grant', () => ({
+  resolveDelegateGrantBearer: vi.fn(async () => ({ ok: false as const, reason: 'unknown' as const })),
+}));
+
 // Import AFTER mocks are registered
 const { POST, OPTIONS } = await import('../../../../app/mcp/route');
 import { verifyAppToken } from '@/src/lib/auth/jwt';
