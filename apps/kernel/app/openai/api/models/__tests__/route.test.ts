@@ -19,7 +19,7 @@ const openaiMockLoadSealed = vi.fn();
 const openaiMockKeyPending = vi.fn();
 const mockSetModelId = vi.fn();
 
-const { resolveOwnerDid: openaiMockResolveOwnerDid } = mockModelPickerRouteDeps();
+const { resolveOwnerDid: openaiMockResolveOwnerDid, notifyModelsChanged: openaiMockNotifyModelsChanged } = mockModelPickerRouteDeps();
 
 vi.doMock('@/src/lib/openai/connector', () => ({
   loadOpenaiSealedCredentials: openaiMockLoadSealed,
@@ -58,5 +58,6 @@ describeModelPickerRouteContract({
     loadSealed: openaiMockLoadSealed,
     keyPending: openaiMockKeyPending,
     setModelId: mockSetModelId,
+    notifyModelsChanged: openaiMockNotifyModelsChanged,
   },
 });

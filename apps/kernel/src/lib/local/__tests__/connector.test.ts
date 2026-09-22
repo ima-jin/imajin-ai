@@ -74,6 +74,13 @@ vi.mock('@/src/lib/kernel/connector-registry-store', () => ({
   revokeConnectorRegistration: vi.fn(async () => {}),
 }));
 
+const notifyCredentialSealedMock = vi.fn(async () => {});
+const notifyCredentialUnsealedMock = vi.fn(async () => {});
+vi.mock('@/src/lib/notify/connector-events', () => ({
+  notifyConnectorCredentialSealed: notifyCredentialSealedMock,
+  notifyConnectorCredentialUnsealed: notifyCredentialUnsealedMock,
+}));
+
 const checkEgressTargetMock = vi.fn();
 vi.mock('@/src/lib/kernel/egress-guard', () => ({
   checkEgressTarget: (...args: unknown[]) => checkEgressTargetMock(...args),
@@ -104,6 +111,8 @@ describe('local connector', () => {
     grantRevokeMock.mockClear();
     loadAndUnsealMock.mockClear();
     loadAndUnsealMock.mockImplementation(async (field: string) => vaultStore.get(field));
+    notifyCredentialSealedMock.mockClear();
+    notifyCredentialUnsealedMock.mockClear();
   });
 
   it('rejects an unsafe baseUrl and seals nothing', async () => {
@@ -183,6 +192,7 @@ describe('local connector', () => {
     checkEgressTargetMock.mockResolvedValueOnce({ ok: true, url: new URL('http://ollama.lan:11434'), ip: '192.168.1.50', family: 4 });
     await saveBaseUrl(DID, 'http://ollama.lan:11434');
     await sealBearerToken(DID, 'secret-token');
+    notifyCredentialSealedMock.mockClear();
     activeGrant = true;
 
     const revoked = await disconnect(DID);
@@ -194,6 +204,36 @@ describe('local connector', () => {
 
   it('disconnect is a safe no-op (returns false) when nothing was ever configured', async () => {
     expect(await disconnect(DID)).toBe(false);
+  });
+
+  // ── #2220: connector.models.changed wiring (enable/disable) ──────────────
+
+  it('sealBearerToken fires connector.credential.sealed (cascades to models.changed) exactly once', async () => {
+    checkEgressTargetMock.mockResolvedValueOnce({ ok: true, url: new URL('http://ollama.lan:11434'), ip: '192.168.1.50', family: 4 });
+
+    await sealBearerToken(DID, 'secret-token', 'http://ollama.lan:11434');
+
+    expect(notifyCredentialSealedMock).toHaveBeenCalledTimes(1);
+    expect(notifyCredentialSealedMock).toHaveBeenCalledWith(DID, 'local');
+  });
+
+  it('disconnect fires connector.credential.unsealed exactly once when something was actually revoked', async () => {
+    checkEgressTargetMock.mockResolvedValueOnce({ ok: true, url: new URL('http://ollama.lan:11434'), ip: '192.168.1.50', family: 4 });
+    await saveBaseUrl(DID, 'http://ollama.lan:11434');
+    notifyCredentialSealedMock.mockClear();
+
+    const revoked = await disconnect(DID);
+
+    expect(revoked).toBe(true);
+    expect(notifyCredentialUnsealedMock).toHaveBeenCalledTimes(1);
+    expect(notifyCredentialUnsealedMock).toHaveBeenCalledWith(DID, 'local');
+  });
+
+  it('disconnect does not fire connector.credential.unsealed on a no-op (nothing to revoke)', async () => {
+    const revoked = await disconnect(DID);
+
+    expect(revoked).toBe(false);
+    expect(notifyCredentialUnsealedMock).not.toHaveBeenCalled();
   });
 
   it('bearerTokenPending reports true only while a sealed token awaits owner approval', async () => {

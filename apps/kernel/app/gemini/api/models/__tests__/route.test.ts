@@ -29,7 +29,7 @@ const mockLoadGeminiSealedCredentials = vi.fn();
 const mockGeminiKeyPending = vi.fn();
 const mockSetModelId = vi.fn();
 
-const { resolveOwnerDid: mockResolveConnectorOwnerDid } = mockModelPickerRouteDeps();
+const { resolveOwnerDid: mockResolveConnectorOwnerDid, notifyModelsChanged: mockNotifyModelsChanged } = mockModelPickerRouteDeps();
 
 vi.doMock('@/src/lib/gemini/connector', () => ({
   loadGeminiSealedCredentials: mockLoadGeminiSealedCredentials,
@@ -58,6 +58,7 @@ beforeEach(() => {
     loadSealedCredentials: mockLoadGeminiSealedCredentials,
     keyPending: mockGeminiKeyPending,
     setModelId: mockSetModelId,
+    notifyModelsChanged: mockNotifyModelsChanged,
     ownerDid: OWNER_DID,
     apiKey: API_KEY,
   });
@@ -80,6 +81,7 @@ describeModelPickerAuthAndValidationContract({
     loadSealedCredentials: mockLoadGeminiSealedCredentials,
     keyPending: mockGeminiKeyPending,
     setModelId: mockSetModelId,
+    notifyModelsChanged: mockNotifyModelsChanged,
   },
 });
 
@@ -189,6 +191,9 @@ describe('PUT (#1818: validates liveness before persisting)', () => {
       expect.objectContaining({ method: 'POST' }),
     );
     expect(mockSetModelId).toHaveBeenCalledWith(OWNER_DID, 'gemini-3.6-flash');
+    // #2220 — explicit catalog-refresh trigger, advisory catalog-update hint.
+    expect(mockNotifyModelsChanged).toHaveBeenCalledTimes(1);
+    expect(mockNotifyModelsChanged).toHaveBeenCalledWith(OWNER_DID, 'gemini', 'catalog-update');
   });
 
   it('trims before probing and storing', async () => {

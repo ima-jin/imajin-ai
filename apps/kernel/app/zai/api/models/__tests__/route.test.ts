@@ -19,7 +19,7 @@ const zaiMockLoadSealed = vi.fn();
 const zaiMockKeyPending = vi.fn();
 const mockSetModelId = vi.fn();
 
-const { resolveOwnerDid: zaiMockResolveOwnerDid } = mockModelPickerRouteDeps();
+const { resolveOwnerDid: zaiMockResolveOwnerDid, notifyModelsChanged: zaiMockNotifyModelsChanged } = mockModelPickerRouteDeps();
 
 vi.doMock('@/src/lib/zai/connector', () => ({
   loadZaiSealedCredentials: zaiMockLoadSealed,
@@ -58,5 +58,6 @@ describeModelPickerRouteContract({
     loadSealed: zaiMockLoadSealed,
     keyPending: zaiMockKeyPending,
     setModelId: mockSetModelId,
+    notifyModelsChanged: zaiMockNotifyModelsChanged,
   },
 });
