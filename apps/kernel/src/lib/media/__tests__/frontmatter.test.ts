@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import matter from 'gray-matter';
-import { serializeFrontmatter, parseFrontmatter, composeArticleFile } from '../frontmatter';
+import { serializeFrontmatter, parseFrontmatter, composeArticleFile, splitFrontmatter } from '../frontmatter';
 import type { ArticleBlock } from '../article-core';
 
 const base: ArticleBlock = {
@@ -86,5 +86,56 @@ describe('round-trip (compose -> parse)', () => {
     const first = composeArticleFile(base, 'body');
     const second = composeArticleFile(base, parseFrontmatter(first).body);
     expect(second).toBe(first);
+  });
+});
+
+// #1445 — the metadata editor round-trips parse -> edit -> serialize -> save
+// strictly through this codec. These fixtures assert that repeating the
+// parse/serialize cycle on the codec's own output is stable (idempotent).
+describe('parse -> serialize -> parse stability (#1445)', () => {
+  const fixtures: Array<[string, ArticleBlock]> = [
+    ['minimal fields only', base],
+    ['all optional fields present', { ...base, subtitle: 'Sub', description: 'Desc', order: 2, status: 'POSTED' }],
+    ['a different slug/status combination', { ...base, slug: 'other-slug', status: 'REVIEW' }],
+  ];
+
+  it.each(fixtures)('is stable for %s', (_label, article) => {
+    const file = composeArticleFile(article, '# Body\n\nSome text.');
+    const firstParse = parseFrontmatter(file);
+    const reserialized = composeArticleFile(firstParse.data as unknown as ArticleBlock, firstParse.body);
+    const secondParse = parseFrontmatter(reserialized);
+
+    expect(reserialized).toBe(file);
+    expect(secondParse.data).toEqual(firstParse.data);
+    expect(secondParse.body).toBe(firstParse.body);
+  });
+});
+
+describe('splitFrontmatter', () => {
+  it('splits header and body without altering a single byte (header + body === original)', () => {
+    const file = composeArticleFile(base, '# Heading\n\nBody text.');
+    const { header, body, data } = splitFrontmatter(file);
+    expect(header + body).toBe(file);
+    expect(data.slug).toBe(base.slug);
+    expect(body.trim()).toBe('# Heading\n\nBody text.');
+  });
+
+  it('preserves unknown keys and key order verbatim in the header (never re-serializes)', () => {
+    const raw = '---\ncustomKey: "kept"\nslug: "x"\ntitle: "T"\nstatus: "DRAFT"\ndate: "2026-01-01"\n---\n\nBody\n';
+    const { header, body } = splitFrontmatter(raw);
+    expect(header).toBe('---\ncustomKey: "kept"\nslug: "x"\ntitle: "T"\nstatus: "DRAFT"\ndate: "2026-01-01"\n---\n');
+    expect(header + body).toBe(raw);
+  });
+
+  it('returns an empty header and the original text as body when there is no frontmatter', () => {
+    const md = '# Just a note\n\ntext';
+    const { header, body, data } = splitFrontmatter(md);
+    expect(header).toBe('');
+    expect(body).toBe(md);
+    expect(data).toEqual({});
+  });
+
+  it('is safe for non-string input', () => {
+    expect(splitFrontmatter(undefined as unknown as string)).toEqual({ header: '', body: '', data: {} });
   });
 });

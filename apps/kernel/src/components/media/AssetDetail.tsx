@@ -20,6 +20,7 @@ async function resolveProfile(did: string): Promise<{ name: string; avatar?: str
 import { formatSize } from "./AssetCard";
 import { AssetFilename } from "./AssetFilename";
 import { FileEditor, isTextAsset } from "./FileEditor";
+import { ArticleMetadata } from "./ArticleMetadata";
 
 interface Folder {
   id: string;
@@ -116,6 +117,8 @@ interface AssetDetailProps {
   onMoved: () => void;
   /** Fired after a successful rename so the caller can refresh its list. */
   onRenamed?: () => void;
+  /** Fired after a successful article-metadata save so the caller can refresh its list. */
+  onMetadataUpdated?: () => void;
 }
 
 function formatDate(d: Date | string | null): string {
@@ -127,7 +130,7 @@ function formatDate(d: Date | string | null): string {
   });
 }
 
-export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, onMoved, onRenamed }: Readonly<AssetDetailProps>) {
+export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, onMoved, onRenamed, onMetadataUpdated }: Readonly<AssetDetailProps>) {
   const isOwner = !!currentDid && currentDid === asset.ownerDid;
   const showFileEditor = isTextAsset(asset);
   const [editingFair, setEditingFair] = useState(false);
@@ -503,6 +506,10 @@ export function AssetDetail({ asset, folders, currentDid, onClose, onDeleted, on
             </div>
           </div>
         )}
+
+        {/* Article metadata (#1445) — the badge only renders itself when
+            metadata.article is present, so this is a no-op for non-articles. */}
+        <ArticleMetadata asset={asset} isOwner={isOwner} onSaved={() => onMetadataUpdated?.()} />
 
         {/* .fair manifest */}
         <div>
