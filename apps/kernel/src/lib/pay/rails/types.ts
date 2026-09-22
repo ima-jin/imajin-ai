@@ -66,6 +66,33 @@ export interface ListTransfersParams {
 }
 
 /**
+ * Rail-neutral webhook event (#2175 design amendment).
+ *
+ * The normalized shape every rail's webhook adapter emits from a raw,
+ * provider-verified delivery — e.g. `providers/stripe-webhook.ts`'s
+ * `toRailEvent()`. Callers outside a `providers/` adapter (the pay webhook
+ * routes, `webhook-handlers.ts`) consume only this shape; they never see
+ * the rail's native SDK event type. `raw` carries the rail-native event's
+ * inner entity (e.g. a Stripe checkout session or payment intent) as a
+ * generic, JSON-safe bag — callers cast it to one of the `*Like` interfaces
+ * in `../webhook-event-shapes.ts` for the fields they need.
+ */
+export interface RailEvent {
+  /** Stable adapter name, matching `WithdrawRail.name` (e.g. `'stripe'`). */
+  rail: string;
+  /** The rail-native event type string (e.g. `'checkout.session.completed'`). */
+  type: string;
+  /** Opaque external reference for the event's subject entity (e.g. a checkout session or payment intent id), or `null` when the entity carries none. */
+  externalRef: string | null;
+  /** Amount in minor units (e.g. cents), or `null` when not applicable to this event type. */
+  amount: number | null;
+  /** ISO currency code as reported by the rail, or `null` when not applicable. */
+  currency: string | null;
+  /** The rail-native event's inner entity, as a generic JSON-safe bag. */
+  raw: Record<string, unknown>;
+}
+
+/**
  * A withdrawal payment rail. Implementations own everything rail-specific
  * (SDK client, credential lookup, wire format) behind these three methods.
  */
