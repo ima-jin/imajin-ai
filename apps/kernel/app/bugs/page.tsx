@@ -77,14 +77,14 @@ function ReportCard({ r, reporter }: Readonly<{ r: BugReport; reporter?: Reporte
             </span>
             <StatusBadge status={r.status} />
             <span>{formatDate(r.createdAt)}</span>
-            {r.status === 'imported' && r.githubIssueUrl && (
+            {r.status === 'imported' && r.externalUrl && (
               <a
-                href={r.githubIssueUrl}
+                href={r.externalUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="text-orange-400 hover:text-orange-300 transition-colors"
               >
-                #{r.githubIssueNumber} on GitHub →
+                #{r.externalRef?.split('#').pop()} on {r.tracker === 'github' ? 'GitHub' : r.tracker ?? 'tracker'} →
               </a>
             )}
             {r.status === 'duplicate' && r.duplicateOf && (

@@ -1,4 +1,4 @@
-import { uuid, text, timestamp, boolean, index, unique, pgSchema, integer } from 'drizzle-orm/pg-core';
+import { uuid, text, timestamp, boolean, index, unique, pgSchema } from 'drizzle-orm/pg-core';
 
 export const wwwSchema = pgSchema('www');
 
@@ -65,8 +65,13 @@ export const bugReports = wwwSchema.table('bug_reports', {
   userAgent: text('user_agent'),
   viewport: text('viewport'),
   status: text('status').notNull().default('new'),
-  githubIssueNumber: integer('github_issue_number'),
-  githubIssueUrl: text('github_issue_url'),
+  // Generic issue-tracker reference (#2184) — replaces the vendor-named
+  // github_issue_number/github_issue_url columns (see 0152/0153 migrations).
+  // `tracker` names which system (e.g. 'github'); `externalRef` is a
+  // human-readable id (e.g. "ima-jin/imajin-ai#2183"); `externalUrl` links to it.
+  tracker: text('tracker'),
+  externalRef: text('external_ref'),
+  externalUrl: text('external_url'),
   adminNotes: text('admin_notes'),
   duplicateOf: text('duplicate_of'),
   reviewedBy: text('reviewed_by'),
@@ -75,6 +80,7 @@ export const bugReports = wwwSchema.table('bug_reports', {
 }, (table) => ({
   reporterIdx: index('idx_bug_reports_reporter').on(table.reporterDid),
   statusIdx: index('idx_bug_reports_status').on(table.status),
+  trackerIdx: index('idx_bug_reports_tracker').on(table.tracker),
 }));
 
 // Types

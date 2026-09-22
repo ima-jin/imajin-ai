@@ -882,6 +882,10 @@ async function collectPaginated<T>(
  *  1. active `github:write` channel_links row + sealed credential (fail-closed, throws).
  *  2. requireAppendGate() confirm rail (fail-pending on no live append-approval).
  *
+ * `labels` is optional and omitted from the request entirely when absent —
+ * added for #2184 (bug-report import) so a caller like `lib/github/bug-import.ts`
+ * can label the created issue without a second GitHub client.
+ *
  * Returns GitHubWriteResult<GitHubIssue>:
  *  - { status: 'done', data }    — write executed; action.done emitted.
  *  - { status: 'pending', ... }  — proposal recorded; action.proposed emitted.
@@ -891,6 +895,7 @@ export async function createIssue(
   repo: string,
   title: string,
   body: string,
+  labels?: readonly string[],
 ): Promise<GitHubWriteResult<GitHubIssue>> {
   // Step 1: credential gate (fail-closed — throws on no grant / no credential).
   const token = await requireGrantAndToken(ownerDid, 'github:write');
@@ -916,7 +921,7 @@ export async function createIssue(
     method: 'POST',
     path: `/repos/${repo}/issues`,
     token: gate.token,
-    body: { title, body },
+    body: labels !== undefined && labels.length > 0 ? { title, body, labels } : { title, body },
   });
 
   // Step 4: attribution bus event (non-fatal).

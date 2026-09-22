@@ -4,13 +4,13 @@ import { eq } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { isAdmin } from '@/src/lib/www/session-auth';
 import { createLogger } from '@imajin/logger';
+import { importBugAsIssue, bugImportConnectorErrorResponse } from '@/src/lib/github/bug-import';
 
 const log = createLogger('kernel');
 
-const GITHUB_REPO = process.env.GITHUB_REPO || 'ima-jin/imajin-ai';
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-
-// POST /api/bugs/[id]/import — create a GitHub issue from a bug report (admin only)
+// POST /api/bugs/[id]/import — create a GitHub issue from a bug report (admin
+// only), routed through the GitHub connector (#2184). There is deliberately
+// no GITHUB_TOKEN/GITHUB_REPO env fallback here — see lib/github/bug-import.ts.
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const authResult = await requireAuth(request);
@@ -22,64 +22,35 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  if (!GITHUB_TOKEN) {
-    return NextResponse.json({ error: 'GITHUB_TOKEN not configured' }, { status: 500 });
+  let result;
+  try {
+    result = await importBugAsIssue(params.id, identity.id);
+  } catch (err) {
+    const connectorResponse = bugImportConnectorErrorResponse(err);
+    if (connectorResponse) return connectorResponse;
+
+    log.error({ err: String(err), bugId: params.id }, 'GitHub connector bug import failed');
+    return NextResponse.json({ error: 'Failed to create GitHub issue' }, { status: 502 });
   }
 
-  const [report] = await db.select().from(bugReports).where(eq(bugReports.id, params.id));
-  if (!report) {
+  if (result.status === 'not_found') {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const typeLabelMap: Record<string, string> = { suggestion: 'Suggestion', question: 'Question', other: 'Feedback' };
-  const typeLabel = typeLabelMap[report.type] ?? 'Bug Report';
-  const title = `[${typeLabel}] ${report.description.slice(0, 80)}`;
-  const ghLabel = report.type === 'suggestion' ? 'enhancement' : 'bug';
-
-  const bodyParts: string[] = [report.description];
-
-  if (report.screenshotUrl) {
-    bodyParts.push(`\n## Screenshot\n![Screenshot](${report.screenshotUrl})`);
+  if (result.status === 'pending') {
+    return NextResponse.json(
+      { pending: true, proposalId: result.proposalId, message: result.message },
+      { status: 202 },
+    );
   }
-
-  const meta: string[] = [];
-  if (report.pageUrl) meta.push(`**Page:** ${report.pageUrl}`);
-  if (report.viewport) meta.push(`**Viewport:** ${report.viewport}`);
-  if (report.userAgent) meta.push(`**User Agent:** \`${report.userAgent}\``);
-  if (report.reporterDid) meta.push(`**Reporter:** ${report.reporterDid}`);
-  if (report.reporterName) meta.push(`**Name:** ${report.reporterName}`);
-
-  if (meta.length > 0) {
-    bodyParts.push(`\n## Metadata\n${meta.join('\n')}`);
-  }
-
-  const issueBody = bodyParts.join('\n');
-
-  const ghRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/issues`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${GITHUB_TOKEN}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    body: JSON.stringify({ title, body: issueBody, labels: [ghLabel] }),
-  });
-
-  if (!ghRes.ok) {
-    const error = await ghRes.text();
-    log.error({ err: error, bugId: params.id }, 'GitHub API error');
-    return NextResponse.json({ error: 'Failed to create GitHub issue', details: error }, { status: 502 });
-  }
-
-  const issue = await ghRes.json() as { number: number; html_url: string };
 
   const [updated] = await db
     .update(bugReports)
     .set({
       status: 'imported',
-      githubIssueNumber: issue.number,
-      githubIssueUrl: issue.html_url,
+      tracker: result.tracker,
+      externalRef: result.externalRef,
+      externalUrl: result.externalUrl,
       reviewedBy: identity.id,
       reviewedAt: new Date(),
     })
