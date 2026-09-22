@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import type { Asset } from "@/src/db/schemas/media";
+import { splitFrontmatter } from "@/src/lib/media/frontmatter";
 
 // Lazily loaded — prismjs is side-effectful and large
 let highlightCode: ((code: string, lang: "json" | "markdown" | "none") => string) | null = null;
@@ -39,6 +40,11 @@ interface FileEditorProps {
 export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [content, setContent] = useState<string | null>(null);
+  // Verbatim frontmatter header ("" when the file has none), split out so it
+  // never renders in the editor/preview (#1445). Reattached byte-for-byte on
+  // save — body edits never touch or destroy it, and unknown keys/order are
+  // preserved because it is never re-parsed or re-serialized.
+  const [frontmatterHeader, setFrontmatterHeader] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
@@ -75,31 +81,42 @@ export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
   useEffect(() => {
     setLoading(true);
     setContent(null);
+    setFrontmatterHeader("");
     fetch(`/media/api/assets/${asset.id}?t=${Date.now()}`, { credentials: "include", cache: "no-store", headers: { Accept: "application/octet-stream" } })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.text();
       })
       .then((text) => {
-        setContent(text);
+        // Only markdown files carry article frontmatter (#1445) — other text
+        // types (json/plain/etc.) are shown and edited unchanged.
+        const { header, body } = detectLang(asset.filename) === "markdown"
+          ? splitFrontmatter(text)
+          : { header: "", body: text };
+        setFrontmatterHeader(header);
+        setContent(body);
         setLoading(false);
       })
       .catch(() => {
         setContent("");
         setLoading(false);
       });
-  }, [asset.id]);
+  }, [asset.id, asset.filename]);
 
   const handleSave = useCallback(async () => {
     if (content === null) return;
     setSaving(true);
     setSaveStatus("idle");
     try {
+      // Reattach the original frontmatter header verbatim — this editor only
+      // ever edits the body, so the header (and any keys unknown to the
+      // structured metadata editor) is never touched (#1445).
+      const payload = frontmatterHeader ? `${frontmatterHeader}${content}` : content;
       const res = await fetch(`/media/api/assets/${asset.id}/content`, {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: payload }),
       });
       setSaveStatus(res.ok ? "saved" : "error");
     } catch {
@@ -108,7 +125,7 @@ export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
       setSaving(false);
       setTimeout(() => setSaveStatus("idle"), 2500);
     }
-  }, [asset.id, content]);
+  }, [asset.id, content, frontmatterHeader]);
 
   // Keyboard shortcut: Ctrl/Cmd+S to save
   useEffect(() => {
@@ -200,6 +217,14 @@ export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
         </div>
 
         <span className="text-xs text-zinc-600 font-mono">{asset.filename}</span>
+        {frontmatterHeader && (
+          <span
+            className="text-[10px] text-zinc-600 border border-zinc-800 rounded px-1.5 py-0.5"
+            title="Frontmatter is hidden here — view or edit it from the 'Has metadata' panel"
+          >
+            frontmatter hidden
+          </span>
+        )}
 
         <div className="flex-1" />
 

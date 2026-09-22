@@ -210,6 +210,9 @@ export function MediaManager({ session, search = '' }: Readonly<MediaManagerProp
               onRenamed={() => {
                 loadAssets();
               }}
+              onMetadataUpdated={() => {
+                loadAssets();
+              }}
             />
           ) : (
             <AssetGrid

@@ -78,3 +78,36 @@ export function composeArticleFile(article: ArticleBlock, body: string): string 
   const trimmedBody = body.replace(/^\n+/, "");
   return trimmedBody.length > 0 ? `${header}\n${trimmedBody}` : header;
 }
+
+export interface FrontmatterSplit {
+  /** The verbatim `---`-delimited header, byte-for-byte as it appears in the
+   *  source (including any keys unknown to ArticleBlock). Empty string when
+   *  there is no frontmatter. */
+  header: string;
+  /** Body with the header removed — identical to parseFrontmatter(...).body. */
+  body: string;
+  /** Parsed frontmatter key/values — identical to parseFrontmatter(...).data. */
+  data: Record<string, unknown>;
+}
+
+/**
+ * Split a markdown file into its verbatim frontmatter header and body,
+ * without altering a single byte of the header (#1445).
+ *
+ * Viewers use this to hide the raw YAML from rendered/edited output while
+ * still being able to reattach the ORIGINAL header unchanged when only the
+ * body is edited — so unknown keys and key order always survive, even for
+ * frontmatter that isn't a valid article. This never re-serializes; only the
+ * structured metadata editor (routes/article.ts) writes YAML, via
+ * serializeFrontmatter/composeArticleFile above.
+ *
+ * gray-matter's `content` is always an exact suffix of the input, so the
+ * header is recovered by slicing off that many bytes from the start —
+ * `header + body` therefore always reconstructs the original string exactly.
+ */
+export function splitFrontmatter(markdown: string): FrontmatterSplit {
+  if (typeof markdown !== "string") return { header: "", body: "", data: {} };
+  const { data, body } = parseFrontmatter(markdown);
+  if (Object.keys(data).length === 0) return { header: "", body, data };
+  return { header: markdown.slice(0, markdown.length - body.length), body, data };
+}

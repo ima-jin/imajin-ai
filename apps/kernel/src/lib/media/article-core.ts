@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 // Relative (not "@/") so it resolves under the test runner, which loads this
 // module for real (only "@/src/db" is mocked).
 import { parseFrontmatter } from "./frontmatter";
+import { SLUG_REGEX, VALID_STATUSES, type ArticleStatus } from "./article-constants";
 
 /**
  * Article domain core (#1170, #1193).
@@ -17,9 +18,11 @@ import { parseFrontmatter } from "./frontmatter";
  * (apps/kernel/src/lib/www/articles.ts).
  */
 
-export const SLUG_REGEX = /^[a-z0-9-]+$/;
-export const VALID_STATUSES = ["POSTED", "REVIEW", "DRAFT"] as const;
-export type ArticleStatus = (typeof VALID_STATUSES)[number];
+// Re-exported from article-constants.ts (#1445) so client components can
+// import the validation rules without pulling this module's server-only
+// "@/src/db" dependency into the browser bundle.
+export { SLUG_REGEX, VALID_STATUSES } from "./article-constants";
+export type { ArticleStatus } from "./article-constants";
 
 /** Raw article fields as received from a request body, tool args, or frontmatter. */
 export interface ArticleInput {
