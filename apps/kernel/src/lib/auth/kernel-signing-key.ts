@@ -11,6 +11,16 @@
  * instead of an operator hand-copying it into `CORPUS_KERNEL_PUBLIC_KEY`
  * (#2024's env-pinned trust root).
  *
+ * Multi-key / rotation grace window (#2244's "on key rotation, serve both
+ * old and new during a grace window"): the document always carries a
+ * `keys` array plus `current` naming the active `kid`. There is no
+ * automatic rotation mechanism in this codebase today — `AUTH_PRIVATE_KEY`
+ * is a single env var an operator changes by hand — so the "old" key
+ * during a rotation is whatever the operator explicitly names via
+ * `AUTH_PREVIOUS_PUBLIC_KEY` (+ a required `..._VALID_UNTIL` bound, so
+ * dual trust can never linger indefinitely by omission). See
+ * `getPreviousKeyEntries()`.
+ *
  * Never touches or derives anything beyond the read-only
  * `authCrypto.getPublicKey()` projection of the configured private key; no
  * private material is held in the returned document or anywhere near it.
@@ -20,20 +30,23 @@ import { crypto as authCrypto } from '@imajin/auth';
 
 export const KERNEL_SIGNING_KEY_ALG = 'Ed25519' as const;
 
-export interface KernelSigningKeyDocument {
-  /** Stable per-key identifier — a short hash of the public key itself, so it changes iff the key does. */
+export interface KernelSigningKeyEntry {
+  /** Stable per-key identifier — a hash of the public key itself, so it changes iff the key does. */
   kid: string;
-  alg: typeof KERNEL_SIGNING_KEY_ALG;
   /** Hex-encoded Ed25519 public key — same encoding `CORPUS_KERNEL_PUBLIC_KEY` has always used. */
   publicKey: string;
-  /**
-   * When this process started serving the *current* key value — captured
-   * once per process, not the key's true historical mint date (this
-   * codebase has never recorded that anywhere, and adding a persisted
-   * "key metadata" table for a value nothing treats as an expiry isn't
-   * worth the trade-off). Resets on restart or key rotation.
-   */
-  issuedAt: string;
+  algorithm: typeof KERNEL_SIGNING_KEY_ALG;
+  /** When this key became (or, for the current key, is known to have become) valid. */
+  validFrom: string;
+  /** Present only on a grace-window "previous" key — when it stops being served/trusted. */
+  validUntil?: string;
+}
+
+export interface KernelSigningKeyDocument {
+  /** Every key currently vouched for — normally just the current one, plus a previous one during a rotation grace window. */
+  keys: KernelSigningKeyEntry[];
+  /** `kid` of the key `AUTH_PRIVATE_KEY` signs with right now. */
+  current: string;
 }
 
 let cachedIssuedAt: string | null = null;
@@ -53,6 +66,43 @@ function computeKid(publicKeyHex: string): string {
 }
 
 /**
+ * Optional grace-window entry for a just-rotated-out key (#2244). Requires
+ * BOTH `AUTH_PREVIOUS_PUBLIC_KEY` and `AUTH_PREVIOUS_PUBLIC_KEY_VALID_UNTIL`
+ * — a bare "previous key" with no expiry would mean indefinite dual trust
+ * by omission, which defeats the point of a *grace window*. Once
+ * `..._VALID_UNTIL` passes, the entry stops being served automatically
+ * (the operator doesn't have to remember to remove it, only to set it).
+ *
+ * `AUTH_PREVIOUS_PUBLIC_KEY_VALID_FROM` is optional and defaults to the
+ * unix epoch: this codebase has never recorded when a key was actually
+ * minted, only that the previous key predates the current one.
+ */
+function getPreviousKeyEntries(): KernelSigningKeyEntry[] {
+  const previousPublicKey = process.env.AUTH_PREVIOUS_PUBLIC_KEY;
+  const validUntilRaw = process.env.AUTH_PREVIOUS_PUBLIC_KEY_VALID_UNTIL;
+  if (!previousPublicKey || !validUntilRaw) return [];
+  if (!authCrypto.isValidPublicKey(previousPublicKey)) return [];
+
+  const validUntil = new Date(validUntilRaw);
+  if (Number.isNaN(validUntil.getTime()) || validUntil.getTime() <= Date.now()) return [];
+
+  const validFromRaw = process.env.AUTH_PREVIOUS_PUBLIC_KEY_VALID_FROM;
+  const parsedValidFrom = validFromRaw ? new Date(validFromRaw) : null;
+  const validFrom =
+    parsedValidFrom && !Number.isNaN(parsedValidFrom.getTime()) ? parsedValidFrom.toISOString() : new Date(0).toISOString();
+
+  return [
+    {
+      kid: computeKid(previousPublicKey),
+      publicKey: previousPublicKey,
+      algorithm: KERNEL_SIGNING_KEY_ALG,
+      validFrom,
+      validUntil: validUntil.toISOString(),
+    },
+  ];
+}
+
+/**
  * Builds the well-known signing-key document, or `null` when
  * `AUTH_PRIVATE_KEY` isn't configured — e.g. a dev node relying on
  * `jwt.ts`'s ephemeral in-memory fallback key, which was never meant to be
@@ -62,11 +112,16 @@ export function getKernelSigningKeyDocument(): KernelSigningKeyDocument | null {
   const privateKey = process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) return null;
 
-  const publicKey = authCrypto.getPublicKey(privateKey);
+  const currentPublicKey = authCrypto.getPublicKey(privateKey);
+  const current: KernelSigningKeyEntry = {
+    kid: computeKid(currentPublicKey),
+    publicKey: currentPublicKey,
+    algorithm: KERNEL_SIGNING_KEY_ALG,
+    validFrom: issuedAt(),
+  };
+
   return {
-    kid: computeKid(publicKey),
-    alg: KERNEL_SIGNING_KEY_ALG,
-    publicKey,
-    issuedAt: issuedAt(),
+    keys: [current, ...getPreviousKeyEntries()],
+    current: current.kid,
   };
 }

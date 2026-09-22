@@ -8,17 +8,21 @@
  * (see `apps/kernel/src/lib/kernel/corpus-access-claim.ts`) naming exactly
  * the DID being addressed, and rejects everything else.
  *
- * Trust root: the hex Ed25519 public key matching the kernel's
- * `AUTH_PRIVATE_KEY`, resolved via `resolveTrustedKernelPublicKey()`
- * (#2244) — `CORPUS_KERNEL_PUBLIC_KEY` when set (back-compat), otherwise
- * the value fetched-and-pinned (TOFU) from the kernel's well-known
- * signing-key endpoint at boot (`../lib/kernel-trust.ts`). No network call
- * happens on the request path itself either way, which trivially satisfies
- * the "no callback" requirement from spikes/corpus-identity/README.md.
+ * Trust root: the hex Ed25519 public key(s) matching the kernel's
+ * `AUTH_PRIVATE_KEY` (and, during a rotation grace window, its
+ * just-rotated-out predecessor), resolved via
+ * `resolveTrustedKernelPublicKeys()` (#2244) — `CORPUS_KERNEL_PUBLIC_KEY`
+ * when set (back-compat, a single key), otherwise the set fetched-and-pinned
+ * (TOFU) from the kernel's well-known signing-key endpoint at boot
+ * (`../lib/kernel-trust.ts`). A claim verifying against ANY pinned key is
+ * accepted, since the claim itself carries no `kid` to disambiguate. No
+ * network call happens on the request path itself either way, which
+ * trivially satisfies the "no callback" requirement from
+ * spikes/corpus-identity/README.md.
  */
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { crypto as authCrypto } from '@imajin/auth';
-import { resolveTrustedKernelPublicKey } from '../lib/kernel-trust';
+import { resolveTrustedKernelPublicKeys } from '../lib/kernel-trust';
 
 export type CorpusAccessScope = 'corpus:read' | 'corpus:write';
 
@@ -147,17 +151,17 @@ export function createAccessClaimMiddleware(): RequestHandler {
 
   return function verifyAccessClaim(request: Request, response: Response, next: NextFunction): void {
     // Corpus must never hold (or be able to derive) the kernel's
-    // AUTH_PRIVATE_KEY (apps/kernel/.env.example) — only its public half,
+    // AUTH_PRIVATE_KEY (apps/kernel/.env.example) — only its public half(ves),
     // resolved via the env override or the TOFU pin (see the module comment
     // above). Documented in apps/corpus/.env.example.
-    const kernelPublicKey = resolveTrustedKernelPublicKey();
-    if (!kernelPublicKey) {
+    const kernelPublicKeys = resolveTrustedKernelPublicKeys();
+    if (kernelPublicKeys.length === 0) {
       response.status(401).json({ error: 'corpus service misconfigured: no trusted kernel public key' });
       return;
     }
 
     const parsed = parseClaimHeader(request.headers.authorization);
-    if (!parsed || !authCrypto.verifySync(parsed.signature, parsed.encodedClaim, kernelPublicKey)) {
+    if (!parsed || !kernelPublicKeys.some((key) => authCrypto.verifySync(parsed.signature, parsed.encodedClaim, key))) {
       response.status(401).json({ error: 'missing or invalid CorpusAccessClaim' });
       return;
     }

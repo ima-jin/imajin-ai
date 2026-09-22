@@ -1,13 +1,18 @@
 /**
  * Persists the trust-on-first-use (TOFU) pin of the kernel's Ed25519
- * signing public key (#2244, child of epic #2241).
+ * signing public key set (#2244, child of epic #2241).
  *
  * Unlike `engine/store.ts`'s `CorpusStore` — one SQLite file per owner
  * DID — this is node-level configuration: there is exactly one kernel this
- * corpus process talks to, so one singleton row in one small SQLite file
- * is enough. Reuses the same `better-sqlite3` + WAL pattern `CorpusStore`
- * already uses, under the same `data/corpus` root, rather than inventing a
- * different persistence mechanism for a single row.
+ * corpus process talks to, so one small SQLite file is enough. Reuses the
+ * same `better-sqlite3` + WAL pattern `CorpusStore` already uses, under the
+ * same `data/corpus` root, rather than inventing a different persistence
+ * mechanism for a handful of rows.
+ *
+ * Pins a SET of keys, kid-addressed, rather than a single key: the kernel's
+ * well-known endpoint can serve both a current and a just-rotated-out key
+ * during a grace window (`kernel-signing-key.ts`), and corpus must accept
+ * either while that window is open (`kernel-trust.ts`, `access-claim.ts`).
  */
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
@@ -19,18 +24,16 @@ export interface KernelTrustStoreOptions {
 }
 
 export interface PinnedKernelKey {
+  kid: string;
   publicKey: string;
-  kid: string | null;
   pinnedAt: string;
 }
 
 interface KernelTrustRow {
+  kid: string;
   public_key: string;
-  kid: string | null;
   pinned_at: string;
 }
-
-const SINGLETON_ID = 'singleton';
 
 export class KernelTrustStore {
   private readonly db: Database.Database;
@@ -45,43 +48,38 @@ export class KernelTrustStore {
 
   private migrate(): void {
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS kernel_trust (
-        id TEXT PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS kernel_trust_keys (
+        kid TEXT PRIMARY KEY,
         public_key TEXT NOT NULL,
-        kid TEXT,
         pinned_at TEXT NOT NULL
       );
     `);
   }
 
-  /** The currently pinned kernel key, or `null` before any pin has ever been recorded. */
-  get(): PinnedKernelKey | null {
-    const row = this.db
-      .prepare('SELECT public_key, kid, pinned_at FROM kernel_trust WHERE id = ?')
-      .get(SINGLETON_ID) as KernelTrustRow | undefined;
+  /** Every currently pinned key, in `kid` order. Empty before anything has ever been pinned. */
+  getAll(): PinnedKernelKey[] {
+    const rows = this.db
+      .prepare('SELECT kid, public_key, pinned_at FROM kernel_trust_keys ORDER BY kid')
+      .all() as KernelTrustRow[];
 
-    if (!row) return null;
-    return { publicKey: row.public_key, kid: row.kid, pinnedAt: row.pinned_at };
+    return rows.map((row) => ({ kid: row.kid, publicKey: row.public_key, pinnedAt: row.pinned_at }));
   }
 
   /**
-   * Records `publicKey` as the trusted pin, overwriting any previous value.
-   * Callers are responsible for only calling this on first boot (TOFU) or
-   * an explicit operator-initiated re-pin — this method itself performs no
-   * "already pinned" check, so it isn't the place that enforces "warn,
-   * never silently re-pin" (see `kernel-trust.ts`).
+   * Replaces the ENTIRE pinned key set atomically with `keys`, all stamped
+   * with the same `pinnedAt`. Callers are responsible for only calling this
+   * on first boot (TOFU), an explicit operator-initiated re-pin, or to
+   * extend the pin with a newly-announced key that shares a trusted anchor
+   * with the existing pin (see `kernel-trust.ts`) — this method itself
+   * performs no "already pinned" or "shares an anchor" check.
    */
-  pin(publicKey: string, kid: string | null, pinnedAt: string): void {
-    this.db
-      .prepare(
-        `INSERT INTO kernel_trust (id, public_key, kid, pinned_at)
-         VALUES (@id, @publicKey, @kid, @pinnedAt)
-         ON CONFLICT(id) DO UPDATE SET
-           public_key = excluded.public_key,
-           kid = excluded.kid,
-           pinned_at = excluded.pinned_at`,
-      )
-      .run({ id: SINGLETON_ID, publicKey, kid, pinnedAt });
+  pinSet(keys: ReadonlyArray<{ kid: string; publicKey: string }>, pinnedAt: string): void {
+    const replace = this.db.transaction((rows: ReadonlyArray<{ kid: string; publicKey: string }>) => {
+      this.db.prepare('DELETE FROM kernel_trust_keys').run();
+      const insert = this.db.prepare('INSERT INTO kernel_trust_keys (kid, public_key, pinned_at) VALUES (?, ?, ?)');
+      for (const key of rows) insert.run(key.kid, key.publicKey, pinnedAt);
+    });
+    replace(keys);
   }
 
   close(): void {
