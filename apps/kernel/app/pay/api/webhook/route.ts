@@ -11,19 +11,28 @@
  * - customer.subscription.updated
  * - customer.subscription.deleted
  * - invoice.paid
+ *
+ * #2175: signature verification and Stripe SDK access live entirely behind
+ * `lib/pay/providers/stripe-webhook.ts` now — this route (and
+ * `webhook-handlers.ts`) never imports the `stripe` package or references a
+ * `Stripe.*` type. Every case below dispatches on a normalized `RailEvent`
+ * (see `lib/pay/rails/types.ts`), reading `event.raw` cast to one of the
+ * `*Like` shapes in `webhook-event-shapes.ts`. `transfer.created` is the one
+ * exception — it isn't normalized (see `toRailEvent`'s doc comment) and
+ * stays on the pre-existing `WithdrawRail.confirmFromEvent` fast path.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
 import { db, transactions, feeLedger } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
+import { verifyStripeWebhook, markStripeEventProcessed, toRailEvent } from '@/src/lib/pay/providers/stripe-webhook';
 import { confirmWithdrawalFromRailEvent } from '@/src/lib/pay/withdraw-intent';
 import { getWithdrawRailByName } from '@/src/lib/pay/rails/registry';
 import { STRIPE_RAIL_NAME } from '@/src/lib/pay/providers/stripe-withdraw-rail';
+import type { RailEvent } from '@/src/lib/pay/rails/types';
 import {
   type FairManifest,
   type TxRow,
@@ -35,111 +44,102 @@ import {
   notifyCheckoutServices,
   verifyWebhookManifestSignature,
 } from '@/src/lib/pay/webhook-handlers';
+import type {
+  StripeCheckoutSessionLike,
+  StripePaymentIntentLike,
+  StripeSubscriptionLike,
+  StripeInvoiceLike,
+} from '@/src/lib/pay/webhook-event-shapes';
 import { settlePaymentRequestFromStripeCheckout } from '@/src/lib/pay/payment-requests/checkout';
 
 const log = createLogger('kernel');
 
 export async function POST(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    log.error({}, 'STRIPE_WEBHOOK_SECRET not configured');
-    return NextResponse.json(
-      { error: 'Webhook not configured' },
-      { status: 500 }
-    );
-  }
-  
   const body = await request.text();
   const signature = request.headers.get('stripe-signature');
-  
-  if (!signature) {
-    return NextResponse.json(
-      { error: 'Missing stripe-signature header' },
-      { status: 400 }
-    );
+
+  const verified = verifyStripeWebhook(body, signature, webhookSecret);
+  if (!verified.ok) {
+    log.error({}, `Webhook verification failed: ${verified.reason}`);
+    return NextResponse.json({ error: verified.reason }, { status: verified.status });
   }
-  
-  let event: Stripe.Event;
-  
-  try {
-    const stripe = getStripeClient();
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err) {
-    log.error({ err: String(err) }, 'Webhook signature verification failed');
-    return NextResponse.json(
-      { error: 'Invalid signature' },
-      { status: 400 }
-    );
+  if (verified.duplicate) {
+    log.info({ eventId: verified.eventId }, 'Webhook event already processed — skipping duplicate delivery');
+    return NextResponse.json({ received: true, duplicate: true });
   }
-  
+
   // Handle the event
   try {
-    switch (event.type) {
+    switch (verified.eventType) {
       case 'payment_intent.succeeded': {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        log.info({ paymentIntentId: paymentIntent.id }, 'Payment succeeded');
-        await handlePaymentSucceeded(paymentIntent);
+        const railEvent = toRailEvent(verified.event)!;
+        log.info({ paymentIntentId: railEvent.externalRef }, 'Payment succeeded');
+        await handlePaymentSucceeded(railEvent);
         break;
       }
-      
+
       case 'payment_intent.payment_failed': {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        log.info({ paymentIntentId: paymentIntent.id }, 'Payment failed');
-        await handlePaymentFailed(paymentIntent);
+        const railEvent = toRailEvent(verified.event)!;
+        log.info({ paymentIntentId: railEvent.externalRef }, 'Payment failed');
+        await handlePaymentFailed(railEvent);
         break;
       }
-      
+
       case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session;
-        log.info({ sessionId: session.id }, 'Checkout completed');
-        await handleCheckoutCompleted(session);
+        const railEvent = toRailEvent(verified.event)!;
+        log.info({ sessionId: railEvent.externalRef }, 'Checkout completed');
+        await handleCheckoutCompleted(railEvent);
         break;
       }
-      
+
       case 'customer.subscription.created': {
-        const subscription = event.data.object as Stripe.Subscription;
-        log.info({ subscriptionId: subscription.id }, 'Subscription created');
-        await handleSubscriptionCreated(subscription);
+        const railEvent = toRailEvent(verified.event)!;
+        log.info({ subscriptionId: railEvent.externalRef }, 'Subscription created');
+        await handleSubscriptionCreated(railEvent);
         break;
       }
-      
+
       case 'customer.subscription.updated': {
-        const subscription = event.data.object as Stripe.Subscription;
-        log.info({ subscriptionId: subscription.id }, 'Subscription updated');
-        await handleSubscriptionUpdated(subscription);
+        const railEvent = toRailEvent(verified.event)!;
+        log.info({ subscriptionId: railEvent.externalRef }, 'Subscription updated');
+        await handleSubscriptionUpdated(railEvent);
         break;
       }
 
       case 'customer.subscription.deleted': {
-        const subscription = event.data.object as Stripe.Subscription;
-        log.info({ subscriptionId: subscription.id }, 'Subscription canceled');
-        await handleSubscriptionDeleted(subscription);
+        const railEvent = toRailEvent(verified.event)!;
+        log.info({ subscriptionId: railEvent.externalRef }, 'Subscription canceled');
+        await handleSubscriptionDeleted(railEvent);
         break;
       }
 
       case 'invoice.paid': {
-        const invoice = event.data.object as Stripe.Invoice;
-        log.info({ invoiceId: invoice.id }, 'Invoice paid');
-        await handleInvoicePaid(invoice);
+        const railEvent = toRailEvent(verified.event)!;
+        log.info({ invoiceId: railEvent.externalRef }, 'Invoice paid');
+        await handleInvoicePaid(railEvent);
         break;
       }
 
       // #2172 webhook fast path: confirms a withdrawal intent as soon as
       // Stripe reports the transfer, instead of waiting for the
       // reconciliation cron sweep. Idempotent on intent id — see
-      // `confirmWithdrawalFromRailEvent`.
+      // `confirmWithdrawalFromRailEvent`. Not normalized to a `RailEvent`
+      // (#2175) — this fast path already has its own rail-neutral contract
+      // via `WithdrawRail.confirmFromEvent`, which expects the raw
+      // verified event shape.
       case 'transfer.created': {
-        const transfer = event.data.object as Stripe.Transfer;
         const stripeRail = getWithdrawRailByName(STRIPE_RAIL_NAME);
-        const intentId = stripeRail ? await confirmWithdrawalFromRailEvent(stripeRail, event) : null;
-        log.info({ transferId: transfer.id, intentId }, 'Transfer created');
+        const intentId = stripeRail ? await confirmWithdrawalFromRailEvent(stripeRail, verified.event) : null;
+        log.info({ intentId }, 'Transfer created');
         break;
       }
 
       default:
-        log.info({ eventType: event.type }, 'Unhandled event type');
+        log.info({ eventType: verified.eventType }, 'Unhandled event type');
     }
-    
+
+    markStripeEventProcessed(verified.eventId);
     return NextResponse.json({ received: true });
   } catch (error) {
     log.error({ err: String(error) }, 'Webhook handler error');
@@ -154,7 +154,9 @@ export async function POST(request: NextRequest) {
 // Event Handlers (implement these based on your needs)
 // =============================================================================
 
-async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+async function handlePaymentSucceeded(event: RailEvent) {
+  const paymentIntent = event.raw as unknown as StripePaymentIntentLike;
+
   // Idempotency: skip if already completed
   const existing = await db.select().from(transactions).where(eq(transactions.stripeId, paymentIntent.id)).limit(1);
   if (existing[0]?.status === 'completed') {
@@ -193,7 +195,9 @@ async function handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
   }
 }
 
-async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
+async function handlePaymentFailed(event: RailEvent) {
+  const paymentIntent = event.raw as unknown as StripePaymentIntentLike;
+
   log.info({ id: paymentIntent.id, amount: paymentIntent.amount, lastError: paymentIntent.last_payment_error?.message }, 'Payment failed');
 
   // Update transaction status to failed
@@ -208,7 +212,9 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
   }
 }
 
-async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+async function handleCheckoutCompleted(event: RailEvent) {
+  const session = event.raw as unknown as StripeCheckoutSessionLike;
+
   // #2209: a payment_request-linked checkout is a structurally different
   // flow (settle exclusively via settlePayment(), never the generic
   // feeLedger/balanceRollups chain distribution below) — fully separate
@@ -248,7 +254,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
  * `payment_request.settled` attestation. Idempotent on webhook replay —
  * see `settlePaymentRequestFromStripeCheckout`'s doc comment.
  */
-async function handlePaymentRequestCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
+async function handlePaymentRequestCheckoutCompleted(session: StripeCheckoutSessionLike): Promise<void> {
   const paymentRequestId = session.metadata?.payment_request_id;
   if (!paymentRequestId) return;
 
@@ -278,7 +284,7 @@ async function handlePaymentRequestCheckoutCompleted(session: Stripe.Checkout.Se
  * distribute the remaining amount across the .fair manifest chain.
  */
 async function processFairManifest(
-  session: Stripe.Checkout.Session,
+  session: StripeCheckoutSessionLike,
   tx: (TxRow & { fairManifest?: unknown }) | undefined,
 ): Promise<void> {
   if (!tx?.fairManifest) return;
@@ -343,7 +349,7 @@ async function recordProcessingFee(tx: TxRow, amountCents: number, currency: str
  */
 async function notifyCoffeeService(
   type: 'payment.succeeded' | 'payment.failed',
-  paymentIntent: Stripe.PaymentIntent
+  paymentIntent: StripePaymentIntentLike
 ) {
   const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL!;
   const webhookSecret = process.env.COFFEE_WEBHOOK_SECRET!;
@@ -384,11 +390,13 @@ async function notifyCoffeeService(
   }
 }
 
-async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
+async function handleSubscriptionCreated(event: RailEvent) {
+  const subscription = event.raw as unknown as StripeSubscriptionLike;
+
   log.info({ id: subscription.id, customerId: subscription.customer, subscriptionStatus: subscription.status }, 'Subscription created');
 
   // Create a new transaction for the subscription
-  const amount = subscription.items.data[0]?.price.unit_amount || 0;
+  const amount = subscription.items.data[0]?.price?.unit_amount || 0;
   const txId = generateId('tx');
 
   await db.insert(transactions).values({
@@ -405,7 +413,9 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
   });
 }
 
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+async function handleSubscriptionUpdated(event: RailEvent) {
+  const subscription = event.raw as unknown as StripeSubscriptionLike;
+
   log.info({ id: subscription.id, customerId: subscription.customer, subscriptionStatus: subscription.status }, 'Subscription updated');
 
   // Log the status change as a transaction metadata update
@@ -415,7 +425,9 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   }
 }
 
-async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+async function handleSubscriptionDeleted(event: RailEvent) {
+  const subscription = event.raw as unknown as StripeSubscriptionLike;
+
   log.info({ id: subscription.id, customerId: subscription.customer }, 'Subscription canceled');
 
   // Notify originating service about cancellation
@@ -424,7 +436,9 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   }
 }
 
-async function handleInvoicePaid(invoice: Stripe.Invoice) {
+async function handleInvoicePaid(event: RailEvent) {
+  const invoice = event.raw as unknown as StripeInvoiceLike;
+
   log.info({ id: invoice.id, amount: invoice.amount_paid, currency: invoice.currency, subscriptionId: invoice.subscription }, 'Invoice paid');
 
   // Only process subscription renewals (invoices linked to a subscription)
@@ -468,8 +482,8 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
  */
 async function notifyCoffeeServiceSubscription(
   type: 'subscription.updated' | 'subscription.canceled' | 'subscription.renewed',
-  subscription: Stripe.Subscription | null,
-  invoice?: Stripe.Invoice,
+  subscription: StripeSubscriptionLike | null,
+  invoice?: StripeInvoiceLike,
   metadata?: Record<string, string>
 ) {
   const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL!;

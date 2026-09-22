@@ -8,16 +8,16 @@
  * that are reused from the route or tested in isolation are exported.
  */
 
-import Stripe from 'stripe';
 import { db, feeLedger, balanceRollups, transactions } from '@/src/db';
 import { sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
-import { getStripeClient } from './providers/stripe-client';
+import { fetchActualFee } from './providers/stripe-webhook';
 import { verifySettlementSignature } from './settle-core';
 import { MJN, MJNX, creditUnit } from './ledger';
+import type { StripeCheckoutSessionLike } from './webhook-event-shapes';
 
 const log = createLogger('kernel');
 
@@ -44,33 +44,25 @@ export interface TxRow {
  * Attempt to retrieve the actual Stripe processing fee from the
  * balance_transaction attached to the checkout session's payment intent.
  * Returns `null` when the fee cannot be read (not yet settled, API error, etc.).
+ *
+ * #2175: the actual Stripe API call now lives behind
+ * `providers/stripe-webhook.ts`'s `fetchActualFee(externalRef)` — this
+ * function is just the checkout-session-shaped entry point kept for the
+ * route's existing call site.
  */
 export async function fetchActualStripeFee(
-  session: Stripe.Checkout.Session,
+  session: StripeCheckoutSessionLike,
   transactionId: string,
 ): Promise<number | null> {
-  const paymentIntentId = session.payment_intent as string | null;
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id ?? null;
   if (!paymentIntentId) return null;
 
-  try {
-    const stripe = getStripeClient();
-    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ['latest_charge.balance_transaction'],
-    });
-    const charge = pi.latest_charge as Stripe.Charge | null;
-    const bt = charge?.balance_transaction as Stripe.BalanceTransaction | null | undefined;
-    if (bt?.fee) {
-      log.info(
-        { transactionId, stripeFee: bt.fee, feeDetails: bt.fee_details },
-        '[webhook] Actual Stripe fee from balance_transaction',
-      );
-      return bt.fee;
-    }
-    return null;
-  } catch (err) {
-    log.warn({ err: String(err) }, '[webhook] Failed to fetch balance_transaction — using estimate');
-    return null;
+  const fee = await fetchActualFee(paymentIntentId);
+  if (fee !== null) {
+    log.info({ transactionId, stripeFee: fee }, '[webhook] Actual Stripe fee from balance_transaction');
   }
+  return fee;
 }
 
 /**
@@ -365,7 +357,7 @@ async function updateDailyRollup({ tx, recipientDid, amountCents }: UpdateDailyR
  * the buyer's cash balance atomically.
  * Does nothing when the required metadata fields are absent.
  */
-export async function handleTopupCheckout(session: Stripe.Checkout.Session): Promise<void> {
+export async function handleTopupCheckout(session: StripeCheckoutSessionLike): Promise<void> {
   const topupAmountStr = session.metadata?.topupAmount;
   const buyerDid = session.metadata?.buyerDid;
   if (!topupAmountStr || !buyerDid) return;
@@ -408,7 +400,7 @@ export async function handleTopupCheckout(session: Stripe.Checkout.Session): Pro
  * Notify downstream services (events, market) after a non-topup checkout
  * completes.
  */
-export async function notifyCheckoutServices(session: Stripe.Checkout.Session): Promise<void> {
+export async function notifyCheckoutServices(session: StripeCheckoutSessionLike): Promise<void> {
   if (session.metadata?.eventId) {
     await notifyEventsService('checkout.completed', session);
   }
@@ -418,7 +410,7 @@ export async function notifyCheckoutServices(session: Stripe.Checkout.Session): 
   }
 }
 
-function publishMarketNotifications(session: Stripe.Checkout.Session): void {
+function publishMarketNotifications(session: StripeCheckoutSessionLike): void {
   const sellerDid = session.metadata!.sellerDid;
   const buyerDid = session.metadata?.buyerDid;
   const listingTitle = session.metadata?.listingTitle;
@@ -446,7 +438,7 @@ function publishMarketNotifications(session: Stripe.Checkout.Session): void {
 
 export async function notifyEventsService(
   type: 'checkout.completed' | 'payment.failed',
-  session: Stripe.Checkout.Session,
+  session: StripeCheckoutSessionLike,
 ): Promise<void> {
   const eventsServiceUrl = process.env.EVENTS_SERVICE_URL!;
   const webhookSecret = process.env.EVENTS_WEBHOOK_SECRET!;

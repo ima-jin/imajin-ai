@@ -7,52 +7,40 @@
  * - account.updated
  * - payout.paid
  * - payout.failed
+ *
+ * #2175: signature verification and Stripe SDK access live entirely behind
+ * `lib/pay/providers/stripe-webhook.ts` now — this route never imports the
+ * `stripe` package or references a `Stripe.*` type; every case dispatches
+ * on a normalized `RailEvent`.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { db, connectedAccounts } from '@/src/db';
-import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
+import { verifyStripeWebhook, markStripeEventProcessed, toRailEvent } from '@/src/lib/pay/providers/stripe-webhook';
+import type { StripeAccountLike, StripePayoutLike } from '@/src/lib/pay/webhook-event-shapes';
 import { withLogger } from '@imajin/logger';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const webhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    log.error({}, 'STRIPE_CONNECT_WEBHOOK_SECRET not configured');
-    return NextResponse.json(
-      { error: 'Webhook not configured' },
-      { status: 500 }
-    );
-  }
-
   const body = await request.text();
   const signature = request.headers.get('stripe-signature');
 
-  if (!signature) {
-    return NextResponse.json(
-      { error: 'Missing stripe-signature header' },
-      { status: 400 }
-    );
+  const verified = verifyStripeWebhook(body, signature, webhookSecret);
+  if (!verified.ok) {
+    log.error({}, `Connect webhook verification failed: ${verified.reason}`);
+    return NextResponse.json({ error: verified.reason }, { status: verified.status });
   }
-
-  let event: Stripe.Event;
-
-  try {
-    const stripe = getStripeClient();
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err) {
-    log.error({ err: String(err) }, 'Connect webhook signature verification failed');
-    return NextResponse.json(
-      { error: 'Invalid signature' },
-      { status: 400 }
-    );
+  if (verified.duplicate) {
+    log.info({ eventId: verified.eventId }, 'Connect webhook event already processed — skipping duplicate delivery');
+    return NextResponse.json({ received: true, duplicate: true });
   }
 
   try {
-    switch (event.type) {
+    switch (verified.eventType) {
       case 'account.updated': {
-        const account = event.data.object as Stripe.Account;
+        const railEvent = toRailEvent(verified.event)!;
+        const account = railEvent.raw as unknown as StripeAccountLike;
 
         const rows = await db
           .select()
@@ -82,21 +70,26 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       }
 
       case 'payout.paid': {
-        const payout = event.data.object as Stripe.Payout;
-        log.info({ account: (event as Stripe.Event & { account?: string }).account, payoutId: payout.id, amount: payout.amount, currency: payout.currency }, 'Connect payout.paid');
+        const railEvent = toRailEvent(verified.event)!;
+        const payout = railEvent.raw as unknown as StripePayoutLike;
+        const connectAccountId = (verified.event as { account?: string } | undefined)?.account;
+        log.info({ account: connectAccountId, payoutId: payout.id, amount: payout.amount, currency: payout.currency }, 'Connect payout.paid');
         break;
       }
 
       case 'payout.failed': {
-        const payout = event.data.object as Stripe.Payout;
-        log.info({ account: (event as Stripe.Event & { account?: string }).account, payoutId: payout.id, amount: payout.amount, currency: payout.currency }, 'Connect payout.failed');
+        const railEvent = toRailEvent(verified.event)!;
+        const payout = railEvent.raw as unknown as StripePayoutLike;
+        const connectAccountId = (verified.event as { account?: string } | undefined)?.account;
+        log.info({ account: connectAccountId, payoutId: payout.id, amount: payout.amount, currency: payout.currency }, 'Connect payout.failed');
         break;
       }
 
       default:
-        log.info({ eventType: event.type }, 'Unhandled connect event type');
+        log.info({ eventType: verified.eventType }, 'Unhandled connect event type');
     }
 
+    markStripeEventProcessed(verified.eventId);
     return NextResponse.json({ received: true });
   } catch (error) {
     log.error({ err: String(error) }, 'Connect webhook handler error');

@@ -55,7 +55,7 @@ vi.mock('@imajin/fair', () => ({
   STRIPE_FIXED_CENTS: 30, // $0.30
 }));
 
-vi.mock('../providers/stripe-client', () => ({ getStripeClient: vi.fn() }));
+vi.mock('../providers/stripe-webhook', () => ({ fetchActualFee: vi.fn() }));
 
 // ---------------------------------------------------------------------------
 // Subject under test
