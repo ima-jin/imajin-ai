@@ -137,3 +137,19 @@ recorded here deliberately so the file is an honest snapshot, not an idealized o
 Reconciling the prod file to reality (drop the compiled-in services, or annotate
 them explicitly) is follow-up work — this commit's job is to *capture* the current
 state under version control, not to change what runs.
+
+## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
+
+`ecosystem.prod.config.js` has no `prod-corpus` entry. Per #2232 (multi-host
+deploy), corpus runs on **gx10**, not this host (the ProLiant) — Ryan decided
+this explicitly, closing the open question from #2246/#2249 about whether
+corpus belongs in this repo's prod pm2 config. `dev-corpus` stays in
+`ecosystem.dev.config.js`: corpus still runs in dev on this host today.
+
+This file's `cwd` entries are also the source `scripts/check-env.ts` (#2246)
+reads to decide, per environment, whether a service with no `.env.local` is a
+hard error (it's a deploy target here) or just a warning (it isn't). Removing
+`prod-corpus` is what makes a missing `apps/corpus/.env.local` a warning under
+`check-env --env prod` instead of the error it was before — do not re-add a
+`prod-corpus` block solely to silence that warning; only add it back once
+corpus is actually deployed on this host again.

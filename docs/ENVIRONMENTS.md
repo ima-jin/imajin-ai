@@ -70,9 +70,16 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Client | karaoke | 3401 | 7401 | karaoke.imajin.ai |
 | Infra | corpus | 8013 | 8003 | internal only — no subdomain (#1726) |
 
+**corpus host note (#2232, decided 2026-09-22):** corpus's prod port (8003)
+above is its own canonical port, but corpus no longer runs on the same host
+as the rest of prod — it's deployed on **gx10**, not the ProLiant
+(`deploy/ecosystem.prod.config.js` has no `prod-corpus` entry; see that
+file's README). Dev corpus (8013) is unaffected and still runs on the
+ProLiant alongside `dev-jin`.
+
 The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
 (`apps/kernel/.env.example`) — its `localhost` default is only correct when
-kernel and corpus are colocated on the same host; point it elsewhere if not.
+kernel and corpus are colocated on the same host; point it at gx10 in prod.
 
 ### pm2 Naming
 
@@ -114,6 +121,50 @@ Each service has a `.env.local` file. Common variables:
 **⚠️ Service-to-service URLs must come from env vars — never hardcode URLs.**
 
 Every app that uses env vars should have a matching `.env.example` file.
+
+### check-env annotations (#2246)
+
+`scripts/check-env.ts` validates every service's `.env.local` against its
+`.env.example` before a build (`scripts/build.sh`'s pre-flight step). By
+default every key in `.env.example` is **required** — missing it from
+`.env.local` is a hard error. Three comment annotations, placed on the line
+directly above a `KEY=value` line, change that:
+
+| Annotation | Missing from `.env.local` | Set in `.env.local` |
+|------------|---------------------------|----------------------|
+| `# optional` | OK (grouped into one warning per service) | normal |
+| `# vault-sourced: <reason>` | OK, silent (fetched at boot instead) | WARN — "deprecated hand-provisioned value present; remove after rotation" |
+| `# deprecated: <reason>` | OK, silent | WARN with `<reason>` |
+| _(none)_ | **ERROR** | normal |
+
+```
+# vault-sourced: fetched at boot via loadFromVault (#2243), do not set locally
+CORPUS_DID_PRIVATE_KEY=
+```
+
+Every `apps/*/.env.example` documents this table's short form at the top of
+the file. See `apps/corpus/.env.example` and `apps/kernel/.env.example` for
+the fullest set of examples (rotation-grace-window keys, vault-fetched
+service identity, a one-shot re-pin flag).
+
+This is what let corpus's `.env.local` shrink from a full set of
+hand-provisioned secrets down to `PORT` + `NODE_ENV` + the one bootstrap
+delegation-grant pointer (`CORPUS_VAULT_GRANT_ID`) plus that grant's small
+bootstrap identity (`CORPUS_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY`) — the real
+signing keypair itself is minted in the vault and fetched at boot, never
+hand-copied onto the host (#2241/#2243).
+
+### Per-env deploy targets (#2246)
+
+A service with no `.env.local` at all is only a **hard error** when it's
+actually part of that environment's pm2 deploy target; otherwise it's a
+warning. "Deploy target" is read straight from `deploy/ecosystem.{dev,prod}.config.js`'s
+`cwd` entries (the same file `build.sh`'s ecosystem-sync step and the deploy
+workflows already treat as canonical) — not a separate manifest. This is why
+corpus's missing `.env.local` is an error in dev (it's in
+`ecosystem.dev.config.js`) but only a warning in prod (removed from
+`ecosystem.prod.config.js`; see the corpus host note above and
+`deploy/README.md`).
 
 ## Deployment
 

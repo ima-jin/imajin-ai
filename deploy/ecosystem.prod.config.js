@@ -220,31 +220,18 @@ module.exports = {
       },
       "max_restarts": 10,
       "min_uptime": "20s"
-    },
-    {
-      // corpus is an internal-only daemon (packages/config/src/services.ts),
-      // not a subdomain-routed web app, so it doesn't follow the 3xxx/7xxx
-      // dev/prod port convention. 8003 is its canonical port — the value
-      // apps/corpus/src/index.ts defaults to and the value kernel's
-      // CORPUS_SERVICE_URL / corpus-client.ts fall back to when unset
-      // (apps/kernel/.env.example, apps/kernel/src/lib/kernel/corpus-client.ts,
-      // apps/kernel/src/lib/mcp/tools/corpus.ts). dev-jin and prod-jin run on
-      // the same host, so dev-corpus can't reuse this port — see
-      // ecosystem.dev.config.js's dev-corpus comment (#1748, #1741, #1726).
-      //
-      // Secrets (#1750, apps/corpus/.env.example): CORPUS_DID,
-      // CORPUS_DID_PRIVATE_KEY, AUTH_SERVICE_URL, ATTESTATION_INTERNAL_API_KEY.
-      // Not listed in this file's "env" block — see dev-corpus's comment above.
-      "name": "prod-corpus",
-      "cwd": "/home/jin/prod/imajin-ai/apps/corpus",
-      "script": "npm",
-      "args": "start",
-      "env": {
-        "PORT": 8003,
-        "NODE_ENV": "production"
-      },
-      "max_restarts": 10,
-      "min_uptime": "20s"
     }
+    // corpus is deliberately NOT listed here. Per #2232 (multi-host deploy),
+    // corpus runs on gx10, not this host (the ProLiant) — Ryan decided
+    // (2026-09-22) that corpus is out of the prod deploy loop for this pm2
+    // config. See ecosystem.dev.config.js's dev-corpus entry, which stays:
+    // corpus still runs in dev on this host today.
+    //
+    // scripts/check-env.ts (#2246) reads each env's deploy targets from this
+    // file's `cwd` entries, so removing this entry also makes a missing
+    // apps/corpus/.env.local a warning rather than a hard error when running
+    // `check-env --env prod` — do not re-add a `prod-corpus` block here just
+    // to silence that warning; add it back only once corpus is actually
+    // deployed to this host again.
   ]
 };
