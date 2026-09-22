@@ -164,6 +164,50 @@ paths:
                   service: { type: string }
                   timestamp: { type: string, format: date-time }
 
+  /.well-known/kernel-signing-key:
+    get:
+      tags: [auth]
+      operationId: getKernelSigningKey
+      summary: Fetch the kernel's Ed25519 signing public key(s) (#2244)
+      description: |
+        Unauthenticated, cacheable publication of the public half of
+        AUTH_PRIVATE_KEY — the same key CorpusAccessClaims are signed with.
+        Intended for fetch-and-pin (TOFU) consumers, replacing the
+        hand-copied CORPUS_KERNEL_PUBLIC_KEY env var (#2024). Never returns
+        private key material.
+
+        Serves a `keys` array rather than a single key so a rotation can
+        publish both the current and a just-rotated-out key during a grace
+        window (a `validUntil`-bounded entry) — consumers should trust every
+        key in `keys`, not just the one named by `current`.
+      security: []
+      responses:
+        "200":
+          description: Current signing public key set
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys, current]
+                properties:
+                  current: { type: string, description: "kid of the key AUTH_PRIVATE_KEY signs with right now" }
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      required: [kid, publicKey, algorithm, validFrom]
+                      properties:
+                        kid: { type: string, description: "Stable identifier for this key — changes iff the key does" }
+                        publicKey: { type: string, description: "Hex-encoded Ed25519 public key" }
+                        algorithm: { type: string, enum: [Ed25519] }
+                        validFrom: { type: string, format: date-time }
+                        validUntil: { type: string, format: date-time, description: "Present only on a grace-window previous key" }
+        "503":
+          description: AUTH_PRIVATE_KEY not configured on this node
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/challenge:
     post:
       tags: [auth]
