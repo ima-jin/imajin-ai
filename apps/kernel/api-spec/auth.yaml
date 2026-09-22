@@ -164,6 +164,37 @@ paths:
                   service: { type: string }
                   timestamp: { type: string, format: date-time }
 
+  /.well-known/kernel-signing-key:
+    get:
+      tags: [auth]
+      operationId: getKernelSigningKey
+      summary: Fetch the kernel's Ed25519 signing public key (#2244)
+      description: |
+        Unauthenticated, cacheable publication of the public half of
+        AUTH_PRIVATE_KEY — the same key CorpusAccessClaims are signed with.
+        Intended for fetch-and-pin (TOFU) consumers, replacing the
+        hand-copied CORPUS_KERNEL_PUBLIC_KEY env var (#2024). Never returns
+        private key material.
+      security: []
+      responses:
+        "200":
+          description: Current signing public key
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kid, alg, publicKey, issuedAt]
+                properties:
+                  kid: { type: string, description: "Stable identifier for this key — changes iff the key does" }
+                  alg: { type: string, enum: [Ed25519] }
+                  publicKey: { type: string, description: "Hex-encoded Ed25519 public key" }
+                  issuedAt: { type: string, format: date-time, description: "When this process started serving this key value" }
+        "503":
+          description: AUTH_PRIVATE_KEY not configured on this node
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/challenge:
     post:
       tags: [auth]

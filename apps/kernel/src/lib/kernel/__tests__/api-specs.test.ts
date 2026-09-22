@@ -166,6 +166,16 @@ describe('readApiSpec', () => {
  * pins BOTH that the route file still exists on disk AND that `auth.yaml`
  * documents its path, so the two cannot silently drift apart again.
  */
+describe('auth.yaml documents the kernel signing-key well-known route (#2244)', () => {
+  it('/.well-known/kernel-signing-key has both a live route file and a documented spec path', () => {
+    pinCwdToKernel();
+    expect(existsSync(join(KERNEL_ROOT, 'app/auth/.well-known/kernel-signing-key/route.ts'))).toBe(true);
+
+    const auth = listApiSpecs().find((s) => s.service === 'auth');
+    expect(auth?.paths).toContain('/.well-known/kernel-signing-key');
+  });
+});
+
 describe('auth.yaml documents the app-token, verify-delegation, and onboard poll/claim routes (#1993 #1995 #1996)', () => {
   const DOCUMENTED_ROUTES: ReadonlyArray<{ path: string; routeFile: string }> = [
     { path: '/api/apps/token', routeFile: 'app/auth/api/apps/token/route.ts' },

@@ -8,15 +8,17 @@
  * (see `apps/kernel/src/lib/kernel/corpus-access-claim.ts`) naming exactly
  * the DID being addressed, and rejects everything else.
  *
- * Trust root: `CORPUS_KERNEL_PUBLIC_KEY`, the hex Ed25519 public key matching
- * the kernel's `AUTH_PRIVATE_KEY`. Env-pinned rather than fetched from the
- * kernel's DID document at startup — see the module comment on
- * `corpus-access-claim.ts` for why. No network call happens on this path at
- * all, which trivially satisfies the "no callback" requirement from
- * spikes/corpus-identity/README.md.
+ * Trust root: the hex Ed25519 public key matching the kernel's
+ * `AUTH_PRIVATE_KEY`, resolved via `resolveTrustedKernelPublicKey()`
+ * (#2244) — `CORPUS_KERNEL_PUBLIC_KEY` when set (back-compat), otherwise
+ * the value fetched-and-pinned (TOFU) from the kernel's well-known
+ * signing-key endpoint at boot (`../lib/kernel-trust.ts`). No network call
+ * happens on the request path itself either way, which trivially satisfies
+ * the "no callback" requirement from spikes/corpus-identity/README.md.
  */
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { crypto as authCrypto } from '@imajin/auth';
+import { resolveTrustedKernelPublicKey } from '../lib/kernel-trust';
 
 export type CorpusAccessScope = 'corpus:read' | 'corpus:write';
 
@@ -144,14 +146,11 @@ export function createAccessClaimMiddleware(): RequestHandler {
   const replayGuard = new NonceReplayGuard();
 
   return function verifyAccessClaim(request: Request, response: Response, next: NextFunction): void {
-    // Env-pinned, never fetched or derived at runtime: corpus must never hold
-    // (or be able to derive) the kernel's AUTH_PRIVATE_KEY (apps/kernel/.env.example),
-    // only its public half. The corpus operator sets CORPUS_KERNEL_PUBLIC_KEY
-    // to the hex Ed25519 public key matching that private key (see the module
-    // comment above for why this is env-pinned rather than resolved over the
-    // network). Documented in apps/corpus/.env.example, landing via #2022 —
-    // not added here to avoid clobbering that concurrent change.
-    const kernelPublicKey = process.env.CORPUS_KERNEL_PUBLIC_KEY;
+    // Corpus must never hold (or be able to derive) the kernel's
+    // AUTH_PRIVATE_KEY (apps/kernel/.env.example) — only its public half,
+    // resolved via the env override or the TOFU pin (see the module comment
+    // above). Documented in apps/corpus/.env.example.
+    const kernelPublicKey = resolveTrustedKernelPublicKey();
     if (!kernelPublicKey) {
       response.status(401).json({ error: 'corpus service misconfigured: no trusted kernel public key' });
       return;
