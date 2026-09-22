@@ -333,6 +333,20 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'vault.delegation.acked': [
     { type: 'audit-log', config: { fields: ['grantId', 'granteeDid', 'ownerDid', 'purpose', 'outcome', 'evidenceKind', 'ackedAt'] }, enabled: true },
   ],
+  // #2242 — vault.mint audit trail. `audit-log` persists the mint/revoke
+  // metadata (never key material) into kernel.audit_log, mirroring
+  // vault.delegation.fetched's #2231 pattern above. Kept in sync with
+  // migration 0150.
+  'vault.key.minted': [
+    {
+      type: 'audit-log',
+      config: { fields: ['mintId', 'did', 'publicKey', 'field', 'purpose', 'requestedBy', 'mintedBy', 'grantId'] },
+      enabled: true,
+    },
+  ],
+  'vault.key.revoked': [
+    { type: 'audit-log', config: { fields: ['mintId', 'did', 'publicKey', 'revokedBy'] }, enabled: true },
+  ],
   // #1841 — claim-stub-expiry sweep. `emit` puts the tombstone event on the
   // signed event stream; no `attestation`/`mjn` reactor since a lapsing
   // stub is a garbage-collection outcome, not an economic/identity event

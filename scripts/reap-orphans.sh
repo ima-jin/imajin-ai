@@ -18,6 +18,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/pm2-owned.sh
+source "$SCRIPT_DIR/lib/pm2-owned.sh"
+
 SCOPE="${1:-dev}"
 
 # Managed port ranges per convention (see TOOLS.md):
@@ -35,41 +39,12 @@ case "$SCOPE" in
     ;;
 esac
 
-# Collect the set of PIDs pm2 currently manages.
-PM2_PIDS="$(pm2 jlist 2>/dev/null | node -e '
-  const procs = JSON.parse(require("fs").readFileSync(0) || "[]");
-  const pids = procs
-    .map((p) => (p && p.pid) ? String(p.pid) : "")
-    .filter(Boolean);
-  console.log(pids.join(" "));
-' 2>/dev/null || echo "")"
-
-is_pm2_pid() {
-  local pid="$1"
-  for managed in $PM2_PIDS; do
-    if [[ "$pid" = "$managed" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-# A listener is pm2-owned if it OR any ancestor (up to 6 levels) is a pm2 pid.
-# Next.js apps run as `next start` (the pid pm2 tracks) which forks a
-# `next-server` child that actually holds the port — matching only the exact
-# pid misreads every healthy Next app as an orphan (2026-09-21 dev deploy:
-# reaped 6 children, pm2 respawned them, script then "refused to restart").
-is_pm2_owned() {
-  local pid="$1" depth=0
-  while [[ -n "$pid" && "$pid" != "0" && "$pid" != "1" && "$depth" -lt 6 ]]; do
-    if is_pm2_pid "$pid"; then
-      return 0
-    fi
-    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
-    depth=$((depth + 1))
-  done
-  return 1
-}
+# Collect the set of PIDs pm2 currently manages (used by is_pm2_owned, from
+# lib/pm2-owned.sh, which walks the ancestor chain up to 6 levels — Next.js
+# apps run as `next start`, the pid pm2 tracks, which forks a `next-server`
+# child that actually holds the port, so an exact-pid match alone would
+# misread every healthy Next app as an orphan).
+PM2_PIDS="$(pm2_managed_pids)"
 
 KILLED=0
 for port in "${PORTS[@]}"; do
