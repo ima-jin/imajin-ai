@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+  log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -47,6 +47,11 @@ const GRANT_ID = 'vdg_corpus_test';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status });
+}
+
+/** Ack calls (#2257) made against a fake-kernel `fetch` mock, in call order. */
+function ackCalls(fetchMock: ReturnType<typeof vi.fn>): [string, RequestInit][] {
+  return fetchMock.mock.calls.filter((call: unknown[]) => (call[0] as string).includes('/ack')) as [string, RequestInit][];
 }
 
 /** Fakes the kernel's challenge/authenticate/fetch/ack quartet for a successful vault fetch. */
@@ -113,18 +118,20 @@ describe('deprecated CORPUS_DID/CORPUS_DID_PRIVATE_KEY override (#2243)', () => 
 });
 
 describe('vault fetch-at-boot path (#2243)', () => {
-  it('fetches the signing keypair from the vault and caches it for loadCorpusIdentity()', async () => {
+  it('fetches the signing keypair from the vault and caches it for loadCorpusIdentity(), without acking the fetch (#2257)', async () => {
     process.env.CORPUS_VAULT_GRANT_ID = GRANT_ID;
     process.env.CORPUS_VAULT_BOOTSTRAP_DID = BOOTSTRAP_DID;
     process.env.CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY = BOOTSTRAP_PRIVATE_KEY;
     const { bootstrapCorpusIdentity, loadCorpusIdentity, _resetCorpusIdentityStateForTests } = await import('../corpus-identity');
     _resetCorpusIdentityStateForTests();
-    vi.stubGlobal('fetch', fakeKernelFetch());
+    const fetchMock = fakeKernelFetch();
+    vi.stubGlobal('fetch', fetchMock);
 
     await bootstrapCorpusIdentity();
 
     expect(loadCorpusIdentity()).toEqual({ did: MINTED_DID, privateKey: MINTED_PRIVATE_KEY });
     expect(mocks.log.info).toHaveBeenCalled();
+    expect(ackCalls(fetchMock)).toHaveLength(0);
   });
 
   it('never logs the bootstrap private key, the fetched signing key, or the bearer token', async () => {
@@ -137,7 +144,7 @@ describe('vault fetch-at-boot path (#2243)', () => {
 
     await bootstrapCorpusIdentity();
 
-    const logged = JSON.stringify([...mocks.log.info.mock.calls, ...mocks.log.warn.mock.calls, ...mocks.log.error.mock.calls]);
+    const logged = JSON.stringify([...mocks.log.info.mock.calls, ...mocks.log.warn.mock.calls, ...mocks.log.error.mock.calls, ...mocks.log.debug.mock.calls]);
     expect(logged).not.toContain(BOOTSTRAP_PRIVATE_KEY);
     expect(logged).not.toContain(MINTED_PRIVATE_KEY);
     expect(logged).not.toContain(BEARER_TOKEN);
@@ -157,22 +164,86 @@ describe('vault fetch-at-boot path (#2243)', () => {
     expect(mocks.log.warn).toHaveBeenCalled();
   });
 
-  it('a degraded vault fetch (grant already consumed) soft-fails: no identity, no throw', async () => {
+  it('a degraded vault fetch (grant already consumed) soft-fails: no identity, no throw, no ack (nothing was fetched)', async () => {
     process.env.CORPUS_VAULT_GRANT_ID = GRANT_ID;
     process.env.CORPUS_VAULT_BOOTSTRAP_DID = BOOTSTRAP_DID;
     process.env.CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY = BOOTSTRAP_PRIVATE_KEY;
     const { bootstrapCorpusIdentity, loadCorpusIdentity, _resetCorpusIdentityStateForTests } = await import('../corpus-identity');
     _resetCorpusIdentityStateForTests();
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith('/api/challenge')) return jsonResponse({ challengeId: 'ch_1', challenge: 'raw' });
       if (url.endsWith('/api/authenticate')) return jsonResponse({ token: BEARER_TOKEN });
       if (url.includes('/fetch')) return jsonResponse({ error: 'This one-time grant has already been fetched' }, 410);
       throw new Error(`unexpected fetch to ${url}`);
-    }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     await bootstrapCorpusIdentity();
 
     expect(loadCorpusIdentity()).toBeNull();
+    expect(ackCalls(fetchMock)).toHaveLength(0);
+  });
+});
+
+describe('grant ack semantics (#2257: one deferred ack, no fetch-time ack)', () => {
+  it('markCorpusIdentityUsedForSigning() sends exactly one "used" ack, on first call only', async () => {
+    process.env.CORPUS_VAULT_GRANT_ID = GRANT_ID;
+    process.env.CORPUS_VAULT_BOOTSTRAP_DID = BOOTSTRAP_DID;
+    process.env.CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY = BOOTSTRAP_PRIVATE_KEY;
+    const { bootstrapCorpusIdentity, markCorpusIdentityUsedForSigning, _resetCorpusIdentityStateForTests } = await import('../corpus-identity');
+    _resetCorpusIdentityStateForTests();
+    const fetchMock = fakeKernelFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await bootstrapCorpusIdentity();
+    expect(ackCalls(fetchMock)).toHaveLength(0);
+
+    markCorpusIdentityUsedForSigning();
+    await vi.waitFor(() => expect(ackCalls(fetchMock)).toHaveLength(1));
+    const [, firstInit] = ackCalls(fetchMock)[0]!;
+    expect(JSON.parse(firstInit.body as string)).toMatchObject({ outcome: 'used' });
+
+    // A second "first sign" call (e.g. a later ingest batch) must not ack again.
+    markCorpusIdentityUsedForSigning();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(ackCalls(fetchMock)).toHaveLength(1);
+  });
+
+  it('markCorpusIdentityUsedForSigning() is a no-op when there is no vault-sourced identity', async () => {
+    const { bootstrapCorpusIdentity, markCorpusIdentityUsedForSigning, _resetCorpusIdentityStateForTests } = await import('../corpus-identity');
+    _resetCorpusIdentityStateForTests();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await bootstrapCorpusIdentity();
+    expect(() => markCorpusIdentityUsedForSigning()).not.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a fetched value that is not a usable minted keypair sends a "failed" ack (boot failure attributable to the key), not "used"', async () => {
+    process.env.CORPUS_VAULT_GRANT_ID = GRANT_ID;
+    process.env.CORPUS_VAULT_BOOTSTRAP_DID = BOOTSTRAP_DID;
+    process.env.CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY = BOOTSTRAP_PRIVATE_KEY;
+    const { bootstrapCorpusIdentity, loadCorpusIdentity, _resetCorpusIdentityStateForTests } = await import('../corpus-identity');
+    _resetCorpusIdentityStateForTests();
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/challenge')) return jsonResponse({ challengeId: 'ch_1', challenge: 'raw' });
+      if (url.endsWith('/api/authenticate')) return jsonResponse({ token: BEARER_TOKEN });
+      if (url.includes('/fetch')) {
+        // Fetch succeeds (a grant WAS consumed) but the field isn't a #2242 minted keypair.
+        return jsonResponse({ ok: true, field: 'some-other-field', value: MINTED_PRIVATE_KEY, oneTime: true });
+      }
+      if (url.includes('/ack')) return jsonResponse({ ok: true, grantId: GRANT_ID, outcome: 'failed', ackedAt: new Date().toISOString() });
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await bootstrapCorpusIdentity();
+
+    expect(loadCorpusIdentity()).toBeNull();
+    await vi.waitFor(() => expect(ackCalls(fetchMock)).toHaveLength(1));
+    const [, init] = ackCalls(fetchMock)[0]!;
+    expect(JSON.parse(init.body as string)).toMatchObject({ outcome: 'failed' });
   });
 });
 

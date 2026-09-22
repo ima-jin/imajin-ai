@@ -198,4 +198,6 @@ export type {
   VaultKeySpec,
   LoadFromVaultParams,
   VaultCredentials,
+  GrantAckHandle,
+  GrantAckOutcome,
 } from "./vault-client";
