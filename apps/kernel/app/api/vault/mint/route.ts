@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import { emitAttestation } from '@imajin/auth';
-import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { mintKeypair } from '@/src/lib/vault';
+import { mintKeypair, emitMintedEvents } from '@/src/lib/vault';
 import { requireMintAuthority } from '@/src/lib/vault/mint-authority';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 
@@ -76,39 +74,7 @@ export async function POST(request: Request) {
   try {
     const minted = await mintKeypair({ purpose, requesterDid, mintedBy: actingDid, expiresAt });
 
-    emitAttestation({
-      issuer_did: actingDid,
-      subject_did: minted.did,
-      type: 'vault.key.minted',
-      context_id: minted.mintId,
-      context_type: 'vault.mint',
-      payload: {
-        mintId: minted.mintId,
-        publicKey: minted.publicKey,
-        purpose,
-        requesterDid,
-        composedBy,
-        grantId: minted.grantId,
-      },
-    }).catch((err: unknown) => log.error({ err: String(err), mintId: minted.mintId }, 'vault.key.minted attestation failed'));
-
-    publish('vault.key.minted', {
-      issuer: actingDid,
-      subject: minted.did,
-      scope: 'vault',
-      payload: {
-        mintId: minted.mintId,
-        did: minted.did,
-        publicKey: minted.publicKey,
-        field: minted.field,
-        purpose,
-        requestedBy: requesterDid,
-        mintedBy: actingDid,
-        grantId: minted.grantId,
-        context_id: minted.mintId,
-        context_type: 'vault.mint',
-      },
-    }).catch((err: unknown) => log.error({ err: String(err), mintId: minted.mintId }, 'Bus publish error for vault.key.minted'));
+    emitMintedEvents({ minted, purpose, requesterDid, mintedBy: actingDid, composedBy });
 
     log.info({ mintId: minted.mintId, did: minted.did, mintedBy: actingDid }, 'Vault: mint requested');
 

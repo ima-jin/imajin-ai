@@ -1710,7 +1710,42 @@ export {
   mintedKeyField,
   mintKeypair,
   revokeMintedKey,
+  emitMintedEvents,
+  emitRevokedEvents,
+  emitWithdrawnEvents,
   type MintKeypairParams,
   type MintKeypairResult,
   type RevokeMintedKeyOutcome,
 } from './mint';
+
+// ── #2247 — vault key cards on /jin (grant to a NEW consumer for an
+// already-minted key's field, without a re-seal) ───────────────────────────
+// Trailing re-export only; see ./grant.ts for the implementation.
+export {
+  grantExistingMintedKey,
+  emitGrantEvents,
+  type GrantExistingMintedKeyParams,
+  type GrantExistingMintedKeyResult,
+} from './grant';
+
+// ── #2247 — vault key cards read model (timeline + hand-provisioned filter) ──
+// Trailing re-export only; see ./key-cards.ts for the implementation.
+export {
+  listVaultKeyCards,
+  listHandProvisionedFields,
+  getMintedKeyByDid,
+  type VaultKeyCard,
+  type VaultKeyGrantSummary,
+  type VaultKeyTimelineEvent,
+  type VaultKeyTimelineEventType,
+  type HandProvisionedField,
+} from './key-cards';
+
+// ── #2247 — shared vault revoke-tier label (canvas + route summary copy) ─────
+// Trailing re-export only; see ./revoke-tier.ts for the implementation.
+export { revokeTierLabel, type VaultRevokeTier } from './revoke-tier';
+
+// ── #2247 — vault proposal authorization reference (the signing-roles ruling:
+// agent wish, operator countersign, node witness+executor) ───────────────────
+// Trailing re-export only; see ./authorization.ts for the implementation.
+export { resolveVaultAuthorization, type VaultAuthorization } from './authorization';

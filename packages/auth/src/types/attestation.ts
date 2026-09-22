@@ -182,6 +182,11 @@ export const ATTESTATION_TYPES = [
   // minted key's grant is revoked. See ATTESTATION_TYPES above.
   'vault.key.minted',
   'vault.key.revoked',
+  // #2247 — minted mechanically when a minted key's grant is withdrawn
+  // (revoke tier 'withdraw': stops future fetches without tombstoning the
+  // vault_minted_keys record itself, distinct from 'vault.key.revoked').
+  // See ATTESTATION_TYPES above.
+  'vault.key.withdrawn',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -243,6 +248,9 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // minted key's grant is revoked. See ATTESTATION_TYPES above.
   'vault.key.minted',
   'vault.key.revoked',
+  // #2247 — minted mechanically when a minted key's grant is withdrawn.
+  // See ATTESTATION_TYPES above.
+  'vault.key.withdrawn',
 ] as const;
 
 /**

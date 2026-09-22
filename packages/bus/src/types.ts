@@ -721,10 +721,22 @@ export interface BusEventMap {
     purpose: string;
     /** Grantee DID the sealed private key was delivered to. */
     requestedBy: string;
-    /** Acting principal (requireAuth/actingFor) who requested the mint. */
+    /** Acting principal (requireAuth/actingFor) who requested the mint — always the NODE identity (#2247, the signing-roles ruling: the node executes and witnesses, never the operator). */
     mintedBy: string;
     /** Null under Tier 1, pending the external owner agent. */
     grantId: string | null;
+    /**
+     * Present only when this mint was executed from an approved `vault:mint`
+     * canvas proposal (#2247) — the countersigned-decision reference this
+     * mechanical action was authorized by. Absent for a direct
+     * `POST /api/vault/mint` call.
+     */
+    authorizedBy?: {
+      approvalId: string;
+      operatorDid: string;
+      contentHash: string;
+      decidedAt: string;
+    };
     context_id: string;
     context_type: 'vault.mint';
   };
@@ -738,7 +750,38 @@ export interface BusEventMap {
     mintId: string;
     did: string;
     publicKey: string;
+    /** Always the NODE identity (#2247, the signing-roles ruling). */
     revokedBy: string;
+    /** Present only when executed from an approved `vault:revoke`/`vault:rotate` canvas proposal (#2247). */
+    authorizedBy?: {
+      approvalId: string;
+      operatorDid: string;
+      contentHash: string;
+      decidedAt: string;
+    };
+    context_id: string;
+    context_type: 'vault.mint';
+  };
+  /**
+   * Emitted when a revoke tier 'withdraw' (#2247) deactivates a minted
+   * key's delegation grant WITHOUT tombstoning the `vault_minted_keys`
+   * record itself — distinct from `vault.key.revoked`'s full tombstone.
+   * The record remembers THAT it was withdrawn, same audit posture as
+   * every other vault.key.* mechanical event.
+   */
+  'vault.key.withdrawn': {
+    mintId: string;
+    did: string;
+    publicKey: string;
+    /** Always the NODE identity (#2247, the signing-roles ruling). */
+    withdrawnBy: string;
+    /** Present only when executed from an approved `vault:revoke` canvas proposal (#2247). */
+    authorizedBy?: {
+      approvalId: string;
+      operatorDid: string;
+      contentHash: string;
+      decidedAt: string;
+    };
     context_id: string;
     context_type: 'vault.mint';
   };
@@ -797,6 +840,13 @@ export interface BusEventMap {
     field: string;
     subject: string;     // ownerDid
     grantedTo: string;   // nodeDid
+    /** Present only when executed from an approved `vault:grant` canvas proposal (#2247). */
+    authorizedBy?: {
+      approvalId: string;
+      operatorDid: string;
+      contentHash: string;
+      decidedAt: string;
+    };
     context_id: string;
     context_type: 'vault';
   };
