@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { McpContent, McpToolContext } from '../types';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
@@ -107,6 +107,70 @@ describe('media_create_note', () => {
     const out = parseResult(res as McpContent[]);
     expect(out.id).toBe('asset_new');
     expect(out.article).toBeUndefined();
+  });
+});
+
+// ─── media_upload ───────────────────────────────────────────────────────────
+
+describe('media_upload', () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it('description no longer claims a fixed "10 MB" limit', () => {
+    expect(tool('media_upload').description).not.toMatch(/10 ?MB/i);
+  });
+
+  it('description explains the app-upload → reference-by-id path', () => {
+    const description = tool('media_upload').description;
+    expect(description).toMatch(/Imajin app/);
+    expect(description).toMatch(/asset id/);
+  });
+
+  it('returns a structured payload_too_large error instead of throwing when oversize', async () => {
+    process.env.NEXT_PUBLIC_BASE_URL = 'https://node.example';
+    const oversizeB64 = Buffer.alloc(11 * 1024 * 1024, 1).toString('base64');
+
+    const res = await tool('media_upload').handler(
+      { filename: 'huge.bin', data_base64: oversizeB64 },
+      ctx,
+    );
+    const out = parseResult(res as McpContent[]);
+
+    expect(out.error.code).toBe('payload_too_large');
+    expect(out.error.limitBytes).toBe(10 * 1024 * 1024);
+    expect(out.error.uploadUrl).toBe('https://node.example/media');
+    expect(createAsset).not.toHaveBeenCalled();
+  });
+
+  it('falls back to MEDIA_PUBLIC_URL, then empty string, for uploadUrl', async () => {
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    process.env.MEDIA_PUBLIC_URL = 'https://media.example';
+    const oversizeB64 = Buffer.alloc(11 * 1024 * 1024, 1).toString('base64');
+
+    const res = await tool('media_upload').handler(
+      { filename: 'huge.bin', data_base64: oversizeB64 },
+      ctx,
+    );
+    const out = parseResult(res as McpContent[]);
+    expect(out.error.uploadUrl).toBe('https://media.example/media');
+  });
+
+  it('uploads normally when under the byte limit', async () => {
+    mockCreatedAsset({ filename: 'small.txt', mimeType: 'text/plain', size: 5 });
+    const smallB64 = Buffer.from('hello').toString('base64');
+
+    const res = await tool('media_upload').handler(
+      { filename: 'small.txt', data_base64: smallB64 },
+      ctx,
+    );
+    const out = parseResult(res as McpContent[]);
+
+    expect(createAsset).toHaveBeenCalledTimes(1);
+    expect(out.id).toBe('asset_new');
+    expect(out.error).toBeUndefined();
   });
 });
 
