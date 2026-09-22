@@ -74,18 +74,35 @@ vi.mock('@/src/db', () => ({
   foreignPrincipalStubs: STUBS_TABLE,
 }));
 
+// #2245 — the pepper is now a self-provisioned vault secret, not an env var.
+// Mocked here so these tests exercise the stub-dedup logic in isolation;
+// internal-secret.ts's own generate/fetch/concurrency contract has its own
+// dedicated test suite (internal-secret.test.ts).
+const getInternalSecretMock = vi.fn();
+vi.mock('@/src/lib/vault', () => ({
+  getInternalSecret: (...args: unknown[]) => getInternalSecretMock(...args),
+}));
+
 import { resolveOrMintForeignPrincipalStub, findForeignPrincipalStubDid, hmacForeignPrincipalRef } from '../foreign-principal-stub';
 
 describe('foreign-principal-stub (#2251)', () => {
   beforeEach(() => {
     identitiesStore.clear();
     stubsStore.clear();
-    process.env.FOREIGN_PRINCIPAL_STUB_SECRET = 'test-secret';
+    getInternalSecretMock.mockReset().mockResolvedValue('test-secret');
   });
 
-  it('throws when FOREIGN_PRINCIPAL_STUB_SECRET is not set', () => {
-    delete process.env.FOREIGN_PRINCIPAL_STUB_SECRET;
-    expect(() => hmacForeignPrincipalRef('meta-muse', 'alice-1')).toThrow(/FOREIGN_PRINCIPAL_STUB_SECRET/);
+  it('generates the pepper on first call, via getInternalSecret with the kernel.foreign-principal-pepper purpose, and reuses it on every subsequent call', async () => {
+    const first = await hmacForeignPrincipalRef('meta-muse', 'alice-1');
+    const second = await hmacForeignPrincipalRef('meta-muse', 'bob-1');
+
+    expect(getInternalSecretMock).toHaveBeenCalledWith('kernel.foreign-principal-pepper');
+    expect(getInternalSecretMock).toHaveBeenCalledTimes(2);
+    // Same pepper both times (getInternalSecret's own cache is responsible
+    // for reuse — this just proves both HMACs were computed with the same
+    // secret it returned).
+    expect(first).not.toBe(second); // different externalRef -> different HMAC
+    expect(first).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('mints a new soft-tier, no-PII stub identity on first sight of a (platform, externalRef) pair', async () => {

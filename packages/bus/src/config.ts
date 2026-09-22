@@ -347,6 +347,15 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'vault.key.revoked': [
     { type: 'audit-log', config: { fields: ['mintId', 'did', 'publicKey', 'revokedBy'] }, enabled: true },
   ],
+  // #2245 — self-provisioned internal secrets. `audit-log` persists exactly
+  // one row per purpose the first time the kernel generates its own grant
+  // (never on a subsequent boot's re-fetch of the same purpose) — the
+  // payload carries only purpose/grantId/contentHash, never the generated
+  // bytes. Mirrors vault.key.minted's #2242 pattern above. Kept in sync
+  // with migration 0153.
+  'vault.secret.generated': [
+    { type: 'audit-log', config: { fields: ['purpose', 'grantId', 'contentHash'] }, enabled: true },
+  ],
   // #2251 — per-principal agent-reach endpoint. `audit-log` persists every
   // attempt (answered or denied), mirroring vault.delegation.fetched's
   // #2231 pattern above. Kept in sync with migration 0151.

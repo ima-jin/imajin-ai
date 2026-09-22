@@ -277,3 +277,44 @@ export const vaultMintedKeys = vaultSchema.table('vault_minted_keys', {
 
 export type VaultMintedKey = typeof vaultMintedKeys.$inferSelect;
 export type NewVaultMintedKey = typeof vaultMintedKeys.$inferInsert;
+
+/**
+ * Internal secret provisioning claims (#2245) — the race-safe "exactly one
+ * process wins the first-boot generate" guard for `getInternalSecret()`
+ * (apps/kernel/src/lib/vault/internal-secret.ts). A kernel-internal secret
+ * with a single in-process consumer (e.g. the foreign-principal-stub pepper,
+ * replacing the hand-set `FOREIGN_PRINCIPAL_STUB_SECRET` env var) is
+ * generated on first boot and sealed via the pre-existing static-secret
+ * grant path (`sealAndGrantStaticSecret`, self-granted: subject ===
+ * grantedTo === the node's own DID).
+ *
+ * This table holds NO secret material — only a claim marker, so two boots
+ * racing to provision the same (ownerDid, purpose) can never both generate
+ * and grant a different value. The winner is whichever insert survives
+ * `uniqOwnerPurpose` below; the loser polls `vault_delegation_grants` for
+ * the winner's now-active grant instead of generating its own. A winner
+ * that fails rolls its own claim back immediately so a retry is never
+ * blocked by it; only a hard crash between claiming and that rollback
+ * leaves a genuinely stale row here, requiring manual cleanup —
+ * deliberately out of scope for #2245 (see that module's docblock for the
+ * full contract, tracked as a rotate-card follow-up).
+ *
+ * The CURRENT grant for a purpose is always resolved by filtering
+ * `vault_delegation_grants` on `status = 'active'` — the same
+ * supersede-on-rotate semantics every other purpose-bound grant already
+ * uses, so a later rotate card needs no change to that lookup at all.
+ */
+export const internalSecretProvisions = vaultSchema.table('internal_secret_provisions', {
+  id: text('id').primaryKey(),                          // isp_{nanoid}
+  ownerDid: text('owner_did').notNull(),                 // the node's own DID (subject === grantedTo)
+  purpose: text('purpose').notNull(),                    // e.g. 'kernel.foreign-principal-pepper'
+  field: text('field').notNull(),                        // vault field the sealed secret lives at
+  grantId: text('grant_id'),                             // vault_delegation_grants.id, set once sealed
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  uniqOwnerPurpose: uniqueIndex('uniq_internal_secret_provisions_owner_purpose')
+    .on(table.ownerDid, table.purpose),
+}));
+
+export type InternalSecretProvision = typeof internalSecretProvisions.$inferSelect;
+export type NewInternalSecretProvision = typeof internalSecretProvisions.$inferInsert;

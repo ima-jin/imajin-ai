@@ -971,6 +971,12 @@
       "schema": "kernel",
       "firstMigration": "0150_vault_mint.sql",
       "notes": ""
+    },
+    "kernel.internal_secret_provisions": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0153_internal_secret_provisions.sql",
+      "notes": ""
     }
   },
   "views": {},

@@ -23,22 +23,23 @@ import { createHmac } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { eq, and } from 'drizzle-orm';
 import { db, identities, foreignPrincipalStubs } from '@/src/db';
+import { getInternalSecret } from '@/src/lib/vault';
 
-function secret(): string {
-  const value = process.env.FOREIGN_PRINCIPAL_STUB_SECRET;
-  if (!value) {
-    throw new Error('foreign-principal-stub: FOREIGN_PRINCIPAL_STUB_SECRET is not set');
-  }
-  return value;
-}
+/** Purpose label for the vault-generated pepper (#2245) — see getInternalSecret. */
+const PEPPER_PURPOSE = 'kernel.foreign-principal-pepper';
 
 /**
  * Salted/peppered HMAC-SHA256 match key for a `(platform, externalRef)`
  * pair. Never reversible; used only for equality matching against
  * `auth.foreign_principal_stubs.external_ref_hmac`.
+ *
+ * The pepper is a kernel-internal, self-provisioned vault secret (#2245) —
+ * generated on first use and self-granted to the node's own DID, never a
+ * hand-set env var. See `@/src/lib/vault/internal-secret.ts`.
  */
-export function hmacForeignPrincipalRef(platform: string, externalRef: string): string {
-  return createHmac('sha256', secret()).update(`${platform}:${externalRef}`).digest('hex');
+export async function hmacForeignPrincipalRef(platform: string, externalRef: string): Promise<string> {
+  const pepper = await getInternalSecret(PEPPER_PURPOSE);
+  return createHmac('sha256', pepper).update(`${platform}:${externalRef}`).digest('hex');
 }
 
 export interface ForeignPrincipalStubResult {
@@ -57,7 +58,7 @@ export async function resolveOrMintForeignPrincipalStub(params: {
   externalRef: string;
 }): Promise<ForeignPrincipalStubResult> {
   const { platform } = params;
-  const externalRefHmac = hmacForeignPrincipalRef(platform, params.externalRef);
+  const externalRefHmac = await hmacForeignPrincipalRef(platform, params.externalRef);
 
   const [existing] = await db
     .select({ stubDid: foreignPrincipalStubs.stubDid })
@@ -94,7 +95,7 @@ export async function resolveOrMintForeignPrincipalStub(params: {
  * externalRef)` pair.
  */
 export async function findForeignPrincipalStubDid(platform: string, externalRef: string): Promise<string | null> {
-  const externalRefHmac = hmacForeignPrincipalRef(platform, externalRef);
+  const externalRefHmac = await hmacForeignPrincipalRef(platform, externalRef);
   const [stub] = await db
     .select({ stubDid: foreignPrincipalStubs.stubDid })
     .from(foreignPrincipalStubs)
