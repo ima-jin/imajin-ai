@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, authErrorResponse } from '@imajin/auth';
-import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { fetchGrantSecret, type GrantFetchOutcome } from '@/src/lib/vault';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+import { GRANT_NOT_FOUND_STATUS, GRANT_NOT_FOUND_ERROR, publishVaultDelegationAudit } from '@/src/lib/vault/route-helpers';
 
 const log = createLogger('kernel');
 
@@ -12,10 +12,7 @@ function statusForOutcome(status: Exclude<GrantFetchOutcome['status'], 'ok'>): n
   switch (status) {
     case 'not_found':
     case 'not_grantee':
-      // Identical response shape for both: confirming a grantId exists but
-      // belongs to someone else would let a caller enumerate grantIds it
-      // cannot use.
-      return 404;
+      return GRANT_NOT_FOUND_STATUS;
     case 'consumed':
       return 410;
     case 'inactive':
@@ -29,7 +26,7 @@ function errorForOutcome(status: Exclude<GrantFetchOutcome['status'], 'ok'>): st
   switch (status) {
     case 'not_found':
     case 'not_grantee':
-      return 'No delegation grant found for this id';
+      return GRANT_NOT_FOUND_ERROR;
     case 'consumed':
       return 'This one-time grant has already been fetched';
     case 'inactive':
@@ -50,22 +47,15 @@ function auditFetch(params: {
   oneTime: boolean;
   outcome: GrantFetchOutcome['status'] | 'error';
 }): void {
-  publish('vault.delegation.fetched', {
-    issuer: params.granteeDid,
-    subject: params.granteeDid,
-    scope: 'vault',
-    payload: {
-      grantId: params.grantId,
-      field: params.field,
-      granteeDid: params.granteeDid,
-      purpose: params.purpose,
-      oneTime: params.oneTime,
-      outcome: params.outcome,
-      context_id: params.grantId,
-      context_type: 'vault.delegation',
-    },
-  }).catch((err: unknown) => {
-    log.error({ err: String(err), grantId: params.grantId }, 'Bus publish error for vault.delegation.fetched');
+  publishVaultDelegationAudit('vault.delegation.fetched', params.granteeDid, params.grantId, {
+    grantId: params.grantId,
+    field: params.field,
+    granteeDid: params.granteeDid,
+    purpose: params.purpose,
+    oneTime: params.oneTime,
+    outcome: params.outcome,
+    context_id: params.grantId,
+    context_type: 'vault.delegation',
   });
 }
 

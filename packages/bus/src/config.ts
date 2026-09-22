@@ -324,6 +324,15 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'vault.delegation.fetched': [
     { type: 'audit-log', config: { fields: ['grantId', 'field', 'granteeDid', 'purpose', 'oneTime', 'outcome'] }, enabled: true },
   ],
+  // #2235 — agent ack (follow-up to #2231's fetch). Same rationale as
+  // vault.delegation.fetched just above: `audit-log` is the durable,
+  // queryable record of every ack attempt (success or refusal), and the
+  // event payload never carries secret material (no `note`, no
+  // `evidence.ref` — only the evidence `kind` label). Kept in sync with
+  // migration 0149.
+  'vault.delegation.acked': [
+    { type: 'audit-log', config: { fields: ['grantId', 'granteeDid', 'ownerDid', 'purpose', 'outcome', 'evidenceKind', 'ackedAt'] }, enabled: true },
+  ],
   // #2242 — vault.mint audit trail. `audit-log` persists the mint/revoke
   // metadata (never key material) into kernel.audit_log, mirroring
   // vault.delegation.fetched's #2231 pattern above. Kept in sync with

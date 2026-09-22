@@ -22,6 +22,10 @@ const log = createLogger('kernel');
  * (e.g. `?purpose=gha-runner-registration`), so an agent that expects many
  * unrelated grants can find the ones relevant to a specific task without
  * fetching or inspecting the rest.
+ *
+ * Each item also carries `ackOutcome`/`ackedAt`/`ackEvidence` (#2235,
+ * null when the grant has not been acked yet), so the owner-facing view can
+ * show fetched -> acked/failed without a separate round trip.
  */
 export async function GET(request: Request) {
   const authResult = await requireAuth(request);

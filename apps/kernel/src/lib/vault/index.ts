@@ -1477,7 +1477,20 @@ export async function fetchGrantSecret(params: {
     getNodeXPrivateKey(),
     resolveGrantVerifier(entry, grant),
   );
-  return { status: 'ok', value, grant };
+
+  // #2235: record that this grant was actually fetched, synchronously and
+  // only after decrypt has genuinely succeeded — see the migration 0149
+  // docblock for why this is a column rather than an audit_log query. This
+  // is the precondition ackGrant checks; it never gates the fetch outcome
+  // itself, so a write failure here would only be visible as a later
+  // 'not_fetched' ack refusal, not as a fetch error.
+  const lastFetchedAt = new Date();
+  await db
+    .update(vaultDelegationGrants)
+    .set({ lastFetchedAt })
+    .where(eq(vaultDelegationGrants.id, grant.id));
+
+  return { status: 'ok', value, grant: { ...grant, lastFetchedAt } };
 }
 
 export interface GranteeGrantSummary {
@@ -1490,12 +1503,15 @@ export interface GranteeGrantSummary {
   expiresAt: string | null;
   consumedAt: string | null;
   createdAt: string;
+  ackOutcome: AckOutcome | null;
+  ackedAt: string | null;
+  ackEvidence: AckEvidence | null;
 }
 
 /**
  * List the grants issued to `granteeDid`, optionally narrowed to a single
  * `purpose`, WITHOUT any wrapped key material — the read surface for an
- * agent enumerating its own grants (#2231).
+ * agent enumerating its own grants (#2231, #2235).
  */
 export async function listGrantsForGrantee(params: {
   granteeDid: string;
@@ -1512,6 +1528,9 @@ export async function listGrantsForGrantee(params: {
       expiresAt: vaultDelegationGrants.expiresAt,
       consumedAt: vaultDelegationGrants.consumedAt,
       createdAt: vaultDelegationGrants.createdAt,
+      ackOutcome: vaultDelegationGrants.ackOutcome,
+      ackedAt: vaultDelegationGrants.ackedAt,
+      ackEvidence: vaultDelegationGrants.ackEvidence,
     })
     .from(vaultDelegationGrants)
     .where(
@@ -1534,7 +1553,142 @@ export async function listGrantsForGrantee(params: {
     expiresAt: row.expiresAt ? row.expiresAt.toISOString() : null,
     consumedAt: row.consumedAt ? row.consumedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
+    ackOutcome: (row.ackOutcome as AckOutcome | null) ?? null,
+    ackedAt: row.ackedAt ? row.ackedAt.toISOString() : null,
+    ackEvidence: row.ackEvidence ?? null,
   }));
+}
+
+// ── Agent ack (#2235) ───────────────────────────────────────────────────────
+//
+// Companion to fetchGrantSecret above: once an agent has fetched a grant's
+// secret and acted on it (or tried to and failed), it signs what happened —
+// never the secret itself — via POST /api/vault/delegation/grants/{id}/ack.
+
+export type AckOutcome = 'used' | 'failed' | 'discarded';
+
+/** Evidence + free-text note the grantee attaches to an ack. Never the secret value. */
+export interface AckEvidence {
+  kind?: string;
+  ref?: string;
+  note?: string;
+}
+
+export type GrantAckOutcome =
+  | { status: 'ok'; ackedAt: Date; ackOutcome: AckOutcome; ownerDid: string; purpose: string | null }
+  | { status: 'not_found' | 'not_grantee' | 'not_fetched' }
+  | { status: 'conflict'; ackedAt: Date; ackOutcome: AckOutcome };
+
+/**
+ * Idempotent-ok vs conflict for a grant row that already carries an ack.
+ * Returns null when the row has not been acked yet. `ownerDid`/`purpose` are
+ * threaded through so the route layer can build the `vault.delegation.acked`
+ * audit payload without a second query — they never change once a grant is
+ * issued, so re-reading them here would just be the same values again.
+ */
+function resolveExistingAck(
+  grant: Pick<VaultDelegationGrant, 'ackedAt' | 'ackOutcome' | 'subject' | 'purpose'>,
+  outcome: AckOutcome,
+): GrantAckOutcome | null {
+  if (grant.ackedAt === null || grant.ackOutcome === null) {
+    return null;
+  }
+  const existingOutcome = grant.ackOutcome as AckOutcome;
+  return existingOutcome === outcome
+    ? { status: 'ok', ackedAt: grant.ackedAt, ackOutcome: existingOutcome, ownerDid: grant.subject, purpose: grant.purpose }
+    : { status: 'conflict', ackedAt: grant.ackedAt, ackOutcome: existingOutcome };
+}
+
+/**
+ * Record that `granteeDid` acted on the secret behind a grant it already
+ * fetched (#2235).
+ *
+ * Preconditions, checked in order:
+ *   - the grant must exist and be granted to this caller — `not_found` /
+ *     `not_grantee` are deliberately indistinguishable in the route's HTTP
+ *     response, same anti-enumeration posture as `fetchGrantSecret`.
+ *   - the grant must actually have been fetched at least once
+ *     (`lastFetchedAt !== null` — see the migration 0149 docblock for why
+ *     this is a column rather than a `kernel.audit_log` query). Otherwise
+ *     `not_fetched`.
+ *
+ * Idempotent per grant+outcome: acking again with the SAME outcome returns
+ * the original `ackedAt` unchanged (`status: 'ok'`). Acking with a
+ * DIFFERENT outcome than already recorded is a `conflict` — an ack is a
+ * durable signed statement of what happened, not a mutable status field.
+ *
+ * The first ack is claimed atomically (`WHERE acked_at IS NULL` guard),
+ * mirroring `fetchGrantSecret`'s one-time claim, so two concurrent first
+ * acks for the same grant can never both "win" the write; the loser re-reads
+ * the row and reports idempotent-ok or conflict against whichever won.
+ */
+export async function ackGrant(params: {
+  grantId: string;
+  granteeDid: string;
+  outcome: AckOutcome;
+  evidence?: AckEvidence | null;
+}): Promise<GrantAckOutcome> {
+  const rows = await db
+    .select()
+    .from(vaultDelegationGrants)
+    .where(eq(vaultDelegationGrants.id, params.grantId))
+    .limit(1);
+  const grant = rows[0];
+  if (!grant) {
+    return { status: 'not_found' };
+  }
+  if (grant.grantedTo !== params.granteeDid) {
+    return { status: 'not_grantee' };
+  }
+  if (grant.lastFetchedAt === null) {
+    return { status: 'not_fetched' };
+  }
+
+  const existing = resolveExistingAck(grant, params.outcome);
+  if (existing) {
+    return existing;
+  }
+
+  const claimed = await db
+    .update(vaultDelegationGrants)
+    .set({
+      ackedAt: new Date(),
+      ackOutcome: params.outcome,
+      ackEvidence: params.evidence ?? null,
+    })
+    .where(and(eq(vaultDelegationGrants.id, grant.id), isNull(vaultDelegationGrants.ackedAt)))
+    .returning({
+      ackedAt: vaultDelegationGrants.ackedAt,
+      ackOutcome: vaultDelegationGrants.ackOutcome,
+    });
+
+  if (claimed.length === 0) {
+    // Lost the race to a concurrent first ack of the same grant — re-read to
+    // report idempotent-ok or conflict against whatever won. subject/purpose
+    // are immutable post-issuance, so the values already in `grant` still
+    // apply to whichever ack won.
+    const [after] = await db
+      .select({ ackedAt: vaultDelegationGrants.ackedAt, ackOutcome: vaultDelegationGrants.ackOutcome })
+      .from(vaultDelegationGrants)
+      .where(eq(vaultDelegationGrants.id, grant.id))
+      .limit(1);
+    if (!after) {
+      return { status: 'not_found' };
+    }
+    return resolveExistingAck(
+      { ...after, subject: grant.subject, purpose: grant.purpose },
+      params.outcome,
+    ) ?? { status: 'not_found' };
+  }
+
+  const [row] = claimed;
+  return {
+    status: 'ok',
+    ackedAt: row.ackedAt as Date,
+    ackOutcome: row.ackOutcome as AckOutcome,
+    ownerDid: grant.subject,
+    purpose: grant.purpose,
+  };
 }
 
 // ── Batch v1→v2 custody migration (#1537) ───────────────────────────
