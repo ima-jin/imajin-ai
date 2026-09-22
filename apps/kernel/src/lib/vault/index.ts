@@ -1712,6 +1712,7 @@ export {
   revokeMintedKey,
   emitMintedEvents,
   emitRevokedEvents,
+  emitWithdrawnEvents,
   type MintKeypairParams,
   type MintKeypairResult,
   type RevokeMintedKeyOutcome,
@@ -1743,3 +1744,8 @@ export {
 // ── #2247 — shared vault revoke-tier label (canvas + route summary copy) ─────
 // Trailing re-export only; see ./revoke-tier.ts for the implementation.
 export { revokeTierLabel, type VaultRevokeTier } from './revoke-tier';
+
+// ── #2247 — vault proposal authorization reference (the signing-roles ruling:
+// agent wish, operator countersign, node witness+executor) ───────────────────
+// Trailing re-export only; see ./authorization.ts for the implementation.
+export { resolveVaultAuthorization, type VaultAuthorization } from './authorization';

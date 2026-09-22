@@ -37,6 +37,7 @@ import { db, vaultDelegationGrants, vaultMintedKeys } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
 import { canonicalizeGrantPayload } from './index';
+import type { VaultAuthorization } from './authorization';
 
 const log = createLogger('kernel');
 
@@ -152,8 +153,10 @@ export function emitGrantEvents(params: {
   field: string;
   grantedTo: string;
   grantedBy: string;
+  /** Present only when executed from an approved `vault:grant` canvas proposal (#2247). */
+  authorizedBy?: VaultAuthorization;
 }): void {
-  const { grantId, did, field, grantedTo, grantedBy } = params;
+  const { grantId, did, field, grantedTo, grantedBy, authorizedBy } = params;
 
   publish('vault.grant.fulfilled', {
     issuer: grantedBy,
@@ -165,6 +168,7 @@ export function emitGrantEvents(params: {
       field,
       subject: did,
       grantedTo,
+      ...(authorizedBy ? { authorizedBy } : {}),
       context_id: field,
       context_type: 'vault',
     },

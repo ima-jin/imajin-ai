@@ -34,6 +34,7 @@ import { eq } from 'drizzle-orm';
 import { db, vaultMintedKeys, type VaultMintedKey } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { sealAndGrantStaticSecret, revokeStaticSecretGrant } from './index';
+import type { VaultAuthorization } from './authorization';
 
 const log = createLogger('kernel');
 
@@ -135,8 +136,17 @@ export function emitMintedEvents(params: {
   requesterDid: string;
   mintedBy: string;
   composedBy?: string | null;
+  /**
+   * Present only when this mint was executed from an approved `vault:mint`
+   * canvas proposal (#2247) — the countersigned-decision reference this
+   * mechanical action was authorized by. `mintedBy`/`issuer_did` is
+   * ALWAYS the node identity in that case (the signing-roles ruling: the
+   * node executes and witnesses, never the operator); this is the audit
+   * trail linking the mechanical action back to who authorized it.
+   */
+  authorizedBy?: VaultAuthorization;
 }): void {
-  const { minted, purpose, requesterDid, mintedBy, composedBy = null } = params;
+  const { minted, purpose, requesterDid, mintedBy, composedBy = null, authorizedBy } = params;
 
   emitAttestation({
     issuer_did: mintedBy,
@@ -151,6 +161,7 @@ export function emitMintedEvents(params: {
       requesterDid,
       composedBy,
       grantId: minted.grantId,
+      ...(authorizedBy ? { authorizedBy } : {}),
     },
   }).catch((err: unknown) => log.error({ err: String(err), mintId: minted.mintId }, 'vault.key.minted attestation failed'));
 
@@ -167,6 +178,7 @@ export function emitMintedEvents(params: {
       requestedBy: requesterDid,
       mintedBy,
       grantId: minted.grantId,
+      ...(authorizedBy ? { authorizedBy } : {}),
       context_id: minted.mintId,
       context_type: 'vault.mint',
     },
@@ -179,7 +191,7 @@ export function emitMintedEvents(params: {
  * same reason — shared by `POST /api/vault/mint/revoke` and the vault
  * proposal execution bridge.
  */
-export function emitRevokedEvents(record: VaultMintedKey, revokedBy: string): void {
+export function emitRevokedEvents(record: VaultMintedKey, revokedBy: string, authorizedBy?: VaultAuthorization): void {
   emitAttestation({
     issuer_did: revokedBy,
     subject_did: record.did,
@@ -190,6 +202,7 @@ export function emitRevokedEvents(record: VaultMintedKey, revokedBy: string): vo
       mintId: record.id,
       publicKey: record.publicKey,
       revokedBy,
+      ...(authorizedBy ? { authorizedBy } : {}),
     },
   }).catch((err: unknown) => log.error({ err: String(err), mintId: record.id }, 'vault.key.revoked attestation failed'));
 
@@ -202,10 +215,51 @@ export function emitRevokedEvents(record: VaultMintedKey, revokedBy: string): vo
       did: record.did,
       publicKey: record.publicKey,
       revokedBy,
+      ...(authorizedBy ? { authorizedBy } : {}),
       context_id: record.id,
       context_type: 'vault.mint',
     },
   }).catch((err: unknown) => log.error({ err: String(err), mintId: record.id }, 'Bus publish error for vault.key.revoked'));
+}
+
+/**
+ * Emit the `vault.key.withdrawn` attestation + bus event for revoke tier
+ * 'withdraw' (#2247) — deactivates a minted key's delegation grant
+ * WITHOUT tombstoning the `vault_minted_keys` record itself (distinct
+ * from {@link emitRevokedEvents}'s full tombstone). Only call this when
+ * something was actually deactivated (`revokeStaticSecretGrant` returned
+ * `true`) — a withdraw against a field with no active grant is a no-op
+ * and should not mint a record of an action that didn't happen.
+ */
+export function emitWithdrawnEvents(record: VaultMintedKey, withdrawnBy: string, authorizedBy?: VaultAuthorization): void {
+  emitAttestation({
+    issuer_did: withdrawnBy,
+    subject_did: record.did,
+    type: 'vault.key.withdrawn',
+    context_id: record.id,
+    context_type: 'vault.mint',
+    payload: {
+      mintId: record.id,
+      publicKey: record.publicKey,
+      withdrawnBy,
+      ...(authorizedBy ? { authorizedBy } : {}),
+    },
+  }).catch((err: unknown) => log.error({ err: String(err), mintId: record.id }, 'vault.key.withdrawn attestation failed'));
+
+  publish('vault.key.withdrawn', {
+    issuer: withdrawnBy,
+    subject: record.did,
+    scope: 'vault',
+    payload: {
+      mintId: record.id,
+      did: record.did,
+      publicKey: record.publicKey,
+      withdrawnBy,
+      ...(authorizedBy ? { authorizedBy } : {}),
+      context_id: record.id,
+      context_type: 'vault.mint',
+    },
+  }).catch((err: unknown) => log.error({ err: String(err), mintId: record.id }, 'Bus publish error for vault.key.withdrawn'));
 }
 
 export type RevokeMintedKeyOutcome =

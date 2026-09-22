@@ -263,6 +263,37 @@ describe('emitGrantEvents', () => {
     expect(event.payload.grantedTo).toBe('did:imajin:prod-corpus');
   });
 
+  // #2247 signing-roles ruling: a canvas-approved grant carries the
+  // countersigned decision's reference on the emitted event.
+  it('includes authorizedBy on the bus event payload when supplied', () => {
+    const authorizedBy = { approvalId: 'vprop_1', operatorDid: 'did:imajin:operator', contentHash: 'a'.repeat(64), decidedAt: '2026-01-01T00:00:00.000Z' };
+
+    emitGrantEvents({
+      grantId: 'vdg_new',
+      did: MINTED_DID,
+      field: FIELD,
+      grantedTo: 'did:imajin:prod-corpus',
+      grantedBy: 'did:imajin:node',
+      authorizedBy,
+    });
+
+    const [, event] = mockPublish.mock.calls[0]!;
+    expect(event.payload.authorizedBy).toEqual(authorizedBy);
+  });
+
+  it('omits authorizedBy entirely when not supplied', () => {
+    emitGrantEvents({
+      grantId: 'vdg_new',
+      did: MINTED_DID,
+      field: FIELD,
+      grantedTo: 'did:imajin:prod-corpus',
+      grantedBy: 'did:imajin:operator',
+    });
+
+    const [, event] = mockPublish.mock.calls[0]!;
+    expect(event.payload.authorizedBy).toBeUndefined();
+  });
+
   it('never throws when the bus publish itself rejects', () => {
     mockPublish.mockRejectedValue(new Error('bus unavailable'));
 
