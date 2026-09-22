@@ -717,6 +717,37 @@ export interface BusEventMap {
     context_type: 'vault.mint';
   };
   /**
+   * Emitted when the per-principal agent-reach endpoint (#2251) answers a
+   * signed, authorized reach request. Carries no underlying gate data
+   * (e.g. the principal's topic list) — only the boolean answer and the
+   * metadata needed to audit the exchange. `audit-log` (#1140) persists
+   * this verbatim; safe because the payload is already disclosure-safe.
+   */
+  'agent.reach.answered': {
+    requesterDid: string;
+    principalDid: string;
+    onBehalfOfStubDid: string;
+    purpose: string;
+    field: string;
+    answer: boolean;
+    grantId: string;
+    context_id: string;
+    context_type: 'agent.reach';
+  };
+  /**
+   * Emitted when a reach request is refused — invalid signature, no active
+   * `agent:reach` grant (including a just-revoked one, #2251's fail-closed
+   * revocation test), or an unknown principal. `reason` is a closed,
+   * non-PII enum — never the raw rejection detail string.
+   */
+  'agent.reach.denied': {
+    requesterDid: string;
+    principalDid: string;
+    reason: 'invalid_signature' | 'unauthorized' | 'principal_not_found' | 'requester_unknown';
+    context_id: string;
+    context_type: 'agent.reach';
+  };
+  /**
    * Emitted by sealAndStoreV2 in Tier 1 mode when the vault entry is written
    * but no delegation grant has been created yet (#1403).  The external owner
    * agent (imajin-cli vault serve) receives this event, recovers the field key

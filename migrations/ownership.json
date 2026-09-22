@@ -84,6 +84,12 @@
       "firstMigration": "0001_seed.sql",
       "notes": ""
     },
+    "auth.foreign_principal_stubs": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0151_foreign_principal_stubs.sql",
+      "notes": ""
+    },
     "auth.identities": {
       "owner": "kernel",
       "schema": "auth",

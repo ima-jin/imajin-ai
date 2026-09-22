@@ -49,6 +49,13 @@ export const GRANT_SCOPE_REGISTRY = [
   // parallel one; see that route's module doc for the full reasoning. No
   // event feed: this is a pull-only read capability, not a subscription.
   { scope: 'usage:read', origin: 'kernel', eventTypes: [] },
+  // #2251 — authority for a foreign agent's own DID (minted via the
+  // existing knock -> accept flow, #1883, unmodified) to invoke the
+  // per-principal agent-reach endpoint against the delegator who issued
+  // this grant. No event feed: reach is a synchronous pull, not a
+  // subscription. Revoking this grant is what makes the next reach call
+  // fail closed (introspectGrant() re-reads storage on every call).
+  { scope: 'agent:reach', origin: 'kernel', eventTypes: [] },
 ] as const satisfies readonly {
   scope: string;
   origin: 'mcp' | 'kernel';
