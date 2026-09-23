@@ -1,6 +1,6 @@
 {
   "name": "@imajin/claw-envelope",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Harness-agnostic RFC-31 context-envelope generator (imajin-ai#1932/#1933): agent DID + owner DID + intent in, workspace files/config/delegation-grant refs/bus routes out — plus a NanoClaw renderer and the agent identity bootstrap CLI.",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@imajin/claw-provisioner",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Operator-executed runner for the envelope provisioner (imajin-ai#1933): consumes a kernel provision record, materializes its rendered envelope, and (for hosted placements, non-dry-run only) runs the deploy/nanoclaw compose stack, reporting boot status back to the kernel. Never touches live infra by itself in this repo's tests/CI.",
   "type": "module",

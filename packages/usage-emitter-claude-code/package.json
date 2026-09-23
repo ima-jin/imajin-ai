@@ -1,6 +1,6 @@
 {
   "name": "@imajin/usage-emitter-claude-code",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Reference external usage.incurred emitter (#1151): tails Claude Code session JSONL and posts to POST /usage/api/incurred.",
   "type": "module",

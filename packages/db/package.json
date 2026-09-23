@@ -1,6 +1,6 @@
 {
   "name": "@imajin/db",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Drizzle/postgres database handle shared across Imajin services",
   "license": "MIT",
