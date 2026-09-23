@@ -1,6 +1,6 @@
 {
   "name": "@imajin/config",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Shared configuration for Imajin services — CORS, service routing, session config, handle validation, and route helpers",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@imajin/broker-agent",
-  "version": "0.1.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Telegram broker agent — conversational surface for broker-mediated social coordination",
   "scripts": {
