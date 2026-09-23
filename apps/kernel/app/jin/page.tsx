@@ -5,6 +5,7 @@ import { UsageFeedPanel } from './usage-feed-panel';
 import { OperatorApprovalsPanel } from './operator-approvals-panel';
 import { VaultKeysPanel } from './vault-keys-panel';
 import { AccessBearersPanel } from './access-bearers-panel';
+import { GrantsPanel } from './grants-panel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -395,6 +396,12 @@ export default function JinPage() {
         {/* Operator approvals (#2059) — gateway restart / config proposals,
             visible only to the node operator; renders nothing otherwise. */}
         <OperatorApprovalsPanel />
+
+        {/* Grants lane (#2292) — standing-authority projection across every
+            grant source, one-tap revoke; operator-gated, renders nothing
+            otherwise. Rendered below OperatorApprovalsPanel so a freshly
+            raised revoke/decision surfaces above this read-only lane. */}
+        <GrantsPanel />
 
         {/* Live per-turn agent usage feed (#1864) — a second panel on this
             kernel ops page, alongside the confirm-rail proposals above. */}
