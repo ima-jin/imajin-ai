@@ -4,9 +4,10 @@ on:
   # A `packages-vX.Y.Z` tag always publishes exactly the four out-of-repo SDK
   # packages (#1982: auth, config, logger, ui) to GitHub Packages only, using
   # the ephemeral GITHUB_TOKEN — never NPM_TOKEN, so tagging this way cannot
-  # depend on (or consume) the npmjs-publish secret. Bump each package's
-  # version in package.json and commit that *before* pushing the tag; the
-  # tag-triggered run itself never bumps versions (see docs/packages/PUBLISHING.md).
+  # depend on (or consume) the npmjs-publish secret. There is no in-workflow
+  # version bump anywhere in this file (#2286's tag-as-truth philosophy): bump
+  # each package's version in package.json via a normal PR, merge it, *then*
+  # push the tag — see docs/packages/PUBLISHING.md.
   push:
     tags:
       - 'packages-v*'
@@ -29,16 +30,6 @@ on:
           - auth
           - logger
           - all
-      version_bump:
-        description: "Version bump type (none publishes the version in package.json as-is)"
-        required: true
-        type: choice
-        options:
-          - none
-          - patch
-          - minor
-          - major
-        default: patch
       registries:
         # npmjs.org is canonical; GitHub Packages is a visibility-only mirror
         # that populates the repo's Packages sidebar. The single-registry
@@ -97,14 +88,17 @@ jobs:
       # `workflow_dispatch`), so every dispatch-only input is resolved here,
       # once, into plain step outputs that the rest of the job reads uniformly
       # regardless of which trigger fired. Tag pushes always mean: publish the
-      # four SDK packages, as-is (no bump — bump before tagging), GitHub
-      # Packages only, for real (never a dry run).
+      # four SDK packages, as-is, GitHub Packages only, for real (never a dry
+      # run). Every publish — tag path and manual dispatch alike, for every
+      # package — publishes exactly the version already committed in that
+      # package's package.json. There is no in-workflow version bump (#2286's
+      # tag-as-truth philosophy: one way to change a version, a normal PR);
+      # see docs/packages/PUBLISHING.md.
       - name: Resolve run parameters
         id: params
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "list=${{ env.SDK_PACKAGES }}" >> $GITHUB_OUTPUT
-            echo "version_bump=none" >> $GITHUB_OUTPUT
             echo "do_npmjs=false" >> $GITHUB_OUTPUT
             echo "do_ghp=true" >> $GITHUB_OUTPUT
             echo "dry_run=false" >> $GITHUB_OUTPUT
@@ -114,7 +108,6 @@ jobs:
             else
               echo "list=${{ inputs.package }}" >> $GITHUB_OUTPUT
             fi
-            echo "version_bump=${{ inputs.version_bump }}" >> $GITHUB_OUTPUT
             if [ "${{ inputs.registries }}" = "github-packages" ]; then
               echo "do_npmjs=false" >> $GITHUB_OUTPUT
             else
@@ -127,19 +120,6 @@ jobs:
             fi
             echo "dry_run=${{ inputs.dry_run }}" >> $GITHUB_OUTPUT
           fi
-
-      - name: Bump versions
-        if: steps.params.outputs.version_bump != 'none'
-        run: |
-          for pkg in ${{ steps.params.outputs.list }}; do
-            echo "::group::Bumping $pkg"
-            cd packages/$pkg
-            # Use npm version to bump (modifies package.json in place)
-            NEW_VERSION=$(npm version ${{ steps.params.outputs.version_bump }} --no-git-tag-version | tr -d 'v')
-            echo "Bumped @imajin/$pkg to $NEW_VERSION"
-            cd ../..
-            echo "::endgroup::"
-          done
 
       # A selected package's dts build resolves its @imajin/* workspace
       # deps' types (e.g. vault-core → cid, config → tokens, ui → config/fair).
@@ -209,6 +189,6 @@ jobs:
             echo "::endgroup::"
           done
 
-      # Version bumps (workflow_dispatch only) are local to the workflow run.
-      # package.json versions in main are updated manually when needed.
-      # This avoids branch protection conflicts with push-back commits.
+      # No version-bump step exists here on purpose: every publish ships
+      # exactly the version already committed in main. Bump via a normal PR,
+      # merge it, then dispatch/tag — see docs/packages/PUBLISHING.md.

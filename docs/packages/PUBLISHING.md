@@ -50,7 +50,10 @@ holds either way: consume it as a real published, versioned package — never
 
 Ad hoc/other-package publishes (the wider `cid`/`tokens`/`vault-core`/`db`/
 `fair`/`pay`/`auth-client` set, or a re-publish to npmjs.org) still go through
-`workflow_dispatch` on the same workflow — that path is unchanged by #1982.
+`workflow_dispatch` on the same workflow. Like the tag path, `workflow_dispatch`
+has no version-bump input either — every publish, for every package, ships
+exactly the version already committed in that package's `package.json`. Bump
+it in a normal PR, merge, *then* dispatch/tag.
 
 ## Consumer: installing from GitHub Packages
 

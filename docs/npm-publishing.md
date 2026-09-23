@@ -34,7 +34,7 @@ Both publishes run from the same prepared tarball via `scripts/publish-package.s
 
 ### The `packages-v*` tag path (#1982)
 
-Pushing a `packages-vX.Y.Z` tag runs the same job with fixed parameters instead of `workflow_dispatch` inputs: it always publishes exactly the four out-of-repo SDK packages (`auth`, `config`, `logger`, `ui`), to **GitHub Packages only**, using `GITHUB_TOKEN` — `NPM_TOKEN` is never read on that path. This is the path an extracted app (e.g. `dykil`, #1985) actually installs from; see `docs/packages/PUBLISHING.md` for the consumer-facing `.npmrc` setup. Bump the four packages' versions and merge that before pushing the tag — the tag-triggered run itself never bumps versions (`version_bump` is forced to `none`).
+Pushing a `packages-vX.Y.Z` tag runs the same job with fixed parameters instead of `workflow_dispatch` inputs: it always publishes exactly the four out-of-repo SDK packages (`auth`, `config`, `logger`, `ui`), to **GitHub Packages only**, using `GITHUB_TOKEN` — `NPM_TOKEN` is never read on that path. This is the path an extracted app (e.g. `dykil`, #1985) actually installs from; see `docs/packages/PUBLISHING.md` for the consumer-facing `.npmrc` setup. Bump the four packages' versions and merge that before pushing the tag: this workflow has no version-bump step at all, for either trigger (#2286's tag-as-truth philosophy applied to packages, same as the repo-release pipeline above — one way to change a version, a normal PR). It always publishes exactly the version already committed in each package's `package.json`.
 
 ### The `registries` dispatch input
 
