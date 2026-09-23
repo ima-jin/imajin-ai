@@ -989,6 +989,18 @@
       "schema": "kernel",
       "firstMigration": "0153_internal_secret_provisions.sql",
       "notes": ""
+    },
+    "kernel.loops": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0157_loops_rail.sql",
+      "notes": ""
+    },
+    "kernel.loop_events": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0157_loops_rail.sql",
+      "notes": ""
     }
   },
   "views": {},

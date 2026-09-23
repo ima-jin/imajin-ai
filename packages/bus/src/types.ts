@@ -26,6 +26,43 @@ export interface ChainConfig {
 
 export type ReactorHandler = (event: BusEvent, config: Record<string, unknown>) => Promise<void>;
 
+/**
+ * Kernel loop registry (#2295, epic #2290) — the `refs` block of a loop
+ * envelope. Every field is a bare id/number in the referenced system's own
+ * vocabulary (a GitHub issue/PR number, a Warp runId, an OpenClaw
+ * sessionKey) — the kernel never resolves or validates these against the
+ * referenced system, it only carries them through to readers.
+ */
+export interface LoopRefs {
+  issue?: string;
+  pr?: string;
+  runId?: string;
+  sessionKey?: string;
+}
+
+/**
+ * Kernel loop registry (#2295) — the common envelope every `loop.*` bus
+ * event carries, regardless of `kind` or lifecycle phase. See the
+ * `loop.started` doc comment below for the full contract.
+ */
+export interface LoopEventPayload {
+  loopId: string;
+  /** Open vocabulary, e.g. 'warp.run' | 'openclaw.subagent' | 'review' | 'pr'. The kernel never branches on it. */
+  kind: string;
+  /** onBehalfOf DID this loop is scoped to — the GET /api/loops authz boundary. */
+  principal: string;
+  /** Lineage — the loop this one was spawned from, when known. */
+  parentLoopId?: string | null;
+  refs?: LoopRefs;
+  /** Publisher-defined state label, e.g. 'queued' | 'running' | 'blocked' | 'succeeded' | 'failed'. */
+  state: string;
+  summary: string;
+  /** ISO 8601 — when the publisher observed this transition (bounded at ingest for clock skew). */
+  at: string;
+  /** Index signature so `BusEventMap[T]` stays assignable to `BusEvent.payload` (`Record<string, unknown>`) in publish()'s generic signature. */
+  [key: string]: unknown;
+}
+
 /** Type-safe event payloads — compiler catches bad call sites */
 export interface BusEventMap {
   'identity.created': {
@@ -1999,6 +2036,21 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'payment_request';
   };
+  /**
+   * Kernel loop registry (#2295, epic #2290) — a loop is a signed lifecycle.
+   * Common envelope across every `kind` (`warp.run` | `openclaw.subagent` |
+   * `openclaw.automation` | `openclaw.keeper` | `bus.chain` | `review` |
+   * `pr`, open vocabulary — the kernel never branches on it). `principal`
+   * is the onBehalfOf DID the loop is scoped to (GET /api/loops's per-caller
+   * authz boundary); `parentLoopId` gives the lineage tree. issuer = the
+   * publishing agent's DID (verified at ingest against its registered key,
+   * see apps/kernel/src/lib/loops/verify-publisher-signature.ts); subject =
+   * `principal`.
+   */
+  'loop.started': LoopEventPayload;
+  'loop.progress': LoopEventPayload;
+  'loop.blocked': LoopEventPayload;
+  'loop.finished': LoopEventPayload;
 }
 
 export type BusEventType = keyof BusEventMap;

@@ -1,7 +1,7 @@
 openapi: "3.1.0"
 info:
   title: imajin jin
-  version: "2.0.0"
+  version: "2.1.0"
   description: |
     The `/jin` kernel dashboard's own API surface — the operator-approvals
     confirm-card rail (#2059, generalized to an open source/kind vocabulary
@@ -10,6 +10,14 @@ info:
     (scope `operator.approval.requested`, documented in notify.yaml); these
     two routes are how the node operator lists and decides them from /jin.
     Runs as a kernel service at /{service}/api/... on a shared node domain.
+
+    Also documents the kernel loop registry (#2295, epic #2288/#2290):
+    `POST /api/loops` is the signed ingest publishers (Warp's own dispatch
+    loop, the OpenClaw plugin translating gateway-side lifecycle hooks, a
+    review sub-agent) use to report a `loop.started|progress|blocked|finished`
+    lifecycle transition; `GET /api/loops` and `GET /api/loops/{loopId}` are
+    the per-principal read the /jin Runs lane and the orchestrator's MCP
+    tools (#2297) both consume.
 servers:
   - url: https://{node}.imajin.ai/{service}
     description: production node
@@ -24,6 +32,8 @@ servers:
 tags:
   - name: jin
     description: /jin kernel dashboard — operator approvals
+  - name: loops
+    description: Kernel loop registry (#2295) — signed lifecycle ingest + per-principal read
 
 components:
   securitySchemes:
@@ -107,6 +117,71 @@ components:
       required: [error]
       properties:
         error: { type: string }
+    LoopRefs:
+      type: object
+      description: "Bare ids/numbers in the referenced system's own vocabulary — the kernel never resolves or validates these."
+      properties:
+        issue: { type: string, description: "GitHub issue number, e.g. '2295'." }
+        pr: { type: string, description: "GitHub PR number." }
+        runId: { type: string, description: "Warp run id." }
+        sessionKey: { type: string, description: "OpenClaw gateway session key." }
+    LoopEnvelope:
+      type: object
+      description: >-
+        The common envelope every `loop.started|progress|blocked|finished`
+        bus event carries (#2295, epic #2288/#2290), regardless of `kind`.
+      required: [loopId, kind, principal, state, summary, at]
+      properties:
+        loopId: { type: string }
+        kind: { type: string, example: "warp.run", description: "Open vocabulary, e.g. warp.run | openclaw.subagent | openclaw.automation | openclaw.keeper | bus.chain | review | pr. The kernel never branches on it." }
+        principal: { type: string, description: "onBehalfOf DID this loop is scoped to — the GET /api/loops authz boundary." }
+        parentLoopId: { type: string, nullable: true, description: "Lineage — the loop this one was spawned from, when known." }
+        refs: { $ref: "#/components/schemas/LoopRefs" }
+        state: { type: string, example: "running", description: "Publisher-defined state label." }
+        summary: { type: string, maxLength: 2000 }
+        at: { type: string, format: date-time, description: "When the publisher observed this transition. Bounded at ingest for clock skew." }
+    LoopPublisherSignature:
+      type: object
+      description: >-
+        The publishing agent's own Ed25519 signature over
+        canonicalize({type, payload}) — verified against the publisher
+        DID's currently registered key (same pattern as
+        OperatorCountersignature above; forged or unsigned events are
+        rejected with 400 before anything is persisted).
+      required: [keyId, alg, sig]
+      properties:
+        keyId: { type: string, description: "Hex-encoded Ed25519 public key that produced sig — must equal publisherDid's current registered key." }
+        alg: { type: string, enum: [ed25519] }
+        sig: { type: string, description: "Hex-encoded Ed25519 signature." }
+    LoopRecord:
+      type: object
+      description: Current-state-per-loopId projection row.
+      properties:
+        loopId: { type: string }
+        kind: { type: string }
+        principal: { type: string }
+        parentLoopId: { type: string, nullable: true }
+        refs: { $ref: "#/components/schemas/LoopRefs" }
+        state: { type: string }
+        summary: { type: string }
+        lastEventType: { type: string, enum: [loop.started, loop.progress, loop.blocked, loop.finished] }
+        startedAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    LoopEventRecord:
+      type: object
+      description: One immutable row from a loop's event history.
+      properties:
+        id: { type: string }
+        loopId: { type: string }
+        type: { type: string, enum: [loop.started, loop.progress, loop.blocked, loop.finished] }
+        issuer: { type: string, description: "The verified publisher DID." }
+        principal: { type: string }
+        payload: { $ref: "#/components/schemas/LoopEnvelope" }
+        occurredAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
     ApprovalRef:
       type: object
       description: >-
@@ -388,6 +463,157 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
           description: Caller is not the node operator
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/loops:
+    post:
+      tags: [loops]
+      operationId: ingestLoopEvent
+      summary: Signed ingest for a loop.* lifecycle transition
+      description: >-
+        Any publisher (Warp's own dispatch loop, the OpenClaw plugin
+        translating gateway-side lifecycle hooks, a review sub-agent) posts
+        a `loop.started | loop.progress | loop.blocked | loop.finished`
+        envelope here, signed with its own DID key. The kernel verifies
+        `signature` against `publisherDid`'s currently registered key
+        (unknown, mismatched, or revoked key all reject with 400) before
+        publishing the event onto the bus — an unsigned or forged event is
+        never persisted. On success, `kernel.loops` / `kernel.loop_events`
+        are durable before this call returns (read-after-write).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, payload, publisherDid, signature]
+              properties:
+                type: { type: string, enum: [loop.started, loop.progress, loop.blocked, loop.finished] }
+                payload: { $ref: "#/components/schemas/LoopEnvelope" }
+                publisherDid: { type: string, description: "The signing agent's own DID." }
+                signature: { $ref: "#/components/schemas/LoopPublisherSignature" }
+      responses:
+        "201":
+          description: Event ingested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  loopId: { type: string }
+        "400":
+          description: Malformed envelope, or signature rejected (unknown/mismatched/revoked key, invalid signature, stale timestamp)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Verified event failed to publish
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+    get:
+      tags: [loops]
+      operationId: listLoops
+      summary: List the caller's own loops (or a lineage tree)
+      description: >-
+        Scoped to the caller's effective DID (`requireAuth` +
+        `resolveActingDid` — the same delegation precedence every other
+        authenticated route uses): an operator sees their own loops, and an
+        agent authenticated with `X-Acting-For` sees the principal it acts
+        for. `?ancestor=` returns the full descendant lineage tree rooted at
+        that loopId instead of the flat list (recursive on `parentLoopId`).
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: principal
+          in: query
+          required: false
+          schema: { type: string }
+          description: Must equal the caller's own effective DID when supplied (403 otherwise) — never a broader lookup.
+        - name: state
+          in: query
+          required: false
+          schema: { type: string }
+        - name: kind
+          in: query
+          required: false
+          schema: { type: string }
+        - name: since
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: ancestor
+          in: query
+          required: false
+          schema: { type: string }
+          description: A loopId — returns its full descendant lineage tree instead of the caller's flat loop list.
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  loops:
+                    type: array
+                    items: { $ref: "#/components/schemas/LoopRecord" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: "?principal= does not match the caller's effective DID"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/loops/{loopId}:
+    get:
+      tags: [loops]
+      operationId: getLoop
+      summary: One loop's current-state projection plus its ordered event history
+      description: >-
+        Same per-principal scoping as `GET /api/loops`: a loop that exists
+        but belongs to a different principal is reported as 404, identical
+        to one that doesn't exist at all — never confirms existence to a
+        caller who isn't allowed to see it.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: loopId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  loop: { $ref: "#/components/schemas/LoopRecord" }
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/LoopEventRecord" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Loop not found (or not scoped to this principal)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
