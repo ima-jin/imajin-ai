@@ -1,0 +1,124 @@
+name: Tag Release
+
+# Runs on every push to main, but only actually does anything when that push
+# is a merged release PR (see release.yml) — i.e. its real commit message
+# starts with "release: v". Everything else is a no-op after one cheap
+# `git log` check.
+#
+# No bypass token, no new approval gate: this only ever pushes a TAG (never
+# to main), and the actual prod deploy still goes through deploy-prod.yml's
+# existing `production` GitHub Environment required-reviewer gate — the same
+# gate every other prod deploy already uses.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  # Only used to dispatch deploy-prod.yml (a workflow_dispatch call, not a
+  # push) — see the "Dispatch the prod deploy" step for why that's needed
+  # and why it doesn't bypass anything.
+  actions: write
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag-and-deploy:
+    name: Tag Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: need every existing tag (to check for a
+          # collision) and, when this push is a merge commit, its second
+          # parent (see the next step).
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Determine whether this push is a release commit
+        id: check
+        # main is merged via GitHub's default "create a merge commit"
+        # strategy in this repo (see `git log --merges` on main), so on a
+        # merged PR, `github.event.head_commit.message` is the generic
+        # "Merge pull request #N from ..." message — NOT the release PR's
+        # own "release: vX.Y.Z" commit message. Read the real commit the
+        # same way scripts/ci-guard-version-bump.mjs does: when HEAD is a
+        # two-parent merge commit, HEAD^2 is the actual tip of the merged
+        # branch (release/vX.Y.Z has exactly one commit); fall back to HEAD
+        # itself for a fast-forward/squash/direct push.
+        run: |
+          if git rev-parse -q --verify HEAD^2 >/dev/null 2>&1; then
+            MESSAGE="$(git log -1 --format=%B HEAD^2)"
+          else
+            MESSAGE="$(git log -1 --format=%B HEAD)"
+          fi
+          FIRST_LINE="$(head -n1 <<< "$MESSAGE")"
+          echo "first_line=$FIRST_LINE" >> "$GITHUB_OUTPUT"
+          if [[ "$FIRST_LINE" == "release: v"* ]]; then
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "Not a release commit (first line: \"$FIRST_LINE\") — nothing to do."
+          fi
+
+      - name: Extract the version
+        id: version
+        if: steps.check.outputs.is_release == 'true'
+        env:
+          FIRST_LINE: ${{ steps.check.outputs.first_line }}
+        run: |
+          VERSION="${FIRST_LINE#release: v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Could not parse a vX.Y.Z version out of commit message: $FIRST_LINE"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create the annotated tag (idempotent)
+        if: steps.check.outputs.is_release == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "ℹ️  Tag $TAG already exists — skipping creation (still checking dispatch below)."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "release: $TAG"
+            git push origin "refs/tags/$TAG"
+          fi
+
+      - name: Check for an existing prod-deploy dispatch of this tag
+        id: guard
+        if: steps.check.outputs.is_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        # Idempotency for re-runs of this job (e.g. a later step failed and
+        # someone re-runs it): don't dispatch a second prod deploy for a tag
+        # this workflow already dispatched one for.
+        run: |
+          EXISTING=$(gh run list --workflow deploy-prod.yml --json headBranch,event \
+            --jq "[.[] | select(.headBranch == \"$TAG\" and .event == \"workflow_dispatch\")] | length")
+          echo "existing=$EXISTING" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch the prod deploy
+        if: ${{ steps.check.outputs.is_release == 'true' && steps.guard.outputs.existing == '0' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        # The tag push above used the default GITHUB_TOKEN, so it does NOT
+        # fire deploy-prod.yml's `push: tags: ['v*']` trigger — GitHub
+        # suppresses further workflow runs from GITHUB_TOKEN-authored
+        # activity to prevent recursive workflow chains. `workflow_dispatch`
+        # is exempt from that suppression, so dispatch it explicitly.
+        # `-f ref=` sets deploy-prod.yml's own `ref` input explicitly (its
+        # declared default is 'main', which would deploy the wrong thing
+        # here) in addition to `--ref`, which selects which commit to run
+        # the workflow definition from. This still goes through
+        # deploy-prod.yml's `environment: production` required-reviewer
+        # gate — nothing here bypasses that approval.
+        run: gh workflow run deploy-prod.yml --ref "$TAG" -f ref="$TAG"

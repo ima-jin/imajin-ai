@@ -2,6 +2,27 @@
 
 Reference notes from the npm-publish epic ([#1573](https://github.com/ima-jin/imajin-ai/issues/1573)). Read this before normalizing another package for publication — several of these were discovered the hard way (real build failures caught before merge, not theoretical).
 
+## Cutting a release (tag is truth — #2285)
+
+This repo's release version and the repo's npm-package versions (below) are two separate, unrelated concerns — this section is about the FORMER: the `vX.Y.Z` tag that decides what `scripts/build.sh` displays as the running build version and what `deploy-prod.yml` ships to production.
+
+**Releases are cut ONLY through this three-workflow pipeline** — nobody creates a `vX.Y.Z` tag by hand, nobody pushes to `main` outside a normal PR, and no PR ever hand-edits a `package.json` `"version"` field (see the "Versioning" section of the root `AGENTS.md`). No step in this pipeline uses a bypass token or a PAT; every workflow authenticates with the default, ephemeral `secrets.GITHUB_TOKEN`, and the only human approval gate is `deploy-prod.yml`'s existing `production` GitHub Environment reviewer — the exact same gate every other prod deploy already goes through.
+
+1. **[`release.yml`](../.github/workflows/release.yml)** — `workflow_dispatch` (`gh workflow run release.yml -f bump=minor|patch`, default `minor`, or the GitHub Actions UI), gated to `main`. It:
+   - Reads the root `package.json` version as the single source of truth and bumps it by the chosen `minor`/`patch` type.
+   - Writes that exact new version into **every** `package.json` in the workspace (root + every `apps/*`/`packages/*` manifest) via `scripts/bump-workspace-version.mjs` — true lockstep, all packages land on the same `X.Y.Z`, regardless of what they were at before. See that script's header comment for why this is a small dedicated Node script instead of the originally-proposed `pnpm -r version <bump>`: that command is a no-op on the pnpm version this repo pins (`pnpm@9.15.0`), and wouldn't produce lockstep even if it worked, given this repo's real per-package version divergence.
+   - Commits to a new `release/vX.Y.Z` branch with message `release: vX.Y.Z` — that exact prefix is what lets the commit past `scripts/ci-guard-version-bump.mjs` (see below), the same guard that blocks every other PR from touching a version field.
+   - Pushes that branch (never `main`) and opens a normal PR into `main` titled `release: vX.Y.Z`, then explicitly dispatches `ci.yml` against the branch so the PR's required status checks actually populate (a PR opened via the default `GITHUB_TOKEN` doesn't trigger other workflows' `pull_request` events, so without this the checks would sit pending forever — `workflow_dispatch` is exempt from that suppression, and GitHub matches required checks to a commit SHA regardless of which trigger produced them).
+2. **A human reviews and merges the `release: vX.Y.Z` PR** exactly like any other PR — same branch protection, same required checks, no bypass.
+3. **[`tag-release.yml`](../.github/workflows/tag-release.yml)** — runs on every push to `main`, but only acts when the real merged commit's message starts with `release: v` (read off `HEAD^2` when `main` is merged via GitHub's default "create a merge commit" strategy, the same technique `ci-guard-version-bump.mjs` uses — a merge commit's own generic "Merge pull request #N ..." message is not the release commit's message). When it matches, it creates the annotated tag `vX.Y.Z` at that commit, pushes the tag, and explicitly dispatches `deploy-prod.yml` against that tag (`gh workflow run deploy-prod.yml --ref vX.Y.Z -f ref=vX.Y.Z`) — needed because a tag pushed with the default `GITHUB_TOKEN` does NOT fire `deploy-prod.yml`'s own `push: tags: ['v*']` trigger (same GITHUB_TOKEN-suppression rule as above). Idempotent: skips tag creation if it already exists, and won't double-dispatch a deploy for a tag it already dispatched one for.
+4. **`deploy-prod.yml` runs as normal**, held at its existing `environment: production` required-reviewer gate until a reviewer approves — unchanged by any of this.
+
+`scripts/build.sh` derives `NEXT_PUBLIC_VERSION` from `git describe --tags --abbrev=0 --match 'v[0-9]*'` (#2287 — restricted to version-shaped tags so a future non-version tag can never hijack the footer; falling back to the root `package.json` version only on an untagged checkout, then `dev`) — see `packages/ui/src/BuildInfo.tsx` and `scripts/lib/build-version.sh`. As of this fix landing, the first Release run after merge is a `patch` bump: `v0.8.0` → `v0.8.1`.
+
+### The CI guard that keeps this true (`scripts/ci-guard-version-bump.mjs`)
+
+Runs as a step in `ci.yml`'s `CI Guards` job on every PR. It compares every `package.json` `"version"` field against `origin/main`; any difference fails the job UNLESS the PR's actual head commit message (read off `HEAD^2` on a pull_request's synthetic merge-commit checkout, so a generic "Merge ... into ..." message never masks it) starts with `release:`. See `scripts/__tests__/ci-guard-version-bump.test.mjs` for the passing/failing/release-exempt cases this covers.
+
 ## Two registries, one canonical
 
 `.github/workflows/publish-packages.yml` publishes each selected package to **two** registries ([#1595](https://github.com/ima-jin/imajin-ai/issues/1595)):
