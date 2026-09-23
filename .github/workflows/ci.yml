@@ -227,6 +227,12 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: ci-guard-version-bump.mjs diffs package.json
+          # versions against origin/main and reads the real PR commit off
+          # HEAD^2 on a pull_request's synthetic merge-commit checkout —
+          # neither resolves from a depth-1 checkout.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2
         with:
@@ -239,6 +245,21 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # actions/checkout registers safe.directory in the RUNNER HOST's global
+      # git config; this job's steps run inside the ci-runner container with
+      # its own separate git config/HOME (see the identical note on the
+      # Lint & Typecheck job below), so it never sees that — register it
+      # again here before the version-bump guard needs to run git.
+      - name: Allow git to operate on the checked-out repo inside the container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # Version-bump-is-a-release-only-event guard (#2285): fails when any
+      # package.json "version" field differs from origin/main, unless the
+      # head commit message starts with "release:" (the Release workflow's
+      # own commit shape — see .github/workflows/release.yml).
+      - name: Version bump guard
+        run: node scripts/ci-guard-version-bump.mjs
 
       # Producer checks (every required context has a job that emits it) are a
       # real gate and run offline against .github/required-checks.json.
