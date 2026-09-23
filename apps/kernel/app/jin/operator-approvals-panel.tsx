@@ -109,7 +109,11 @@ async function signOperatorDecision(fields: {
 
 const POLL_INTERVAL_MS = 5000;
 
-type ApprovalStatus = 'pending' | 'approved' | 'denied' | 'withdrawn' | 'applied';
+// #2293: 'expired' is a github:*-only terminal (a windowed approval whose
+// TTL lapsed unused, or one withdrawn early) — added to the shared status
+// vocabulary rather than forking a github-specific type, same posture as
+// #2221 extending `outcome` for one kind without a kind-specific type.
+type ApprovalStatus = 'pending' | 'approved' | 'denied' | 'withdrawn' | 'applied' | 'expired';
 type DecisionAction = 'approve' | 'reject' | 'withdrawn';
 
 interface OperatorApprovalCard {
@@ -126,8 +130,8 @@ interface OperatorApprovalCard {
   contentHash: string;
   status: ApprovalStatus;
   decision: { decidedBy: string; decidedAt: string; reason?: string } | null;
-  /** Post-exec outcome follow-up (#2221, exec.command only) — null until the bridge reports one. */
-  outcome: { exitCode: number; durationMs: number; outputHash: string } | null;
+  /** Post-exec outcome follow-up (#2221 exec.command exitCode/durationMs/outputHash; #2293 github approvedUntil/ownerAuthorization) — null until decided. */
+  outcome: Record<string, unknown> | null;
   appliedAt: string | null;
   createdAt: string;
 }
@@ -147,6 +151,7 @@ function statusBadge(status: ApprovalStatus) {
     applied: 'bg-blue-900/60 text-blue-300',
     denied: 'bg-red-900/60 text-red-400',
     withdrawn: 'bg-gray-800 text-gray-500',
+    expired: 'bg-gray-800 text-gray-500',
   };
   const labels: Record<ApprovalStatus, string> = {
     pending: 'pending',
@@ -154,6 +159,7 @@ function statusBadge(status: ApprovalStatus) {
     applied: 'applied',
     denied: 'denied',
     withdrawn: 'withdrawn',
+    expired: 'expired',
   };
   return <span className={`px-2 py-0.5 rounded text-xs font-medium ${styles[status]}`}>{labels[status]}</span>;
 }
@@ -181,6 +187,18 @@ interface SourceRenderer {
   /** Static for most sources; a function when the label depends on the approval itself (e.g. vault:revoke's tier, #2247). */
   decisionLabels: DecisionLabels | ((approval: OperatorApprovalCard) => DecisionLabels);
   renderDetail: (approval: OperatorApprovalCard) => ReactNode;
+  /**
+   * Optional (#2293): when present, REPLACES the default two-button
+   * (Approve/Reject) pending-state row entirely — for a source whose
+   * decision needs more than two choices (github:*'s No/Yes/5m/24h TTL
+   * picker). Every other source is unaffected — omitting this hook keeps
+   * the original two-button affordance exactly as before.
+   */
+  renderPendingActions?: (
+    approval: OperatorApprovalCard,
+    onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
+    busy: boolean,
+  ) => ReactNode;
 }
 
 /** Resolve a renderer's decisionLabels, calling it through when it's per-approval (#2247). */
@@ -265,16 +283,20 @@ function formatExpiryCountdown(expiresAtMs: number, nowMs: number): string {
   return hours > 0 ? `expires in ${hours}:${pad(minutes)}:${pad(seconds)}` : `expires in ${minutes}:${pad(seconds)}`;
 }
 
-function ExecOutcomeView({ outcome }: Readonly<{ outcome: { exitCode: number; durationMs: number; outputHash: string } }>) {
-  const succeeded = outcome.exitCode === 0;
+function ExecOutcomeView({ outcome }: Readonly<{ outcome: Record<string, unknown> }>) {
+  const exitCode = typeof outcome.exitCode === 'number' ? outcome.exitCode : null;
+  const durationMs = typeof outcome.durationMs === 'number' ? outcome.durationMs : null;
+  const outputHash = typeof outcome.outputHash === 'string' ? outcome.outputHash : '';
+  if (exitCode === null || durationMs === null) return null;
+  const succeeded = exitCode === 0;
   return (
     <div className="text-xs text-gray-500 border-t border-gray-800 pt-2">
       <span className="uppercase tracking-wide mr-2">Outcome</span>
-      <span className={succeeded ? 'text-green-400' : 'text-red-400'}>exit {outcome.exitCode}</span>
+      <span className={succeeded ? 'text-green-400' : 'text-red-400'}>exit {exitCode}</span>
       <span className="mx-2">·</span>
-      <span>{outcome.durationMs}ms</span>
+      <span>{durationMs}ms</span>
       <span className="mx-2">·</span>
-      <span className="font-mono">{outcome.outputHash}</span>
+      <span className="font-mono">{outputHash}</span>
     </div>
   );
 }
@@ -440,11 +462,105 @@ const ACCESS_RENDERER: SourceRenderer = {
   renderDetail: renderAccessDetail,
 };
 
+// `github` (#2293): folds the retired pre-#2059 GitHub confirm rail
+// (`/github/api/confirm/:proposalId`) into this rail. `detail` carries the
+// legacy fields (tool/target/riskTier/argsSummary/ownerDid/agentDid);
+// `outcome.approvedUntil` (set once decided, see
+// `../../src/lib/github/approvals-execution.ts`) is null for a single-call
+// approval and an ISO timestamp for a windowed one. Unlike every other
+// registered source, github needs MORE than two pending-state buttons (the
+// TTL choice), so it supplies `renderPendingActions` instead of relying on
+// the default two-button row.
+function GithubDetailView({ approval }: Readonly<{ approval: OperatorApprovalCard }>) {
+  const { detail, outcome, status } = approval;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (status !== 'approved') return undefined;
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [status]);
+
+  const tool = detailString(detail, 'tool', 'unknown tool');
+  const target = detailString(detail, 'target', '\u2014');
+  const riskTier = detailString(detail, 'riskTier', '\u2014');
+  const argsSummary = detailString(detail, 'argsSummary', approval.summary);
+
+  const approvedUntilRaw = outcome?.approvedUntil;
+  const isSingleCall = status === 'approved' && approvedUntilRaw === null;
+  const approvedUntilMs = typeof approvedUntilRaw === 'string' ? Date.parse(approvedUntilRaw) : NaN;
+  const countdown = status === 'approved' && !Number.isNaN(approvedUntilMs) ? formatExpiryCountdown(approvedUntilMs, nowMs) : '';
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-gray-200 font-mono">{argsSummary}</p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+        <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 font-mono">{tool}</span>
+        <span>target: <span className="font-mono text-gray-400">{target}</span></span>
+        <span className={riskTier === 'mutate' ? 'text-orange-400' : 'text-blue-400'}>{riskTier}</span>
+        {isSingleCall && <span>single-call approval \u2014 consumed on next write</span>}
+        {countdown && <span className={countdown === 'expired' ? 'text-red-400 font-medium' : 'text-gray-500'}>{countdown}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** No / Yes / 5m / 24h \u2014 reproduces the retired legacy rail's TTL picker exactly (single-call vs. a 5-minute or 24-hour approval window covering further same-tier writes). */
+function renderGithubPendingActions(
+  approval: OperatorApprovalCard,
+  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
+  busy: boolean,
+): ReactNode {
+  return (
+    <div className="flex items-center gap-1.5 pt-1">
+      <button
+        type="button"
+        onClick={() => onDecide(approval, 'reject')}
+        disabled={busy}
+        className="px-2.5 py-1 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        No
+      </button>
+      <button
+        type="button"
+        onClick={() => onDecide(approval, 'approve', 'single')}
+        disabled={busy}
+        className="px-2.5 py-1 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
+      >
+        {busy ? '\u2026' : 'Yes'}
+      </button>
+      <button
+        type="button"
+        onClick={() => onDecide(approval, 'approve', '5m')}
+        disabled={busy}
+        className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        5m
+      </button>
+      <button
+        type="button"
+        onClick={() => onDecide(approval, 'approve', '24h')}
+        disabled={busy}
+        className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        24h
+      </button>
+    </div>
+  );
+}
+
+const GITHUB_RENDERER: SourceRenderer = {
+  decisionLabels: { approve: 'Yes', reject: 'No' },
+  renderDetail: (approval) => <GithubDetailView approval={approval} />,
+  renderPendingActions: renderGithubPendingActions,
+};
+
 const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
   'skill-workshop': SKILL_WORKSHOP_RENDERER,
   'gateway-exec': GATEWAY_EXEC_RENDERER,
   vault: VAULT_RENDERER,
   access: ACCESS_RENDERER,
+  github: GITHUB_RENDERER,
 };
 
 function rendererFor(source: string): SourceRenderer {
@@ -502,7 +618,7 @@ function ApprovalCardRow({
   busy,
 }: Readonly<{
   approval: OperatorApprovalCard;
-  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction) => void;
+  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void;
   busy: boolean;
 }>) {
   const renderer = rendererFor(approval.source);
@@ -533,25 +649,27 @@ function ApprovalCardRow({
         </div>
       )}
       {approval.status === 'pending' && !expired && (
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() => onDecide(approval, 'reject')}
-            disabled={busy}
-            className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {decisionLabels.reject}
-          </button>
-          <button
-            type="button"
-            onClick={() => onDecide(approval, 'approve')}
-            disabled={busy}
-            ref={autoFocusRef}
-            className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
-          >
-            {busy ? '…' : decisionLabels.approve}
-          </button>
-        </div>
+        renderer.renderPendingActions ? renderer.renderPendingActions(approval, onDecide, busy) : (
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => onDecide(approval, 'reject')}
+              disabled={busy}
+              className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {decisionLabels.reject}
+            </button>
+            <button
+              type="button"
+              onClick={() => onDecide(approval, 'approve')}
+              disabled={busy}
+              ref={autoFocusRef}
+              className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
+            >
+              {busy ? '…' : decisionLabels.approve}
+            </button>
+          </div>
+        )
       )}
       {approval.status === 'approved' && (
         <div className="flex items-center gap-2 pt-1">
@@ -573,7 +691,7 @@ function ApprovalCardRow({
 function renderPanelBody(
   loading: boolean,
   approvals: OperatorApprovalCard[],
-  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction) => void,
+  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
   busyId: string,
 ) {
   if (loading) {
@@ -640,7 +758,7 @@ export function OperatorApprovalsPanel() {
     };
   }, [load]);
 
-  const handleDecide = useCallback(async (approval: OperatorApprovalCard, decision: DecisionAction) => {
+  const handleDecide = useCallback(async (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => {
     const { proposalId } = approval;
     setBusyId(proposalId);
     try {
@@ -655,9 +773,11 @@ export function OperatorApprovalsPanel() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          operatorSignature ? { decision, decidedAt, operatorSignature } : { decision },
-        ),
+        body: JSON.stringify({
+          decision,
+          ...(mode ? { mode } : {}),
+          ...(operatorSignature ? { decidedAt, operatorSignature } : {}),
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { error?: string };

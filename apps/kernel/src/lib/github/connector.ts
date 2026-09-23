@@ -58,9 +58,12 @@ import { nanoid } from 'nanoid';
 import { and, desc, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import * as bus from '@imajin/bus';
-import { db, githubActionProposals } from '@/src/db';
+import { db, githubActionProposals, operatorApprovals } from '@/src/db';
 import { sealAndStoreV2, loadAndUnseal } from '@/src/lib/vault';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
+import { computeApprovalContentHash, getOperatorDid } from '@/src/lib/notify/operator-approvals';
+import { recordApprovalRequested, markApplied } from '@/src/lib/notify/operator-approvals-service';
+import { GITHUB_SOURCE, GITHUB_APPEND_KIND, GITHUB_MUTATE_KIND } from './approvals-execution';
 import {
   createConnectorOAuth,
   resolveOAuthFlow,
@@ -451,6 +454,32 @@ async function retireLapsedApprovals(
       'lapsed-approval retirement failed (non-fatal)',
     );
   }
+
+  // #2293: keep the /jin card in sync — otherwise a lapsed window shows
+  // 'approved — pending apply' forever even though connector.ts will no
+  // longer honor it. Best-effort, mirrors the block above exactly (own
+  // try/catch so a failure here never affects the ledger retirement).
+  try {
+    const kind = risk === 'append' ? GITHUB_APPEND_KIND : GITHUB_MUTATE_KIND;
+    await db
+      .update(operatorApprovals)
+      .set({ status: 'expired', updatedAt: now })
+      .where(
+        and(
+          eq(operatorApprovals.source, GITHUB_SOURCE),
+          eq(operatorApprovals.kind, kind),
+          eq(operatorApprovals.status, 'approved'),
+          sql`${operatorApprovals.detail}->>'ownerDid' = ${ownerDid}`,
+          sql`(${operatorApprovals.outcome}->>'approvedUntil') IS NOT NULL`,
+          sql`(${operatorApprovals.outcome}->>'approvedUntil')::timestamptz <= ${now.toISOString()}`,
+        ),
+      );
+  } catch (err) {
+    log.error(
+      { err: String(err), ownerDid, scope, risk },
+      'operator-approvals lapsed-card sync failed (non-fatal)',
+    );
+  }
 }
 
 /**
@@ -559,6 +588,61 @@ function pendingReason(
   return `No live ${risk}-tier approval grant — human confirmation required`;
 }
 
+/**
+ * Raise the /jin confirm card for a pending write (#2293 — fold into the
+ * generic `operator.approvals` rail). Shares `proposalId` with the
+ * `github.action_proposals` ledger row so the two are trivially joinable;
+ * `kind` is tier-based (`github:append`/`github:mutate`, not per-tool) so
+ * one approval continues to cover every tool at that risk tier, exactly
+ * matching `resolveLiveGrant`'s own tuple lookup below. Best-effort: a
+ * node with no configured operator DID (`getOperatorDid()` -> null) simply
+ * gets no /jin card — the ledger row still exists so the write-gate itself
+ * keeps functioning, matching the pre-existing constraint every other kind
+ * on this rail already has (vault/access are equally invisible without an
+ * operator DID configured).
+ */
+async function raiseGithubOperatorApproval(params: {
+  proposalId: string;
+  ownerDid: string;
+  agentDid?: string;
+  scope: string;
+  risk: 'append' | 'mutate';
+  tool: string;
+  target: string;
+  argsSummary: string;
+}): Promise<void> {
+  const { proposalId, ownerDid, agentDid, scope, risk, tool, target, argsSummary } = params;
+  try {
+    const operatorDid = await getOperatorDid();
+    if (!operatorDid) {
+      log.warn({ proposalId }, 'no node operator configured — skipping /jin operator-approvals card for this github proposal');
+      return;
+    }
+
+    const source = GITHUB_SOURCE;
+    const kind = risk === 'append' ? GITHUB_APPEND_KIND : GITHUB_MUTATE_KIND;
+    const keysTouched: string[] = [];
+    const detail = { ownerDid, agentDid: agentDid ?? null, scope, riskTier: risk, tool, target, argsSummary };
+    const contentHash = computeApprovalContentHash({
+      proposalId, source, kind, summary: argsSummary, keysTouched, detail,
+    });
+
+    await recordApprovalRequested({
+      proposalId,
+      operatorDid,
+      source,
+      kind,
+      summary: argsSummary,
+      keysTouched,
+      detail,
+      contentHash,
+      notificationId: null,
+    });
+  } catch (err) {
+    log.error({ err: String(err), proposalId }, 'failed to raise /jin operator-approvals card for github proposal (non-fatal)');
+  }
+}
+
 /** Insert a 'done' row for rate-limit accounting under a windowed approval. */
 async function insertDoneRow(
   ownerDid: string,
@@ -648,6 +732,11 @@ async function requireWriteGate(params: RequireWriteGateParams): Promise<WriteGa
     target,
     argsSummary: effectiveSummary,
     status: 'pending',
+  });
+
+  // #2293: the single typed /jin queue — same proposalId as the ledger row above.
+  await raiseGithubOperatorApproval({
+    proposalId, ownerDid, agentDid, scope, risk, tool, target, argsSummary: effectiveSummary,
   });
 
   try {
@@ -762,6 +851,16 @@ export async function markProposalDone(
     });
   } catch (err) {
     log.error({ err: String(err), proposalId }, 'action.done publish failed (non-fatal)');
+  }
+
+  // #2293: close out the linked /jin card too, so a single-call approval
+  // shows 'applied' instead of being stuck at 'approved — pending apply'.
+  // Best-effort — a card with no operator configured never existed (see
+  // raiseGithubOperatorApproval), so markApplied is a harmless no-op there.
+  try {
+    await markApplied(proposalId);
+  } catch (err) {
+    log.error({ err: String(err), proposalId }, 'failed to mark /jin operator-approvals card applied (non-fatal)');
   }
 }
 

@@ -20,12 +20,13 @@ import {
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval, mockExecuteAccessApproval } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval, mockExecuteAccessApproval, mockExecuteGithubApproval } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockDecide: vi.fn(),
   mockExecuteVaultApproval: vi.fn(),
   mockExecuteAccessApproval: vi.fn(),
+  mockExecuteGithubApproval: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
@@ -36,6 +37,11 @@ vi.mock('@/src/lib/vault/approvals-execution', () => ({
 
 vi.mock('@/src/lib/access/approvals-execution', () => ({
   executeAccessApproval: mockExecuteAccessApproval,
+}));
+
+vi.mock('@/src/lib/github/approvals-execution', () => ({
+  executeGithubApproval: mockExecuteGithubApproval,
+  GITHUB_SOURCE: 'github',
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -91,6 +97,7 @@ beforeEach(() => {
   mockDecide.mockResolvedValue({ ok: true, card: pendingApprovalCard({ status: 'approved' }) });
   mockExecuteVaultApproval.mockResolvedValue({ ok: true });
   mockExecuteAccessApproval.mockResolvedValue({ ok: true, data: { bearer: 'plaintext-bearer', bearerId: 'dgb_1', expiresAt: '2026-04-01T00:00:00.000Z', hardCapAt: '2026-04-15T00:00:00.000Z' } });
+  mockExecuteGithubApproval.mockResolvedValue({ ok: true });
 });
 
 describe('OPTIONS /jin/api/operator-approvals/:proposalId/decision', () => {
@@ -411,6 +418,79 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
       const body = (await res.json()) as { executionError?: string; data?: unknown };
       expect(body.executionError).toBe('Delegate-grant knock has expired');
       expect(body.data).toBeUndefined();
+    });
+  });
+
+  // #2293: github's ledger must stay in sync on EVERY decision (unlike
+  // vault/access, which are only ever consulted on 'approve').
+  describe('github proposal execution bridge (#2293)', () => {
+    it('calls executeGithubApproval with the mode on an approve decision', async () => {
+      mockDecide.mockResolvedValueOnce({
+        ok: true,
+        card: pendingApprovalCard({ status: 'approved', source: 'github', kind: 'github:append' }),
+      });
+
+      const res = await POST(
+        makeReq({ decision: 'approve', mode: '5m' }) as Parameters<typeof POST>[0],
+        paramsFor(PROPOSAL_ID),
+      );
+
+      expect(mockExecuteGithubApproval).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'github', kind: 'github:append' }),
+        'approve',
+        '5m',
+      );
+      expect(mockExecuteVaultApproval).not.toHaveBeenCalled();
+      expect(res.status).toBe(200);
+    });
+
+    it('calls executeGithubApproval on a reject decision (unlike vault/access)', async () => {
+      mockDecide.mockResolvedValueOnce({
+        ok: true,
+        card: pendingApprovalCard({ status: 'denied', source: 'github', kind: 'github:append' }),
+      });
+
+      const res = await POST(makeReq({ decision: 'reject' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockExecuteGithubApproval).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'github' }),
+        'reject',
+        undefined,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('calls executeGithubApproval on a withdrawn decision', async () => {
+      mockDecide.mockResolvedValueOnce({
+        ok: true,
+        card: pendingApprovalCard({ status: 'withdrawn', source: 'github', kind: 'github:mutate' }),
+      });
+
+      const res = await POST(makeReq({ decision: 'withdrawn' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockExecuteGithubApproval).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'github', kind: 'github:mutate' }),
+        'withdrawn',
+        undefined,
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it('surfaces a github ledger-sync failure as executionError without failing the request', async () => {
+      mockDecide.mockResolvedValueOnce({
+        ok: true,
+        card: pendingApprovalCard({ status: 'approved', source: 'github', kind: 'github:append' }),
+      });
+      mockExecuteGithubApproval.mockResolvedValueOnce({ ok: false, error: "mode must be one of 'single', '5m', '24h'" });
+
+      const res = await POST(
+        makeReq({ decision: 'approve', mode: 'forever' }) as Parameters<typeof POST>[0],
+        paramsFor(PROPOSAL_ID),
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { executionError?: string };
+      expect(body.executionError).toBe("mode must be one of 'single', '5m', '24h'");
     });
   });
 });
