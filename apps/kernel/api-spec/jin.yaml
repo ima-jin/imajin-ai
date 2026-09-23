@@ -182,8 +182,106 @@ components:
         payload: { $ref: "#/components/schemas/LoopEnvelope" }
         occurredAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
+    ApprovalRef:
+      type: object
+      description: >-
+        Present on a signed event authorized by an operator approval,
+        joined from `operator.approvals` on `payload->>'proposalId'`
+        (#2289) — the Record lane can click event -> approval card.
+      required: [proposalId, source, kind]
+      properties:
+        proposalId: { type: string }
+        source: { type: string, example: "vault" }
+        kind: { type: string, example: "vault:mint" }
+    RecordEvent:
+      type: object
+      description: One row off the signed event stream (`registry.system_events`), scoped to the caller (#2289).
+      properties:
+        id: { type: string }
+        service: { type: string }
+        action: { type: string }
+        did: { type: string, nullable: true, description: "The event's issuer." }
+        correlationId: { type: string, nullable: true }
+        parentEventId: { type: string, nullable: true }
+        payload: { type: object, nullable: true }
+        status: { type: string, nullable: true }
+        durationMs: { type: integer, nullable: true }
+        createdAt: { type: string, format: date-time }
+        approvalRef:
+          allOf: [{ $ref: "#/components/schemas/ApprovalRef" }]
+          nullable: true
+        hasOperatorSignature:
+          type: boolean
+          description: "Presence of `payload.operatorSignature` (#2082) — lets the lane render the wish-and-grant chain state (#2084)."
 
 paths:
+  /api/events:
+    get:
+      tags: [jin]
+      operationId: listRecordEvents
+      summary: List the authenticated principal's signed events (Record lane, #2289)
+      description: >-
+        Per-principal read over the signed event stream
+        (`registry.system_events`) — the same table `GET /api/admin/events`
+        reads (requireAdmin only). Scoped here to `requireAuth` +
+        `X-Acting-For` instead: a principal sees an event when they are its
+        issuer, when the issuer is an agent that acts for them (legacy
+        `identity_members` role='agent' membership or a #1882 delegation
+        grant they issued), or when the event was authorized by an operator
+        approval they decided (`operator.approvals`, joined on
+        `payload->>'proposalId'`). `agent`/`grant` only ever narrow this
+        scope, never widen it.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: action
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Exact match on the bus event type, e.g. 'operator.approval.decided'."
+        - name: since
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: "Lower bound (inclusive) on createdAt."
+        - name: agent
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Narrow to one DID already within scope."
+        - name: grant
+          in: query
+          required: false
+          schema: { type: string }
+          description: "Match payload.grantId, e.g. a vault.delegation.revoked event."
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/RecordEvent" }
+                  total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/operator-approvals:
     get:
       tags: [jin]

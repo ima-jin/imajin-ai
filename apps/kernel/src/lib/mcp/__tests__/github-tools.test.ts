@@ -234,10 +234,9 @@ describe('pending-approval guidance (#1582)', () => {
     expect(tool(name).description).not.toMatch(/approv\w*\s+at\s+\S*\/github\/api\/confirm/i);
   });
 
-  it.each(GATED_WRITE_TOOLS)('%s keeps the confirm path, labelled as the programmatic route', (name) => {
+  it.each(GATED_WRITE_TOOLS)('%s no longer mentions the retired /github/api/confirm route (#2293 — folded into /jin operator-approvals)', (name) => {
     const description = tool(name).description;
-    expect(description).toContain('/github/api/confirm/{proposalId}');
-    expect(description).toMatch(/programmatic/i);
+    expect(description).not.toContain('/github/api/confirm');
   });
 
   /** Eleven queued writes should cost one approval, not eleven. */

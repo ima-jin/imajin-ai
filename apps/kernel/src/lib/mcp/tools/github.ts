@@ -249,11 +249,10 @@ const createIssueTool: McpTool = {
   description:
     'Create a GitHub issue on your behalf using your sealed credential (append tier). ' +
     'The first call proposes the action and returns a pending response if no live append ' +
-    'approval window exists. The human approves it in the /jin dashboard (pending-proposals ' +
+    'approval window exists. The human approves it in the /jin dashboard (operator-approvals ' +
     'panel), where they can pick a 5m or 24h window to cover a batch of writes; the pending ' +
     'response carries the fully-qualified URL — relay it verbatim rather than guessing a host. ' +
-    '/github/api/confirm/{proposalId} is the programmatic equivalent (POST + owner DID auth), ' +
-    'not a page to send anyone to. Retry this call once approved. ' +
+    'Retry this call once approved. ' +
     'Requires an active github:write grant in your scope-manifest and a ' +
     'stored credential from github_connect. ' +
     'repo format: "owner/repo" (e.g. "a-r-t-i-f-a-c-t/artifactagent").',
@@ -305,11 +304,10 @@ const createCommentTool: McpTool = {
   description:
     'Add a comment to an existing GitHub issue on your behalf using your sealed credential (append tier). ' +
     'The first call proposes the action and returns a pending response if no live append ' +
-    'approval window exists. The human approves it in the /jin dashboard (pending-proposals ' +
+    'approval window exists. The human approves it in the /jin dashboard (operator-approvals ' +
     'panel), where they can pick a 5m or 24h window to cover a batch of writes; the pending ' +
     'response carries the fully-qualified URL — relay it verbatim rather than guessing a host. ' +
-    '/github/api/confirm/{proposalId} is the programmatic equivalent (POST + owner DID auth), ' +
-    'not a page to send anyone to. Retry this call once approved. ' +
+    'Retry this call once approved. ' +
     'Requires an active github:write grant in your scope-manifest and a stored credential from github_connect. ' +
     'repo format: "owner/repo" (e.g. "a-r-t-i-f-a-c-t/artifactagent").',
   inputSchema: {
@@ -731,11 +729,10 @@ const updateIssueTool: McpTool = {
   description:
     'Update an existing GitHub issue (title, body, and/or state) on your behalf using your sealed ' +
     'credential. This is a mutating write — the first call proposes the action and returns a pending ' +
-    'response. The human approves it in the /jin dashboard (pending-proposals panel), where they can ' +
-    'pick a 5m or 24h window to cover a batch of writes; the pending response carries the ' +
+    'response. The human approves it in the /jin dashboard (operator-approvals panel), where they ' +
+    'can pick a 5m or 24h window to cover a batch of writes; the pending response carries the ' +
     'fully-qualified URL — relay it verbatim rather than guessing a host. ' +
-    '/github/api/confirm/{proposalId} is the programmatic equivalent (POST + owner DID auth), not a ' +
-    'page to send anyone to. Retry this call once approved. ' +
+    'Retry this call once approved. ' +
     'Requires an active github:write grant in your scope-manifest and a stored credential from ' +
     'github_connect. repo format: "owner/repo".',
   inputSchema: {

@@ -38,6 +38,7 @@ import { decideOperatorApproval } from '@/src/lib/notify/operator-approvals-serv
 import { parseOperatorSignature } from '@/src/lib/notify/operator-countersign';
 import { executeVaultApproval } from '@/src/lib/vault/approvals-execution';
 import { executeAccessApproval } from '@/src/lib/access/approvals-execution';
+import { executeGithubApproval, GITHUB_SOURCE } from '@/src/lib/github/approvals-execution';
 
 const log = createLogger('kernel:operator-approvals:decision');
 
@@ -72,7 +73,18 @@ async function runProposalExecutionIfApplicable(
   proposalId: string,
   decision: string,
   card: Parameters<typeof executeVaultApproval>[0],
+  mode: string | undefined,
 ): Promise<ExecutionOutcome> {
+  // #2293: github's ledger must be kept in sync on EVERY decision (reject
+  // and withdrawn retire the linked ledger row too), unlike vault/access
+  // which only ever act on 'approve'.
+  if (card.source === GITHUB_SOURCE) {
+    const execution = await executeGithubApproval(card, decision as 'approve' | 'reject' | 'withdrawn', mode);
+    if (execution.ok) return {};
+    log.error({ proposalId, kind: card.kind, error: execution.error }, 'GitHub proposal decided but ledger sync failed');
+    return { error: execution.error };
+  }
+
   if (decision !== 'approve') {
     return {};
   }
@@ -175,7 +187,7 @@ export async function POST(
       return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
     }
 
-    const outcome = await runProposalExecutionIfApplicable(proposalId, decision, result.card);
+    const outcome = await runProposalExecutionIfApplicable(proposalId, decision, result.card, mode);
 
     return NextResponse.json(buildDecisionResponseBody(result.card, outcome), { headers: cors });
   } catch (err) {
