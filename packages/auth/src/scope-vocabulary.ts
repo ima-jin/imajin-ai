@@ -560,6 +560,18 @@ export const SCOPE_VOCABULARY = [
   { scope: 'corpus:write', connector: 'mcp', verb: 'write', surface: 'corpus', classification: SELF_ONLY, surfaces: MCP_TOKENS, releaseOverride: 'on-consent', credentialFree: true,
     label: 'Load and sync corpus sources', manifestLabel: 'Load and sync your corpus sources' },
 
+  // ── Loop registry reads (#2295 rail, #2297 MCP tools)
+  //
+  // `loops_list` / `loops_get` are thin per-principal readers over the
+  // `kernel.loops` projection (`GET /api/loops` serves the same query) — an
+  // orchestrating agent's own runs/blockers/finished-since-T view. Every
+  // query is unconditionally scoped to `ctx.did`; there is no cross-DID
+  // surface here to grant separately — same shape as `corpus:read` — and no
+  // sealed external credential is spent, so it is `credentialFree` too.
+  { scope: 'loops:read', connector: 'mcp', verb: 'read', surface: 'loops', classification: SELF_ONLY, surfaces: MCP_TOKENS, credentialFree: true,
+    label: 'Read your loop registry (running, blocked, and recently finished orchestration loops)',
+    manifestLabel: 'Read your loop registry' },
+
   // ── Generic consent-request primitive (#1817) — platform scope, no owning
   // connector. Generalizes the inference confirm gate (#1782/#1784/#1791) for
   // any app-authed requester: gates raising a consent.requested bus event that

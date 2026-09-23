@@ -124,6 +124,8 @@ describe('pinned scope sets (change these deliberately)', () => {
       // #1730 — corpus proxy tools.
       'corpus:read',
       'corpus:write',
+      // #2297 — loops_list/loops_get.
+      'loops:read',
     ]);
   });
 
@@ -170,7 +172,8 @@ describe('pinned scope sets (change these deliberately)', () => {
       entry.scopes.filter((scope) => scope.credentialFree).map((scope) => scope.name),
     );
     // #1730 — corpus proxy tools spend no sealed credential either.
-    expect(credentialFree).toEqual(['discovery:read', 'corpus:read', 'corpus:write']);
+    // #2297 — loops_list/loops_get spend no sealed credential either.
+    expect(credentialFree).toEqual(['discovery:read', 'corpus:read', 'corpus:write', 'loops:read']);
   });
 
   /**
@@ -203,6 +206,8 @@ describe('pinned scope sets (change these deliberately)', () => {
       // #1730 — corpus proxy tools.
       'corpus:read',
       'corpus:write',
+      // #2297 — loops_list/loops_get.
+      'loops:read',
     ]);
   });
 });
@@ -330,6 +335,9 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
       // #1730 — corpus proxy tools.
       'corpus:read': { verb: 'read', surface: 'corpus', label: 'Read and search your corpus', release: { discloses_others: false, sensitive: false } },
       'corpus:write': { verb: 'write', surface: 'corpus', label: 'Load and sync your corpus sources', release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_DID } },
+      // #2297 — loops_list/loops_get, thin per-principal readers over the
+      // kernel.loops registry projection (#2295).
+      'loops:read': { verb: 'read', surface: 'loops', label: 'Read your loop registry', release: { discloses_others: false, sensitive: false } },
     });
   });
 

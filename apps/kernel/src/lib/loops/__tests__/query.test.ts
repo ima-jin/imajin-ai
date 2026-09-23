@@ -16,7 +16,7 @@ const { calls, fakeSql, resolveWith } = vi.hoisted(() => {
 
 vi.mock('@imajin/db', () => ({ getClient: () => fakeSql }));
 
-import { listLoops, getLoopWithHistory } from '../query';
+import { listLoops, listLoopsPage, getLoopWithHistory } from '../query';
 
 const PRINCIPAL = 'did:imajin:ryan';
 
@@ -95,6 +95,70 @@ describe('listLoops', () => {
     await listLoops({ principal: PRINCIPAL, ancestor: 'loop_root', state: 'blocked', kind: 'review' });
 
     expect(calls[0].values).toEqual(['loop_root', PRINCIPAL, PRINCIPAL, 'blocked', 'blocked', 'review', 'review']);
+  });
+});
+
+describe('listLoopsPage', () => {
+  it('scopes to principal, passes filters through, and reports no next page when under the limit', async () => {
+    resolveWith([rawLoopRow({ loop_id: 'loop_1' })]);
+
+    const result = await listLoopsPage({ principal: PRINCIPAL, state: 'running', kind: null, since: null });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].text).toContain('SELECT * FROM kernel.loops');
+    expect(calls[0].text).toContain('WHERE principal');
+    // limit + 1 = 51 is fetched under the hood to detect a next page.
+    expect(calls[0].values[calls[0].values.length - 1]).toBe(51);
+    expect(result.loops).toHaveLength(1);
+    expect(result.hasNextPage).toBe(false);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  it('reports hasNextPage + a decodable nextCursor when more rows exist than the page limit', async () => {
+    const rows = [
+      rawLoopRow({ loop_id: 'loop_1', last_seen_at: '2026-09-22T00:05:00.000Z' }),
+      rawLoopRow({ loop_id: 'loop_2', last_seen_at: '2026-09-22T00:04:00.000Z' }),
+    ];
+    resolveWith(rows); // 2 rows returned for a limit: 1 page — one extra row signals hasNextPage
+
+    const result = await listLoopsPage({ principal: PRINCIPAL, limit: 1 });
+
+    expect(result.loops).toHaveLength(1);
+    expect(result.loops[0].loopId).toBe('loop_1');
+    expect(result.hasNextPage).toBe(true);
+    expect(typeof result.nextCursor).toBe('string');
+
+    // The cursor round-trips: feeding it back in scopes the next query strictly
+    // before the last row of this page (last_seen_at DESC, loop_id DESC tie-break).
+    resolveWith([rawLoopRow({ loop_id: 'loop_2', last_seen_at: '2026-09-22T00:04:00.000Z' })]);
+    const nextPage = await listLoopsPage({ principal: PRINCIPAL, limit: 1, cursor: result.nextCursor });
+
+    expect(calls[1].text).toContain('OR last_seen_at <');
+    expect(calls[1].text).toContain('loop_id <');
+    expect(calls[1].values).toContain('2026-09-22T00:05:00.000Z');
+    expect(calls[1].values).toContain('loop_1');
+    expect(nextPage.loops[0].loopId).toBe('loop_2');
+  });
+
+  it('treats a malformed/garbage cursor as "start from the beginning" rather than throwing', async () => {
+    resolveWith([rawLoopRow()]);
+
+    const result = await listLoopsPage({ principal: PRINCIPAL, cursor: 'not-a-real-cursor' });
+
+    expect(result.loops).toHaveLength(1);
+    // The malformed cursor decodes to null, so the cursor WHERE clause is a no-op (IS NULL branch).
+    expect(calls[0].values).toContain(null);
+  });
+
+  it('delegates to the unbounded ancestor lineage query and never reports a next page', async () => {
+    resolveWith([rawLoopRow({ loop_id: 'loop_root' })]);
+
+    const result = await listLoopsPage({ principal: PRINCIPAL, ancestor: 'loop_root' });
+
+    expect(calls[0].text).toContain('WITH RECURSIVE lineage AS');
+    expect(result.hasNextPage).toBe(false);
+    expect(result.nextCursor).toBeNull();
+    expect(result.loops.map((l) => l.loopId)).toEqual(['loop_root']);
   });
 });
 

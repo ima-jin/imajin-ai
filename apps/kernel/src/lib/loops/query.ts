@@ -84,6 +84,101 @@ export async function listLoops(filters: ListLoopsFilters): Promise<LoopJson[]> 
   return listLoopsForPrincipal(filters);
 }
 
+// ── Cursor-paginated listing (MCP `loops_list`, #2297) ──────────────────────
+//
+// `listLoops` above serves `GET /api/loops` and takes a flat `limit` with no
+// cursor — that contract is unchanged. `loops_list` additionally needs a
+// stable "next page" token so an orchestrating agent can page through a large
+// backlog without re-reading rows it already saw. Rather than bolt cursor
+// semantics onto the existing function (and risk shifting `GET /api/loops`
+// ordering/behavior), this is an additive, MCP-only entry point that reuses
+// the same table, WHERE-clause conventions, and `serializeLoop` mapping.
+
+export interface ListLoopsPageFilters extends ListLoopsFilters {
+  /** Opaque token from a previous page's `nextCursor`. Ignored when `ancestor` is set. */
+  cursor?: string | null;
+}
+
+export interface LoopsPage {
+  loops: LoopJson[];
+  hasNextPage: boolean;
+  nextCursor: string | null;
+}
+
+interface LoopCursorState {
+  lastSeenAt: string;
+  loopId: string;
+}
+
+/** Encode the last row of a page as an opaque `(lastSeenAt, loopId)` cursor. */
+function encodeLoopCursor(loop: Pick<LoopJson, 'lastSeenAt' | 'loopId'>): string {
+  return Buffer.from(JSON.stringify({ lastSeenAt: loop.lastSeenAt, loopId: loop.loopId })).toString('base64url');
+}
+
+/** Decode a cursor token, or `null` for a missing/malformed one (never throws — a bad cursor just restarts the list). */
+function decodeLoopCursor(cursor: string | null | undefined): LoopCursorState | null {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as Partial<LoopCursorState>;
+    if (typeof parsed.lastSeenAt === 'string' && typeof parsed.loopId === 'string') {
+      return { lastSeenAt: parsed.lastSeenAt, loopId: parsed.loopId };
+    }
+  } catch {
+    // fall through to null — malformed cursor is treated as "start over"
+  }
+  return null;
+}
+
+/**
+ * `loops_list` (non-ancestor path) — the caller's own loops, newest-active
+ * first, one page at a time. Orders by `(last_seen_at, loop_id)` DESC so the
+ * cursor tie-breaks deterministically even when two loops share a
+ * `last_seen_at` timestamp. Fetches one extra row over `limit` to detect
+ * `hasNextPage` without a separate COUNT query.
+ */
+async function listLoopsForPrincipalPage(filters: ListLoopsPageFilters): Promise<LoopsPage> {
+  const sql = getClient();
+  const limit = clampLimit(filters.limit);
+  const cursor = decodeLoopCursor(filters.cursor);
+  const cursorLastSeenAt = cursor?.lastSeenAt ?? null;
+  const cursorLoopId = cursor?.loopId ?? null;
+
+  const rows = (await sql`
+    SELECT * FROM kernel.loops
+    WHERE principal = ${filters.principal}
+      AND (${filters.state ?? null}::text IS NULL OR state = ${filters.state ?? null})
+      AND (${filters.kind ?? null}::text IS NULL OR kind = ${filters.kind ?? null})
+      AND (${filters.since ?? null}::timestamptz IS NULL OR last_seen_at >= ${filters.since ?? null}::timestamptz)
+      AND (
+        ${cursorLastSeenAt}::timestamptz IS NULL
+        OR last_seen_at < ${cursorLastSeenAt}::timestamptz
+        OR (last_seen_at = ${cursorLastSeenAt}::timestamptz AND loop_id < ${cursorLoopId})
+      )
+    ORDER BY last_seen_at DESC, loop_id DESC
+    LIMIT ${limit + 1}
+  `) as unknown as RawLoopRow[];
+
+  const hasNextPage = rows.length > limit;
+  const page = hasNextPage ? rows.slice(0, limit) : rows;
+  const loops = page.map(serializeLoop);
+  const nextCursor = hasNextPage ? encodeLoopCursor(loops[loops.length - 1]) : null;
+  return { loops, hasNextPage, nextCursor };
+}
+
+/**
+ * `loops_list` — cursor-paginated for the flat (non-ancestor) case; the
+ * ancestor/lineage case returns its full descendant tree in one page
+ * (unbounded, same as `listLoops`) since a lineage walk has no natural
+ * "newest first" cursor to page through.
+ */
+export async function listLoopsPage(filters: ListLoopsPageFilters): Promise<LoopsPage> {
+  if (filters.ancestor) {
+    const loops = await listLoopLineage(filters.ancestor, filters.principal, filters.state ?? null, filters.kind ?? null);
+    return { loops, hasNextPage: false, nextCursor: null };
+  }
+  return listLoopsForPrincipalPage(filters);
+}
+
 export interface LoopWithHistory {
   loop: LoopJson;
   events: LoopEventJson[];

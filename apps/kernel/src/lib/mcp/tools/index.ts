@@ -13,6 +13,7 @@ import { messagesTools } from './messages';
 import { warpTools } from './warp';
 import { discoveryTools } from './discovery';
 import { corpusTools } from './corpus';
+import { loopsTools } from './loops';
 import { gmailTools } from './google-gmail';
 import { calendarTools as googleCalendarTools } from './google-calendar';
 import { driveTools as googleDriveTools } from './google-drive';
@@ -34,6 +35,9 @@ import { meetTools as googleMeetTools } from './google-meet';
  * the scope vocabulary, and the caller's own connector status — gated by
  * 'discovery:read' so a dispatched agent can learn the system instead of
  * grepping source and guessing.
+ * Loops tools (#2297): loops_list / loops_get, thin per-principal readers over
+ * the kernel.loops registry projection (#2295) — the same query GET /api/loops
+ * serves. Gated by 'loops:read'; every query is scoped to ctx.did.
  * GitHub read depth (#1528): the connector's read verbs paginate the GitHub
  * Link header and report `has_more`, and cover pull requests, comments, and
  * search. All of them ride the existing 'github:read' scope, so the surface
@@ -55,6 +59,7 @@ export const ALL_TOOLS: McpTool[] = [
   ...warpTools,
   ...discoveryTools,
   ...corpusTools,
+  ...loopsTools,
   ...gmailTools,
   ...googleCalendarTools,
   ...googleDriveTools,

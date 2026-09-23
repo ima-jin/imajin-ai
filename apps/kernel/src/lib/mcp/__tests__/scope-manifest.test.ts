@@ -52,7 +52,7 @@ const MCP_DID = 'did:imajin:mcp-connector';
 // ── Descriptor / constant tests ───────────────────────────────────────────────
 
 describe('MCP_SCOPE_DESCRIPTORS', () => {
-  it('defines all eleven MCP scopes', () => {
+  it('defines all twelve MCP scopes', () => {
     expect(new Set(VALID_MCP_SCOPES)).toEqual(
       new Set([
         'media:read', 'media:write', 'media:share', 'connections:read',
@@ -63,6 +63,9 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
         'inference:read', 'inference:write',
         // #1730 — corpus proxy tools (kernel auth-gates, apps/corpus indexes/searches).
         'corpus:read', 'corpus:write',
+        // #2297 — loops_list/loops_get, thin per-principal readers over the
+        // kernel.loops registry projection (#2295).
+        'loops:read',
       ]),
     );
   });
@@ -80,7 +83,7 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
     expect(r.viewer).toBeUndefined();
   });
 
-  it.each(['media:read', 'connections:read', 'messages:read', 'inference:read', 'corpus:read'] as const)(
+  it.each(['media:read', 'connections:read', 'messages:read', 'inference:read', 'corpus:read', 'loops:read'] as const)(
     '%s is silent (no release override, discloses_others: false)',
     (scope) => {
       const r = MCP_SCOPE_DESCRIPTORS[scope].release;
