@@ -50,10 +50,9 @@ describe('pendingApprovalMessage — points the human at /jin', () => {
     expect(message).not.toMatch(/approv\w*\s+at\s+\S*\/github\/api\/confirm/i);
   });
 
-  it('labels the confirm path as a POST API, not a page', () => {
+  it('no longer references the retired /github/api/confirm route (#2293 — folded into /jin operator-approvals)', () => {
     const message = pendingApprovalMessage(PROPOSAL_ID);
-    expect(message).toContain(`POST https://jin.imajin.ai/github/api/confirm/${PROPOSAL_ID}`);
-    expect(message).toMatch(/not a page/i);
+    expect(message).not.toMatch(/\/github\/api\/confirm/);
   });
 
   /**
@@ -81,7 +80,6 @@ describe('pendingApprovalMessage — host resolution', () => {
   it('emits absolute URLs, never a bare path', () => {
     const message = pendingApprovalMessage(PROPOSAL_ID);
     expect(message).not.toMatch(/(^|[\s(])\/jin\b/);
-    expect(message).not.toMatch(/(^|[\s(])\/github\/api\/confirm/);
   });
 
   it('tracks the configured origin rather than hard-coding one', () => {

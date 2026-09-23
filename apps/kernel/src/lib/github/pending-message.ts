@@ -53,19 +53,16 @@ export function pendingApprovalMessage(
       `Approving this proposal in the Imajin dashboard (${host}/jin) opens ANOTHER window but will ` +
       `NOT let the write through any sooner — the existing window already covers it. ` +
       `Simply wait for the ceiling's rolling window to clear (up to 1 hour) and retry the same tool ` +
-      `call; no further approval should be needed once it does. ` +
-      `(Programmatic status check: GET/POST ${host}/github/api/confirm/${proposalId} with owner DID auth.)`
+      `call; no further approval should be needed once it does.`
     );
   }
 
   return (
     `Action proposed (proposalId: ${proposalId}). This write is held pending your approval. ` +
     `Tell the human to approve it in their Imajin dashboard: ${host}/jin — ` +
-    `the pending-proposals panel lists this proposal with Yes / 5m / 24h buttons. ` +
+    `the operator-approvals panel lists this proposal with No / Yes / 5m / 24h buttons. ` +
     `Choosing 5m or 24h opens an approval window that covers further writes of the same ` +
     `kind, so a batch of queued writes only needs approving once. ` +
-    `Then retry this tool call. ` +
-    `(Programmatic alternative: POST ${host}/github/api/confirm/${proposalId} with owner DID auth. ` +
-    `That path is an API, not a page — opening it in a browser returns 405.)`
+    `Then retry this tool call.`
   );
 }

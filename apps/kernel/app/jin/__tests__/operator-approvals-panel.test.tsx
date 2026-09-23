@@ -19,10 +19,10 @@ interface ApprovalFixture {
   summary: string;
   keysTouched: string[];
   detail: Record<string, unknown> | null;
-  status: 'pending' | 'approved' | 'denied' | 'withdrawn' | 'applied';
+  status: 'pending' | 'approved' | 'denied' | 'withdrawn' | 'applied' | 'expired';
   decision: null;
-  /** Post-exec outcome follow-up (#2221, exec.command only). */
-  outcome?: { exitCode: number; durationMs: number; outputHash: string } | null;
+  /** Post-exec outcome follow-up (#2221 exec.command; #2293 github approvedUntil/ownerAuthorization). */
+  outcome?: Record<string, unknown> | null;
   appliedAt: string | null;
   createdAt: string;
 }
@@ -87,6 +87,27 @@ function accessApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixtu
       scopes: ['discovery:read'],
       surfaces: ['mcp'],
     },
+    ...overrides,
+  });
+}
+
+function githubApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
+  return approval({
+    proposalId: 'opap_gh_1',
+    source: 'github',
+    kind: 'github:append',
+    summary: 'create_issue org/repo: "Bug: widget breaks"',
+    keysTouched: [],
+    detail: {
+      ownerDid: 'did:imajin:owner',
+      agentDid: null,
+      scope: 'github:write',
+      riskTier: 'append',
+      tool: 'github_create_issue',
+      target: 'org/repo',
+      argsSummary: 'create_issue org/repo: "Bug: widget breaks"',
+    },
+    outcome: null,
     ...overrides,
   });
 }
@@ -641,5 +662,130 @@ describe('per-source renderer registry — access', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     expect(screen.queryByTestId('revealed-bearer')).toBeNull();
+  });
+});
+
+// `github` renderer (#2293): folds the retired pre-#2059 confirm rail into
+// this rail. Unlike every other source, pending offers FOUR buttons (No /
+// Yes / 5m / 24h) instead of the generic two — the TTL choice a windowed
+// approval needs — and an approved card shows a live countdown once
+// `outcome.approvedUntil` is set.
+describe('per-source renderer registry — github', () => {
+  it('renders the args summary, tool, target, and risk tier', async () => {
+    installFetch([{ isOperator: true, approvals: [githubApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('create_issue org/repo: "Bug: widget breaks"')).toBeDefined();
+    expect(screen.getByText('github_create_issue')).toBeDefined();
+    expect(screen.getByText('org/repo')).toBeDefined();
+    expect(screen.getByText('append')).toBeDefined();
+  });
+
+  it('offers No / Yes / 5m / 24h instead of the default two-button row', async () => {
+    installFetch([{ isOperator: true, approvals: [githubApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByRole('button', { name: 'No' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Yes' })).toBeDefined();
+    expect(screen.getByRole('button', { name: '5m' })).toBeDefined();
+    expect(screen.getByRole('button', { name: '24h' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
+  it('posts decision=approve with mode=single when Yes is clicked', async () => {
+    const spy = installFetch(
+      [{ isOperator: true, approvals: [githubApproval()] }, { isOperator: true, approvals: [githubApproval({ status: 'approved' })] }],
+      { ok: true, body: { approval: githubApproval({ status: 'approved' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Yes' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'approve', mode: 'single' }) });
+  });
+
+  it('posts decision=approve with mode=5m when the 5m button is clicked', async () => {
+    const spy = installFetch(
+      [{ isOperator: true, approvals: [githubApproval()] }, { isOperator: true, approvals: [githubApproval({ status: 'approved' })] }],
+      { ok: true, body: { approval: githubApproval({ status: 'approved' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: '5m' });
+
+    fireEvent.click(screen.getByRole('button', { name: '5m' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'approve', mode: '5m' }) });
+  });
+
+  it('posts decision=reject (no mode) when No is clicked', async () => {
+    const spy = installFetch(
+      [{ isOperator: true, approvals: [githubApproval()] }, { isOperator: true, approvals: [githubApproval({ status: 'denied' })] }],
+      { ok: true, body: { approval: githubApproval({ status: 'denied' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'No' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'No' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal reject.')).toBeDefined());
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'reject' }) });
+  });
+
+  it('shows a live TTL countdown for a windowed approval and offers Withdraw', async () => {
+    const windowed = githubApproval({
+      status: 'approved',
+      outcome: { approvedUntil: new Date(Date.now() + 5 * 60 * 1000).toISOString(), ownerAuthorization: { signature: 'sig', senderPubkey: 'pub', payload: {} } },
+    });
+    installFetch([{ isOperator: true, approvals: [windowed] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText(/expires in/)).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeDefined();
+  });
+
+  it('labels a single-call approval distinctly from a windowed one', async () => {
+    const single = githubApproval({
+      status: 'approved',
+      outcome: { approvedUntil: null, ownerAuthorization: { signature: 'sig', senderPubkey: 'pub', payload: {} } },
+    });
+    installFetch([{ isOperator: true, approvals: [single] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText(/single-call approval/)).toBeDefined();
+    expect(screen.queryByText(/expires in/)).toBeNull();
+  });
+
+  it('shows the expired badge and no decision controls for an expired proposal', async () => {
+    installFetch([{ isOperator: true, approvals: [githubApproval({ status: 'expired' })] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('expired')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Yes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
+  });
+
+  it('posts decision=withdrawn when Withdraw is clicked on an approved github card', async () => {
+    const windowed = githubApproval({
+      status: 'approved',
+      outcome: { approvedUntil: new Date(Date.now() + 5 * 60 * 1000).toISOString(), ownerAuthorization: {} },
+    });
+    const spy = installFetch(
+      [{ isOperator: true, approvals: [windowed] }, { isOperator: true, approvals: [githubApproval({ status: 'expired' })] }],
+      { ok: true, body: { approval: githubApproval({ status: 'expired' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Withdraw' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal withdrawn.')).toBeDefined());
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'withdrawn' }) });
   });
 });

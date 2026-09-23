@@ -21,6 +21,10 @@ const {
   proposalInsertMock,
   proposalUpdateMock,
   proposalUpdateSetMock,
+  getOperatorDidMock,
+  computeApprovalContentHashMock,
+  recordApprovalRequestedMock,
+  markAppliedMock,
 } = vi.hoisted(() => ({
   sealMock: vi.fn(),
   loadMock: vi.fn(),
@@ -31,6 +35,13 @@ const {
   proposalInsertMock: vi.fn(),  // proposals insert().values()
   proposalUpdateMock: vi.fn(),  // proposals update().set().where()
   proposalUpdateSetMock: vi.fn(), // proposals update().set() payload recorder
+  // #2293: the operator.approvals fold-in — mocked as opaque service calls
+  // (not raw db query shapes) since raiseGithubOperatorApproval/
+  // markProposalDone call these directly rather than building queries.
+  getOperatorDidMock: vi.fn(),
+  computeApprovalContentHashMock: vi.fn(),
+  recordApprovalRequestedMock: vi.fn(),
+  markAppliedMock: vi.fn(),
 }));
 
 vi.mock('nanoid', () => ({ nanoid: () => 'test-id-0001' }));
@@ -70,6 +81,14 @@ vi.mock('@/src/db', () => {
     ownerAuthorization: 'owner_authorization',
     createdAt: 'created_at', updatedAt: 'updated_at',
   };
+  // #2293: only touched by retireLapsedApprovals' best-effort card sync —
+  // routed through the SAME generic update() mock below (the mock never
+  // discriminated by table), so existing status-transition assertions on
+  // `proposalUpdateSetMock` remain valid unchanged.
+  const operatorApprovals = {
+    proposalId: 'proposal_id', source: 'source', kind: 'kind', status: 'status',
+    detail: 'detail', outcome: 'outcome', updatedAt: 'updated_at',
+  };
 
   // Closure state: updated synchronously in select() before from() is called.
   let _isCountQuery = false;
@@ -104,10 +123,32 @@ vi.mock('@/src/db', () => {
     },
     channelLinks,
     githubActionProposals,
+    operatorApprovals,
   };
 });
 
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
+
+// #2293: connector.ts raises/closes the /jin operator-approvals card as
+// opaque service calls — mocked here as simple spies (not real db-backed
+// logic, which is covered by operator-approvals-service.test.ts and this
+// connector's own approvals-execution.test.ts). `./approvals-execution` is
+// mocked too, purely to keep its constants stable and avoid loading its
+// own (real) import graph — @imajin/auth, ../vault/sealing — into this
+// already heavily-mocked test file.
+vi.mock('@/src/lib/notify/operator-approvals', () => ({
+  getOperatorDid: getOperatorDidMock,
+  computeApprovalContentHash: computeApprovalContentHashMock,
+}));
+vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
+  recordApprovalRequested: recordApprovalRequestedMock,
+  markApplied: markAppliedMock,
+}));
+vi.mock('../approvals-execution', () => ({
+  GITHUB_SOURCE: 'github',
+  GITHUB_APPEND_KIND: 'github:append',
+  GITHUB_MUTATE_KIND: 'github:mutate',
+}));
 
 // Disclosure allowlist (#1373). readReadAllowlist is controllable per-test; the
 // filter/matcher helpers default to identity/allow so the connector paths are
@@ -162,6 +203,7 @@ import {
 } from '../connector';
 
 const OWNER = 'did:imajin:eric';
+const OPERATOR_DID = 'did:imajin:the-operator';
 const REPO = 'a-r-t-i-f-a-c-t/artifactagent';
 const PAT = 'ghp_REDACTED';
 const CONFIG = { clientId: 'cid', clientSecret: 'csecret', redirectUri: 'https://imajin.test/github/api/callback' };
@@ -252,6 +294,17 @@ beforeEach(() => {
   proposalUpdateMock.mockReset();
   proposalUpdateMock.mockResolvedValue([]);
   proposalUpdateSetMock.mockReset();
+  // #2293: operator.approvals fold-in — default: an operator IS configured,
+  // so the happy path (card raised / closed) is what most tests exercise;
+  // individual tests override to exercise the "no operator configured" gap.
+  getOperatorDidMock.mockReset();
+  getOperatorDidMock.mockResolvedValue(OPERATOR_DID);
+  computeApprovalContentHashMock.mockReset();
+  computeApprovalContentHashMock.mockReturnValue('contenthash123');
+  recordApprovalRequestedMock.mockReset();
+  recordApprovalRequestedMock.mockResolvedValue(undefined);
+  markAppliedMock.mockReset();
+  markAppliedMock.mockResolvedValue({ ok: true });
   // Allowlist mocks — default: allow-all (null), identity filters, repo allowed.
   readAllowlistMock.mockReset();
   readAllowlistMock.mockResolvedValue(null);
@@ -1713,6 +1766,135 @@ describe('lapsed approval windows (#1588)', () => {
 
     expect(result.status).toBe('done');
     expect(fetch).toHaveBeenCalledOnce();
+  });
+});
+
+// ── operator.approvals fold-in (#2293) ──────────────────────────────────────
+
+describe('operator.approvals fold-in (#2293)', () => {
+  it('raises a /jin card (source github, kind github:mutate) alongside the pending ledger row for a mutate write', async () => {
+    grant(['github:write']);
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('pending');
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(recordApprovalRequestedMock).toHaveBeenCalledWith(expect.objectContaining({
+      proposalId: insertedRow.id,
+      operatorDid: OPERATOR_DID,
+      source: 'github',
+      kind: 'github:mutate',
+      summary: insertedRow.argsSummary,
+      detail: expect.objectContaining({ ownerDid: OWNER, tool: 'github_update_issue', target: `${REPO}#42` }),
+    }));
+  });
+
+  it('raises the card with kind github:append for an append-tier write', async () => {
+    grant(['github:write']);
+
+    await createIssue(OWNER, REPO, 'Title', 'Body');
+
+    expect(recordApprovalRequestedMock).toHaveBeenCalledWith(expect.objectContaining({ kind: 'github:append' }));
+  });
+
+  it('never raises a card when no node operator is configured (ledger row still exists)', async () => {
+    grant(['github:write']);
+    getOperatorDidMock.mockResolvedValue(null);
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('pending');
+    expect(proposalInsertMock).toHaveBeenCalledOnce(); // the ledger row was still raised
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the write when raising the /jin card throws (non-fatal)', async () => {
+    grant(['github:write']);
+    recordApprovalRequestedMock.mockRejectedValueOnce(new Error('db unavailable'));
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('pending');
+  });
+
+  it('marks the /jin card applied when a single-call approval executes (markProposalDone)', async () => {
+    grant(['github:write']);
+    proposalLimitMock.mockResolvedValue([{
+      id: 'proposal_single_call',
+      ownerDid: OWNER,
+      status: 'approved',
+      riskTier: 'mutate',
+      approvedUntil: null,
+    }]);
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('done');
+    expect(markAppliedMock).toHaveBeenCalledWith('proposal_single_call');
+  });
+
+  it('does not mark applied for a windowed execution (the grant row itself never closes)', async () => {
+    grant(['github:write']);
+    proposalLimitMock.mockResolvedValue([{
+      id: 'proposal_windowed',
+      ownerDid: OWNER,
+      status: 'approved',
+      riskTier: 'mutate',
+      approvedUntil: new Date(Date.now() + 60 * 60 * 1000),
+    }]);
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+
+    await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(markAppliedMock).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the write when markApplied throws (non-fatal)', async () => {
+    grant(['github:write']);
+    proposalLimitMock.mockResolvedValue([{
+      id: 'proposal_single_call',
+      ownerDid: OWNER,
+      status: 'approved',
+      riskTier: 'mutate',
+      approvedUntil: null,
+    }]);
+    markAppliedMock.mockRejectedValueOnce(new Error('db unavailable'));
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+
+    const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    expect(result.status).toBe('done');
+  });
+
+  it('retiring a lapsed window also syncs the linked /jin card to expired (a second expired UPDATE beyond the ledger one)', async () => {
+    grant(['github:write']);
+    proposalLimitMock.mockResolvedValue([
+      { id: 'proposal_dead_window', ownerDid: OWNER, status: 'approved', riskTier: 'mutate', approvedUntil: new Date(Date.now() - 60 * 60 * 1000) },
+      { id: 'proposal_fresh_24h', ownerDid: OWNER, status: 'approved', riskTier: 'mutate', approvedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) },
+    ]);
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...MOCK_ISSUE, state: 'closed' }),
+    });
+
+    await updateIssue(OWNER, REPO, 42, { state: 'closed' });
+
+    const expiredCalls = proposalUpdateSetMock.mock.calls.filter(
+      ([values]) => (values as { status?: string }).status === 'expired',
+    );
+    // One UPDATE retires the github.action_proposals ledger row, a second
+    // (best-effort) UPDATE syncs the linked operator.approvals card.
+    expect(expiredCalls.length).toBeGreaterThanOrEqual(2);
   });
 });
 
