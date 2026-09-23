@@ -1,4 +1,5 @@
 -- Migration: 0157_loops_rail
+-- owner: kernel
 -- #2295 (child 1 of epic #2288/#2290) — kernel loop registry: signed
 -- `loop.started | loop.progress | loop.blocked | loop.finished` bus events,
 -- persisted as a queryable per-principal projection with lineage.
