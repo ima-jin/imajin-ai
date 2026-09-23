@@ -22,6 +22,24 @@ function emitAndNotify(title: string, body: string): ReactorConfig[] {
   ];
 }
 
+/**
+ * Shorthand for the `loop-projection` + `emit` two-reactor chain shared by
+ * all four `loop.*` lifecycle types (#2295) — keeps the four structurally
+ * identical entries below from flagging as code duplication, same reasoning
+ * as `attestationOnly`/`emitAndNotify` above. `loop-projection` is awaited
+ * so `kernel.loops`/`kernel.loop_events` are durable before `POST
+ * /api/loops` returns (read-after-write). No `notify` — the /jin Runs lane
+ * (child 6 of #2290) reads the projection directly; this is operational
+ * exhaust, not a human-facing notification, same posture as
+ * `warp.run.progress` above.
+ */
+function loopLifecycleChain(): ReactorConfig[] {
+  return [
+    { type: 'loop-projection', config: {}, await: true, enabled: true },
+    { type: 'emit', config: {}, enabled: true },
+  ];
+}
+
 // Hardcoded defaults for Phase 1
 // DB-backed config is Phase 2 (future work order)
 // #2016: chains that run BOTH `attestation` and `mjn` mark the `attestation`
@@ -636,6 +654,13 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'payment_request.recipient_claimed': [
     { type: 'payment-request-notify', config: {}, enabled: true },
   ],
+  // #2295 — kernel loop registry lifecycle rail. Kept in sync with migration
+  // 0157_loops_rail.sql, which seeds the same chain as a DB row (the "DB row
+  // REPLACES this list" convention used by warp.run.* above).
+  'loop.started': loopLifecycleChain(),
+  'loop.progress': loopLifecycleChain(),
+  'loop.blocked': loopLifecycleChain(),
+  'loop.finished': loopLifecycleChain(),
 };
 
 // ---------------------------------------------------------------------------

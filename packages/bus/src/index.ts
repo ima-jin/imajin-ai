@@ -13,6 +13,7 @@ import { notifyMatchDeliveryReactor } from './reactors/notify-match-delivery';
 import { supplyRecorderReactor } from './reactors/supply-recorder';
 import { brokerPredicateInvalidationReactor } from './reactors/broker-predicate-invalidation';
 import { paymentRequestNotifyReactor } from './reactors/payment-request-notify';
+import { loopProjectionReactor } from './reactors/loop-projection';
 
 // Auto-register built-in reactors on import
 registerReactor('attestation', attestationReactor);
@@ -29,6 +30,7 @@ registerReactor('notify-match-delivery', notifyMatchDeliveryReactor);
 registerReactor('supply-recorder', supplyRecorderReactor);
 registerReactor('broker-predicate-invalidation', brokerPredicateInvalidationReactor);
 registerReactor('payment-request-notify', paymentRequestNotifyReactor);
+registerReactor('loop-projection', loopProjectionReactor);
 
 export { publish } from './publish';
 export { broker } from './broker';
@@ -49,6 +51,8 @@ export type {
   ReactorConfig,
   ChainConfig,
   ReactorHandler,
+  LoopRefs,
+  LoopEventPayload,
   BrokerRequest,
   BrokerFieldReleaseMode,
   BrokerReleaseEnvelopeMode,
