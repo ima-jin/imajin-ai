@@ -73,6 +73,7 @@ export default defineConfig({
       { find: '@imajin/auth/broker-consent-vocabulary', replacement: resolve(__dirname, 'packages/auth/src/broker-consent-vocabulary.ts') },
       { find: '@imajin/auth/scope-vocabulary', replacement: resolve(__dirname, 'packages/auth/src/scope-vocabulary.ts') },
       { find: '@imajin/auth/grant-scopes', replacement: resolve(__dirname, 'packages/auth/src/grant-scopes.ts') },
+      { find: '@imajin/auth/resolve-db', replacement: resolve(__dirname, 'packages/auth/src/resolve-db.ts') },
       { find: '@imajin/auth', replacement: resolve(__dirname, 'packages/auth/src/index.ts') },
       { find: '@imajin/chat', replacement: resolve(__dirname, 'packages/chat/src/index.ts') },
       { find: '@imajin/cid', replacement: resolve(__dirname, 'packages/cid/src/index.ts') },

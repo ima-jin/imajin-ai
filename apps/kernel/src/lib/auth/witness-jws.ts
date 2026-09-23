@@ -21,7 +21,7 @@
  * to a 422 without persisting anything.
  */
 import * as jose from 'jose';
-import { createDbResolver } from '@imajin/auth';
+import { createDbResolver } from '@imajin/auth/resolve-db';
 import { db, identities } from '@/src/db';
 
 /** The only JWS algorithm identities in this system sign with (see @imajin/auth/crypto — Ed25519). */

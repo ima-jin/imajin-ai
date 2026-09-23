@@ -25,9 +25,6 @@
     "src/",
     "next-headers.cjs"
   ],
-  "dependencies": {
-    "@imajin/tokens": "workspace:*"
-  },
   "peerDependencies": {
     "next": ">=15.5.24"
   },

@@ -1041,9 +1041,6 @@ importers:
 
   packages/config:
     dependencies:
-      '@imajin/tokens':
-        specifier: workspace:*
-        version: link:../tokens
       next:
         specifier: '>=15.5.24'
         version: 15.5.25(@babel/core@7.25.2)(@opentelemetry/api@1.9.0)(@types/node@22.19.17)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -1181,9 +1178,6 @@ importers:
 
   packages/fair:
     dependencies:
-      '@imajin/money':
-        specifier: workspace:*
-        version: link:../money
       '@noble/ed25519':
         specifier: ^2.3.0
         version: 2.3.0

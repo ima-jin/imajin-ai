@@ -2,7 +2,9 @@
  * Public Key Resolver
  *
  * Resolves a DID to its Ed25519 public key using either:
- *  - DB mode: direct query against auth.identities
+ *  - DB mode: direct query against auth.identities (see `./resolve-db` —
+ *    kept out of this module and its `@imajin/auth` root export on purpose,
+ *    see the comment there)
  *  - HTTP mode: GET AUTH_SERVICE_URL/api/identity/:did
  */
 
@@ -14,46 +16,6 @@ export interface ResolvedIdentity {
 }
 
 export type PublicKeyResolver = (did: string) => Promise<ResolvedIdentity | null>;
-
-/**
- * Create a DB-backed resolver.
- * Accepts a db instance and the identities table (to avoid hard coupling to the app).
- */
-export function createDbResolver(
-  db: { select: Function },
-  identitiesTable: unknown
-): PublicKeyResolver {
-  return async (did: string): Promise<ResolvedIdentity | null> => {
-    const { eq } = await import('drizzle-orm');
-    const table = identitiesTable as any;
-
-    // `identities` has no `type` column — the closest analogue is `scope`
-    // ('actor' | 'family' | 'community' | 'business'), which is what the HTTP
-    // resolver (registry/api/identity/:did) maps into ResolvedIdentity.type.
-    // Selecting a column that doesn't exist on the table resolves to
-    // `undefined`, which crashes drizzle's `orderSelectedFields` during query
-    // preparation (`Object.entries(undefined)`) — see #1709.
-    const rows = await (db as any)
-      .select({
-        id: table.id,
-        publicKey: table.publicKey,
-        type: table.scope,
-        tier: table.tier,
-      })
-      .from(table)
-      .where(eq(table.id, did))
-      .limit(1);
-
-    if (!rows || rows.length === 0) return null;
-
-    return {
-      did: rows[0].id,
-      publicKey: rows[0].publicKey,
-      type: rows[0].type,
-      tier: rows[0].tier,
-    };
-  };
-}
 
 /**
  * Create an HTTP-backed resolver targeting the public registry endpoint.

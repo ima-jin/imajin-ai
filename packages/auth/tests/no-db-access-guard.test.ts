@@ -31,7 +31,8 @@ interface BannedPattern {
  * driver, a DB-connected drizzle adapter, or a raw SQL tagged template
  * (this package's own historical `getClient()` convention — see git
  * history on `src/credentials.ts` before #1992). Deliberately does NOT
- * flag a bare `drizzle-orm` import: `src/resolve.ts`'s `createDbResolver`
+ * flag a bare `drizzle-orm` import: `src/resolve-db.ts`'s `createDbResolver`
+ * (published separately as the `@imajin/auth/resolve-db` subpath, #1982)
  * takes a caller-supplied `db`/table via dependency injection and never
  * imports `@imajin/db` or connects to anything itself.
  */

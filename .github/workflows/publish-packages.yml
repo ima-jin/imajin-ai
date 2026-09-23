@@ -1,6 +1,16 @@
 name: Publish Packages
 
 on:
+  # A `packages-vX.Y.Z` tag always publishes exactly the four out-of-repo SDK
+  # packages (#1982: auth, config, logger, ui) to GitHub Packages only, using
+  # the ephemeral GITHUB_TOKEN — never NPM_TOKEN, so tagging this way cannot
+  # depend on (or consume) the npmjs-publish secret. There is no in-workflow
+  # version bump anywhere in this file (#2286's tag-as-truth philosophy): bump
+  # each package's version in package.json via a normal PR, merge it, *then*
+  # push the tag — see docs/packages/PUBLISHING.md.
+  push:
+    tags:
+      - 'packages-v*'
   workflow_dispatch:
     inputs:
       package:
@@ -17,17 +27,9 @@ on:
           - fair
           - pay
           - auth-client
+          - auth
+          - logger
           - all
-      version_bump:
-        description: "Version bump type (none publishes the version in package.json as-is)"
-        required: true
-        type: choice
-        options:
-          - none
-          - patch
-          - minor
-          - major
-        default: patch
       registries:
         # npmjs.org is canonical; GitHub Packages is a visibility-only mirror
         # that populates the repo's Packages sidebar. The single-registry
@@ -51,16 +53,20 @@ on:
 env:
   # Publish order matters — a package must be published before anything that
   # depends on it, since workspace:* deps resolve against the sibling versions.
-  # cid → vault-core; tokens → config → ui; fair → ui; db/pay/auth-client are
-  # independent (the "Build workspace type dependencies" step below builds
-  # each selected package's @imajin/* deps automatically, regardless of order).
-  ALL_PACKAGES: "cid tokens config ui vault-core db fair pay auth-client"
+  # cid → vault-core; tokens → config → ui; fair → ui; auth/logger → config;
+  # db/pay/auth-client are independent (the "Build workspace type dependencies"
+  # step below builds each selected package's @imajin/* deps automatically,
+  # regardless of order).
+  ALL_PACKAGES: "cid tokens config ui vault-core db fair pay auth-client auth logger"
+  # The four packages that make up the out-of-repo SDK surface (#1982) — the
+  # only ones a `packages-v*` tag ever publishes.
+  SDK_PACKAGES: "auth config logger ui"
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       # Required to publish to npm.pkg.github.com with the ephemeral
       # GITHUB_TOKEN. Publishing from a workflow in this repo is also what
       # auto-connects each package to the repo (and so renders the sidebar).
@@ -78,27 +84,42 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Determine packages to publish
-        id: packages
+      # A tag push carries no `inputs.*` context at all (that only exists for
+      # `workflow_dispatch`), so every dispatch-only input is resolved here,
+      # once, into plain step outputs that the rest of the job reads uniformly
+      # regardless of which trigger fired. Tag pushes always mean: publish the
+      # four SDK packages, as-is, GitHub Packages only, for real (never a dry
+      # run). Every publish — tag path and manual dispatch alike, for every
+      # package — publishes exactly the version already committed in that
+      # package's package.json. There is no in-workflow version bump (#2286's
+      # tag-as-truth philosophy: one way to change a version, a normal PR);
+      # see docs/packages/PUBLISHING.md.
+      - name: Resolve run parameters
+        id: params
         run: |
-          if [ "${{ inputs.package }}" = "all" ]; then
-            echo "list=${{ env.ALL_PACKAGES }}" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "list=${{ env.SDK_PACKAGES }}" >> $GITHUB_OUTPUT
+            echo "do_npmjs=false" >> $GITHUB_OUTPUT
+            echo "do_ghp=true" >> $GITHUB_OUTPUT
+            echo "dry_run=false" >> $GITHUB_OUTPUT
           else
-            echo "list=${{ inputs.package }}" >> $GITHUB_OUTPUT
+            if [ "${{ inputs.package }}" = "all" ]; then
+              echo "list=${{ env.ALL_PACKAGES }}" >> $GITHUB_OUTPUT
+            else
+              echo "list=${{ inputs.package }}" >> $GITHUB_OUTPUT
+            fi
+            if [ "${{ inputs.registries }}" = "github-packages" ]; then
+              echo "do_npmjs=false" >> $GITHUB_OUTPUT
+            else
+              echo "do_npmjs=true" >> $GITHUB_OUTPUT
+            fi
+            if [ "${{ inputs.registries }}" = "npmjs" ]; then
+              echo "do_ghp=false" >> $GITHUB_OUTPUT
+            else
+              echo "do_ghp=true" >> $GITHUB_OUTPUT
+            fi
+            echo "dry_run=${{ inputs.dry_run }}" >> $GITHUB_OUTPUT
           fi
-
-      - name: Bump versions
-        if: inputs.version_bump != 'none'
-        run: |
-          for pkg in ${{ steps.packages.outputs.list }}; do
-            echo "::group::Bumping $pkg"
-            cd packages/$pkg
-            # Use npm version to bump (modifies package.json in place)
-            NEW_VERSION=$(npm version ${{ inputs.version_bump }} --no-git-tag-version | tr -d 'v')
-            echo "Bumped @imajin/$pkg to $NEW_VERSION"
-            cd ../..
-            echo "::endgroup::"
-          done
 
       # A selected package's dts build resolves its @imajin/* workspace
       # deps' types (e.g. vault-core → cid, config → tokens, ui → config/fair).
@@ -109,7 +130,7 @@ jobs:
       # if a dependency is also in the selected list below.
       - name: Build workspace type dependencies
         run: |
-          for pkg in ${{ steps.packages.outputs.list }}; do
+          for pkg in ${{ steps.params.outputs.list }}; do
             echo "::group::Building workspace deps for $pkg"
             # --if-present tolerates workspace deps with no build script
             # (e.g. @imajin/auth is an optional peer dep of pay that ships
@@ -123,7 +144,7 @@ jobs:
 
       - name: Build packages
         run: |
-          for pkg in ${{ steps.packages.outputs.list }}; do
+          for pkg in ${{ steps.params.outputs.list }}; do
             echo "::group::Building $pkg"
             cd packages/$pkg
             if grep -q '"build"' package.json; then
@@ -140,32 +161,34 @@ jobs:
       # for consumers, so a GitHub Packages failure must never be able to block
       # it. Each registry gets its own step so its token is scoped to just that
       # step — NPM_TOKEN is never present while publishing to GitHub Packages,
-      # and vice versa.
+      # and vice versa. Never runs for a tag push (do_npmjs is always 'false'
+      # there) — a `packages-v*` tag never touches NPM_TOKEN.
       - name: Publish to npmjs.org
-        if: inputs.registries != 'github-packages'
+        if: steps.params.outputs.do_npmjs == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for pkg in ${{ steps.packages.outputs.list }}; do
+          for pkg in ${{ steps.params.outputs.list }}; do
             echo "::group::Publishing @ima-jin/$pkg to npmjs.org"
-            bash scripts/publish-package.sh "$pkg" "https://registry.npmjs.org" "${{ inputs.dry_run }}"
+            bash scripts/publish-package.sh "$pkg" "https://registry.npmjs.org" "${{ steps.params.outputs.dry_run }}"
             echo "::endgroup::"
           done
 
-      # Visibility-only mirror. This is what populates the repo's Packages
-      # sidebar; no consumer installs from here. Auth is the ephemeral
-      # GITHUB_TOKEN — deliberately not a PAT.
+      # Visibility-only mirror for manually-dispatched packages; the only
+      # install path for the four `packages-v*`-tagged SDK packages. Auth is
+      # the ephemeral GITHUB_TOKEN — deliberately not a PAT, and never a new
+      # secret.
       - name: Publish to GitHub Packages
-        if: inputs.registries != 'npmjs'
+        if: steps.params.outputs.do_ghp == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for pkg in ${{ steps.packages.outputs.list }}; do
+          for pkg in ${{ steps.params.outputs.list }}; do
             echo "::group::Publishing @ima-jin/$pkg to GitHub Packages"
-            bash scripts/publish-package.sh "$pkg" "https://npm.pkg.github.com" "${{ inputs.dry_run }}"
+            bash scripts/publish-package.sh "$pkg" "https://npm.pkg.github.com" "${{ steps.params.outputs.dry_run }}"
             echo "::endgroup::"
           done
 
-      # Version bumps are local to the workflow run only.
-      # package.json versions in main are updated manually when needed.
-      # This avoids branch protection conflicts with push-back commits.
+      # No version-bump step exists here on purpose: every publish ships
+      # exactly the version already committed in main. Bump via a normal PR,
+      # merge it, then dispatch/tag — see docs/packages/PUBLISHING.md.

@@ -26,7 +26,8 @@
  * not-yet-built follow-up — out of scope here, exactly as it is for
  * `witness-jws.ts` today.
  */
-import { createDbResolver, canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { createDbResolver } from '@imajin/auth/resolve-db';
 import { db, identities } from '@/src/db';
 import type { OperatorCountersignFields, OperatorCountersignature } from './operator-approvals';
 
