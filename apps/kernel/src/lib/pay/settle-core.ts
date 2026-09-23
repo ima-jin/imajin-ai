@@ -19,7 +19,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { verifyManifest } from '@imajin/fair';
 import type { FairManifest, FairManifestV11 } from '@imajin/fair';
-import { createDbResolver } from '@imajin/auth';
+import { createDbResolver } from '@imajin/auth/resolve-db';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { verifyIntroAttributionManifestForSettlement } from '@/src/lib/fair/intro-attribution';

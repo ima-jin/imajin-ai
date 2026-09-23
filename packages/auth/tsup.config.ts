@@ -10,6 +10,7 @@ export default defineConfig({
     'src/broker-consent-vocabulary.ts',
     'src/scope-vocabulary.ts',
     'src/grant-scopes.ts',
+    'src/resolve-db.ts',
   ],
   // ESM only. @noble/curves, @noble/ed25519, and @noble/hashes are all
   // "type": "module" with no "require" condition in their exports map, so a
@@ -20,13 +21,16 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   // drizzle-orm is a devDependency (not a runtime "dependency"), so tsup
-  // doesn't externalize it by default — but src/resolve.ts dynamically
+  // doesn't externalize it by default — but src/resolve-db.ts dynamically
   // imports it purely to construct an `eq()` condition against a *caller*-
   // supplied Drizzle table/db (see createDbResolver). Bundling a private
   // copy would give that condition a different SQL/Column class identity
   // than the consuming app's own drizzle-orm instance, which drizzle's
   // internal `is()`/instanceof checks rely on to recognize it. Keeping it
   // external ensures the dynamic import resolves the same module instance
-  // the caller already has installed.
+  // the caller already has installed. It's only ever referenced from the
+  // separate `src/resolve-db.ts` entry (see the `entry` array above) — the
+  // root `src/index.ts` entry never mentions drizzle-orm at all, so this
+  // `external` line has no effect on it either way.
   external: ['drizzle-orm'],
 });

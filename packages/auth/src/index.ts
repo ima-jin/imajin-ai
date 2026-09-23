@@ -40,7 +40,13 @@ export type {
   FunnelChainVerification,
 } from "./intro-funnel";
 export { verifyNostrSig, signNostrAttestation, getNostrPublicKey, nostrAttestationDigest } from "./nostr-crypto";
-export { resolvePublicKey, createDbResolver, createHttpResolver } from "./resolve";
+// createDbResolver deliberately does NOT live here — it's the only thing in
+// this package that references drizzle-orm, and bundling it into the root
+// entry drags a static, build-time-unresolvable `drizzle-orm` import into
+// every consumer that installs `@imajin/auth` without also installing
+// drizzle-orm. Import it from "@imajin/auth/resolve-db" instead — see the
+// comment atop src/resolve-db.ts.
+export { resolvePublicKey, createHttpResolver } from "./resolve";
 export type { ResolvedIdentity, PublicKeyResolver } from "./resolve";
 export {
   TOKEN_TTL,
