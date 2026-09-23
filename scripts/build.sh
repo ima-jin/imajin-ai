@@ -101,8 +101,24 @@ else
 fi
 echo "" >> "$REPORT"
 
-# Set build metadata for BuildInfo component
-export NEXT_PUBLIC_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "dev")
+# Set build metadata for BuildInfo component.
+#
+# Tag is truth (#2285): the nearest reachable vX.Y.Z tag is what actually
+# shipped to prod (see .github/workflows/tag-release.yml), so it takes
+# priority over package.json's `version` field — which is bumped in lockstep
+# by the Release workflow but can otherwise drift from what's actually
+# deployed (see packages/ui/src/BuildInfo.tsx). Falls back to package.json's
+# version on an untagged checkout, then "dev" if that's also unavailable
+# (e.g. no package.json, or it fails to parse).
+#
+# shellcheck source=scripts/lib/build-version.sh
+source "$REPO_ROOT/scripts/lib/build-version.sh"
+GIT_TAG_VERSION="$(compute_git_tag_version)"
+if [[ -n "$GIT_TAG_VERSION" ]]; then
+  export NEXT_PUBLIC_VERSION="$GIT_TAG_VERSION"
+else
+  export NEXT_PUBLIC_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "dev")
+fi
 export NEXT_PUBLIC_BUILD_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "local")
 export NEXT_PUBLIC_COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "")
 echo "Build: imajin $NEXT_PUBLIC_VERSION+$NEXT_PUBLIC_COMMIT_COUNT · $NEXT_PUBLIC_BUILD_HASH" | tee -a "$REPORT"
