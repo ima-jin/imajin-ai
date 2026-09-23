@@ -27,13 +27,19 @@ import type { PublicKeyResolver, ResolvedIdentity } from './resolve';
 /**
  * Minimal shape of the caller-supplied Drizzle `db` this function actually
  * calls (`.select().from().where().limit()`). Typed as a narrow callable
- * chain — not `Function` — so this stays dependency-injected without
- * coupling to any specific app's full Drizzle instance type.
+ * chain — not `Function` (an ESLint/Sonar error, see #1982's review) — so
+ * this stays dependency-injected without coupling to any specific app's
+ * full Drizzle instance type. `table`/`condition` are deliberately `any`,
+ * not `unknown`: real Drizzle `.from()`/`.where()` overloads take a
+ * specific generic-constrained argument (`PgTable | Subquery | ...`), and
+ * `unknown` there makes TS reject every real Drizzle `db` as "not
+ * assignable to DbSelectChain" (caught via `apps/kernel`'s typecheck) —
+ * `any` is what actually lets a real Drizzle instance satisfy this shape.
  */
 interface DbSelectChain {
   select: (columns: Record<string, unknown>) => {
-    from: (table: unknown) => {
-      where: (condition: unknown) => {
+    from: (table: any) => {
+      where: (condition: any) => {
         limit: (n: number) => Promise<unknown[]>;
       };
     };

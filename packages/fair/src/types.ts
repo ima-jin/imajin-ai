@@ -87,16 +87,18 @@ export interface FairManifestV10 {
 // .fair v1.1 types (new)
 // ============================================================================
 
-// Money used to be defined here directly. It now lives in `@imajin/money`
-// (#1950) — re-exported rather than duplicated so there is exactly one
-// definition. The shape is unchanged (`{ amount: number, currency: string }`,
-// non-negative integer minor units for this package's own purposes), so
-// every existing object-literal call site below still type-checks as-is.
-// (`import type` + `export type` rather than a single `export type {...}
-// from ...`, since the interfaces further down this file reference `Money`
-// directly — a bare re-export doesn't introduce a local binding.)
-import type { Money } from '@imajin/money';
-export type { Money };
+// Money used to be re-exported from `@imajin/money` (#1950). Inlined here
+// instead (#1982 review) because publishing `@ima-jin/fair`'s `.d.ts` with a
+// re-export of `@ima-jin/money` would reference a package that is not
+// itself published — breaking typecheck for any external consumer that
+// doesn't set `skipLibCheck: true`. `@imajin/money` owns the richer
+// arithmetic helpers (`add`/`subtract`/`multiply`/...); this package only
+// ever needed the plain, JSON-safe data shape, so there is no loss of a
+// single source of truth for anything this package actually uses.
+export interface Money {
+  readonly amount: number;
+  readonly currency: string;
+}
 
 // `DidShareEntry` used to be a hand-maintained duplicate of `FairEntry`
 // (#1712) — same six fields (`did?`, `role`, `share`, `name?`, `note?`,

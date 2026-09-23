@@ -95,7 +95,10 @@ by the install.
 - None of the four packages carry a `workspace:*` dependency that isn't
   itself resolvable from the registry: `@ima-jin/auth` and `@ima-jin/ui`
   depend on sibling packages that are published from the same pipeline
-  (`config`, `logger`, `fair`), and any dependency that turned out to be
-  type-only at runtime (`config`'s use of `tokens`, `fair`'s use of `money`)
-  was moved to `devDependencies` so it never appears in the published
-  manifest.
+  (`config`, `logger`, `fair`), and `config`'s unused `tokens` dependency was
+  removed outright (dead code, see `docs/npm-publishing.md`).
+- `@ima-jin/fair`'s `Money` type is inlined in `fair/src/types.ts` rather
+  than imported from `@imajin/money` — `money` isn't published, and a type
+  re-export still shows up in the emitted `.d.ts` even when the source
+  dependency lives in `devDependencies`, so "move it to devDependencies"
+  alone isn't enough for a type-only cross-package reference. Inlining is.

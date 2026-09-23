@@ -41,7 +41,6 @@
     "jose": "^6.2.3"
   },
   "devDependencies": {
-    "@imajin/money": "workspace:*",
     "@types/react": "^18",
     "tsup": "^8.0.0",
     "typescript": "^5",
