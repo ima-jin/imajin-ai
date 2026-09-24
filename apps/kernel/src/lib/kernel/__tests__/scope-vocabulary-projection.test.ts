@@ -126,6 +126,8 @@ describe('pinned scope sets (change these deliberately)', () => {
       'corpus:write',
       // #2297 — loops_list/loops_get.
       'loops:read',
+      // #2316 — cycle_run/cycle_status.
+      'cycle:run',
     ]);
   });
 
@@ -173,7 +175,8 @@ describe('pinned scope sets (change these deliberately)', () => {
     );
     // #1730 — corpus proxy tools spend no sealed credential either.
     // #2297 — loops_list/loops_get spend no sealed credential either.
-    expect(credentialFree).toEqual(['discovery:read', 'corpus:read', 'corpus:write', 'loops:read']);
+    // #2316 — cycle_run/cycle_status spend no sealed credential either.
+    expect(credentialFree).toEqual(['discovery:read', 'corpus:read', 'corpus:write', 'loops:read', 'cycle:run']);
   });
 
   /**
@@ -208,11 +211,13 @@ describe('pinned scope sets (change these deliberately)', () => {
       'corpus:write',
       // #2297 — loops_list/loops_get.
       'loops:read',
+      // #2316 — cycle_run/cycle_status.
+      'cycle:run',
     ]);
   });
 });
 
-// ── Regressions ───────────────────────────────────────────────────────────────
+// ── Regressions ─────────────────────────────────────────────────────────────────────────────────────────
 
 describe('#1393 regression — messages:* is grantable end-to-end', () => {
   it.each(['messages:read', 'messages:write'])('exposes %s in every MCP projection', (scope) => {
@@ -338,6 +343,10 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
       // #2297 — loops_list/loops_get, thin per-principal readers over the
       // kernel.loops registry projection (#2295).
       'loops:read': { verb: 'read', surface: 'loops', label: 'Read your loop registry', release: { discloses_others: false, sensitive: false } },
+      // #2316 — cycle_run/cycle_status, the one-statement sprint-cycle trigger
+      // over the 'cycle' loopKind (#2314). Owner-only: starting a cycle is a
+      // write, unlike the read-only scopes above it.
+      'cycle:run': { verb: 'run', surface: 'cycle', label: 'Trigger and read your own sprint cycle loop', release: { discloses_others: false, sensitive: true, viewer: MCP_DID } },
     });
   });
 

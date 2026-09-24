@@ -572,6 +572,32 @@ export const SCOPE_VOCABULARY = [
     label: 'Read your loop registry (running, blocked, and recently finished orchestration loops)',
     manifestLabel: 'Read your loop registry' },
 
+  // ── Sprint cycle trigger (#2316) — `cycle_run` / `cycle_status`.
+  //
+  // `cycle_run` registers a `cycle` loop (#2314's `kind: 'cycle'` on the same
+  // #2295 rail `loops:read` covers) on the caller's own behalf and previews
+  // or drives its five fixed phases (merge-sweep, raise, provision, review,
+  // report); `cycle_status` reads it back. One scope gates both, same shape
+  // as `warp:dispatch` covering warp_dispatch_agent + every warp_get_*/
+  // warp_list_runs read tool — there is no cross-DID surface here to grant
+  // separately, since every cycle is unconditionally scoped to `ctx.did`.
+  //
+  // SELF_SENSITIVE → owner-only (not `loops:read`'s SELF_ONLY): starting a
+  // cycle is a WRITE that stands up a whole automation loop tied to the
+  // caller's own authority, even though today's phase runner is a stub
+  // (#2316 is the MCP tool surface only — see apps/kernel/src/lib/mcp/
+  // tools/cycle.ts). `credentialFree` because this scope itself unseals no
+  // external credential: it only writes `loop.*` rail events and
+  // `decision:card` approvals rows, both native to the kernel. Any sealed
+  // credential a future phase-runner spends (e.g. `warp:dispatch` to
+  // provision, `github:write` to merge) is that action's OWN scope, checked
+  // per-action when that engine is built — this scope never widens what the
+  // caller may do, per #2316's own "authority evaluation lives in the card"
+  // constraint.
+  { scope: 'cycle:run', connector: 'mcp', verb: 'run', surface: 'cycle', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS, credentialFree: true,
+    label: 'Run and observe your own sprint cycle (merge-sweep, hot-issue-raise, brief+provision, review-rounds, report)',
+    manifestLabel: 'Trigger and read your own sprint cycle loop' },
+
   // ── Generic consent-request primitive (#1817) — platform scope, no owning
   // connector. Generalizes the inference confirm gate (#1782/#1784/#1791) for
   // any app-authed requester: gates raising a consent.requested bus event that
