@@ -59,7 +59,7 @@ import { eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { db, notifications } from '@/src/db';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
-import { getTemplate } from './templates';
+import { getTemplate } from './template-store';
 import { buildNotificationFrame, pushNotificationToDid } from './ws-push';
 
 const log = createLogger('kernel');
@@ -96,7 +96,7 @@ async function emitConnectorNotification(
   try {
     const id = `ntf_${nanoid(16)}`;
     const createdAt = new Date();
-    const template = getTemplate(scope);
+    const template = await getTemplate(scope);
     const title = template ? template.title(payload) : scope;
 
     await db.insert(notifications).values({

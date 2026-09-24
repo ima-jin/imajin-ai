@@ -636,6 +636,12 @@
       "firstMigration": "0001_seed.sql",
       "notes": ""
     },
+    "notify.templates": {
+      "owner": "kernel",
+      "schema": "notify",
+      "firstMigration": "0158_notify_templates.sql",
+      "notes": "#1510 — data-driven notify templates; rows seeded disabled, see migration header"
+    },
     "operator.approvals": {
       "owner": "kernel",
       "schema": "operator",

@@ -2051,6 +2051,21 @@ export interface BusEventMap {
   'loop.progress': LoopEventPayload;
   'loop.blocked': LoopEventPayload;
   'loop.finished': LoopEventPayload;
+  /**
+   * A `notify.templates` row changed (#1510, data-driven notify templates).
+   * Consumed by the kernel's `notify-template-hot-reload` reactor
+   * (apps/kernel/src/lib/notify/template-store.ts) to drop that scope's
+   * cache entry immediately rather than waiting out the TTL — same pattern
+   * as `vault.secret.updated`/`vault.secret.rotated` and
+   * `vault-hot-reload`. No publisher ships in this PR (the admin surface
+   * that edits a row is an explicit stretch goal); this is the consumer
+   * side, wired ahead of that surface.
+   */
+  'notify.template.updated': {
+    scope: string;
+    context_id: string;
+    context_type: 'notify.template';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
