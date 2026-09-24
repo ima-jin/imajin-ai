@@ -12,14 +12,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, attestations } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
+import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 
 export async function POST(request: NextRequest) {
-  const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
-  const expectedKey = process.env.ATTESTATION_INTERNAL_API_KEY;
-
-  if (!expectedKey || apiKey !== expectedKey) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = await requireInternalApiKey(request);
+  if (authError) return authError;
 
   let body: Record<string, unknown>;
   try {

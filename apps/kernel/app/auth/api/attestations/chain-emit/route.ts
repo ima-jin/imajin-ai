@@ -21,7 +21,7 @@ const log = createLogger('kernel');
 
 export async function POST(request: NextRequest) {
   // Same key as /api/attestations/internal
-  const authError = requireInternalApiKey(request);
+  const authError = await requireInternalApiKey(request);
   if (authError) return authError;
 
   let body: Record<string, unknown>;

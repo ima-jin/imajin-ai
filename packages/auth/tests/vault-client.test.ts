@@ -413,6 +413,129 @@ describe('redaction (#2243, #2257)', () => {
   });
 });
 
+describe('resolveGrantByPurpose (#2245 dynamic grant discovery)', () => {
+  const PURPOSE = 'kernel.attestation-internal-api-key';
+
+  function fakeKernelFetchWithGrantsList(options: FakeKernelOptions & { grantsListBody?: Record<string, unknown> } = {}) {
+    return vi.fn(async (url: string, init?: RequestInit) => {
+      if (urlEndsWith(url, '/api/challenge')) {
+        return new Response(JSON.stringify({ challengeId: 'ch_1', challenge: 'raw-challenge-bytes' }), { status: 200 });
+      }
+      if (urlEndsWith(url, '/api/authenticate')) {
+        return new Response(JSON.stringify({ token: BEARER_TOKEN }), { status: 200 });
+      }
+      if (url.includes('/api/vault/delegation/grants?purpose=')) {
+        const body = options.grantsListBody ?? {
+          grants: [
+            { grantId: 'vdg_stale', status: 'superseded' },
+            { grantId: GRANT_ID, status: 'active' },
+          ],
+        };
+        return new Response(JSON.stringify(body), { status: 200 });
+      }
+      if (url.includes('/fetch')) {
+        const status = options.fetchStatus ?? 200;
+        const body = options.fetchBody ?? {
+          ok: true,
+          field: 'internal-secret:kernel.attestation-internal-api-key',
+          value: SECRET_PRIVATE_KEY,
+        };
+        return new Response(JSON.stringify(body), { status });
+      }
+      if (url.includes('/ack')) {
+        const status = options.ackStatus ?? 200;
+        return new Response(JSON.stringify({ ok: status < 400, outcome: 'used', ackedAt: new Date().toISOString() }), { status });
+      }
+      throw new Error(`unexpected fetch to ${url} (init: ${JSON.stringify(init)})`);
+    });
+  }
+
+  it('resolves the CURRENT active grant id by purpose and fetches it, when no literal grant is given', async () => {
+    const { loadFromVault } = await import('../src/vault-client');
+    const fetchMock = fakeKernelFetchWithGrantsList();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadFromVault({
+      resolveGrantByPurpose: PURPOSE,
+      purpose: 'corpus.boot.attestation-key',
+      keys: [{ key: 'ATTESTATION_INTERNAL_API_KEY', onMissing: 'fail' }],
+      identity: { did: BOOTSTRAP_DID, privateKey: BOOTSTRAP_PRIVATE_KEY },
+      authServiceUrl: AUTH_SERVICE_URL,
+    });
+
+    expect(result.values.ATTESTATION_INTERNAL_API_KEY).toBe(SECRET_PRIVATE_KEY);
+    const listCall = fetchMock.mock.calls.find(([url]: [string]) => (url as string).includes('/api/vault/delegation/grants?purpose='));
+    expect(listCall).toBeDefined();
+    expect((listCall![0] as string)).toContain(encodeURIComponent(PURPOSE));
+    // The fetch call must use the ACTIVE grant id, not the superseded one.
+    const fetchCall = fetchMock.mock.calls.find(([url]: [string]) => (url as string).includes(`/grants/${GRANT_ID}/fetch`));
+    expect(fetchCall).toBeDefined();
+  });
+
+  it('a literal grant id always wins over resolveGrantByPurpose — no list call is made', async () => {
+    const { loadFromVault } = await import('../src/vault-client');
+    const fetchMock = fakeKernelFetchWithGrantsList();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await loadFromVault({
+      grant: GRANT_ID,
+      resolveGrantByPurpose: PURPOSE,
+      purpose: 'corpus.boot.attestation-key',
+      keys: [{ key: 'ATTESTATION_INTERNAL_API_KEY', onMissing: 'fail' }],
+      identity: { did: BOOTSTRAP_DID, privateKey: BOOTSTRAP_PRIVATE_KEY },
+      authServiceUrl: AUTH_SERVICE_URL,
+    });
+
+    const listCall = fetchMock.mock.calls.find(([url]: [string]) => (url as string).includes('/api/vault/delegation/grants?purpose='));
+    expect(listCall).toBeUndefined();
+  });
+
+  it('degrades (or fails, per onMissing) when no active grant exists yet for the purpose', async () => {
+    const { loadFromVault } = await import('../src/vault-client');
+    const fetchMock = fakeKernelFetchWithGrantsList({ grantsListBody: { grants: [] } });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadFromVault({
+      resolveGrantByPurpose: PURPOSE,
+      purpose: 'corpus.boot.attestation-key',
+      keys: [{ key: 'ATTESTATION_INTERNAL_API_KEY', onMissing: 'degrade' }],
+      identity: { did: BOOTSTRAP_DID, privateKey: BOOTSTRAP_PRIVATE_KEY },
+      authServiceUrl: AUTH_SERVICE_URL,
+    });
+
+    expect(result.degraded).toEqual(['ATTESTATION_INTERNAL_API_KEY']);
+    // Never even attempts a /fetch call with a nonexistent grant id.
+    expect(fetchMock.mock.calls.some(([url]: [string]) => (url as string).includes('/fetch'))).toBe(false);
+  });
+
+  it('treats a non-2xx grants-list response as no active grant, rather than throwing', async () => {
+    const { loadFromVault } = await import('../src/vault-client');
+    const fetchMock = vi.fn(async (url: string) => {
+      if (urlEndsWith(url, '/api/challenge')) {
+        return new Response(JSON.stringify({ challengeId: 'ch_1', challenge: 'raw' }), { status: 200 });
+      }
+      if (urlEndsWith(url, '/api/authenticate')) {
+        return new Response(JSON.stringify({ token: BEARER_TOKEN }), { status: 200 });
+      }
+      if (url.includes('/api/vault/delegation/grants?purpose=')) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await loadFromVault({
+      resolveGrantByPurpose: PURPOSE,
+      purpose: 'corpus.boot.attestation-key',
+      keys: [{ key: 'ATTESTATION_INTERNAL_API_KEY', onMissing: 'degrade' }],
+      identity: { did: BOOTSTRAP_DID, privateKey: BOOTSTRAP_PRIVATE_KEY },
+      authServiceUrl: AUTH_SERVICE_URL,
+    });
+
+    expect(result.degraded).toEqual(['ATTESTATION_INTERNAL_API_KEY']);
+  });
+});
+
 describe('configuration errors', () => {
   it('throws when AUTH_SERVICE_URL is neither passed nor set in env', async () => {
     delete process.env.AUTH_SERVICE_URL;

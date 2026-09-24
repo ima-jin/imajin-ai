@@ -14,6 +14,11 @@
  * request actually authenticates; see the PR description for the
  * pre-existing `emit-attestation.ts` mismatch this surfaced.
  *
+ * The key itself is vault-sourced (#2245) — see `attestation-key.ts` for
+ * the fetch-at-boot contract (dynamic grant discovery, deprecated env
+ * fallback, deferred ack). This module only reads the resolved value via
+ * `getAttestationInternalApiKey()` and reports first use.
+ *
  * The kernel route always re-signs the stored envelope with its own
  * `AUTH_PRIVATE_KEY` — it does not (and structurally cannot, since it never
  * sees the corpus private key) verify the corpus's own signature. The full
@@ -24,6 +29,7 @@
  */
 import { createLogger } from '@imajin/logger';
 import type { IngestionAttestation } from '../engine/types';
+import { getAttestationInternalApiKey, markAttestationKeyUsedForForwarding } from './attestation-key';
 
 const log = createLogger('corpus');
 
@@ -49,7 +55,7 @@ export async function forwardIngestionAttestation(
   corpusServiceDid: string,
 ): Promise<ForwardResult> {
   const authServiceUrl = process.env.AUTH_SERVICE_URL;
-  const internalApiKey = process.env.ATTESTATION_INTERNAL_API_KEY;
+  const internalApiKey = getAttestationInternalApiKey();
 
   if (!authServiceUrl || !internalApiKey) {
     return { ok: false, error: 'AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set — forward skipped' };
@@ -76,6 +82,11 @@ export async function forwardIngestionAttestation(
       const text = await res.text().catch(() => '');
       return { ok: false, error: `kernel responded ${res.status}: ${text}` };
     }
+
+    // First successful forward using the vault-sourced key sends its
+    // deferred #2257 ack; a no-op under the deprecated env override or when
+    // nothing was fetched (see attestation-key.ts).
+    markAttestationKeyUsedForForwarding();
 
     const body: InternalAttestationResponse | null = await res.json().catch(() => null);
     return { ok: true, kernelAttestationId: body?.id };

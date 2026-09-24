@@ -186,6 +186,51 @@ implementation (generate-vs-fetch decision, the provisioning-claim race
 between two boots, and the rotation seam a future rotate card can build on
 without changing the "current grant" lookup).
 
+### Shared (cross-service) internal secrets (#2245, second target)
+
+The self-provisioning story above is for a secret with a **single**
+in-process consumer. `ATTESTATION_INTERNAL_API_KEY` (used by corpus to
+forward ingestion attestations to the kernel's `POST
+/api/attestations/internal`, checked by
+`apps/kernel/src/lib/auth/require-internal-api-key.ts`) has **two**:
+the kernel itself (verifier) and corpus (external caller). The ruling's own
+words draw the line exactly here:
+
+> a shared, cross-service secret needs a human to countersign
+> import/rotate/revoke, but an internal secret with a single in-process
+> consumer... doesn't need a human to *exist* — only to be replaced or
+> destroyed.
+
+So existence is still fully automatic (the kernel self-provisions the value
+exactly like any other internal secret, via `getInternalSecret`), but
+granting the SAME secret to the second party is a deliberate, operator-run
+step — `apps/kernel/src/lib/vault/shared-internal-secret.ts`'s
+`grantInternalSecretTo`, invoked via
+`scripts/grant-attestation-internal-api-key.ts <corpusBootstrapDid>`, once
+per corpus deployment. It reuses the field's EXISTING wrapped key material
+(no re-seal, see that module's docblock) rather than generating a second
+value, so the kernel and corpus always hold the exact same bytes.
+
+Corpus fetches it at boot the same way it already fetches its own signing
+keypair (#2243's `loadFromVault`), reusing its EXISTING
+`CORPUS_VAULT_BOOTSTRAP_DID`/`_PRIVATE_KEY` identity — no new bootstrap
+identity, no new env var. Unlike a fixed `CORPUS_VAULT_GRANT_ID`, this
+secret's grant id is not known ahead of time and CHANGES on rotation, so
+corpus discovers the CURRENT active grant for the purpose dynamically at
+every boot instead (`loadFromVault`'s `resolveGrantByPurpose`,
+`packages/auth/src/vault-client.ts`). Rotation is therefore revoke + mint +
+re-grant, with no file edit on either side — both processes just pick up
+the new value on their next boot.
+
+`ATTESTATION_INTERNAL_API_KEY` carries NO `.env.example` line on either
+side anymore (kernel or corpus) — same "deleted entirely" posture as a
+single-consumer internal secret. Both `require-internal-api-key.ts` and
+`attestation-key.ts` still accept a hand-set env var as a DEPRECATED
+fallback (logged once) for any deployment, or any OTHER not-yet-migrated
+service via `packages/auth/src/internal-post.ts`, that has not moved onto
+the vault path yet — generalizing this pattern to those other callers is
+out of scope for #2245.
+
 ### Per-env deploy targets (#2246)
 
 A service with no `.env.local` at all is only a **hard error** when it's

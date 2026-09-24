@@ -1,6 +1,7 @@
 import { createCorpusApp } from './routes';
 import { bootstrapKernelTrust } from './lib/kernel-trust';
 import { bootstrapCorpusIdentity } from './lib/corpus-identity';
+import { bootstrapAttestationInternalApiKey } from './lib/attestation-key';
 
 const port = Number.parseInt(process.env.PORT ?? '8003', 10);
 
@@ -13,6 +14,11 @@ await bootstrapKernelTrust();
 // requests (#2243) — a soft-fail on failure, same as every other identity
 // absence in this service (see corpus-identity.ts).
 await bootstrapCorpusIdentity();
+
+// Fetch the shared ATTESTATION_INTERNAL_API_KEY from the vault before
+// accepting any requests (#2245) — a soft-fail on failure, same posture as
+// bootstrapCorpusIdentity above (see attestation-key.ts).
+await bootstrapAttestationInternalApiKey();
 
 const app = createCorpusApp();
 
