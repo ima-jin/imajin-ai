@@ -17,10 +17,16 @@ and the provisioner it informs ([#1933](https://github.com/ima-jin/imajin-ai/iss
    and why it differs from RFC-31's OpenClaw-shaped naming (NanoClaw's real persona surface
    is one file, `groups/<folder>/instructions.prepend.md`, not separate `SOUL.md`/`AGENTS.md`
    files inside the checkout).
-3. `src/cli.ts` — `pnpm --filter @imajin/claw-envelope render -- --harness nanoclaw
+3. `renderOpenClaw(envelope)` (`src/renderers/openclaw.ts`, imajin-ai#2186) — maps that
+   envelope onto OpenClaw's own workspace shape, which genuinely IS RFC-31's own vocabulary
+   (`AGENTS.md`/`SOUL.md`/`MEMORY.md`/`USER.md`/`memory/`) plus an `openclaw.json` configuring
+   the `openclaw-imajin-plugin` sibling repo against the agent DID + kernel URL — no static
+   keys, no persona-squash step, no channel-adapter copy step. See
+   `docs/agents/openclaw-first-boot.md` at the repo root for the full research trail.
+4. `src/cli.ts` — `pnpm --filter @imajin/claw-envelope render -- --harness <nanoclaw|openclaw>
    --agent-did <did> --owner-did <did> --handle <name> --out <dir>` writes the rendered tree
    to disk.
-4. `src/bootstrap-identity.ts` — the agent identity bootstrap CLI (#1932 scope item 1):
+5. `src/bootstrap-identity.ts` — the agent identity bootstrap CLI (#1932 scope item 1):
    calls the kernel's *existing* `POST /auth/api/agents` (mints the keypair, wires
    `identity_members` — this script does not reinvent either), then `POST /auth/api/grants`
    with minimal capabilities from the same closed registry. Supports `--dry-run` (prints the

@@ -7,7 +7,7 @@
  * happy-path assertions about what a real run *would* do.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runProvision, type ProvisionRecord } from '../src/runner';
@@ -160,8 +160,8 @@ describe('runProvision — hosted, non-dry-run', () => {
 });
 
 describe('runProvision — validation', () => {
-  it('throws for a harness other than nanoclaw (openclaw stub)', async () => {
-    const provision = makeProvision({ harness: 'openclaw' });
+  it('throws for an unsupported harness', async () => {
+    const provision = makeProvision({ harness: 'agent-zero' });
     const { impl } = fakeFetch(provision);
 
     await expect(
@@ -193,5 +193,67 @@ describe('runProvision — validation', () => {
     await expect(
       runProvision({ kernelBaseUrl: 'https://kernel.test', provisionId: 'prov_1', operatorToken: 'x', dryRun: true, fetchImpl: impl }),
     ).rejects.toThrow(/unexpected characters/);
+  });
+});
+
+describe('runProvision — openclaw harness (imajin-ai#2186)', () => {
+  it('renders an openclaw envelope under deploy/openclaw/rendered/<handle> under dry-run, writing no real files', async () => {
+    const provision = makeProvision({ harness: 'openclaw', placement: 'local' });
+    const { impl } = fakeFetch(provision);
+
+    const result = await runProvision({
+      kernelBaseUrl: 'https://kernel.test',
+      provisionId: 'prov_1',
+      operatorToken: 'owner-token',
+      dryRun: true,
+      fetchImpl: impl,
+    });
+
+    expect(result.outDir).toContain(join('deploy', 'openclaw', 'rendered', provision.handle));
+    expect(result.filesWritten.some((p) => p.endsWith('openclaw.json'))).toBe(true);
+    expect(result.filesWritten.some((p) => p.endsWith('USER.md'))).toBe(true);
+  });
+
+  it('runs compose build+up and sends the boot-status callback for a hosted openclaw placement, reusing the same hosted code path as nanoclaw', async () => {
+    const provision = makeProvision({ harness: 'openclaw', placement: 'hosted' });
+    const { impl, calls } = fakeFetch(provision);
+    const execCompose = vi.fn().mockResolvedValue(undefined);
+
+    const outDir = makeTempDir();
+    const composeDir = makeTempDir();
+    const result = await runProvision({
+      kernelBaseUrl: 'https://kernel.test',
+      provisionId: 'prov_1',
+      operatorToken: 'owner-token',
+      runnerToken: 'runner-secret',
+      outDir,
+      composeDir,
+      fetchImpl: impl,
+      execCompose,
+    });
+
+    expect(execCompose).toHaveBeenNthCalledWith(1, ['build'], composeDir);
+    expect(execCompose).toHaveBeenNthCalledWith(2, ['up', '-d'], composeDir);
+    expect(result.composeRan).toBe(true);
+    expect(result.callbackSent).toBe(true);
+    expect(calls.some((c) => c.url.endsWith('/callback'))).toBe(true);
+  });
+
+  it('passes the runner kernelBaseUrl through to the rendered openclaw.json nodeUrl', async () => {
+    const provision = makeProvision({ harness: 'openclaw', placement: 'local' });
+    const { impl } = fakeFetch(provision);
+
+    const outDir = makeTempDir();
+    const result = await runProvision({
+      kernelBaseUrl: 'https://custom-kernel.example',
+      provisionId: 'prov_1',
+      operatorToken: 'owner-token',
+      outDir,
+      fetchImpl: impl,
+    });
+
+    const openclawJsonPath = result.filesWritten.find((p) => p.endsWith('openclaw.json'))!;
+    const written = JSON.parse(readFileSync(openclawJsonPath, 'utf-8')) as { plugins: { entries: { imajin: { config: { nodeUrl: string } } } } };
+    expect(written.plugins.entries.imajin.config.nodeUrl).toBe('https://custom-kernel.example');
   });
 });

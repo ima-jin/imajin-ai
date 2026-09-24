@@ -24,6 +24,7 @@ interface MintedKeyRow {
 
 interface GrantRow {
   id: string;
+  field: string;
   grantedTo: string;
   purpose: string | null;
   oneTime: boolean;
@@ -37,10 +38,11 @@ interface GrantRow {
   createdAt: Date;
 }
 
-const { mintedKeyStore, grantStore, mockVaultServiceList } = vi.hoisted(() => ({
+const { mintedKeyStore, grantStore, mockVaultServiceList, mockListActiveGrantsForField } = vi.hoisted(() => ({
   mintedKeyStore: new Map<string, MintedKeyRow>(),
   grantStore: new Map<string, GrantRow>(),
   mockVaultServiceList: vi.fn(),
+  mockListActiveGrantsForField: vi.fn(),
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -80,6 +82,7 @@ vi.mock('@/src/db', () => {
 
 vi.mock('../index', () => ({
   vaultService: { list: mockVaultServiceList },
+  listActiveGrantsForField: mockListActiveGrantsForField,
 }));
 
 // key-cards.ts only needs the pure field-name formula from mint.ts —
@@ -115,6 +118,7 @@ function mintedRow(overrides: Partial<MintedKeyRow> = {}): MintedKeyRow {
 function grantRow(overrides: Partial<GrantRow> = {}): GrantRow {
   return {
     id: 'vdg_1',
+    field: FIELD,
     grantedTo: 'did:imajin:corpus-bootstrap',
     purpose: 'corpus-identity',
     oneTime: true,
@@ -134,6 +138,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   mintedKeyStore.clear();
   grantStore.clear();
+  // Every active-grants-for-field lookup is empty by default — tests that
+  // care about the #2298 multi-consumer path opt in explicitly.
+  mockListActiveGrantsForField.mockResolvedValue([]);
 });
 
 describe('listVaultKeyCards', () => {
@@ -230,6 +237,59 @@ describe('listVaultKeyCards', () => {
 
     expect(card.timeline).toHaveLength(1);
     expect(card.grant).toBeNull();
+  });
+
+  it('defaults grants to an empty array when the field has no active consumer grants', async () => {
+    mintedKeyStore.set(MINTED_DID, mintedRow({ grantId: null }));
+
+    const [card] = await listVaultKeyCards();
+
+    expect(card.grants).toEqual([]);
+  });
+
+  it('looks up active consumer grants by the minted key\'s field', async () => {
+    mintedKeyStore.set(MINTED_DID, mintedRow({ grantId: null }));
+
+    await listVaultKeyCards();
+
+    expect(mockListActiveGrantsForField).toHaveBeenCalledWith(FIELD);
+  });
+
+  it('surfaces every active consumer grant in `grants`, not just the mint-time one (#2298)', async () => {
+    mintedKeyStore.set(MINTED_DID, mintedRow());
+    grantStore.set('vdg_1', grantRow());
+    mockListActiveGrantsForField.mockResolvedValue([
+      grantRow(),
+      grantRow({
+        id: 'vdg_2',
+        grantedTo: 'did:imajin:second-consumer',
+        purpose: 'runtime-fetch',
+        createdAt: new Date('2026-01-03T00:00:00.000Z'),
+      }),
+    ]);
+
+    const [card] = await listVaultKeyCards();
+
+    expect(card.grants).toHaveLength(2);
+    expect(card.grants.map((g) => g.grantId).sort()).toEqual(['vdg_1', 'vdg_2']);
+    const secondConsumerGrant = card.grants.find((g) => g.grantId === 'vdg_2');
+    expect(secondConsumerGrant).toMatchObject({
+      grantedTo: 'did:imajin:second-consumer',
+      purpose: 'runtime-fetch',
+      createdAt: '2026-01-03T00:00:00.000Z',
+    });
+    // The mint-time grant is unaffected and still exposed separately.
+    expect(card.grant?.grantId).toBe('vdg_1');
+  });
+
+  it('includes ackEvidence and createdAt on grant summaries', async () => {
+    mintedKeyStore.set(MINTED_DID, mintedRow());
+    grantStore.set('vdg_1', grantRow({ ackEvidence: { kind: 'gha-runner', ref: 'gx10' } }));
+
+    const [card] = await listVaultKeyCards();
+
+    expect(card.grant?.ackEvidence).toEqual({ kind: 'gha-runner', ref: 'gx10' });
+    expect(card.grant?.createdAt).toBe('2026-01-01T00:05:00.000Z');
   });
 });
 

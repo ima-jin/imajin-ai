@@ -588,6 +588,12 @@
       "firstMigration": "0001_seed.sql",
       "notes": ""
     },
+    "media.asset_doc_edges": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0160_media_asset_doc_edges.sql",
+      "notes": ""
+    },
     "media.folders": {
       "owner": "kernel",
       "schema": "media",
@@ -635,6 +641,12 @@
       "schema": "notify",
       "firstMigration": "0001_seed.sql",
       "notes": ""
+    },
+    "notify.templates": {
+      "owner": "kernel",
+      "schema": "notify",
+      "firstMigration": "0158_notify_templates.sql",
+      "notes": "#1510 — data-driven notify templates; rows seeded disabled, see migration header"
     },
     "operator.approvals": {
       "owner": "kernel",

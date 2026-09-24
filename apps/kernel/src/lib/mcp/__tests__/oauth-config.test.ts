@@ -113,24 +113,32 @@ describe('areRedirectUrisAllowed — every entry must be spec-valid (#1878)', ()
     ).toBe(false);
   });
 
-  it('redirectUriMatches: exact match', () => {
-    expect(redirectUriMatches('https://claude.ai/api/mcp/auth_callback', 'https://claude.ai/api/mcp/auth_callback')).toBe(true);
+  it('redirectUriMatches: exact match against the registered set', () => {
+    expect(redirectUriMatches('https://claude.ai/api/mcp/auth_callback', ['https://claude.ai/api/mcp/auth_callback'])).toBe(true);
   });
 
-  it('redirectUriMatches: same-origin loopback with different path (Inspector /oauth/callback vs /debug)', () => {
-    // registered = /oauth/callback (DCR stored first), authorize with /oauth/callback/debug
-    expect(redirectUriMatches('http://localhost:6274/oauth/callback/debug', 'http://localhost:6274/oauth/callback')).toBe(true);
-    expect(redirectUriMatches('http://127.0.0.1:6274/oauth/callback', 'http://127.0.0.1:6274/oauth/callback/debug')).toBe(true);
+  it('redirectUriMatches: matches ANY member of a multi-URI registered set (#1348)', () => {
+    // Inspector registers both /oauth/callback and /oauth/callback/debug; both
+    // must be individually registered members — exact membership, not origin.
+    const registered = ['http://localhost:6274/oauth/callback', 'http://localhost:6274/oauth/callback/debug'];
+    expect(redirectUriMatches('http://localhost:6274/oauth/callback', registered)).toBe(true);
+    expect(redirectUriMatches('http://localhost:6274/oauth/callback/debug', registered)).toBe(true);
+  });
+
+  it('redirectUriMatches: the same-origin-loopback special case is retired — an unregistered path on a registered loopback origin is rejected', () => {
+    expect(redirectUriMatches('http://localhost:6274/oauth/callback/unregistered', ['http://localhost:6274/oauth/callback'])).toBe(false);
+    expect(redirectUriMatches('http://127.0.0.1:6274/oauth/callback', ['http://127.0.0.1:6274/oauth/callback/debug'])).toBe(false);
   });
 
   it('redirectUriMatches: rejects different loopback PORT', () => {
-    expect(redirectUriMatches('http://localhost:9999/oauth/callback', 'http://localhost:6274/oauth/callback')).toBe(false);
+    expect(redirectUriMatches('http://localhost:9999/oauth/callback', ['http://localhost:6274/oauth/callback'])).toBe(false);
   });
 
-  it('redirectUriMatches: rejects cross-origin and non-loopback', () => {
-    expect(redirectUriMatches('https://evil.example/cb', 'https://claude.ai/api/mcp/auth_callback')).toBe(false);
-    expect(redirectUriMatches('http://evil.example:6274/x', 'http://localhost:6274/oauth/callback')).toBe(false);
-    expect(redirectUriMatches(null, 'http://localhost:6274/oauth/callback')).toBe(false);
+  it('redirectUriMatches: rejects cross-origin, non-loopback, and an empty registered set', () => {
+    expect(redirectUriMatches('https://evil.example/cb', ['https://claude.ai/api/mcp/auth_callback'])).toBe(false);
+    expect(redirectUriMatches('http://evil.example:6274/x', ['http://localhost:6274/oauth/callback'])).toBe(false);
+    expect(redirectUriMatches(null, ['http://localhost:6274/oauth/callback'])).toBe(false);
+    expect(redirectUriMatches('https://claude.ai/api/mcp/auth_callback', [])).toBe(false);
   });
 
   it('accepts the MCP Inspector two-URI loopback set (/oauth/callback + /oauth/callback/debug)', () => {

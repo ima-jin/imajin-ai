@@ -1,6 +1,6 @@
 {
   "name": "@imajin/nanoclaw-imajin-channel",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "description": "Imajin chat bridge for a NanoClaw instance (imajin-ai#1932): a NanoClaw ChannelAdapter reachable at its own agent DID via the existing jin.imajin.ai chat channel, plus the MCP token-refresh proxy and usage.incurred emitter sidecars it depends on.",
   "type": "module",

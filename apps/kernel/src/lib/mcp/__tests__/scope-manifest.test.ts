@@ -52,7 +52,7 @@ const MCP_DID = 'did:imajin:mcp-connector';
 // ── Descriptor / constant tests ───────────────────────────────────────────────
 
 describe('MCP_SCOPE_DESCRIPTORS', () => {
-  it('defines all twelve MCP scopes', () => {
+  it('defines all thirteen MCP scopes', () => {
     expect(new Set(VALID_MCP_SCOPES)).toEqual(
       new Set([
         'media:read', 'media:write', 'media:share', 'connections:read',
@@ -66,6 +66,9 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
         // #2297 — loops_list/loops_get, thin per-principal readers over the
         // kernel.loops registry projection (#2295).
         'loops:read',
+        // #2316 — cycle_run/cycle_status, the one-statement sprint-cycle trigger
+        // over the 'cycle' loopKind (#2314).
+        'cycle:run',
       ]),
     );
   });
@@ -117,6 +120,16 @@ describe('MCP_SCOPE_DESCRIPTORS', () => {
     expect(r.discloses_others).toBe(false);
     expect(r.sensitive).toBe(true);
     // No explicit override — the 2×2 derives owner-only on its own.
+    expect(r.release).toBeUndefined();
+    expect(r.viewer).toBe(MCP_DID);
+  });
+
+  // #2316 — starting a cycle stands up a whole automation loop tied to the
+  // caller's own authority, even though today's phase runner is a stub.
+  it('cycle:run is owner-only (derived from sensitive: true, same quadrant as inference:write)', () => {
+    const r = MCP_SCOPE_DESCRIPTORS['cycle:run'].release;
+    expect(r.discloses_others).toBe(false);
+    expect(r.sensitive).toBe(true);
     expect(r.release).toBeUndefined();
     expect(r.viewer).toBe(MCP_DID);
   });

@@ -91,6 +91,12 @@ function oneOf<T extends string>(
   return allowed.includes(value as T) ? (value as T) : undefined;
 }
 
+/** An array of strings, or undefined when the arg is absent or malformed. */
+function stringArray(args: Record<string, unknown>, key: string): string[] | undefined {
+  const value = args[key];
+  return Array.isArray(value) && value.every((v) => typeof v === 'string') ? (value as string[]) : undefined;
+}
+
 /** Shared `limit` JSON-Schema property so every list tool advertises one rule. */
 const limitProperty = {
   type: 'number',
@@ -271,6 +277,11 @@ const createIssueTool: McpTool = {
         type: 'string',
         description: 'Issue body (Markdown)',
       },
+      labels: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Label names to apply to the new issue (optional, e.g. ["bug", "p1"])',
+      },
     },
     required: ['repo', 'title', 'body'],
     additionalProperties: false,
@@ -281,8 +292,9 @@ const createIssueTool: McpTool = {
     const title = str(args, 'title');
     if (title === undefined) throw new Error('title is required');
     const body = typeof args.body === 'string' ? args.body : '';
+    const labels = stringArray(args, 'labels');
 
-    const result = await createIssue(ctx.did, repo, title, body);
+    const result = await createIssue(ctx.did, repo, title, body, labels);
 
     if (result.status === 'pending') {
       return json({ pending: true, proposalId: result.proposalId, message: result.message });

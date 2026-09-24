@@ -118,6 +118,28 @@ export const assetReferences = mediaSchema.table("asset_references", {
   uniq: unique("uq_asset_reference").on(table.assetId, table.service, table.entityType, table.entityId),
 }));
 
+/**
+ * Doc -> asset edges (#2282). Records which assets a document (markdown
+ * index, typically uploaded via POST /media/api/assets/bundle) embeds/
+ * references, so .fair derivative tracking can walk "what does this doc
+ * depend on" without re-parsing markdown. `relation` is open vocabulary
+ * (default 'embeds') for future edge kinds (e.g. 'derivative-of').
+ */
+export const assetDocEdges = mediaSchema.table("asset_doc_edges", {
+  id: text("id").primaryKey(),
+  docAssetId: text("doc_asset_id").references(() => assets.id, { onDelete: "cascade" }).notNull(),
+  assetId: text("asset_id").references(() => assets.id, { onDelete: "cascade" }).notNull(),
+  relation: text("relation").notNull().default("embeds"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  docIdx: index("idx_asset_doc_edges_doc").on(table.docAssetId),
+  assetIdx: index("idx_asset_doc_edges_asset").on(table.assetId),
+  uniq: unique("uq_asset_doc_edge").on(table.docAssetId, table.assetId),
+}));
+
+export type AssetDocEdge = typeof assetDocEdges.$inferSelect;
+export type NewAssetDocEdge = typeof assetDocEdges.$inferInsert;
+
 export const settlements = mediaSchema.table(
   "settlements",
   {

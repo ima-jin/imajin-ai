@@ -34,7 +34,7 @@ registerReactor('loop-projection', loopProjectionReactor);
 
 export { publish } from './publish';
 export { broker } from './broker';
-export { registerReactor } from './registry';
+export { registerReactor, getReactor } from './registry';
 export { registerBrokerReactor, getBrokerReactor } from './broker-registry';
 export { getChainConfig, getBrokerChainConfig } from './config';
 export { getLotChain, recentLotsBySupplier } from './supply-lots';

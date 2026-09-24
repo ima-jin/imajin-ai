@@ -1,14 +1,19 @@
 /**
- * Operator-executed provisioner runner (imajin-ai#1933, deliverable 2).
+ * Operator-executed provisioner runner (imajin-ai#1933 deliverable 2;
+ * `harness: 'openclaw'` support added imajin-ai#2186).
  *
  * Consumes a kernel provision record (`GET /auth/api/agents/provision/:id`),
  * re-renders its envelope locally via `@imajin/claw-envelope` (the same pure
  * generator/renderer the kernel used — deterministic from the provision's
  * own non-secret fields, so no secret ever needs to cross this boundary),
- * materializes the files under `deploy/nanoclaw/rendered/<handle>/`, and for
- * `placement: 'hosted'` (non-dry-run only) runs the `deploy/nanoclaw`
+ * materializes the files under `deploy/<harness>/rendered/<handle>/`, and for
+ * `placement: 'hosted'` (non-dry-run only) runs the `deploy/<harness>`
  * compose stack, then reports boot status back via the kernel's shared-
- * secret callback route.
+ * secret callback route. `placement: 'local'` (both harnesses) stops after
+ * rendering — for `openclaw` that means "download the bundle, then run
+ * `openclaw install`/`openclaw gateway start` yourself" (see
+ * `packages/claw-envelope/src/renderers/openclaw.ts`'s `SETUP.md` output),
+ * never a compose invocation.
  *
  * v0 scope (imajin-ai#1933): this is an OPERATOR-executed script. Nothing in
  * this package's tests or CI ever shells out to `docker` or writes real
@@ -17,7 +22,16 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { generateEnvelope, renderNanoClaw, type ContextEnvelopeInput, type BrainVia } from '@imajin/claw-envelope';
+import {
+  generateEnvelope,
+  renderNanoClaw,
+  renderOpenClaw,
+  type ContextEnvelopeInput,
+  type BrainVia,
+  type RenderedTree,
+} from '@imajin/claw-envelope';
+
+export type ProvisionHarness = 'nanoclaw' | 'openclaw';
 
 export interface ProvisionRecord {
   id: string;
@@ -31,6 +45,18 @@ export interface ProvisionRecord {
   status: string;
 }
 
+const SUPPORTED_HARNESSES: readonly ProvisionHarness[] = ['nanoclaw', 'openclaw'];
+
+function isSupportedHarness(harness: string): harness is ProvisionHarness {
+  return (SUPPORTED_HARNESSES as readonly string[]).includes(harness);
+}
+
+/** Render a provision's envelope with the renderer matching its harness (imajin-ai#2186). */
+function renderForHarness(harness: ProvisionHarness, envelope: ReturnType<typeof generateEnvelope>, kernelBaseUrl: string): RenderedTree {
+  if (harness === 'nanoclaw') return renderNanoClaw(envelope);
+  return renderOpenClaw(envelope, { kernelBaseUrl });
+}
+
 export type ExecCompose = (args: readonly string[], cwd: string) => Promise<void>;
 
 export interface RunProvisionOptions {
@@ -40,9 +66,9 @@ export interface RunProvisionOptions {
   operatorToken: string;
   /** Shared secret for the boot-status callback. Required for a non-dry-run hosted run; omit to skip the callback entirely (e.g. local placements). */
   runnerToken?: string;
-  /** Defaults to `deploy/nanoclaw/rendered/<handle>` relative to the current working directory. */
+  /** Defaults to `deploy/<harness>/rendered/<handle>` relative to the current working directory. */
   outDir?: string;
-  /** Defaults to `deploy/nanoclaw` relative to the current working directory. */
+  /** Defaults to `deploy/<harness>` relative to the current working directory. */
   composeDir?: string;
   /** When true (the CLI's `--dry-run` default), no files are written, no compose command runs, and no callback is sent - only the plan is reported. */
   dryRun?: boolean;
@@ -110,7 +136,7 @@ function envelopeInputFor(provision: ProvisionRecord): ContextEnvelopeInput {
       scopes: provision.scopes,
       busRoutes: [{ eventType: 'chat.message.received', description: 'Inbound DM dispatch to the runtime.' }],
       brain: { placement: 'hosted', provider: provision.model.provider, via: provision.model.via },
-      purpose: `Provisioned via the envelope provisioner (#1933) for ${provision.servingDid}.`,
+      purpose: `Provisioned via the envelope provisioner (#1933/#2186) for ${provision.servingDid}.`,
     },
   };
 }
@@ -128,14 +154,15 @@ export async function runProvision(opts: RunProvisionOptions): Promise<RunProvis
 
   const provision = await fetchProvision(opts.kernelBaseUrl, opts.provisionId, opts.operatorToken, fetchImpl);
 
-  if (provision.harness !== 'nanoclaw') {
+  if (!isSupportedHarness(provision.harness)) {
     // Deliberately doesn't interpolate provision.harness (kernel-response data) into the message - see envelopeInputFor's comment above.
-    throw new Error("harness is not yet implemented by the runner - stub only (#1933 deliverable 4); only 'nanoclaw' is supported");
+    throw new Error(`harness is not yet implemented by the runner - only ${SUPPORTED_HARNESSES.join(', ')} are supported`);
   }
+  const harness = provision.harness;
 
   const envelope = generateEnvelope(envelopeInputFor(provision));
-  const rendered = renderNanoClaw(envelope);
-  const outDir = opts.outDir ?? join('deploy', 'nanoclaw', 'rendered', assertSafeHandle(provision.handle));
+  const rendered = renderForHarness(harness, envelope, opts.kernelBaseUrl);
+  const outDir = opts.outDir ?? join('deploy', harness, 'rendered', assertSafeHandle(provision.handle));
 
   const filesWritten: string[] = [];
   for (const file of rendered.files) {
@@ -149,7 +176,7 @@ export async function runProvision(opts: RunProvisionOptions): Promise<RunProvis
 
   let composeRan = false;
   if (provision.placement === 'hosted' && !dryRun) {
-    const composeDir = opts.composeDir ?? join('deploy', 'nanoclaw');
+    const composeDir = opts.composeDir ?? join('deploy', harness);
     const exec = opts.execCompose ?? defaultExecCompose;
     await exec(['build'], composeDir);
     await exec(['up', '-d'], composeDir);

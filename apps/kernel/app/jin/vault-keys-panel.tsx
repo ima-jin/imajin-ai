@@ -47,6 +47,8 @@ interface VaultKeyGrantSummary {
   lastFetchedAt: string | null;
   ackedAt: string | null;
   ackOutcome: string | null;
+  ackEvidence: { kind?: string; ref?: string; note?: string } | null;
+  createdAt: string;
 }
 
 interface VaultKeyCard {
@@ -60,6 +62,8 @@ interface VaultKeyCard {
   revokedAt: string | null;
   revokedBy: string | null;
   grant: VaultKeyGrantSummary | null;
+  /** Every currently active consumer grant for this key's field (#2298), not just `grant`. */
+  grants: VaultKeyGrantSummary[];
   timeline: VaultKeyTimelineEvent[];
   heldBy: string | null;
   lastAckAt: string | null;

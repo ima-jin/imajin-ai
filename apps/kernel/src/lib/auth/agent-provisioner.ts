@@ -9,21 +9,23 @@
  *   - identity mint: `mintAgentIdentity()` (itself extracted from the
  *     pre-existing `POST /auth/api/agents`, #1933 refactor)
  *   - grants: `issueGrant()` / `revokeGrant()` (#1882, unchanged)
- *   - envelope: `generateEnvelope()` + `renderNanoClaw()` (`@imajin/claw-envelope`)
+ *   - envelope: `generateEnvelope()` + `renderNanoClaw()`/`renderOpenClaw()` (`@imajin/claw-envelope`)
  *
- * `harness: 'openclaw'` is a documented stub (issue #1933 deliverable 4):
- * identity and grants proceed normally, but the envelope-render step fails
- * with an explicit "not yet implemented" error, visible in `steps` — never
- * a silent no-op.
+ * `harness: 'openclaw'` renders via `@imajin/claw-envelope`'s
+ * `renderOpenClaw()` (imajin-ai#2186, RFC-31 Phase 1) — identity, grants, and
+ * envelope rendering all proceed normally for both harnesses now. A harness
+ * outside this closed set still fails loudly at the render step (`steps`
+ * log), never a silent no-op.
  */
 import { desc, eq, and } from 'drizzle-orm';
 import { db, agentProvisions, type AgentProvisionRow, type AgentProvisionStep, type AgentProvisionEnvelopeManifest } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { mintAgentIdentity, MintAgentIdentityError } from './agent-identity';
 import { issueGrant, revokeGrant } from './grants';
-import { generateEnvelope, renderNanoClaw, validateIntentScopes, type ContextEnvelopeInput, type BrainVia, type RenderedTree } from '@imajin/claw-envelope';
+import { generateEnvelope, renderNanoClaw, renderOpenClaw, validateIntentScopes, type ContextEnvelopeInput, type BrainVia, type RenderedTree } from '@imajin/claw-envelope';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
+import { nodeUrl } from '@/src/lib/http/node-url';
 
 const log = createLogger('kernel');
 
@@ -119,13 +121,12 @@ function envelopeInputFromRow(row: Pick<AgentProvisionRow, 'agentDid' | 'serving
   };
 }
 
-/** Full render (file contents included) for a NanoClaw-harness provision — used by the bundle route and the runner, never persisted to the DB row (which keeps only the file-name manifest). */
+/** Full render (file contents included) for a provision — used by the bundle route and the runner, never persisted to the DB row (which keeps only the file-name manifest). */
 export function renderEnvelopeForRow(row: AgentProvisionRow): RenderedTree {
-  if (row.harness !== 'nanoclaw') {
-    throw new ProvisionError(`harness '${row.harness}' is not yet implemented — stub only (#1933 deliverable 4)`, 501);
-  }
   const envelope = generateEnvelope(envelopeInputFromRow(row));
-  return renderNanoClaw(envelope);
+  if (row.harness === 'nanoclaw') return renderNanoClaw(envelope);
+  if (row.harness === 'openclaw') return renderOpenClaw(envelope, { kernelBaseUrl: nodeUrl() });
+  throw new ProvisionError(`harness '${row.harness}' is not yet implemented`, 501);
 }
 
 async function appendStep(id: string, steps: AgentProvisionStep[], step: AgentProvisionStep, patch: Record<string, unknown> = {}): Promise<AgentProvisionStep[]> {

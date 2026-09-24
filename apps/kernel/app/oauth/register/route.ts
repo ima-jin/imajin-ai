@@ -109,9 +109,13 @@ export async function POST(request: NextRequest) {
   const logoUrl = typeof body.logo_uri === 'string' ? body.logo_uri.slice(0, 500) : null;
   const homepageUrl = typeof body.client_uri === 'string' ? body.client_uri.slice(0, 500) : null;
 
-  // 5. Persist. The dedicated `/oauth/authorize` flow keys off a single
-  //    callback_url, so we store the FIRST allowlisted redirect as the canonical
-  //    callback (Claude registers exactly one). publicKey is a per-row unique
+  // 5. Persist. `callbackUrl` stores the FIRST allowlisted redirect for
+  //    back-compat display purposes (Claude registers exactly one, so this is
+  //    still its canonical callback); `redirectUris` stores the FULL validated
+  //    set (#1348) and is what /oauth/authorize matches an incoming
+  //    redirect_uri against — so a client that registers several (e.g. MCP
+  //    Inspector's `/oauth/callback` + `/oauth/callback/debug`) can authorize
+  //    with any of them, not just the first. publicKey is a per-row unique
   //    placeholder — public clients never use it (no proof-of-possession), but
   //    the column is NOT NULL/UNIQUE.
   const clientId = `app_${nanoid(16)}`;
@@ -119,11 +123,10 @@ export async function POST(request: NextRequest) {
   const placeholderKey = `dcr_${nanoid(60)}`; // unique, non-functional (public client)
   const callbackUrl = redirectUris[0];
 
-  // #1990: persist the FULL set of distinct redirect-URI origins, not just
-  // callbackUrl's single origin — folds #1348's "store the set, not just
-  // redirect_uris[0]" fix in at origin granularity. /oauth/authorize checks
-  // an incoming redirect_uri's origin against this set in addition to the
-  // existing exact/loopback callbackUrl match.
+  // #1990: also record the distinct redirect-URI origins. No longer consulted
+  // by /oauth/authorize's matching gate — that now matches exactly against
+  // `redirectUris` (#1348) — kept populated for back-compat with any other
+  // reader of this column (e.g. the admin registry listing).
   const allowedRedirectHosts = [...new Set(redirectUris.map((uri) => new URL(uri).origin))];
 
   try {
@@ -141,6 +144,7 @@ export async function POST(request: NextRequest) {
       status: 'active',
       tier: 'third_party',
       allowedRedirectHosts,
+      redirectUris,
     });
   } catch (err) {
     log.error({ err, ip }, 'oauth/register: failed to persist dynamic client');

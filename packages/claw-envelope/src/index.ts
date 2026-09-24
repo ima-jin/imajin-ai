@@ -16,3 +16,5 @@ export type {
 export { generateEnvelope, validateIntentScopes } from './generate';
 export { renderNanoClaw, groupFolderFor } from './renderers/nanoclaw';
 export type { RenderNanoClawOptions } from './renderers/nanoclaw';
+export { renderOpenClaw } from './renderers/openclaw';
+export type { RenderOpenClawOptions } from './renderers/openclaw';

@@ -172,6 +172,35 @@ describe('media_upload', () => {
     expect(out.id).toBe('asset_new');
     expect(out.error).toBeUndefined();
   });
+
+  it('includes url and hash in the verbose response', async () => {
+    process.env.NEXT_PUBLIC_BASE_URL = 'https://node.example';
+    mockCreatedAsset({ filename: 'small.txt', mimeType: 'text/plain', size: 5, hash: 'abc123' });
+    const smallB64 = Buffer.from('hello').toString('base64');
+
+    const res = await tool('media_upload').handler({ filename: 'small.txt', data_base64: smallB64 }, ctx);
+    const out = parseResult(res as McpContent[]);
+
+    expect(out.hash).toBe('abc123');
+    expect(out.url).toBe('https://node.example/media/api/assets/asset_new');
+  });
+
+  it('quiet: true returns only the compact { id, url, hash, size, mimeType } shape (#2282 item 5)', async () => {
+    process.env.NEXT_PUBLIC_BASE_URL = 'https://node.example';
+    mockCreatedAsset({ filename: 'small.txt', mimeType: 'text/plain', size: 5, hash: 'abc123' });
+    const smallB64 = Buffer.from('hello').toString('base64');
+
+    const res = await tool('media_upload').handler(
+      { filename: 'small.txt', data_base64: smallB64, quiet: true },
+      ctx,
+    );
+    const out = parseResult(res as McpContent[]);
+
+    expect(Object.keys(out).sort()).toEqual(['hash', 'id', 'mimeType', 'size', 'url']);
+    expect(out.id).toBe('asset_new');
+    expect(out.hash).toBe('abc123');
+    expect(out.url).toBe('https://node.example/media/api/assets/asset_new');
+  });
 });
 
 // ─── media_create_article ───────────────────────────────────────────────────

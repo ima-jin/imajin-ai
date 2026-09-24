@@ -218,6 +218,7 @@ paths:
                         revokedBy: { type: [string, "null"] }
                         grant:
                           type: [object, "null"]
+                          description: The mint-time grant this key's sealed value was originally delivered through, whatever its current status.
                           properties:
                             grantId: { type: string }
                             grantedTo: { type: string }
@@ -229,6 +230,30 @@ paths:
                             lastFetchedAt: { type: [string, "null"], format: date-time }
                             ackedAt: { type: [string, "null"], format: date-time }
                             ackOutcome: { type: [string, "null"] }
+                            ackEvidence: { type: [object, "null"] }
+                            createdAt: { type: string, format: date-time }
+                        grants:
+                          type: array
+                          description: >-
+                            Every currently ACTIVE consumer grant for this key's field
+                            (#2298) — not just `grant` above. A field can carry more than
+                            one active grant once a second consumer is granted access via
+                            the "Grant access" action, which never updates `grant`/`grantId`.
+                          items:
+                            type: object
+                            properties:
+                              grantId: { type: string }
+                              grantedTo: { type: string }
+                              purpose: { type: [string, "null"] }
+                              oneTime: { type: boolean }
+                              status: { type: string }
+                              expiresAt: { type: [string, "null"], format: date-time }
+                              consumedAt: { type: [string, "null"], format: date-time }
+                              lastFetchedAt: { type: [string, "null"], format: date-time }
+                              ackedAt: { type: [string, "null"], format: date-time }
+                              ackOutcome: { type: [string, "null"] }
+                              ackEvidence: { type: [object, "null"] }
+                              createdAt: { type: string, format: date-time }
                         timeline:
                           type: array
                           items:
