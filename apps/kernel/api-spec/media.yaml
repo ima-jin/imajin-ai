@@ -332,6 +332,57 @@ paths:
         "404":
           description: Asset not found
 
+  /api/assets/{id}/transfer:
+    post:
+      tags: [media]
+      operationId: transferAsset
+      summary: Transfer asset ownership to another DID (owner only) — re-signs the .fair manifest (owner + chain seller role) and anchors a DFOS event. Does not move the file on disk.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toDid]
+              properties:
+                toDid: { type: string, description: "did:imajin:... of the new owner" }
+      responses:
+        "200":
+          description: Ownership transferred
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  id: { type: string }
+                  previousOwner: { type: string }
+                  newOwner: { type: string }
+                  fairManifest: { $ref: "#/components/schemas/FairManifest" }
+        "400":
+          description: Missing/invalid toDid, or asset has no v1.1 .fair manifest
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Authentication required
+        "403":
+          description: Forbidden — not the owner, or asset is immutable
+        "404":
+          description: Asset not found, or toDid does not resolve to a known identity
+        "409":
+          description: toDid is already the current owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/assets/{id}/fair:
     get:
       tags: [media]
