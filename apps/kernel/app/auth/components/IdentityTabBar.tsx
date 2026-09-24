@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSyncExternalStore } from 'react';
+import { getServiceBadges, subscribeServiceBadges } from '../lib/service-badge-bus';
 
 interface Props {
   showSettings: boolean;
@@ -49,7 +51,7 @@ function serviceFromHref(href: string): string {
   return href.split('/').pop() ?? '';
 }
 
-function TabLink({ tab, pathname }: Readonly<{ tab: Tab; pathname: string }>) {
+function TabLink({ tab, pathname, badge = 0 }: Readonly<{ tab: Tab; pathname: string; badge?: number }>) {
   const isActive = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
   return (
     <Link
@@ -62,6 +64,11 @@ function TabLink({ tab, pathname }: Readonly<{ tab: Tab; pathname: string }>) {
       }`}
     >
       {tab.label}
+      {badge > 0 && (
+        <span className="ml-1.5 inline-flex min-w-[1.1rem] items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-black">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </Link>
   );
 }
@@ -74,6 +81,7 @@ export default function IdentityTabBar({
   enabledServices,
 }: Readonly<Props>) {
   const pathname = usePathname();
+  const badges = useSyncExternalStore(subscribeServiceBadges, getServiceBadges, getServiceBadges);
 
   const tabs = ALL_TABS.filter((tab) => {
     if (tab.href === '/auth/security') return showSecurity;
@@ -99,7 +107,7 @@ export default function IdentityTabBar({
         </div>
       )}
       {serviceTabs.map((tab) => (
-        <TabLink key={tab.href} tab={tab} pathname={pathname} />
+        <TabLink key={tab.href} tab={tab} pathname={pathname} badge={badges[serviceFromHref(tab.href)]} />
       ))}
     </div>
   );
