@@ -89,9 +89,9 @@ scripts/init-taxonomy.sh ima-jin/imajin-ai --set universal --set platform
 - Use GitHub's **native sub-issues / blocked-by** (GraphQL `addSubIssue` / `addBlockedBy`) over `- [ ]` body checklists.
 - Labels are for **type/topic**; Status/Priority/Vertical live on the org [Roadmap board](https://github.com/orgs/ima-jin/projects/5), not as labels.
 
-## Versioning (#2285)
+## Versioning (#2285, #2349)
 
-**Feature PRs never touch a `package.json` `"version"` field.** Tag is truth: `scripts/build.sh` derives the displayed build version from `git describe --tags --match 'v[0-9]*'` (#2287), and every `package.json` version across the workspace (root + every `apps/*`/`packages/*` manifest) is bumped **only** by the Release workflow, in lockstep, via a normal reviewed PR. A feature PR that bumps any version field — even by accident, even just one package — is rejected by CI's "CI Guards" job (`scripts/ci-guard-version-bump.mjs`), unless its head commit message starts with `release:` (the one shape of commit the Release workflow itself produces). See `docs/npm-publishing.md` for the full mechanism.
+**Feature PRs never touch a `package.json` `"version"` field.** Tag is truth: `scripts/build.sh` derives the displayed build version from `git describe --tags --match 'v[0-9]*'` (#2287), and every `package.json` version across the workspace (root + every `apps/*`/`packages/*` manifest) is bumped **only** by the Release workflow, in lockstep, via a normal reviewed PR. A feature PR that bumps any version field — even by accident, even just one package — is rejected by CI's "CI Guards" job (`scripts/ci-guard-version-bump.mjs`), unless its head commit message starts with `release:` (the one shape of commit the Release workflow itself produces). The Release workflow itself computes its next version from the **latest `vX.Y.Z` tag**, not from `package.json` (#2349) — so a hand-pushed tag (never do this — see "Deploy guardrails" below) can never make the workflow try to re-use a version that's already tagged; `scripts/ci-guard-version-tag-sync.mjs` separately fails CI whenever `package.json` is caught behind the latest tag, so drift can't linger unnoticed. See `docs/npm-publishing.md` for the full mechanism.
 
 ## Deploy guardrails
 
