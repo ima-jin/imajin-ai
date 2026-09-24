@@ -59,7 +59,8 @@ Content-Type: application/json
     "summary": "string — human-readable, what will happen",
     "keysTouched": ["string", "..."],
     "detail": { "...": "optional, bounded (\u226416KB) per-source structured payload" },
-    "contentHash": "sha256 hex digest — see Content hash below"
+    "contentHash": "sha256 hex digest — see Content hash below",
+    "signerDid": "optional — the requesting agent's own DID (#2337), see Delivery below"
   }
 }
 ```
@@ -92,6 +93,15 @@ Content-Type: application/json
 - The two implicit actions on the resulting card are `approve` and
   `reject` — labeled per source via `decisionLabels` in the panel's
   renderer registry (default: Approve/Deny; Skill Workshop: Apply/Reject).
+- `signerDid` (#2337) is an optional string identifying the source
+  adapter's own signing identity — e.g. `ima-jin/openclaw-imajin-plugin`'s
+  `KernelApprovalRequestedPayload.signerDid`, the agent DID keypair used to
+  sign the request. Not part of the `contentHash` digest (unchanged six
+  fields, see below) and not rendered on the /jin card — it is delivery
+  metadata only, captured so `operator.approval.decided` can later be
+  addressed back to the requesting agent, not just the operator (see
+  **Delivery** below). Absent, non-string, or overlong (>200 chars) input
+  is silently dropped to `null` rather than rejecting the request.
 
 ### Content hash (#2152)
 
@@ -246,17 +256,36 @@ node to require it going forward.
 
 ### Delivery
 
+**#2337: addressed to BOTH the requesting agent and the operator.**
+Earlier versions of this contract published `operator.approval.decided`
+with `subject` set to the operator DID only, so an agent whose own
+delegation grant didn't happen to authorize the operator DID as subject
+(the common case for a source adapter's own agent identity) never received
+it — only the operator's own devices did. `decideOperatorApproval` now
+publishes the exact same signed payload (`contentHash`, `operatorSignature`
+included, byte-for-byte identical) once per distinct recipient: once with
+`subject: <operator DID>`, and — whenever the original request supplied a
+`signerDid` (see above) — once more with `subject: <signerDid>`. A
+legacy/no-`signerDid` request (or any in-process-raised proposal, e.g.
+vault/access/decision-card kinds) falls back to the original operator-only
+delivery. Each publish is independently non-fatal, and a `signerDid` equal
+to the operator DID is only ever published once (deduped).
+
 Each source's adapter routes this event back to its own owning source by
 the `source` field. It's received live over the adapter's **existing**
 authenticated WebSocket (the same challenge-response session every
 kernel-connected agent already holds) via the kernel's grant-bound
 event-subscription fan-out (#1884, `packages/bus/src/subscriptions.ts`):
 any agent DID holding an active delegation grant for the
-`operator:approvals` capability (`packages/auth/src/grant-scopes.ts`) is
-pushed a `bus_event` frame whenever `operator.approval.decided` is
-published. If the adapter's agent DID has no live socket at the moment of
+`operator:approvals` capability (`packages/auth/src/grant-scopes.ts`),
+whose grant audience allows the event's `subject`, is pushed a `bus_event`
+frame whenever `operator.approval.decided` is published — publishing once
+per recipient (above) is what makes the requesting agent's own
+self-audience grant match, where a single operator-addressed publish never
+did. If the adapter's agent DID has no live socket at the moment of
 publish, the event is still durable in `kernel.event_subscription_log` for
-catch-up via `GET /auth/api/events/subscriptions/catchup`.
+catch-up via `GET /auth/api/events/subscriptions/catchup` (per-subject, so
+each recipient catches up on its own copy).
 
 No new WS protocol, no new subscription mechanism — every source shares
 the exact same primitive any other delegated agent uses to observe kernel

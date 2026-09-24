@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS operator.approvals (
   detail jsonb,
   content_hash text,
   notification_id text,
+  signer_did text,
   status text NOT NULL DEFAULT 'pending',
   decision jsonb,
   outcome jsonb,
