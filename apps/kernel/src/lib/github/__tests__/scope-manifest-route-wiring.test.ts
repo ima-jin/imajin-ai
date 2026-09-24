@@ -8,11 +8,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // apart. GET/POST/OPTIONS behaviour is tested in
 // src/lib/kernel/__tests__/scope-manifest-route.test.ts.
 
-const { capturedOpts, mockHandlers, statusMock, readConfigFlowMock } = vi.hoisted(() => ({
+const { capturedOpts, mockHandlers, statusMock, readConfigFlowMock, countExternalGrantsMock } = vi.hoisted(() => ({
   capturedOpts: { current: null as Record<string, unknown> | null },
   mockHandlers: { GET: vi.fn(), POST: vi.fn(), OPTIONS: vi.fn() },
   statusMock: vi.fn(),
   readConfigFlowMock: vi.fn(),
+  countExternalGrantsMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/kernel/scope-manifest-route', () => ({
@@ -26,6 +27,7 @@ vi.mock('@/src/lib/github/scope-manifest', () => ({
   findGitHubManifestAsset: vi.fn(),
   readActiveGitHubScopes: vi.fn(),
   publishGitHubScopeManifest: vi.fn(),
+  countExternalGitHubScopeGrantees: countExternalGrantsMock,
   VALID_GITHUB_SCOPES: ['github:read', 'github:write', 'github:org', 'github:actions'],
 }));
 
@@ -48,6 +50,8 @@ describe('GitHub scope-manifest route wiring (#1521)', () => {
     statusMock.mockReset();
     readConfigFlowMock.mockReset();
     readConfigFlowMock.mockResolvedValue(null);
+    countExternalGrantsMock.mockReset();
+    countExternalGrantsMock.mockResolvedValue(0);
   });
 
   async function getExtraFields(): Promise<Record<string, unknown>> {
@@ -63,6 +67,7 @@ describe('GitHub scope-manifest route wiring (#1521)', () => {
       tokenSealed: true,
       credentialPending: false,
       flow: 'authorization_code',
+      externalGrantClientCount: 0,
     });
   });
 
@@ -75,6 +80,7 @@ describe('GitHub scope-manifest route wiring (#1521)', () => {
       tokenSealed: false,
       credentialPending: true,
       flow: null,
+      externalGrantClientCount: 0,
     });
   });
 
@@ -92,7 +98,24 @@ describe('GitHub scope-manifest route wiring (#1521)', () => {
       tokenSealed: false,
       credentialPending: false,
       flow: null,
+      externalGrantClientCount: 0,
     });
+  });
+
+  // ── External MCP/OAuth-client grant pointer (#2308) ────────────────────────
+
+  it('reports externalGrantClientCount from the external-grantee count query', async () => {
+    statusMock.mockResolvedValue('ready');
+    countExternalGrantsMock.mockResolvedValue(3);
+
+    expect(await getExtraFields()).toMatchObject({ externalGrantClientCount: 3 });
+  });
+
+  it('degrades externalGrantClientCount to 0 rather than failing the whole status read', async () => {
+    statusMock.mockResolvedValue('ready');
+    countExternalGrantsMock.mockRejectedValue(new Error('db down'));
+
+    expect(await getExtraFields()).toMatchObject({ configSealed: true, externalGrantClientCount: 0 });
   });
 
   // ── Device flow discriminator (#1391) ──────────────────────────────────────

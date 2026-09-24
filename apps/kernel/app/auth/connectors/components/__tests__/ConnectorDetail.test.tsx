@@ -980,6 +980,61 @@ describe('GitHub auth-mode selector (#1391)', () => {
   });
 });
 
+// ── External MCP/OAuth-client grant pointer (#2308) ─────────────────────────
+//
+// The pointer is purely informational (count only, no per-grant listing —
+// that belongs on #2288's Grants lane) and must never be confused with this
+// card's own scope grants above it.
+
+describe('GitHub external MCP/OAuth-client grant pointer (#2308)', () => {
+  const STATUS = '/github/api/scope-manifest';
+
+  function githubStatus(overrides: StatusBody = {}): StatusBody {
+    return {
+      manifestAssetId: null,
+      activeScopes: [],
+      validScopes: ['github:read'],
+      configSealed: true,
+      tokenSealed: true,
+      ...overrides,
+    };
+  }
+
+  it('renders nothing when no external client holds a grant', async () => {
+    installFetch({ [STATUS]: githubStatus({ externalGrantClientCount: 0 }) });
+
+    render(<ConnectorDetail entry={entryFor('github')} />);
+
+    await screen.findByText('github:read');
+    expect(screen.queryByText(/MCP/)).toBeNull();
+  });
+
+  it('renders a singular pointer for exactly one external client', async () => {
+    installFetch({ [STATUS]: githubStatus({ externalGrantClientCount: 1 }) });
+
+    render(<ConnectorDetail entry={entryFor('github')} />);
+
+    expect(await screen.findByText('1 MCP client holds github:* capabilities → Grants')).toBeDefined();
+  });
+
+  it('renders a plural pointer for more than one external client', async () => {
+    installFetch({ [STATUS]: githubStatus({ externalGrantClientCount: 5 }) });
+
+    render(<ConnectorDetail entry={entryFor('github')} />);
+
+    expect(await screen.findByText('5 MCP clients hold github:* capabilities → Grants')).toBeDefined();
+  });
+
+  it('renders nothing when the field is absent (older/degraded status payloads)', async () => {
+    installFetch({ [STATUS]: githubStatus() });
+
+    render(<ConnectorDetail entry={entryFor('github')} />);
+
+    await screen.findByText('github:read');
+    expect(screen.queryByText(/MCP/)).toBeNull();
+  });
+});
+
 describe('GitHub device connect round-trip (#1391)', () => {
   const STATUS = '/github/api/scope-manifest';
 

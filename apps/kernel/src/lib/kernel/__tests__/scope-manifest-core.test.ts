@@ -32,6 +32,7 @@ const h = vi.hoisted(() => {
     if (!pred) return true;
     switch (pred.op) {
       case 'eq': return row[pred.col as string] === pred.val;
+      case 'ne': return row[pred.col as string] !== pred.val;
       case 'and': return (pred.preds ?? []).every((p) => match(row, p));
       case 'like': {
         const prefix = String(pred.val).replace(/%$/, '');
@@ -100,6 +101,7 @@ vi.mock('@/src/db', () => ({
 }));
 vi.mock('drizzle-orm', () => ({
   eq: (col: unknown, val: unknown) => ({ op: 'eq', col, val }),
+  ne: (col: unknown, val: unknown) => ({ op: 'ne', col, val }),
   and: (...preds: unknown[]) => ({ op: 'and', preds }),
   like: (col: unknown, val: unknown) => ({ op: 'like', col, val }),
   sql: Object.assign((_s: TemplateStringsArray, ..._v: unknown[]) => ({ op: 'sql' }), {}),
@@ -126,6 +128,8 @@ import {
   syncConnectorConsentGrants,
   publishConnectorScopeManifest,
   connectorConsentRef,
+  listExternalScopeGrantees,
+  countExternalScopeGrantees,
   type ConnectorScopeDescriptor,
 } from '../scope-manifest-core';
 
@@ -232,6 +236,75 @@ describe('readActiveConnectorScopes', () => {
       { channel: CHANNEL, did: OWNER, appDid: CONNECTOR_DID, scopes: ['test:read'], status: 'revoked' },
     ];
     expect(await readActiveConnectorScopes(OWNER, CHANNEL, CONNECTOR_DID)).toEqual([]);
+  });
+
+  // #2308: an MCP/OAuth client (Claude, MCP Inspector, ...) that requests one
+  // of this connector's scopes at /oauth/authorize gets its own per-client
+  // row (#1804/#1695), attributed to ITS OWN appDid — never the connector's.
+  // That row must never be read back as the connector's own scope-manifest
+  // grant, even though it shares the same channel and scope name.
+  it('excludes a per-client (MCP/OAuth) grant row for a different appDid, even when channel and scope match', async () => {
+    h.state.channelRows = [
+      { channel: CHANNEL, did: OWNER, appDid: 'did:imajin:mcp-client-claude', scopes: ['test:read'], status: 'active' },
+    ];
+    expect(await readActiveConnectorScopes(OWNER, CHANNEL, CONNECTOR_DID)).toEqual([]);
+  });
+});
+
+// ── listExternalScopeGrantees / countExternalScopeGrantees (#2308) ───────────
+
+describe('listExternalScopeGrantees', () => {
+  it('returns empty when there are no rows', async () => {
+    expect(await listExternalScopeGrantees(OWNER, CHANNEL, CONNECTOR_DID)).toEqual([]);
+  });
+
+  it('excludes the connector\'s own scope-manifest grant', async () => {
+    h.state.channelRows = [
+      { channel: CHANNEL, did: OWNER, appDid: CONNECTOR_DID, scopes: ['test:read'], status: 'active' },
+    ];
+    expect(await listExternalScopeGrantees(OWNER, CHANNEL, CONNECTOR_DID)).toEqual([]);
+  });
+
+  it('includes an MCP/OAuth client\'s own per-client grant', async () => {
+    h.state.channelRows = [
+      { channel: CHANNEL, did: OWNER, appDid: 'did:imajin:mcp-client-claude', scopes: ['test:read', 'test:write'], status: 'active' },
+    ];
+    expect(await listExternalScopeGrantees(OWNER, CHANNEL, CONNECTOR_DID)).toEqual([
+      { appDid: 'did:imajin:mcp-client-claude', scopes: ['test:read', 'test:write'] },
+    ]);
+  });
+
+  it('excludes revoked external rows', async () => {
+    h.state.channelRows = [
+      { channel: CHANNEL, did: OWNER, appDid: 'did:imajin:mcp-client-claude', scopes: ['test:read'], status: 'revoked' },
+    ];
+    expect(await listExternalScopeGrantees(OWNER, CHANNEL, CONNECTOR_DID)).toEqual([]);
+  });
+
+  it('excludes rows for a different owner or a different channel', async () => {
+    h.state.channelRows = [
+      { channel: CHANNEL, did: 'did:imajin:someone-else', appDid: 'did:imajin:mcp-client-claude', scopes: ['test:read'], status: 'active' },
+      { channel: 'other-channel', did: OWNER, appDid: 'did:imajin:mcp-client-claude', scopes: ['test:read'], status: 'active' },
+    ];
+    expect(await listExternalScopeGrantees(OWNER, CHANNEL, CONNECTOR_DID)).toEqual([]);
+  });
+});
+
+describe('countExternalScopeGrantees', () => {
+  it('is 0 when there are no external grantees', async () => {
+    h.state.channelRows = [
+      { channel: CHANNEL, did: OWNER, appDid: CONNECTOR_DID, scopes: ['test:read'], status: 'active' },
+    ];
+    expect(await countExternalScopeGrantees(OWNER, CHANNEL, CONNECTOR_DID)).toBe(0);
+  });
+
+  it('counts DISTINCT external appDids, not rows', async () => {
+    h.state.channelRows = [
+      { channel: CHANNEL, did: OWNER, appDid: 'did:imajin:mcp-client-claude', scopes: ['test:read'], status: 'active' },
+      { channel: CHANNEL, did: OWNER, appDid: 'did:imajin:mcp-client-claude', scopes: ['test:write'], status: 'active' },
+      { channel: CHANNEL, did: OWNER, appDid: 'did:imajin:mcp-client-inspector', scopes: ['test:read'], status: 'active' },
+    ];
+    expect(await countExternalScopeGrantees(OWNER, CHANNEL, CONNECTOR_DID)).toBe(2);
   });
 });
 

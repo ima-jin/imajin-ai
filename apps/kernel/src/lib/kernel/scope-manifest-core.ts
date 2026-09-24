@@ -15,7 +15,7 @@
  * Since #1253 the wrappers no longer hand-write their descriptor maps either —
  * those are projected from the declarative vocabulary by ./scope-projections.
  */
-import { and, eq, like, sql } from 'drizzle-orm';
+import { and, eq, like, ne, sql } from 'drizzle-orm';
 import { db, assets, channelLinks, consentGrants, type Asset } from '@/src/db';
 
 // Re-exported so connector wrappers (github/discord/quickbooks) can type their
@@ -122,6 +122,72 @@ export async function readActiveConnectorScopes(
   return rows.flatMap((row) =>
     Array.isArray(row.scopes) ? (row.scopes as string[]) : [],
   );
+}
+
+// ── External (non-connector) scope grants ───────────────────────────────────
+
+/** One external client's active grant of one or more of a connector's scopes. */
+export interface ExternalScopeGrantee {
+  /** The grantee's own app DID — never the connector's own DID. */
+  appDid: string;
+  scopes: string[];
+}
+
+/**
+ * Every ACTIVE `auth.channel_links` row for this connector's channel that is
+ * NOT the connector's own scope-manifest grant (#2308).
+ *
+ * An MCP/OAuth client (Claude, MCP Inspector, ...) that requests one of this
+ * connector's scopes (e.g. `github:read`) at `/oauth/authorize` gets its own
+ * per-client row auto-published by `projectConsentedScopes` (#1804),
+ * attributed to that CLIENT's own `appDid` — never `connectorDid` (#1695
+ * per-client attribution). Those rows are a fundamentally different
+ * direction of grant (client → Imajin) from the connector's own
+ * (Imajin → external service) grant `readActiveConnectorScopes` reads, and
+ * must never be presented to the owner as if they were the connector's own.
+ *
+ * This reads the OTHER side of that same boundary explicitly, so a connector
+ * card can surface how many external clients hold a grant of its scopes
+ * without ever rendering the grants themselves — that per-client listing
+ * belongs on #2288's Grants lane, not here.
+ */
+export async function listExternalScopeGrantees(
+  ownerDid: string,
+  channel: string,
+  connectorDid: string,
+): Promise<ExternalScopeGrantee[]> {
+  const rows = await db
+    .select({ appDid: channelLinks.appDid, scopes: channelLinks.scopes })
+    .from(channelLinks)
+    .where(
+      and(
+        eq(channelLinks.channel, channel),
+        eq(channelLinks.did, ownerDid),
+        eq(channelLinks.status, 'active'),
+        ne(channelLinks.appDid, connectorDid),
+      ),
+    );
+
+  return rows.map((row) => ({
+    appDid: row.appDid,
+    scopes: Array.isArray(row.scopes) ? (row.scopes as string[]) : [],
+  }));
+}
+
+/**
+ * Count of DISTINCT external clients holding an active grant of one or more
+ * of this connector's scopes — powers a connector card's one-line pointer
+ * toward #2288's Grants lane (#2308) without listing the grants themselves.
+ */
+export async function countExternalScopeGrantees(
+  ownerDid: string,
+  channel: string,
+  connectorDid: string,
+): Promise<number> {
+  const grantees = await listExternalScopeGrantees(ownerDid, channel, connectorDid);
+  const distinctAppDids = new Set<string>();
+  for (const grantee of grantees) distinctAppDids.add(grantee.appDid);
+  return distinctAppDids.size;
 }
 
 // ── Consent grants ────────────────────────────────────────────────────────────
