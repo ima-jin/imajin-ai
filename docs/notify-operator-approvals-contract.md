@@ -145,8 +145,21 @@ once the operator taps Approve, Reject, or Withdraw on `/jin`
     alg: 'ed25519';
     sig: string;           // hex-encoded Ed25519 signature
   };
+  contentHash: string;   // "sha256:" + effectiveContentHash(row) (#2294) — see below; NEVER omitted, the event is not published if it can't be computed
 }
 ```
+
+`contentHash` (#2294) is `effectiveContentHash(row)` for the stored
+proposal row, `sha256:`-prefixed the same way `fair.manifest.published`'s
+`manifestDigest` is (`apps/kernel/src/lib/media/manifest-helpers.ts`) — the
+exact digest a source adapter's own #2084 "check 1" (e.g.
+`ima-jin/openclaw-imajin-plugin`'s gateway-approvals bridge,
+`handleKernelDecision`) compares byte-for-byte against the `contentHash` it
+locally tracked when it staged this proposal, to detect kernel-side
+tamper/drift before ever applying a decision. Computed once from the row's
+own durable fields before any state mutation; if it can't be computed, the
+decision is rejected (500) before anything is persisted or published —
+this event is never published without it.
 
 The kernel signs this attestation with its own node signing identity
 (the same `getNodeSigningIdentity()` pattern the GitHub confirm route and
@@ -226,6 +239,7 @@ node to require it going forward.
 | Field | Who signs it | Who verifies it | Covered by which hash/signature |
 |---|---|---|---|
 | `contentHash` (on the request) | n/a — computed by the source's adapter | Kernel, at ingest (`validateApprovalRequestedPayload`) | sha256 over `{proposalId, source, kind, summary, keysTouched, detail}` |
+| `contentHash` (on the decided event, #2294) | n/a — echoed by the kernel from the stored row (`effectiveContentHash`) | The source adapter's own #2084 "check 1" (e.g. `ima-jin/openclaw-imajin-plugin`'s gateway-approvals bridge) | Same sha256 digest as above, `sha256:`-prefixed |
 | Kernel witness `signature` (on the decision row) | Kernel's own node key (`getNodeSigningIdentity`) | Anyone holding the node's public key (legacy v1 trust anchor) | Ed25519 over `canonicalize(payload)` (the whole decided-event payload) |
 | `operatorSignature.sig` | The operator's own key (client-side on `/jin`) | Kernel, at decide time (`verifyOperatorCountersignature`); the plugin, per `#24`, against the operator DID's public key directly | Ed25519 over `canonicalize({contentHash, decision, decidedAt})` |
 | `operatorSignature.keyId` | — (identifies the signer) | Kernel: must equal the operator DID's current `identities.publicKey` | n/a |

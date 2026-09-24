@@ -137,6 +137,21 @@ export interface OperatorApprovalDecidedPayload {
    * service.ts.
    */
   operatorSignature?: OperatorCountersignature;
+  /**
+   * `"sha256:" + effectiveContentHash(row)` (#2294) — the SAME digest the
+   * original `operator.approval.requested` proposal was staged/signed
+   * under, sourced from the stored approval row (never recomputed from
+   * anything that could drift after the fact). A source adapter (e.g.
+   * `ima-jin/openclaw-imajin-plugin`'s gateway-approvals bridge, #2084
+   * "check 1") echoes this back against the `contentHash` it locally
+   * tracked for the same proposal — always `sha256:`-prefixed, mirroring
+   * the wire convention `fair.manifest.published`'s `manifestDigest`
+   * already uses, since that is the exact prefixed form a real publisher
+   * both sends on the request and expects echoed back on the decision.
+   * `decideOperatorApproval` never publishes this event without a
+   * `contentHash` — see its module doc.
+   */
+  contentHash: string;
 }
 
 export const REQUEST_ACTIONS: readonly ApprovalRequestAction[] = ['approve', 'reject'] as const;
@@ -291,6 +306,20 @@ export function effectiveContentHash(row: ContentHashFields & { contentHash?: st
       detail: row.detail,
     })
   );
+}
+
+/**
+ * `"sha256:" + hash` (#2294) — the wire form a bare digest is written in
+ * everywhere else it crosses a process boundary in this codebase (see
+ * `manifestDigest` in `apps/kernel/src/lib/media/manifest-helpers.ts`).
+ * `effectiveContentHash`/`computeApprovalContentHash` always return a bare
+ * hex digest (ingest strips any `sha256:` a caller supplied — see
+ * `normalizeContentHash` below), so this is a plain prefix, not a
+ * normalization step; guarded against double-prefixing all the same, since
+ * it's cheap and this is the one place the bare and wire forms meet.
+ */
+export function toWireContentHash(hash: string): string {
+  return hash.toLowerCase().startsWith('sha256:') ? hash : `sha256:${hash}`;
 }
 
 function normalizeContentHash(value: unknown): string | null {

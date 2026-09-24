@@ -18,6 +18,7 @@ import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import {
   effectiveContentHash,
   isOperatorCountersignRequired,
+  toWireContentHash,
   type ApprovalDecision,
   type OperatorApprovalDecidedPayload,
   type OperatorCountersignature,
@@ -219,6 +220,62 @@ function checkExecCommandGate(
 }
 
 /**
+ * #2294: `contentHash` computation, pulled out of `decideOperatorApproval`
+ * so its own try/catch doesn't add to that function's cognitive complexity.
+ * Returns `null` (never throws) when the row's stored fields can't be
+ * canonicalized/hashed — the caller treats that as fail-closed: no decision
+ * is persisted or published without a `contentHash`.
+ */
+function computeDecisionContentHash(row: OperatorApprovalRow, proposalId: string): string | null {
+  try {
+    return effectiveContentHash(row);
+  } catch (err) {
+    log.error({ err: String(err), proposalId }, 'failed to compute contentHash — refusing to decide (fail-closed, #2294)');
+    return null;
+  }
+}
+
+type DecidedAtResult = { ok: true; decidedAt: string } | { ok: false; error: string; status: number };
+
+/**
+ * Verifies the optional operator countersignature (#2082) and resolves the
+ * `decidedAt` to persist/publish — extracted out of `decideOperatorApproval`
+ * to keep that function's own cognitive complexity down. With no
+ * `operatorSignature`, the kernel assigns `decidedAt` itself; with one, the
+ * client-claimed `decidedAt` is bounds-checked and the signature is verified
+ * against it before it's trusted.
+ */
+async function resolveDecidedAt(
+  proposalId: string,
+  operatorDid: string,
+  decision: ApprovalDecision,
+  contentHash: string,
+  operatorSignature: OperatorCountersignature | undefined,
+  claimedDecidedAt: string | undefined,
+): Promise<DecidedAtResult> {
+  if (!operatorSignature) {
+    return { ok: true, decidedAt: new Date().toISOString() };
+  }
+  if (!claimedDecidedAt || !isDecidedAtWithinClockSkew(claimedDecidedAt)) {
+    return {
+      ok: false,
+      error: 'decidedAt must be supplied and within the accepted clock-skew window when operatorSignature is present',
+      status: 400,
+    };
+  }
+  const verification = await verifyOperatorCountersignature(
+    operatorDid,
+    { contentHash, decision, decidedAt: claimedDecidedAt },
+    operatorSignature,
+  );
+  if (!verification.ok) {
+    log.warn({ proposalId, operatorDid, reason: verification.error }, 'operator countersignature rejected');
+    return { ok: false, error: verification.error, status: 400 };
+  }
+  return { ok: true, decidedAt: claimedDecidedAt };
+}
+
+/**
  * Record the operator's decision: sign a kernel-witnessed attestation,
  * advance the proposal's state machine, and publish `operator.approval.decided`
  * for the plugin to consume. Fail-closed: a proposal not in the state this
@@ -253,6 +310,20 @@ export async function decideOperatorApproval(
     return { ok: false, error: execGate.error, status: execGate.status };
   }
 
+  // #2294: contentHash is required on the `operator.approval.decided` bus
+  // payload — it's the exact digest a source adapter's #2084 echo check
+  // (e.g. `ima-jin/openclaw-imajin-plugin`'s gateway-approvals bridge)
+  // compares against what it staged for this proposal, and it's also what
+  // the operator's own countersignature (below) covers. Computed once, from
+  // the row's own stable stored fields, BEFORE any state mutation or
+  // signature — a row whose fields can't be canonicalized/hashed must never
+  // reach a persisted decision or a published event with no way to
+  // honestly echo what was decided (fail-closed).
+  const contentHash = computeDecisionContentHash(row, proposalId);
+  if (!contentHash) {
+    return { ok: false, error: 'Unable to compute contentHash for this proposal', status: 500 };
+  }
+
   // #2082: once the per-node flag is on, a decision with no operator
   // countersignature is rejected before any state mutation or witness
   // signature is produced — this is the "kernel-forged decision" guard.
@@ -260,27 +331,11 @@ export async function decideOperatorApproval(
     return { ok: false, error: 'Operator countersignature is required on this node', status: 400 };
   }
 
-  let decidedAt = new Date().toISOString();
-  if (operatorSignature) {
-    if (!claimedDecidedAt || !isDecidedAtWithinClockSkew(claimedDecidedAt)) {
-      return {
-        ok: false,
-        error: 'decidedAt must be supplied and within the accepted clock-skew window when operatorSignature is present',
-        status: 400,
-      };
-    }
-    const contentHash = effectiveContentHash(row);
-    const verification = await verifyOperatorCountersignature(
-      operatorDid,
-      { contentHash, decision, decidedAt: claimedDecidedAt },
-      operatorSignature,
-    );
-    if (!verification.ok) {
-      log.warn({ proposalId, operatorDid, reason: verification.error }, 'operator countersignature rejected');
-      return { ok: false, error: verification.error, status: 400 };
-    }
-    decidedAt = claimedDecidedAt;
+  const decidedAtResult = await resolveDecidedAt(proposalId, operatorDid, decision, contentHash, operatorSignature, claimedDecidedAt);
+  if (!decidedAtResult.ok) {
+    return { ok: false, error: decidedAtResult.error, status: decidedAtResult.status };
   }
+  const { decidedAt } = decidedAtResult;
 
   const identity = getNodeSigningIdentity();
   const payload: OperatorApprovalDecidedPayload = {
@@ -293,6 +348,7 @@ export async function decideOperatorApproval(
     decidedAt,
     ...(reason ? { reason } : {}),
     ...(operatorSignature ? { operatorSignature } : {}),
+    contentHash: toWireContentHash(contentHash),
   };
   const signature = authCrypto.signSync(canonicalize(payload), identity.privateKeyHex);
   const signedDecision = { payload, signature, senderPubkey: identity.senderPubkey };
