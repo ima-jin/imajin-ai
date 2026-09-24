@@ -1294,6 +1294,33 @@ async function fetchActiveGrant(
 }
 
 /**
+ * List every ACTIVE `vault_delegation_grants` row for `field`, newest first.
+ *
+ * A field's mint-time grant (`vault_minted_keys.grantId`) is no longer
+ * necessarily its only current consumer: `grantExistingMintedKey` (#2247)
+ * can issue an ADDITIONAL active grant to a second (or third, ...) consumer
+ * for the SAME field, without ever touching that `grantId` column — it only
+ * ever points at the ORIGINAL grant. Any "who currently holds this field"
+ * read surface needs this subject-scoped (well, field-scoped) query instead
+ * of following a single `grantId`, or it silently drops every consumer
+ * after the first (#2298). `listVaultKeyCards()` (the vault key cards read
+ * model) and `listGrantsForOperator` (the Grants lane, via that same read
+ * model) both reuse this.
+ *
+ * Deliberately filters to `status = 'active'` only: a revoked or superseded
+ * row is not a current consumer. Callers that also want the historical
+ * mint-time grant regardless of its status already have their own
+ * `grantId`-keyed lookup for that (see `listVaultKeyCards`'s `grantById`).
+ */
+export async function listActiveGrantsForField(field: string): Promise<VaultDelegationGrant[]> {
+  return db
+    .select()
+    .from(vaultDelegationGrants)
+    .where(and(eq(vaultDelegationGrants.field, field), eq(vaultDelegationGrants.status, 'active')))
+    .orderBy(desc(vaultDelegationGrants.createdAt));
+}
+
+/**
  * Canonical form of a delegation grant's signable fields.
  *
  * Keys are sorted alphabetically and serialised as JSON so the canonical string

@@ -210,7 +210,10 @@ describe('listGrantsForOperator', () => {
           lastFetchedAt: null,
           ackedAt: null,
           ackOutcome: null,
+          ackEvidence: null,
+          createdAt: '2026-01-02T00:00:00.000Z',
         },
+        grants: [],
       },
     ]);
     mockListDelegateGrantBearersForPrincipal.mockResolvedValue([
@@ -304,7 +307,10 @@ describe('listGrantsForOperator', () => {
           lastFetchedAt: '2026-01-03T00:00:00.000Z',
           ackedAt: null,
           ackOutcome: null,
+          ackEvidence: null,
+          createdAt: '2026-01-02T00:00:00.000Z',
         },
+        grants: [],
       },
     ]);
 
@@ -318,11 +324,114 @@ describe('listGrantsForOperator', () => {
     mockInnerJoinWhere.mockReturnValueOnce(Promise.resolve([]));
     pushWhereResult([]);
     mockListVaultKeyCards.mockResolvedValue([
-      { did: 'did:imajin:vaultkey3', purpose: 'unused', createdAt: '2026-01-01T00:00:00.000Z', timeline: [], grant: null },
+      { did: 'did:imajin:vaultkey3', purpose: 'unused', createdAt: '2026-01-01T00:00:00.000Z', timeline: [], grant: null, grants: [] },
     ]);
 
     const result = await listGrantsForOperator(OPERATOR_DID);
     expect(result.some((c) => c.source === 'vault-delegation')).toBe(false);
+  });
+
+  // #2298: a field can carry more than the mint-time grant once a second
+  // consumer is granted access via `grantExistingMintedKey` — the Grants
+  // lane must surface EVERY active consumer, not just the first.
+  it('emits one vault-delegation card per active consumer grant, not just the mint-time one', async () => {
+    mockInnerJoinWhere.mockReturnValueOnce(Promise.resolve([]));
+    pushWhereResult([]);
+    mockListVaultKeyCards.mockResolvedValue([
+      {
+        did: 'did:imajin:vaultkey4',
+        purpose: 'signing key',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        timeline: [],
+        grant: {
+          grantId: 'vdg_original',
+          grantedTo: 'did:imajin:original-consumer',
+          purpose: 'gha-runner',
+          status: 'active',
+          expiresAt: null,
+          consumedAt: null,
+          lastFetchedAt: null,
+          ackedAt: null,
+          ackOutcome: null,
+          ackEvidence: null,
+          createdAt: '2026-01-01T00:05:00.000Z',
+        },
+        grants: [
+          {
+            grantId: 'vdg_original',
+            grantedTo: 'did:imajin:original-consumer',
+            purpose: 'gha-runner',
+            status: 'active',
+            expiresAt: null,
+            consumedAt: null,
+            lastFetchedAt: null,
+            ackedAt: null,
+            ackOutcome: null,
+            ackEvidence: null,
+            createdAt: '2026-01-01T00:05:00.000Z',
+          },
+          {
+            grantId: 'vdg_second',
+            grantedTo: 'did:imajin:second-consumer',
+            purpose: 'runtime-fetch',
+            status: 'active',
+            expiresAt: null,
+            consumedAt: null,
+            lastFetchedAt: null,
+            ackedAt: null,
+            ackOutcome: null,
+            ackEvidence: { kind: 'gha-runner', ref: 'gx10' },
+            createdAt: '2026-01-02T00:00:00.000Z',
+          },
+        ],
+      },
+    ]);
+
+    const result = await listGrantsForOperator(OPERATOR_DID);
+    const vaultCards = result.filter((c) => c.source === 'vault-delegation');
+
+    expect(vaultCards).toHaveLength(2);
+    expect(vaultCards.map((c) => c.id).sort()).toEqual(['vault-delegation:vdg_original', 'vault-delegation:vdg_second']);
+
+    const secondConsumerCard = vaultCards.find((c) => c.id === 'vault-delegation:vdg_second')!;
+    expect(secondConsumerCard).toMatchObject({
+      grantee: 'did:imajin:second-consumer',
+      capabilities: ['runtime-fetch'],
+      issuedAt: '2026-01-02T00:00:00.000Z',
+      ackEvidence: { kind: 'gha-runner', ref: 'gx10' },
+      revoke: { method: 'POST', path: '/api/vault/delegation/revoke', body: { field: 'vault-minted-key:did:imajin:vaultkey4' } },
+    });
+  });
+
+  it('does not double-count the mint-time grant when it is also present in the active-consumers list', async () => {
+    mockInnerJoinWhere.mockReturnValueOnce(Promise.resolve([]));
+    pushWhereResult([]);
+    const sharedGrant = {
+      grantId: 'vdg_shared',
+      grantedTo: 'did:imajin:consumer1',
+      purpose: 'gha-runner',
+      status: 'active',
+      expiresAt: null,
+      consumedAt: null,
+      lastFetchedAt: null,
+      ackedAt: null,
+      ackOutcome: null,
+      ackEvidence: null,
+      createdAt: '2026-01-01T00:05:00.000Z',
+    };
+    mockListVaultKeyCards.mockResolvedValue([
+      {
+        did: 'did:imajin:vaultkey5',
+        purpose: 'signing key',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        timeline: [],
+        grant: sharedGrant,
+        grants: [sharedGrant],
+      },
+    ]);
+
+    const result = await listGrantsForOperator(OPERATOR_DID);
+    expect(result.filter((c) => c.source === 'vault-delegation')).toHaveLength(1);
   });
 
   it('marks a revoked auth grant as non-revocable with no revoke action', async () => {

@@ -12,7 +12,7 @@
  */
 import { desc, eq, inArray } from 'drizzle-orm';
 import { db, vaultDelegationGrants, vaultMintedKeys, type VaultMintedKey, type VaultDelegationGrant } from '@/src/db';
-import { vaultService } from './index';
+import { vaultService, listActiveGrantsForField } from './index';
 import { mintedKeyField } from './mint';
 
 export type VaultKeyTimelineEventType = 'minted' | 'granted' | 'fetched' | 'acked' | 'rotated' | 'revoked';
@@ -36,6 +36,8 @@ export interface VaultKeyGrantSummary {
   lastFetchedAt: string | null;
   ackedAt: string | null;
   ackOutcome: string | null;
+  ackEvidence: { kind?: string; ref?: string; note?: string } | null;
+  createdAt: string;
 }
 
 export interface VaultKeyCard {
@@ -50,6 +52,16 @@ export interface VaultKeyCard {
   revokedBy: string | null;
   /** The grant this mint delivered the sealed key through, when one exists. */
   grant: VaultKeyGrantSummary | null;
+  /**
+   * EVERY currently active consumer grant for this key's field (#2298) —
+   * not just `grant` above. A field can carry more than one active grant
+   * once `grantExistingMintedKey` (#2247's "Grant access" button) issues a
+   * second (or third, ...) consumer grant for the same field; that never
+   * updates `grant`/`grantId`, which always names the ORIGINAL grant only.
+   * May or may not include `grant` itself, depending on whether it is still
+   * active.
+   */
+  grants: VaultKeyGrantSummary[];
   timeline: VaultKeyTimelineEvent[];
   /** "held in memory by <consumer>, last ack Nm ago" — null consumer/ack when never fetched/acked. */
   heldBy: string | null;
@@ -70,6 +82,8 @@ function toGrantSummary(grant: VaultDelegationGrant): VaultKeyGrantSummary {
     lastFetchedAt: grant.lastFetchedAt ? grant.lastFetchedAt.toISOString() : null,
     ackedAt: grant.ackedAt ? grant.ackedAt.toISOString() : null,
     ackOutcome: grant.ackOutcome,
+    ackEvidence: grant.ackEvidence ?? null,
+    createdAt: grant.createdAt.toISOString(),
   };
 }
 
@@ -133,7 +147,9 @@ function buildTimeline(row: VaultMintedKey, grant: VaultDelegationGrant | null):
  *
  * One grant lookup batched across all minted keys (`inArray`) rather than
  * N+1 per-card queries — this endpoint renders the whole vault section in
- * one page load.
+ * one page load. Active-consumer grants (#2298) are looked up per distinct
+ * field instead, via `listActiveGrantsForField` — deduped by field first,
+ * since several minted keys never legitimately share one field in practice.
  */
 export async function listVaultKeyCards(): Promise<VaultKeyCard[]> {
   const mintedKeys = await db
@@ -147,9 +163,16 @@ export async function listVaultKeyCards(): Promise<VaultKeyCard[]> {
     : [];
   const grantById = new Map(grantRows.map((row) => [row.id, row]));
 
+  const fields = [...new Set(mintedKeys.map((row) => row.field))];
+  const activeGrantsByFieldEntries = await Promise.all(
+    fields.map(async (field): Promise<[string, VaultDelegationGrant[]]> => [field, await listActiveGrantsForField(field)]),
+  );
+  const activeGrantsByField = new Map(activeGrantsByFieldEntries);
+
   return mintedKeys.map((row) => {
     const grant = row.grantId ? grantById.get(row.grantId) ?? null : null;
     const fetchWithoutAck = grant !== null && grant.lastFetchedAt !== null && grant.ackedAt === null;
+    const activeGrants = activeGrantsByField.get(row.field) ?? [];
 
     return {
       did: row.did,
@@ -162,6 +185,7 @@ export async function listVaultKeyCards(): Promise<VaultKeyCard[]> {
       revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
       revokedBy: row.revokedBy,
       grant: grant ? toGrantSummary(grant) : null,
+      grants: activeGrants.map(toGrantSummary),
       timeline: buildTimeline(row, grant),
       heldBy: grant?.lastFetchedAt ? grant.grantedTo : null,
       lastAckAt: grant?.ackedAt ? grant.ackedAt.toISOString() : null,
