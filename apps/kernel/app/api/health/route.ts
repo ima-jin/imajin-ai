@@ -10,7 +10,12 @@ interface ServiceCheck {
   error?: string;
 }
 
-import { buildPublicUrl } from '@imajin/config';
+// buildPublicUrlAbsolute (not buildPublicUrl) is required here: this runs
+// server-side and calls fetch() directly, so it needs a guaranteed absolute
+// URL. buildPublicUrl() falls back to a bare relative path (e.g. "/input")
+// once neither an explicit NEXT_PUBLIC_{NAME}_URL env var nor an explicit
+// prefix/domain is present, which fetch() cannot parse (#2345).
+import { buildPublicUrlAbsolute } from '@imajin/config';
 
 const SERVICES = [
   // Core platform
@@ -33,7 +38,7 @@ const SERVICES = [
 ];
 
 async function checkService(service: { name: string; label: string }): Promise<ServiceCheck> {
-  const url = buildPublicUrl(service.name);
+  const url = buildPublicUrlAbsolute(service.name);
   const start = Date.now();
 
   try {
