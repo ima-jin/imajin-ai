@@ -1,2 +1,2 @@
 export { runProvision } from './runner';
-export type { ProvisionRecord, RunProvisionOptions, RunProvisionResult, ExecCompose } from './runner';
+export type { ProvisionRecord, ProvisionHarness, RunProvisionOptions, RunProvisionResult, ExecCompose } from './runner';
