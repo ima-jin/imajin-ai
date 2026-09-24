@@ -191,6 +191,9 @@ export async function POST(request: NextRequest) {
       detail,
       contentHash,
       notificationId: null,
+      // #2337: raised in-process by the operator themself (this route
+      // requires `isOperatorIdentity`) — no separate requesting agent.
+      signerDid: null,
     });
     return NextResponse.json({ proposalId }, { status: 201, headers: cors });
   } catch (err) {

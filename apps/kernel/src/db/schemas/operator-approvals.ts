@@ -22,8 +22,9 @@
  *                    Only reachable from 'approved'. Terminal.
  *
  * See migration 0130_operator_approvals.sql,
- * 0132_operator_approvals_generic_source.sql, and
- * 0147_operator_approvals_exec_outcome.sql for the full schema rationale.
+ * 0132_operator_approvals_generic_source.sql,
+ * 0147_operator_approvals_exec_outcome.sql, and
+ * 0161_operator_approvals_signer_did.sql for the full schema rationale.
  */
 import { pgSchema, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
 
@@ -50,6 +51,17 @@ export const operatorApprovals = operatorSchema.table(
     contentHash: text('content_hash'),
     /** notify.notifications.id for the operator.approval.requested row, when known. */
     notificationId: text('notification_id'),
+    /**
+     * The requesting agent's DID (#2337) — the source adapter's own signing
+     * identity, captured from the optional `signerDid` field on the
+     * `operator.approval.requested` payload (e.g. `ima-jin/openclaw-imajin-
+     * plugin`'s `KernelApprovalRequestedPayload.signerDid`). Nullable: a
+     * legacy bare-kind request, or any source that omits it, never had one.
+     * Used so `operator.approval.decided` can be addressed back to the
+     * agent that raised the proposal, not just the operator that decided it
+     * — see `decideOperatorApproval` in `operator-approvals-service.ts`.
+     */
+    signerDid: text('signer_did'),
     /** State machine: pending -> approved | denied; approved -> withdrawn | applied. */
     status: text('status').notNull().default('pending'),
     /**

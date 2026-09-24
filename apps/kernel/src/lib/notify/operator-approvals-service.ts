@@ -96,6 +96,13 @@ export interface RecordApprovalRequestedParams {
    * — there is no notification row to reference).
    */
   notificationId: string | null;
+  /**
+   * The requesting agent's DID (#2337), when the source adapter supplied
+   * one via the payload's optional `signerDid` field. Null for a legacy
+   * bare-kind request or any source that omits it — `decideOperatorApproval`
+   * then falls back to operator-only delivery.
+   */
+  signerDid: string | null;
 }
 
 /**
@@ -106,7 +113,7 @@ export interface RecordApprovalRequestedParams {
  * arrives after the operator already decided leaves the decision alone).
  */
 export async function recordApprovalRequested(params: RecordApprovalRequestedParams): Promise<void> {
-  const { proposalId, operatorDid, source, kind, summary, keysTouched, detail, contentHash, notificationId } = params;
+  const { proposalId, operatorDid, source, kind, summary, keysTouched, detail, contentHash, notificationId, signerDid } = params;
 
   const [existing] = await db
     .select({ status: operatorApprovals.status })
@@ -129,6 +136,7 @@ export async function recordApprovalRequested(params: RecordApprovalRequestedPar
     detail,
     contentHash,
     notificationId,
+    signerDid,
     status: 'pending',
   });
 
@@ -276,6 +284,42 @@ async function resolveDecidedAt(
 }
 
 /**
+ * #2337: `operator.approval.decided` must reach BOTH the requesting agent
+ * (`signerDid`, captured at request time — see `recordApprovalRequested`)
+ * and the operator that decided it. `bus.publish`'s `subject` addresses
+ * exactly one DID at a time — it drives both the #1884 grant-bound
+ * event-subscription fan-out (`packages/bus/src/subscriptions.ts`) and the
+ * notify reactor's default recipient (`packages/bus/src/reactors/
+ * notify.ts`) — so this publishes the SAME signed payload once per
+ * distinct recipient rather than forking the wire shape (no new field, no
+ * array-valued `subject`). Deduped via `Set` so a proposal whose
+ * `signerDid` happens to equal the operator DID is never published twice.
+ * Each publish is independently non-fatal, matching every other bus-publish
+ * call site in this module: one recipient's fan-out failing must never
+ * suppress the other's, nor undo the already-persisted decision.
+ */
+async function publishApprovalDecided(
+  proposalId: string,
+  operatorDid: string,
+  signerDid: string | null,
+  payload: OperatorApprovalDecidedPayload,
+): Promise<void> {
+  const recipients = new Set([operatorDid, ...(signerDid ? [signerDid] : [])]);
+  for (const subject of recipients) {
+    try {
+      await bus.publish('operator.approval.decided', {
+        issuer: operatorDid,
+        subject,
+        scope: 'operator',
+        payload,
+      });
+    } catch (err) {
+      log.error({ err: String(err), proposalId, subject }, 'operator.approval.decided publish failed (non-fatal)');
+    }
+  }
+}
+
+/**
  * Record the operator's decision: sign a kernel-witnessed attestation,
  * advance the proposal's state machine, and publish `operator.approval.decided`
  * for the plugin to consume. Fail-closed: a proposal not in the state this
@@ -360,18 +404,9 @@ export async function decideOperatorApproval(
     .set({ status: nextStatus, decision: signedDecision, updatedAt: now })
     .where(and(eq(operatorApprovals.proposalId, proposalId), eq(operatorApprovals.status, requiredStatus)));
 
-  try {
-    await bus.publish('operator.approval.decided', {
-      issuer: operatorDid,
-      subject: operatorDid,
-      scope: 'operator',
-      payload,
-    });
-  } catch (err) {
-    log.error({ err: String(err), proposalId }, 'operator.approval.decided publish failed (non-fatal)');
-  }
+  await publishApprovalDecided(proposalId, operatorDid, row.signerDid, payload);
 
-  log.info({ proposalId, operatorDid, decision }, 'operator approval decided');
+  log.info({ proposalId, operatorDid, signerDid: row.signerDid, decision }, 'operator approval decided');
 
   const fresh = await loadApproval(proposalId);
   return { ok: true, card: toCard(fresh ?? { ...row, status: nextStatus, decision: signedDecision, updatedAt: now }) };

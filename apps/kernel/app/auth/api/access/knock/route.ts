@@ -111,6 +111,11 @@ export async function POST(request: NextRequest) {
       detail,
       contentHash,
       notificationId: null,
+      // #2337: raised in-process (never via the plugin's signed request
+      // contract), so there is no separate requesting-agent DID to capture
+      // — `principalDid` above is the caller, but the decided event's
+      // existing operator-only delivery is unchanged here.
+      signerDid: null,
     });
 
     return NextResponse.json(
