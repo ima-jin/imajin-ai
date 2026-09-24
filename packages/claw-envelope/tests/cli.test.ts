@@ -45,7 +45,18 @@ describe('render + writeTree', () => {
   });
 
   it('rejects an unknown harness', () => {
-    const args = parseArgs(['--agent-did', 'did:a', '--owner-did', 'did:o', '--handle', 'h', '--out', '/tmp/x', '--harness', 'openclaw']);
+    const args = parseArgs(['--agent-did', 'did:a', '--owner-did', 'did:o', '--handle', 'h', '--out', '/tmp/x', '--harness', 'agent-zero']);
     expect(() => render(args)).toThrow(/Unknown harness/);
+  });
+
+  it('renders and writes a full tree to disk for the openclaw harness', () => {
+    outDir = mkdtempSync(join(tmpdir(), 'claw-envelope-'));
+    const args = parseArgs(['--agent-did', 'did:imajin:a', '--owner-did', 'did:imajin:o', '--handle', 'poc', '--out', outDir, '--harness', 'openclaw']);
+    const tree = render(args);
+    writeTree(tree, outDir);
+
+    const openclawJsonPath = join(outDir, 'openclaw', 'openclaw.json');
+    const written = JSON.parse(readFileSync(openclawJsonPath, 'utf-8')) as { plugins: { entries: { imajin: { config: { did: string } } } } };
+    expect(written.plugins.entries.imajin.config.did).toBe('did:imajin:a');
   });
 });

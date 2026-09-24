@@ -3,19 +3,22 @@
  * `claw-envelope render --harness nanoclaw --agent-did <did> --owner-did <did> --handle <name> --out <dir>`
  *
  * Renders a context envelope for the given harness and writes it to `--out`.
- * Only `nanoclaw` is implemented; the harness registry is a plain map so a
- * future harness renderer is one entry, not a rewrite (imajin-ai#1758 Phase 6).
+ * `nanoclaw` and `openclaw` are implemented; the harness registry is a plain
+ * map so a future harness renderer is one entry, not a rewrite (imajin-ai#1758
+ * Phase 6, imajin-ai#2186).
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { generateEnvelope } from './generate';
 import { renderNanoClaw } from './renderers/nanoclaw';
+import { renderOpenClaw } from './renderers/openclaw';
 import type { ContextEnvelopeInput, RenderedTree } from './types';
 
 type HarnessRenderer = (input: ContextEnvelopeInput) => RenderedTree;
 
 const HARNESS_RENDERERS: Record<string, HarnessRenderer> = {
   nanoclaw: (input) => renderNanoClaw(generateEnvelope(input)),
+  openclaw: (input) => renderOpenClaw(generateEnvelope(input)),
 };
 
 interface ParsedArgs {

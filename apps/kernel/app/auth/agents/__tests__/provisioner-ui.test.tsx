@@ -320,15 +320,41 @@ describe('Provision agent wizard', () => {
     expect(screen.queryByText('Provision new agent')).toBeNull();
   });
 
-  it('disables Provision until a name is entered, and disables the OpenClaw harness option', async () => {
+  it('disables Provision until a name is entered', async () => {
     await renderAgentsPage([], []);
     fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
 
     expect(screen.getByRole('button', { name: 'Provision' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('button', { name: 'OpenClaw (coming soon)' })).toHaveProperty('disabled', true);
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Travel Agent' } });
     expect(screen.getByRole('button', { name: 'Provision' })).toHaveProperty('disabled', false);
+  });
+
+  it('allows selecting the OpenClaw harness (imajin-ai#2186) and submits it to POST /auth/api/agents/provision', async () => {
+    const spy = await renderAgentsPage([], [], {
+      '/auth/api/agents/provision': async (url, init) => {
+        if (init?.method === 'POST') {
+          return { ok: true, status: 201, json: async () => ({ provision: provision({ harness: 'openclaw', status: 'awaiting_boot' }) }) } as unknown as Response;
+        }
+        return { ok: true, status: 200, json: async () => ({ provisions: [] }) } as unknown as Response;
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Provision Agent' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'OpenClaw Agent' } });
+    fireEvent.click(screen.getByRole('button', { name: 'OpenClaw' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Provision' }));
+
+    await waitFor(() =>
+      expect(spy).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/api/agents/provision'),
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"harness":"openclaw"'),
+        }),
+      ),
+    );
+    expect(await screen.findByText('Agent provisioned.')).toBeDefined();
   });
 
   it('submits the wizard selections to POST /auth/api/agents/provision', async () => {

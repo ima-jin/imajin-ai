@@ -54,7 +54,7 @@ provisioning attempt. Key columns:
   identity (no `X-Acting-For` delegation), mirroring `POST /auth/api/grants`'s
   "delegator acts directly" rule.
 - `agent_did` — nullable until the identity-mint step succeeds.
-- `harness` — `'nanoclaw'` (implemented) or `'openclaw'` (stub — see §6).
+- `harness` — `'nanoclaw'` or `'openclaw'` (both implemented — see §8).
 - `placement` — `'hosted'` or `'local'`.
 - `status` — `pending -> identity_minted -> grants_issued -> envelope_rendered
   -> (awaiting_boot, hosted only) -> booted | failed | revoked`.
@@ -159,19 +159,24 @@ already-provisioned orchestrator-tier agent could call the same kernel routes
 this runner calls, once the recursive-provisioning question in #1758 is
 settled — nothing here builds that seam prematurely.
 
-## 8. `harness: 'openclaw'` — documented stub
+## 8. `harness: 'openclaw'` — implemented (imajin-ai#2186)
 
-OpenClaw (the orchestrator tier) is accepted at intake by the provisioner's
-validation, matching the issue's explicit allowance for a stub. Identity
-minting and grant issuance run normally for `harness: 'openclaw'`, but the
-envelope-render step fails with an explicit "not yet implemented" error,
-visible in the provision's `steps` log — never a silent no-op or a
-mis-rendered NanoClaw envelope. Implementing it for real needs: an OpenClaw
-renderer in `@imajin/claw-envelope` (mirroring `renderers/nanoclaw.ts`'s
-verified-against-a-real-checkout approach) and orchestrator-tier scopes in
-`@imajin/auth`'s `GRANT_SCOPE_REGISTRY` if OpenClaw's grant surface differs
-from NanoClaw's — both open questions for a follow-up issue, not resolved
-here.
+`harness: 'openclaw'` is a fully implemented alternative to `nanoclaw`, not a
+stub: identity minting, grant issuance, and envelope rendering all run
+through the exact same pipeline, branching only at the render step to pick
+`renderOpenClaw()` (`@imajin/claw-envelope`) instead of `renderNanoClaw()`.
+See [`openclaw-first-boot.md`](./openclaw-first-boot.md) for the full design,
+research trail, and what could/couldn't be verified end-to-end (no OpenClaw
+core-source checkout or live install was available in that task's
+environment — the hosted-placement compose stack under `deploy/openclaw/` is
+tracked as follow-up work for that reason, while `placement: 'local'` is
+fully supported today via the same bundle-download flow `nanoclaw` already
+has).
+
+OpenClaw's grant surface reuses `@imajin/auth`'s existing
+`GRANT_SCOPE_REGISTRY` unchanged — the wizard's scope checkboxes were already
+harness-agnostic (sourced from that same registry for `nanoclaw`), so no new
+scopes were needed.
 
 ## 9. Model on your own LAN? That's local placement, not a connector URL.
 

@@ -314,16 +314,20 @@ describe('createProvision — partial-failure legibility', () => {
     expect(mintAgentIdentityMock).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves a legible failed row for an openclaw harness at the render step, after identity and grants succeed', async () => {
+  it('successfully provisions an openclaw-harness agent through mint, grants, and render (imajin-ai#2186)', async () => {
     const provision = await createProvision({
-      servingDid: SERVING_DID, name: 'OpenClaw Stub', harness: 'openclaw', placement: 'hosted', scopes: [],
+      servingDid: SERVING_DID, name: 'OpenClaw Agent', harness: 'openclaw', placement: 'hosted', scopes: [],
     });
 
-    expect(provision.status).toBe('failed');
+    expect(provision.status).toBe('awaiting_boot');
     expect(provision.agentDid).toBe(AGENT_DID);
     const steps = provision.steps as { step: string; status: string; error?: string }[];
     expect(steps.map((s) => s.step)).toEqual(['mint_identity', 'issue_grants', 'render_envelope']);
-    expect(steps[2].error).toMatch(/not yet implemented/);
+    expect(steps.every((s) => s.status === 'ok')).toBe(true);
+    expect(provision.envelopeManifest).toBeTruthy();
+    expect(publishMock).toHaveBeenCalledWith('agent.provisioned', expect.objectContaining({
+      payload: expect.objectContaining({ agentDid: AGENT_DID, servingDid: SERVING_DID, harness: 'openclaw', status: 'awaiting_boot' }),
+    }));
   });
 });
 
@@ -441,10 +445,23 @@ describe('renderEnvelopeForRow', () => {
     ).toThrow('Provision has no agent identity yet');
   });
 
-  it('throws a 501 ProvisionError for a non-nanoclaw harness', () => {
+  it('renders an openclaw harness successfully', () => {
+    const rendered = renderEnvelopeForRow({
+      harness: 'openclaw',
+      agentDid: AGENT_DID,
+      servingDid: SERVING_DID,
+      handle: 'openclaw-agent',
+      scopes: [],
+      model: { provider: 'anthropic:claude', via: 'kernel-passthrough' },
+    } as never);
+    expect(rendered.harness).toBe('openclaw');
+    expect(rendered.files.some((f) => f.relativePath === 'openclaw/openclaw.json')).toBe(true);
+  });
+
+  it('throws a 501 ProvisionError for a harness outside the supported set', () => {
     expect(() =>
       renderEnvelopeForRow({
-        harness: 'openclaw',
+        harness: 'agent-zero',
         agentDid: AGENT_DID,
         servingDid: SERVING_DID,
         handle: 'stub-harness',

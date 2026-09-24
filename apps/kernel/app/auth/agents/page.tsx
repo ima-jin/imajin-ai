@@ -568,10 +568,10 @@ function ProvisionWizard({
             className={`px-3 py-1.5 rounded-lg text-sm border transition ${harness === 'nanoclaw' ? 'border-amber-500 text-amber-400 bg-amber-900/10' : 'border-gray-700 text-gray-400'}`}>
             NanoClaw
           </button>
-          <button type="button" onClick={() => setHarness('openclaw')} disabled
-            title="OpenClaw support is a documented stub (imajin-ai#1933 deliverable 4) — not yet implemented"
-            className="px-3 py-1.5 rounded-lg text-sm border border-gray-800 text-gray-600 cursor-not-allowed">
-            OpenClaw (coming soon)
+          <button type="button" onClick={() => setHarness('openclaw')}
+            title="OpenClaw envelope renderer (imajin-ai#2186) — configures the Imajin channel plugin against the agent DID + kernel URL"
+            className={`px-3 py-1.5 rounded-lg text-sm border transition ${harness === 'openclaw' ? 'border-amber-500 text-amber-400 bg-amber-900/10' : 'border-gray-700 text-gray-400'}`}>
+            OpenClaw
           </button>
         </div>
       </div>
