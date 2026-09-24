@@ -9,6 +9,12 @@
  * `src/lib/loops/verify-publisher-signature.ts` — same pattern as the
  * operator-approvals countersignature) before publishing it onto the bus;
  * an unsigned or forged event is rejected with 400 and never persisted.
+ * A validly signed event is then checked for publisher *authorization*
+ * (#2358, `src/lib/loops/authorize-publisher.ts`) — does this publisher DID
+ * actually have standing to write history for `payload.principal`? Self-
+ * attestation, the kernel's own node-witness DID (#2338), or an active
+ * `loops:publish` delegation grant (#1882) from that principal all pass;
+ * anything else is rejected with 403 before publishing.
  *
  * `GET` is the per-principal read: `requireAuth` + `resolveActingDid` (the
  * same delegation precedence every other authenticated route uses) resolve
@@ -49,7 +55,10 @@ export async function POST(request: NextRequest) {
 
   const result = await ingestLoopEvent(parsed.value);
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
+    return NextResponse.json(
+      { error: result.error, ...(result.code ? { code: result.code } : {}) },
+      { status: result.status, headers: cors },
+    );
   }
 
   return NextResponse.json(
