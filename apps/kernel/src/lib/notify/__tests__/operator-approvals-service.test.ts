@@ -17,6 +17,7 @@ const {
   mockSignSync,
   mockVerifyOperatorCountersignature,
   mockIsOperatorCountersignRequired,
+  mockEffectiveContentHash,
 } = vi.hoisted(() => ({
   mockSelectLimit: vi.fn(),
   mockInsertValues: vi.fn().mockResolvedValue(undefined),
@@ -27,6 +28,10 @@ const {
   // #2082: default OFF, same as production default — individual tests flip
   // this on to exercise the "kernel-forged decision" rejection path.
   mockIsOperatorCountersignRequired: vi.fn(() => false),
+  // #2294: delegates to the REAL effectiveContentHash by default (wired up
+  // in the `../operator-approvals` mock factory below, once the real module
+  // is available) — only the "fail-closed" test overrides this to throw.
+  mockEffectiveContentHash: vi.fn(),
 }));
 
 vi.mock('@/src/db', () => ({
@@ -87,7 +92,12 @@ vi.mock('../operator-countersign', () => ({ verifyOperatorCountersignature: mock
 
 vi.mock('../operator-approvals', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../operator-approvals')>();
-  return { ...actual, isOperatorCountersignRequired: mockIsOperatorCountersignRequired };
+  mockEffectiveContentHash.mockImplementation(actual.effectiveContentHash);
+  return {
+    ...actual,
+    isOperatorCountersignRequired: mockIsOperatorCountersignRequired,
+    effectiveContentHash: mockEffectiveContentHash,
+  };
 });
 
 // ─── Subject ─────────────────────────────────────────────────────────────────
@@ -100,6 +110,7 @@ import {
   listApprovalsForOperator,
 } from '../operator-approvals-service';
 import { EXEC_COMMAND_KIND, EXEC_COMMAND_SOURCE } from '../exec-command-approvals';
+import { computeApprovalContentHash, validateApprovalRequestedPayload } from '../operator-approvals';
 
 function execCommandDetail(overrides: Record<string, unknown> = {}) {
   return {
@@ -568,6 +579,135 @@ describe('decideOperatorApproval', () => {
 
       expect(result).toEqual({ ok: false, error: 'Operator countersignature is required on this node', status: 400 });
       expect(mockUpdateWhere).not.toHaveBeenCalled();
+    });
+  });
+
+  // #2294: `operator.approval.decided` must carry `contentHash` so a source
+  // adapter's #2084 echo check (e.g. `ima-jin/openclaw-imajin-plugin`'s
+  // gateway-approvals bridge, `handleKernelDecision`'s "check 1") can ever
+  // pass in production.
+  describe('contentHash on the decided payload (#2294)', () => {
+    it('includes a sha256:-prefixed contentHash matching the legacy bare-kind row\'s recomputed hash', async () => {
+      const legacyRow = row({ status: 'pending', source: 'system-agent', kind: 'system-agent:restart', contentHash: null });
+      mockSelectLimit.mockResolvedValueOnce([legacyRow]).mockResolvedValueOnce([{ ...legacyRow, status: 'approved' }]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result.ok).toBe(true);
+      const expectedHash = computeApprovalContentHash({
+        proposalId: legacyRow.proposalId,
+        source: legacyRow.source,
+        kind: legacyRow.kind,
+        summary: legacyRow.summary,
+        keysTouched: legacyRow.keysTouched,
+        detail: legacyRow.detail,
+      });
+      expect(mockPublish).toHaveBeenCalledWith(
+        'operator.approval.decided',
+        expect.objectContaining({ payload: expect.objectContaining({ contentHash: `sha256:${expectedHash}` }) }),
+      );
+    });
+
+    it('echoes back exactly the contentHash the proposal was staged with (open-vocabulary row, #2152)', async () => {
+      const detail = { skillName: 'weather-lookup', kind: 'update', scan: 'clean' };
+      const stagedHash = computeApprovalContentHash({
+        proposalId: PROPOSAL_ID,
+        source: 'skill-workshop',
+        kind: 'skill-workshop:update',
+        summary: 'Update the weather-lookup skill.',
+        keysTouched: [],
+        detail,
+      });
+      const openVocabRow = row({
+        status: 'pending',
+        source: 'skill-workshop',
+        kind: 'skill-workshop:update',
+        summary: 'Update the weather-lookup skill.',
+        detail,
+        contentHash: stagedHash,
+      });
+      mockSelectLimit.mockResolvedValueOnce([openVocabRow]).mockResolvedValueOnce([{ ...openVocabRow, status: 'approved' }]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result.ok).toBe(true);
+      expect(mockPublish).toHaveBeenCalledWith(
+        'operator.approval.decided',
+        expect.objectContaining({ payload: expect.objectContaining({ contentHash: `sha256:${stagedHash}` }) }),
+      );
+    });
+
+    it('round-trips against a fixture matching the openclaw-imajin-plugin #45 bridge\'s own digest (request -> ingest -> decide -> echo)', async () => {
+      // Mirrors `buildDigestFields`/`computeContentHash` in the plugin's
+      // `gateway-approvals-bridge.ts` exactly: six canonical fields,
+      // `keysTouched` always `[]`, the source's native revision pin folded
+      // into `detail.sourceRevision`, "sha256:" always prefixed on the wire.
+      const digestFields = {
+        proposalId: 'system-agent:abc123',
+        source: 'system-agent',
+        kind: 'system-agent:restart',
+        summary: 'Restart the gateway to load the updated plugin',
+        keysTouched: [] as string[],
+        detail: { sourceRevision: 'a'.repeat(64) },
+      };
+      const bridgeComputedContentHash = `sha256:${computeApprovalContentHash(digestFields)}`;
+
+      // Ingest: the kernel independently recomputes and normalizes (strips
+      // the "sha256:" prefix) exactly like `POST /notify/api/send` would.
+      const ingestResult = validateApprovalRequestedPayload({
+        proposalId: digestFields.proposalId,
+        source: digestFields.source,
+        kind: digestFields.kind,
+        summary: digestFields.summary,
+        keysTouched: digestFields.keysTouched,
+        detail: digestFields.detail,
+        contentHash: bridgeComputedContentHash,
+      });
+      expect(ingestResult.ok).toBe(true);
+
+      const stagedRow = row({
+        proposalId: digestFields.proposalId,
+        status: 'pending',
+        source: ingestResult.source,
+        kind: ingestResult.kind,
+        summary: digestFields.summary,
+        keysTouched: digestFields.keysTouched,
+        detail: ingestResult.detail,
+        contentHash: ingestResult.contentHash,
+      });
+      mockSelectLimit.mockResolvedValueOnce([stagedRow]).mockResolvedValueOnce([{ ...stagedRow, status: 'approved' }]);
+
+      const result = await decideOperatorApproval({
+        proposalId: digestFields.proposalId,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+      });
+
+      expect(result.ok).toBe(true);
+      // The exact value `handleKernelDecision`'s #2084 "check 1"
+      // (`payload.contentHash !== tracked.contentHash`) compares against —
+      // byte-for-byte identical to what the bridge itself computed and
+      // published on the original request.
+      expect(mockPublish).toHaveBeenCalledWith(
+        'operator.approval.decided',
+        expect.objectContaining({ payload: expect.objectContaining({ contentHash: bridgeComputedContentHash }) }),
+      );
+    });
+
+    it('fails closed (500), before any state mutation or publish, when contentHash cannot be computed', async () => {
+      mockEffectiveContentHash.mockImplementationOnce(() => {
+        throw new Error('canonicalize blew up');
+      });
+      mockSelectLimit.mockResolvedValueOnce([row({ status: 'pending' })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.status).toBe(500);
+      expect(mockSignSync).not.toHaveBeenCalled();
+      expect(mockUpdateWhere).not.toHaveBeenCalled();
+      expect(mockPublish).not.toHaveBeenCalled();
     });
   });
 });
