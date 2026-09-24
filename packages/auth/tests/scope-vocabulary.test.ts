@@ -402,7 +402,11 @@ describe('SCOPES is a faithful projection', () => {
     // kernel proxies to the internal corpus service, not a sealed third-party key.
     // #2297 — loops_list/loops_get spend no external credential either: they
     // proxy to the in-process kernel.loops registry projection, not a sealed key.
-    expect(credentialFree).toEqual(['discovery:read', 'corpus:read', 'corpus:write', 'loops:read']);
+    // #2316 — cycle_run/cycle_status spend no external credential either: they
+    // only write loop.* rail events and decision:card approvals rows, both
+    // native to the kernel; any credential a future phase-runner spends is
+    // that action's own scope, checked separately when it exists.
+    expect(credentialFree).toEqual(['discovery:read', 'corpus:read', 'corpus:write', 'loops:read', 'cycle:run']);
 
     // Fail-closed default: an entry that says nothing is assumed to spend the
     // connector's credential.
