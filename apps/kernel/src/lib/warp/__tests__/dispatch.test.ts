@@ -80,6 +80,18 @@ import {
 } from '../dispatch';
 import { CorpusContextError } from '../corpus-context';
 
+// #2334: every case in this file mocks `fetch`, the connector gate, the bus,
+// and the logger — nothing here waits on a real timer or real I/O. The
+// default 5s test timeout is still a *wall-clock* budget, though, and a
+// heavily loaded CI runner (many suites' worth of chained mock-fetch/publish
+// awaits competing for the same CPU) can blow past it without any of those
+// awaits actually being slow on their own terms. Vitest does not — cannot —
+// cancel the underlying promise chain when it declares a test timed out, so a
+// test that misses this budget keeps running in the background and can bleed
+// its next `fetch`/`publish` call into whichever test starts next. Raising
+// the ceiling removes the false failure without loosening any assertion.
+vi.setConfig({ testTimeout: 20_000 });
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const PRINCIPAL = 'did:imajin:veteze';
