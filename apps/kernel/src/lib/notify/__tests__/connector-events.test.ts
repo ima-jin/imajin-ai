@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { insertValues, updateSets, insertMock, updateMock, pushMock, buildFrameMock, getConnectorMock } = vi.hoisted(() => {
+const { insertValues, updateSets, insertMock, updateMock, selectMock, pushMock, buildFrameMock, getConnectorMock } = vi.hoisted(() => {
   const insertValues: Record<string, unknown>[] = [];
   const updateSets: Record<string, unknown>[] = [];
   const insertMock = vi.fn(() => ({
@@ -26,11 +26,17 @@ const { insertValues, updateSets, insertMock, updateMock, pushMock, buildFrameMo
       return { where: async () => undefined };
     },
   }));
+  // #1510 — template-store.ts's getTemplate() reads notify.templates via
+  // db.select(); returning no rows here keeps this suite's existing
+  // assertions unchanged by falling back to the in-code registry, same as
+  // before template-store.ts existed.
+  const selectMock = vi.fn(() => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }));
   return {
     insertValues,
     updateSets,
     insertMock,
     updateMock,
+    selectMock,
     pushMock: vi.fn(),
     buildFrameMock: vi.fn((input: Record<string, unknown>) => ({ type: 'notification', ...input })),
     getConnectorMock: vi.fn(),
@@ -42,8 +48,9 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 vi.mock('@/src/db', () => ({
-  db: { insert: insertMock, update: updateMock },
+  db: { insert: insertMock, update: updateMock, select: selectMock },
   notifications: { id: 'id' },
+  notifyTemplates: { scope: 'scope' },
 }));
 
 vi.mock('@imajin/logger', () => ({

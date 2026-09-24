@@ -661,6 +661,15 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'loop.progress': loopLifecycleChain(),
   'loop.blocked': loopLifecycleChain(),
   'loop.finished': loopLifecycleChain(),
+  // #1510 — data-driven notify templates. `notify-template-hot-reload`
+  // (apps/kernel/src/lib/notify/template-store.ts) drops the affected
+  // scope's cache entry immediately rather than waiting out its TTL, same
+  // shape as `vault.secret.updated`/`vault-hot-reload` above. `await: true`
+  // for the same reason vault's hot-reload chain awaits: a caller that just
+  // published the update should not race its own cache invalidation.
+  'notify.template.updated': [
+    { type: 'notify-template-hot-reload', config: {}, await: true, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------
