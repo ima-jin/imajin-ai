@@ -32,8 +32,8 @@
  * extra header lines into an email Subject.
  */
 
-const VAR_TOKEN = /\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
-const CTA_TOKEN = /\{\{\s*cta:([a-zA-Z_][a-zA-Z0-9_]*):([^{}]*)\}\}/g;
+const VAR_TOKEN = /\{\{\s*(\w+)\s*\}\}/g;
+const CTA_TOKEN = /\{\{\s*cta:(\w+):([^{}]*)\}\}/g;
 
 export type TemplateData = Record<string, unknown>;
 

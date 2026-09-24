@@ -143,7 +143,7 @@ export async function getTemplate(scope: string): Promise<NotifyTemplate | undef
     row = await fetchTemplateRow(scope);
     setCached(scope, row);
   }
-  if (row && row.enabled) return toNotifyTemplate(row);
+  if (row?.enabled) return toNotifyTemplate(row);
   return getCodeTemplate(scope);
 }
 
