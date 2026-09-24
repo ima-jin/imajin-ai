@@ -27,7 +27,7 @@
  * passed-in ConnectorStaticSecret instance.
  */
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAuth, resolveActingDid, resolveComposedBy } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import type { ConnectorStaticSecret } from './connector-static-secret';
@@ -129,6 +129,10 @@ export function createConnectorStaticSecretRoutes(
       return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
     }
     const principalDid = resolveActingDid(auth.identity);
+    // #2366 — who actually made this call, when that differs from who it is
+    // attributed to. `null` (first-party) is normalised to `undefined` so the
+    // notification frame omits the field entirely.
+    const actingAppDid = resolveComposedBy(auth.identity) ?? undefined;
 
     let body: { secret?: unknown; expiresAt?: unknown };
     try {
@@ -154,8 +158,8 @@ export function createConnectorStaticSecretRoutes(
         : null;
 
     try {
-      await opts.connector.sealAndGrant(principalDid, secret, { expiresAt });
-      log.info({ principalDid }, `${opts.name} static secret sealed`);
+      await opts.connector.sealAndGrant(principalDid, secret, { expiresAt, actingAppDid });
+      log.info({ principalDid, actingAppDid }, `${opts.name} static secret sealed`);
     } catch (err) {
       log.error({ err: String(err), principalDid }, `${opts.name} static secret sealing failed`);
       return NextResponse.json(
@@ -183,11 +187,12 @@ export function createConnectorStaticSecretRoutes(
       return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
     }
     const principalDid = resolveActingDid(auth.identity);
+    const actingAppDid = resolveComposedBy(auth.identity) ?? undefined;
 
     let revoked: boolean;
     try {
-      revoked = await opts.connector.revokeGrant(principalDid);
-      log.info({ principalDid, revoked }, `${opts.name} static secret grant revocation attempted`);
+      revoked = await opts.connector.revokeGrant(principalDid, actingAppDid);
+      log.info({ principalDid, actingAppDid, revoked }, `${opts.name} static secret grant revocation attempted`);
     } catch (err) {
       log.error({ err: String(err), principalDid }, `${opts.name} static secret revocation failed`);
       return NextResponse.json(

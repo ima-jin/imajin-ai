@@ -74,6 +74,14 @@ export interface ProjectionContext {
   scope: string;
   /** Absolute path of the authored document on disk (payload.path). */
   path: string;
+  /**
+   * The ACTING delegate's app DID (`payload.appDid`, the token's `azp`) when
+   * an app drove this edit for the owner (#2366). Undefined for a first-party
+   * edit. Carried onto every {@link BrokerRequest} below purely so an alert
+   * raised by the gate can name the delegate — it is NOT part of the consent
+   * lookup, which stays keyed on `requester`/`subject` and fail-closed.
+   */
+  appDid?: string;
 }
 
 /**
@@ -253,6 +261,7 @@ async function decideFieldRelease(
         type: PROJECTION_BROKER_TYPE,
         requester,
         subject: ctx.ownerDid,
+        ...(ctx.appDid ? { appDid: ctx.appDid } : {}),
         fields: [field],
         purpose: PROJECTION_PURPOSE,
         scope: ctx.scope,
@@ -345,7 +354,7 @@ async function applyToSurfaces(ctx: ProjectionContext, { released, removed }: Re
  * corrupting the projection.
  */
 export const projectReactor: ReactorHandler = async (event: BusEvent) => {
-  const payload = event.payload as { path?: string } | undefined;
+  const payload = event.payload as { path?: string; appDid?: string } | undefined;
   const path = payload?.path;
   if (!path) {
     log.warn({ event: event.type, subject: event.subject }, "project reactor: missing payload.path");
@@ -380,6 +389,7 @@ export const projectReactor: ReactorHandler = async (event: BusEvent) => {
     ownerDid: event.issuer,
     scope: event.scope,
     path,
+    ...(payload?.appDid ? { appDid: payload.appDid } : {}),
   };
 
   const reconciled = await reconcileFields(ctx, fields, data, releasePolicy);

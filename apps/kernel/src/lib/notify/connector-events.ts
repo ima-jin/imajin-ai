@@ -75,6 +75,10 @@ interface ConnectorNotificationPayload {
   /** `CONNECTOR_REGISTRY` id, e.g. `'gemini'`. Never credential material. */
   provider: string;
   hint?: ConnectorModelsChangedHint;
+  /** The principal this frame is addressed to — the `{did, appDid}` pair's `did` (#2366). */
+  did?: string;
+  /** The ACTING delegate's app DID when one drove the transition (#2366). */
+  appDid?: string;
 }
 
 /**
@@ -145,27 +149,59 @@ function affectsModelCatalog(provider: string): boolean {
   return getConnector(provider)?.modelsRoute != null;
 }
 
+/**
+ * The `{did, appDid}` context a DELEGATED frame carries (#2366).
+ *
+ * `actingAppDid` is the delegate that drove the transition —
+ * `resolveComposedBy(auth.identity)` on the session lane, the app token's `azp`
+ * on the app-token lane (#1926). A first-party action contributes NOTHING: the
+ * template's rule keys off `appDid`, so with no delegate there is nothing to
+ * disambiguate and that frame stays byte-identical to its pre-#2366 shape.
+ */
+function actorFields(principalDid: string, actingAppDid?: string): Partial<ConnectorNotificationPayload> {
+  return actingAppDid ? { did: principalDid, appDid: actingAppDid } : {};
+}
+
 /** Emit `connector.models.changed` directly — e.g. for a future model-picker or provider-toggle call site. */
 export async function notifyConnectorModelsChanged(
   principalDid: string,
   provider: string,
   hint: ConnectorModelsChangedHint,
+  actingAppDid?: string,
 ): Promise<void> {
-  await emitConnectorNotification(principalDid, CONNECTOR_MODELS_CHANGED_SCOPE, { provider, hint });
+  await emitConnectorNotification(principalDid, CONNECTOR_MODELS_CHANGED_SCOPE, {
+    provider,
+    hint,
+    ...actorFields(principalDid, actingAppDid),
+  });
 }
 
 /** Emit `connector.credential.sealed`, plus `connector.models.changed` when `provider` feeds the inference catalog. */
-export async function notifyConnectorCredentialSealed(principalDid: string, provider: string): Promise<void> {
-  await emitConnectorNotification(principalDid, CONNECTOR_CREDENTIAL_SEALED_SCOPE, { provider });
+export async function notifyConnectorCredentialSealed(
+  principalDid: string,
+  provider: string,
+  actingAppDid?: string,
+): Promise<void> {
+  await emitConnectorNotification(principalDid, CONNECTOR_CREDENTIAL_SEALED_SCOPE, {
+    provider,
+    ...actorFields(principalDid, actingAppDid),
+  });
   if (affectsModelCatalog(provider)) {
-    await notifyConnectorModelsChanged(principalDid, provider, 'credential-sealed');
+    await notifyConnectorModelsChanged(principalDid, provider, 'credential-sealed', actingAppDid);
   }
 }
 
 /** Emit `connector.credential.unsealed`, plus `connector.models.changed` when `provider` feeds the inference catalog. */
-export async function notifyConnectorCredentialUnsealed(principalDid: string, provider: string): Promise<void> {
-  await emitConnectorNotification(principalDid, CONNECTOR_CREDENTIAL_UNSEALED_SCOPE, { provider });
+export async function notifyConnectorCredentialUnsealed(
+  principalDid: string,
+  provider: string,
+  actingAppDid?: string,
+): Promise<void> {
+  await emitConnectorNotification(principalDid, CONNECTOR_CREDENTIAL_UNSEALED_SCOPE, {
+    provider,
+    ...actorFields(principalDid, actingAppDid),
+  });
   if (affectsModelCatalog(provider)) {
-    await notifyConnectorModelsChanged(principalDid, provider, 'credential-unsealed');
+    await notifyConnectorModelsChanged(principalDid, provider, 'credential-unsealed', actingAppDid);
   }
 }

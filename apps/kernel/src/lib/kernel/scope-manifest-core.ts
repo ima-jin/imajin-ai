@@ -378,7 +378,11 @@ export async function publishConnectorScopeManifest(opts: {
 
   await syncConnectorConsentGrants(ownerDid, connectorDid, assetId, scopes, isOnConsent, appDid);
 
-  const result = await updateAssetContent({ assetId, requesterDid: ownerDid, content });
+  // `appDid` rides the write so the `document.changed` it fires records WHO
+  // drove this publish (#2366). The projection reactor's consent gate can then
+  // name that client on the owner-facing alert instead of rendering the owner
+  // as their own requester. Attribution only — the write stays owner-pinned.
+  const result = await updateAssetContent({ assetId, requesterDid: ownerDid, content, appDid });
   if (!result.ok) {
     throw new Error(`${connectorDid} scope-manifest update failed (${result.code}): ${result.message}`);
   }

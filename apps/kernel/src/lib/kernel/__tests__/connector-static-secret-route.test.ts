@@ -21,6 +21,11 @@ vi.mock('@imajin/auth', () => ({
   // the whole identity through `resolveActingDid`) fails these tests (#1717).
   resolveActingDid: (identity: { id: string; actingFor?: string; actingAs?: string }) =>
     identity.actingFor ?? identity.actingAs ?? identity.id,
+  // Mirrors packages/auth/src/acting-did.ts's composer resolution (#1673): who
+  // TYPED the request, as opposed to who it is attributed to. #2366 threads it
+  // to the connector notifier so the owner's alert names the acting delegate.
+  resolveComposedBy: (identity: { id: string; actingFor?: string }) =>
+    identity.actingFor && identity.actingFor !== identity.id ? identity.id : null,
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -148,7 +153,10 @@ describe('POST seal', () => {
     const response = await routes(connector).POST(makeReq({ secret: SECRET }));
 
     expect(response.status).toBe(201);
-    expect(connector.sealAndGrant).toHaveBeenCalledWith(OWNER_DID, SECRET, { expiresAt: null });
+    expect(connector.sealAndGrant).toHaveBeenCalledWith(OWNER_DID, SECRET, {
+      expiresAt: null,
+      actingAppDid: undefined,
+    });
     expect(JSON.stringify(await response.json())).not.toContain(SECRET);
   });
 
@@ -165,7 +173,13 @@ describe('POST seal', () => {
     const response = await routes(connector).POST(makeReq({ secret: SECRET }));
 
     expect(response.status).toBe(201);
-    expect(connector.sealAndGrant).toHaveBeenCalledWith(BUSINESS_DID, SECRET, { expiresAt: null });
+    // #2366: attribution stays split — the seal is minted for the acting-for
+    // principal, while the session DID that actually typed it rides along as
+    // `actingAppDid` so the owner's alert can name it.
+    expect(connector.sealAndGrant).toHaveBeenCalledWith(BUSINESS_DID, SECRET, {
+      expiresAt: null,
+      actingAppDid: OWNER_DID,
+    });
   });
 
   it('succeeds when the grant is still pending (Tier 1)', async () => {
@@ -203,11 +217,15 @@ describe('POST seal', () => {
     await routes(connector).POST(makeReq({ secret: SECRET, expiresAt: '2030-01-01T00:00:00.000Z' }));
     expect(connector.sealAndGrant).toHaveBeenCalledWith(OWNER_DID, SECRET, {
       expiresAt: new Date('2030-01-01T00:00:00.000Z'),
+      actingAppDid: undefined,
     });
 
     const other = makeConnector();
     await routes(other).POST(makeReq({ secret: SECRET, expiresAt: 'not-a-date' }));
-    expect(other.sealAndGrant).toHaveBeenCalledWith(OWNER_DID, SECRET, { expiresAt: null });
+    expect(other.sealAndGrant).toHaveBeenCalledWith(OWNER_DID, SECRET, {
+      expiresAt: null,
+      actingAppDid: undefined,
+    });
   });
 
   it('reports a sealing failure as 500 rather than claiming success', async () => {
@@ -230,8 +248,17 @@ describe('DELETE revoke', () => {
     const response = await routes(connector).DELETE(makeReq());
 
     expect(response.status).toBe(200);
-    expect(connector.revokeGrant).toHaveBeenCalledWith(OWNER_DID);
+    expect(connector.revokeGrant).toHaveBeenCalledWith(OWNER_DID, undefined);
     expect(await response.json()).toEqual({ revoked: true });
+  });
+
+  it('names the composing session DID as the acting delegate when revoking for another principal', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OWNER_DID, actingFor: BUSINESS_DID } });
+    const connector = makeConnector();
+
+    await routes(connector).DELETE(makeReq());
+
+    expect(connector.revokeGrant).toHaveBeenCalledWith(BUSINESS_DID, OWNER_DID);
   });
 
   it('reports false when there was no active grant', async () => {

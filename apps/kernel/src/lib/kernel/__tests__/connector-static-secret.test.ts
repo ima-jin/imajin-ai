@@ -304,7 +304,7 @@ describe('connector lifecycle notifications', () => {
   it('sealAndGrant emits connector.credential.sealed, using opts.name as the provider id', async () => {
     await makeConnector().sealAndGrant(PRINCIPAL, SECRET);
 
-    expect(notifySealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test');
+    expect(notifySealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test', undefined);
     expect(notifyUnsealedMock).not.toHaveBeenCalled();
   });
 
@@ -313,14 +313,31 @@ describe('connector lifecycle notifications', () => {
 
     await makeConnector().sealAndGrant(PRINCIPAL, SECRET);
 
-    expect(notifySealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test');
+    expect(notifySealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test', undefined);
   });
 
   it('revokeGrant emits connector.credential.unsealed only when a grant was actually revoked', async () => {
     revokeGrantMock.mockResolvedValue(true);
 
     expect(await makeConnector().revokeGrant(PRINCIPAL)).toBe(true);
-    expect(notifyUnsealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test');
+    expect(notifyUnsealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test', undefined);
+  });
+
+  /**
+   * #2366 — connector use is owner-facing, so when an app drove the seal the
+   * notifier is told which one, and the owner's alert names it rather than
+   * reading as if the owner sealed the key themself.
+   */
+  it('forwards the acting delegate to the seal and unseal notifiers', async () => {
+    const actingAppDid = 'did:imajin:ADEKzzzzzzzzzzzzzzzzzzzzzzzzzzzzn54k';
+    revokeGrantMock.mockResolvedValue(true);
+    const connector = makeConnector();
+
+    await connector.sealAndGrant(PRINCIPAL, SECRET, { actingAppDid });
+    await connector.revokeGrant(PRINCIPAL, actingAppDid);
+
+    expect(notifySealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test', actingAppDid);
+    expect(notifyUnsealedMock).toHaveBeenCalledWith(PRINCIPAL, 'test', actingAppDid);
   });
 
   it('revokeGrant stays silent when there was nothing to revoke', async () => {

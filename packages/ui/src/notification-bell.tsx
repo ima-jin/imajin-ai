@@ -34,6 +34,11 @@ function BellIcon({ className }: Readonly<{ className?: string }>) {
   );
 }
 
+/** Elide the middle of a long DID for display. Mirrors the kernel's owner-actor renderer. */
+function shortDid(did: string): string {
+  return did.length > 30 ? `${did.slice(0, 20)}\u2026${did.slice(-6)}` : did;
+}
+
 /**
  * Inline action card for `broker:consent-request` notifications.
  * Renders Approve / Deny buttons directly in the bell dropdown.
@@ -41,6 +46,12 @@ function BellIcon({ className }: Readonly<{ className?: string }>) {
  * Approve: creates a consent grant via `POST /api/broker/consent`, then marks
  * the notification as read.
  * Deny: marks as read only (no grant created).
+ *
+ * #2366 — the identity line under the title names the ACTING party. The card
+ * used to print `requesterDid`, which on the app-token lane (#1926) is the
+ * owner's own DID, so a delegate acting as the principal rendered as the
+ * principal. When `appDid` differs from `did` the delegate is shown instead,
+ * with an explicit on-behalf-of line naming the principal underneath.
  */
 function ConsentRequestCard({
   notification,
@@ -49,10 +60,15 @@ function ConsentRequestCard({
   const [busy, setBusy] = useState<'approve' | 'deny' | null>(null);
   const data = notification.data ?? {};
   const requesterDid = typeof data.requesterDid === 'string' ? data.requesterDid : '';
+  const principalDid = typeof data.did === 'string' ? data.did : '';
+  const appDid = typeof data.appDid === 'string' ? data.appDid : '';
   const purpose = typeof data.purpose === 'string' ? data.purpose : '';
   const fields: string[] = Array.isArray(data.fields)
     ? (data.fields as unknown[]).filter((f): f is string => typeof f === 'string')
     : [];
+
+  const onBehalfOfOwner = appDid !== '' && appDid !== principalDid;
+  const actorDid = onBehalfOfOwner ? appDid : requesterDid || principalDid;
 
   async function handleApprove() {
     setBusy('approve');
@@ -80,9 +96,7 @@ function ConsentRequestCard({
     onDone();
   }
 
-  const shortDid = requesterDid.length > 30
-    ? `${requesterDid.slice(0, 20)}\u2026${requesterDid.slice(-6)}`
-    : requesterDid;
+  const actorLabel = shortDid(actorDid);
 
   return (
     <div
@@ -98,8 +112,13 @@ function ConsentRequestCard({
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-white">{notification.title}</p>
-          {shortDid && (
-            <p className="text-xs text-gray-500 mt-0.5 truncate" title={requesterDid}>{shortDid}</p>
+          {actorLabel && (
+            <p className="text-xs text-gray-500 mt-0.5 truncate" title={actorDid}>{actorLabel}</p>
+          )}
+          {onBehalfOfOwner && (
+            <p className="text-xs text-amber-500/80 mt-0.5 truncate" title={principalDid}>
+              on behalf of you ({shortDid(principalDid)})
+            </p>
           )}
           {fields.length > 0 && (
             <p className="text-xs text-gray-400 mt-0.5">{fields.join(', ')}</p>

@@ -51,6 +51,18 @@ export interface UpdateAssetContentInput {
    * default stays warn-only so existing callers are unaffected.
    */
   strict?: boolean;
+  /**
+   * The ACTING delegate's app DID (the token's `azp`) when an app drove this
+   * write on the owner's behalf (#2366) — e.g. an MCP/OAuth client publishing
+   * a scope-manifest via `projectConsentedScopes` (#1804).
+   *
+   * Purely attributive: authorization is unchanged (still owner-only via
+   * `canWriteAssetContent`). It rides `document.changed` so the downstream
+   * projection reactor can name the delegate on any owner-facing alert its
+   * consent gate raises, instead of rendering the owner as their own
+   * requester. Omitted for a first-party write.
+   */
+  appDid?: string;
 }
 
 export type UpdateAssetContentResult =
@@ -125,6 +137,22 @@ function guardArticleUpdate(asset: Asset, content: string, assetId: string): Art
 }
 
 /**
+ * The `document.changed` payload for one write (#1205).
+ *
+ * `appDid` (#2366) is spread in ONLY when an app drove the write, so a
+ * first-party write publishes the exact pre-#2366 shape. Extracted so the
+ * conditional lives here rather than adding a branch to `updateAssetContent`.
+ */
+function documentChangedPayload(
+  path: string,
+  cid: string,
+  prevCid: string | null,
+  appDid?: string,
+): { path: string; cid: string; prevCid: string | null; appDid?: string } {
+  return { path, cid, prevCid, ...(appDid ? { appDid } : {}) };
+}
+
+/**
  * Overwrite an asset's text content as a new version (#1170 Stage 2).
  *
  * Extracted verbatim from PUT /media/api/assets/[id]/content so the HTTP route
@@ -134,7 +162,7 @@ function guardArticleUpdate(asset: Asset, content: string, assetId: string): Art
  * manifest, and versionCount + 1. The asset id (alias) is stable.
  */
 export async function updateAssetContent(input: UpdateAssetContentInput): Promise<UpdateAssetContentResult> {
-  const { assetId, requesterDid, content, requireTextMime = false, strict = false } = input;
+  const { assetId, requesterDid, content, requireTextMime = false, strict = false, appDid } = input;
 
   let loaded: Asset | undefined;
   try {
@@ -243,7 +271,7 @@ export async function updateAssetContent(input: UpdateAssetContentInput): Promis
         issuer: asset.ownerDid,
         subject: assetId,
         scope: DOCUMENT_CHANGED_SCOPE,
-        payload: { path: asset.storagePath, cid, prevCid },
+        payload: documentChangedPayload(asset.storagePath, cid, prevCid, appDid),
       });
     } catch (err) {
       log.error({ err: String(err), assetId }, "document.changed publish failed (non-fatal)");
