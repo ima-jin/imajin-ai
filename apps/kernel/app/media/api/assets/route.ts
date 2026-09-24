@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { db, assets, identities } from "@/src/db";
+import { db, assets, identities, type Asset } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and, sql, ilike, like } from "drizzle-orm";
@@ -13,6 +13,8 @@ import {
   type ArticleFrontmatterCheck,
 } from "@/src/lib/media/article-guard";
 import { buildAssetViewUrl } from "@/src/lib/media/view-url";
+import { getUploadLimitBytes } from "@/src/lib/media/upload-limits";
+import { buildCompactAssetResponse } from "@/src/lib/media/compact-response";
 
 const log = createLogger("kernel");
 
@@ -20,17 +22,6 @@ export const dynamic = "force-dynamic";
 
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
-}
-
-const TIER_LIMITS: Record<string, number> = {
-  soft: 50,
-  preliminary: 50,
-  established: 200,
-};
-
-function getUploadLimitBytes(identity: { tier?: string; uploadLimitMb?: number | null }): number {
-  const mb = identity.uploadLimitMb ?? TIER_LIMITS[identity.tier || 'soft'] ?? 50;
-  return mb * 1024 * 1024;
 }
 
 /** Resolve (and optionally rename) the upload filename. */
@@ -85,6 +76,64 @@ function guardArticleUpload(input: {
 
   log.warn({ filename, reason: check.reason }, "Article-context markdown upload has no usable frontmatter");
   return check;
+}
+
+/**
+ * Build the upload response for either the dedup (200) or fresh-create (201)
+ * path. Extracted so POST itself stays a linear sequence of guard checks
+ * (cognitive-complexity budget) — `?compact=1` (#2282 item 5) is just another
+ * branch of this single response builder rather than a fourth `if` inline in
+ * the handler.
+ */
+function buildUploadResponse(input: {
+  asset: Asset;
+  deduplicated: boolean;
+  url: string;
+  articleWarning: ArticleFrontmatterCheck | null;
+  compact: boolean;
+  cors: Record<string, string>;
+}): NextResponse {
+  const { asset, deduplicated, url, articleWarning, compact, cors } = input;
+  const status = deduplicated ? 200 : 201;
+
+  if (compact) {
+    return NextResponse.json(buildCompactAssetResponse(asset, url, articleWarning), { status, headers: cors });
+  }
+
+  if (deduplicated) {
+    return NextResponse.json(
+      {
+        id: asset.id,
+        url,
+        viewUrl: url,
+        filename: asset.filename,
+        mimeType: asset.mimeType,
+        size: asset.size,
+        hash: asset.hash,
+        ...(asset.cid ? { cid: asset.cid } : {}),
+        deduplicated: true,
+        ...articleWarningFields(articleWarning),
+      },
+      { status, headers: cors }
+    );
+  }
+
+  return NextResponse.json(
+    {
+      id: asset.id,
+      url,
+      viewUrl: url,
+      filename: asset.filename,
+      mimeType: asset.mimeType,
+      size: asset.size,
+      hash: asset.hash,
+      storagePath: asset.storagePath,
+      fairManifest: asset.fairManifest,
+      createdAt: asset.createdAt,
+      ...articleWarningFields(articleWarning),
+    },
+    { status, headers: cors }
+  );
 }
 
 /** Resolve ownerDid for GET /api/assets listing: internal key path or user auth path. */
@@ -230,42 +279,9 @@ export async function POST(request: NextRequest) {
 
   const { asset, deduplicated } = result;
   const url = buildAssetViewUrl(baseUrl, asset.id);
+  const compact = new URL(request.url).searchParams.get("compact") === "1";
 
-  if (deduplicated) {
-    // Existing asset returned on content match (CID-global or hash+owner).
-    return NextResponse.json(
-      {
-        id: asset.id,
-        url,
-        viewUrl: url,
-        filename: asset.filename,
-        mimeType: asset.mimeType,
-        size: asset.size,
-        hash: asset.hash,
-        ...(asset.cid ? { cid: asset.cid } : {}),
-        deduplicated: true,
-        ...articleWarningFields(articleWarning),
-      },
-      { status: 200, headers: cors }
-    );
-  }
-
-  return NextResponse.json(
-    {
-      id: asset.id,
-      url,
-      viewUrl: url,
-      filename: asset.filename,
-      mimeType: asset.mimeType,
-      size: asset.size,
-      hash: asset.hash,
-      storagePath: asset.storagePath,
-      fairManifest: asset.fairManifest,
-      createdAt: asset.createdAt,
-      ...articleWarningFields(articleWarning),
-    },
-    { status: 201, headers: cors }
-  );
+  return buildUploadResponse({ asset, deduplicated, url, articleWarning, compact, cors });
 }
 
 // ---------------------------------------------------------------------------

@@ -8,6 +8,8 @@ import { buildArticleBlock, deriveArticleProjection } from '../../media/article-
 import { composeArticleFile } from '../../media/frontmatter';
 import { updateAssetContent } from '@/src/lib/media/update-asset';
 import { articleWarningFields } from '../../media/article-guard';
+import { buildAssetViewUrl } from '../../media/view-url';
+import { buildCompactAssetResponse } from '../../media/compact-response';
 
 /**
  * Media WRITE tools for the MCP connector (#1170). All require the 'media:write'
@@ -184,6 +186,11 @@ const uploadTool: McpTool = {
       filename: { type: 'string', description: 'Original filename (used for extension + MIME inference)' },
       data_base64: { type: 'string', description: 'Base64-encoded file bytes' },
       mimeType: { type: 'string', description: 'Optional MIME type; inferred from filename when omitted' },
+      quiet: {
+        type: 'boolean',
+        description:
+          'Return a compact { id, url, hash, size, mimeType, warning? } payload instead of the verbose response. Defaults to false.',
+      },
     },
     required: ['filename', 'data_base64'],
     additionalProperties: false,
@@ -194,11 +201,11 @@ const uploadTool: McpTool = {
     if (!filename) throw new Error('filename is required');
     const dataB64 = str(args, 'data_base64');
     if (!dataB64) throw new Error('data_base64 is required');
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.MEDIA_PUBLIC_URL ?? '';
 
     const buffer = Buffer.from(dataB64, 'base64');
     if (buffer.byteLength === 0) throw new Error('data_base64 decoded to empty content');
     if (buffer.byteLength > MAX_UPLOAD_BYTES) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.MEDIA_PUBLIC_URL ?? '';
       return json({
         error: {
           code: 'payload_too_large',
@@ -220,12 +227,21 @@ const uploadTool: McpTool = {
       access: 'private',
       dedup: false,
     });
+    const url = buildAssetViewUrl(baseUrl, asset.id);
+
+    // #2282 item 5 — quiet: true trades the verbose response for the compact
+    // { id, url, hash, size, mimeType, warning? } shape.
+    if (args.quiet === true) {
+      return json(buildCompactAssetResponse(asset, url));
+    }
 
     return json({
       id: asset.id,
+      url,
       filename: asset.filename,
       mimeType: asset.mimeType,
       size: asset.size,
+      hash: asset.hash,
       access: 'private',
       ownerDid: asset.ownerDid,
       cid: asset.cid,
