@@ -2,12 +2,16 @@
  * Upstream HTTP calls: the kernel passthrough, and the break-glass direct
  * provider fallback (imajin-ai#1926).
  *
- * Both use `AbortSignal.timeout` around the initial `fetch()` call only —
- * `fetch()`'s promise resolves as soon as response headers arrive, so this
- * bounds time-to-first-byte, not total response time. That is exactly the
- * "kernel returns 5xx or times out" trigger the epic specifies: a slow but
- * healthy stream must not be aborted mid-flight just because the whole
- * completion takes longer than the TTFB deadline.
+ * Every call below bounds time-to-first-byte only, not total response time —
+ * a slow but healthy stream must not be aborted mid-flight just because the
+ * whole completion takes longer than the TTFB deadline (imajin-ai#2342). This
+ * is NOT what `AbortSignal.timeout(timeoutMs)` gives you: that signal fires
+ * `timeoutMs` after the request started regardless of whether headers have
+ * already arrived, and an abort on the signal `fetch()` was given tears down
+ * the in-flight body too, not just an unstarted request. `fetchWithTtfbTimeout`
+ * below uses its own `AbortController` and clears the timer the instant
+ * `fetch()` resolves (headers received), so the abort can only ever fire
+ * before the first byte.
  */
 import type { ProviderRouteConfig } from './types.js';
 import { stripTrailingSlashes } from './url-utils.js';
@@ -23,6 +27,29 @@ export class UpstreamUnavailableError extends Error {
   constructor(what: string, cause: string) {
     super(`${what} could not be reached: ${cause}`);
     this.name = 'UpstreamUnavailableError';
+  }
+}
+
+/**
+ * `fetch()` with an abort bound ONLY to time-to-first-byte. The timer starts
+ * when the request is issued and is cleared as soon as `fetch()` settles —
+ * on resolution (headers arrived) the body stream is then free to run for as
+ * long as it needs; on rejection there is nothing left to abort. Throws
+ * `UpstreamTimeoutError` when the timer fires first, `UpstreamUnavailableError`
+ * for any other network failure.
+ */
+async function fetchWithTtfbTimeout(url: string, init: RequestInit, timeoutMs: number, what: string): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new UpstreamTimeoutError(what, timeoutMs);
+    }
+    throw new UpstreamUnavailableError(what, err instanceof Error ? err.message : String(err));
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -76,19 +103,7 @@ export async function forwardToKernel(
     ...correlationHeaders(headers),
   };
 
-  try {
-    return await fetch(url, {
-      method: 'POST',
-      headers: reqHeaders,
-      body: bodyText,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (err) {
-    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      throw new UpstreamTimeoutError('Kernel', timeoutMs);
-    }
-    throw new UpstreamUnavailableError('Kernel', err instanceof Error ? err.message : String(err));
-  }
+  return fetchWithTtfbTimeout(url, { method: 'POST', headers: reqHeaders, body: bodyText }, timeoutMs, 'Kernel');
 }
 
 /**
@@ -103,18 +118,7 @@ export async function forwardModelsToKernel(
   timeoutMs: number,
 ): Promise<Response> {
   const url = `${stripTrailingSlashes(kernelBaseUrl)}/infer/v1/models/usable`;
-  try {
-    return await fetch(url, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (err) {
-    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      throw new UpstreamTimeoutError('Kernel', timeoutMs);
-    }
-    throw new UpstreamUnavailableError('Kernel', err instanceof Error ? err.message : String(err));
-  }
+  return fetchWithTtfbTimeout(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` } }, timeoutMs, 'Kernel');
 }
 
 /**
@@ -133,22 +137,11 @@ export async function forwardDirect(
     throw new NoDirectFallbackError(route.id);
   }
   const url = `${stripTrailingSlashes(route.directBaseUrl)}/chat/completions`;
-  try {
-    return await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${directApiKey}`,
-      },
-      body: bodyText,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (err) {
-    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      throw new UpstreamTimeoutError(`Direct provider '${route.id}'`, timeoutMs);
-    }
-    throw new UpstreamUnavailableError(`Direct provider '${route.id}'`, err instanceof Error ? err.message : String(err));
-  }
+  const reqHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${directApiKey}`,
+  };
+  return fetchWithTtfbTimeout(url, { method: 'POST', headers: reqHeaders, body: bodyText }, timeoutMs, `Direct provider '${route.id}'`);
 }
 
 /** The two Anthropic-format endpoints this shim forwards (imajin-ai#1959). */
@@ -187,19 +180,7 @@ export async function forwardAnthropicToKernel(
   if (headers.anthropicVersion) reqHeaders['anthropic-version'] = headers.anthropicVersion;
   if (headers.anthropicBeta) reqHeaders['anthropic-beta'] = headers.anthropicBeta;
 
-  try {
-    return await fetch(url, {
-      method: 'POST',
-      headers: reqHeaders,
-      body: bodyText,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (err) {
-    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      throw new UpstreamTimeoutError('Kernel', timeoutMs);
-    }
-    throw new UpstreamUnavailableError('Kernel', err instanceof Error ? err.message : String(err));
-  }
+  return fetchWithTtfbTimeout(url, { method: 'POST', headers: reqHeaders, body: bodyText }, timeoutMs, 'Kernel');
 }
 
 /**
@@ -230,17 +211,5 @@ export async function forwardAnthropicDirect(
   };
   if (headers.anthropicBeta) reqHeaders['anthropic-beta'] = headers.anthropicBeta;
 
-  try {
-    return await fetch(url, {
-      method: 'POST',
-      headers: reqHeaders,
-      body: bodyText,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (err) {
-    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      throw new UpstreamTimeoutError(`Direct provider '${route.id}'`, timeoutMs);
-    }
-    throw new UpstreamUnavailableError(`Direct provider '${route.id}'`, err instanceof Error ? err.message : String(err));
-  }
+  return fetchWithTtfbTimeout(url, { method: 'POST', headers: reqHeaders, body: bodyText }, timeoutMs, `Direct provider '${route.id}'`);
 }
