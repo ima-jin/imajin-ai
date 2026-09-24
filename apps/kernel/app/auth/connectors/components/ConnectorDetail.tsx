@@ -65,6 +65,13 @@ interface GitHubStatus extends OAuthConnectorStatus {
    * is sealed yet. Non-secret — the discriminator only.
    */
   flow?: GitHubAuthFlow | null;
+  /**
+   * Count of external MCP/OAuth clients (Claude, MCP Inspector, ...) holding
+   * their OWN active grant of a github:* scope (#2308) — never this card's
+   * own scope-manifest grantee. Powers a one-line pointer toward #2288's
+   * Grants lane; those grants are never listed on this card.
+   */
+  externalGrantClientCount?: number;
 }
 
 /**
@@ -215,6 +222,27 @@ function useScopeToggle<T extends { activeScopes: string[] }>(
 /** Save/update label for an OAuth-app configure button — shared by the GitHub and QuickBooks cards. */
 function configSaveButtonLabel(configSealed: boolean): string {
   return configSealed ? 'Update config' : 'Save config';
+}
+
+/** `count` noun–matched singular/plural, e.g. `pluralize(1, 'client', 'clients')` → `'client'`. */
+function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural;
+}
+
+/**
+ * One-line pointer (#2308) toward #2288's Grants lane: MCP/OAuth clients that
+ * hold their own grant of one of this connector's scopes are a DIFFERENT
+ * direction of grant (client → Imajin) from this card's own (Imajin →
+ * external service) scope-manifest grant, so they are never listed here —
+ * only counted. Renders nothing when there are none.
+ */
+function ExternalGrantPointer({ count, channel }: Readonly<{ count: number | undefined; channel: string }>) {
+  if (!count) return null;
+  return (
+    <p className="text-xs text-gray-600">
+      {count} MCP {pluralize(count, 'client holds', 'clients hold')} {channel}:* capabilities → Grants
+    </p>
+  );
 }
 
 // ── Shared subcomponents ──────────────────────────────────────────────────────
@@ -1254,6 +1282,9 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
             onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
           />
 
+          {/* External MCP/OAuth-client grant pointer (#2308) */}
+          <ExternalGrantPointer count={status.externalGrantClientCount} channel={entry.channel} />
+
           {/* Asset anchor */}
           {status.manifestAssetId && (
             <div className="text-xs text-gray-700 font-mono truncate pt-1 border-t border-white/5" title="Scope-manifest asset ID">
@@ -1276,7 +1307,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   );
 }
 
-// ── Credential-paste card (token-paste + static-secret) — #1604 ──────────────
+// ── Credential-paste card (token-paste + static-secret) — #1604 ──────────────────────────
 
 /**
  * Copy fallback for a paste-style connector whose registry entry omits

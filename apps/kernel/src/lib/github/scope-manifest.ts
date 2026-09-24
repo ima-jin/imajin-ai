@@ -16,6 +16,7 @@ import {
   readActiveConnectorScopes,
   syncConnectorConsentGrants,
   publishConnectorScopeManifest,
+  countExternalScopeGrantees,
   type Asset,
 } from '@/src/lib/kernel/scope-manifest-core';
 import {
@@ -49,6 +50,16 @@ export function findGitHubManifestAsset(ownerDid: string): Promise<Asset | null>
 
 export function readActiveGitHubScopes(ownerDid: string): Promise<string[]> {
   return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, GITHUB_CONNECTOR_DID);
+}
+
+/**
+ * Count of distinct external (MCP/OAuth-client) grantees currently holding an
+ * active grant of one or more `github:*` scopes (#2308) — never the connector
+ * card's own scope-manifest grantee. Powers the card's one-line pointer
+ * toward #2288's Grants lane; the grants themselves are never listed here.
+ */
+export function countExternalGitHubScopeGrantees(ownerDid: string): Promise<number> {
+  return countExternalScopeGrantees(ownerDid, MANIFEST_CHANNEL, GITHUB_CONNECTOR_DID);
 }
 
 export function syncConsentGrants(

@@ -2,7 +2,10 @@
  * GET + POST /github/api/scope-manifest (#1352)
  *
  * Wires the shared scope-manifest route factory for the GitHub connector.
- * GET returns { manifestAssetId, activeScopes, validScopes, configSealed, tokenSealed, flow }.
+ * GET returns { manifestAssetId, activeScopes, validScopes, configSealed, tokenSealed, flow,
+ * externalGrantClientCount }. `externalGrantClientCount` (#2308) is a COUNT ONLY of external
+ * MCP/OAuth clients holding their own grant of a github:* scope — never the connector's own
+ * grant, and never a per-grant listing (that belongs on #2288's Grants lane).
  * POST validates scopes fail-closed, publishes, returns { published, assetId, activeScopes }.
  *
  * Scope materialisation:
@@ -16,6 +19,7 @@ import {
   publishGitHubScopeManifest,
   readActiveGitHubScopes,
   findGitHubManifestAsset,
+  countExternalGitHubScopeGrantees,
   VALID_GITHUB_SCOPES,
 } from '@/src/lib/github/scope-manifest';
 import { configField, oauthVaultField, readConfigFlow, vaultField } from '@/src/lib/github/connector';
@@ -33,7 +37,7 @@ export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
   // once a usable grant covers the field, so configSealed/tokenSealed stay false
   // while a grant is pending and credentialPending carries the reason why.
   getExtraFields: async (ownerDid) => {
-    const [configStatus, oauthStatus, patStatus, flow] = await Promise.all([
+    const [configStatus, oauthStatus, patStatus, flow, externalGrantClientCount] = await Promise.all([
       vaultFieldStatus(configField(ownerDid)),
       vaultFieldStatus(oauthVaultField(ownerDid)),
       vaultFieldStatus(vaultField(ownerDid)),
@@ -42,6 +46,12 @@ export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
       // config is sealed and readable, which is exactly when the UI should keep
       // showing its default (device) mode selector.
       readConfigFlow(ownerDid).catch(() => null),
+      // #2308: count of external MCP/OAuth clients (Claude, MCP Inspector, ...)
+      // holding their OWN active grant of a github:* scope — never this
+      // connector's own scope-manifest grantee. Degrades to 0 (not fatal)
+      // rather than failing the whole card on a query hiccup, same posture as
+      // `flow` above.
+      countExternalGitHubScopeGrantees(ownerDid).catch(() => 0),
     ]);
     return {
       configSealed: configStatus === 'ready',
@@ -51,6 +61,7 @@ export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
         oauthStatus === 'pending-grant' ||
         patStatus === 'pending-grant',
       flow,
+      externalGrantClientCount,
     };
   },
 });

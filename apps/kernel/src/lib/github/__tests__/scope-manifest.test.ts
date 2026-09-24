@@ -7,12 +7,13 @@ import { describe, it, expect, vi } from 'vitest';
 // The core logic (DB queries, consent grant sync, publish orchestration) is
 // tested in kernel/__tests__/scope-manifest-core.test.ts.
 
-const { mockBuild, mockFind, mockReadActive, mockSync, mockPublish } = vi.hoisted(() => ({
+const { mockBuild, mockFind, mockReadActive, mockSync, mockPublish, mockCountExternal } = vi.hoisted(() => ({
   mockBuild: vi.fn(() => 'yaml-content'),
   mockFind: vi.fn(async () => null),
   mockReadActive: vi.fn(async () => []),
   mockSync: vi.fn(async () => undefined),
   mockPublish: vi.fn(async () => 'asset_xxx'),
+  mockCountExternal: vi.fn(async () => 0),
 }));
 
 vi.mock('@/src/lib/kernel/scope-manifest-core', () => ({
@@ -21,6 +22,7 @@ vi.mock('@/src/lib/kernel/scope-manifest-core', () => ({
   readActiveConnectorScopes: mockReadActive,
   syncConnectorConsentGrants: mockSync,
   publishConnectorScopeManifest: mockPublish,
+  countExternalScopeGrantees: mockCountExternal,
 }));
 
 vi.mock('../connector', () => ({ GITHUB_CONNECTOR_DID: 'did:imajin:github-connector' }));
@@ -31,6 +33,7 @@ import {
   readActiveGitHubScopes,
   syncConsentGrants,
   publishGitHubScopeManifest,
+  countExternalGitHubScopeGrantees,
   VALID_GITHUB_SCOPES,
   GITHUB_SCOPE_DESCRIPTORS,
 } from '../scope-manifest';
@@ -112,5 +115,17 @@ describe('publishGitHubScopeManifest', () => {
     expect(opts.channel).toBe('github');
     expect(opts.filename).toBe('github-scope-manifest.md');
     expect(opts.scopeDescriptors).toBe(GITHUB_SCOPE_DESCRIPTORS);
+  });
+});
+
+describe('countExternalGitHubScopeGrantees (#2308)', () => {
+  it('calls countExternalScopeGrantees with github channel and GitHub DID', async () => {
+    await countExternalGitHubScopeGrantees('did:owner');
+    expect(mockCountExternal).toHaveBeenCalledWith('did:owner', 'github', GITHUB_CONNECTOR_DID);
+  });
+
+  it('returns the count from the core query', async () => {
+    mockCountExternal.mockResolvedValueOnce(3);
+    expect(await countExternalGitHubScopeGrantees('did:owner')).toBe(3);
   });
 });
