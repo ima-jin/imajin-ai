@@ -235,17 +235,21 @@ export async function sealPat(ownerDid: string, pat: string): Promise<void> {
   await sealAndStoreV2(vaultField(ownerDid), pat);
 }
 
-// ── Rate-limit constants (tune-later per #1371) ────────────────────────────────
+// ── Rate-limit constants (ruled by Ryan 2026-09-24, Refs #2310; supersedes #1371 placeholders) ──
 
 /** Hard cap on ALL done writes per owner per rolling hour. Enforced even inside live windows. */
-const GLOBAL_WRITE_CEILING_PER_HOUR = 30;
+const GLOBAL_WRITE_CEILING_PER_HOUR = 100;
 
 /**
  * Per-tool sub-limits enforced within the global ceiling (#1371).
  * Each tool may have multiple entries (e.g. burst + hourly).
  * Checked in order; the first exceeded entry trips the pending path.
  *
- * All numbers are tune-later placeholders matching the #1366 epic design.
+ * Ruled values (Refs #2310): create_issue is sized so a 50-issue epic
+ * fan-out passes in one shot, with no per-minute burst sub-limit — GitHub's
+ * own secondary cap (80/min · 500/hr) already guards abuse. The global
+ * ceiling was raised so issues (50) and comments (60) don't starve each
+ * other within the same rolling hour.
  */
 const PER_TOOL_LIMITS: Record<string, ReadonlyArray<{
   /** Max `done` rows for this tool within the rolling window. */
@@ -260,9 +264,9 @@ const PER_TOOL_LIMITS: Record<string, ReadonlyArray<{
     { ceiling: 10, windowHours: 1 / 60, label: '10/min burst' },
     { ceiling: 60, windowHours: 1,      label: '60/hr' },
   ],
-  // Additive writes — tighter than comments; issues are higher-signal.
+  // Additive writes — sized for a single-shot epic fan-out (Refs #2310); no burst sub-limit.
   'github_create_issue': [
-    { ceiling: 5, windowHours: 1, label: '5/hr' },
+    { ceiling: 50, windowHours: 1, label: '50/hr' },
   ],
   // Mutate writes — tightest; always require confirm anyway.
   'github_update_issue': [
