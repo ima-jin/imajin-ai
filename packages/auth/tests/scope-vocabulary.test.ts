@@ -400,7 +400,9 @@ describe('SCOPES is a faithful projection', () => {
       .map((e) => e.scope);
     // #1730 — corpus proxy tools spend no external credential either: the
     // kernel proxies to the internal corpus service, not a sealed third-party key.
-    expect(credentialFree).toEqual(['discovery:read', 'corpus:read', 'corpus:write']);
+    // #2297 — loops_list/loops_get spend no external credential either: they
+    // proxy to the in-process kernel.loops registry projection, not a sealed key.
+    expect(credentialFree).toEqual(['discovery:read', 'corpus:read', 'corpus:write', 'loops:read']);
 
     // Fail-closed default: an entry that says nothing is assumed to spend the
     // connector's credential.
