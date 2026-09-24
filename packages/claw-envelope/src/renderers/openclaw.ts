@@ -72,8 +72,12 @@ export interface RenderOpenClawOptions {
 
 function userMd(envelope: ContextEnvelope): string {
   const grantList =
-    envelope.delegationGrants.map((g) => `- \`${g.capability}\`${g.note ? ` — ${g.note}` : ''}`).join('\n') ||
-    '- (none requested)';
+    envelope.delegationGrants
+      .map((g) => {
+        const noteSuffix = g.note ? ` — ${g.note}` : '';
+        return `- \`${g.capability}\`${noteSuffix}`;
+      })
+      .join('\n') || '- (none requested)';
   const busRouteList =
     envelope.busRoutes.map((r) => `- \`${r.eventType}\` — ${r.description}`).join('\n') || '- (none)';
   return `# USER.md — ${envelope.handle}
