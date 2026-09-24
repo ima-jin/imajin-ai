@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   OPERATOR_DID,
+  GROUP_DID,
   operatorIdentity,
   otherHumanIdentity,
   agentActingForOperatorIdentity,
+  operatorActingAsGroupIdentity,
   pendingApprovalCard,
 } from '@/src/lib/notify/__tests__/operator-approvals-test-helpers';
 
@@ -15,7 +17,13 @@ const { mockRequireAuth, mockGetOperatorDid, mockList } = vi.hoisted(() => ({
   mockList: vi.fn(),
 }));
 
-vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
+// #2359: the route's act-as context is computed by the real
+// `isUnderActAs`/`resolveActingDid`, so keep the actual implementations
+// and override only `requireAuth`.
+vi.mock('@imajin/auth', async () => {
+  const actual = await vi.importActual<typeof import('@imajin/auth')>('@imajin/auth');
+  return { ...actual, requireAuth: mockRequireAuth };
+});
 
 vi.mock('@/src/lib/kernel/cors', () => ({
   corsHeaders: () => new Headers(),
@@ -122,5 +130,39 @@ describe('GET /jin/api/operator-approvals (#2059)', () => {
     await GET(makeReq() as Parameters<typeof GET>[0]);
 
     expect(mockList).toHaveBeenCalledWith(OPERATOR_DID, {});
+  });
+
+  // #2359: deciding is self-only, but LISTING stays readable under act-as —
+  // hiding the queue would only make the act-as state harder to notice.
+  describe('act-as (#2359)', () => {
+    it('still lists the operator’s proposals for a session under act-as', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: operatorActingAsGroupIdentity() });
+
+      const res = await GET(makeReq() as Parameters<typeof GET>[0]);
+      const body = (await res.json()) as { isOperator: boolean; approvals: unknown[] };
+
+      expect(res.status).toBe(200);
+      expect(body.isOperator).toBe(true);
+      expect(body.approvals).toHaveLength(1);
+      expect(mockList).toHaveBeenCalledWith(OPERATOR_DID, {});
+    });
+
+    it('reports the act-as context so the panel can disable its controls with an explanation', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: operatorActingAsGroupIdentity() });
+
+      const res = await GET(makeReq() as Parameters<typeof GET>[0]);
+      const body = (await res.json()) as { actAs: { sessionDid: string; actingDid: string } | null };
+
+      expect(body.actAs).toEqual({ sessionDid: OPERATOR_DID, actingDid: GROUP_DID });
+    });
+
+    it('reports actAs: null for the operator’s own un-borrowed session', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: operatorIdentity() });
+
+      const res = await GET(makeReq() as Parameters<typeof GET>[0]);
+      const body = (await res.json()) as { actAs: unknown };
+
+      expect(body.actAs).toBeNull();
+    });
   });
 });

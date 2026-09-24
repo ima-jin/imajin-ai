@@ -12,7 +12,11 @@
  *
  * Only the node operator may raise a vault proposal from the canvas — same
  * gate as `POST /jin/api/operator-approvals/:id/decision` — since "chat
- * proposes" already covers the agent-authored path.
+ * proposes" already covers the agent-authored path. Same self-only rule
+ * too (#2359): a session under act-as is refused with 403
+ * `act_as_not_permitted` before anything is written, so a proposal that
+ * will later be countersigned self-only is never *raised* from a borrowed
+ * identity either.
  *
  * Approving the resulting card (via the pre-existing decision route) is
  * the actual signing event; the vault mutation itself runs in
@@ -24,6 +28,7 @@ import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { generateId } from '@/src/lib/kernel/id';
 import { getOperatorDid, isOperatorIdentity, computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
+import { actAsRefusal } from '@/src/lib/notify/act-as-guard';
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 
@@ -136,6 +141,12 @@ export async function POST(request: NextRequest) {
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
+
+  // #2359: self-only, same posture as the decide route — checked before
+  // the operator comparison so a borrowed identity is refused for being
+  // borrowed, not for failing an ownership test.
+  const borrowedIdentityRefusal = actAsRefusal(authResult.identity, cors);
+  if (borrowedIdentityRefusal) return borrowedIdentityRefusal;
 
   const operatorDid = await getOperatorDid();
   if (!operatorDid || !isOperatorIdentity(authResult.identity, operatorDid)) {

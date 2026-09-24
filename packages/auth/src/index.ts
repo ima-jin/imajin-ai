@@ -163,7 +163,7 @@ export type {
 } from "./require-session-or-app-token";
 export { resolveEffectiveDid } from "./resolve-effective-did";
 export type { EffectiveDidResult } from "./resolve-effective-did";
-export { resolveActingDid, resolveComposedBy } from "./acting-did";
+export { resolveActingDid, resolveComposedBy, isUnderActAs } from "./acting-did";
 export {
   GRANT_SCOPE_REGISTRY,
   GRANT_SCOPE_GRAMMAR,

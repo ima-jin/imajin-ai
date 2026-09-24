@@ -11,11 +11,21 @@
  * Optional `?source=` query param scopes the list to one source (#2152) —
  * a view filter only, never a security boundary, since every returned row
  * already belongs to this operator.
+ *
+ * #2359: this READ surface keeps working under act-as — the queue is the
+ * operator's own either way, and hiding it would just make the act-as
+ * state harder to notice, which is the failure mode #2359 is about. What
+ * it adds is `actAs`: non-null whenever the acting DID differs from the
+ * real session DID, so the panel can render its approve/deny controls
+ * disabled with an explanation instead of offering a tap the confirm rail
+ * will refuse with 403 `act_as_not_permitted`. Only ever present on the
+ * operator branch — the non-operator response stays byte-identical.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
+import { actAsContext } from '@/src/lib/notify/act-as-guard';
 import { listApprovalsForOperator } from '@/src/lib/notify/operator-approvals-service';
 
 export const dynamic = 'force-dynamic';
@@ -40,5 +50,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const source = searchParams.get('source');
   const approvals = await listApprovalsForOperator(operatorDid, source ? { source } : {});
-  return NextResponse.json({ isOperator: true, approvals }, { headers: cors });
+  return NextResponse.json(
+    { isOperator: true, approvals, actAs: actAsContext(authResult.identity) },
+    { headers: cors },
+  );
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveActingDid, resolveComposedBy } from '../src/acting-did';
+import { resolveActingDid, resolveComposedBy, isUnderActAs } from '../src/acting-did';
 import type { Identity } from '../src/types';
 
 function makeIdentity(overrides: Partial<Identity> = {}): Identity {
@@ -74,5 +74,29 @@ describe('resolveComposedBy (#1673)', () => {
       actingAs: 'did:imajin:group',
     });
     expect(resolveComposedBy(identity)).toBe('did:imajin:self');
+  });
+});
+
+describe('isUnderActAs (#2359)', () => {
+  it('is false with no delegation at all', () => {
+    expect(isUnderActAs(makeIdentity())).toBe(false);
+  });
+
+  it('is true for group impersonation — the gap resolveComposedBy deliberately ignores', () => {
+    expect(isUnderActAs(makeIdentity({ actingAs: 'did:imajin:group' }))).toBe(true);
+  });
+
+  it('is true for agent delegation', () => {
+    expect(isUnderActAs(makeIdentity({ actingFor: 'did:imajin:user' }))).toBe(true);
+  });
+
+  it('is true when both overlays are set', () => {
+    const identity = makeIdentity({ actingFor: 'did:imajin:user', actingAs: 'did:imajin:group' });
+    expect(isUnderActAs(identity)).toBe(true);
+  });
+
+  it('is false when the overlay names the caller themself — nothing is actually borrowed', () => {
+    expect(isUnderActAs(makeIdentity({ actingFor: 'did:imajin:self' }))).toBe(false);
+    expect(isUnderActAs(makeIdentity({ actingAs: 'did:imajin:self' }))).toBe(false);
   });
 });

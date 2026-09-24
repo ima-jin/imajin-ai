@@ -11,6 +11,7 @@ import {
   operatorIdentity,
   otherHumanIdentity,
   agentActingForOperatorIdentity,
+  operatorActingAsGroupIdentity,
 } from '@/src/lib/notify/__tests__/operator-approvals-test-helpers';
 
 const { mockRequireAuth, mockGetOperatorDid, mockRecordApprovalRequested } = vi.hoisted(() => ({
@@ -19,13 +20,18 @@ const { mockRequireAuth, mockGetOperatorDid, mockRecordApprovalRequested } = vi.
   mockRecordApprovalRequested: vi.fn(),
 }));
 
-vi.mock('@imajin/auth', () => ({
-  requireAuth: mockRequireAuth,
-  // computeApprovalContentHash (real implementation, via importOriginal
-  // below) canonicalizes before hashing — a trivial JSON.stringify
-  // pass-through is enough here since no test asserts on the exact hash.
-  canonicalize: (obj: unknown) => JSON.stringify(obj),
-}));
+// #2359: `act-as-guard.ts` calls the real `isUnderActAs`/`resolveActingDid`,
+// so keep every actual export and override only `requireAuth` (plus a
+// trivial `canonicalize` pass-through — no test here asserts on the exact
+// content hash).
+vi.mock('@imajin/auth', async () => {
+  const actual = await vi.importActual<typeof import('@imajin/auth')>('@imajin/auth');
+  return {
+    ...actual,
+    requireAuth: mockRequireAuth,
+    canonicalize: (obj: unknown) => JSON.stringify(obj),
+  };
+});
 
 vi.mock('@/src/lib/kernel/cors', () => ({
   corsHeaders: () => new Headers(),
@@ -96,6 +102,19 @@ describe('POST /jin/api/vault-proposals — auth', () => {
     const res = await POST(makeReq({ kind: 'mint', detail: {} }) as Parameters<typeof POST>[0]);
 
     expect(res.status).toBe(403);
+    expect(mockRecordApprovalRequested).not.toHaveBeenCalled();
+  });
+
+  it('rejects the operator’s own session under act-as with 403 act_as_not_permitted (#2359)', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: operatorActingAsGroupIdentity() });
+
+    const res = await POST(
+      makeReq({ kind: 'mint', detail: { purpose: 'x', requesterDid: 'did:imajin:x' } }) as Parameters<typeof POST>[0],
+    );
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('act_as_not_permitted');
     expect(mockRecordApprovalRequested).not.toHaveBeenCalled();
   });
 });

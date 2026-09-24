@@ -11,6 +11,7 @@ import type { Identity } from '@imajin/auth';
 export const OPERATOR_DID = 'did:imajin:ryan-operator';
 export const OTHER_HUMAN_DID = 'did:imajin:someone-else';
 export const AGENT_DID = 'did:imajin:jin-agent';
+export const GROUP_DID = 'did:imajin:some-group';
 export const PROPOSAL_ID = 'opap_test123';
 
 /**
@@ -78,6 +79,16 @@ export function otherHumanIdentity(): Identity {
  */
 export function agentActingForOperatorIdentity(): Identity {
   return { id: AGENT_DID, scope: 'actor', subtype: 'agent', actingFor: OPERATOR_DID, actingForRole: 'agent' };
+}
+
+/**
+ * The operator's OWN session while the `x-acting-as` cookie is set to a
+ * group DID (#2359) — the shape that used to sail through
+ * `isOperatorIdentity` (`id` still equals the operator DID, `actingFor` is
+ * absent) and countersign writes under a borrowed identity.
+ */
+export function operatorActingAsGroupIdentity(): Identity {
+  return { id: OPERATOR_DID, scope: 'actor', subtype: 'human', actingAs: GROUP_DID, actingAsRole: 'owner' };
 }
 
 /**
