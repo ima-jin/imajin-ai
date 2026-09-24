@@ -6,18 +6,44 @@ dashboard in an iframe via `<ServiceEmbed>` (`?embed=hub&did=...`, #800 /
 dashboard at its pre-hub URL — that page is what this document plans to
 retire.
 
-**This is a map only.** No redirects are implemented by this change; see
-"Follow-up" below.
+**Status: implemented (#2332).** Each app below redirects its standalone
+`/dashboard` route to the hub tab via a per-app `middleware.ts`. The redirect
+is unconditional (a plain 308, query string preserved) — the middleware
+matcher itself excludes the embedded rendering path (`?embed=hub`, see
+"Mechanism" below), so there is no runtime branch on that query param or on a
+hub session. The hub URL is built from `buildPublicUrlAbsolute('kernel')` +
+`/auth/<service>` (`@imajin/config`), never a hard-coded domain, so dev and
+prod both resolve correctly. The standalone `/dashboard` pages themselves
+stay in place behind the redirect.
 
-## Why not just redirect now
+## Why this waited
 
-- The standalone dashboards are the only entry point for anyone who bookmarked
-  them, and for any service that hasn't yet verified its embedded rendering
-  (`?embed=hub`) looks right inside the hub's iframe chrome — none of the
-  userspace apps currently branch on that query param today (they render
-  identical chrome standalone or embedded).
-- A hard redirect the day the embed ships would remove the fallback exactly
-  when it's most useful for debugging.
+When the embed shipped (#2275), the standalone dashboards were kept as the
+only entry point for anyone who'd bookmarked them, and as a fallback for
+debugging the embedded rendering (`?embed=hub`) before it had a release cycle
+to prove out. That release cycle has now passed, so #2332 turns the map below
+into real redirects.
+
+## Mechanism (#2332)
+
+Each app in the redirect map ships (or, if it already had one, extends) its
+own `middleware.ts`:
+
+- The redirect is **unconditional** — a plain `NextResponse.redirect(hubUrl,
+  308)` on the standalone `/dashboard` path, no `?embed=hub` check or hub-
+  session check in the handler itself, and the original query string is
+  preserved on the hub URL.
+- The embedded rendering path (`?embed=hub&did=...`, what `<ServiceEmbed>`
+  fetches — see `apps/kernel/app/auth/lib/service-registry.ts`'s
+  `buildEmbedSrc`) is excluded declaratively via the middleware `matcher`'s
+  `missing: [{ type: 'query', key: 'embed' }]`, not a runtime branch: a
+  request carrying `embed` never reaches the redirect handler at all.
+- The hub URL is built from `buildPublicUrlAbsolute('kernel')` (from
+  `@imajin/config`) + `/auth/<service>` — never a hard-coded domain — so both
+  dev (`http://localhost:<port>`) and prod (`https://jin.imajin.ai`) resolve
+  correctly.
+- The standalone `/dashboard` pages themselves are unchanged and stay behind
+  the redirect for now (see "Out of scope" on the tracking issue).
 
 ## Redirect map
 
@@ -49,7 +75,6 @@ here.
 
 ## Follow-up
 
-Implementing the actual redirects (e.g. a `middleware.ts` rule per app, or
-each standalone `/dashboard` page issuing a `redirect()` to the hub) is
-tracked in [#2332](https://github.com/ima-jin/imajin-ai/issues/2332), to be
-picked up once the embedded experience has had a release cycle to prove out.
+Mapping nested standalone sub-routes (e.g. `/market/dashboard/listings/123`)
+to real hub routes, and retiring the standalone `/dashboard` pages
+themselves, remain out of scope and untracked as of #2332.
