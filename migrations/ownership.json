@@ -588,6 +588,12 @@
       "firstMigration": "0001_seed.sql",
       "notes": ""
     },
+    "media.asset_doc_edges": {
+      "owner": "kernel",
+      "schema": "media",
+      "firstMigration": "0158_media_asset_doc_edges.sql",
+      "notes": ""
+    },
     "media.folders": {
       "owner": "kernel",
       "schema": "media",

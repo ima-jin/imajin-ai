@@ -82,13 +82,15 @@ function uploadRequest({
   type = 'text/markdown',
   context,
   strict,
-}: UploadOptions = {}): NextRequest {
+  compact,
+}: UploadOptions & { compact?: boolean } = {}): NextRequest {
   const form = new FormData();
   form.append('file', new File([content], filename, { type }), filename);
   if (context) form.append('context', JSON.stringify(context));
   if (strict !== undefined) form.append('strict', strict);
 
-  return new Request('https://test.imajin.ai/media/api/assets', {
+  const url = `https://test.imajin.ai/media/api/assets${compact ? '?compact=1' : ''}`;
+  return new Request(url, {
     method: 'POST',
     body: form,
   }) as unknown as NextRequest;
@@ -185,5 +187,56 @@ describe('POST /media/api/assets — article frontmatter guard (#1542)', () => {
 
     expect(res.status).toBe(201);
     expect(mockCreateAsset).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─── ?compact=1 (#2282 item 5) ───────────────────────────────────────────────
+
+describe('POST /media/api/assets — ?compact=1', () => {
+  it('returns only { id, url, hash, size, mimeType } on a clean upload', async () => {
+    const res = await POST(uploadRequest({ content: WITH_HEADER, compact: true }));
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(Object.keys(body).sort()).toEqual(['hash', 'id', 'mimeType', 'size', 'url']);
+    expect(body.id).toBe('asset_new');
+    expect(body.hash).toBe('deadbeef');
+    expect(body.size).toBe(42);
+    expect(body.mimeType).toBe('text/markdown');
+    expect(body.url).toContain('asset_new');
+  });
+
+  it('adds warning (and nothing else extra) when the frontmatter guard trips', async () => {
+    const res = await POST(uploadRequest({ context: { app: 'article' }, compact: true }));
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(Object.keys(body).sort()).toEqual(['hash', 'id', 'mimeType', 'size', 'url', 'warning']);
+    expect(body.warning).toContain('will NOT render as an article');
+  });
+
+  it('stays under 300 bytes serialized', async () => {
+    const res = await POST(uploadRequest({ content: WITH_HEADER, compact: true }));
+    const text = await res.text();
+    expect(text.length).toBeLessThanOrEqual(300);
+  });
+
+  it('applies to the dedup (200) response too', async () => {
+    mockCreateAsset.mockResolvedValueOnce({
+      asset: {
+        id: 'asset_existing',
+        filename: 'newsletter.md',
+        mimeType: 'text/markdown',
+        size: 42,
+        hash: 'deadbeef',
+        cid: 'bafytest',
+      },
+      deduplicated: true,
+    });
+
+    const res = await POST(uploadRequest({ content: WITH_HEADER, compact: true }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Object.keys(body).sort()).toEqual(['hash', 'id', 'mimeType', 'size', 'url']);
   });
 });
