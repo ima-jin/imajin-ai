@@ -33,6 +33,12 @@ export default defineConfig({
         // SonarCloud parses them as source either way, so leaving them out of the
         // report measures them as 0% covered rather than skipping them.
         'apps/*/src/**/*.js',
+        // Static assets SonarCloud still analyzes as source (e.g. a PWA service
+        // worker under public/, #2291) — same rationale as the src/**/*.js entry
+        // above: nothing in sonar-project.properties excludes apps/*/public/**
+        // from coverage, so a file here with no lcov entry reports 0% covered
+        // rather than being skipped.
+        'apps/*/public/**/*.js',
         'apps/*/app/**/*.ts',
         'apps/*/app/**/*.tsx',
         'packages/*/src/**/*.ts',

@@ -41,6 +41,6 @@ globalThis.addEventListener('push', (event) => {
 
 globalThis.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/jin';
+  const url = event.notification.data?.url || '/jin';
   event.waitUntil(globalThis.clients.openWindow(url));
 });

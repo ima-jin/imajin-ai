@@ -645,7 +645,7 @@
     "notify.push_subscriptions": {
       "owner": "kernel",
       "schema": "notify",
-      "firstMigration": "0158_push_subscriptions.sql",
+      "firstMigration": "0161_push_subscriptions.sql",
       "notes": "#2291 phone push path \u2014 web-push (VAPID) subscriptions"
     },
     "notify.templates": {
