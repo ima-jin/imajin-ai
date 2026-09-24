@@ -209,27 +209,43 @@ EOF
   printf '%s' "$port"
 }
 
-# is_pm2_owned/pm2_managed_pids/pm2_has_name/ecosystem_has_app come from the
-# shared helper (also used by scripts/reap-orphans.sh) so the two never drift
-# again (#2237). is_pm2_owned walks the ancestor chain — not just an exact
-# pid match — since pm2 fork-mode tracks the wrapper process (e.g. `next
-# start`) while the port is actually held by a grandchild (e.g.
+# is_pm2_owned/pm2_managed_pids/pm2_has_name/pm2_app_is_online/ecosystem_has_app
+# come from the shared helper (also used by scripts/reap-orphans.sh) so the
+# two never drift again (#2237). is_pm2_owned walks the ancestor chain — not
+# just an exact pid match — since pm2 fork-mode tracks the wrapper process
+# (e.g. `next start`) while the port is actually held by a grandchild (e.g.
 # `next-server`, or tsx→node for corpus).
 # shellcheck source=scripts/lib/pm2-owned.sh
 source "$REPO_ROOT/scripts/lib/pm2-owned.sh"
 
+# Services declared in the manifest but not hosted on this box (e.g. corpus
+# runs on gx10) — skip them outright instead of burning a cold-start attempt
+# and warning on every deploy (#2344).
+# shellcheck source=scripts/lib/deploy-skip.sh
+source "$REPO_ROOT/scripts/lib/deploy-skip.sh"
+
 # Reap any listener on $port that pm2 doesn't own, then verify (short bounded
-# wait) that the port is actually free. Returns 1 without touching pm2 if a
-# non-pm2 process still holds the port afterwards. Expects the global
-# PM2_PIDS to already be populated via pm2_managed_pids.
+# wait) that the port is actually free. Returns 1 only when the port is truly
+# stuck AND pm2 doesn't report the app online; returns 0 (with a warning, not
+# an error) when the remaining listener turns out to be pm2-owned or pm2
+# otherwise reports the app healthy — see the exit-status note below (#2344).
+# Expects the global PM2_PIDS to already be populated via pm2_managed_pids.
 reap_orphan_port() {
   local app="$1" port="$2"
-  local pid cmd listeners stray
+  local pid cmd listeners stray name
+  name="$(pm2_name "$app")"
 
   if ! command -v ss >/dev/null 2>&1; then
     echo "ℹ️  ss not found — skipping orphan-port check for $app (:$port)" | tee -a "$REPORT"
     return 0
   fi
+
+  # Refresh before every use, not just once for the whole restart batch: pm2
+  # can respawn an app (with a brand-new pid) between when PM2_PIDS was last
+  # captured and now — e.g. right after this same function killed a pid one
+  # app ago, or in the retry loop below right after killing this app's own
+  # stray. A stale snapshot is exactly what produced #2344's false failure.
+  PM2_PIDS="$(pm2_managed_pids)"
 
   listeners="$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
   for pid in $listeners; do
@@ -246,6 +262,7 @@ reap_orphan_port() {
 
   for _ in 1 2 3 4 5; do
     stray=""
+    PM2_PIDS="$(pm2_managed_pids)"
     listeners="$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
     for pid in $listeners; do
       [[ -z "$pid" ]] && continue
@@ -256,7 +273,16 @@ reap_orphan_port() {
   done
 
   cmd="$(ps -o cmd= -p "$stray" 2>/dev/null || echo '?')"
-  echo "❌ Port $port ($app) still held by pid $stray ($cmd) after reaping — refusing to restart $app." | tee -a "$REPORT"
+  # A pid we still can't attribute to pm2 is, by itself, an ownership/
+  # reporting mismatch, not proof the service is down (#2344) — pm2's own
+  # "online" status is the actual health signal. Only fail the build when
+  # pm2 agrees something is wrong.
+  if pm2_app_is_online "$name"; then
+    echo "⚠️  Port $port ($app) still shows pid $stray ($cmd) after reaping, but pm2 reports $name online — treating as pm2-managed, not a failure." | tee -a "$REPORT"
+    return 0
+  fi
+
+  echo "❌ Port $port ($app) still held by pid $stray ($cmd) after reaping, and pm2 does not report $name online — refusing to restart $app." | tee -a "$REPORT"
   return 1
 }
 
@@ -271,10 +297,15 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
   done
   echo "=== Restarting: $RESTART_LIST ===" | tee -a "$REPORT"
 
-  PM2_PIDS="$(pm2_managed_pids)"
   RESTART_FAILED=()
   for app in "${SUCCEEDED[@]}"; do
     name="$(pm2_name "$app")"
+
+    if is_skipped_service "$app"; then
+      echo "ℹ️  Skipping $name (not hosted here)" | tee -a "$REPORT"
+      continue
+    fi
+
     port="$(service_port_for_app "$app")"
 
     # Daemon processes with no HTTP port (devPort/prodPort 0 or unset in the

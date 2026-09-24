@@ -39,15 +39,19 @@ case "$SCOPE" in
     ;;
 esac
 
-# Collect the set of PIDs pm2 currently manages (used by is_pm2_owned, from
-# lib/pm2-owned.sh, which walks the ancestor chain up to 6 levels — Next.js
-# apps run as `next start`, the pid pm2 tracks, which forks a `next-server`
-# child that actually holds the port, so an exact-pid match alone would
-# misread every healthy Next app as an orphan).
-PM2_PIDS="$(pm2_managed_pids)"
+# PM2_PIDS (used by is_pm2_owned, from lib/pm2-owned.sh, which walks the
+# ancestor chain up to 6 levels — Next.js apps run as `next start`, the pid
+# pm2 tracks, which forks a `next-server` child that actually holds the
+# port, so an exact-pid match alone would misread every healthy Next app as
+# an orphan) is (re)populated at the top of each port iteration below.
 
 KILLED=0
 for port in "${PORTS[@]}"; do
+  # Refresh per port, not just once for the whole scan: pm2 may have
+  # restarted an app (new pid) between ports, or as a side effect of an
+  # earlier reap in this same pass (#2344).
+  PM2_PIDS="$(pm2_managed_pids)"
+
   # PIDs listening on this port (LISTEN only). ss avoids lsof dependency.
   LISTENERS="$(ss -ltnpH "sport = :$port" 2>/dev/null \
     | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
