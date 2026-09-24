@@ -1,12 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockVerify, mockPublish } = vi.hoisted(() => ({
+const { mockVerify, mockAuthorize, mockPublish, logMock } = vi.hoisted(() => ({
   mockVerify: vi.fn(),
+  mockAuthorize: vi.fn(),
   mockPublish: vi.fn(),
+  logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('@imajin/logger', () => ({
+  createLogger: () => logMock,
 }));
 
 vi.mock('../verify-publisher-signature', () => ({
   verifyLoopPublisherSignature: mockVerify,
+}));
+
+vi.mock('../authorize-publisher', () => ({
+  authorizeLoopPublisher: mockAuthorize,
 }));
 
 vi.mock('@imajin/bus', () => ({
@@ -33,6 +43,7 @@ const REQUEST: LoopIngestRequest = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockAuthorize.mockResolvedValue({ authorized: true });
 });
 
 describe('ingestLoopEvent', () => {
@@ -42,6 +53,7 @@ describe('ingestLoopEvent', () => {
     const result = await ingestLoopEvent(REQUEST);
 
     expect(result).toEqual({ ok: false, error: 'Invalid publisher signature', status: 400 });
+    expect(mockAuthorize).not.toHaveBeenCalled();
     expect(mockPublish).not.toHaveBeenCalled();
   });
 
@@ -56,6 +68,40 @@ describe('ingestLoopEvent', () => {
       { type: REQUEST.type, payload: REQUEST.payload },
       REQUEST.signature,
     );
+  });
+
+  it('checks publisher authorization against publisherDid + payload.principal after a valid signature', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    mockPublish.mockResolvedValueOnce(undefined);
+
+    await ingestLoopEvent(REQUEST);
+
+    expect(mockAuthorize).toHaveBeenCalledWith(REQUEST.publisherDid, REQUEST.payload.principal);
+  });
+
+  it('rejects with 403 and never publishes when the publisher is not authorized for the principal (#2358)', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    mockAuthorize.mockResolvedValueOnce({ authorized: false, reason: 'publisherDid is not authorized to publish loop history for principal' });
+
+    const result = await ingestLoopEvent(REQUEST);
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'publisherDid is not authorized to publish loop history for principal',
+      status: 403,
+      code: 'loop_publisher_unauthorized',
+    });
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('logs only the DID pair (never the envelope payload) on an authorization rejection', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    mockAuthorize.mockResolvedValueOnce({ authorized: false, reason: 'nope' });
+
+    await ingestLoopEvent(REQUEST);
+
+    const rejectionCall = logMock.warn.mock.calls.find(([, message]) => message === 'loop event publisher not authorized for principal');
+    expect(rejectionCall?.[0]).toEqual({ publisherDid: REQUEST.publisherDid, principal: REQUEST.payload.principal });
   });
 
   it('publishes the verified envelope with issuer=publisherDid, subject=principal, correlationId=loopId', async () => {

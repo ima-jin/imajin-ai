@@ -56,6 +56,17 @@ export const GRANT_SCOPE_REGISTRY = [
   // subscription. Revoking this grant is what makes the next reach call
   // fail closed (introspectGrant() re-reads storage on every call).
   { scope: 'agent:reach', origin: 'kernel', eventTypes: [] },
+  // #2358 — authorizes `agentDid` to publish `loop.*` lifecycle history
+  // (`POST /api/loops`, apps/kernel/src/lib/loops/) on behalf of the
+  // `delegatorDid` principal it names as `payload.principal`. Closes the
+  // gap where any signed DID could assert loop history for any principal:
+  // ingest now accepts a publisher only when it is the principal itself
+  // (self-attestation), the kernel's own node-witness DID (#2338, exempt
+  // the same way it's exempt from registry-based signature resolution),
+  // or holds an active grant with this capability from that exact
+  // principal (see apps/kernel/src/lib/loops/authorize-publisher.ts). No
+  // event feed: this gates a write, not a subscription.
+  { scope: 'loops:publish', origin: 'kernel', eventTypes: [] },
 ] as const satisfies readonly {
   scope: string;
   origin: 'mcp' | 'kernel';
