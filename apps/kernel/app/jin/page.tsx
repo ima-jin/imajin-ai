@@ -5,6 +5,7 @@ import { OperatorApprovalsPanel } from './operator-approvals-panel';
 import { VaultKeysPanel } from './vault-keys-panel';
 import { AccessBearersPanel } from './access-bearers-panel';
 import { GrantsPanel } from './grants-panel';
+import { PushSubscribeButton } from './push-subscribe-button';
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 //
@@ -29,6 +30,9 @@ export default function JinPage() {
             <p className="text-xs text-gray-500">Pending proposals — human approval surface</p>
           </div>
         </div>
+        {/* #2291 — phone push path: install-to-home-screen PWA + web-push
+            opt-in. Renders nothing for a non-operator or unsupported browser. */}
+        <PushSubscribeButton />
       </header>
 
       <main className="px-6 py-4">

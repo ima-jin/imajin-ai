@@ -40,7 +40,8 @@
  * kernel accepts that unless `OPERATOR_COUNTERSIGN_REQUIRED` is on, in
  * which case the resulting 400 surfaces through the existing error flash.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 
 interface StoredKeypair {
@@ -612,14 +613,22 @@ function RevealedBearerBanner({
   );
 }
 
+/** Deep-link anchor id (#2291) — the web-push notificationclick handler opens `/jin?proposalId=<id>` to this card. */
+function approvalCardAnchorId(proposalId: string): string {
+  return `approval-${proposalId}`;
+}
+
 function ApprovalCardRow({
   approval,
   onDecide,
   busy,
+  highlighted,
 }: Readonly<{
   approval: OperatorApprovalCard;
   onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void;
   busy: boolean;
+  /** True when this card is the one the operator was deep-linked to from a phone push (#2291). */
+  highlighted: boolean;
 }>) {
   const renderer = rendererFor(approval.source);
   const decisionLabels = resolveDecisionLabels(renderer, approval);
@@ -631,8 +640,9 @@ function ApprovalCardRow({
   // decided — the kernel enforces this authoritatively at decide time; this
   // only keeps the card from ever offering a decision it will just refuse.
   const expired = approval.status === 'pending' && isApprovalExpired(approval);
+  const highlightClass = highlighted ? ' ring-2 ring-amber-500/70' : '';
   return (
-    <div className="rounded-lg border border-gray-800 p-4 space-y-2">
+    <div id={approvalCardAnchorId(approval.proposalId)} className={`rounded-lg border border-gray-800 p-4 space-y-2${highlightClass}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {statusBadge(approval.status)}
@@ -693,6 +703,7 @@ function renderPanelBody(
   approvals: OperatorApprovalCard[],
   onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
   busyId: string,
+  deepLinkedProposalId: string | null,
 ) {
   if (loading) {
     return <p className="text-sm text-gray-500 py-6 text-center">Loading…</p>;
@@ -715,13 +726,21 @@ function renderPanelBody(
           approval={approval}
           onDecide={onDecide}
           busy={busyId === approval.proposalId}
+          highlighted={deepLinkedProposalId === approval.proposalId}
         />
       ))}
     </div>
   );
 }
 
-export function OperatorApprovalsPanel() {
+function OperatorApprovalsPanelInner() {
+  // #2291: the phone push notificationclick handler opens `/jin?proposalId=<id>`
+  // — this is the "Inbox lane" deep link. Read once per navigation; the panel
+  // never rewrites the URL itself.
+  const searchParams = useSearchParams();
+  const deepLinkedProposalId = searchParams.get('proposalId');
+  const hasScrolledToDeepLink = useRef(false);
+
   const [isOperator, setIsOperator] = useState(false);
   const [approvals, setApprovals] = useState<OperatorApprovalCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -757,6 +776,18 @@ export function OperatorApprovalsPanel() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [load]);
+
+  // #2291: once the deep-linked proposal has actually loaded, scroll its
+  // card into view exactly once — not on every silent poll refresh.
+  useEffect(() => {
+    if (!deepLinkedProposalId || hasScrolledToDeepLink.current) return;
+    if (!approvals.some((approval) => approval.proposalId === deepLinkedProposalId)) return;
+    const el = globalThis.document.getElementById(approvalCardAnchorId(deepLinkedProposalId));
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      hasScrolledToDeepLink.current = true;
+    }
+  }, [approvals, deepLinkedProposalId]);
 
   const handleDecide = useCallback(async (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => {
     const { proposalId } = approval;
@@ -837,7 +868,21 @@ export function OperatorApprovalsPanel() {
         <RevealedBearerBanner revealed={revealedBearer} onDismiss={() => setRevealedBearer(null)} />
       )}
 
-      {renderPanelBody(loading, approvals, handleDecide, busyId)}
+      {renderPanelBody(loading, approvals, handleDecide, busyId, deepLinkedProposalId)}
     </section>
+  );
+}
+
+/**
+ * `useSearchParams` requires a Suspense boundary in the App Router — same
+ * pattern `UsageFeedPanel` already uses (`usage-feed-panel.tsx`). The
+ * fallback never shows in practice for this panel (search params resolve
+ * synchronously on the client), but the boundary is required regardless.
+ */
+export function OperatorApprovalsPanel() {
+  return (
+    <Suspense fallback={null}>
+      <OperatorApprovalsPanelInner />
+    </Suspense>
   );
 }

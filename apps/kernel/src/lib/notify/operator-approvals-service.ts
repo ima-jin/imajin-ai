@@ -24,6 +24,7 @@ import {
   type OperatorCountersignature,
 } from './operator-approvals';
 import { verifyOperatorCountersignature } from './operator-countersign';
+import { pushWebNotificationToOperator } from './web-push';
 import {
   EXEC_COMMAND_KIND,
   asExecCommandDetail,
@@ -133,6 +134,21 @@ export async function recordApprovalRequested(params: RecordApprovalRequestedPar
   });
 
   log.info({ proposalId, operatorDid, source, kind }, 'operator approval requested');
+
+  // #2291: fire-and-forget web-push fan-out to the operator's phone,
+  // additive alongside the existing WS push `POST /notify/api/send` already
+  // does (ws-push.ts) — the row just inserted above remains the sole
+  // authority no matter what happens here. Deliberately NOT awaited: a slow
+  // or unreachable push service must never add latency to this persist
+  // path. The deep link opens /jin's confirm-card queue straight to this
+  // proposal (see apps/kernel/app/jin/sw.js/route.ts's notificationclick).
+  void pushWebNotificationToOperator(operatorDid, {
+    title: `Operator approval needed — ${kind}`,
+    body: summary,
+    url: `/jin?proposalId=${encodeURIComponent(proposalId)}`,
+  }).catch((err: unknown) => {
+    log.error({ err: String(err), proposalId }, 'web-push fan-out failed (non-fatal)');
+  });
 }
 
 async function loadApproval(proposalId: string): Promise<OperatorApprovalRow | undefined> {
