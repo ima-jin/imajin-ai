@@ -42,7 +42,7 @@
  */
 import { eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { VaultIntegrityError } from '@imajin/vault-core';
+import { VaultIntegrityError, type VaultEntry } from '@imajin/vault-core';
 import { db, vaultGrantRequests } from '@/src/db';
 import { isVaultTier1 } from './sealing';
 import { VaultDelegationError } from './errors';
@@ -72,18 +72,32 @@ export interface FieldMigrationResult {
    */
   grantId?: string | null;
   error?: string;
+  /**
+   * The current entry's owner DID, truncated to 20 chars (#2311) — a
+   * dry-run-only diagnostic so an operator can confirm which owners a
+   * `--fields` run will touch before mutating anything. Never plaintext or
+   * key material, and never set on a real (non-dry-run) result: those
+   * already carry `grantId`/`error` instead.
+   */
+  ownerDidTruncated?: string;
 }
 
 export interface MigrationReport {
   dryRun: boolean;
   tier1: boolean;
-  /** Total `node-sealed` fields found across the whole vault, before this run's `limit` was applied. */
+  /** Total live `node-sealed` fields found across the whole vault, before this run's `limit`/`fields` scoping was applied. */
   totalV1Fields: number;
-  /** How many of those this run considered, after `limit`. */
+  /** How many of those this run considered, after `fields`/`limit` scoping. */
   candidateCount: number;
   results: FieldMigrationResult[];
   aborted: boolean;
   abortReason?: string;
+  /**
+   * Fields named in `fields` that are not currently in the live v1 set —
+   * already migrated, deleted, or a typo (#2311). Present only when `fields`
+   * was passed.
+   */
+  notFound?: string[];
 }
 
 export interface MigrateCustodyOptions {
@@ -91,6 +105,14 @@ export interface MigrateCustodyOptions {
   dryRun: boolean;
   /** Cap how many v1 fields this call processes. Omit to process every remaining one. */
   limit?: number;
+  /**
+   * Restrict this run to exactly these field names (#2311) — the operator's
+   * targeted-mode escape hatch for migrating a known, specific set (e.g. the
+   * 15 fields the Aug-1 batch missed) instead of the whole remaining vault.
+   * A name with no live v1 entry is reported back in `notFound` rather than
+   * silently ignored. Omit to consider every live v1 field.
+   */
+  fields?: string[];
   /** How long to wait for a field to become readable after upgrade before giving up. */
   timeoutMs?: number;
   /** Spacing between unseal attempts while waiting. */
@@ -107,18 +129,125 @@ function defaultSleep(ms: number): Promise<void> {
 }
 
 /**
- * List every field currently under `node-sealed` (v1) custody, sorted for
- * stable, reproducible ordering across runs and repeated `limit`-bounded calls.
+ * Resolve the true latest entry per field from a raw, possibly out-of-order,
+ * `vault.entries` array.
  *
- * `vaultService.list()` already collapses to the latest entry per field and
- * excludes tombstones, so a deleted or superseded v1 entry never appears here.
+ * `vault.entries` is append-only, but "latest" here was previously read as
+ * "last element in the array" (see `vaultService.list()`/`getLatestEntry()`)
+ * — correct only when every writer appends in strictly increasing `timestamp`
+ * order. `InMemoryFieldLock` only serialises writers within a single Node
+ * process, so two kernel processes/instances appending to the same
+ * `vault.json` concurrently can interleave entries out of timestamp order.
+ * When that happens to a field whose true-latest write is a live v1
+ * (`node-sealed`) entry, a positional read can instead surface an older,
+ * already-v2-looking entry as "latest" and hide the live one from every v1
+ * enumeration that follows — this is how the Aug-1 batch migration (#1537)
+ * missed 15 live v1 fields with zero delegation grants (#2311).
+ *
+ * Selecting by `timestamp`, with array order only as a tiebreak for equal (or
+ * unparsable) timestamps, is immune to that reordering regardless of cause.
  */
-export async function listNodeSealedFields(): Promise<string[]> {
-  const entries = await vaultService.list();
-  return entries
-    .filter((entry) => (entry.custodyScheme ?? 'node-sealed') === 'node-sealed')
-    .map((entry) => entry.field)
-    .sort();
+function selectLatestEntries(entries: VaultEntry[]): Map<string, VaultEntry> {
+  const ranked = entries.map((entry, index) => ({ entry, index }));
+  ranked.sort((a, b) => {
+    const aTime = Date.parse(a.entry.timestamp);
+    const bTime = Date.parse(b.entry.timestamp);
+    const aInvalid = Number.isNaN(aTime);
+    const bInvalid = Number.isNaN(bTime);
+    if (aInvalid !== bInvalid) {
+      // An unparsable timestamp never outranks a valid one.
+      return aInvalid ? -1 : 1;
+    }
+    if (!aInvalid && aTime !== bTime) {
+      return aTime - bTime;
+    }
+    // Equal (or equally unparsable) timestamps: fall back to append order.
+    return a.index - b.index;
+  });
+
+  const latestByField = new Map<string, VaultEntry>();
+  for (const { entry } of ranked) {
+    // Ascending sort — later entries in this loop overwrite earlier ones, so
+    // the map ends up holding the true latest per field.
+    latestByField.set(entry.field, entry);
+  }
+  return latestByField;
+}
+
+export interface LiveV1Field {
+  field: string;
+  /** ISO timestamp of the selected (latest) entry. */
+  timestamp: string;
+  /** DID that sealed the selected entry — the field's current owner. */
+  ownerDid: string;
+}
+
+/**
+ * Enumerate every field whose true latest entry (by `timestamp`, not array
+ * position — see {@link selectLatestEntries}) is live (`deleted !== true`)
+ * and still under `node-sealed` (v1) custody — `custodyScheme` absent or
+ * explicitly `'node-sealed'` (#2311). Sorted by field name for stable,
+ * reproducible ordering across runs and repeated `limit`-bounded calls.
+ *
+ * Reads the raw vault file directly rather than going through
+ * `vaultService.list()`, which also asserts full entry integrity for every
+ * field's latest entry — one unrelated corrupt entry anywhere in the vault
+ * would then throw and hide every OTHER field's candidacy behind that
+ * exception. Selection here is deliberately just metadata bookkeeping (field,
+ * timestamp, custodyScheme, deleted, senderDid — never plaintext or key
+ * material); integrity is still verified per-field the normal way the moment
+ * a candidate is actually read for migration.
+ */
+export async function selectLiveV1Fields(): Promise<LiveV1Field[]> {
+  const vault = await vaultService.loadVault();
+  const latestByField = selectLatestEntries(vault.entries);
+
+  const live: LiveV1Field[] = [];
+  for (const entry of latestByField.values()) {
+    if (entry.deleted === true) {
+      continue;
+    }
+    if ((entry.custodyScheme ?? 'node-sealed') !== 'node-sealed') {
+      continue;
+    }
+    live.push({ field: entry.field, timestamp: entry.timestamp, ownerDid: entry.senderDid });
+  }
+  return live.sort((a, b) => a.field.localeCompare(b.field));
+}
+
+/** Truncate a DID for dry-run/diagnostic display (#2311) — operator-facing only, never used for auth, storage, or comparison. */
+function truncateDid(did: string): string {
+  return did.length > 20 ? did.slice(0, 20) : did;
+}
+
+interface ScopedCandidates {
+  candidates: LiveV1Field[];
+  /** Requested field names with no live v1 entry right now. Undefined when `fields` was not passed. */
+  notFound?: string[];
+}
+
+/**
+ * Narrow the live v1 set to what this call should actually consider (#2311):
+ * first to exactly the named `fields` (if given), tracking any that are not
+ * currently live v1, then down to `limit` (if given). Split out of
+ * {@link migrateCustody} to keep that function's branching budget for the
+ * canary/batch state machine, which is where it matters most.
+ */
+function scopeCandidates(
+  allFields: LiveV1Field[],
+  fields: string[] | undefined,
+  limit: number | undefined,
+): ScopedCandidates {
+  let scoped = allFields;
+  let notFound: string[] | undefined;
+  if (fields) {
+    const requested = new Set(fields);
+    scoped = allFields.filter((candidate) => requested.has(candidate.field));
+    const found = new Set(scoped.map((candidate) => candidate.field));
+    notFound = fields.filter((field) => !found.has(field));
+  }
+  const candidates = typeof limit === 'number' ? scoped.slice(0, limit) : scoped;
+  return { candidates, notFound };
 }
 
 /**
@@ -328,10 +457,13 @@ async function upgradeAndVerify(
  *      turn, aborting on the first failure and reporting per-field results so
  *      an operator knows exactly where it stopped.
  *
- * `limit` bounds how many fields a single call considers. An operator doing a
- * large migration should pass a small limit and call again — each call is one
- * request/response with no background job — rather than expect one call to
- * walk the entire vault.
+ * `fields` (#2311) scopes the candidate set to exactly the named fields
+ * before `limit` is applied — the operator's targeted-mode escape hatch for
+ * a known set (e.g. the 15 the Aug-1 batch missed) instead of the whole
+ * remaining vault. `limit` bounds how many fields a single call considers.
+ * An operator doing a large, untargeted migration should pass a small limit
+ * and call again — each call is one request/response with no background job
+ * — rather than expect one call to walk the entire vault.
  */
 export async function migrateCustody(options: MigrateCustodyOptions): Promise<MigrationReport> {
   const now = options.now ?? new Date();
@@ -341,20 +473,25 @@ export async function migrateCustody(options: MigrateCustodyOptions): Promise<Mi
   const sleep = options.sleep ?? defaultSleep;
   const tier1 = isVaultTier1();
 
-  const allFields = await listNodeSealedFields();
-  const candidates = typeof options.limit === 'number' ? allFields.slice(0, options.limit) : allFields;
+  const allFields = await selectLiveV1Fields();
+  const { candidates, notFound } = scopeCandidates(allFields, options.fields, options.limit);
 
   const base = {
     dryRun: options.dryRun,
     tier1,
     totalV1Fields: allFields.length,
     candidateCount: candidates.length,
+    ...(notFound !== undefined ? { notFound } : {}),
   };
 
   if (options.dryRun) {
     return {
       ...base,
-      results: candidates.map((field) => ({ field, status: 'would-upgrade' as const })),
+      results: candidates.map((candidate) => ({
+        field: candidate.field,
+        status: 'would-upgrade' as const,
+        ownerDidTruncated: truncateDid(candidate.ownerDid),
+      })),
       aborted: false,
     };
   }
@@ -381,7 +518,9 @@ export async function migrateCustody(options: MigrateCustodyOptions): Promise<Mi
 
   // Canary: upgrade the first candidate and prove it becomes readable before
   // touching the rest of the batch.
-  const [canaryField, ...rest] = candidates;
+  const [canaryCandidate, ...restCandidates] = candidates;
+  const canaryField = canaryCandidate.field;
+  const rest = restCandidates.map((candidate) => candidate.field);
 
   let canaryPlaintext: string | undefined;
   try {

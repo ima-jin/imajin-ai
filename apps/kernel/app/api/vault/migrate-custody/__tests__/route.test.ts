@@ -102,6 +102,35 @@ describe('POST /api/vault/migrate-custody', () => {
     expect(mockMigrateCustody).not.toHaveBeenCalled();
   });
 
+  it('passes fields through when provided (#2311)', async () => {
+    await POST(makeRequest({ dryRun: true, fields: ['a', 'b'] }) as never);
+    expect(mockMigrateCustody).toHaveBeenCalledWith({ dryRun: true, limit: undefined, fields: ['a', 'b'] });
+  });
+
+  it('rejects a non-array fields value', async () => {
+    const response = await POST(makeRequest({ fields: 'a,b' }) as never);
+    expect(response.status).toBe(400);
+    expect(mockMigrateCustody).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty fields array', async () => {
+    const response = await POST(makeRequest({ fields: [] }) as never);
+    expect(response.status).toBe(400);
+    expect(mockMigrateCustody).not.toHaveBeenCalled();
+  });
+
+  it('rejects a fields array containing a blank string', async () => {
+    const response = await POST(makeRequest({ fields: ['a', '   '] }) as never);
+    expect(response.status).toBe(400);
+    expect(mockMigrateCustody).not.toHaveBeenCalled();
+  });
+
+  it('rejects a fields array containing a non-string element', async () => {
+    const response = await POST(makeRequest({ fields: ['a', 42] }) as never);
+    expect(response.status).toBe(400);
+    expect(mockMigrateCustody).not.toHaveBeenCalled();
+  });
+
   it('returns the driver report as JSON', async () => {
     const expected = report({ totalV1Fields: 2, results: [{ field: 'a', status: 'would-upgrade' }] });
     mockMigrateCustody.mockResolvedValue(expected);

@@ -9,6 +9,7 @@ const log = createLogger('kernel');
 interface MigrateCustodyBody {
   dryRun?: unknown;
   limit?: unknown;
+  fields?: unknown;
 }
 
 /**
@@ -35,6 +36,10 @@ interface MigrateCustodyBody {
  *     request/response with no background job, so an operator migrating a
  *     large vault should pass a small limit and call again rather than expect
  *     one call to walk the entire set.
+ *   fields (string[], optional, #2311) — restrict this call to exactly these
+ *     field names, e.g. a known set the last batch missed. A name with no
+ *     live v1 entry is reported back in the response's `notFound`, not
+ *     silently ignored. Omit to consider every live v1 field.
  *
  * No plaintext is logged or ever appears in the response — only field names,
  * grant ids, and error strings.
@@ -63,13 +68,26 @@ export async function POST(request: NextRequest) {
     limit = body.limit;
   }
 
+  let fields: string[] | undefined;
+  if (body?.fields !== undefined) {
+    const isNonEmptyStringArray =
+      Array.isArray(body.fields) &&
+      body.fields.length > 0 &&
+      body.fields.every((field): field is string => typeof field === 'string' && field.trim().length > 0);
+    if (!isNonEmptyStringArray) {
+      return NextResponse.json({ error: 'fields must be a non-empty array of non-empty strings' }, { status: 400 });
+    }
+    fields = body.fields as string[];
+  }
+
   try {
-    const report = await migrateCustody({ dryRun, limit });
+    const report = await migrateCustody({ dryRun, limit, fields });
 
     log.info(
       {
         dryRun,
         limit: limit ?? null,
+        fieldCount: fields?.length ?? null,
         totalV1Fields: report.totalV1Fields,
         candidateCount: report.candidateCount,
         processed: report.results.length,
